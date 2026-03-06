@@ -1,0 +1,349 @@
+Build a scalable web application foundation for a Condo Property Management Platform.
+
+This platform will eventually manage condo associations, governance records, HOA finances, owner registries, documents, and board operations.
+
+For this first build, focus ONLY on creating the technical foundation and the first core module.
+
+Tech Stack
+
+Use the following stack:
+
+Backend: Node.js with Express
+
+Database: PostgreSQL
+
+ORM: Prisma
+
+Frontend: React with Vite
+
+Styling: Tailwind CSS
+
+API: REST API
+
+Authentication: simple session-based authentication
+
+File storage: support document uploads
+
+Structure the project so it can scale into a SaaS platform later.
+
+High-Level Architecture
+
+Create a modular architecture with clear separation:
+
+Frontend
+
+/client
+/components
+/pages
+/hooks
+/layout
+/services
+
+
+Backend
+
+/server
+/controllers
+/routes
+/services
+/models
+/middleware
+
+
+Database
+
+/prisma
+schema.prisma
+
+
+Shared types
+
+/types
+
+Core Data Model (Phase 1)
+
+Implement these entities:
+
+Association
+
+Represents a condo complex.
+
+Fields:
+
+id
+
+name
+
+address
+
+city
+
+state
+
+country
+
+createdAt
+
+Unit
+
+Represents a condo unit.
+
+Fields
+
+id
+
+associationId
+
+unitNumber
+
+building
+
+squareFootage
+
+createdAt
+
+Relationship
+
+Association → many Units
+
+Person
+
+Represents any person in the system.
+
+Fields
+
+id
+
+firstName
+
+lastName
+
+email
+
+phone
+
+mailingAddress
+
+createdAt
+
+Ownership
+
+Tracks which people own which units.
+
+Fields
+
+id
+
+unitId
+
+personId
+
+ownershipPercentage
+
+startDate
+
+endDate
+
+Supports
+
+multiple owners per unit
+
+ownership history
+
+Occupancy
+
+Tracks whether a unit is occupied by tenant or owner.
+
+Fields
+
+id
+
+unitId
+
+personId
+
+occupancyType (OWNER_OCCUPIED | TENANT)
+
+startDate
+
+endDate
+
+Purpose
+
+Allows tracking tenant contacts without building rental management.
+
+BoardRole
+
+Tracks board membership.
+
+Fields
+
+id
+
+personId
+
+associationId
+
+role
+
+startDate
+
+endDate
+
+Examples
+
+President
+
+Treasurer
+
+Secretary
+
+Board Member
+
+Document
+
+Stores uploaded documents.
+
+Fields
+
+id
+
+associationId
+
+title
+
+fileUrl
+
+documentType
+
+uploadedBy
+
+createdAt
+
+Initial API Endpoints
+
+Create REST endpoints for:
+
+Associations
+
+create association
+
+get associations
+
+Units
+
+create unit
+
+list units
+
+update unit
+
+People
+
+create person
+
+list people
+
+Ownership
+
+assign owner to unit
+
+list owners for unit
+
+Occupancy
+
+assign tenant to unit
+
+list occupants for unit
+
+Board
+
+assign board role
+
+list board members
+
+Documents
+
+upload document
+
+list documents
+
+Initial UI
+
+Create a basic admin dashboard with navigation.
+
+Sidebar navigation:
+
+Dashboard
+Associations
+Units
+Owners
+Occupancy
+Board Members
+Documents
+
+Each page should:
+
+list records
+
+allow adding new records
+
+allow editing
+
+Use simple tables and forms.
+
+Dashboard Page
+
+Display:
+
+total units
+
+total owners
+
+total tenants
+
+board members
+
+Code Quality Requirements
+
+Use TypeScript everywhere
+
+Use Prisma migrations
+
+Separate controllers from services
+
+Use environment variables
+
+Use proper error handling
+
+Important Constraints
+
+Do NOT attempt to build:
+
+payment processing
+
+email automation
+
+HOA fee calculations
+
+advanced document AI ingestion
+
+Those will be added later.
+
+Focus on building a clean, extensible architecture.
+
+Deliverables
+
+When finished, the project should include:
+
+running React frontend
+
+running Express API
+
+PostgreSQL database with Prisma
+
+working CRUD for the core entities
+
+ability to upload documents
+
+simple admin dashboard
