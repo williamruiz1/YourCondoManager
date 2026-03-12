@@ -1,11 +1,10 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Occupancy, Person, Unit } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,6 +23,8 @@ import {
 import { Plus, Home } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { useResidentialDataset } from "@/hooks/use-residential-dataset";
+import { useActiveAssociation } from "@/hooks/use-active-association";
 
 const formSchema = z.object({
   unitId: z.string().min(1, "Unit is required"),
@@ -35,11 +36,36 @@ const formSchema = z.object({
 
 export default function OccupancyPage() {
   const [open, setOpen] = useState(false);
+  const [intakeOpen, setIntakeOpen] = useState(false);
   const { toast } = useToast();
+  const { activeAssociationName } = useActiveAssociation();
+  const [intakeForm, setIntakeForm] = useState({
+    unitId: "",
+    occupancyType: "TENANT" as "OWNER_OCCUPIED" | "TENANT",
+    startDate: "",
+    ownershipPercentage: "100",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    mailingAddress: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    contactPreference: "email",
+  });
 
-  const { data: occupancies, isLoading } = useQuery<Occupancy[]>({ queryKey: ["/api/occupancies"] });
-  const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
-  const { data: units } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
+  const { data: residentialDataset, isLoading } = useResidentialDataset();
+  const occupancies = residentialDataset?.occupancies ?? [];
+  const persons = residentialDataset?.persons ?? [];
+  const units = residentialDataset?.units ?? [];
+  const ownerships = residentialDataset?.ownerships ?? [];
+  const ownershipByUnit = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const ownership of ownerships) {
+      map.set(ownership.unitId, (map.get(ownership.unitId) ?? 0) + 1);
+    }
+    return map;
+  }, [ownerships]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -57,10 +83,65 @@ export default function OccupancyPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({ title: "Occupancy recorded successfully" });
       setOpen(false);
       form.reset();
+    },
+    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+  });
+
+  const intakeMutation = useMutation({
+    mutationFn: async () => {
+      const unit = units.find((row) => row.id === intakeForm.unitId);
+      if (!unit) throw new Error("Unit is required");
+      if (!intakeForm.firstName.trim() || !intakeForm.lastName.trim() || !intakeForm.startDate) {
+        throw new Error("Name and start date are required");
+      }
+      if (intakeForm.occupancyType === "TENANT" && !intakeForm.email.trim() && !intakeForm.phone.trim()) {
+        throw new Error("Tenant occupancy requires at least an email or phone number");
+      }
+      const payload = {
+        associationId: unit.associationId,
+        unitId: intakeForm.unitId,
+        occupancyType: intakeForm.occupancyType,
+        startDate: new Date(intakeForm.startDate).toISOString(),
+        ownershipPercentage: intakeForm.occupancyType === "OWNER_OCCUPIED" ? Number(intakeForm.ownershipPercentage || "100") : null,
+        person: {
+          firstName: intakeForm.firstName.trim(),
+          lastName: intakeForm.lastName.trim(),
+          email: intakeForm.email.trim() || null,
+          phone: intakeForm.phone.trim() || null,
+          mailingAddress: intakeForm.mailingAddress.trim() || null,
+          emergencyContactName: intakeForm.emergencyContactName.trim() || null,
+          emergencyContactPhone: intakeForm.emergencyContactPhone.trim() || null,
+          contactPreference: intakeForm.contactPreference.trim() || "email",
+        },
+      };
+      return apiRequest("POST", "/api/onboarding/intake", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      toast({ title: "Onboarding intake submitted" });
+      setIntakeOpen(false);
+      setIntakeForm({
+        unitId: "",
+        occupancyType: "TENANT",
+        startDate: "",
+        ownershipPercentage: "100",
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        mailingAddress: "",
+        emergencyContactName: "",
+        emergencyContactPhone: "",
+        contactPreference: "email",
+      });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
@@ -70,17 +151,17 @@ export default function OccupancyPage() {
   }
 
   const getPersonName = (id: string) => {
-    const p = persons?.find((p) => p.id === id);
+    const p = persons.find((p) => p.id === id);
     return p ? `${p.firstName} ${p.lastName}` : "Unknown";
   };
-  const getUnitLabel = (id: string) => units?.find((u) => u.id === id)?.unitNumber ?? "Unknown";
+  const getUnitLabel = (id: string) => units.find((u) => u.id === id)?.unitNumber ?? "Unknown";
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Occupancy</h1>
-          <p className="text-muted-foreground">Track unit occupancy by owners and tenants.</p>
+          <p className="text-muted-foreground">Track occupancy for {activeAssociationName || "the current association"} and require tenant details for renter-occupied units.</p>
         </div>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) form.reset(); }}>
           <DialogTrigger asChild>
@@ -96,7 +177,7 @@ export default function OccupancyPage() {
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger data-testid="select-occupancy-unit"><SelectValue placeholder="Select unit" /></SelectTrigger></FormControl>
                       <SelectContent>
-                        {units?.map((u) => <SelectItem key={u.id} value={u.id}>Unit {u.unitNumber}</SelectItem>)}
+                        {units.map((u) => <SelectItem key={u.id} value={u.id}>Unit {u.unitNumber}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -108,7 +189,7 @@ export default function OccupancyPage() {
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger data-testid="select-occupancy-person"><SelectValue placeholder="Select person" /></SelectTrigger></FormControl>
                       <SelectContent>
-                        {persons?.map((p) => <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>)}
+                        {persons.map((p) => <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -150,13 +231,57 @@ export default function OccupancyPage() {
             </Form>
           </DialogContent>
         </Dialog>
+        <Dialog open={intakeOpen} onOpenChange={setIntakeOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">Onboarding Intake</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Owner/Tenant Onboarding Intake</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                Use this when a unit changes hands or becomes renter occupied. Tenant occupancy should include tenant contact data.
+              </div>
+              <Select value={intakeForm.unitId || "none"} onValueChange={(v) => setIntakeForm((p) => ({ ...p, unitId: v === "none" ? "" : v }))}>
+                <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
+                <SelectContent><SelectItem value="none">select unit</SelectItem>{units.map((u) => <SelectItem key={u.id} value={u.id}>Unit {u.unitNumber} {u.building ? `(${u.building})` : ""}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={intakeForm.occupancyType} onValueChange={(v) => setIntakeForm((p) => ({ ...p, occupancyType: v as "OWNER_OCCUPIED" | "TENANT" }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TENANT">Tenant</SelectItem>
+                  <SelectItem value="OWNER_OCCUPIED">Owner Occupied</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input type="date" value={intakeForm.startDate} onChange={(e) => setIntakeForm((p) => ({ ...p, startDate: e.target.value }))} />
+              {intakeForm.unitId ? (
+                <div className="text-xs text-muted-foreground">
+                  Current ownership records on this unit: {ownershipByUnit.get(intakeForm.unitId) ?? 0}
+                </div>
+              ) : null}
+              {intakeForm.occupancyType === "OWNER_OCCUPIED" ? (
+                <Input type="number" placeholder="Ownership %" value={intakeForm.ownershipPercentage} onChange={(e) => setIntakeForm((p) => ({ ...p, ownershipPercentage: e.target.value }))} />
+              ) : null}
+              <div className="grid grid-cols-2 gap-3">
+                <Input placeholder="First name" value={intakeForm.firstName} onChange={(e) => setIntakeForm((p) => ({ ...p, firstName: e.target.value }))} />
+                <Input placeholder="Last name" value={intakeForm.lastName} onChange={(e) => setIntakeForm((p) => ({ ...p, lastName: e.target.value }))} />
+              </div>
+              <Input placeholder="Email" value={intakeForm.email} onChange={(e) => setIntakeForm((p) => ({ ...p, email: e.target.value }))} />
+              <Input placeholder="Phone" value={intakeForm.phone} onChange={(e) => setIntakeForm((p) => ({ ...p, phone: e.target.value }))} />
+              <Input placeholder="Mailing address" value={intakeForm.mailingAddress} onChange={(e) => setIntakeForm((p) => ({ ...p, mailingAddress: e.target.value }))} />
+              <Input placeholder="Emergency contact name" value={intakeForm.emergencyContactName} onChange={(e) => setIntakeForm((p) => ({ ...p, emergencyContactName: e.target.value }))} />
+              <Input placeholder="Emergency contact phone" value={intakeForm.emergencyContactPhone} onChange={(e) => setIntakeForm((p) => ({ ...p, emergencyContactPhone: e.target.value }))} />
+              <Input placeholder="Contact preference (email/phone/sms)" value={intakeForm.contactPreference} onChange={(e) => setIntakeForm((p) => ({ ...p, contactPreference: e.target.value }))} />
+              <Button onClick={() => intakeMutation.mutate()} disabled={intakeMutation.isPending}>Submit Intake</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
-          ) : !occupancies?.length ? (
+          ) : !occupancies.length ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Home className="h-12 w-12 text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium" data-testid="text-empty-state">No occupancy records</h3>

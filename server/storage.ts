@@ -1,40 +1,2874 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { randomBytes } from "crypto";
+import { readFile } from "fs/promises";
+import path from "path";
 import { db } from "./db";
+import { sendPlatformEmail } from "./email-provider";
 import {
-  associations, units, persons, ownerships, occupancies, boardRoles, documents,
-  type Association, type InsertAssociation,
-  type Unit, type InsertUnit,
-  type Person, type InsertPerson,
-  type Ownership, type InsertOwnership,
-  type Occupancy, type InsertOccupancy,
-  type BoardRole, type InsertBoardRole,
-  type Document, type InsertDocument,
+  adminAssociationScopes,
+  associationMemberships,
+  adminUsers,
+  authUsers,
+  authExternalAccounts,
+  auditLogs,
+  aiExtractedRecords,
+  aiIngestionJobs,
+  aiIngestionImportRuns,
+  analysisRuns,
+  analysisVersions,
+  associations,
+  buildings,
+  annualGovernanceTasks,
+  boardRoles,
+  budgetLines,
+  budgets,
+  budgetVersions,
+  calendarEvents,
+  clauseRecords,
+  clauseTags,
+  communicationHistory,
+  contactUpdateRequests,
+  maintenanceRequests,
+  documentTags,
+  documentVersions,
+  emailThreads,
+  executiveEvidence,
+  executiveUpdates,
+  documents,
+  expenseAttachments,
+  financialAccounts,
+  financialCategories,
+  governanceComplianceTemplates,
+  governanceMeetings,
+  governanceTemplateItems,
+  meetingAgendaItems,
+  meetingNotes,
+  hoaFeeSchedules,
+  occupancies,
+  ownerships,
+  permissionChangeLogs,
+  persons,
+  roadmapProjects,
+  roadmapTasks,
+  roadmapWorkstreams,
+  lateFeeEvents,
+  lateFeeRules,
+  noticeSends,
+  noticeTemplates,
+  ownerLedgerEntries,
+  ownerPaymentLinks,
+  paymentGatewayConnections,
+  paymentMethodConfigs,
+  paymentWebhookEvents,
+  permissionEnvelopes,
+  portalAccess,
+  resolutions,
+  suggestedLinks,
+  specialAssessments,
+  tenantConfigs,
+  unitChangeHistory,
+  units,
+  voteRecords,
+  type AdminAssociationScope,
+  type AssociationMembership,
+  type AdminUser,
+  type AuthUser,
+  type AuthExternalAccount,
+  type AuditLog,
+  type AiExtractedRecord,
+  type AiIngestionJob,
+  type AiIngestionImportRun,
+  type AnalysisRun,
+  type AnalysisVersion,
+  type Association,
+  type Building,
+  type AnnualGovernanceTask,
+  type BoardRole,
+  type Budget,
+  type BudgetLine,
+  type BudgetVersion,
+  type CalendarEvent,
+  type ClauseRecord,
+  type ClauseTag,
+  type CommunicationHistory,
+  type ContactUpdateRequest,
+  type MaintenanceRequest,
+  type DocumentTag,
+  type DocumentVersion,
+  type Document,
+  type EmailThread,
+  type InsertAdminAssociationScope,
+  type InsertAssociationMembership,
+  type InsertAdminUser,
+  type InsertAuthUser,
+  type InsertAuthExternalAccount,
+  type InsertAuditLog,
+  type InsertAiExtractedRecord,
+  type InsertAiIngestionJob,
+  type InsertAiIngestionImportRun,
+  type InsertAnalysisRun,
+  type InsertAnalysisVersion,
+  type InsertAssociation,
+  type InsertBuilding,
+  type InsertAnnualGovernanceTask,
+  type InsertBoardRole,
+  type InsertBudget,
+  type InsertBudgetLine,
+  type InsertBudgetVersion,
+  type InsertCalendarEvent,
+  type InsertClauseRecord,
+  type InsertClauseTag,
+  type InsertCommunicationHistory,
+  type InsertContactUpdateRequest,
+  type InsertMaintenanceRequest,
+  type InsertDocument,
+  type InsertDocumentTag,
+  type InsertDocumentVersion,
+  type InsertEmailThread,
+  type InsertExecutiveEvidence,
+  type InsertExecutiveUpdate,
+  type InsertExpenseAttachment,
+  type InsertFinancialAccount,
+  type InsertFinancialCategory,
+  type InsertGovernanceComplianceTemplate,
+  type InsertGovernanceMeeting,
+  type InsertGovernanceTemplateItem,
+  type InsertMeetingAgendaItem,
+  type InsertMeetingNote,
+  type InsertHoaFeeSchedule,
+  type InsertOwnerLedgerEntry,
+  type InsertOwnerPaymentLink,
+  type InsertPaymentGatewayConnection,
+  type InsertPaymentMethodConfig,
+  type InsertPaymentWebhookEvent,
+  type InsertOccupancy,
+  type InsertOwnership,
+  type InsertPerson,
+  type InsertRoadmapProject,
+  type InsertRoadmapTask,
+  type InsertRoadmapWorkstream,
+  type InsertSpecialAssessment,
+  type InsertLateFeeRule,
+  type InsertNoticeSend,
+  type InsertNoticeTemplate,
+  type InsertPermissionEnvelope,
+  type InsertPortalAccess,
+  type InsertResolution,
+  type InsertSuggestedLink,
+  type InsertTenantConfig,
+  type InsertUnit,
+  type InsertUtilityPayment,
+  type InsertVendorInvoice,
+  type InsertVoteRecord,
+  type Occupancy,
+  type Ownership,
+  type Person,
+  type HoaFeeSchedule,
+  type ExpenseAttachment,
+  type FinancialAccount,
+  type FinancialCategory,
+  type GovernanceComplianceTemplate,
+  type GovernanceMeeting,
+  type GovernanceTemplateItem,
+  type MeetingAgendaItem,
+  type MeetingNote,
+  type OwnerLedgerEntry,
+  type OwnerPaymentLink,
+  type PaymentGatewayConnection,
+  type PaymentMethodConfig,
+  type PaymentWebhookEvent,
+  type UnitChangeHistory,
+  type RoadmapProject,
+  type RoadmapTask,
+  type RoadmapWorkstream,
+  type ExecutiveEvidence,
+  type ExecutiveUpdate,
+  type LateFeeEvent,
+  type LateFeeRule,
+  type NoticeSend,
+  type NoticeTemplate,
+  type PermissionEnvelope,
+  type PortalAccess,
+  type Resolution,
+  type ResidentialDataset,
+  type SuggestedLink,
+  type SpecialAssessment,
+  type Unit,
+  type UtilityPayment,
+  type VendorInvoice,
+  type VoteRecord,
+  type TenantConfig,
+  utilityPayments,
+  vendorInvoices,
 } from "@shared/schema";
 
+type WorkState = "not-started" | "in-progress" | "complete";
+
+interface ProgressSummary {
+  totalTasks: number;
+  todoTasks: number;
+  inProgressTasks: number;
+  doneTasks: number;
+  completionRate: number;
+  state: WorkState;
+}
+
+interface WorkstreamProgress extends ProgressSummary {
+  workstreamId: string;
+}
+
+interface ProjectProgress extends ProgressSummary {
+  projectId: string;
+  workstreamCount: number;
+}
+
+interface TimelineItem {
+  taskId: string;
+  projectId: string;
+  workstreamId: string;
+  title: string;
+  targetStartDate: Date | null;
+  targetEndDate: Date | null;
+  dependencyTaskIds: string[];
+  startsBeforeDependenciesComplete: boolean;
+}
+
+interface AnalysisDiffSummary {
+  added: number;
+  removed: number;
+  changed: number;
+  previousCount: number;
+  currentCount: number;
+}
+
+export interface RoadmapResponse {
+  projects: (RoadmapProject & { progress: ProjectProgress })[];
+  workstreams: (RoadmapWorkstream & { progress: WorkstreamProgress })[];
+  tasks: RoadmapTask[];
+  timeline: TimelineItem[];
+  refreshedAt: string;
+}
+
+type NotificationRecipient = {
+  personId: string;
+  email: string;
+  role: "owner" | "occupant";
+  unitId: string;
+};
+
+type NotificationRecipientResolution = {
+  recipients: NotificationRecipient[];
+  candidateCount: number;
+  missingEmailCount: number;
+  duplicateEmailCount: number;
+  skippedRecipients: number;
+};
+
+function toCompletionState(todo: number, inProgress: number, done: number): WorkState {
+  if (todo > 0 && inProgress === 0 && done === 0) return "not-started";
+  if (done > 0 && todo === 0 && inProgress === 0) return "complete";
+  return "in-progress";
+}
+
+function computeProgress(tasks: RoadmapTask[]): ProgressSummary {
+  const totalTasks = tasks.length;
+  const todoTasks = tasks.filter((t) => t.status === "todo").length;
+  const inProgressTasks = tasks.filter((t) => t.status === "in-progress").length;
+  const doneTasks = tasks.filter((t) => t.status === "done").length;
+  const completionRate = totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
+
+  return {
+    totalTasks,
+    todoTasks,
+    inProgressTasks,
+    doneTasks,
+    completionRate,
+    state: totalTasks === 0 ? "not-started" : toCompletionState(todoTasks, inProgressTasks, doneTasks),
+  };
+}
+
+function maskSecret(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed.length <= 6) return "*".repeat(trimmed.length);
+  return `${trimmed.slice(0, 4)}...${trimmed.slice(-2)}`;
+}
+
+function normalizeCurrency(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim().toUpperCase() : "USD";
+  return raw || "USD";
+}
+
+function normalizePayload(value: unknown): unknown {
+  const volatileKeys = new Set(["id", "createdAt", "updatedAt"]);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizePayload(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => !volatileKeys.has(key))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, nestedValue]) => [key, normalizePayload(nestedValue)]);
+
+  return Object.fromEntries(entries);
+}
+
+function toComparableSet(payload: unknown): string[] {
+  const normalized = normalizePayload(payload);
+
+  if (Array.isArray(normalized)) {
+    return normalized.map((item) => JSON.stringify(item)).sort();
+  }
+
+  if (normalized && typeof normalized === "object" && Array.isArray((normalized as Record<string, unknown>).items)) {
+    return ((normalized as Record<string, unknown>).items as unknown[])
+      .map((item) => JSON.stringify(item))
+      .sort();
+  }
+
+  return [JSON.stringify(normalized)];
+}
+
+function extractComparableMap(payload: unknown): Map<string, string> {
+  const normalized = normalizePayload(payload);
+  const map = new Map<string, string>();
+
+  const items: unknown[] = Array.isArray(normalized)
+    ? normalized
+    : (normalized && typeof normalized === "object" && Array.isArray((normalized as Record<string, unknown>).items)
+        ? ((normalized as Record<string, unknown>).items as unknown[])
+        : [normalized]);
+
+  for (const item of items) {
+    if (item && typeof item === "object" && typeof (item as Record<string, unknown>).id === "string") {
+      map.set((item as Record<string, unknown>).id as string, JSON.stringify(item));
+    }
+  }
+
+  return map;
+}
+
+function computeAnalysisDiff(previousPayload: unknown, currentPayload: unknown): AnalysisDiffSummary {
+  const previousSet = toComparableSet(previousPayload);
+  const currentSet = toComparableSet(currentPayload);
+  const prev = new Set(previousSet);
+  const curr = new Set(currentSet);
+
+  const added = currentSet.filter((item) => !prev.has(item)).length;
+  const removed = previousSet.filter((item) => !curr.has(item)).length;
+
+  let changed = 0;
+  const prevMap = extractComparableMap(previousPayload);
+  const currMap = extractComparableMap(currentPayload);
+  prevMap.forEach((prevValue, id) => {
+    const currentValue = currMap.get(id);
+    if (currentValue && currentValue !== prevValue) {
+      changed += 1;
+    }
+  });
+
+  return {
+    added,
+    removed,
+    changed,
+    previousCount: previousSet.length,
+    currentCount: currentSet.length,
+  };
+}
+
+type OwnerRosterItem = {
+  unitNumber: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  mailingAddress: string | null;
+  ownershipPercentage: number | null;
+  startDate: string | null;
+};
+
+type ContactRosterItem = {
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  mailingAddress: string | null;
+};
+
+type AiIngestionImportSummary = {
+  imported: boolean;
+  dryRun: boolean;
+  targetModule: string;
+  sourceRecordId?: string;
+  sourceRecordType?: string;
+  sourceJobId?: string;
+  destinationPlan?: DestinationRoutePlan | null;
+  routeMatched?: boolean;
+  unresolvedExceptionCount?: number;
+  blockingExceptionCount?: number;
+  unresolvedExceptions?: OwnerRosterUnresolvedException[];
+  createdPersons: number;
+  updatedPersons: number;
+  createdUnits: number;
+  createdOwnerships: number;
+  createdVendorInvoices: number;
+  createdOwnerLedgerEntries: number;
+  createdVendorInvoiceIds: string[];
+  createdOwnerLedgerEntryIds: string[];
+  skippedRows: number;
+  message: string;
+  details: Array<{
+    module: string;
+    action: "create" | "update" | "skip";
+    entityKey: string;
+    reason: string;
+    beforeJson?: unknown;
+    afterJson?: unknown;
+    suggestions?: string[];
+  }>;
+};
+
+type BankStatementResolutionHint = {
+  txIndex: number;
+  reason: "missing-amount" | "invalid-date" | "unit-unresolved" | "person-unresolved";
+  transaction: {
+    unitNumber: string | null;
+    ownerEmail: string | null;
+    ownerName: string | null;
+    amount: number | null;
+    postedAt: string | null;
+    description: string | null;
+    entryType: "payment" | "charge" | "credit" | "adjustment";
+  };
+  unitCandidates: Array<{ unitId: string; unitNumber: string }>;
+  personCandidates: Array<{ personId: string; name: string; email: string | null; unitNumbers: string[] }>;
+};
+
+type AiIngestionExtractionRecord = {
+  recordType: "owner-roster" | "contact-roster" | "meeting-notes" | "invoice-draft" | "bank-statement" | "document-metadata";
+  confidenceScore: number | null;
+  payloadJson: Record<string, unknown>;
+};
+
+type AiIngestionExtractionClause = {
+  title: string;
+  clauseText: string;
+  confidenceScore: number | null;
+  tags: string[];
+  suggestedLinks: Array<{
+    entityType: string;
+    entityId: string;
+    confidenceScore: number | null;
+  }>;
+};
+
+type AiIngestionExtractionResult = {
+  records: AiIngestionExtractionRecord[];
+  clauses: AiIngestionExtractionClause[];
+};
+
+type IngestionClassification = {
+  predictedRecordType: AiIngestionExtractionRecord["recordType"];
+  confidence: number;
+  threshold: number;
+  requiresManualReview: boolean;
+  rationale: string;
+  candidateTypes: Array<{ recordType: AiIngestionExtractionRecord["recordType"]; score: number }>;
+};
+
+type IngestionSourceFormat =
+  | "structured-table"
+  | "address-block-roster"
+  | "delimited-list"
+  | "freeform-text";
+
+type OwnerRosterQuality = {
+  score: number;
+  warnings: string[];
+  format: IngestionSourceFormat;
+};
+
+type NormalizedOwnerContact = {
+  displayName: string;
+  firstName: string;
+  lastName: string;
+  email?: string | null;
+  phone?: string | null;
+};
+
+type NormalizedOwnerRosterEntry = {
+  buildingAddress: string | null;
+  unitNumber: string;
+  ownerText: string;
+  ownerCandidates: NormalizedOwnerContact[];
+  phones: string[];
+  emails: string[];
+  notes: string[];
+};
+
+type OwnerRosterUnresolvedException = {
+  kind: "unit-unresolved" | "contact-assignment-needed" | "owner-name-incomplete";
+  unitNumber: string;
+  message: string;
+  blocking: boolean;
+};
+
+type IngestionTrace = {
+  provider: "openai" | "fallback";
+  model: string | null;
+  fallbackReason: string | null;
+};
+
+type AssociationOwnerRosterCorrectionHints = {
+  unitRemaps: Array<{
+    fromUnitNumber: string;
+    toUnitNumber: string;
+    ownerText: string | null;
+    buildingAddress: string | null;
+  }>;
+  ownerNameFixes: Array<{
+    unitNumber: string;
+    displayName: string;
+    firstName: string;
+    lastName: string;
+  }>;
+};
+
+type AssociationBankStatementCorrectionHints = {
+  transactionMappings: Array<{
+    description: string | null;
+    unitNumber: string | null;
+    ownerEmail: string | null;
+    ownerName: string | null;
+  }>;
+};
+
+type FallbackParserStrategy = {
+  format: IngestionSourceFormat | "bank-statement" | "invoice-draft" | "meeting-notes" | "document-metadata";
+  appliesTo: (input: {
+    job: AiIngestionJob;
+    sourceText: string;
+    format: IngestionSourceFormat;
+  }) => boolean;
+  build: (input: {
+    job: AiIngestionJob;
+    sourceText: string;
+    ownerRosterCorrectionHints?: AssociationOwnerRosterCorrectionHints;
+    bankStatementCorrectionHints?: AssociationBankStatementCorrectionHints;
+  }) => AiIngestionExtractionResult;
+};
+
+type DestinationRoutePlan = {
+  primaryModule: "owners" | "persons" | "owner-ledger" | "financial-invoices" | "governance" | "metadata";
+  entityCounts: {
+    units: number;
+    persons: number;
+    ownerships: number;
+    contactPoints: number;
+    ownerLedgerEntries: number;
+    vendorInvoices: number;
+    exceptions: number;
+  };
+  routeReason: string;
+};
+
+const DIRECT_TEXT_PARSEABLE_EXTENSIONS = new Set([
+  ".txt",
+  ".md",
+  ".csv",
+  ".tsv",
+  ".json",
+  ".log",
+  ".html",
+  ".htm",
+  ".xml",
+  ".eml",
+]);
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeHeaderToken(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function splitStructuredColumns(rawLine: string): string[] {
+  if (rawLine.includes("\t")) {
+    return rawLine.split("\t").map((part) => part.trim());
+  }
+  if (rawLine.includes("|")) {
+    return rawLine.split("|").map((part) => part.trim());
+  }
+  if (rawLine.includes(",")) {
+    return rawLine.split(",").map((part) => part.trim());
+  }
+  return rawLine.split(/\s{2,}/).map((part) => part.trim());
+}
+
+function findColumnIndex(headers: string[], aliases: string[]): number {
+  return headers.findIndex((header) => aliases.includes(header));
+}
+
+function detectIngestionSourceFormat(sourceText: string): IngestionSourceFormat {
+  const lines = sourceText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 40);
+  if (lines.length === 0) return "freeform-text";
+
+  const tabularLines = lines.filter((line) => line.includes("\t") || line.includes("|") || line.includes(","));
+  const addressLines = lines.filter((line) => looksLikeStreetAddress(line));
+  const shortLeadingTokenLines = lines.filter((line) => /^[A-Z0-9-]{1,4}\s+[A-Za-z]/.test(line));
+
+  if (tabularLines.length >= Math.max(2, Math.floor(lines.length * 0.35))) return "structured-table";
+  if (addressLines.length >= 1 && shortLeadingTokenLines.length >= 2) return "address-block-roster";
+  if (shortLeadingTokenLines.length >= Math.max(3, Math.floor(lines.length * 0.4))) return "delimited-list";
+  return "freeform-text";
+}
+
+function normalizeUploadedText(rawText: string, extension: string): string {
+  if (!rawText.trim()) return "";
+
+  if (extension === ".json") {
+    try {
+      return JSON.stringify(JSON.parse(rawText), null, 2);
+    } catch {
+      return rawText;
+    }
+  }
+
+  if (extension === ".html" || extension === ".htm" || extension === ".xml") {
+    return rawText
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/\r/g, "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  return rawText;
+}
+
+function classifyIngestionSource(job: AiIngestionJob, sourceText: string): IngestionClassification {
+  const lower = sourceText.toLowerCase();
+  const sourceName = (job.sourceFilename ?? "").toLowerCase();
+  const context = (job.contextNotes ?? "").toLowerCase();
+  const bucket = `${sourceName}\n${context}\n${lower.slice(0, 8000)}`;
+
+  const scoreType = (terms: string[]): number => terms.reduce((acc, term) => acc + ((bucket.match(new RegExp(term, "g"))?.length ?? 0)), 0);
+  const candidates: IngestionClassification["candidateTypes"] = [
+    { recordType: "owner-roster", score: scoreType(["owner", "unit", "ownership", "mailing", "hoa roster"]) },
+    { recordType: "contact-roster", score: scoreType(["contact", "phone", "email list", "directory"]) },
+    { recordType: "invoice-draft", score: scoreType(["invoice", "vendor", "amount due", "bill", "po number"]) },
+    { recordType: "bank-statement", score: scoreType(["statement", "transaction", "debit", "credit", "ending balance"]) },
+    { recordType: "meeting-notes", score: scoreType(["meeting", "minutes", "agenda", "resolution", "motion"]) },
+    { recordType: "document-metadata", score: 1 },
+  ];
+  candidates.sort((a, b) => b.score - a.score);
+
+  const [top, second] = candidates;
+  const dominance = top.score <= 0 ? 0 : (top.score - (second?.score ?? 0)) / Math.max(1, top.score);
+  const richness = Math.min(1, sourceText.length / 3000);
+  const confidence = Number(Math.max(0.35, Math.min(0.95, 0.45 + dominance * 0.35 + richness * 0.2)).toFixed(2));
+  const thresholdByType: Record<AiIngestionExtractionRecord["recordType"], number> = {
+    "owner-roster": 0.62,
+    "contact-roster": 0.58,
+    "invoice-draft": 0.6,
+    "bank-statement": 0.62,
+    "meeting-notes": 0.55,
+    "document-metadata": 0.5,
+  };
+  const predictedRecordType = top.recordType;
+  const threshold = thresholdByType[predictedRecordType];
+  const requiresManualReview = confidence < threshold;
+  const rationale = `Predicted ${predictedRecordType} (${Math.round(confidence * 100)}% confidence, threshold ${Math.round(threshold * 100)}%).`;
+
+  return {
+    predictedRecordType,
+    confidence,
+    threshold,
+    requiresManualReview,
+    rationale,
+    candidateTypes: candidates,
+  };
+}
+
+function parseName(fullName: string): { firstName: string; lastName: string } | null {
+  const normalized = normalizeWhitespace(
+    fullName
+      .replace(/\s*&\s*.*/g, "")
+      .replace(/^(mr|mrs|ms|dr)\.?\s+/i, "")
+      .replace(/\s+(jr|sr|ii|iii|iv)\.?$/i, ""),
+  );
+  if (!normalized) return null;
+  const parts = normalized.split(" ");
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: "Unknown" };
+  }
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts[parts.length - 1],
+  };
+}
+
+function parseOwnershipPercentage(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = value.match(/(\d+(?:\.\d+)?)\s*%?/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.min(100, parsed));
+}
+
+function parseRosterDate(value: string | undefined): string | null {
+  if (!value) return null;
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function extractEmails(value: string): string[] {
+  return Array.from(value.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi))
+    .map((match) => match[0].toLowerCase());
+}
+
+function extractPhones(value: string): string[] {
+  return Array.from(value.matchAll(/(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]*)\d{3}[-.\s]*\d{4}/g))
+    .map((match) => normalizeWhitespace(match[0]));
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => normalizeWhitespace(value)).filter(Boolean)));
+}
+
+function canonicalizeEmail(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = normalizeWhitespace(value).toLowerCase();
+  return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(normalized) ? normalized : null;
+}
+
+function canonicalizePhone(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  const normalized = normalizeWhitespace(value);
+  return normalized || null;
+}
+
+function canonicalizeAddress(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = normalizeWhitespace(
+    value
+      .replace(/[|`]/g, " ")
+      .replace(/\s*,\s*/g, ", ")
+      .replace(/\s{2,}/g, " "),
+  );
+  return normalized || null;
+}
+
+function canonicalizePersonNameParts(name: { firstName: string; lastName: string } | null): { firstName: string; lastName: string } | null {
+  if (!name) return null;
+  const firstName = normalizeWhitespace(name.firstName.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9'`.-]+$/g, ""));
+  const lastName = normalizeWhitespace(name.lastName.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9'`.-]+$/g, ""));
+  if (!firstName || !lastName) return null;
+  return { firstName, lastName };
+}
+
+function canonicalizeOwnerRosterItem(item: OwnerRosterItem): OwnerRosterItem | null {
+  const normalizedName = canonicalizePersonNameParts({ firstName: item.firstName, lastName: item.lastName });
+  const unitNumber = parseUnitNumber(item.unitNumber);
+  if (!normalizedName || !unitNumber) return null;
+  return {
+    unitNumber,
+    firstName: normalizedName.firstName,
+    lastName: normalizedName.lastName,
+    email: canonicalizeEmail(item.email),
+    phone: canonicalizePhone(item.phone),
+    mailingAddress: canonicalizeAddress(item.mailingAddress),
+    ownershipPercentage: item.ownershipPercentage == null ? null : Math.max(0, Math.min(100, Number(item.ownershipPercentage))),
+    startDate: parseRosterDate(item.startDate ?? undefined),
+  };
+}
+
+function canonicalizeContactRosterItem(item: ContactRosterItem): ContactRosterItem | null {
+  const normalizedName = canonicalizePersonNameParts({ firstName: item.firstName, lastName: item.lastName });
+  if (!normalizedName) return null;
+  const email = canonicalizeEmail(item.email);
+  const phone = canonicalizePhone(item.phone);
+  if (!email && !phone) return null;
+  return {
+    firstName: normalizedName.firstName,
+    lastName: normalizedName.lastName,
+    email,
+    phone,
+    mailingAddress: canonicalizeAddress(item.mailingAddress),
+  };
+}
+
+function parseUnitNumber(value: string | undefined): string {
+  if (!value) return "";
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return "";
+  const labeledMatch = normalized.match(/(?:unit|apt|apartment|suite|ste|lot|home|space|#)\s*[:#-]?\s*([A-Z0-9-]+)/i);
+  if (labeledMatch) return labeledMatch[1].toUpperCase();
+  if (/^[A-Z0-9-]+$/i.test(normalized)) return normalized.toUpperCase();
+  const tokenMatch = normalized.match(/\b([A-Z]?\d+[A-Z0-9-]*|[A-Z]{1,3}-\d+[A-Z0-9-]*)\b/i);
+  return tokenMatch?.[1]?.toUpperCase() ?? "";
+}
+
+function parseOwnerRosterRowFromHeaders(columns: string[], headers: string[]): OwnerRosterItem | null {
+  const unitIndex = findColumnIndex(headers, ["unit", "unitnumber", "unitno", "unitid", "lot", "lotnumber", "suite", "apartment", "apt"]);
+  const nameIndex = findColumnIndex(headers, ["owner", "ownername", "name", "fullname", "ownerfullname"]);
+  const firstNameIndex = findColumnIndex(headers, ["firstname", "first", "givenname"]);
+  const lastNameIndex = findColumnIndex(headers, ["lastname", "last", "surname", "familyname"]);
+  const emailIndex = findColumnIndex(headers, ["email", "emailaddress", "emailaddr", "e-mail"]);
+  const phoneIndex = findColumnIndex(headers, ["phone", "phonenumber", "telephone", "mobile", "cell"]);
+  const addressIndex = findColumnIndex(headers, ["address", "mailingaddress", "mailing", "mailaddress", "streetaddress"]);
+  const percentageIndex = findColumnIndex(headers, ["ownership", "ownershippercentage", "ownershippct", "percentage", "percent"]);
+  const startDateIndex = findColumnIndex(headers, ["startdate", "start", "purchasedate", "closedate", "effectivedate"]);
+
+  const unitNumber = parseUnitNumber(unitIndex >= 0 ? columns[unitIndex] : undefined);
+  if (!unitNumber) return null;
+
+  const parsedName =
+    firstNameIndex >= 0 || lastNameIndex >= 0
+      ? {
+          firstName: normalizeWhitespace(firstNameIndex >= 0 ? columns[firstNameIndex] ?? "" : ""),
+          lastName: normalizeWhitespace(lastNameIndex >= 0 ? columns[lastNameIndex] ?? "" : ""),
+        }
+      : parseName(nameIndex >= 0 ? columns[nameIndex] ?? "" : "");
+  if (!parsedName?.firstName || !parsedName?.lastName) return null;
+
+  return {
+    unitNumber,
+    firstName: parsedName.firstName,
+    lastName: parsedName.lastName,
+    email: emailIndex >= 0 && columns[emailIndex] ? columns[emailIndex].trim().toLowerCase() || null : null,
+    phone: phoneIndex >= 0 && columns[phoneIndex] ? normalizeWhitespace(columns[phoneIndex]) || null : null,
+    mailingAddress: addressIndex >= 0 && columns[addressIndex] ? normalizeWhitespace(columns[addressIndex]) || null : null,
+    ownershipPercentage: parseOwnershipPercentage(percentageIndex >= 0 ? columns[percentageIndex] : undefined),
+    startDate: parseRosterDate(startDateIndex >= 0 ? columns[startDateIndex] : undefined),
+  };
+}
+
+function looksLikeStreetAddress(line: string): boolean {
+  return /\b\d{2,6}\s+.+\b(?:ave|avenue|st|street|rd|road|dr|drive|blvd|boulevard|ln|lane|ct|court|pl|place|way)\b/i.test(line)
+    || /\b[A-Z]{2}\s+\d{5}(?:-\d{4})?\b/i.test(line);
+}
+
+function parseOwnerCandidates(ownerText: string): { candidates: NormalizedOwnerContact[]; notes: string[] } {
+  const notes: string[] = [];
+  let working = normalizeWhitespace(ownerText);
+  if (!working) return { candidates: [], notes };
+
+  const parenNotes = Array.from(working.matchAll(/\(([^)]+)\)/g)).map((match) => normalizeWhitespace(match[1]));
+  notes.push(...parenNotes);
+  working = normalizeWhitespace(working.replace(/\(([^)]+)\)/g, " "));
+
+  const akaMatch = working.match(/\bAKA\b\s+(.+)$/i);
+  if (akaMatch) {
+    notes.push(`AKA ${normalizeWhitespace(akaMatch[1])}`);
+    working = normalizeWhitespace(working.replace(/\bAKA\b\s+(.+)$/i, " "));
+  }
+
+  const colonNotes = working.match(/\:\s*(.+)$/);
+  if (colonNotes) {
+    notes.push(normalizeWhitespace(colonNotes[1]));
+    working = normalizeWhitespace(working.replace(/\:\s*(.+)$/, " "));
+  }
+
+  const hyphenNote = working.match(/\s-\s(.+)$/);
+  if (hyphenNote) {
+    notes.push(normalizeWhitespace(hyphenNote[1]));
+    working = normalizeWhitespace(working.replace(/\s-\s(.+)$/, " "));
+  }
+
+  working = normalizeWhitespace(working.replace(/\b(?:owner|owners)\b/gi, " "));
+  if (!working) return { candidates: [], notes: dedupeStrings(notes) };
+
+  if (/\b(?:llc|inc|corp|co|trust|estate)\b/i.test(working)) {
+    const parsed = parseName(working);
+    return {
+      candidates: parsed ? [{ displayName: working, firstName: parsed.firstName, lastName: parsed.lastName }] : [],
+      notes: dedupeStrings(notes),
+    };
+  }
+
+  if (working.includes("&") || /\band\b/i.test(working)) {
+    const standardized = working.replace(/\s*&\s*/g, " and ");
+    const parts = standardized.split(/\s+and\s+/i).map((part) => normalizeWhitespace(part)).filter(Boolean);
+    if (parts.length === 2) {
+      const [left, right] = parts;
+      const leftTokens = left.split(" ");
+      const rightTokens = right.split(" ");
+      if (leftTokens.length === 1 && rightTokens.length >= 2) {
+        const sharedLast = rightTokens[rightTokens.length - 1];
+        return {
+          candidates: [
+            { displayName: `${left} ${sharedLast}`, firstName: left, lastName: sharedLast, email: null, phone: null },
+            { displayName: right, firstName: rightTokens.slice(0, -1).join(" "), lastName: sharedLast, email: null, phone: null },
+          ],
+          notes: dedupeStrings(notes),
+        };
+      }
+      const parsedCandidates: NormalizedOwnerContact[] = parts.flatMap((part) => {
+        const parsed = parseName(part);
+        if (!parsed) return [];
+        return [{ displayName: part, firstName: parsed.firstName, lastName: parsed.lastName, email: null, phone: null }];
+      });
+      if (parsedCandidates.length > 0) {
+        return { candidates: parsedCandidates, notes: dedupeStrings(notes) };
+      }
+    }
+  }
+
+  const parsed = parseName(working);
+  return {
+    candidates: parsed ? [{ displayName: working, firstName: parsed.firstName, lastName: parsed.lastName, email: null, phone: null }] : [],
+    notes: dedupeStrings(notes),
+  };
+}
+
+function normalizeOwnerRosterAddressBlocks(sourceText: string): NormalizedOwnerRosterEntry[] {
+  const lines = sourceText
+    .split(/\r?\n/)
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean);
+  if (!lines.length) return [];
+
+  const parsedEntries: NormalizedOwnerRosterEntry[] = [];
+  let currentAddress: string | null = null;
+
+  for (const line of lines) {
+    const emails = extractEmails(line);
+    const phones = extractPhones(line);
+
+    if (looksLikeStreetAddress(line) && emails.length === 0 && phones.length === 0) {
+      currentAddress = line;
+      continue;
+    }
+    if (/^unit\s*#?/i.test(line)) continue;
+
+    const cleaned = normalizeWhitespace(
+      line
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, " ")
+        .replace(/(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]*)\d{3}[-.\s]*\d{4}/g, " ")
+        .replace(/[|,`]/g, " "),
+    );
+    const unitMatch = cleaned.match(/^([A-Z0-9-]{1,4})\b\s*(.*)$/i);
+    if (!unitMatch) continue;
+
+    const unitToken = unitMatch[1].toUpperCase();
+    const unitLooksValid = /^[A-Z0-9-]{1,4}$/i.test(unitToken);
+    if (!unitLooksValid) continue;
+
+    let ownerText = normalizeWhitespace(unitMatch[2]);
+    if (!ownerText) continue;
+    ownerText = ownerText.replace(/^\#/, "").trim();
+
+    const { candidates, notes } = parseOwnerCandidates(ownerText);
+    if (candidates.length === 0) continue;
+
+    parsedEntries.push({
+      buildingAddress: currentAddress,
+      unitNumber: unitToken,
+      ownerText,
+      ownerCandidates: candidates,
+      phones: dedupeStrings(phones),
+      emails: dedupeStrings(emails),
+      notes,
+    });
+  }
+
+  return parsedEntries;
+}
+
+function buildOwnerRosterItemsFromNormalizedEntries(entries: NormalizedOwnerRosterEntry[]): OwnerRosterItem[] {
+  return entries.flatMap((entry) => {
+    const candidateCount = entry.ownerCandidates.length;
+    const ownershipPercentage = candidateCount > 1 ? Number((100 / candidateCount).toFixed(2)) : null;
+    return entry.ownerCandidates.map((candidate, index) => ({
+      unitNumber: entry.unitNumber,
+      firstName: candidate.firstName,
+      lastName: candidate.lastName,
+      email: candidate.email ?? entry.emails[index] ?? entry.emails[0] ?? null,
+      phone: candidate.phone ?? entry.phones[index] ?? entry.phones[0] ?? null,
+      mailingAddress: entry.buildingAddress,
+      ownershipPercentage,
+      startDate: null,
+    }));
+  });
+}
+
+function applyOwnerRosterCorrectionHints(
+  entries: NormalizedOwnerRosterEntry[],
+  hints?: AssociationOwnerRosterCorrectionHints,
+): NormalizedOwnerRosterEntry[] {
+  if (!hints || (!hints.unitRemaps.length && !hints.ownerNameFixes.length)) return entries;
+
+  return entries.map((entry) => {
+    const matchingUnitRemap = hints.unitRemaps.find((hint) => {
+      if (hint.fromUnitNumber.toUpperCase() !== entry.unitNumber.toUpperCase()) return false;
+      if (hint.ownerText && normalizeWhitespace(hint.ownerText).toUpperCase() !== normalizeWhitespace(entry.ownerText).toUpperCase()) return false;
+      if (hint.buildingAddress && normalizeWhitespace(hint.buildingAddress).toUpperCase() !== normalizeWhitespace(entry.buildingAddress ?? "").toUpperCase()) return false;
+      return true;
+    });
+
+    const ownerCandidates = entry.ownerCandidates.map((candidate) => {
+      const matchingNameFix = hints.ownerNameFixes.find((hint) => (
+        hint.unitNumber.toUpperCase() === (matchingUnitRemap?.toUnitNumber ?? entry.unitNumber).toUpperCase()
+          && normalizeWhitespace(hint.displayName).toUpperCase() === normalizeWhitespace(candidate.displayName).toUpperCase()
+      ));
+      if (!matchingNameFix) return candidate;
+      return {
+        ...candidate,
+        firstName: matchingNameFix.firstName,
+        lastName: matchingNameFix.lastName,
+      };
+    });
+
+    return {
+      ...entry,
+      unitNumber: matchingUnitRemap?.toUnitNumber ?? entry.unitNumber,
+      ownerCandidates,
+    };
+  });
+}
+
+function parseOwnerRosterFromAddressBlocks(
+  sourceText: string,
+  hints?: AssociationOwnerRosterCorrectionHints,
+): { entries: NormalizedOwnerRosterEntry[]; items: OwnerRosterItem[] } {
+  const entries = applyOwnerRosterCorrectionHints(normalizeOwnerRosterAddressBlocks(sourceText), hints);
+  return {
+    entries,
+    items: buildOwnerRosterItemsFromNormalizedEntries(entries),
+  };
+}
+
+function ownerRosterLooksCorrupted(items: OwnerRosterItem[]): boolean {
+  if (items.length === 0) return false;
+  let suspicious = 0;
+  for (const item of items) {
+    if (item.lastName === "Unknown") suspicious += 1;
+    if (item.firstName.length === 1) suspicious += 1;
+    if (item.unitNumber.length > 4) suspicious += 1;
+    if (/^(new|haven|ave|street|road)$/i.test(item.unitNumber)) suspicious += 2;
+    if (looksLikeStreetAddress(`${item.firstName} ${item.lastName}`)) suspicious += 2;
+    if (/^\d/.test(item.firstName)) suspicious += 2;
+  }
+  return suspicious / items.length >= 1.25;
+}
+
+function scoreOwnerRosterItems(items: OwnerRosterItem[], sourceText: string): OwnerRosterQuality {
+  const format = detectIngestionSourceFormat(sourceText);
+  if (items.length === 0) {
+    return {
+      score: 0,
+      warnings: ["No owner rows were extracted."],
+      format,
+    };
+  }
+
+  let validUnits = 0;
+  let validNames = 0;
+  let contactCoverage = 0;
+  let suspiciousUnits = 0;
+  let suspiciousNames = 0;
+
+  for (const item of items) {
+    if (/^[A-Z0-9-]{1,6}$/.test(item.unitNumber) && !/^(new|haven|ave|street|road|owner)$/i.test(item.unitNumber)) {
+      validUnits += 1;
+    } else {
+      suspiciousUnits += 1;
+    }
+
+    const fullName = `${item.firstName} ${item.lastName}`.trim();
+    const looksNamed = item.firstName.length > 1 && item.lastName.length > 1 && item.lastName !== "Unknown";
+    if (looksNamed && !looksLikeStreetAddress(fullName) && !/^\d/.test(item.firstName)) {
+      validNames += 1;
+    } else {
+      suspiciousNames += 1;
+    }
+
+    if (item.email || item.phone) contactCoverage += 1;
+  }
+
+  const unitRate = validUnits / items.length;
+  const nameRate = validNames / items.length;
+  const contactRate = contactCoverage / items.length;
+  const suspiciousRate = (suspiciousUnits + suspiciousNames) / Math.max(items.length, 1);
+  const score = Number(Math.max(0, Math.min(1, (unitRate * 0.4) + (nameRate * 0.4) + (contactRate * 0.2) - (suspiciousRate * 0.25))).toFixed(2));
+  const warnings: string[] = [];
+
+  if (unitRate < 0.8) warnings.push("Many extracted rows have weak or invalid unit identifiers.");
+  if (nameRate < 0.8) warnings.push("Many extracted rows have incomplete owner names.");
+  if (contactRate < 0.5) warnings.push("Contact coverage is low across extracted rows.");
+  if (ownerRosterLooksCorrupted(items)) warnings.push("Extracted rows look structurally corrupted for an owner roster.");
+
+  return { score, warnings, format };
+}
+
+function chooseBestOwnerRosterItems(
+  sourceText: string,
+  aiItems: OwnerRosterItem[],
+  hints?: AssociationOwnerRosterCorrectionHints,
+): { items: OwnerRosterItem[]; quality: OwnerRosterQuality; strategy: "ai" | "deterministic-parser" | "merged"; normalizedEntries: NormalizedOwnerRosterEntry[] } {
+  const normalizedBlock = parseOwnerRosterFromAddressBlocks(sourceText, hints);
+  const parsedItems = normalizedBlock.items.length > 0 ? normalizedBlock.items : parseOwnerRosterText(sourceText);
+  const aiQuality = scoreOwnerRosterItems(aiItems, sourceText);
+  const parsedQuality = scoreOwnerRosterItems(parsedItems, sourceText);
+
+  if (aiItems.length === 0) {
+    return { items: parsedItems, quality: parsedQuality, strategy: "deterministic-parser", normalizedEntries: normalizedBlock.entries };
+  }
+  if (parsedItems.length === 0) {
+    return { items: aiItems, quality: aiQuality, strategy: "ai", normalizedEntries: [] };
+  }
+  if (ownerRosterLooksCorrupted(aiItems) || parsedQuality.score >= aiQuality.score + 0.15) {
+    return { items: parsedItems, quality: parsedQuality, strategy: "deterministic-parser", normalizedEntries: normalizedBlock.entries };
+  }
+
+  const mergedItems = mergeOwnerRosterItems(aiItems, parsedItems);
+  const mergedQuality = scoreOwnerRosterItems(mergedItems, sourceText);
+  if (mergedQuality.score >= aiQuality.score && mergedQuality.score >= parsedQuality.score) {
+    return { items: mergedItems, quality: mergedQuality, strategy: "merged", normalizedEntries: normalizedBlock.entries };
+  }
+
+  return aiQuality.score >= parsedQuality.score
+    ? { items: aiItems, quality: aiQuality, strategy: "ai", normalizedEntries: [] }
+    : { items: parsedItems, quality: parsedQuality, strategy: "deterministic-parser", normalizedEntries: normalizedBlock.entries };
+}
+
+function parseContactRosterRowFromHeaders(columns: string[], headers: string[]): ContactRosterItem | null {
+  const nameIndex = findColumnIndex(headers, ["owner", "ownername", "name", "fullname", "contact", "contactname"]);
+  const firstNameIndex = findColumnIndex(headers, ["firstname", "first", "givenname"]);
+  const lastNameIndex = findColumnIndex(headers, ["lastname", "last", "surname", "familyname"]);
+  const emailIndex = findColumnIndex(headers, ["email", "emailaddress", "emailaddr", "e-mail"]);
+  const phoneIndex = findColumnIndex(headers, ["phone", "phonenumber", "telephone", "mobile", "cell"]);
+  const addressIndex = findColumnIndex(headers, ["address", "mailingaddress", "mailing", "mailaddress", "streetaddress"]);
+
+  const parsedName =
+    firstNameIndex >= 0 || lastNameIndex >= 0
+      ? {
+          firstName: normalizeWhitespace(firstNameIndex >= 0 ? columns[firstNameIndex] ?? "" : ""),
+          lastName: normalizeWhitespace(lastNameIndex >= 0 ? columns[lastNameIndex] ?? "" : ""),
+        }
+      : parseName(nameIndex >= 0 ? columns[nameIndex] ?? "" : "");
+  if (!parsedName?.firstName || !parsedName?.lastName) return null;
+
+  const email = emailIndex >= 0 && columns[emailIndex] ? columns[emailIndex].trim().toLowerCase() || null : null;
+  const phone = phoneIndex >= 0 && columns[phoneIndex] ? normalizeWhitespace(columns[phoneIndex]) || null : null;
+  if (!email && !phone) return null;
+
+  return {
+    firstName: parsedName.firstName,
+    lastName: parsedName.lastName,
+    email,
+    phone,
+    mailingAddress: addressIndex >= 0 && columns[addressIndex] ? normalizeWhitespace(columns[addressIndex]) || null : null,
+  };
+}
+
+function parseOwnerRosterText(sourceText: string): OwnerRosterItem[] {
+  const lines = sourceText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return [];
+
+  const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+  const phoneRegex = /(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]*)\d{3}[-.\s]*\d{4}/;
+  const dateRegex = /\b\d{4}-\d{2}-\d{2}\b/;
+  const headerKeywords = /(unit|owner|name|email|phone|address|mailing)/i;
+  const parsedItems: OwnerRosterItem[] = [];
+  const structuredRows = lines.map((line) => splitStructuredColumns(line));
+  const normalizedHeaders = structuredRows[0]?.map((part) => normalizeHeaderToken(part)) ?? [];
+  const recognizedHeaderCount = normalizedHeaders.filter((header) =>
+    ["unit", "unitnumber", "unitno", "owner", "ownername", "name", "firstname", "lastname", "email", "phone", "address", "mailingaddress", "ownershippercentage", "percent", "startdate"].includes(header),
+  ).length;
+  const addressBlock = parseOwnerRosterFromAddressBlocks(sourceText);
+  if (addressBlock.items.length > 0) {
+    return addressBlock.items;
+  }
+
+  if (recognizedHeaderCount >= 2 && normalizedHeaders.length >= 2) {
+    for (const columns of structuredRows.slice(1)) {
+      const item = parseOwnerRosterRowFromHeaders(columns, normalizedHeaders);
+      if (item) {
+        const canonical = canonicalizeOwnerRosterItem(item);
+        if (canonical) parsedItems.push(canonical);
+      }
+    }
+    if (parsedItems.length > 0) return parsedItems;
+  }
+
+  for (const rawLine of lines) {
+    if (headerKeywords.test(rawLine) && !emailRegex.test(rawLine) && !phoneRegex.test(rawLine)) {
+      continue;
+    }
+
+    const columns = splitStructuredColumns(rawLine);
+
+    if (columns.length < 2) continue;
+
+    const email = columns.find((part) => emailRegex.test(part))?.match(emailRegex)?.[0] ?? null;
+    const phone = columns.find((part) => phoneRegex.test(part))?.match(phoneRegex)?.[0] ?? null;
+    const startDate = columns.find((part) => dateRegex.test(part))?.match(dateRegex)?.[0] ?? null;
+    const percentage = parseOwnershipPercentage(columns.find((part) => /%/.test(part)));
+
+    const lowerColumns = columns.map((part) => part.toLowerCase());
+    const nameIndex = lowerColumns.findIndex((part) => !emailRegex.test(part) && !phoneRegex.test(part) && !dateRegex.test(part) && !/%/.test(part) && /[a-z]/i.test(part));
+    if (nameIndex === -1) continue;
+
+    let unitNumber = "";
+    for (let i = 0; i < columns.length; i += 1) {
+      if (i === nameIndex) continue;
+      const column = columns[i];
+      if (emailRegex.test(column) || phoneRegex.test(column) || dateRegex.test(column) || /%/.test(column)) continue;
+      const parsedUnit = parseUnitNumber(column);
+      if (parsedUnit) {
+        unitNumber = parsedUnit;
+        break;
+      }
+    }
+    if (!unitNumber) continue;
+
+    const parsedName = parseName(columns[nameIndex]);
+    if (!parsedName) continue;
+
+    const mailingAddress = columns
+      .filter((part, index) => index !== nameIndex)
+      .filter((part) => !emailRegex.test(part) && !phoneRegex.test(part) && !dateRegex.test(part) && !/%/.test(part))
+      .slice(1)
+      .join(", ")
+      .trim() || null;
+
+    const canonical = canonicalizeOwnerRosterItem({
+      unitNumber,
+      firstName: parsedName.firstName,
+      lastName: parsedName.lastName,
+      email,
+      phone,
+      mailingAddress,
+      ownershipPercentage: percentage,
+      startDate,
+    });
+    if (canonical) parsedItems.push(canonical);
+  }
+
+  return parsedItems;
+}
+
+function parseContactRosterText(sourceText: string): ContactRosterItem[] {
+  const lines = sourceText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return [];
+
+  const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+  const phoneRegex = /(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]*)\d{3}[-.\s]*\d{4}/;
+  const headerKeywords = /(owner|name|email|phone|address|mailing|contact)/i;
+  const parsedItems: ContactRosterItem[] = [];
+  const structuredRows = lines.map((line) => splitStructuredColumns(line));
+  const normalizedHeaders = structuredRows[0]?.map((part) => normalizeHeaderToken(part)) ?? [];
+  const recognizedHeaderCount = normalizedHeaders.filter((header) =>
+    ["owner", "ownername", "name", "firstname", "lastname", "contact", "contactname", "email", "phone", "address", "mailingaddress"].includes(header),
+  ).length;
+
+  if (recognizedHeaderCount >= 2 && normalizedHeaders.length >= 2) {
+    for (const columns of structuredRows.slice(1)) {
+      const item = parseContactRosterRowFromHeaders(columns, normalizedHeaders);
+      if (item) {
+        const canonical = canonicalizeContactRosterItem(item);
+        if (canonical) parsedItems.push(canonical);
+      }
+    }
+    if (parsedItems.length > 0) return parsedItems;
+  }
+
+  for (const rawLine of lines) {
+    if (headerKeywords.test(rawLine) && !emailRegex.test(rawLine) && !phoneRegex.test(rawLine)) {
+      continue;
+    }
+
+    const columns = splitStructuredColumns(rawLine);
+
+    if (columns.length < 1) continue;
+
+    const email = columns.find((part) => emailRegex.test(part))?.match(emailRegex)?.[0]?.toLowerCase() ?? null;
+    const phone = columns.find((part) => phoneRegex.test(part))?.match(phoneRegex)?.[0] ?? null;
+    const namePart = columns.find((part) => !emailRegex.test(part) && !phoneRegex.test(part) && /[a-z]/i.test(part)) ?? "";
+    const parsedName = parseName(namePart);
+    if (!parsedName) continue;
+    if (!email && !phone) continue;
+
+    const mailingAddress = columns
+      .filter((part) => part !== namePart)
+      .filter((part) => !emailRegex.test(part) && !phoneRegex.test(part))
+      .join(", ")
+      .trim() || null;
+
+    const canonical = canonicalizeContactRosterItem({
+      firstName: parsedName.firstName,
+      lastName: parsedName.lastName,
+      email,
+      phone,
+      mailingAddress,
+    });
+    if (canonical) parsedItems.push(canonical);
+  }
+
+  return parsedItems;
+}
+
+function buildOwnerRosterKey(item: Pick<OwnerRosterItem, "unitNumber" | "firstName" | "lastName" | "email">): string {
+  const unit = item.unitNumber.trim().toUpperCase();
+  const email = item.email?.trim().toLowerCase() ?? "";
+  const firstName = item.firstName.trim().toLowerCase();
+  const lastName = item.lastName.trim().toLowerCase();
+  return `${unit}|${email || `${firstName}|${lastName}`}`;
+}
+
+function buildContactRosterKey(item: Pick<ContactRosterItem, "firstName" | "lastName" | "email">): string {
+  const email = item.email?.trim().toLowerCase() ?? "";
+  const firstName = item.firstName.trim().toLowerCase();
+  const lastName = item.lastName.trim().toLowerCase();
+  return email || `${firstName}|${lastName}`;
+}
+
+function mergeOwnerRosterItems(primaryItems: OwnerRosterItem[], fallbackItems: OwnerRosterItem[]): OwnerRosterItem[] {
+  if (fallbackItems.length === 0) return primaryItems;
+  if (ownerRosterLooksCorrupted(primaryItems) && fallbackItems.length > 0) {
+    return fallbackItems;
+  }
+  const fallbackByKey = new Map(fallbackItems.map((item) => [buildOwnerRosterKey(item), item]));
+  const merged = primaryItems.map((item) => {
+    const fallback = fallbackByKey.get(buildOwnerRosterKey(item));
+    if (!fallback) return item;
+    return {
+      ...item,
+      email: item.email ?? fallback.email,
+      phone: item.phone ?? fallback.phone,
+      mailingAddress: item.mailingAddress ?? fallback.mailingAddress,
+      ownershipPercentage: item.ownershipPercentage ?? fallback.ownershipPercentage,
+      startDate: item.startDate ?? fallback.startDate,
+    };
+  });
+  const primaryKeys = new Set(primaryItems.map((item) => buildOwnerRosterKey(item)));
+  const unmatchedFallback = fallbackItems.filter((item) => !primaryKeys.has(buildOwnerRosterKey(item)));
+  return [...merged, ...unmatchedFallback];
+}
+
+function mergeContactRosterItems(primaryItems: ContactRosterItem[], fallbackItems: ContactRosterItem[]): ContactRosterItem[] {
+  if (fallbackItems.length === 0) return primaryItems;
+  const fallbackByKey = new Map(fallbackItems.map((item) => [buildContactRosterKey(item), item]));
+  const merged = primaryItems.map((item) => {
+    const fallback = fallbackByKey.get(buildContactRosterKey(item));
+    if (!fallback) return item;
+    return {
+      ...item,
+      email: item.email ?? fallback.email,
+      phone: item.phone ?? fallback.phone,
+      mailingAddress: item.mailingAddress ?? fallback.mailingAddress,
+    };
+  });
+  const primaryKeys = new Set(primaryItems.map((item) => buildContactRosterKey(item)));
+  const unmatchedFallback = fallbackItems.filter((item) => !primaryKeys.has(buildContactRosterKey(item)));
+  return [...merged, ...unmatchedFallback];
+}
+
+function attachIngestionTrace(payloadJson: Record<string, unknown>, trace: IngestionTrace): Record<string, unknown> {
+  return {
+    ...payloadJson,
+    _ingestionTrace: trace,
+  };
+}
+
+function extractOwnerRosterItems(payload: unknown): OwnerRosterItem[] {
+  if (!payload || typeof payload !== "object") return [];
+  const items = (payload as Record<string, unknown>).items;
+  if (!Array.isArray(items)) return [];
+
+  return items.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const unitNumber = typeof row.unitNumber === "string" ? normalizeWhitespace(row.unitNumber).toUpperCase() : "";
+    const firstName = typeof row.firstName === "string" ? normalizeWhitespace(row.firstName) : "";
+    const lastName = typeof row.lastName === "string" ? normalizeWhitespace(row.lastName) : "";
+    if (!unitNumber || !firstName || !lastName) return [];
+
+    return [{
+      unitNumber,
+      firstName,
+      lastName,
+      email: typeof row.email === "string" && row.email.trim() ? row.email.trim().toLowerCase() : null,
+      phone: typeof row.phone === "string" && row.phone.trim() ? row.phone.trim() : null,
+      mailingAddress: typeof row.mailingAddress === "string" && row.mailingAddress.trim() ? row.mailingAddress.trim() : null,
+      ownershipPercentage: typeof row.ownershipPercentage === "number" ? row.ownershipPercentage : null,
+      startDate: typeof row.startDate === "string" && row.startDate.trim() ? row.startDate.trim() : null,
+    }];
+  });
+}
+
+function extractNormalizedOwnerRosterEntries(payload: unknown): NormalizedOwnerRosterEntry[] {
+  if (!payload || typeof payload !== "object") return [];
+  const entries = (payload as Record<string, unknown>).normalizedEntries;
+  if (!Array.isArray(entries)) return [];
+
+  return entries.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    const unitNumber = typeof row.unitNumber === "string" ? normalizeWhitespace(row.unitNumber).toUpperCase() : "";
+    if (!unitNumber) return [];
+
+    const ownerCandidates = Array.isArray(row.ownerCandidates)
+      ? row.ownerCandidates.flatMap((candidate) => {
+          if (!candidate || typeof candidate !== "object") return [];
+          const value = candidate as Record<string, unknown>;
+          const firstName = typeof value.firstName === "string" ? normalizeWhitespace(value.firstName) : "";
+          const lastName = typeof value.lastName === "string" ? normalizeWhitespace(value.lastName) : "";
+          const displayName = typeof value.displayName === "string" ? normalizeWhitespace(value.displayName) : `${firstName} ${lastName}`.trim();
+          if (!firstName || !lastName) return [];
+          return [{
+            firstName,
+            lastName,
+            displayName,
+            email: typeof value.email === "string" && value.email.trim() ? value.email.trim().toLowerCase() : null,
+            phone: typeof value.phone === "string" && value.phone.trim() ? normalizeWhitespace(value.phone) : null,
+          }];
+        })
+      : [];
+    if (ownerCandidates.length === 0) return [];
+
+    const emails = Array.isArray(row.emails) ? row.emails.filter((value): value is string => typeof value === "string").map((value) => value.trim().toLowerCase()).filter(Boolean) : [];
+    const phones = Array.isArray(row.phones) ? row.phones.filter((value): value is string => typeof value === "string").map((value) => normalizeWhitespace(value)).filter(Boolean) : [];
+    const notes = Array.isArray(row.notes) ? row.notes.filter((value): value is string => typeof value === "string").map((value) => normalizeWhitespace(value)).filter(Boolean) : [];
+
+    return [{
+      buildingAddress: typeof row.buildingAddress === "string" && row.buildingAddress.trim() ? row.buildingAddress.trim() : null,
+      unitNumber,
+      ownerText: typeof row.ownerText === "string" ? normalizeWhitespace(row.ownerText) : ownerCandidates.map((candidate) => candidate.displayName).join(" / "),
+      ownerCandidates,
+      emails,
+      phones,
+      notes,
+    }];
+  });
+}
+
+function getOwnerRosterQuality(payload: unknown): OwnerRosterQuality | null {
+  if (!payload || typeof payload !== "object") return null;
+  const quality = (payload as Record<string, unknown>).extractionQuality;
+  if (!quality || typeof quality !== "object" || Array.isArray(quality)) return null;
+  const row = quality as Record<string, unknown>;
+  return {
+    score: typeof row.score === "number" ? row.score : 0,
+    warnings: Array.isArray(row.warnings) ? row.warnings.filter((value): value is string => typeof value === "string") : [],
+    format: row.format === "structured-table" || row.format === "address-block-roster" || row.format === "delimited-list" || row.format === "freeform-text"
+      ? row.format
+      : "freeform-text",
+  };
+}
+
+function buildOwnerRosterUnresolvedExceptions(
+  entries: NormalizedOwnerRosterEntry[],
+  knownUnitNumbers: string[] = [],
+): OwnerRosterUnresolvedException[] {
+  const knownUnits = new Set(knownUnitNumbers.map((value) => value.toUpperCase()));
+  const exceptions: OwnerRosterUnresolvedException[] = [];
+
+  for (const entry of entries) {
+    if (knownUnits.size > 0 && !knownUnits.has(entry.unitNumber.toUpperCase())) {
+      exceptions.push({
+        kind: "unit-unresolved",
+        unitNumber: entry.unitNumber,
+        message: `Unit ${entry.unitNumber} does not match an existing unit in the selected association.`,
+        blocking: false,
+      });
+    }
+
+    if (entry.ownerCandidates.length > 1) {
+      const hasSharedEmails = entry.emails.length > 0 && entry.ownerCandidates.some((candidate) => !candidate.email);
+      const hasSharedPhones = entry.phones.length > 0 && entry.ownerCandidates.some((candidate) => !candidate.phone);
+      if (hasSharedEmails || hasSharedPhones) {
+        exceptions.push({
+          kind: "contact-assignment-needed",
+          unitNumber: entry.unitNumber,
+          message: `Unit ${entry.unitNumber} has multiple owners with shared contact data that should be assigned explicitly.`,
+          blocking: true,
+        });
+      }
+    }
+
+    for (const candidate of entry.ownerCandidates) {
+      if (!candidate.firstName.trim() || !candidate.lastName.trim()) {
+        exceptions.push({
+          kind: "owner-name-incomplete",
+          unitNumber: entry.unitNumber,
+          message: `Unit ${entry.unitNumber} has an owner candidate with incomplete first/last name.`,
+          blocking: true,
+        });
+      }
+    }
+  }
+
+  return exceptions;
+}
+
+function extractAssociationOwnerRosterCorrectionHintsFromPayload(payload: unknown): AssociationOwnerRosterCorrectionHints {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { unitRemaps: [], ownerNameFixes: [] };
+  }
+
+  const row = payload as Record<string, unknown>;
+  const operatorCorrections = Array.isArray(row.operatorCorrections) ? row.operatorCorrections : [];
+  const normalizedEntries = extractNormalizedOwnerRosterEntries(payload);
+  const unitRemaps: AssociationOwnerRosterCorrectionHints["unitRemaps"] = [];
+  const ownerNameFixes: AssociationOwnerRosterCorrectionHints["ownerNameFixes"] = [];
+
+  for (const correction of operatorCorrections) {
+    if (!correction || typeof correction !== "object" || Array.isArray(correction)) continue;
+    const item = correction as Record<string, unknown>;
+    const entryIndex = typeof item.entryIndex === "number" ? item.entryIndex : -1;
+    const candidateIndex = typeof item.candidateIndex === "number" ? item.candidateIndex : -1;
+    const field = typeof item.field === "string" ? item.field : "";
+    const kind = typeof item.kind === "string" ? item.kind : "";
+    const entry = normalizedEntries[entryIndex];
+
+    if ((kind === "unit-remap" || field === "unitNumber") && entry && typeof item.before === "string" && typeof item.after === "string") {
+      const fromUnitNumber = normalizeWhitespace(item.before).toUpperCase();
+      const toUnitNumber = normalizeWhitespace(item.after).toUpperCase();
+      if (fromUnitNumber && toUnitNumber && fromUnitNumber !== toUnitNumber) {
+        unitRemaps.push({
+          fromUnitNumber,
+          toUnitNumber,
+          ownerText: entry.ownerText || null,
+          buildingAddress: entry.buildingAddress || null,
+        });
+      }
+    }
+
+    if (kind === "candidate-edit" && entry && candidateIndex >= 0) {
+      const candidate = entry.ownerCandidates[candidateIndex];
+      if (!candidate) continue;
+      if ((field === "firstName" || field === "lastName") && candidate.firstName.trim() && candidate.lastName.trim()) {
+        ownerNameFixes.push({
+          unitNumber: entry.unitNumber,
+          displayName: candidate.displayName,
+          firstName: candidate.firstName,
+          lastName: candidate.lastName,
+        });
+      }
+    }
+  }
+
+  return {
+    unitRemaps: dedupeBy(unitRemaps, (item) => `${item.fromUnitNumber}|${item.toUnitNumber}|${item.ownerText ?? ""}|${item.buildingAddress ?? ""}`),
+    ownerNameFixes: dedupeBy(ownerNameFixes, (item) => `${item.unitNumber}|${item.displayName}|${item.firstName}|${item.lastName}`),
+  };
+}
+
+function extractAssociationBankStatementCorrectionHintsFromPayload(payload: unknown): AssociationBankStatementCorrectionHints {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { transactionMappings: [] };
+  }
+
+  const row = payload as Record<string, unknown>;
+  const operatorCorrections = Array.isArray(row.operatorCorrections) ? row.operatorCorrections : [];
+  const transactions = extractBankStatementTransactions(payload);
+  const mappings: AssociationBankStatementCorrectionHints["transactionMappings"] = [];
+  const touchedIndexes = new Set<number>();
+
+  for (const correction of operatorCorrections) {
+    if (!correction || typeof correction !== "object" || Array.isArray(correction)) continue;
+    const item = correction as Record<string, unknown>;
+    const kind = typeof item.kind === "string" ? item.kind : "";
+    const txIndex = typeof item.txIndex === "number" ? item.txIndex : -1;
+    const field = typeof item.field === "string" ? item.field : "";
+    if (kind !== "bank-transaction-edit" && field !== "unitNumber" && field !== "ownerEmail" && field !== "ownerName") continue;
+    if (txIndex < 0 || !transactions[txIndex]) continue;
+    touchedIndexes.add(txIndex);
+  }
+
+  for (const txIndex of Array.from(touchedIndexes)) {
+    const txn = transactions[txIndex];
+    if (!txn) continue;
+    if (!txn.description && !txn.ownerEmail && !txn.ownerName) continue;
+    mappings.push({
+      description: txn.description,
+      unitNumber: txn.unitNumber,
+      ownerEmail: txn.ownerEmail,
+      ownerName: txn.ownerName,
+    });
+  }
+
+  return {
+    transactionMappings: dedupeBy(mappings, (item) => `${normalizeBankTransactionDescription(item.description)}|${item.unitNumber ?? ""}|${item.ownerEmail ?? ""}|${item.ownerName ?? ""}`),
+  };
+}
+
+function buildDestinationRoutePlan(
+  recordType: AiIngestionExtractionRecord["recordType"],
+  payload: unknown,
+): DestinationRoutePlan {
+  if (recordType === "owner-roster") {
+    const entries = extractNormalizedOwnerRosterEntries(payload);
+    const items = entries.length > 0 ? buildOwnerRosterItemsFromNormalizedEntries(entries) : extractOwnerRosterItems(payload);
+    const unitCount = new Set(items.map((item) => item.unitNumber)).size;
+    const personCount = items.length;
+    const exceptionCount = buildOwnerRosterUnresolvedExceptions(entries).length;
+    return {
+      primaryModule: "owners",
+      entityCounts: {
+        units: unitCount,
+        persons: personCount,
+        ownerships: items.length,
+        contactPoints: items.filter((item) => item.email || item.phone).length,
+        ownerLedgerEntries: 0,
+        vendorInvoices: 0,
+        exceptions: exceptionCount,
+      },
+      routeReason: "Normalized owner facts route to units, persons, ownerships, and exception review.",
+    };
+  }
+
+  if (recordType === "contact-roster") {
+    const items = extractContactRosterItems(payload);
+    return {
+      primaryModule: "persons",
+      entityCounts: {
+        units: 0,
+        persons: items.length,
+        ownerships: 0,
+        contactPoints: items.filter((item) => item.email || item.phone).length,
+        ownerLedgerEntries: 0,
+        vendorInvoices: 0,
+        exceptions: 0,
+      },
+      routeReason: "Contact rows route to person/contact updates without ownership creation.",
+    };
+  }
+
+  if (recordType === "bank-statement") {
+    const txns = extractBankStatementTransactions(payload);
+    return {
+      primaryModule: "owner-ledger",
+      entityCounts: {
+        units: 0,
+        persons: 0,
+        ownerships: 0,
+        contactPoints: 0,
+        ownerLedgerEntries: txns.length,
+        vendorInvoices: 0,
+        exceptions: 0,
+      },
+      routeReason: "Statement transactions route to owner-ledger entries after unit/person resolution.",
+    };
+  }
+
+  if (recordType === "invoice-draft") {
+    return {
+      primaryModule: "financial-invoices",
+      entityCounts: {
+        units: 0,
+        persons: 0,
+        ownerships: 0,
+        contactPoints: 0,
+        ownerLedgerEntries: 0,
+        vendorInvoices: 1,
+        exceptions: 0,
+      },
+      routeReason: "Invoice facts route to vendor invoice creation or duplicate review.",
+    };
+  }
+
+  if (recordType === "meeting-notes") {
+    return {
+      primaryModule: "governance",
+      entityCounts: {
+        units: 0,
+        persons: 0,
+        ownerships: 0,
+        contactPoints: 0,
+        ownerLedgerEntries: 0,
+        vendorInvoices: 0,
+        exceptions: 0,
+      },
+      routeReason: "Meeting notes route to governance review rather than direct import.",
+    };
+  }
+
+  return {
+    primaryModule: "metadata",
+    entityCounts: {
+      units: 0,
+      persons: 0,
+      ownerships: 0,
+      contactPoints: 0,
+      ownerLedgerEntries: 0,
+      vendorInvoices: 0,
+      exceptions: 0,
+    },
+    routeReason: "Unclassified document routes to metadata/manual review.",
+  };
+}
+
+function attachDestinationRouting(
+  recordType: AiIngestionExtractionRecord["recordType"],
+  payloadJson: Record<string, unknown>,
+): Record<string, unknown> {
+  const destinationPlan = buildDestinationRoutePlan(recordType, payloadJson);
+  return {
+    ...payloadJson,
+    destinationModule: destinationPlan.primaryModule,
+    destinationPlan,
+  };
+}
+
+function extractDestinationRoutePlan(payload: unknown): DestinationRoutePlan | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const plan = (payload as Record<string, unknown>).destinationPlan;
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return null;
+  const row = plan as Record<string, unknown>;
+  const entityCounts = row.entityCounts;
+  if (!entityCounts || typeof entityCounts !== "object" || Array.isArray(entityCounts)) return null;
+  const counts = entityCounts as Record<string, unknown>;
+  const primaryModule = row.primaryModule;
+  if (primaryModule !== "owners" && primaryModule !== "persons" && primaryModule !== "owner-ledger" && primaryModule !== "financial-invoices" && primaryModule !== "governance" && primaryModule !== "metadata") {
+    return null;
+  }
+  return {
+    primaryModule,
+    entityCounts: {
+      units: typeof counts.units === "number" ? counts.units : 0,
+      persons: typeof counts.persons === "number" ? counts.persons : 0,
+      ownerships: typeof counts.ownerships === "number" ? counts.ownerships : 0,
+      contactPoints: typeof counts.contactPoints === "number" ? counts.contactPoints : 0,
+      ownerLedgerEntries: typeof counts.ownerLedgerEntries === "number" ? counts.ownerLedgerEntries : 0,
+      vendorInvoices: typeof counts.vendorInvoices === "number" ? counts.vendorInvoices : 0,
+      exceptions: typeof counts.exceptions === "number" ? counts.exceptions : 0,
+    },
+    routeReason: typeof row.routeReason === "string" ? row.routeReason : "",
+  };
+}
+
+function dedupeBy<T>(items: T[], keyFn: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    const key = keyFn(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+async function mapInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let index = 0; index < items.length; index += batchSize) {
+    const batch = items.slice(index, index + batchSize);
+    const batchResults = await Promise.all(
+      batch.map((item, batchIndex) => mapper(item, index + batchIndex)),
+    );
+    results.push(...batchResults);
+  }
+  return results;
+}
+
+function extractContactRosterItems(payload: unknown): ContactRosterItem[] {
+  if (!payload || typeof payload !== "object") return [];
+  const items = (payload as Record<string, unknown>).items;
+  if (!Array.isArray(items)) return [];
+
+  return items.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const firstName = typeof row.firstName === "string" ? normalizeWhitespace(row.firstName) : "";
+    const lastName = typeof row.lastName === "string" ? normalizeWhitespace(row.lastName) : "";
+    if (!firstName || !lastName) return [];
+
+    return [{
+      firstName,
+      lastName,
+      email: typeof row.email === "string" && row.email.trim() ? row.email.trim().toLowerCase() : null,
+      phone: typeof row.phone === "string" && row.phone.trim() ? row.phone.trim() : null,
+      mailingAddress: typeof row.mailingAddress === "string" && row.mailingAddress.trim() ? row.mailingAddress.trim() : null,
+    }];
+  });
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const parsed = Number(value.replace(/[^0-9.\-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toDate(value: unknown): Date | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+type BankStatementTransaction = {
+  unitNumber: string | null;
+  ownerEmail: string | null;
+  ownerName: string | null;
+  amount: number | null;
+  postedAt: string | null;
+  description: string | null;
+  entryType: "payment" | "charge" | "credit" | "adjustment";
+};
+
+function extractBankStatementTransactions(payload: unknown): BankStatementTransaction[] {
+  if (!payload || typeof payload !== "object") return [];
+  const transactions = (payload as Record<string, unknown>).transactions;
+  if (!Array.isArray(transactions)) return [];
+
+  return transactions.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const amount = toNumber(row.amount);
+    const postedAt = typeof row.postedAt === "string" && row.postedAt.trim() ? row.postedAt.trim() : null;
+    const description = typeof row.description === "string" && row.description.trim() ? row.description.trim() : null;
+    const entryTypeRaw = typeof row.entryType === "string" ? row.entryType : "";
+    const entryType: BankStatementTransaction["entryType"] =
+      entryTypeRaw === "payment" || entryTypeRaw === "charge" || entryTypeRaw === "credit" || entryTypeRaw === "adjustment"
+        ? entryTypeRaw
+        : (amount != null && amount < 0 ? "payment" : "charge");
+
+    return [{
+      unitNumber: typeof row.unitNumber === "string" && row.unitNumber.trim() ? row.unitNumber.trim().toUpperCase() : null,
+      ownerEmail: typeof row.ownerEmail === "string" && row.ownerEmail.trim() ? row.ownerEmail.trim().toLowerCase() : null,
+      ownerName: typeof row.ownerName === "string" && row.ownerName.trim() ? row.ownerName.trim() : null,
+      amount,
+      postedAt,
+      description,
+      entryType,
+    }];
+  });
+}
+
+function normalizeBankStatementTransactions(payload: unknown): { transactions: BankStatementTransaction[]; invalidCount: number } {
+  const raw = extractBankStatementTransactions(payload);
+  const normalized: BankStatementTransaction[] = [];
+  let invalidCount = 0;
+
+  for (const txn of raw) {
+    const amountValid = txn.amount != null && Number.isFinite(txn.amount);
+    const dateValid = txn.postedAt ? toDate(txn.postedAt) != null : false;
+    const hasOwnerHint = Boolean(txn.unitNumber || txn.ownerEmail || txn.ownerName);
+    if (!amountValid || !dateValid || !hasOwnerHint) {
+      invalidCount += 1;
+      continue;
+    }
+    normalized.push({
+      ...txn,
+      amount: Number(txn.amount),
+      postedAt: txn.postedAt!,
+    });
+  }
+
+  return { transactions: normalized, invalidCount };
+}
+
+function normalizeBankTransactionDescription(value: string | null | undefined): string {
+  return normalizeWhitespace((value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " "));
+}
+
+function applyBankStatementCorrectionHints(
+  transactions: BankStatementTransaction[],
+  hints?: AssociationBankStatementCorrectionHints,
+): BankStatementTransaction[] {
+  if (!hints || hints.transactionMappings.length === 0) return transactions;
+
+  return transactions.map((txn) => {
+    const descriptionKey = normalizeBankTransactionDescription(txn.description);
+    const match = hints.transactionMappings.find((hint) => {
+      const hintDescriptionKey = normalizeBankTransactionDescription(hint.description);
+      if (descriptionKey && hintDescriptionKey && descriptionKey === hintDescriptionKey) return true;
+      if (txn.ownerEmail && hint.ownerEmail && txn.ownerEmail === hint.ownerEmail) return true;
+      if (txn.ownerName && hint.ownerName && normalizeWhitespace(txn.ownerName).toLowerCase() === normalizeWhitespace(hint.ownerName).toLowerCase()) return true;
+      return false;
+    });
+    if (!match) return txn;
+
+    return {
+      ...txn,
+      unitNumber: txn.unitNumber ?? match.unitNumber ?? null,
+      ownerEmail: txn.ownerEmail ?? match.ownerEmail ?? null,
+      ownerName: txn.ownerName ?? match.ownerName ?? null,
+    };
+  });
+}
+
+function parseInvoiceDraftText(sourceText: string): {
+  vendorName: string;
+  invoiceNumber: string | null;
+  amount: number | null;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  notes: string | null;
+  status: string | null;
+} {
+  const lines = sourceText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const joined = lines.join("\n");
+  const datePattern = /(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/;
+
+  const vendorLine =
+    lines.find((line) => /^vendor\s*[:\-]/i.test(line)) ??
+    lines.find((line) => /^from\s*[:\-]/i.test(line)) ??
+    lines.find((line) => line.length <= 90 && !/invoice|date|amount|due|total|balance/i.test(line)) ??
+    "Extracted Vendor";
+  const vendorName = normalizeWhitespace(vendorLine.replace(/^(vendor|from)\s*[:\-]\s*/i, "")) || "Extracted Vendor";
+
+  const invoiceNumber =
+    joined.match(/invoice\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9-]+)/i)?.[1] ??
+    joined.match(/\b(?:inv|bill)\s*#\s*([A-Z0-9-]+)/i)?.[1] ??
+    null;
+
+  const invoiceDateRaw =
+    joined.match(/invoice\s*date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1] ??
+    lines.find((line) => /^date\s*[:\-]/i.test(line))?.match(datePattern)?.[1] ??
+    joined.match(datePattern)?.[1] ??
+    null;
+  const dueDateRaw =
+    joined.match(/due\s*date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1] ??
+    null;
+
+  const amountRaw =
+    joined.match(/(?:amount\s*due|total\s*due|invoice\s*total|balance\s*due)\s*[:\-]?\s*(\-?\$?[0-9,]+(?:\.[0-9]{2})?)/i)?.[1] ??
+    joined.match(/(\-?\$?[0-9,]+(?:\.[0-9]{2}))/)?.[1] ??
+    null;
+
+  return {
+    vendorName,
+    invoiceNumber,
+    amount: amountRaw ? toNumber(amountRaw) : null,
+    invoiceDate: invoiceDateRaw ? (toDate(invoiceDateRaw)?.toISOString().slice(0, 10) ?? invoiceDateRaw) : null,
+    dueDate: dueDateRaw ? (toDate(dueDateRaw)?.toISOString().slice(0, 10) ?? dueDateRaw) : null,
+    notes: lines.slice(0, 5).join(" ").slice(0, 300) || null,
+    status: null,
+  };
+}
+
+function parseBankStatementText(sourceText: string): {
+  statementPeriod: string | null;
+  transactions: BankStatementTransaction[];
+} {
+  const lines = sourceText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const transactions: BankStatementTransaction[] = [];
+  const datePattern = /(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/;
+  const moneyPattern = /(?:-\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\$-\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/g;
+  const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+
+  const periodLine = lines.find((line) => /statement\s*period|period\s*[:\-]/i.test(line));
+  const statementPeriod = periodLine
+    ? normalizeWhitespace(periodLine.replace(/^.*?(statement\s*period|period)\s*[:\-]?\s*/i, ""))
+    : null;
+
+  for (const line of lines) {
+    if (/^date\b.*\b(amount|balance)\b/i.test(line)) continue;
+    const dateMatch = line.match(datePattern);
+    if (!dateMatch) continue;
+
+    const amounts = Array.from(line.matchAll(moneyPattern)).map((match) => match[0]);
+    if (amounts.length === 0) continue;
+    const amount = toNumber(amounts[amounts.length - 1]);
+    if (amount == null) continue;
+
+    const unitNumber = line.match(/(?:unit|apt|suite|#)\s*([A-Z0-9-]+)/i)?.[1]?.toUpperCase() ?? null;
+    const ownerEmail = line.match(emailPattern)?.[0]?.toLowerCase() ?? null;
+    const ownerName =
+      line.match(/(?:owner|for)\s+([A-Z][A-Za-z'`.-]+(?:\s+[A-Z][A-Za-z'`.-]+){0,2})/)?.[1] ??
+      null;
+
+    const lower = line.toLowerCase();
+    const entryType: BankStatementTransaction["entryType"] = lower.includes("credit")
+      ? "credit"
+      : lower.includes("adjust")
+        ? "adjustment"
+        : lower.includes("payment") || amount < 0
+          ? "payment"
+          : "charge";
+
+    transactions.push({
+      unitNumber,
+      ownerEmail,
+      ownerName,
+      amount,
+      postedAt: toDate(dateMatch[1])?.toISOString().slice(0, 10) ?? dateMatch[1],
+      description: normalizeWhitespace(line).slice(0, 240),
+      entryType,
+    });
+
+    if (transactions.length >= 250) break;
+  }
+
+  return { statementPeriod, transactions };
+}
+
+function enrichExtractionWithFallback(
+  job: AiIngestionJob,
+  sourceText: string,
+  extraction: AiIngestionExtractionResult,
+  ownerRosterCorrectionHints?: AssociationOwnerRosterCorrectionHints,
+  bankStatementCorrectionHints?: AssociationBankStatementCorrectionHints,
+): AiIngestionExtractionResult {
+  const fallback = buildFallbackIngestionExtraction(job, sourceText, ownerRosterCorrectionHints, bankStatementCorrectionHints);
+  const baseExtraction = (extraction.records.length === 0 && extraction.clauses.length === 0)
+    ? fallback
+    : extraction;
+  const records = baseExtraction.records.map((record) => {
+    if (record.recordType === "owner-roster") {
+      const basePayload = (record.payloadJson && typeof record.payloadJson === "object" ? record.payloadJson : {}) as Record<string, unknown>;
+      const baseItems = extractOwnerRosterItems(basePayload);
+      const selection = chooseBestOwnerRosterItems(sourceText, baseItems, ownerRosterCorrectionHints);
+      const unresolvedExceptions = buildOwnerRosterUnresolvedExceptions(selection.normalizedEntries);
+      if (selection.items.length === 0) return record;
+      return {
+        ...record,
+        payloadJson: attachDestinationRouting("owner-roster", {
+          ...basePayload,
+          title: typeof basePayload.title === "string" && basePayload.title.trim() ? basePayload.title : "Extracted Owner Roster",
+          itemCount: selection.items.length,
+          items: selection.items,
+          normalizedEntries: selection.normalizedEntries,
+          unresolvedExceptions,
+          feedbackSignals: {
+            priorUnitRemaps: ownerRosterCorrectionHints?.unitRemaps.length ?? 0,
+            priorOwnerNameFixes: ownerRosterCorrectionHints?.ownerNameFixes.length ?? 0,
+          },
+          extractionStrategy: selection.strategy,
+          extractionQuality: selection.quality,
+        }),
+      };
+    }
+
+    if (record.recordType === "contact-roster") {
+      const basePayload = (record.payloadJson && typeof record.payloadJson === "object" ? record.payloadJson : {}) as Record<string, unknown>;
+      const baseItems = extractContactRosterItems(basePayload);
+      const parsedItems = parseContactRosterText(sourceText);
+      if (baseItems.length > 0) {
+        const mergedItems = mergeContactRosterItems(baseItems, parsedItems);
+        return {
+          ...record,
+          payloadJson: attachDestinationRouting("contact-roster", {
+            ...basePayload,
+            title: typeof basePayload.title === "string" && basePayload.title.trim() ? basePayload.title : "Extracted Contact Roster",
+            itemCount: mergedItems.length,
+            items: mergedItems,
+          }),
+        };
+      }
+      if (parsedItems.length === 0) return record;
+      return {
+        ...record,
+        payloadJson: attachDestinationRouting("contact-roster", {
+          ...basePayload,
+          title: typeof basePayload.title === "string" && basePayload.title.trim() ? basePayload.title : "Extracted Contact Roster",
+          itemCount: parsedItems.length,
+          items: parsedItems,
+        }),
+      };
+    }
+
+    if (record.recordType === "invoice-draft") {
+      const basePayload = (record.payloadJson && typeof record.payloadJson === "object" ? record.payloadJson : {}) as Record<string, unknown>;
+      const parsedInvoice = parseInvoiceDraftText(sourceText);
+      const merged = {
+        vendorName: typeof basePayload.vendorName === "string" && basePayload.vendorName.trim() ? basePayload.vendorName : parsedInvoice.vendorName,
+        invoiceNumber: typeof basePayload.invoiceNumber === "string" && basePayload.invoiceNumber.trim() ? basePayload.invoiceNumber : parsedInvoice.invoiceNumber,
+        amount: toNumber(basePayload.amount) ?? parsedInvoice.amount,
+        invoiceDate: typeof basePayload.invoiceDate === "string" && basePayload.invoiceDate.trim() ? basePayload.invoiceDate : parsedInvoice.invoiceDate,
+        dueDate: typeof basePayload.dueDate === "string" && basePayload.dueDate.trim() ? basePayload.dueDate : parsedInvoice.dueDate,
+        notes: typeof basePayload.notes === "string" && basePayload.notes.trim() ? basePayload.notes : parsedInvoice.notes,
+        status: typeof basePayload.status === "string" && basePayload.status.trim() ? basePayload.status : parsedInvoice.status,
+      };
+      return { ...record, payloadJson: { ...basePayload, ...merged } };
+    }
+
+    if (record.recordType === "bank-statement") {
+      const basePayload = (record.payloadJson && typeof record.payloadJson === "object" ? record.payloadJson : {}) as Record<string, unknown>;
+      const normalizedBase = normalizeBankStatementTransactions(basePayload);
+      const parsedBank = parseBankStatementText(sourceText);
+      const hintedBaseTransactions = applyBankStatementCorrectionHints(normalizedBase.transactions, bankStatementCorrectionHints);
+      const parsedNormalized = normalizeBankStatementTransactions({
+        transactions: applyBankStatementCorrectionHints(parsedBank.transactions, bankStatementCorrectionHints),
+      });
+      const transactions = hintedBaseTransactions.length > 0 ? hintedBaseTransactions : parsedNormalized.transactions;
+      return {
+        ...record,
+        payloadJson: attachDestinationRouting("bank-statement", {
+          ...basePayload,
+          statementPeriod:
+            (typeof basePayload.statementPeriod === "string" && basePayload.statementPeriod.trim())
+              ? basePayload.statementPeriod
+              : parsedBank.statementPeriod,
+          transactions,
+          feedbackSignals: {
+            priorBankTransactionMappings: bankStatementCorrectionHints?.transactionMappings.length ?? 0,
+          },
+        }),
+      };
+    }
+
+    return record;
+  });
+
+  const finalRecords = records.length > 0 ? records : fallback.records;
+  const finalClauses = baseExtraction.clauses.length > 0 ? baseExtraction.clauses : fallback.clauses;
+  return { records: finalRecords, clauses: finalClauses };
+}
+
+function applyClassificationGuardrails(
+  extraction: AiIngestionExtractionResult,
+  classification: IngestionClassification,
+): AiIngestionExtractionResult {
+  const records = [...extraction.records];
+  const alreadyHasPredicted = records.some((row) => row.recordType === classification.predictedRecordType);
+  if (!alreadyHasPredicted && classification.predictedRecordType !== "document-metadata") {
+    records.push({
+      recordType: "document-metadata",
+      confidenceScore: classification.confidence,
+      payloadJson: {
+        title: "Classifier Routing Warning",
+        warning: `Classifier predicted ${classification.predictedRecordType} but extractor did not emit that record type.`,
+        classifier: classification,
+      },
+    });
+  }
+
+  if (classification.requiresManualReview) {
+    records.push({
+      recordType: "document-metadata",
+      confidenceScore: classification.confidence,
+      payloadJson: {
+        title: "Manual Routing Required",
+        warning: "Classifier confidence is below threshold; review and route manually before commit.",
+        classifier: classification,
+      },
+    });
+  }
+
+  return {
+    records,
+    clauses: extraction.clauses,
+  };
+}
+
+function buildOwnerRosterFallbackExtraction(
+  job: AiIngestionJob,
+  sourceText: string,
+  ownerRosterCorrectionHints?: AssociationOwnerRosterCorrectionHints,
+): AiIngestionExtractionResult {
+  const ownerRosterItems = parseOwnerRosterText(sourceText);
+  const normalizedBlock = parseOwnerRosterFromAddressBlocks(sourceText, ownerRosterCorrectionHints);
+  const quality = scoreOwnerRosterItems(ownerRosterItems, sourceText);
+  const unresolvedExceptions = buildOwnerRosterUnresolvedExceptions(normalizedBlock.entries);
+  return {
+    records: [{
+      recordType: "owner-roster",
+      confidenceScore: 0.72,
+      payloadJson: attachDestinationRouting("owner-roster", {
+        title: "Extracted Owner Roster",
+        itemCount: ownerRosterItems.length,
+        items: ownerRosterItems,
+        normalizedEntries: normalizedBlock.entries,
+        unresolvedExceptions,
+        feedbackSignals: {
+          priorUnitRemaps: ownerRosterCorrectionHints?.unitRemaps.length ?? 0,
+          priorOwnerNameFixes: ownerRosterCorrectionHints?.ownerNameFixes.length ?? 0,
+        },
+        extractionStrategy: "deterministic-parser",
+        extractionQuality: quality,
+      }),
+    }],
+    clauses: [],
+  };
+}
+
+function buildContactRosterFallbackExtraction(sourceText: string): AiIngestionExtractionResult {
+  const contactRosterItems = parseContactRosterText(sourceText);
+  return {
+    records: [{
+      recordType: "contact-roster",
+      confidenceScore: 0.68,
+      payloadJson: attachDestinationRouting("contact-roster", {
+        title: "Extracted Contact Roster",
+        itemCount: contactRosterItems.length,
+        items: contactRosterItems,
+      }),
+    }],
+    clauses: [],
+  };
+}
+
+function buildBankStatementFallbackExtraction(
+  sourceText: string,
+  bankStatementCorrectionHints?: AssociationBankStatementCorrectionHints,
+): AiIngestionExtractionResult {
+  const parsed = parseBankStatementText(sourceText);
+  return {
+    records: [{
+      recordType: "bank-statement",
+      confidenceScore: 0.7,
+      payloadJson: attachDestinationRouting("bank-statement", {
+        statementPeriod: parsed.statementPeriod,
+        transactionCountEstimate: sourceText.split(/\r?\n/).filter((line) => /\d/.test(line)).length,
+        transactions: applyBankStatementCorrectionHints(parsed.transactions, bankStatementCorrectionHints),
+        feedbackSignals: {
+          priorBankTransactionMappings: bankStatementCorrectionHints?.transactionMappings.length ?? 0,
+        },
+        rawSnippet: sourceText.slice(0, 600),
+      }),
+    }],
+    clauses: [],
+  };
+}
+
+function buildInvoiceDraftFallbackExtraction(sourceText: string): AiIngestionExtractionResult {
+  const amountMatch = sourceText.match(/\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?/);
+  const dateMatch = sourceText.match(/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/);
+  const vendorLine = sourceText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !/invoice|date|amount|due/i.test(line)) ?? "Extracted Vendor";
+  return {
+    records: [{
+      recordType: "invoice-draft",
+      confidenceScore: 0.66,
+      payloadJson: attachDestinationRouting("invoice-draft", {
+        vendorName: vendorLine,
+        invoiceNumber: null,
+        amount: amountMatch ? toNumber(amountMatch[0]) : null,
+        invoiceDate: dateMatch?.[0] ?? null,
+        dueDate: null,
+        rawSnippet: sourceText.slice(0, 400),
+      }),
+    }],
+    clauses: [],
+  };
+}
+
+function buildMeetingNotesFallbackExtraction(sourceText: string): AiIngestionExtractionResult {
+  return {
+    records: [{
+      recordType: "meeting-notes",
+      confidenceScore: 0.62,
+      payloadJson: attachDestinationRouting("meeting-notes", {
+        title: "Extracted Meeting Notes",
+        summary: sourceText.slice(0, 400),
+        suggestedMeetingType: /budget/i.test(sourceText) ? "budget" : "board",
+      }),
+    }],
+    clauses: [],
+  };
+}
+
+function buildDocumentMetadataFallbackExtraction(job: AiIngestionJob, sourceText: string): AiIngestionExtractionResult {
+  return {
+    records: [{
+      recordType: "document-metadata",
+      confidenceScore: 0.5,
+      payloadJson: attachDestinationRouting("document-metadata", {
+        title: job.sourceFilename || "Uploaded Document",
+        tags: ["review-required"],
+        snippet: sourceText.slice(0, 400),
+      }),
+    }],
+    clauses: [],
+  };
+}
+
+function getFallbackParserStrategies(): FallbackParserStrategy[] {
+  return [
+    {
+      format: "address-block-roster",
+      appliesTo: ({ job, sourceText }) => Boolean(job.associationId) && parseOwnerRosterText(sourceText).length > 0,
+      build: ({ job, sourceText, ownerRosterCorrectionHints }) => buildOwnerRosterFallbackExtraction(job, sourceText, ownerRosterCorrectionHints),
+    },
+    {
+      format: "structured-table",
+      appliesTo: ({ job, sourceText }) => Boolean(job.associationId) && parseOwnerRosterText(sourceText).length > 0,
+      build: ({ job, sourceText, ownerRosterCorrectionHints }) => buildOwnerRosterFallbackExtraction(job, sourceText, ownerRosterCorrectionHints),
+    },
+    {
+      format: "delimited-list",
+      appliesTo: ({ job, sourceText }) => Boolean(job.associationId) && parseOwnerRosterText(sourceText).length > 0,
+      build: ({ job, sourceText, ownerRosterCorrectionHints }) => buildOwnerRosterFallbackExtraction(job, sourceText, ownerRosterCorrectionHints),
+    },
+    {
+      format: "bank-statement",
+      appliesTo: ({ sourceText }) => /statement|transaction|beginning balance|ending balance|debit|credit/i.test(sourceText),
+      build: ({ sourceText, bankStatementCorrectionHints }) => buildBankStatementFallbackExtraction(sourceText, bankStatementCorrectionHints),
+    },
+    {
+      format: "structured-table",
+      appliesTo: ({ sourceText }) => parseContactRosterText(sourceText).length > 0,
+      build: ({ sourceText }) => buildContactRosterFallbackExtraction(sourceText),
+    },
+    {
+      format: "freeform-text",
+      appliesTo: ({ sourceText }) => /invoice|vendor|amount|due/i.test(sourceText),
+      build: ({ sourceText }) => buildInvoiceDraftFallbackExtraction(sourceText),
+    },
+    {
+      format: "freeform-text",
+      appliesTo: ({ sourceText }) => /meeting|minutes|agenda|resolution|board/i.test(sourceText),
+      build: ({ sourceText }) => buildMeetingNotesFallbackExtraction(sourceText),
+    },
+    {
+      format: "document-metadata",
+      appliesTo: () => true,
+      build: ({ job, sourceText }) => buildDocumentMetadataFallbackExtraction(job, sourceText),
+    },
+  ];
+}
+
+function buildFallbackIngestionExtraction(
+  job: AiIngestionJob,
+  sourceText: string,
+  ownerRosterCorrectionHints?: AssociationOwnerRosterCorrectionHints,
+  bankStatementCorrectionHints?: AssociationBankStatementCorrectionHints,
+): AiIngestionExtractionResult {
+  const format = detectIngestionSourceFormat(sourceText);
+  const strategy = getFallbackParserStrategies().find((candidate) => candidate.appliesTo({ job, sourceText, format }));
+  const strategyResult = strategy
+    ? strategy.build({ job, sourceText, ownerRosterCorrectionHints, bankStatementCorrectionHints })
+    : buildDocumentMetadataFallbackExtraction(job, sourceText);
+
+  const isBylawLike = /bylaw|article|section|quorum|board|amendment|notice/i.test(sourceText);
+  const clauses = isBylawLike
+    ? (() => {
+        const sectionMatches = Array.from(sourceText.matchAll(/(Article\s+[A-Za-z0-9IVX]+|Section\s+\d+(\.\d+)?)/gi));
+        const chunks = sectionMatches.length > 0
+          ? sectionMatches.slice(0, 8).map((match, index) => ({
+              title: match[1],
+              clauseText: sourceText.slice(match.index ?? 0, Math.min(sourceText.length, (sectionMatches[index + 1]?.index ?? sourceText.length))).trim(),
+            }))
+          : [{ title: "General Bylaw Clause", clauseText: sourceText.slice(0, 1200).trim() || "No source text provided." }];
+
+        return chunks.map((chunk) => {
+          const lower = chunk.clauseText.toLowerCase();
+          const tags: string[] = [];
+          const suggestedLinks: AiIngestionExtractionClause["suggestedLinks"] = [];
+          if (lower.includes("meeting")) tags.push("meetings");
+          if (lower.includes("budget")) {
+            tags.push("budget");
+            suggestedLinks.push({
+              entityType: "governance-template-item",
+              entityId: "budget-review",
+              confidenceScore: 0.7,
+            });
+          }
+          if (lower.includes("notice")) tags.push("notice");
+          return {
+            title: chunk.title,
+            clauseText: chunk.clauseText,
+            confidenceScore: 0.62,
+            tags,
+            suggestedLinks,
+          };
+        });
+      })()
+    : [];
+
+  return {
+    records: strategyResult.records,
+    clauses,
+  };
+}
+
 export interface IStorage {
-  getAssociations(): Promise<Association[]>;
-  createAssociation(data: InsertAssociation): Promise<Association>;
-  updateAssociation(id: string, data: Partial<InsertAssociation>): Promise<Association | undefined>;
+  getAssociations(options?: { includeArchived?: boolean }): Promise<Association[]>;
+  createAssociation(data: InsertAssociation, actorEmail?: string): Promise<Association>;
+  updateAssociation(id: string, data: Partial<InsertAssociation>, actorEmail?: string): Promise<Association | undefined>;
+  deleteAssociation(id: string, actorEmail?: string): Promise<boolean>;
 
-  getUnits(): Promise<Unit[]>;
-  createUnit(data: InsertUnit): Promise<Unit>;
-  updateUnit(id: string, data: Partial<InsertUnit>): Promise<Unit | undefined>;
+  getBuildings(associationId?: string): Promise<Building[]>;
+  getBuildingById(id: string): Promise<Building | undefined>;
+  createBuilding(data: InsertBuilding, actorEmail?: string): Promise<Building>;
+  updateBuilding(id: string, data: Partial<InsertBuilding>, actorEmail?: string): Promise<Building | undefined>;
 
-  getPersons(): Promise<Person[]>;
-  createPerson(data: InsertPerson): Promise<Person>;
-  updatePerson(id: string, data: Partial<InsertPerson>): Promise<Person | undefined>;
+  getUnits(associationId?: string): Promise<Unit[]>;
+  getUnitById(id: string): Promise<Unit | undefined>;
+  createUnit(data: InsertUnit, actorEmail?: string): Promise<Unit>;
+  updateUnit(id: string, data: Partial<InsertUnit>, changedBy?: string): Promise<Unit | undefined>;
+  deleteUnit(id: string, actorEmail?: string): Promise<boolean>;
 
-  getOwnerships(): Promise<Ownership[]>;
-  createOwnership(data: InsertOwnership): Promise<Ownership>;
+  getPersons(associationId?: string): Promise<Person[]>;
+  createPerson(data: InsertPerson, actorEmail?: string): Promise<Person>;
+  updatePerson(id: string, data: Partial<InsertPerson>, actorEmail?: string): Promise<Person | undefined>;
+  deletePerson(id: string, actorEmail?: string): Promise<boolean>;
 
-  getOccupancies(): Promise<Occupancy[]>;
-  createOccupancy(data: InsertOccupancy): Promise<Occupancy>;
+  getOwnerships(associationId?: string): Promise<Ownership[]>;
+  createOwnership(data: InsertOwnership, actorEmail?: string): Promise<Ownership>;
+  updateOwnership(id: string, data: Partial<InsertOwnership>, actorEmail?: string): Promise<Ownership | undefined>;
+  deleteOwnership(id: string, actorEmail?: string): Promise<boolean>;
 
-  getBoardRoles(): Promise<BoardRole[]>;
-  createBoardRole(data: InsertBoardRole): Promise<BoardRole>;
+  getOccupancies(associationId?: string): Promise<Occupancy[]>;
+  createOccupancy(data: InsertOccupancy, actorEmail?: string): Promise<Occupancy>;
+  deleteOccupancy(id: string, actorEmail?: string): Promise<boolean>;
+  submitOnboardingIntake(input: {
+    associationId: string;
+    unitId: string;
+    occupancyType: "OWNER_OCCUPIED" | "TENANT";
+    person: {
+      firstName: string;
+      lastName: string;
+      email?: string | null;
+      phone?: string | null;
+      mailingAddress?: string | null;
+      emergencyContactName?: string | null;
+      emergencyContactPhone?: string | null;
+      contactPreference?: string | null;
+    };
+    startDate: Date;
+    ownershipPercentage?: number | null;
+  }): Promise<{
+    person: Person;
+    occupancy: Occupancy;
+    ownership: Ownership | null;
+  }>;
+  getResidentialDataset(associationId?: string): Promise<ResidentialDataset>;
+  getAssociationOnboardingState(associationId: string): Promise<{
+    associationId: string;
+    state: "not-started" | "in-progress" | "blocked" | "complete";
+    blockers: string[];
+    remediationActions: string[];
+    scorePercent: number;
+  }>;
+  getAssociationOverview(associationId: string): Promise<{
+    associationId: string;
+    units: number;
+    activeOwners: number;
+    activeOccupants: number;
+    maintenanceOpen: number;
+    maintenanceOverdue: number;
+    paymentMethodsActive: number;
+    onboardingState: "not-started" | "in-progress" | "blocked" | "complete";
+    onboardingScorePercent: number;
+    contactCoveragePercent: number;
+  }>;
 
-  getDocuments(): Promise<Document[]>;
-  createDocument(data: InsertDocument): Promise<Document>;
+  getBoardRoles(associationId?: string): Promise<BoardRole[]>;
+  createBoardRole(data: InsertBoardRole, actorEmail?: string): Promise<BoardRole>;
+  deleteBoardRole(id: string, actorEmail?: string): Promise<boolean>;
+
+  getDocuments(associationId?: string): Promise<Document[]>;
+  createDocument(data: InsertDocument, actorEmail?: string): Promise<Document>;
+  updateDocument(id: string, data: Partial<InsertDocument>, actorEmail?: string): Promise<Document | undefined>;
+  deleteDocument(id: string, actorEmail?: string): Promise<boolean>;
+  getHoaFeeSchedules(associationId?: string): Promise<HoaFeeSchedule[]>;
+  createHoaFeeSchedule(data: InsertHoaFeeSchedule): Promise<HoaFeeSchedule>;
+  updateHoaFeeSchedule(id: string, data: Partial<InsertHoaFeeSchedule>): Promise<HoaFeeSchedule | undefined>;
+  getSpecialAssessments(associationId?: string): Promise<SpecialAssessment[]>;
+  createSpecialAssessment(data: InsertSpecialAssessment): Promise<SpecialAssessment>;
+  updateSpecialAssessment(id: string, data: Partial<InsertSpecialAssessment>): Promise<SpecialAssessment | undefined>;
+  getLateFeeRules(associationId?: string): Promise<LateFeeRule[]>;
+  createLateFeeRule(data: InsertLateFeeRule): Promise<LateFeeRule>;
+  updateLateFeeRule(id: string, data: Partial<InsertLateFeeRule>): Promise<LateFeeRule | undefined>;
+  getLateFeeEvents(associationId?: string): Promise<LateFeeEvent[]>;
+  calculateLateFee(input: {
+    associationId: string;
+    ruleId: string;
+    balanceAmount: number;
+    dueDate: Date;
+    asOfDate: Date;
+    referenceType?: string | null;
+    referenceId?: string | null;
+    apply?: boolean;
+  }): Promise<{ calculatedFee: number; daysLate: number; appliedEventId: string | null }>;
+  getFinancialAccounts(associationId?: string): Promise<FinancialAccount[]>;
+  createFinancialAccount(data: InsertFinancialAccount): Promise<FinancialAccount>;
+  updateFinancialAccount(id: string, data: Partial<InsertFinancialAccount>): Promise<FinancialAccount | undefined>;
+  getFinancialCategories(associationId?: string): Promise<FinancialCategory[]>;
+  createFinancialCategory(data: InsertFinancialCategory): Promise<FinancialCategory>;
+  updateFinancialCategory(id: string, data: Partial<InsertFinancialCategory>): Promise<FinancialCategory | undefined>;
+  getBudgets(associationId?: string): Promise<Budget[]>;
+  createBudget(data: InsertBudget): Promise<Budget>;
+  updateBudget(id: string, data: Partial<InsertBudget>): Promise<Budget | undefined>;
+  getBudgetVersions(budgetId: string): Promise<BudgetVersion[]>;
+  createBudgetVersion(data: InsertBudgetVersion): Promise<BudgetVersion>;
+  updateBudgetVersion(id: string, data: Partial<InsertBudgetVersion>): Promise<BudgetVersion | undefined>;
+  getBudgetLines(budgetVersionId: string): Promise<BudgetLine[]>;
+  createBudgetLine(data: InsertBudgetLine): Promise<BudgetLine>;
+  updateBudgetLine(id: string, data: Partial<InsertBudgetLine>): Promise<BudgetLine | undefined>;
+  getBudgetVariance(associationId: string, budgetVersionId: string): Promise<Array<{
+    budgetLineId: string;
+    lineItemName: string;
+    plannedAmount: number;
+    actualAmount: number;
+    varianceAmount: number;
+    accountId: string | null;
+    categoryId: string | null;
+  }>>;
+  getVendorInvoices(associationId?: string): Promise<VendorInvoice[]>;
+  createVendorInvoice(data: InsertVendorInvoice): Promise<VendorInvoice>;
+  updateVendorInvoice(id: string, data: Partial<InsertVendorInvoice>): Promise<VendorInvoice | undefined>;
+  getUtilityPayments(associationId?: string): Promise<UtilityPayment[]>;
+  createUtilityPayment(data: InsertUtilityPayment): Promise<UtilityPayment>;
+  updateUtilityPayment(id: string, data: Partial<InsertUtilityPayment>): Promise<UtilityPayment | undefined>;
+  getPaymentMethodConfigs(associationId?: string): Promise<PaymentMethodConfig[]>;
+  createPaymentMethodConfig(data: InsertPaymentMethodConfig): Promise<PaymentMethodConfig>;
+  updatePaymentMethodConfig(id: string, data: Partial<InsertPaymentMethodConfig>): Promise<PaymentMethodConfig | undefined>;
+  getPaymentGatewayConnections(associationId?: string): Promise<PaymentGatewayConnection[]>;
+  validateAndUpsertPaymentGatewayConnection(payload: {
+    associationId: string;
+    provider: "stripe" | "other";
+    providerAccountId?: string | null;
+    publishableKey?: string | null;
+    secretKey?: string | null;
+    webhookSecret?: string | null;
+    isActive?: boolean;
+    metadataJson?: Record<string, unknown> | null;
+  }): Promise<{
+    validated: boolean;
+    checks: string[];
+    connection: PaymentGatewayConnection;
+  }>;
+  createOwnerPaymentLink(payload: {
+    associationId: string;
+    unitId: string;
+    personId: string;
+    amount?: number | null;
+    currency?: string | null;
+    allowPartial?: boolean;
+    memo?: string | null;
+    expiresAt?: Date | string | null;
+    createdBy?: string | null;
+    metadataJson?: Record<string, unknown> | null;
+  }): Promise<{ link: OwnerPaymentLink; paymentUrl: string; outstandingBalance: number }>;
+  getOwnerPaymentLinkByToken(token: string): Promise<OwnerPaymentLink | undefined>;
+  processPaymentWebhookEvent(payload: {
+    associationId: string;
+    provider: "stripe" | "other";
+    providerEventId: string;
+    eventType?: string | null;
+    status?: "succeeded" | "failed" | "pending" | null;
+    amount?: number | null;
+    currency?: string | null;
+    personId?: string | null;
+    unitId?: string | null;
+    paymentLinkToken?: string | null;
+    gatewayReference?: string | null;
+    rawPayloadJson?: unknown;
+  }): Promise<{
+    duplicate: boolean;
+    event: PaymentWebhookEvent;
+    ownerLedgerEntry: OwnerLedgerEntry | null;
+    message: string;
+  }>;
+  sendPaymentInstructionNotice(payload: {
+    associationId: string;
+    templateId?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    audience?: "owners" | "occupants" | "all";
+    ccOwners?: boolean;
+    requireApproval?: boolean | null;
+    scheduledFor?: Date | string | null;
+    sentBy?: string | null;
+  }): Promise<{
+    recipientCount: number;
+    sentCount: number;
+    sendIds: string[];
+    skippedRecipients: number;
+    missingEmailCount: number;
+    duplicateEmailCount: number;
+    variables: Record<string, string>;
+  }>;
+  getExpenseAttachments(expenseType?: "invoice" | "utility-payment", expenseId?: string, associationId?: string): Promise<ExpenseAttachment[]>;
+  createExpenseAttachment(data: InsertExpenseAttachment): Promise<ExpenseAttachment>;
+  getOwnerLedgerEntries(associationId?: string): Promise<OwnerLedgerEntry[]>;
+  createOwnerLedgerEntry(data: InsertOwnerLedgerEntry): Promise<OwnerLedgerEntry>;
+  getOwnerLedgerSummary(associationId: string): Promise<Array<{ personId: string; unitId: string; balance: number }>>;
+  getGovernanceMeetings(associationId?: string): Promise<GovernanceMeeting[]>;
+  createGovernanceMeeting(data: InsertGovernanceMeeting): Promise<GovernanceMeeting>;
+  updateGovernanceMeeting(id: string, data: Partial<InsertGovernanceMeeting>): Promise<GovernanceMeeting | undefined>;
+  getMeetingAgendaItems(meetingId: string): Promise<MeetingAgendaItem[]>;
+  createMeetingAgendaItem(data: InsertMeetingAgendaItem): Promise<MeetingAgendaItem>;
+  getMeetingNotes(meetingId: string): Promise<MeetingNote[]>;
+  createMeetingNote(data: InsertMeetingNote): Promise<MeetingNote>;
+  updateMeetingNote(id: string, data: Partial<InsertMeetingNote>): Promise<MeetingNote | undefined>;
+  getResolutions(associationId?: string): Promise<Resolution[]>;
+  createResolution(data: InsertResolution): Promise<Resolution>;
+  updateResolution(id: string, data: Partial<InsertResolution>): Promise<Resolution | undefined>;
+  getVoteRecords(resolutionId: string): Promise<VoteRecord[]>;
+  createVoteRecord(data: InsertVoteRecord): Promise<VoteRecord>;
+  getCalendarEvents(associationId?: string): Promise<CalendarEvent[]>;
+  createCalendarEvent(data: InsertCalendarEvent): Promise<CalendarEvent>;
+  updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
+  getGovernanceComplianceTemplates(associationId?: string): Promise<GovernanceComplianceTemplate[]>;
+  createGovernanceComplianceTemplate(data: InsertGovernanceComplianceTemplate): Promise<GovernanceComplianceTemplate>;
+  getGovernanceTemplateItems(templateId: string): Promise<GovernanceTemplateItem[]>;
+  createGovernanceTemplateItem(data: InsertGovernanceTemplateItem): Promise<GovernanceTemplateItem>;
+  getAnnualGovernanceTasks(associationId?: string): Promise<AnnualGovernanceTask[]>;
+  createAnnualGovernanceTask(data: InsertAnnualGovernanceTask): Promise<AnnualGovernanceTask>;
+  updateAnnualGovernanceTask(id: string, data: Partial<InsertAnnualGovernanceTask>): Promise<AnnualGovernanceTask | undefined>;
+  generateAnnualGovernanceTasksFromTemplate(input: {
+    associationId: string;
+    templateId: string;
+    year: number;
+    ownerPersonId?: string | null;
+  }): Promise<{ created: number }>;
+  getAiIngestionJobs(associationId?: string): Promise<AiIngestionJob[]>;
+  getAiIngestionMonitoring(windowDays?: number): Promise<{
+    windowDays: number;
+    totalJobs: number;
+    completedJobs: number;
+    failedJobs: number;
+    processingJobs: number;
+    queuedJobs: number;
+    failureRate: number;
+    avgDurationMs: number;
+    alerts: string[];
+  }>;
+  createAiIngestionJob(data: InsertAiIngestionJob & { submittedBy?: string | null; sourceFileUrl?: string | null }): Promise<AiIngestionJob>;
+  processAiIngestionJob(jobId: string): Promise<AiIngestionJob>;
+  getAiExtractedRecords(jobId?: string): Promise<AiExtractedRecord[]>;
+  getAiExtractedRecordById(id: string): Promise<AiExtractedRecord | undefined>;
+  createAiExtractedRecord(data: InsertAiExtractedRecord): Promise<AiExtractedRecord>;
+  createAiIngestionImportRun(data: InsertAiIngestionImportRun): Promise<AiIngestionImportRun>;
+  getAiIngestionImportRuns(extractedRecordId: string): Promise<AiIngestionImportRun[]>;
+  getBankStatementResolutionHints(recordId: string): Promise<BankStatementResolutionHint[]>;
+  rollbackAiIngestionImportRun(runId: string, actorEmail?: string): Promise<{
+    rolledBack: boolean;
+    deletedVendorInvoices: number;
+    deletedOwnerLedgerEntries: number;
+    message: string;
+  }>;
+  reprocessAiIngestionImportRun(runId: string, options?: {
+    rollbackFirst?: boolean;
+    actorEmail?: string;
+  }): Promise<{
+    reprocessed: boolean;
+    ingestionJobId: string | null;
+    rolledBack: boolean;
+    message: string;
+  }>;
+  previewRollbackAiIngestionImportRun(runId: string): Promise<{
+    canRollback: boolean;
+    vendorInvoicesToDelete: number;
+    ownerLedgerEntriesToDelete: number;
+    missingRefs: number;
+    message: string;
+  }>;
+  reviewAiExtractedRecord(id: string, payload: { reviewStatus: "approved" | "rejected"; payloadJson?: unknown; reviewedBy?: string | null }): Promise<AiExtractedRecord | undefined>;
+  getClauseRecords(filters?: { ingestionJobId?: string; associationId?: string; reviewStatus?: "pending-review" | "approved" | "rejected"; query?: string }): Promise<ClauseRecord[]>;
+  createClauseRecord(data: InsertClauseRecord): Promise<ClauseRecord>;
+  reviewClauseRecord(id: string, payload: { reviewStatus: "approved" | "rejected"; title?: string; clauseText?: string; reviewedBy?: string | null }): Promise<ClauseRecord | undefined>;
+  importApprovedAiExtractedRecord(
+    id: string,
+    actorEmail?: string,
+    options?: { mode?: "preview" | "commit"; payloadOverride?: unknown },
+  ): Promise<{
+    imported: boolean;
+    dryRun: boolean;
+    targetModule: string;
+    createdPersons: number;
+    updatedPersons: number;
+    createdUnits: number;
+    createdOwnerships: number;
+    createdVendorInvoices: number;
+    createdOwnerLedgerEntries: number;
+    skippedRows: number;
+    message: string;
+  }>;
+  getClauseTags(clauseRecordId: string): Promise<ClauseTag[]>;
+  createClauseTag(data: InsertClauseTag): Promise<ClauseTag>;
+  getSuggestedLinks(clauseRecordId: string): Promise<SuggestedLink[]>;
+  createSuggestedLink(data: InsertSuggestedLink): Promise<SuggestedLink>;
+  updateSuggestedLink(id: string, data: { isApproved?: number; confidenceScore?: number | null }): Promise<SuggestedLink | undefined>;
+  getApprovedClauseLinksForGovernance(associationId?: string): Promise<Array<{
+    clauseRecordId: string;
+    clauseTitle: string;
+    clauseText: string;
+    entityType: string;
+    entityId: string;
+    confidenceScore: number | null;
+    isApproved: number;
+  }>>;
+  getNoticeTemplates(associationId?: string): Promise<NoticeTemplate[]>;
+  createNoticeTemplate(data: InsertNoticeTemplate): Promise<NoticeTemplate>;
+  updateNoticeTemplate(id: string, data: Partial<InsertNoticeTemplate>): Promise<NoticeTemplate | undefined>;
+  sendNotice(payload: {
+    associationId?: string | null;
+    templateId?: string | null;
+    recipientEmail: string;
+    recipientPersonId?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    variables?: Record<string, string>;
+    requireApproval?: boolean | null;
+    scheduledFor?: Date | string | null;
+    bypassReadinessGate?: boolean | null;
+    sentBy?: string | null;
+  }): Promise<{ send: NoticeSend; history: CommunicationHistory }>;
+  resolveNotificationRecipients(payload: {
+    associationId: string;
+    audience: "owners" | "occupants" | "all";
+    ccOwners?: boolean;
+  }): Promise<Array<{
+    personId: string;
+    email: string;
+    role: "owner" | "occupant";
+    unitId: string;
+  }>>;
+  resolveNotificationRecipientPreview(payload: {
+    associationId: string;
+    audience: "owners" | "occupants" | "all";
+    ccOwners?: boolean;
+  }): Promise<NotificationRecipientResolution>;
+  sendTargetedNotice(payload: {
+    associationId: string;
+    audience: "owners" | "occupants" | "all";
+    ccOwners?: boolean;
+    templateId?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    variables?: Record<string, string>;
+    requireApproval?: boolean | null;
+    scheduledFor?: Date | string | null;
+    bypassReadinessGate?: boolean | null;
+    sentBy?: string | null;
+  }): Promise<{
+    recipientCount: number;
+    sentCount: number;
+    sendIds: string[];
+    skippedRecipients: number;
+    missingEmailCount: number;
+    duplicateEmailCount: number;
+  }>;
+  getAssociationContactReadiness(associationId: string): Promise<{
+    associationId: string;
+    activeOwners: number;
+    activeOccupants: number;
+    contactableOwners: number;
+    contactableOccupants: number;
+    contactCoveragePercent: number;
+    canSendNotices: boolean;
+    blockingReasons: string[];
+  }>;
+  getAssociationOnboardingCompleteness(associationId: string): Promise<{
+    associationId: string;
+    scorePercent: number;
+    components: {
+      unitsConfigured: { score: number; total: number; completed: number };
+      ownershipMapped: { score: number; total: number; completed: number };
+      occupancyMapped: { score: number; total: number; completed: number };
+      contactCoverage: { score: number; total: number; completed: number };
+      paymentConfig: { score: number; total: number; completed: number };
+    };
+  }>;
+  getNoticeSends(associationId?: string, status?: string): Promise<NoticeSend[]>;
+  reviewNoticeSend(
+    id: string,
+    payload: { decision: "approved" | "rejected"; actedBy?: string | null },
+  ): Promise<{ send: NoticeSend; history: CommunicationHistory } | undefined>;
+  runScheduledNotices(options?: {
+    associationId?: string;
+    now?: Date;
+    actedBy?: string | null;
+  }): Promise<{ processed: number; sendIds: string[] }>;
+  getCommunicationHistory(associationId?: string): Promise<CommunicationHistory[]>;
+  getPermissionEnvelopes(associationId?: string): Promise<PermissionEnvelope[]>;
+  createPermissionEnvelope(data: InsertPermissionEnvelope): Promise<PermissionEnvelope>;
+  updatePermissionEnvelope(id: string, data: Partial<InsertPermissionEnvelope>): Promise<PermissionEnvelope | undefined>;
+  getAdminAssociationScopes(): Promise<AdminAssociationScope[]>;
+  getAdminAssociationScopesByUserId(adminUserId: string): Promise<AdminAssociationScope[]>;
+  upsertAdminAssociationScope(data: InsertAdminAssociationScope): Promise<AdminAssociationScope>;
+  getPortalAccesses(associationId?: string): Promise<PortalAccess[]>;
+  createPortalAccess(data: InsertPortalAccess): Promise<PortalAccess>;
+  updatePortalAccess(id: string, data: Partial<InsertPortalAccess>): Promise<PortalAccess | undefined>;
+  getPortalAccessById(id: string): Promise<PortalAccess | undefined>;
+  getPortalAccessByAssociationEmail(associationId: string, email: string): Promise<PortalAccess | undefined>;
+  touchPortalAccessLogin(id: string): Promise<void>;
+  getAssociationMemberships(associationId?: string): Promise<AssociationMembership[]>;
+  upsertAssociationMembership(data: InsertAssociationMembership): Promise<AssociationMembership>;
+  getTenantConfig(associationId: string): Promise<TenantConfig | undefined>;
+  upsertTenantConfig(data: InsertTenantConfig): Promise<TenantConfig>;
+  getEmailThreads(associationId?: string): Promise<EmailThread[]>;
+  upsertEmailThread(data: InsertEmailThread): Promise<EmailThread>;
+  getContactUpdateRequests(filters?: { associationId?: string; portalAccessId?: string }): Promise<ContactUpdateRequest[]>;
+  createContactUpdateRequest(data: InsertContactUpdateRequest): Promise<ContactUpdateRequest>;
+  reviewContactUpdateRequest(id: string, payload: { reviewStatus: "approved" | "rejected"; reviewedBy?: string | null }): Promise<ContactUpdateRequest | undefined>;
+  getMaintenanceRequests(filters?: {
+    associationId?: string;
+    portalAccessId?: string;
+    status?: string;
+  }): Promise<MaintenanceRequest[]>;
+  createMaintenanceRequest(data: InsertMaintenanceRequest): Promise<MaintenanceRequest>;
+  updateMaintenanceRequest(id: string, data: Partial<InsertMaintenanceRequest>): Promise<MaintenanceRequest | undefined>;
+  runMaintenanceEscalationSweep(options?: {
+    associationId?: string;
+    now?: Date;
+    actorEmail?: string | null;
+  }): Promise<{
+    processed: number;
+    escalated: number;
+    escalatedIds: string[];
+  }>;
+  getPortalDocuments(portalAccessId: string): Promise<Document[]>;
+  getPortalCommunicationHistory(portalAccessId: string): Promise<CommunicationHistory[]>;
+  getUnitChangeHistory(unitId: string): Promise<UnitChangeHistory[]>;
+  createDocumentTag(data: InsertDocumentTag, actorEmail?: string): Promise<DocumentTag>;
+  getDocumentTags(documentId: string): Promise<DocumentTag[]>;
+  createDocumentVersion(data: InsertDocumentVersion, actorEmail?: string): Promise<DocumentVersion>;
+  getDocumentVersions(documentId: string): Promise<DocumentVersion[]>;
+  getAuditLogs(associationId?: string): Promise<AuditLog[]>;
+  getAdminUsers(): Promise<AdminUser[]>;
+  getAdminUserById(id: string): Promise<AdminUser | undefined>;
+  getAdminUserByEmail(email: string): Promise<AdminUser | undefined>;
+  upsertAdminUser(data: InsertAdminUser): Promise<AdminUser>;
+  updateAdminUserRole(id: string, role: NonNullable<InsertAdminUser["role"]>, changedBy: string, reason?: string): Promise<AdminUser | undefined>;
+  getAuthUserById(id: string): Promise<AuthUser | undefined>;
+  getAuthUserByEmail(email: string): Promise<AuthUser | undefined>;
+  createAuthUser(data: InsertAuthUser): Promise<AuthUser>;
+  updateAuthUser(id: string, data: Partial<InsertAuthUser>): Promise<AuthUser | undefined>;
+  getAuthExternalAccount(provider: "google", providerAccountId: string): Promise<AuthExternalAccount | undefined>;
+  getAuthExternalAccountByProviderEmail(provider: "google", providerEmail: string): Promise<AuthExternalAccount | undefined>;
+  createAuthExternalAccount(data: InsertAuthExternalAccount): Promise<AuthExternalAccount>;
+  upsertAuthExternalAccount(data: InsertAuthExternalAccount): Promise<AuthExternalAccount>;
+  touchAuthUserLogin(userId: string): Promise<void>;
 
   getDashboardStats(): Promise<{
     totalAssociations: number;
@@ -44,85 +2878,5298 @@ export interface IStorage {
     totalBoardMembers: number;
     totalDocuments: number;
   }>;
+
+  getRoadmap(): Promise<RoadmapResponse>;
+  createRoadmapProject(data: InsertRoadmapProject): Promise<RoadmapProject>;
+  createRoadmapWorkstream(data: InsertRoadmapWorkstream): Promise<RoadmapWorkstream>;
+  createRoadmapTask(data: InsertRoadmapTask): Promise<RoadmapTask>;
+  updateRoadmapTask(id: string, data: Partial<InsertRoadmapTask>): Promise<RoadmapTask | undefined>;
+  updateRoadmapProject(id: string, data: Partial<InsertRoadmapProject>): Promise<RoadmapProject | undefined>;
+  updateRoadmapWorkstream(id: string, data: Partial<InsertRoadmapWorkstream>): Promise<RoadmapWorkstream | undefined>;
+  getExecutiveUpdates(): Promise<ExecutiveUpdate[]>;
+  createExecutiveUpdate(data: InsertExecutiveUpdate): Promise<ExecutiveUpdate>;
+  updateExecutiveUpdate(id: string, data: Partial<InsertExecutiveUpdate>): Promise<ExecutiveUpdate | undefined>;
+  getExecutiveEvidence(executiveUpdateId: string): Promise<ExecutiveEvidence[]>;
+  createExecutiveEvidence(data: InsertExecutiveEvidence): Promise<ExecutiveEvidence>;
+  syncExecutiveFromRoadmap(): Promise<{ created: number; updated: number }>;
+
+  getAnalysisHistory(resourceId: string, module: string): Promise<{
+    versions: (AnalysisVersion & { diffFromPrevious: AnalysisDiffSummary | null })[];
+    runs: AnalysisRun[];
+  }>;
+  createAnalysisVersion(data: InsertAnalysisVersion): Promise<AnalysisVersion>;
+  createAnalysisRun(data: InsertAnalysisRun): Promise<AnalysisRun>;
+  revertAnalysisVersion(resourceId: string, module: string, versionId: string): Promise<AnalysisVersion>;
+
+  getAdminAnalytics(days: number): Promise<{
+    analyzerMetrics: {
+      totalRuns: number;
+      successRate: number;
+      avgDurationMs: number;
+      avgItemCount: number;
+    };
+    roadmapMetrics: {
+      totalProjects: number;
+      totalWorkstreams: number;
+      totalTasks: number;
+      taskStatusDistribution: { todo: number; inProgress: number; done: number };
+      completionRate: number;
+      taskThroughput: number;
+    };
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
-  async getAssociations(): Promise<Association[]> {
-    return db.select().from(associations);
+  private async recordAuditEvent(event: InsertAuditLog) {
+    await db.insert(auditLogs).values(event);
   }
 
-  async createAssociation(data: InsertAssociation): Promise<Association> {
+  async getAssociations(options?: { includeArchived?: boolean }): Promise<Association[]> {
+    const includeArchived = options?.includeArchived ?? false;
+    if (includeArchived) {
+      return db.select().from(associations);
+    }
+    return db.select().from(associations).where(eq(associations.isArchived, 0));
+  }
+
+  async createAssociation(data: InsertAssociation, actorEmail?: string): Promise<Association> {
     const [result] = await db.insert(associations).values(data).returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "association",
+      entityId: result.id,
+      associationId: result.id,
+      beforeJson: null,
+      afterJson: result,
+    });
     return result;
   }
 
-  async updateAssociation(id: string, data: Partial<InsertAssociation>): Promise<Association | undefined> {
-    const [result] = await db.update(associations).set(data).where(eq(associations.id, id)).returning();
+  async updateAssociation(id: string, data: Partial<InsertAssociation>, actorEmail?: string): Promise<Association | undefined> {
+    const [before] = await db.select().from(associations).where(eq(associations.id, id));
+    if (!before) return undefined;
+
+    const nextData: Partial<InsertAssociation> = { ...data };
+    if (typeof nextData.isArchived === "number" && nextData.archivedAt === undefined) {
+      nextData.archivedAt = nextData.isArchived === 1 ? new Date() : null;
+    }
+
+    const [result] = await db.update(associations).set(nextData).where(eq(associations.id, id)).returning();
+    if (result) {
+      await this.recordAuditEvent({
+        actorEmail: actorEmail || "system",
+        action: "update",
+        entityType: "association",
+        entityId: result.id,
+        associationId: result.id,
+        beforeJson: before,
+        afterJson: result,
+      });
+    }
     return result;
   }
 
-  async getUnits(): Promise<Unit[]> {
-    return db.select().from(units);
+  async deleteAssociation(id: string, actorEmail?: string): Promise<boolean> {
+    const [before] = await db.select().from(associations).where(eq(associations.id, id));
+    if (!before) return false;
+
+    const unitLinks = await db.select({ id: units.id }).from(units).where(eq(units.associationId, id));
+    if (unitLinks.length > 0) {
+      throw new Error("Cannot delete association with linked units");
+    }
+    const boardRoleLinks = await db.select({ id: boardRoles.id }).from(boardRoles).where(eq(boardRoles.associationId, id));
+    if (boardRoleLinks.length > 0) {
+      throw new Error("Cannot delete association with linked board roles");
+    }
+    const documentLinks = await db.select({ id: documents.id }).from(documents).where(eq(documents.associationId, id));
+    if (documentLinks.length > 0) {
+      throw new Error("Cannot delete association with linked documents");
+    }
+
+    // Preserve audit history while allowing association deletion despite FK linkage.
+    await db.update(auditLogs).set({ associationId: null }).where(eq(auditLogs.associationId, id));
+
+    const [deleted] = await db.delete(associations).where(eq(associations.id, id)).returning();
+    if (!deleted) return false;
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "delete",
+      entityType: "association",
+      entityId: before.id,
+      associationId: null,
+      beforeJson: before,
+      afterJson: null,
+    });
+    return true;
   }
 
-  async createUnit(data: InsertUnit): Promise<Unit> {
-    const [result] = await db.insert(units).values(data).returning();
+  async getBuildings(associationId?: string): Promise<Building[]> {
+    if (!associationId) return db.select().from(buildings);
+    return db.select().from(buildings).where(eq(buildings.associationId, associationId));
+  }
+
+  async getBuildingById(id: string): Promise<Building | undefined> {
+    const [result] = await db.select().from(buildings).where(eq(buildings.id, id));
     return result;
   }
 
-  async updateUnit(id: string, data: Partial<InsertUnit>): Promise<Unit | undefined> {
-    const [result] = await db.update(units).set(data).where(eq(units.id, id)).returning();
+  async createBuilding(data: InsertBuilding, actorEmail?: string): Promise<Building> {
+    const [result] = await db.insert(buildings).values(data).returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "building",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
     return result;
   }
 
-  async getPersons(): Promise<Person[]> {
-    return db.select().from(persons);
+  async updateBuilding(id: string, data: Partial<InsertBuilding>, actorEmail?: string): Promise<Building | undefined> {
+    const [existing] = await db.select().from(buildings).where(eq(buildings.id, id));
+    if (!existing) return undefined;
+
+    const [result] = await db
+      .update(buildings)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(buildings.id, id))
+      .returning();
+
+    if (!result) return undefined;
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "update",
+      entityType: "building",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: existing,
+      afterJson: result,
+    });
+
+    return result;
   }
 
-  async createPerson(data: InsertPerson): Promise<Person> {
+  async getUnits(associationId?: string): Promise<Unit[]> {
+    if (!associationId) return db.select().from(units);
+    return db.select().from(units).where(eq(units.associationId, associationId));
+  }
+
+  async getUnitById(id: string): Promise<Unit | undefined> {
+    const [result] = await db.select().from(units).where(eq(units.id, id));
+    return result;
+  }
+
+  async createUnit(data: InsertUnit, actorEmail?: string): Promise<Unit> {
+    const payload: InsertUnit = { ...data };
+    if (payload.buildingId) {
+      const [building] = await db.select().from(buildings).where(eq(buildings.id, payload.buildingId));
+      if (!building) throw new Error("Building not found");
+      if (building.associationId !== payload.associationId) {
+        throw new Error("Building must belong to the same association");
+      }
+      if (!payload.building?.trim()) {
+        payload.building = building.name;
+      }
+    }
+
+    const [result] = await db.insert(units).values(payload).returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "unit",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async updateUnit(id: string, data: Partial<InsertUnit>, changedBy?: string): Promise<Unit | undefined> {
+    const [existing] = await db.select().from(units).where(eq(units.id, id));
+    if (!existing) return undefined;
+
+    const nextAssociationId = data.associationId ?? existing.associationId;
+    const nextBuildingId = data.buildingId === undefined ? existing.buildingId : data.buildingId;
+    const payload: Partial<InsertUnit> = { ...data };
+
+    if (nextBuildingId) {
+      const [building] = await db.select().from(buildings).where(eq(buildings.id, nextBuildingId));
+      if (!building) throw new Error("Building not found");
+      if (building.associationId !== nextAssociationId) {
+        throw new Error("Building must belong to the same association");
+      }
+      if (payload.buildingId !== undefined && payload.building === undefined) {
+        payload.building = building.name;
+      }
+    }
+
+    const [result] = await db.update(units).set(payload).where(eq(units.id, id)).returning();
+    if (!result) return undefined;
+
+    const trackableFields: (keyof InsertUnit)[] = ["associationId", "buildingId", "unitNumber", "building", "squareFootage"];
+    for (const field of trackableFields) {
+      const before = existing[field];
+      const after = result[field as keyof Unit];
+      const beforeValue = before === null || before === undefined ? null : String(before);
+      const afterValue = after === null || after === undefined ? null : String(after);
+      if (beforeValue !== afterValue) {
+        await db.insert(unitChangeHistory).values({
+          unitId: id,
+          fieldName: field,
+          oldValue: beforeValue,
+          newValue: afterValue,
+          changedBy: changedBy || "system",
+        });
+      }
+    }
+
+    await this.recordAuditEvent({
+      actorEmail: changedBy || "system",
+      action: "update",
+      entityType: "unit",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: existing,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async deleteUnit(id: string, actorEmail?: string): Promise<boolean> {
+    const [before] = await db.select().from(units).where(eq(units.id, id));
+    if (!before) return false;
+
+    const [ownershipLink] = await db.select({ id: ownerships.id }).from(ownerships).where(eq(ownerships.unitId, id)).limit(1);
+    if (ownershipLink) throw new Error("Cannot delete unit with ownership history");
+
+    const [occupancyLink] = await db.select({ id: occupancies.id }).from(occupancies).where(eq(occupancies.unitId, id)).limit(1);
+    if (occupancyLink) throw new Error("Cannot delete unit with occupancy history");
+
+    const [deleted] = await db.delete(units).where(eq(units.id, id)).returning();
+    if (!deleted) return false;
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "delete",
+      entityType: "unit",
+      entityId: before.id,
+      associationId: before.associationId,
+      beforeJson: before,
+      afterJson: null,
+    });
+    return true;
+  }
+
+  async getPersons(associationId?: string): Promise<Person[]> {
+    if (!associationId) return db.select().from(persons);
+
+    const associationUnits = await db
+      .select({ id: units.id })
+      .from(units)
+      .where(eq(units.associationId, associationId));
+    const unitIds = associationUnits.map((row) => row.id);
+
+    const [ownerRows, occupancyRows, boardRows, ledgerRows] = await Promise.all([
+      unitIds.length
+        ? db
+            .select({ personId: ownerships.personId })
+            .from(ownerships)
+            .where(inArray(ownerships.unitId, unitIds))
+        : Promise.resolve([]),
+      unitIds.length
+        ? db
+            .select({ personId: occupancies.personId })
+            .from(occupancies)
+            .where(inArray(occupancies.unitId, unitIds))
+        : Promise.resolve([]),
+      db
+        .select({ personId: boardRoles.personId })
+        .from(boardRoles)
+        .where(eq(boardRoles.associationId, associationId)),
+      db
+        .select({ personId: ownerLedgerEntries.personId })
+        .from(ownerLedgerEntries)
+        .where(eq(ownerLedgerEntries.associationId, associationId)),
+    ]);
+
+    const personIds = Array.from(
+      new Set(
+        [...ownerRows, ...occupancyRows, ...boardRows, ...ledgerRows]
+          .map((row) => row.personId)
+          .filter(Boolean),
+      ),
+    );
+
+    if (personIds.length === 0) return [];
+    return db.select().from(persons).where(inArray(persons.id, personIds));
+  }
+
+  async createPerson(data: InsertPerson, actorEmail?: string): Promise<Person> {
     const [result] = await db.insert(persons).values(data).returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "person",
+      entityId: result.id,
+      associationId: null,
+      beforeJson: null,
+      afterJson: result,
+    });
     return result;
   }
 
-  async updatePerson(id: string, data: Partial<InsertPerson>): Promise<Person | undefined> {
+  async updatePerson(id: string, data: Partial<InsertPerson>, actorEmail?: string): Promise<Person | undefined> {
+    const [before] = await db.select().from(persons).where(eq(persons.id, id));
+    if (!before) return undefined;
     const [result] = await db.update(persons).set(data).where(eq(persons.id, id)).returning();
+    if (result) {
+      await this.recordAuditEvent({
+        actorEmail: actorEmail || "system",
+        action: "update",
+        entityType: "person",
+        entityId: result.id,
+        associationId: null,
+        beforeJson: before,
+        afterJson: result,
+      });
+    }
     return result;
   }
 
-  async getOwnerships(): Promise<Ownership[]> {
-    return db.select().from(ownerships);
+  async deletePerson(id: string, actorEmail?: string): Promise<boolean> {
+    const [before] = await db.select().from(persons).where(eq(persons.id, id));
+    if (!before) return false;
+
+    const [ownershipLink] = await db.select({ id: ownerships.id }).from(ownerships).where(eq(ownerships.personId, id)).limit(1);
+    if (ownershipLink) throw new Error("Cannot delete person with ownership history");
+
+    const [occupancyLink] = await db.select({ id: occupancies.id }).from(occupancies).where(eq(occupancies.personId, id)).limit(1);
+    if (occupancyLink) throw new Error("Cannot delete person with occupancy history");
+
+    const [boardLink] = await db.select({ id: boardRoles.id }).from(boardRoles).where(eq(boardRoles.personId, id)).limit(1);
+    if (boardLink) throw new Error("Cannot delete person with board role history");
+
+    const [deleted] = await db.delete(persons).where(eq(persons.id, id)).returning();
+    if (!deleted) return false;
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "delete",
+      entityType: "person",
+      entityId: before.id,
+      associationId: null,
+      beforeJson: before,
+      afterJson: null,
+    });
+    return true;
   }
 
-  async createOwnership(data: InsertOwnership): Promise<Ownership> {
+  async getOwnerships(associationId?: string): Promise<Ownership[]> {
+    if (!associationId) return db.select().from(ownerships);
+    const associationUnits = await db
+      .select({ id: units.id })
+      .from(units)
+      .where(eq(units.associationId, associationId));
+    const unitIds = associationUnits.map((row) => row.id);
+    if (unitIds.length === 0) return [];
+    return db.select().from(ownerships).where(inArray(ownerships.unitId, unitIds));
+  }
+
+  async createOwnership(data: InsertOwnership, actorEmail?: string): Promise<Ownership> {
+    const activeOwnershipsForUnit = await db
+      .select()
+      .from(ownerships)
+      .where(and(eq(ownerships.unitId, data.unitId), eq(ownerships.endDate, null as any)));
+
+    const duplicateActiveOwner = activeOwnershipsForUnit.find((row) => row.personId === data.personId);
+    if (duplicateActiveOwner && !data.endDate) {
+      throw new Error("Active ownership already exists for this owner and unit");
+    }
+
+    if (!data.endDate) {
+      const existingPercentage = activeOwnershipsForUnit.reduce((sum, row) => sum + row.ownershipPercentage, 0);
+      const incomingPercentage = data.ownershipPercentage ?? 100;
+      if (existingPercentage + incomingPercentage > 100) {
+        throw new Error("Active ownership percentages cannot exceed 100 for a unit");
+      }
+    }
+
     const [result] = await db.insert(ownerships).values(data).returning();
+    const [unitRow] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, result.unitId));
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "ownership",
+      entityId: result.id,
+      associationId: unitRow?.associationId || null,
+      beforeJson: null,
+      afterJson: result,
+    });
     return result;
   }
 
-  async getOccupancies(): Promise<Occupancy[]> {
-    return db.select().from(occupancies);
+  async updateOwnership(id: string, data: Partial<InsertOwnership>, actorEmail?: string): Promise<Ownership | undefined> {
+    const [before] = await db.select().from(ownerships).where(eq(ownerships.id, id));
+    if (!before) return undefined;
+
+    const next = {
+      unitId: data.unitId ?? before.unitId,
+      personId: data.personId ?? before.personId,
+      ownershipPercentage: data.ownershipPercentage ?? before.ownershipPercentage,
+      startDate: data.startDate ?? before.startDate,
+      endDate: data.endDate === undefined ? before.endDate : data.endDate,
+    };
+
+    const conflictingOwnerships = await db
+      .select()
+      .from(ownerships)
+      .where(and(
+        eq(ownerships.unitId, next.unitId),
+        eq(ownerships.personId, next.personId),
+        eq(ownerships.endDate, null as any),
+      ));
+    if (conflictingOwnerships.some((row) => row.id !== id)) {
+      throw new Error("Active ownership already exists for this owner and unit");
+    }
+
+    if (next.endDate == null) {
+      const activeOwnershipsForUnit = await db
+        .select()
+        .from(ownerships)
+        .where(and(eq(ownerships.unitId, next.unitId), eq(ownerships.endDate, null as any)));
+      const existingPercentage = activeOwnershipsForUnit
+        .filter((row) => row.id !== id)
+        .reduce((sum, row) => sum + row.ownershipPercentage, 0);
+      if (existingPercentage + (next.ownershipPercentage ?? 100) > 100.0001) {
+        throw new Error("Active ownership percentages cannot exceed 100 for a unit");
+      }
+    }
+
+    const [result] = await db
+      .update(ownerships)
+      .set(data)
+      .where(eq(ownerships.id, id))
+      .returning();
+    if (result) {
+      await this.recordAuditEvent({
+        actorEmail: actorEmail || "system",
+        action: "update",
+        entityType: "ownership",
+        entityId: result.id,
+        associationId: null,
+        beforeJson: before,
+        afterJson: result,
+      });
+    }
+    return result;
   }
 
-  async createOccupancy(data: InsertOccupancy): Promise<Occupancy> {
+  async deleteOwnership(id: string, actorEmail?: string): Promise<boolean> {
+    const [before] = await db.select().from(ownerships).where(eq(ownerships.id, id));
+    if (!before) return false;
+
+    const [deleted] = await db.delete(ownerships).where(eq(ownerships.id, id)).returning();
+    if (!deleted) return false;
+    const [unitRow] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, before.unitId));
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "delete",
+      entityType: "ownership",
+      entityId: before.id,
+      associationId: unitRow?.associationId || null,
+      beforeJson: before,
+      afterJson: null,
+    });
+    return true;
+  }
+
+  async getOccupancies(associationId?: string): Promise<Occupancy[]> {
+    if (!associationId) return db.select().from(occupancies);
+    const associationUnits = await db
+      .select({ id: units.id })
+      .from(units)
+      .where(eq(units.associationId, associationId));
+    const unitIds = associationUnits.map((row) => row.id);
+    if (unitIds.length === 0) return [];
+    return db.select().from(occupancies).where(inArray(occupancies.unitId, unitIds));
+  }
+
+  async createOccupancy(data: InsertOccupancy, actorEmail?: string): Promise<Occupancy> {
+    if (!data.endDate) {
+      const currentActive = await db
+        .select()
+        .from(occupancies)
+        .where(and(eq(occupancies.unitId, data.unitId), eq(occupancies.endDate, null as any)));
+
+      for (const row of currentActive) {
+        await db
+          .update(occupancies)
+          .set({ endDate: data.startDate })
+          .where(eq(occupancies.id, row.id));
+      }
+    }
+
     const [result] = await db.insert(occupancies).values(data).returning();
+    const [unitRow] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, result.unitId));
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "occupancy",
+      entityId: result.id,
+      associationId: unitRow?.associationId || null,
+      beforeJson: null,
+      afterJson: result,
+    });
     return result;
   }
 
-  async getBoardRoles(): Promise<BoardRole[]> {
-    return db.select().from(boardRoles);
+  async deleteOccupancy(id: string, actorEmail?: string): Promise<boolean> {
+    const [before] = await db.select().from(occupancies).where(eq(occupancies.id, id));
+    if (!before) return false;
+
+    const [deleted] = await db.delete(occupancies).where(eq(occupancies.id, id)).returning();
+    if (!deleted) return false;
+    const [unitRow] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, before.unitId));
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "delete",
+      entityType: "occupancy",
+      entityId: before.id,
+      associationId: unitRow?.associationId || null,
+      beforeJson: before,
+      afterJson: null,
+    });
+    return true;
   }
 
-  async createBoardRole(data: InsertBoardRole): Promise<BoardRole> {
+  async submitOnboardingIntake(input: {
+    associationId: string;
+    unitId: string;
+    occupancyType: "OWNER_OCCUPIED" | "TENANT";
+    person: {
+      firstName: string;
+      lastName: string;
+      email?: string | null;
+      phone?: string | null;
+      mailingAddress?: string | null;
+      emergencyContactName?: string | null;
+      emergencyContactPhone?: string | null;
+      contactPreference?: string | null;
+    };
+    startDate: Date;
+    ownershipPercentage?: number | null;
+  }): Promise<{
+    person: Person;
+    occupancy: Occupancy;
+    ownership: Ownership | null;
+  }> {
+    const [unit] = await db.select().from(units).where(eq(units.id, input.unitId));
+    if (!unit || unit.associationId !== input.associationId) {
+      throw new Error("Unit not found for association");
+    }
+
+    const [person] = await db
+      .insert(persons)
+      .values({
+        firstName: input.person.firstName,
+        lastName: input.person.lastName,
+        email: input.person.email ?? null,
+        phone: input.person.phone ?? null,
+        mailingAddress: input.person.mailingAddress ?? null,
+        emergencyContactName: input.person.emergencyContactName ?? null,
+        emergencyContactPhone: input.person.emergencyContactPhone ?? null,
+        contactPreference: input.person.contactPreference ?? "email",
+      })
+      .returning();
+
+    const occupancy = await this.createOccupancy({
+      unitId: input.unitId,
+      personId: person.id,
+      occupancyType: input.occupancyType,
+      startDate: input.startDate,
+      endDate: null,
+    });
+
+    let ownership: Ownership | null = null;
+    if (input.occupancyType === "OWNER_OCCUPIED") {
+      ownership = await this.createOwnership({
+        unitId: input.unitId,
+        personId: person.id,
+        ownershipPercentage: input.ownershipPercentage ?? 100,
+        startDate: input.startDate,
+        endDate: null,
+      });
+    }
+
+    return { person, occupancy, ownership };
+  }
+
+  async getResidentialDataset(associationId?: string): Promise<ResidentialDataset> {
+    const [associationRows, unitRows, personRows, ownershipRows, occupancyRows] = await Promise.all([
+      associationId ? db.select().from(associations).where(eq(associations.id, associationId)) : this.getAssociations(),
+      this.getUnits(associationId),
+      this.getPersons(associationId),
+      this.getOwnerships(associationId),
+      this.getOccupancies(associationId),
+    ]);
+
+    const associationById = new Map(associationRows.map((row) => [row.id, row]));
+    const personById = new Map(personRows.map((row) => [row.id, row]));
+    const unitById = new Map(unitRows.map((row) => [row.id, row]));
+
+    const ownersByUnitId = new Map<string, ResidentialDataset["unitDirectory"][number]["owners"]>();
+    const activeOwnerPersonIds = new Set<string>();
+    for (const ownership of ownershipRows) {
+      if (!unitById.has(ownership.unitId)) continue;
+      const list = ownersByUnitId.get(ownership.unitId) ?? [];
+      list.push({
+        ownership,
+        person: personById.get(ownership.personId) ?? null,
+      });
+      ownersByUnitId.set(ownership.unitId, list);
+
+      if (ownership.endDate == null) {
+        activeOwnerPersonIds.add(ownership.personId);
+      }
+    }
+
+    const now = Date.now();
+    const activeOccupancyByUnitId = new Map<string, ResidentialDataset["unitDirectory"][number]["activeOccupancy"]>();
+    for (const occupancy of occupancyRows) {
+      if (!unitById.has(occupancy.unitId)) continue;
+      const endTime = occupancy.endDate ? new Date(occupancy.endDate).getTime() : null;
+      const isActive = endTime == null || endTime >= now;
+      if (!isActive) continue;
+
+      const current = activeOccupancyByUnitId.get(occupancy.unitId);
+      const candidateTime = new Date(occupancy.startDate).getTime();
+      const currentTime = current ? new Date(current.occupancy.startDate).getTime() : Number.NEGATIVE_INFINITY;
+      if (!current || candidateTime >= currentTime) {
+        activeOccupancyByUnitId.set(occupancy.unitId, {
+          occupancy,
+          person: personById.get(occupancy.personId) ?? null,
+        });
+      }
+    }
+
+    const unitDirectory: ResidentialDataset["unitDirectory"] = unitRows.map((unit) => ({
+      unit,
+      association: associationById.get(unit.associationId) ?? null,
+      owners: ownersByUnitId.get(unit.id) ?? [],
+      activeOccupancy: activeOccupancyByUnitId.get(unit.id) ?? null,
+    }));
+
+    const ownedUnitsByPerson = new Map<string, Set<string>>();
+    for (const ownership of ownershipRows) {
+      if (!unitById.has(ownership.unitId)) continue;
+      const set = ownedUnitsByPerson.get(ownership.personId) ?? new Set<string>();
+      set.add(ownership.unitId);
+      ownedUnitsByPerson.set(ownership.personId, set);
+    }
+
+    const occupiedUnitsByPerson = new Map<string, Set<string>>();
+    for (const occupancy of occupancyRows) {
+      if (!unitById.has(occupancy.unitId)) continue;
+      const endTime = occupancy.endDate ? new Date(occupancy.endDate).getTime() : null;
+      const isActive = endTime == null || endTime >= now;
+      if (!isActive) continue;
+      const set = occupiedUnitsByPerson.get(occupancy.personId) ?? new Set<string>();
+      set.add(occupancy.unitId);
+      occupiedUnitsByPerson.set(occupancy.personId, set);
+    }
+
+    const personDirectory: ResidentialDataset["personDirectory"] = personRows.map((person) => {
+      const ownedUnitIds = Array.from(ownedUnitsByPerson.get(person.id) ?? new Set<string>());
+      const occupiedUnitIds = Array.from(occupiedUnitsByPerson.get(person.id) ?? new Set<string>());
+      const isOwner = ownedUnitIds.length > 0;
+      const isOccupant = occupiedUnitIds.length > 0;
+      const isOwnerOccupant = isOwner && isOccupant;
+      const isTenant = isOccupant && occupiedUnitIds.some((unitId) => !ownedUnitIds.includes(unitId));
+
+      return {
+        person,
+        ownedUnitIds,
+        occupiedUnitIds,
+        isOwner,
+        isOccupant,
+        isTenant,
+        isOwnerOccupant,
+      };
+    });
+
+    const activeOccupancies = Array.from(activeOccupancyByUnitId.values())
+      .map((row) => row?.occupancy)
+      .filter((row): row is Occupancy => Boolean(row));
+
+    return {
+      associations: associationRows,
+      units: unitRows,
+      persons: personRows,
+      ownerships: ownershipRows,
+      occupancies: occupancyRows,
+      unitDirectory,
+      personDirectory,
+      summary: {
+        associations: associationRows.length,
+        units: unitRows.length,
+        persons: personRows.length,
+        activeOwners: activeOwnerPersonIds.size,
+        activeOccupancies: activeOccupancies.length,
+        activeTenancies: activeOccupancies.filter((row) => row.occupancyType === "TENANT").length,
+        ownerOccupiedUnits: activeOccupancies.filter((row) => row.occupancyType === "OWNER_OCCUPIED").length,
+      },
+    };
+  }
+
+  async getAssociationOnboardingState(associationId: string): Promise<{
+    associationId: string;
+    state: "not-started" | "in-progress" | "blocked" | "complete";
+    blockers: string[];
+    remediationActions: string[];
+    scorePercent: number;
+  }> {
+    const completeness = await this.getAssociationOnboardingCompleteness(associationId);
+    const readiness = await this.getAssociationContactReadiness(associationId);
+
+    const blockers = [...readiness.blockingReasons];
+    const remediationActions = blockers.map((reason) => {
+      if (reason.includes("No units")) return "Create units for the association.";
+      if (reason.includes("No active owners")) return "Map active owners to units.";
+      if (reason.includes("Contact coverage")) return "Collect missing owner/occupant email or phone details.";
+      return "Review and resolve onboarding blocker.";
+    });
+
+    let state: "not-started" | "in-progress" | "blocked" | "complete" = "in-progress";
+    if (completeness.scorePercent === 0) state = "not-started";
+    if (blockers.length > 0 && completeness.scorePercent > 0) state = "blocked";
+    if (completeness.scorePercent >= 95 && blockers.length === 0) state = "complete";
+
+    return {
+      associationId,
+      state,
+      blockers,
+      remediationActions,
+      scorePercent: completeness.scorePercent,
+    };
+  }
+
+  async getAssociationOverview(associationId: string): Promise<{
+    associationId: string;
+    units: number;
+    activeOwners: number;
+    activeOccupants: number;
+    maintenanceOpen: number;
+    maintenanceOverdue: number;
+    paymentMethodsActive: number;
+    onboardingState: "not-started" | "in-progress" | "blocked" | "complete";
+    onboardingScorePercent: number;
+    contactCoveragePercent: number;
+  }> {
+    const [unitRows, ownershipRows, occupancyRows, maintenanceRows, paymentMethods, onboardingState, readiness] = await Promise.all([
+      this.getUnits(associationId),
+      this.getOwnerships(associationId),
+      this.getOccupancies(associationId),
+      this.getMaintenanceRequests({ associationId }),
+      this.getPaymentMethodConfigs(associationId),
+      this.getAssociationOnboardingState(associationId),
+      this.getAssociationContactReadiness(associationId),
+    ]);
+
+    const now = new Date();
+    const activeOwners = ownershipRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now)).length;
+    const activeOccupants = occupancyRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now)).length;
+    const maintenanceOpenRows = maintenanceRows.filter((row) => row.status !== "resolved" && row.status !== "closed" && row.status !== "rejected");
+    const maintenanceOverdue = maintenanceOpenRows.filter((row) => row.responseDueAt && row.responseDueAt < now).length;
+
+    return {
+      associationId,
+      units: unitRows.length,
+      activeOwners,
+      activeOccupants,
+      maintenanceOpen: maintenanceOpenRows.length,
+      maintenanceOverdue,
+      paymentMethodsActive: paymentMethods.filter((row) => row.isActive === 1).length,
+      onboardingState: onboardingState.state,
+      onboardingScorePercent: onboardingState.scorePercent,
+      contactCoveragePercent: readiness.contactCoveragePercent,
+    };
+  }
+
+  async getBoardRoles(associationId?: string): Promise<BoardRole[]> {
+    if (!associationId) return db.select().from(boardRoles);
+    return db.select().from(boardRoles).where(eq(boardRoles.associationId, associationId));
+  }
+
+  async createBoardRole(data: InsertBoardRole, actorEmail?: string): Promise<BoardRole> {
+    if (!data.endDate) {
+      const conflictingActiveRole = await db
+        .select()
+        .from(boardRoles)
+        .where(
+          and(
+            eq(boardRoles.associationId, data.associationId),
+            eq(boardRoles.role, data.role),
+            eq(boardRoles.endDate, null as any),
+          ),
+        );
+
+      if (conflictingActiveRole.length > 0) {
+        throw new Error("An active board assignment already exists for this role");
+      }
+    }
+
     const [result] = await db.insert(boardRoles).values(data).returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "board-role",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
     return result;
   }
 
-  async getDocuments(): Promise<Document[]> {
-    return db.select().from(documents);
+  async deleteBoardRole(id: string, actorEmail?: string): Promise<boolean> {
+    const [before] = await db.select().from(boardRoles).where(eq(boardRoles.id, id));
+    if (!before) return false;
+    const [deleted] = await db.delete(boardRoles).where(eq(boardRoles.id, id)).returning();
+    if (!deleted) return false;
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "delete",
+      entityType: "board-role",
+      entityId: before.id,
+      associationId: before.associationId,
+      beforeJson: before,
+      afterJson: null,
+    });
+    return true;
   }
 
-  async createDocument(data: InsertDocument): Promise<Document> {
+  async getDocuments(associationId?: string): Promise<Document[]> {
+    if (!associationId) return db.select().from(documents);
+    return db.select().from(documents).where(eq(documents.associationId, associationId));
+  }
+
+  async createDocument(data: InsertDocument, actorEmail?: string): Promise<Document> {
     const [result] = await db.insert(documents).values(data).returning();
+    await db.insert(documentVersions).values({
+      documentId: result.id,
+      versionNumber: 1,
+      title: result.title,
+      fileUrl: result.fileUrl,
+      uploadedBy: result.uploadedBy,
+    });
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "document",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
     return result;
+  }
+
+  async updateDocument(id: string, data: Partial<InsertDocument>, actorEmail?: string): Promise<Document | undefined> {
+    const [before] = await db.select().from(documents).where(eq(documents.id, id));
+    if (!before) return undefined;
+    const [result] = await db
+      .update(documents)
+      .set(data)
+      .where(eq(documents.id, id))
+      .returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "update",
+      entityType: "document",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async deleteDocument(id: string, actorEmail?: string): Promise<boolean> {
+    const [before] = await db.select().from(documents).where(eq(documents.id, id));
+    if (!before) return false;
+
+    await db.delete(documentTags).where(eq(documentTags.documentId, id));
+    await db.delete(documentVersions).where(eq(documentVersions.documentId, id));
+    const [deleted] = await db.delete(documents).where(eq(documents.id, id)).returning();
+    if (!deleted) return false;
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "delete",
+      entityType: "document",
+      entityId: before.id,
+      associationId: before.associationId,
+      beforeJson: before,
+      afterJson: null,
+    });
+    return true;
+  }
+
+  async getHoaFeeSchedules(associationId?: string): Promise<HoaFeeSchedule[]> {
+    if (!associationId) return db.select().from(hoaFeeSchedules).orderBy(desc(hoaFeeSchedules.createdAt));
+    return db
+      .select()
+      .from(hoaFeeSchedules)
+      .where(eq(hoaFeeSchedules.associationId, associationId))
+      .orderBy(desc(hoaFeeSchedules.createdAt));
+  }
+
+  async createHoaFeeSchedule(data: InsertHoaFeeSchedule): Promise<HoaFeeSchedule> {
+    const [result] = await db
+      .insert(hoaFeeSchedules)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateHoaFeeSchedule(id: string, data: Partial<InsertHoaFeeSchedule>): Promise<HoaFeeSchedule | undefined> {
+    const [result] = await db
+      .update(hoaFeeSchedules)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(hoaFeeSchedules.id, id))
+      .returning();
+    return result;
+  }
+
+  async getSpecialAssessments(associationId?: string): Promise<SpecialAssessment[]> {
+    if (!associationId) return db.select().from(specialAssessments).orderBy(desc(specialAssessments.createdAt));
+    return db
+      .select()
+      .from(specialAssessments)
+      .where(eq(specialAssessments.associationId, associationId))
+      .orderBy(desc(specialAssessments.createdAt));
+  }
+
+  async createSpecialAssessment(data: InsertSpecialAssessment): Promise<SpecialAssessment> {
+    const [result] = await db
+      .insert(specialAssessments)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateSpecialAssessment(id: string, data: Partial<InsertSpecialAssessment>): Promise<SpecialAssessment | undefined> {
+    const [result] = await db
+      .update(specialAssessments)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(specialAssessments.id, id))
+      .returning();
+    return result;
+  }
+
+  async getLateFeeRules(associationId?: string): Promise<LateFeeRule[]> {
+    if (!associationId) return db.select().from(lateFeeRules).orderBy(desc(lateFeeRules.createdAt));
+    return db
+      .select()
+      .from(lateFeeRules)
+      .where(eq(lateFeeRules.associationId, associationId))
+      .orderBy(desc(lateFeeRules.createdAt));
+  }
+
+  async createLateFeeRule(data: InsertLateFeeRule): Promise<LateFeeRule> {
+    const [result] = await db.insert(lateFeeRules).values({ ...data, updatedAt: new Date() }).returning();
+    return result;
+  }
+
+  async updateLateFeeRule(id: string, data: Partial<InsertLateFeeRule>): Promise<LateFeeRule | undefined> {
+    const [result] = await db
+      .update(lateFeeRules)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(lateFeeRules.id, id))
+      .returning();
+    return result;
+  }
+
+  async getLateFeeEvents(associationId?: string): Promise<LateFeeEvent[]> {
+    if (!associationId) {
+      return db.select().from(lateFeeEvents).orderBy(desc(lateFeeEvents.createdAt));
+    }
+    return db
+      .select()
+      .from(lateFeeEvents)
+      .where(eq(lateFeeEvents.associationId, associationId))
+      .orderBy(desc(lateFeeEvents.createdAt));
+  }
+
+  async calculateLateFee(input: {
+    associationId: string;
+    ruleId: string;
+    balanceAmount: number;
+    dueDate: Date;
+    asOfDate: Date;
+    referenceType?: string | null;
+    referenceId?: string | null;
+    apply?: boolean;
+  }): Promise<{ calculatedFee: number; daysLate: number; appliedEventId: string | null }> {
+    const [rule] = await db.select().from(lateFeeRules).where(eq(lateFeeRules.id, input.ruleId));
+    if (!rule) {
+      throw new Error("Late fee rule not found");
+    }
+    if (rule.associationId !== input.associationId) {
+      throw new Error("Rule does not belong to the provided association");
+    }
+
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const rawDaysLate = Math.floor((input.asOfDate.getTime() - input.dueDate.getTime()) / msPerDay);
+    const daysLate = Math.max(0, rawDaysLate);
+
+    if (daysLate <= rule.graceDays || input.balanceAmount <= 0) {
+      return { calculatedFee: 0, daysLate, appliedEventId: null };
+    }
+
+    let calculatedFee =
+      rule.feeType === "flat"
+        ? rule.feeAmount
+        : Number(((input.balanceAmount * rule.feeAmount) / 100).toFixed(2));
+
+    if (rule.maxFee !== null && rule.maxFee !== undefined) {
+      calculatedFee = Math.min(calculatedFee, rule.maxFee);
+    }
+    if (calculatedFee < 0) calculatedFee = 0;
+
+    let appliedEventId: string | null = null;
+    if (input.apply) {
+      const [event] = await db
+        .insert(lateFeeEvents)
+        .values({
+          associationId: input.associationId,
+          ruleId: input.ruleId,
+          referenceType: input.referenceType ?? null,
+          referenceId: input.referenceId ?? null,
+          balanceAmount: input.balanceAmount,
+          dueDate: input.dueDate,
+          asOfDate: input.asOfDate,
+          calculatedFee,
+        })
+        .returning();
+      appliedEventId = event.id;
+    }
+
+    return { calculatedFee, daysLate, appliedEventId };
+  }
+
+  async getFinancialAccounts(associationId?: string): Promise<FinancialAccount[]> {
+    if (!associationId) return db.select().from(financialAccounts).orderBy(desc(financialAccounts.createdAt));
+    return db
+      .select()
+      .from(financialAccounts)
+      .where(eq(financialAccounts.associationId, associationId))
+      .orderBy(desc(financialAccounts.createdAt));
+  }
+
+  async createFinancialAccount(data: InsertFinancialAccount): Promise<FinancialAccount> {
+    const [result] = await db
+      .insert(financialAccounts)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateFinancialAccount(id: string, data: Partial<InsertFinancialAccount>): Promise<FinancialAccount | undefined> {
+    const [result] = await db
+      .update(financialAccounts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(financialAccounts.id, id))
+      .returning();
+    return result;
+  }
+
+  async getFinancialCategories(associationId?: string): Promise<FinancialCategory[]> {
+    if (!associationId) return db.select().from(financialCategories).orderBy(desc(financialCategories.createdAt));
+    return db
+      .select()
+      .from(financialCategories)
+      .where(eq(financialCategories.associationId, associationId))
+      .orderBy(desc(financialCategories.createdAt));
+  }
+
+  async createFinancialCategory(data: InsertFinancialCategory): Promise<FinancialCategory> {
+    const [result] = await db
+      .insert(financialCategories)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateFinancialCategory(id: string, data: Partial<InsertFinancialCategory>): Promise<FinancialCategory | undefined> {
+    const [result] = await db
+      .update(financialCategories)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(financialCategories.id, id))
+      .returning();
+    return result;
+  }
+
+  async getBudgets(associationId?: string): Promise<Budget[]> {
+    if (!associationId) return db.select().from(budgets).orderBy(desc(budgets.createdAt));
+    return db
+      .select()
+      .from(budgets)
+      .where(eq(budgets.associationId, associationId))
+      .orderBy(desc(budgets.createdAt));
+  }
+
+  async createBudget(data: InsertBudget): Promise<Budget> {
+    const [result] = await db
+      .insert(budgets)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateBudget(id: string, data: Partial<InsertBudget>): Promise<Budget | undefined> {
+    const [result] = await db
+      .update(budgets)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(budgets.id, id))
+      .returning();
+    return result;
+  }
+
+  async getBudgetVersions(budgetId: string): Promise<BudgetVersion[]> {
+    return db
+      .select()
+      .from(budgetVersions)
+      .where(eq(budgetVersions.budgetId, budgetId))
+      .orderBy(desc(budgetVersions.versionNumber));
+  }
+
+  async createBudgetVersion(data: InsertBudgetVersion): Promise<BudgetVersion> {
+    const [budget] = await db.select().from(budgets).where(eq(budgets.id, data.budgetId));
+    if (!budget) throw new Error("Budget not found");
+
+    if (data.status === "ratified") {
+      const [existingRatified] = await db
+        .select()
+        .from(budgetVersions)
+        .where(and(eq(budgetVersions.budgetId, data.budgetId), eq(budgetVersions.status, "ratified")))
+        .limit(1);
+      if (existingRatified) throw new Error("Budget already has a ratified version");
+    }
+
+    const [result] = await db
+      .insert(budgetVersions)
+      .values({
+        ...data,
+        ratifiedAt: data.status === "ratified" ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .returning();
+    return result;
+  }
+
+  async updateBudgetVersion(id: string, data: Partial<InsertBudgetVersion>): Promise<BudgetVersion | undefined> {
+    const [existing] = await db.select().from(budgetVersions).where(eq(budgetVersions.id, id));
+    if (!existing) return undefined;
+
+    const nextStatus = data.status ?? existing.status;
+    if (nextStatus === "ratified" && existing.status !== "ratified") {
+      const [conflict] = await db
+        .select()
+        .from(budgetVersions)
+        .where(and(eq(budgetVersions.budgetId, existing.budgetId), eq(budgetVersions.status, "ratified")))
+        .limit(1);
+      if (conflict && conflict.id !== existing.id) throw new Error("Budget already has a ratified version");
+    }
+
+    const patch: Partial<InsertBudgetVersion> & { updatedAt: Date; ratifiedAt?: Date | null } = {
+      ...data,
+      updatedAt: new Date(),
+    };
+    if ("status" in data) {
+      patch.ratifiedAt = data.status === "ratified" ? new Date() : null;
+    }
+
+    const [result] = await db
+      .update(budgetVersions)
+      .set(patch as any)
+      .where(eq(budgetVersions.id, id))
+      .returning();
+    return result;
+  }
+
+  async getBudgetLines(budgetVersionId: string): Promise<BudgetLine[]> {
+    return db
+      .select()
+      .from(budgetLines)
+      .where(eq(budgetLines.budgetVersionId, budgetVersionId))
+      .orderBy(budgetLines.sortOrder);
+  }
+
+  async createBudgetLine(data: InsertBudgetLine): Promise<BudgetLine> {
+    const [result] = await db
+      .insert(budgetLines)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateBudgetLine(id: string, data: Partial<InsertBudgetLine>): Promise<BudgetLine | undefined> {
+    const [result] = await db
+      .update(budgetLines)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(budgetLines.id, id))
+      .returning();
+    return result;
+  }
+
+  async getBudgetVariance(associationId: string, budgetVersionId: string): Promise<Array<{
+    budgetLineId: string;
+    lineItemName: string;
+    plannedAmount: number;
+    actualAmount: number;
+    varianceAmount: number;
+    accountId: string | null;
+    categoryId: string | null;
+  }>> {
+    const [version] = await db.select().from(budgetVersions).where(eq(budgetVersions.id, budgetVersionId));
+    if (!version) throw new Error("Budget version not found");
+
+    const [budget] = await db.select().from(budgets).where(eq(budgets.id, version.budgetId));
+    if (!budget) throw new Error("Budget not found");
+    if (budget.associationId !== associationId) throw new Error("Budget does not belong to association");
+
+    const lines = await this.getBudgetLines(budgetVersionId);
+    const invoices = await db
+      .select()
+      .from(vendorInvoices)
+      .where(and(eq(vendorInvoices.associationId, associationId), gte(vendorInvoices.invoiceDate, budget.periodStart)));
+    const utilities = await db
+      .select()
+      .from(utilityPayments)
+      .where(and(eq(utilityPayments.associationId, associationId), gte(utilityPayments.createdAt, budget.periodStart)));
+
+    const varianceRows = lines.map((line) => {
+      const invoiceActual = invoices
+        .filter((inv) => (line.accountId ? inv.accountId === line.accountId : true) && (line.categoryId ? inv.categoryId === line.categoryId : true))
+        .reduce((sum, inv) => sum + inv.amount, 0);
+      const utilityActual = utilities
+        .filter((util) => (line.accountId ? util.accountId === line.accountId : true) && (line.categoryId ? util.categoryId === line.categoryId : true))
+        .reduce((sum, util) => sum + util.amount, 0);
+      const actualAmount = invoiceActual + utilityActual;
+      const varianceAmount = line.plannedAmount - actualAmount;
+      return {
+        budgetLineId: line.id,
+        lineItemName: line.lineItemName,
+        plannedAmount: line.plannedAmount,
+        actualAmount,
+        varianceAmount,
+        accountId: line.accountId ?? null,
+        categoryId: line.categoryId ?? null,
+      };
+    });
+
+    return varianceRows;
+  }
+
+  async getVendorInvoices(associationId?: string): Promise<VendorInvoice[]> {
+    if (!associationId) return db.select().from(vendorInvoices).orderBy(desc(vendorInvoices.createdAt));
+    return db
+      .select()
+      .from(vendorInvoices)
+      .where(eq(vendorInvoices.associationId, associationId))
+      .orderBy(desc(vendorInvoices.createdAt));
+  }
+
+  async createVendorInvoice(data: InsertVendorInvoice): Promise<VendorInvoice> {
+    const [result] = await db
+      .insert(vendorInvoices)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateVendorInvoice(id: string, data: Partial<InsertVendorInvoice>): Promise<VendorInvoice | undefined> {
+    const [result] = await db
+      .update(vendorInvoices)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(vendorInvoices.id, id))
+      .returning();
+    return result;
+  }
+
+  async getUtilityPayments(associationId?: string): Promise<UtilityPayment[]> {
+    if (!associationId) return db.select().from(utilityPayments).orderBy(desc(utilityPayments.createdAt));
+    return db
+      .select()
+      .from(utilityPayments)
+      .where(eq(utilityPayments.associationId, associationId))
+      .orderBy(desc(utilityPayments.createdAt));
+  }
+
+  async createUtilityPayment(data: InsertUtilityPayment): Promise<UtilityPayment> {
+    const [result] = await db
+      .insert(utilityPayments)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateUtilityPayment(id: string, data: Partial<InsertUtilityPayment>): Promise<UtilityPayment | undefined> {
+    const [result] = await db
+      .update(utilityPayments)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(utilityPayments.id, id))
+      .returning();
+    return result;
+  }
+
+  async getPaymentMethodConfigs(associationId?: string): Promise<PaymentMethodConfig[]> {
+    if (!associationId) {
+      return db.select().from(paymentMethodConfigs).orderBy(paymentMethodConfigs.displayOrder, desc(paymentMethodConfigs.createdAt));
+    }
+    return db
+      .select()
+      .from(paymentMethodConfigs)
+      .where(eq(paymentMethodConfigs.associationId, associationId))
+      .orderBy(paymentMethodConfigs.displayOrder, desc(paymentMethodConfigs.createdAt));
+  }
+
+  async createPaymentMethodConfig(data: InsertPaymentMethodConfig): Promise<PaymentMethodConfig> {
+    const [result] = await db
+      .insert(paymentMethodConfigs)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updatePaymentMethodConfig(id: string, data: Partial<InsertPaymentMethodConfig>): Promise<PaymentMethodConfig | undefined> {
+    const [result] = await db
+      .update(paymentMethodConfigs)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(paymentMethodConfigs.id, id))
+      .returning();
+    return result;
+  }
+
+  async getPaymentGatewayConnections(associationId?: string): Promise<PaymentGatewayConnection[]> {
+    if (!associationId) {
+      return db.select().from(paymentGatewayConnections).orderBy(desc(paymentGatewayConnections.updatedAt));
+    }
+    return db
+      .select()
+      .from(paymentGatewayConnections)
+      .where(eq(paymentGatewayConnections.associationId, associationId))
+      .orderBy(desc(paymentGatewayConnections.updatedAt));
+  }
+
+  async validateAndUpsertPaymentGatewayConnection(payload: {
+    associationId: string;
+    provider: "stripe" | "other";
+    providerAccountId?: string | null;
+    publishableKey?: string | null;
+    secretKey?: string | null;
+    webhookSecret?: string | null;
+    isActive?: boolean;
+    metadataJson?: Record<string, unknown> | null;
+  }): Promise<{ validated: boolean; checks: string[]; connection: PaymentGatewayConnection }> {
+    const [association] = await db.select({ id: associations.id }).from(associations).where(eq(associations.id, payload.associationId));
+    if (!association) {
+      throw new Error("Association not found");
+    }
+
+    const checks: string[] = [];
+    const providerAccountId = payload.providerAccountId?.trim() || null;
+    const publishableKey = payload.publishableKey?.trim() || null;
+    const secretKey = payload.secretKey?.trim() || null;
+    const webhookSecret = payload.webhookSecret?.trim() || null;
+
+    if (payload.provider === "stripe") {
+      if (!publishableKey || !publishableKey.startsWith("pk_")) checks.push("Stripe publishable key must start with pk_");
+      if (!secretKey || !secretKey.startsWith("sk_")) checks.push("Stripe secret key must start with sk_");
+      if (!webhookSecret || !webhookSecret.startsWith("whsec_")) checks.push("Stripe webhook secret must start with whsec_");
+      if (providerAccountId && !providerAccountId.startsWith("acct_")) checks.push("Stripe account id must start with acct_");
+    } else {
+      if (!secretKey || secretKey.length < 8) checks.push("Provider secret key must be at least 8 characters");
+      if (webhookSecret && webhookSecret.length < 8) checks.push("Webhook secret must be at least 8 characters");
+    }
+
+    if (checks.length > 0) {
+      throw new Error(checks.join("; "));
+    }
+
+    const values: InsertPaymentGatewayConnection = {
+      associationId: payload.associationId,
+      provider: payload.provider,
+      providerAccountId,
+      publishableKey,
+      secretKeyMasked: secretKey ? maskSecret(secretKey) : null,
+      webhookSecretMasked: webhookSecret ? maskSecret(webhookSecret) : null,
+      validationStatus: "valid",
+      validationMessage: "Gateway credentials passed structural validation.",
+      isActive: payload.isActive === false ? 0 : 1,
+      metadataJson: payload.metadataJson ?? null,
+    };
+
+    const [existing] = await db
+      .select({ id: paymentGatewayConnections.id })
+      .from(paymentGatewayConnections)
+      .where(and(
+        eq(paymentGatewayConnections.associationId, payload.associationId),
+        eq(paymentGatewayConnections.provider, payload.provider),
+      ));
+
+    let connection: PaymentGatewayConnection;
+    if (existing) {
+      const [updated] = await db
+        .update(paymentGatewayConnections)
+        .set({
+          ...values,
+          lastValidatedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(paymentGatewayConnections.id, existing.id))
+        .returning();
+      connection = updated;
+    } else {
+      const [created] = await db
+        .insert(paymentGatewayConnections)
+        .values({
+          ...values,
+          lastValidatedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      connection = created;
+    }
+
+    return {
+      validated: true,
+      checks: [
+        `Validated ${payload.provider} credentials for association ${payload.associationId}.`,
+      ],
+      connection,
+    };
+  }
+
+  async createOwnerPaymentLink(payload: {
+    associationId: string;
+    unitId: string;
+    personId: string;
+    amount?: number | null;
+    currency?: string | null;
+    allowPartial?: boolean;
+    memo?: string | null;
+    expiresAt?: Date | string | null;
+    createdBy?: string | null;
+    metadataJson?: Record<string, unknown> | null;
+  }): Promise<{ link: OwnerPaymentLink; paymentUrl: string; outstandingBalance: number }> {
+    const [association, unit, person] = await Promise.all([
+      db.select({ id: associations.id }).from(associations).where(eq(associations.id, payload.associationId)).then((rows) => rows[0]),
+      db.select({ id: units.id, associationId: units.associationId }).from(units).where(eq(units.id, payload.unitId)).then((rows) => rows[0]),
+      db.select({ id: persons.id }).from(persons).where(eq(persons.id, payload.personId)).then((rows) => rows[0]),
+    ]);
+    if (!association) throw new Error("Association not found");
+    if (!unit || unit.associationId !== payload.associationId) throw new Error("Unit not found in association");
+    if (!person) throw new Error("Person not found");
+
+    const entries = await db
+      .select({ amount: ownerLedgerEntries.amount })
+      .from(ownerLedgerEntries)
+      .where(and(
+        eq(ownerLedgerEntries.associationId, payload.associationId),
+        eq(ownerLedgerEntries.unitId, payload.unitId),
+        eq(ownerLedgerEntries.personId, payload.personId),
+      ));
+    const outstandingBalance = Number(entries.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+    if (outstandingBalance <= 0) {
+      throw new Error("Owner ledger balance is not payable");
+    }
+
+    const requestedAmount = typeof payload.amount === "number" ? Number(payload.amount) : outstandingBalance;
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      throw new Error("Payment link amount must be greater than zero");
+    }
+    const roundedAmount = Number(requestedAmount.toFixed(2));
+    if (roundedAmount > outstandingBalance) {
+      throw new Error(`Payment link amount ${roundedAmount} exceeds outstanding balance ${outstandingBalance}`);
+    }
+
+    const allowPartial = payload.allowPartial === true;
+    if (!allowPartial && Math.abs(roundedAmount - outstandingBalance) > 0.009) {
+      throw new Error("Exact outstanding amount required when partial payments are disabled");
+    }
+
+    const token = randomBytes(24).toString("base64url");
+    const expiresAt = payload.expiresAt ? new Date(payload.expiresAt) : null;
+    if (expiresAt && Number.isNaN(expiresAt.getTime())) {
+      throw new Error("expiresAt must be a valid date");
+    }
+
+    const [link] = await db
+      .insert(ownerPaymentLinks)
+      .values({
+        associationId: payload.associationId,
+        unitId: payload.unitId,
+        personId: payload.personId,
+        token,
+        amount: roundedAmount,
+        currency: normalizeCurrency(payload.currency),
+        status: "active",
+        allowPartial: allowPartial ? 1 : 0,
+        memo: payload.memo ?? null,
+        expiresAt,
+        metadataJson: payload.metadataJson ?? null,
+        createdBy: payload.createdBy ?? null,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    const appBaseUrl = (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+    return {
+      link,
+      paymentUrl: `${appBaseUrl}/api/portal/payments/link/${encodeURIComponent(link.token)}`,
+      outstandingBalance,
+    };
+  }
+
+  async getOwnerPaymentLinkByToken(token: string): Promise<OwnerPaymentLink | undefined> {
+    const [link] = await db.select().from(ownerPaymentLinks).where(eq(ownerPaymentLinks.token, token));
+    if (!link) return undefined;
+    if (link.status !== "active") return link;
+
+    if (link.expiresAt && link.expiresAt.getTime() < Date.now()) {
+      const [expired] = await db
+        .update(ownerPaymentLinks)
+        .set({ status: "expired", updatedAt: new Date() })
+        .where(eq(ownerPaymentLinks.id, link.id))
+        .returning();
+      return expired;
+    }
+
+    return link;
+  }
+
+  async processPaymentWebhookEvent(payload: {
+    associationId: string;
+    provider: "stripe" | "other";
+    providerEventId: string;
+    eventType?: string | null;
+    status?: "succeeded" | "failed" | "pending" | null;
+    amount?: number | null;
+    currency?: string | null;
+    personId?: string | null;
+    unitId?: string | null;
+    paymentLinkToken?: string | null;
+    gatewayReference?: string | null;
+    rawPayloadJson?: unknown;
+  }): Promise<{ duplicate: boolean; event: PaymentWebhookEvent; ownerLedgerEntry: OwnerLedgerEntry | null; message: string }> {
+    const [existing] = await db
+      .select()
+      .from(paymentWebhookEvents)
+      .where(and(
+        eq(paymentWebhookEvents.associationId, payload.associationId),
+        eq(paymentWebhookEvents.provider, payload.provider),
+        eq(paymentWebhookEvents.providerEventId, payload.providerEventId),
+      ));
+
+    if (existing) {
+      const ownerLedgerEntry = existing.ownerLedgerEntryId
+        ? (await db.select().from(ownerLedgerEntries).where(eq(ownerLedgerEntries.id, existing.ownerLedgerEntryId)).then((rows) => rows[0] ?? null))
+        : null;
+      return {
+        duplicate: true,
+        event: existing,
+        ownerLedgerEntry,
+        message: "Webhook event already processed",
+      };
+    }
+
+    const status = payload.status ?? "pending";
+    const [association] = await db.select({ id: associations.id }).from(associations).where(eq(associations.id, payload.associationId));
+    if (!association) throw new Error("Association not found");
+
+    const link = payload.paymentLinkToken
+      ? await this.getOwnerPaymentLinkByToken(payload.paymentLinkToken)
+      : undefined;
+    if (link && link.associationId !== payload.associationId) {
+      throw new Error("Payment link does not belong to association");
+    }
+
+    const personId = payload.personId || link?.personId || null;
+    const unitId = payload.unitId || link?.unitId || null;
+    const amountRaw = typeof payload.amount === "number" ? payload.amount : link?.amount ?? null;
+    const amount = amountRaw == null ? null : Number(Math.abs(amountRaw).toFixed(2));
+
+    const [receivedEvent] = await db
+      .insert(paymentWebhookEvents)
+      .values({
+        associationId: payload.associationId,
+        provider: payload.provider,
+        providerEventId: payload.providerEventId,
+        paymentLinkId: link?.id ?? null,
+        unitId,
+        personId,
+        amount,
+        currency: normalizeCurrency(payload.currency || link?.currency),
+        status: "received",
+        eventType: payload.eventType ?? null,
+        gatewayReference: payload.gatewayReference ?? null,
+        rawPayloadJson: payload.rawPayloadJson ?? null,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    if (status !== "succeeded") {
+      const [ignoredEvent] = await db
+        .update(paymentWebhookEvents)
+        .set({
+          status: status === "failed" ? "failed" : "ignored",
+          errorMessage: status === "failed" ? "Payment provider reported a failed charge." : "Payment event not in succeeded status.",
+          processedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(paymentWebhookEvents.id, receivedEvent.id))
+        .returning();
+      return {
+        duplicate: false,
+        event: ignoredEvent,
+        ownerLedgerEntry: null,
+        message: "Payment event ignored because it was not successful",
+      };
+    }
+
+    if (!personId || !unitId || !amount || amount <= 0) {
+      const [failedEvent] = await db
+        .update(paymentWebhookEvents)
+        .set({
+          status: "failed",
+          errorMessage: "Missing personId, unitId, or amount for successful payment event.",
+          processedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(paymentWebhookEvents.id, receivedEvent.id))
+        .returning();
+      return {
+        duplicate: false,
+        event: failedEvent,
+        ownerLedgerEntry: null,
+        message: "Payment event could not be posted to owner ledger",
+      };
+    }
+
+    const [unit] = await db.select({ id: units.id, associationId: units.associationId }).from(units).where(eq(units.id, unitId));
+    const [person] = await db.select({ id: persons.id }).from(persons).where(eq(persons.id, personId));
+    if (!unit || unit.associationId !== payload.associationId || !person) {
+      const [failedEvent] = await db
+        .update(paymentWebhookEvents)
+        .set({
+          status: "failed",
+          errorMessage: "Resolved person or unit is invalid for association.",
+          processedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(paymentWebhookEvents.id, receivedEvent.id))
+        .returning();
+      return {
+        duplicate: false,
+        event: failedEvent,
+        ownerLedgerEntry: null,
+        message: "Payment event references invalid person or unit",
+      };
+    }
+
+    const [ownerLedgerEntry] = await db
+      .insert(ownerLedgerEntries)
+      .values({
+        associationId: payload.associationId,
+        unitId,
+        personId,
+        entryType: "payment",
+        amount: Number((-Math.abs(amount)).toFixed(2)),
+        postedAt: new Date(),
+        description: payload.eventType ? `Payment webhook (${payload.eventType})` : "Payment webhook",
+        referenceType: "payment-webhook",
+        referenceId: receivedEvent.id,
+      })
+      .returning();
+
+    if (link && link.status === "active") {
+      await db
+        .update(ownerPaymentLinks)
+        .set({
+          status: "paid",
+          paidAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(ownerPaymentLinks.id, link.id));
+    }
+
+    const [processedEvent] = await db
+      .update(paymentWebhookEvents)
+      .set({
+        status: "processed",
+        ownerLedgerEntryId: ownerLedgerEntry.id,
+        processedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentWebhookEvents.id, receivedEvent.id))
+      .returning();
+
+    return {
+      duplicate: false,
+      event: processedEvent,
+      ownerLedgerEntry,
+      message: "Payment webhook processed and owner ledger updated",
+    };
+  }
+
+  async sendPaymentInstructionNotice(payload: {
+    associationId: string;
+    templateId?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    audience?: "owners" | "occupants" | "all";
+    ccOwners?: boolean;
+    requireApproval?: boolean | null;
+    scheduledFor?: Date | string | null;
+    sentBy?: string | null;
+  }): Promise<{
+    recipientCount: number;
+    sentCount: number;
+    sendIds: string[];
+    skippedRecipients: number;
+    missingEmailCount: number;
+    duplicateEmailCount: number;
+    variables: Record<string, string>;
+  }> {
+    const methods = (await this.getPaymentMethodConfigs(payload.associationId)).filter((row) => row.isActive === 1);
+    if (methods.length === 0) {
+      throw new Error("No active payment method configurations found for association");
+    }
+
+    const methodLines = methods
+      .map((row, index) => `${index + 1}. ${row.displayName}: ${row.instructions}`)
+      .join("\n");
+    const supportEmails = Array.from(new Set(methods.map((row) => row.supportEmail).filter((v): v is string => Boolean(v && v.trim()))));
+    const supportPhones = Array.from(new Set(methods.map((row) => row.supportPhone).filter((v): v is string => Boolean(v && v.trim()))));
+
+    const variables: Record<string, string> = {
+      payment_methods: methodLines,
+      payment_support_email: supportEmails.join(", "),
+      payment_support_phone: supportPhones.join(", "),
+      payment_method_count: String(methods.length),
+    };
+
+    const result = await this.sendTargetedNotice({
+      associationId: payload.associationId,
+      audience: payload.audience ?? "owners",
+      ccOwners: payload.ccOwners ?? false,
+      templateId: payload.templateId ?? null,
+      subject: payload.subject ?? null,
+      body: payload.body ?? null,
+      variables,
+      requireApproval: payload.requireApproval ?? null,
+      scheduledFor: payload.scheduledFor ?? null,
+      sentBy: payload.sentBy ?? null,
+    });
+
+    return {
+      ...result,
+      variables,
+    };
+  }
+
+  async getExpenseAttachments(expenseType?: "invoice" | "utility-payment", expenseId?: string, associationId?: string): Promise<ExpenseAttachment[]> {
+    const whereClauses = [];
+    if (expenseType) whereClauses.push(eq(expenseAttachments.expenseType, expenseType));
+    if (expenseId) whereClauses.push(eq(expenseAttachments.expenseId, expenseId));
+    if (associationId) whereClauses.push(eq(expenseAttachments.associationId, associationId));
+
+    if (whereClauses.length > 0) {
+      return db
+        .select()
+        .from(expenseAttachments)
+        .where(and(...whereClauses))
+        .orderBy(desc(expenseAttachments.createdAt));
+    }
+    return db.select().from(expenseAttachments).orderBy(desc(expenseAttachments.createdAt));
+  }
+
+  async createExpenseAttachment(data: InsertExpenseAttachment): Promise<ExpenseAttachment> {
+    const [result] = await db.insert(expenseAttachments).values(data).returning();
+    return result;
+  }
+
+  async getOwnerLedgerEntries(associationId?: string): Promise<OwnerLedgerEntry[]> {
+    if (!associationId) {
+      return db.select().from(ownerLedgerEntries).orderBy(desc(ownerLedgerEntries.postedAt));
+    }
+    return db
+      .select()
+      .from(ownerLedgerEntries)
+      .where(eq(ownerLedgerEntries.associationId, associationId))
+      .orderBy(desc(ownerLedgerEntries.postedAt));
+  }
+
+  async createOwnerLedgerEntry(data: InsertOwnerLedgerEntry): Promise<OwnerLedgerEntry> {
+    const [result] = await db.insert(ownerLedgerEntries).values(data).returning();
+    return result;
+  }
+
+  async getOwnerLedgerSummary(associationId: string): Promise<Array<{ personId: string; unitId: string; balance: number }>> {
+    const entries = await this.getOwnerLedgerEntries(associationId);
+    const rollup = new Map<string, { personId: string; unitId: string; balance: number }>();
+    for (const entry of entries) {
+      const key = `${entry.personId}:${entry.unitId}`;
+      const current = rollup.get(key) ?? { personId: entry.personId, unitId: entry.unitId, balance: 0 };
+      current.balance += entry.amount;
+      rollup.set(key, current);
+    }
+    return Array.from(rollup.values()).sort((a, b) => b.balance - a.balance);
+  }
+
+  async getGovernanceMeetings(associationId?: string): Promise<GovernanceMeeting[]> {
+    if (!associationId) {
+      return db.select().from(governanceMeetings).orderBy(desc(governanceMeetings.scheduledAt));
+    }
+    return db
+      .select()
+      .from(governanceMeetings)
+      .where(eq(governanceMeetings.associationId, associationId))
+      .orderBy(desc(governanceMeetings.scheduledAt));
+  }
+
+  async createGovernanceMeeting(data: InsertGovernanceMeeting): Promise<GovernanceMeeting> {
+    const [result] = await db
+      .insert(governanceMeetings)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateGovernanceMeeting(id: string, data: Partial<InsertGovernanceMeeting>): Promise<GovernanceMeeting | undefined> {
+    const [next] = await db.select().from(governanceMeetings).where(eq(governanceMeetings.id, id));
+    if (!next) return undefined;
+    const status = data.status ?? next.status;
+    const completedAtStatus = status === "completed";
+    const [result] = await db
+      .update(governanceMeetings)
+      .set({
+        ...data,
+        summaryStatus: data.summaryStatus ?? next.summaryStatus,
+        updatedAt: new Date(),
+        ...(completedAtStatus && !next.notes ? { notes: data.notes ?? next.notes } : {}),
+      })
+      .where(eq(governanceMeetings.id, id))
+      .returning();
+    return result;
+  }
+
+  async getMeetingAgendaItems(meetingId: string): Promise<MeetingAgendaItem[]> {
+    return db
+      .select()
+      .from(meetingAgendaItems)
+      .where(eq(meetingAgendaItems.meetingId, meetingId))
+      .orderBy(meetingAgendaItems.orderIndex);
+  }
+
+  async createMeetingAgendaItem(data: InsertMeetingAgendaItem): Promise<MeetingAgendaItem> {
+    const [result] = await db.insert(meetingAgendaItems).values(data).returning();
+    return result;
+  }
+
+  async getMeetingNotes(meetingId: string): Promise<MeetingNote[]> {
+    return db
+      .select()
+      .from(meetingNotes)
+      .where(eq(meetingNotes.meetingId, meetingId))
+      .orderBy(desc(meetingNotes.createdAt));
+  }
+
+  async createMeetingNote(data: InsertMeetingNote): Promise<MeetingNote> {
+    const [result] = await db.insert(meetingNotes).values({ ...data, updatedAt: new Date() }).returning();
+    return result;
+  }
+
+  async updateMeetingNote(id: string, data: Partial<InsertMeetingNote>): Promise<MeetingNote | undefined> {
+    const [result] = await db
+      .update(meetingNotes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(meetingNotes.id, id))
+      .returning();
+    return result;
+  }
+
+  async getResolutions(associationId?: string): Promise<Resolution[]> {
+    if (!associationId) {
+      return db.select().from(resolutions).orderBy(desc(resolutions.createdAt));
+    }
+    return db
+      .select()
+      .from(resolutions)
+      .where(eq(resolutions.associationId, associationId))
+      .orderBy(desc(resolutions.createdAt));
+  }
+
+  async createResolution(data: InsertResolution): Promise<Resolution> {
+    const [result] = await db
+      .insert(resolutions)
+      .values({
+        ...data,
+        passedAt: data.status === "approved" ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .returning();
+    return result;
+  }
+
+  async updateResolution(id: string, data: Partial<InsertResolution>): Promise<Resolution | undefined> {
+    const patch: Partial<InsertResolution> & { updatedAt: Date; passedAt?: Date | null } = {
+      ...data,
+      updatedAt: new Date(),
+    };
+    if ("status" in data) {
+      patch.passedAt = data.status === "approved" ? new Date() : null;
+    }
+    const [result] = await db.update(resolutions).set(patch as any).where(eq(resolutions.id, id)).returning();
+    return result;
+  }
+
+  async getVoteRecords(resolutionId: string): Promise<VoteRecord[]> {
+    return db.select().from(voteRecords).where(eq(voteRecords.resolutionId, resolutionId)).orderBy(desc(voteRecords.createdAt));
+  }
+
+  async createVoteRecord(data: InsertVoteRecord): Promise<VoteRecord> {
+    const [result] = await db.insert(voteRecords).values(data).returning();
+    const votes = await this.getVoteRecords(result.resolutionId);
+    const tallies = votes.reduce(
+      (acc, vote) => {
+        acc[vote.voteChoice] += vote.voteWeight;
+        return acc;
+      },
+      { yes: 0, no: 0, abstain: 0 },
+    );
+    const status: InsertResolution["status"] =
+      tallies.yes > tallies.no ? "approved" : tallies.no > 0 ? "rejected" : "open";
+    await this.updateResolution(result.resolutionId, { status });
+    return result;
+  }
+
+  async getCalendarEvents(associationId?: string): Promise<CalendarEvent[]> {
+    if (!associationId) {
+      return db.select().from(calendarEvents).orderBy(calendarEvents.startsAt);
+    }
+    return db
+      .select()
+      .from(calendarEvents)
+      .where(eq(calendarEvents.associationId, associationId))
+      .orderBy(calendarEvents.startsAt);
+  }
+
+  async createCalendarEvent(data: InsertCalendarEvent): Promise<CalendarEvent> {
+    const [result] = await db
+      .insert(calendarEvents)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined> {
+    const [result] = await db
+      .update(calendarEvents)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(calendarEvents.id, id))
+      .returning();
+    return result;
+  }
+
+  async getGovernanceComplianceTemplates(associationId?: string): Promise<GovernanceComplianceTemplate[]> {
+    if (!associationId) {
+      return db.select().from(governanceComplianceTemplates).orderBy(desc(governanceComplianceTemplates.year), desc(governanceComplianceTemplates.createdAt));
+    }
+    return db
+      .select()
+      .from(governanceComplianceTemplates)
+      .where(eq(governanceComplianceTemplates.associationId, associationId))
+      .orderBy(desc(governanceComplianceTemplates.year), desc(governanceComplianceTemplates.createdAt));
+  }
+
+  async createGovernanceComplianceTemplate(data: InsertGovernanceComplianceTemplate): Promise<GovernanceComplianceTemplate> {
+    const [result] = await db
+      .insert(governanceComplianceTemplates)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async getGovernanceTemplateItems(templateId: string): Promise<GovernanceTemplateItem[]> {
+    return db
+      .select()
+      .from(governanceTemplateItems)
+      .where(eq(governanceTemplateItems.templateId, templateId))
+      .orderBy(governanceTemplateItems.orderIndex);
+  }
+
+  async createGovernanceTemplateItem(data: InsertGovernanceTemplateItem): Promise<GovernanceTemplateItem> {
+    const [result] = await db.insert(governanceTemplateItems).values(data).returning();
+    return result;
+  }
+
+  async getAnnualGovernanceTasks(associationId?: string): Promise<AnnualGovernanceTask[]> {
+    if (!associationId) {
+      return db.select().from(annualGovernanceTasks).orderBy(annualGovernanceTasks.dueDate, desc(annualGovernanceTasks.createdAt));
+    }
+    return db
+      .select()
+      .from(annualGovernanceTasks)
+      .where(eq(annualGovernanceTasks.associationId, associationId))
+      .orderBy(annualGovernanceTasks.dueDate, desc(annualGovernanceTasks.createdAt));
+  }
+
+  async createAnnualGovernanceTask(data: InsertAnnualGovernanceTask): Promise<AnnualGovernanceTask> {
+    const [result] = await db
+      .insert(annualGovernanceTasks)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateAnnualGovernanceTask(id: string, data: Partial<InsertAnnualGovernanceTask>): Promise<AnnualGovernanceTask | undefined> {
+    const [existing] = await db.select().from(annualGovernanceTasks).where(eq(annualGovernanceTasks.id, id));
+    if (!existing) return undefined;
+    const status = data.status ?? existing.status;
+    const completedAt =
+      existing.status !== "done" && status === "done"
+        ? new Date()
+        : existing.status === "done" && status !== "done"
+          ? null
+          : existing.completedAt;
+
+    const [result] = await db
+      .update(annualGovernanceTasks)
+      .set({ ...data, status, completedAt, updatedAt: new Date() })
+      .where(eq(annualGovernanceTasks.id, id))
+      .returning();
+    return result;
+  }
+
+  async generateAnnualGovernanceTasksFromTemplate(input: {
+    associationId: string;
+    templateId: string;
+    year: number;
+    ownerPersonId?: string | null;
+  }): Promise<{ created: number }> {
+    const items = await this.getGovernanceTemplateItems(input.templateId);
+    let created = 0;
+    for (const item of items) {
+      const dueDate = new Date(Date.UTC(input.year, Math.max(0, Math.min(11, item.dueMonth - 1)), Math.max(1, Math.min(31, item.dueDay))));
+      const [existing] = await db
+        .select()
+        .from(annualGovernanceTasks)
+        .where(
+          and(
+            eq(annualGovernanceTasks.associationId, input.associationId),
+            eq(annualGovernanceTasks.templateItemId, item.id),
+            eq(annualGovernanceTasks.dueDate, dueDate),
+          ),
+        );
+      if (existing) continue;
+
+      await db.insert(annualGovernanceTasks).values({
+        associationId: input.associationId,
+        templateId: input.templateId,
+        templateItemId: item.id,
+        title: item.title,
+        description: item.description,
+        status: "todo",
+        ownerPersonId: input.ownerPersonId ?? null,
+        dueDate,
+        notes: null,
+        updatedAt: new Date(),
+      });
+      created += 1;
+    }
+    return { created };
+  }
+
+  async getAiIngestionJobs(associationId?: string): Promise<AiIngestionJob[]> {
+    if (!associationId) return db.select().from(aiIngestionJobs).orderBy(desc(aiIngestionJobs.createdAt));
+    return db
+      .select()
+      .from(aiIngestionJobs)
+      .where(eq(aiIngestionJobs.associationId, associationId))
+      .orderBy(desc(aiIngestionJobs.createdAt));
+  }
+
+  async getAiIngestionMonitoring(windowDays = 14): Promise<{
+    windowDays: number;
+    totalJobs: number;
+    completedJobs: number;
+    failedJobs: number;
+    processingJobs: number;
+    queuedJobs: number;
+    providerFailureRecords: number;
+    parserFallbackRecords: number;
+    qualityWarningRecords: number;
+    approvedRecords: number;
+    rejectedRecords: number;
+    previewRuns: number;
+    appliedRuns: number;
+    noopRuns: number;
+    failureRate: number;
+    avgDurationMs: number;
+    alerts: string[];
+  }> {
+    const since = new Date(Date.now() - Math.max(1, windowDays) * 24 * 60 * 60 * 1000);
+    const jobs = await db
+      .select()
+      .from(aiIngestionJobs)
+      .where(gte(aiIngestionJobs.createdAt, since))
+      .orderBy(desc(aiIngestionJobs.createdAt));
+    const [records, importRuns] = await Promise.all([
+      db
+        .select()
+        .from(aiExtractedRecords)
+        .where(gte(aiExtractedRecords.createdAt, since))
+        .orderBy(desc(aiExtractedRecords.createdAt)),
+      db
+        .select()
+        .from(aiIngestionImportRuns)
+        .where(gte(aiIngestionImportRuns.createdAt, since))
+        .orderBy(desc(aiIngestionImportRuns.createdAt)),
+    ]);
+
+    const totalJobs = jobs.length;
+    const completedJobs = jobs.filter((job) => job.status === "completed").length;
+    const failedJobs = jobs.filter((job) => job.status === "failed").length;
+    const processingJobs = jobs.filter((job) => job.status === "processing").length;
+    const queuedJobs = jobs.filter((job) => job.status === "queued").length;
+    const providerFailureRecords = records.filter((record) => {
+      const payload = record.payloadJson as Record<string, unknown> | null;
+      const trace = payload?._ingestionTrace;
+      return Boolean(trace && typeof trace === "object" && typeof (trace as Record<string, unknown>).fallbackReason === "string" && ((trace as Record<string, unknown>).fallbackReason as string).trim());
+    }).length;
+    const parserFallbackRecords = records.filter((record) => {
+      const payload = record.payloadJson as Record<string, unknown> | null;
+      const trace = payload?._ingestionTrace;
+      return Boolean(trace && typeof trace === "object" && (trace as Record<string, unknown>).provider === "fallback");
+    }).length;
+    const qualityWarningRecords = records.filter((record) => {
+      const payload = record.payloadJson as Record<string, unknown> | null;
+      const quality = payload?.extractionQuality;
+      return Boolean(quality && typeof quality === "object" && Array.isArray((quality as Record<string, unknown>).warnings) && ((quality as Record<string, unknown>).warnings as unknown[]).length > 0);
+    }).length;
+    const approvedRecords = records.filter((record) => record.reviewStatus === "approved").length;
+    const rejectedRecords = records.filter((record) => record.reviewStatus === "rejected").length;
+    const previewRuns = importRuns.filter((run) => run.mode === "preview").length;
+    const appliedRuns = importRuns.filter((run) => run.runStatus === "applied").length;
+    const noopRuns = importRuns.filter((run) => run.runStatus === "noop" || run.runStatus === "preview-noop").length;
+    const failureRate = totalJobs === 0 ? 0 : Number((failedJobs / totalJobs).toFixed(3));
+
+    const durations = jobs
+      .filter((job) => job.startedAt && job.completedAt)
+      .map((job) => Math.max(0, new Date(job.completedAt!).getTime() - new Date(job.startedAt!).getTime()));
+    const avgDurationMs = durations.length === 0 ? 0 : Math.round(durations.reduce((sum, ms) => sum + ms, 0) / durations.length);
+
+    const alerts: string[] = [];
+    if (totalJobs >= 5 && failureRate >= 0.2) alerts.push(`High failure rate: ${Math.round(failureRate * 100)}% in last ${windowDays}d.`);
+    if (queuedJobs + processingJobs >= 10) alerts.push(`Ingestion backlog detected: ${queuedJobs} queued, ${processingJobs} processing.`);
+    if (avgDurationMs >= 120000) alerts.push(`Slow processing detected: average ${Math.round(avgDurationMs / 1000)}s.`);
+    if (parserFallbackRecords >= 5) alerts.push(`Parser fallback usage is elevated: ${parserFallbackRecords} records used fallback extraction.`);
+    if (qualityWarningRecords >= 5) alerts.push(`Quality warnings are elevated: ${qualityWarningRecords} extracted records carry warnings.`);
+    if (approvedRecords + rejectedRecords >= 5 && rejectedRecords > approvedRecords) alerts.push(`Review rejection rate is elevated: ${rejectedRecords} rejected vs ${approvedRecords} approved.`);
+    if (previewRuns >= 5 && appliedRuns === 0) alerts.push("Previews are running but no imports are being applied.");
+    if (alerts.length === 0) alerts.push("No active ingestion alerts.");
+
+    return {
+      windowDays,
+      totalJobs,
+      completedJobs,
+      failedJobs,
+      processingJobs,
+      queuedJobs,
+      providerFailureRecords,
+      parserFallbackRecords,
+      qualityWarningRecords,
+      approvedRecords,
+      rejectedRecords,
+      previewRuns,
+      appliedRuns,
+      noopRuns,
+      failureRate,
+      avgDurationMs,
+      alerts,
+    };
+  }
+
+  async createAiIngestionJob(data: InsertAiIngestionJob & { submittedBy?: string | null; sourceFileUrl?: string | null }): Promise<AiIngestionJob> {
+    const [result] = await db
+      .insert(aiIngestionJobs)
+      .values({
+        ...data,
+        submittedBy: data.submittedBy ?? null,
+        sourceFileUrl: data.sourceFileUrl ?? null,
+        status: "queued",
+        updatedAt: new Date(),
+      })
+      .returning();
+    return result;
+  }
+
+  async createAiExtractedRecord(data: InsertAiExtractedRecord): Promise<AiExtractedRecord> {
+    const [result] = await db
+      .insert(aiExtractedRecords)
+      .values({ ...data, reviewStatus: "pending-review", updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async getAiExtractedRecords(jobId?: string): Promise<AiExtractedRecord[]> {
+    if (!jobId) {
+      return db.select().from(aiExtractedRecords).orderBy(desc(aiExtractedRecords.createdAt));
+    }
+    return db
+      .select()
+      .from(aiExtractedRecords)
+      .where(eq(aiExtractedRecords.jobId, jobId))
+      .orderBy(desc(aiExtractedRecords.createdAt));
+  }
+
+  async getAiExtractedRecordById(id: string): Promise<AiExtractedRecord | undefined> {
+    const [result] = await db.select().from(aiExtractedRecords).where(eq(aiExtractedRecords.id, id));
+    return result;
+  }
+
+  async createAiIngestionImportRun(data: InsertAiIngestionImportRun): Promise<AiIngestionImportRun> {
+    const [result] = await db
+      .insert(aiIngestionImportRuns)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async getAiIngestionImportRuns(extractedRecordId: string): Promise<AiIngestionImportRun[]> {
+    return db
+      .select()
+      .from(aiIngestionImportRuns)
+      .where(eq(aiIngestionImportRuns.extractedRecordId, extractedRecordId))
+      .orderBy(desc(aiIngestionImportRuns.createdAt));
+  }
+
+  async getBankStatementResolutionHints(recordId: string): Promise<BankStatementResolutionHint[]> {
+    const [record] = await db.select().from(aiExtractedRecords).where(eq(aiExtractedRecords.id, recordId));
+    if (!record || record.recordType !== "bank-statement" || !record.associationId) return [];
+
+    const [associationUnits, associationOwnerships] = await Promise.all([
+      this.getUnits(record.associationId),
+      db
+      .select()
+      .from(ownerships)
+      .where(and(
+        eq(ownerships.endDate, null as any),
+      )),
+    ]);
+    const bankCorrectionHints = await this.getAssociationBankStatementCorrectionHints(record.associationId);
+    const associationUnitSet = new Set(associationUnits.map((u) => u.id));
+    const scopedOwnerships = associationOwnerships.filter((own) => associationUnitSet.has(own.unitId));
+    const unitById = new Map(associationUnits.map((u) => [u.id, u]));
+    const personIds = Array.from(new Set(scopedOwnerships.map((own) => own.personId)));
+    const scopedPersons = personIds.length > 0
+      ? await db.select().from(persons).where(inArray(persons.id, personIds))
+      : [];
+    const unitNumbersByPerson = new Map<string, string[]>();
+    for (const own of scopedOwnerships) {
+      const unit = unitById.get(own.unitId);
+      if (!unit) continue;
+      const list = unitNumbersByPerson.get(own.personId) ?? [];
+      if (!list.includes(unit.unitNumber)) list.push(unit.unitNumber);
+      unitNumbersByPerson.set(own.personId, list);
+    }
+
+    const txns = extractBankStatementTransactions(record.payloadJson);
+    const hints: BankStatementResolutionHint[] = [];
+
+    for (let index = 0; index < txns.length; index += 1) {
+      const txn = txns[index];
+      const matchingCorrection = bankCorrectionHints.transactionMappings.find((hint) => {
+        const txnDescription = normalizeBankTransactionDescription(txn.description);
+        const hintDescription = normalizeBankTransactionDescription(hint.description);
+        if (txnDescription && hintDescription && txnDescription === hintDescription) return true;
+        if (txn.ownerEmail && hint.ownerEmail && txn.ownerEmail === hint.ownerEmail) return true;
+        if (txn.ownerName && hint.ownerName && normalizeWhitespace(txn.ownerName).toLowerCase() === normalizeWhitespace(hint.ownerName).toLowerCase()) return true;
+        return false;
+      });
+      const postedAt = txn.postedAt ? toDate(txn.postedAt) : null;
+      const unit = txn.unitNumber
+        ? associationUnits.find((row) => row.unitNumber.toUpperCase() === txn.unitNumber)
+        : null;
+      const person = scopedPersons.find((row) => {
+        if (txn.ownerEmail && row.email?.toLowerCase() === txn.ownerEmail) return true;
+        if (!txn.ownerName) return false;
+        const parsed = parseName(txn.ownerName);
+        if (!parsed) return false;
+        return row.firstName.toLowerCase() === parsed.firstName.toLowerCase() && row.lastName.toLowerCase() === parsed.lastName.toLowerCase();
+      });
+
+      let reason: BankStatementResolutionHint["reason"] | null = null;
+      if (txn.amount == null || !Number.isFinite(txn.amount)) reason = "missing-amount";
+      else if (!postedAt) reason = "invalid-date";
+      else if (!unit) reason = "unit-unresolved";
+      else if (!person) reason = "person-unresolved";
+      if (!reason) continue;
+
+      const unitCandidates = associationUnits
+        .filter((candidate) => {
+          if (!txn.unitNumber) return true;
+          return candidate.unitNumber.includes(txn.unitNumber) || txn.unitNumber.includes(candidate.unitNumber);
+        })
+        .sort((left, right) => {
+          const leftScore = matchingCorrection?.unitNumber === left.unitNumber ? 1 : 0;
+          const rightScore = matchingCorrection?.unitNumber === right.unitNumber ? 1 : 0;
+          return rightScore - leftScore;
+        })
+        .slice(0, 8)
+        .map((candidate) => ({ unitId: candidate.id, unitNumber: candidate.unitNumber }));
+
+      const personCandidatesBase = scopedPersons
+        .filter((candidate) => {
+          if (txn.ownerEmail && candidate.email) {
+            const local = txn.ownerEmail.split("@")[0];
+            if (candidate.email.toLowerCase().includes(local)) return true;
+          }
+          if (txn.ownerName) {
+            const token = txn.ownerName.toLowerCase().split(" ")[0];
+            if (`${candidate.firstName} ${candidate.lastName}`.toLowerCase().includes(token)) return true;
+          }
+          if (unit) {
+            const personUnits = unitNumbersByPerson.get(candidate.id) ?? [];
+            if (personUnits.includes(unit.unitNumber)) return true;
+          }
+          return false;
+        })
+        .slice(0, 8);
+      const personCandidates = (personCandidatesBase.length > 0 ? personCandidatesBase : scopedPersons.slice(0, 8))
+        .sort((left, right) => {
+          const leftName = `${left.firstName} ${left.lastName}`;
+          const rightName = `${right.firstName} ${right.lastName}`;
+          const leftScore = (matchingCorrection?.ownerEmail && left.email === matchingCorrection.ownerEmail ? 1 : 0)
+            + (matchingCorrection?.ownerName && leftName.toLowerCase() === matchingCorrection.ownerName.toLowerCase() ? 1 : 0);
+          const rightScore = (matchingCorrection?.ownerEmail && right.email === matchingCorrection.ownerEmail ? 1 : 0)
+            + (matchingCorrection?.ownerName && rightName.toLowerCase() === matchingCorrection.ownerName.toLowerCase() ? 1 : 0);
+          return rightScore - leftScore;
+        })
+        .map((candidate) => ({
+          personId: candidate.id,
+          name: `${candidate.firstName} ${candidate.lastName}`,
+          email: candidate.email ?? null,
+          unitNumbers: unitNumbersByPerson.get(candidate.id) ?? [],
+        }));
+
+      hints.push({
+        txIndex: index,
+        reason,
+        transaction: txn,
+        unitCandidates,
+        personCandidates,
+      });
+    }
+
+    return hints;
+  }
+
+  private async getAiIngestionSourceText(job: AiIngestionJob): Promise<string> {
+    const pastedText = job.sourceText?.trim() ?? "";
+    let fileText = "";
+
+    if (job.sourceFileUrl) {
+      const filename = job.sourceFileUrl.replace("/api/uploads/", "");
+      const extension = path.extname(filename).toLowerCase();
+      if (DIRECT_TEXT_PARSEABLE_EXTENSIONS.has(extension)) {
+        try {
+          const rawText = await readFile(path.resolve("uploads", filename), "utf8");
+          fileText = normalizeUploadedText(rawText, extension).trim();
+        } catch {
+          fileText = "";
+        }
+      }
+    }
+
+    if (pastedText && fileText) {
+      return [
+        "Pasted Input:",
+        pastedText,
+        "",
+        "File-Derived Input:",
+        fileText,
+      ].join("\n");
+    }
+
+    return pastedText || fileText;
+  }
+
+  private async clearIngestionOutputs(jobId: string): Promise<void> {
+    const clauseRows = await db
+      .select({ id: clauseRecords.id })
+      .from(clauseRecords)
+      .where(eq(clauseRecords.ingestionJobId, jobId));
+    const clauseIds = clauseRows.map((row) => row.id);
+
+    if (clauseIds.length > 0) {
+      await db.delete(suggestedLinks).where(inArray(suggestedLinks.clauseRecordId, clauseIds));
+      await db.delete(clauseTags).where(inArray(clauseTags.clauseRecordId, clauseIds));
+    }
+
+    await db.delete(clauseRecords).where(eq(clauseRecords.ingestionJobId, jobId));
+    await db.delete(aiExtractedRecords).where(eq(aiExtractedRecords.jobId, jobId));
+  }
+
+  private async getAssociationOwnerRosterCorrectionHints(associationId: string): Promise<AssociationOwnerRosterCorrectionHints> {
+    const records = await db
+      .select({
+        payloadJson: aiExtractedRecords.payloadJson,
+      })
+      .from(aiExtractedRecords)
+      .where(and(
+        eq(aiExtractedRecords.associationId, associationId),
+        eq(aiExtractedRecords.recordType, "owner-roster"),
+      ))
+      .orderBy(desc(aiExtractedRecords.reviewedAt), desc(aiExtractedRecords.updatedAt))
+      .limit(25);
+
+    const combined: AssociationOwnerRosterCorrectionHints = {
+      unitRemaps: [],
+      ownerNameFixes: [],
+    };
+
+    for (const record of records) {
+      const hints = extractAssociationOwnerRosterCorrectionHintsFromPayload(record.payloadJson);
+      combined.unitRemaps.push(...hints.unitRemaps);
+      combined.ownerNameFixes.push(...hints.ownerNameFixes);
+    }
+
+    return {
+      unitRemaps: dedupeBy(combined.unitRemaps, (item) => `${item.fromUnitNumber}|${item.toUnitNumber}|${item.ownerText ?? ""}|${item.buildingAddress ?? ""}`).slice(0, 20),
+      ownerNameFixes: dedupeBy(combined.ownerNameFixes, (item) => `${item.unitNumber}|${item.displayName}|${item.firstName}|${item.lastName}`).slice(0, 30),
+    };
+  }
+
+  private async getAssociationBankStatementCorrectionHints(associationId: string): Promise<AssociationBankStatementCorrectionHints> {
+    const records = await db
+      .select({
+        payloadJson: aiExtractedRecords.payloadJson,
+      })
+      .from(aiExtractedRecords)
+      .where(and(
+        eq(aiExtractedRecords.associationId, associationId),
+        eq(aiExtractedRecords.recordType, "bank-statement"),
+      ))
+      .orderBy(desc(aiExtractedRecords.reviewedAt), desc(aiExtractedRecords.updatedAt))
+      .limit(25);
+
+    const mappings = records.flatMap((record) => extractAssociationBankStatementCorrectionHintsFromPayload(record.payloadJson).transactionMappings);
+    return {
+      transactionMappings: dedupeBy(mappings, (item) => `${normalizeBankTransactionDescription(item.description)}|${item.unitNumber ?? ""}|${item.ownerEmail ?? ""}|${item.ownerName ?? ""}`).slice(0, 40),
+    };
+  }
+
+  private async extractWithAi(
+    job: AiIngestionJob,
+    sourceText: string,
+    classification: IngestionClassification,
+    associationContext?: {
+      knownUnitNumbers: string[];
+      associationName: string | null;
+      ownerRosterCorrectionHints?: AssociationOwnerRosterCorrectionHints;
+      bankStatementCorrectionHints?: AssociationBankStatementCorrectionHints;
+    },
+  ): Promise<AiIngestionExtractionResult | null> {
+    const apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
+    if (!apiKey || !sourceText.trim()) return null;
+
+    const model = process.env.OPENAI_INGESTION_MODEL || "gpt-4o-mini";
+    const sourceSample = sourceText.slice(0, 15000);
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          {
+            role: "system",
+            content: [{
+              type: "input_text",
+              text: [
+                "You extract structured records from HOA and condo operations documents.",
+                "Return only JSON matching the schema.",
+                "Prefer owner-roster when the content contains owners, unit numbers, emails, phones, or mailing addresses.",
+                "Use contact-roster for contact lists that do not reliably include unit ownership mapping.",
+                "For owner-roster payloadJson, use { title, itemCount, items }.",
+                "Each owner-roster item must include unitNumber, firstName, lastName, email, phone, mailingAddress, ownershipPercentage, startDate.",
+                "Preserve one item per source row whenever possible. Do not collapse multiple owners into one record.",
+                "Copy phone numbers, emails, unit identifiers, and mailing addresses exactly when present.",
+                "If a value is absent, use null instead of guessing.",
+                "For invoice-draft payloadJson, include vendorName, invoiceNumber, amount, invoiceDate, dueDate, notes, status.",
+                "Use bank-statement for statement-style transaction exports.",
+                "Only emit clauses for bylaw/governance-style text.",
+                "Use contextNotes as operator intent and prioritization guidance.",
+                "Use classificationHint as routing guidance. If confidence is low, include document-metadata with warning context.",
+                "Use ownerRosterCorrectionHints from associationContext as examples of prior operator corrections for this association.",
+                "If owner-roster extraction presents a unit alias or malformed owner name that matches a prior corrected pattern, prefer the corrected interpretation.",
+                "Use bankStatementCorrectionHints from associationContext as examples of prior transaction mapping corrections for this association.",
+                "If a bank transaction description or owner hint matches a prior corrected mapping, prefer the corrected unit/person interpretation.",
+              ].join(" "),
+            }],
+          },
+          {
+            role: "user",
+            content: [{
+              type: "input_text",
+              text: JSON.stringify({
+                associationId: job.associationId,
+                sourceFilename: job.sourceFilename,
+                contextNotes: job.contextNotes ?? null,
+                classificationHint: classification,
+                associationContext: associationContext ?? null,
+                sourceText: sourceSample,
+              }),
+            }],
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "ai_ingestion_result",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                records: {
+                  type: "array",
+                  items: {
+                    oneOf: [
+                      {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          recordType: { type: "string", const: "owner-roster" },
+                          confidenceScore: { anyOf: [{ type: "number" }, { type: "null" }] },
+                          payloadJson: {
+                            type: "object",
+                            additionalProperties: false,
+                            properties: {
+                              title: { type: "string" },
+                              itemCount: { type: "number" },
+                              items: {
+                                type: "array",
+                                items: {
+                                  type: "object",
+                                  additionalProperties: false,
+                                  properties: {
+                                    unitNumber: { type: "string" },
+                                    firstName: { type: "string" },
+                                    lastName: { type: "string" },
+                                    email: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    phone: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    mailingAddress: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    ownershipPercentage: { anyOf: [{ type: "number" }, { type: "null" }] },
+                                    startDate: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                  },
+                                  required: ["unitNumber", "firstName", "lastName", "email", "phone", "mailingAddress", "ownershipPercentage", "startDate"],
+                                },
+                              },
+                            },
+                            required: ["title", "itemCount", "items"],
+                          },
+                        },
+                        required: ["recordType", "confidenceScore", "payloadJson"],
+                      },
+                      {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          recordType: { type: "string", const: "contact-roster" },
+                          confidenceScore: { anyOf: [{ type: "number" }, { type: "null" }] },
+                          payloadJson: {
+                            type: "object",
+                            additionalProperties: false,
+                            properties: {
+                              title: { type: "string" },
+                              itemCount: { type: "number" },
+                              items: {
+                                type: "array",
+                                items: {
+                                  type: "object",
+                                  additionalProperties: false,
+                                  properties: {
+                                    firstName: { type: "string" },
+                                    lastName: { type: "string" },
+                                    email: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    phone: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    mailingAddress: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                  },
+                                  required: ["firstName", "lastName", "email", "phone", "mailingAddress"],
+                                },
+                              },
+                            },
+                            required: ["title", "itemCount", "items"],
+                          },
+                        },
+                        required: ["recordType", "confidenceScore", "payloadJson"],
+                      },
+                      {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          recordType: { type: "string", const: "invoice-draft" },
+                          confidenceScore: { anyOf: [{ type: "number" }, { type: "null" }] },
+                          payloadJson: {
+                            type: "object",
+                            additionalProperties: true,
+                            properties: {
+                              vendorName: { type: "string" },
+                              invoiceNumber: { anyOf: [{ type: "string" }, { type: "null" }] },
+                              amount: { anyOf: [{ type: "number" }, { type: "null" }] },
+                              invoiceDate: { anyOf: [{ type: "string" }, { type: "null" }] },
+                              dueDate: { anyOf: [{ type: "string" }, { type: "null" }] },
+                              notes: { anyOf: [{ type: "string" }, { type: "null" }] },
+                              status: { anyOf: [{ type: "string" }, { type: "null" }] },
+                            },
+                            required: ["vendorName", "invoiceNumber", "amount", "invoiceDate", "dueDate", "notes", "status"],
+                          },
+                        },
+                        required: ["recordType", "confidenceScore", "payloadJson"],
+                      },
+                      {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          recordType: { type: "string", const: "bank-statement" },
+                          confidenceScore: { anyOf: [{ type: "number" }, { type: "null" }] },
+                          payloadJson: {
+                            type: "object",
+                            additionalProperties: true,
+                            properties: {
+                              statementPeriod: { anyOf: [{ type: "string" }, { type: "null" }] },
+                              transactions: {
+                                type: "array",
+                                items: {
+                                  type: "object",
+                                  additionalProperties: false,
+                                  properties: {
+                                    unitNumber: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    ownerEmail: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    ownerName: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    amount: { anyOf: [{ type: "number" }, { type: "string" }, { type: "null" }] },
+                                    postedAt: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    description: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                    entryType: { anyOf: [{ type: "string" }, { type: "null" }] },
+                                  },
+                                  required: ["unitNumber", "ownerEmail", "ownerName", "amount", "postedAt", "description", "entryType"],
+                                },
+                              },
+                            },
+                            required: ["statementPeriod", "transactions"],
+                          },
+                        },
+                        required: ["recordType", "confidenceScore", "payloadJson"],
+                      },
+                      {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          recordType: {
+                            type: "string",
+                            enum: ["meeting-notes", "document-metadata"],
+                          },
+                          confidenceScore: { anyOf: [{ type: "number" }, { type: "null" }] },
+                          payloadJson: { type: "object", additionalProperties: true },
+                        },
+                        required: ["recordType", "confidenceScore", "payloadJson"],
+                      },
+                    ],
+                  },
+                },
+                clauses: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      title: { type: "string" },
+                      clauseText: { type: "string" },
+                      confidenceScore: { anyOf: [{ type: "number" }, { type: "null" }] },
+                      tags: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                      suggestedLinks: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          additionalProperties: false,
+                          properties: {
+                            entityType: { type: "string" },
+                            entityId: { type: "string" },
+                            confidenceScore: { anyOf: [{ type: "number" }, { type: "null" }] },
+                          },
+                          required: ["entityType", "entityId", "confidenceScore"],
+                        },
+                      },
+                    },
+                    required: ["title", "clauseText", "confidenceScore", "tags", "suggestedLinks"],
+                  },
+                },
+              },
+              required: ["records", "clauses"],
+            },
+          },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`AI extraction failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = Array.isArray(data.output)
+      ? data.output.flatMap((item: any) => Array.isArray(item.content) ? item.content : [])
+      : [];
+    const textChunk = content.find((item: any) => typeof item.text === "string");
+    if (!textChunk?.text) {
+      throw new Error("AI extraction returned no structured output");
+    }
+
+    return JSON.parse(textChunk.text) as AiIngestionExtractionResult;
+  }
+
+  async processAiIngestionJob(jobId: string): Promise<AiIngestionJob> {
+    const [job] = await db.select().from(aiIngestionJobs).where(eq(aiIngestionJobs.id, jobId));
+    if (!job) throw new Error("Ingestion job not found");
+    if (job.status === "processing") throw new Error("Ingestion job is already processing");
+
+    await db
+      .update(aiIngestionJobs)
+      .set({ status: "processing", startedAt: new Date(), completedAt: null, errorMessage: null, updatedAt: new Date() })
+      .where(eq(aiIngestionJobs.id, jobId));
+
+    try {
+      await this.clearIngestionOutputs(job.id);
+      const sourceText = await this.getAiIngestionSourceText(job);
+      if (!sourceText.trim()) {
+        throw new Error("No parsable source text found. Provide pasted text or upload a txt/md/csv/tsv/json/log/html/xml/eml file.");
+      }
+      const classification = classifyIngestionSource(job, sourceText);
+      const associationUnits = job.associationId ? await this.getUnits(job.associationId) : [];
+      const ownerRosterCorrectionHints = job.associationId
+        ? await this.getAssociationOwnerRosterCorrectionHints(job.associationId)
+        : { unitRemaps: [], ownerNameFixes: [] };
+      const bankStatementCorrectionHints = job.associationId
+        ? await this.getAssociationBankStatementCorrectionHints(job.associationId)
+        : { transactionMappings: [] };
+      const associationContext = {
+        knownUnitNumbers: associationUnits.map((unit) => unit.unitNumber.toUpperCase()).slice(0, 200),
+        associationName: job.associationId
+          ? ((await db.select({ name: associations.name }).from(associations).where(eq(associations.id, job.associationId)).limit(1))[0]?.name ?? null)
+          : null,
+        ownerRosterCorrectionHints,
+        bankStatementCorrectionHints,
+      };
+      let extraction = null as AiIngestionExtractionResult | null;
+      const aiConfigured = Boolean(process.env.OPENAI_API_KEY || process.env.AI_API_KEY);
+      const aiModel = aiConfigured ? (process.env.OPENAI_INGESTION_MODEL || "gpt-4o-mini") : null;
+      let trace: IngestionTrace = {
+        provider: aiConfigured ? "fallback" : "fallback",
+        model: aiModel,
+        fallbackReason: aiConfigured ? "AI extraction did not return a result." : "AI is not configured; using fallback extraction.",
+      };
+
+      try {
+        extraction = await this.extractWithAi(job, sourceText, classification, associationContext);
+        if (extraction) {
+          trace = {
+            provider: "openai",
+            model: aiModel,
+            fallbackReason: null,
+          };
+        }
+      } catch (error) {
+        console.error("AI ingestion extraction failed, falling back to heuristics:", error);
+        trace = {
+          provider: "fallback",
+          model: aiModel,
+          fallbackReason: error instanceof Error ? error.message : "Unknown AI extraction failure.",
+        };
+      }
+
+      const resolvedExtractionBase = applyClassificationGuardrails(
+        enrichExtractionWithFallback(job, sourceText, extraction ?? { records: [], clauses: [] }, ownerRosterCorrectionHints, bankStatementCorrectionHints),
+        classification,
+      );
+      const resolvedExtraction: AiIngestionExtractionResult = {
+        records: resolvedExtractionBase.records.map((record) => ({
+          ...record,
+          payloadJson: attachIngestionTrace(attachDestinationRouting(record.recordType, record.payloadJson), trace),
+        })),
+        clauses: resolvedExtractionBase.clauses,
+      };
+
+      for (const record of resolvedExtraction.records) {
+        await this.createAiExtractedRecord({
+          jobId: job.id,
+          associationId: job.associationId ?? null,
+          recordType: record.recordType,
+          payloadJson: record.payloadJson,
+          confidenceScore: record.confidenceScore ?? null,
+        });
+      }
+
+      for (const clauseInput of resolvedExtraction.clauses) {
+        const clause = await this.createClauseRecord({
+          ingestionJobId: job.id,
+          extractedRecordId: null,
+          associationId: job.associationId ?? null,
+          sourceDocumentId: null,
+          title: clauseInput.title,
+          clauseText: clauseInput.clauseText,
+          confidenceScore: clauseInput.confidenceScore ?? null,
+        });
+
+        for (const tag of clauseInput.tags) {
+          await this.createClauseTag({ clauseRecordId: clause.id, tag });
+        }
+        for (const link of clauseInput.suggestedLinks) {
+          await this.createSuggestedLink({
+            clauseRecordId: clause.id,
+            entityType: link.entityType,
+            entityId: link.entityId,
+            confidenceScore: link.confidenceScore ?? null,
+          });
+        }
+      }
+
+      const [updated] = await db
+        .update(aiIngestionJobs)
+        .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
+        .where(eq(aiIngestionJobs.id, job.id))
+        .returning();
+      return updated;
+    } catch (error: any) {
+      const [failed] = await db
+        .update(aiIngestionJobs)
+        .set({ status: "failed", errorMessage: error.message || "Processing failed", updatedAt: new Date() })
+        .where(eq(aiIngestionJobs.id, job.id))
+        .returning();
+      return failed;
+    }
+  }
+
+  async reviewAiExtractedRecord(id: string, payload: { reviewStatus: "approved" | "rejected"; payloadJson?: unknown; reviewedBy?: string | null }): Promise<AiExtractedRecord | undefined> {
+    const [result] = await db
+      .update(aiExtractedRecords)
+      .set({
+        reviewStatus: payload.reviewStatus,
+        payloadJson: payload.payloadJson ?? undefined,
+        reviewedBy: payload.reviewedBy ?? null,
+        reviewedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(aiExtractedRecords.id, id))
+      .returning();
+    return result;
+  }
+
+  private emptyImportSummary(targetModule = "none", message = "No import executed", dryRun = false): AiIngestionImportSummary {
+    return {
+      imported: false,
+      dryRun,
+      targetModule,
+      sourceRecordId: undefined,
+      sourceRecordType: undefined,
+      sourceJobId: undefined,
+      destinationPlan: null,
+      routeMatched: false,
+      unresolvedExceptionCount: 0,
+      blockingExceptionCount: 0,
+      unresolvedExceptions: [],
+      createdPersons: 0,
+      updatedPersons: 0,
+      createdUnits: 0,
+      createdOwnerships: 0,
+      createdVendorInvoices: 0,
+      createdOwnerLedgerEntries: 0,
+      createdVendorInvoiceIds: [],
+      createdOwnerLedgerEntryIds: [],
+      skippedRows: 0,
+      message,
+      details: [],
+    };
+  }
+
+  private async importOwnerRosterRecord(
+    associationId: string,
+    payloadJson: unknown,
+    actorEmail?: string,
+    mode: "preview" | "commit" = "commit",
+  ): Promise<AiIngestionImportSummary> {
+    const dryRun = mode === "preview";
+    const normalizedEntries = extractNormalizedOwnerRosterEntries(payloadJson);
+    const items = normalizedEntries.length > 0
+      ? buildOwnerRosterItemsFromNormalizedEntries(normalizedEntries)
+      : extractOwnerRosterItems(payloadJson);
+    if (!items.length && !normalizedEntries.length) {
+      return this.emptyImportSummary("owners", "No owner roster rows were eligible for import.", dryRun);
+    }
+
+    const [associationUnits, allPersons] = await Promise.all([
+      this.getUnits(associationId),
+      db.select().from(persons),
+    ]);
+
+    const ownerEntries = normalizedEntries.length > 0
+      ? normalizedEntries
+      : items.map((item) => ({
+          buildingAddress: item.mailingAddress,
+          unitNumber: item.unitNumber,
+          ownerText: `${item.firstName} ${item.lastName}`,
+          ownerCandidates: [{
+            displayName: `${item.firstName} ${item.lastName}`,
+            firstName: item.firstName,
+            lastName: item.lastName,
+            email: item.email,
+            phone: item.phone,
+          }],
+          emails: item.email ? [item.email] : [],
+          phones: item.phone ? [item.phone] : [],
+          notes: [],
+        }));
+    const unresolvedExceptions = buildOwnerRosterUnresolvedExceptions(
+      ownerEntries,
+      associationUnits.map((unit) => unit.unitNumber),
+    );
+    if (unresolvedExceptions.some((exception) => exception.blocking) && !dryRun) {
+      return {
+        ...this.emptyImportSummary("owners", `Owner roster import blocked by unresolved exceptions. ${unresolvedExceptions.map((item) => item.message).join(" ")}`, false),
+        unresolvedExceptionCount: unresolvedExceptions.length,
+        blockingExceptionCount: unresolvedExceptions.filter((exception) => exception.blocking).length,
+        unresolvedExceptions,
+        skippedRows: unresolvedExceptions.length,
+        details: unresolvedExceptions.map((exception) => ({
+          module: "owners",
+          action: "skip" as const,
+          entityKey: exception.unitNumber,
+          reason: exception.message,
+        })),
+      };
+    }
+
+    let createdPersons = 0;
+    let updatedPersons = 0;
+    let createdUnits = 0;
+    let createdOwnerships = 0;
+    let skippedRows = 0;
+    const details: AiIngestionImportSummary["details"] = [];
+    for (const exception of unresolvedExceptions) {
+      details.push({
+        module: "owners",
+        action: "skip",
+        entityKey: exception.unitNumber,
+        reason: exception.message,
+      });
+    }
+
+    for (const entry of ownerEntries) {
+      const candidateCount = entry.ownerCandidates.length;
+      for (let candidateIndex = 0; candidateIndex < entry.ownerCandidates.length; candidateIndex += 1) {
+        const candidate = entry.ownerCandidates[candidateIndex];
+        const item: OwnerRosterItem = {
+          unitNumber: entry.unitNumber,
+          firstName: candidate.firstName,
+          lastName: candidate.lastName,
+          email: candidate.email ?? entry.emails[candidateIndex] ?? (candidateCount === 1 ? entry.emails[0] ?? null : null),
+          phone: candidate.phone ?? entry.phones[candidateIndex] ?? (candidateCount === 1 ? entry.phones[0] ?? null : null),
+          mailingAddress: entry.buildingAddress,
+          ownershipPercentage: candidateCount > 1 ? Number((100 / candidateCount).toFixed(2)) : null,
+          startDate: null,
+        };
+      try {
+        let unit = associationUnits.find((row) => row.unitNumber.toUpperCase() === item.unitNumber);
+        if (!unit) {
+          if (!dryRun) {
+            unit = await this.createUnit({
+              associationId,
+              unitNumber: item.unitNumber,
+              building: null,
+              squareFootage: null,
+            }, actorEmail);
+            associationUnits.push(unit);
+          }
+          createdUnits += 1;
+          if (!unit) {
+            skippedRows += 1;
+            details.push({
+              module: "owners",
+              action: "skip",
+              entityKey: `${item.unitNumber}:${item.firstName} ${item.lastName}`,
+              reason: "Unit creation required in commit mode; preview cannot provide unit id.",
+            });
+            continue;
+          }
+      details.push({
+        module: "units",
+        action: "create",
+        entityKey: item.unitNumber,
+        reason: dryRun ? "Unit would be created." : "Unit created.",
+        beforeJson: null,
+        afterJson: { associationId, unitNumber: item.unitNumber },
+      });
+        }
+
+        const lowerFirst = item.firstName.toLowerCase();
+        const lowerLast = item.lastName.toLowerCase();
+        const exactNameMatch = allPersons.find((row) => row.firstName.toLowerCase() === lowerFirst && row.lastName.toLowerCase() === lowerLast);
+        const exactEmailAndNameMatch = item.email
+          ? allPersons.find((row) => row.email?.toLowerCase() === item.email && row.firstName.toLowerCase() === lowerFirst && row.lastName.toLowerCase() === lowerLast)
+          : undefined;
+        const emailOnlyMatch = candidateCount === 1 && item.email
+          ? allPersons.find((row) => row.email?.toLowerCase() === item.email)
+          : undefined;
+
+        let person = exactEmailAndNameMatch ?? exactNameMatch ?? emailOnlyMatch;
+        if (!person) {
+          if (!dryRun) {
+            person = await this.createPerson({
+              firstName: item.firstName,
+              lastName: item.lastName,
+              email: item.email,
+              phone: item.phone,
+              mailingAddress: item.mailingAddress,
+            }, actorEmail);
+            allPersons.push(person);
+          }
+          createdPersons += 1;
+          if (!person) {
+            skippedRows += 1;
+            details.push({
+              module: "persons",
+              action: "skip",
+              entityKey: `${item.firstName} ${item.lastName}`,
+              reason: "Person creation required in commit mode; preview cannot provide person id.",
+            });
+            continue;
+          }
+          details.push({
+            module: "persons",
+            action: "create",
+            entityKey: `${item.firstName} ${item.lastName}`,
+            reason: dryRun ? "Person would be created." : "Person created.",
+            beforeJson: null,
+            afterJson: {
+              firstName: item.firstName,
+              lastName: item.lastName,
+              email: item.email,
+              phone: item.phone,
+              mailingAddress: item.mailingAddress,
+              notes: entry.notes.length ? entry.notes : undefined,
+            },
+          });
+        } else {
+          const patch: Partial<InsertPerson> = {};
+          if (!person.email && item.email) patch.email = item.email;
+          if (!person.phone && item.phone) patch.phone = item.phone;
+          if (!person.mailingAddress && item.mailingAddress) patch.mailingAddress = item.mailingAddress;
+          if (Object.keys(patch).length > 0) {
+            if (!dryRun) {
+              person = (await this.updatePerson(person.id, patch, actorEmail)) ?? person;
+            }
+            updatedPersons += 1;
+            details.push({
+              module: "persons",
+              action: "update",
+              entityKey: `${item.firstName} ${item.lastName}`,
+              reason: dryRun ? "Person would be updated with missing fields." : "Person updated with missing fields.",
+              beforeJson: {
+                email: person.email,
+                phone: person.phone,
+                mailingAddress: person.mailingAddress,
+              },
+              afterJson: {
+                email: patch.email ?? person.email,
+                phone: patch.phone ?? person.phone,
+                mailingAddress: patch.mailingAddress ?? person.mailingAddress,
+              },
+            });
+          }
+        }
+
+        const existingOwnerships = await db
+          .select()
+          .from(ownerships)
+          .where(and(eq(ownerships.unitId, unit.id), eq(ownerships.personId, person.id), eq(ownerships.endDate, null as any)));
+        if (existingOwnerships.length > 0) {
+          skippedRows += 1;
+          details.push({
+            module: "owners",
+            action: "skip",
+            entityKey: `${item.unitNumber}:${item.firstName} ${item.lastName}`,
+            reason: "Active ownership already exists for unit/person.",
+            suggestions: entry.notes.length ? entry.notes : undefined,
+          });
+          continue;
+        }
+
+        if (!dryRun) {
+          await this.createOwnership({
+            unitId: unit.id,
+            personId: person.id,
+            ownershipPercentage: item.ownershipPercentage ?? 100,
+            startDate: item.startDate ? new Date(item.startDate) : new Date(),
+            endDate: null,
+          }, actorEmail);
+        }
+        createdOwnerships += 1;
+        details.push({
+          module: "owners",
+          action: "create",
+          entityKey: `${item.unitNumber}:${item.firstName} ${item.lastName}`,
+          reason: dryRun ? "Ownership would be created." : "Ownership created.",
+          beforeJson: null,
+          afterJson: {
+            ownershipPercentage: item.ownershipPercentage ?? 100,
+            startDate: item.startDate ?? null,
+            notes: entry.notes.length ? entry.notes : undefined,
+          },
+        });
+      } catch {
+        skippedRows += 1;
+        details.push({
+          module: "owners",
+          action: "skip",
+          entityKey: `${item.unitNumber}:${item.firstName} ${item.lastName}`,
+          reason: "Row failed validation or import execution.",
+        });
+      }
+      }
+    }
+
+    const imported = createdOwnerships > 0 || createdPersons > 0 || createdUnits > 0 || updatedPersons > 0;
+    return {
+      imported,
+      dryRun,
+      targetModule: "owners",
+      unresolvedExceptionCount: unresolvedExceptions.length,
+      blockingExceptionCount: unresolvedExceptions.filter((exception) => exception.blocking).length,
+      unresolvedExceptions,
+      createdPersons,
+      updatedPersons,
+      createdUnits,
+      createdOwnerships,
+      createdVendorInvoices: 0,
+      createdOwnerLedgerEntries: 0,
+      createdVendorInvoiceIds: [],
+      createdOwnerLedgerEntryIds: [],
+      skippedRows,
+      message: imported
+        ? `${dryRun ? "Preview" : "Owners import"} complete: ${createdOwnerships} ownerships, ${createdPersons} people, ${createdUnits} units ${dryRun ? "would be" : ""} created.`
+        : "No owner changes were applied.",
+      details,
+    };
+  }
+
+  private async importContactRosterRecord(
+    payloadJson: unknown,
+    actorEmail?: string,
+    mode: "preview" | "commit" = "commit",
+  ): Promise<AiIngestionImportSummary> {
+    const dryRun = mode === "preview";
+    const items = extractContactRosterItems(payloadJson);
+    if (!items.length) {
+      return this.emptyImportSummary("persons", "No contact rows were eligible for import.", dryRun);
+    }
+
+    const allPersons = await db.select().from(persons);
+    let createdPersons = 0;
+    let updatedPersons = 0;
+    let skippedRows = 0;
+    const details: AiIngestionImportSummary["details"] = [];
+
+    for (const item of items) {
+      try {
+        const personMatch = allPersons.find((row) => {
+          if (item.email && row.email?.toLowerCase() === item.email) return true;
+          return row.firstName.toLowerCase() === item.firstName.toLowerCase() && row.lastName.toLowerCase() === item.lastName.toLowerCase();
+        });
+
+        if (!personMatch) {
+          if (!dryRun) {
+            const created = await this.createPerson({
+              firstName: item.firstName,
+              lastName: item.lastName,
+              email: item.email,
+              phone: item.phone,
+              mailingAddress: item.mailingAddress,
+            }, actorEmail);
+            allPersons.push(created);
+          }
+          createdPersons += 1;
+          details.push({
+            module: "persons",
+            action: "create",
+            entityKey: `${item.firstName} ${item.lastName}`,
+            reason: dryRun ? "Person would be created." : "Person created.",
+            beforeJson: null,
+            afterJson: {
+              firstName: item.firstName,
+              lastName: item.lastName,
+              email: item.email,
+              phone: item.phone,
+              mailingAddress: item.mailingAddress,
+            },
+          });
+          continue;
+        }
+
+        const patch: Partial<InsertPerson> = {};
+        if (!personMatch.email && item.email) patch.email = item.email;
+        if (!personMatch.phone && item.phone) patch.phone = item.phone;
+        if (!personMatch.mailingAddress && item.mailingAddress) patch.mailingAddress = item.mailingAddress;
+        if (Object.keys(patch).length > 0) {
+          if (!dryRun) {
+            await this.updatePerson(personMatch.id, patch, actorEmail);
+          }
+          updatedPersons += 1;
+          details.push({
+            module: "persons",
+            action: "update",
+            entityKey: `${item.firstName} ${item.lastName}`,
+            reason: dryRun ? "Person would be updated with missing fields." : "Person updated with missing fields.",
+            beforeJson: {
+              email: personMatch.email,
+              phone: personMatch.phone,
+              mailingAddress: personMatch.mailingAddress,
+            },
+            afterJson: {
+              email: patch.email ?? personMatch.email,
+              phone: patch.phone ?? personMatch.phone,
+              mailingAddress: patch.mailingAddress ?? personMatch.mailingAddress,
+            },
+          });
+        } else {
+          skippedRows += 1;
+          details.push({
+            module: "persons",
+            action: "skip",
+            entityKey: `${item.firstName} ${item.lastName}`,
+            reason: "No changes required.",
+          });
+        }
+      } catch {
+        skippedRows += 1;
+        details.push({
+          module: "persons",
+          action: "skip",
+          entityKey: `${item.firstName} ${item.lastName}`,
+          reason: "Row failed validation or import execution.",
+        });
+      }
+    }
+
+    const imported = createdPersons > 0 || updatedPersons > 0;
+    return {
+      imported,
+      dryRun,
+      targetModule: "persons",
+      createdPersons,
+      updatedPersons,
+      createdUnits: 0,
+      createdOwnerships: 0,
+      createdVendorInvoices: 0,
+      createdOwnerLedgerEntries: 0,
+      createdVendorInvoiceIds: [],
+      createdOwnerLedgerEntryIds: [],
+      skippedRows,
+      message: imported
+        ? `${dryRun ? "Preview" : "Contacts import"} complete: ${createdPersons} people ${dryRun ? "would be" : ""} created, ${updatedPersons} ${dryRun ? "would be" : ""} updated.`
+        : "No contact changes were applied.",
+      details,
+    };
+  }
+
+  private async importInvoiceDraftRecord(
+    associationId: string,
+    payloadJson: unknown,
+    mode: "preview" | "commit" = "commit",
+  ): Promise<AiIngestionImportSummary> {
+    const dryRun = mode === "preview";
+    if (!payloadJson || typeof payloadJson !== "object") {
+      return this.emptyImportSummary("financial-invoices", "Invoice payload is missing.", dryRun);
+    }
+
+    const payload = payloadJson as Record<string, unknown>;
+    const vendorName = typeof payload.vendorName === "string" ? normalizeWhitespace(payload.vendorName) : "";
+    const amount = toNumber(payload.amount ?? payload.amountText);
+    const invoiceDate = toDate(payload.invoiceDate) ?? new Date();
+    const dueDate = toDate(payload.dueDate);
+    const invoiceNumber = typeof payload.invoiceNumber === "string" && payload.invoiceNumber.trim() ? payload.invoiceNumber.trim() : null;
+    const notes = typeof payload.notes === "string" ? payload.notes : typeof payload.rawSnippet === "string" ? payload.rawSnippet : null;
+    const statusInput = typeof payload.status === "string" ? payload.status : "received";
+    const status = ["draft", "received", "approved", "paid", "void"].includes(statusInput) ? statusInput as InsertVendorInvoice["status"] : "received";
+
+    if (!vendorName || amount == null) {
+      return this.emptyImportSummary("financial-invoices", "Invoice payload is missing vendorName or amount.", dryRun);
+    }
+
+    const duplicateByNumber = invoiceNumber
+      ? await db
+          .select({ id: vendorInvoices.id })
+          .from(vendorInvoices)
+          .where(and(
+            eq(vendorInvoices.associationId, associationId),
+            eq(vendorInvoices.vendorName, vendorName),
+            eq(vendorInvoices.invoiceNumber, invoiceNumber),
+          ))
+      : [];
+
+    if (duplicateByNumber.length > 0) {
+      return {
+        ...this.emptyImportSummary("financial-invoices", "Duplicate invoice detected by vendor + invoice number. Import skipped.", dryRun),
+        skippedRows: 1,
+        details: [{
+          module: "financial-invoices",
+          action: "skip",
+          entityKey: `${vendorName}:${invoiceNumber}`,
+          reason: "Duplicate by vendor and invoice number.",
+        }],
+      };
+    }
+
+    const duplicateBySignature = await db
+      .select({ id: vendorInvoices.id })
+      .from(vendorInvoices)
+      .where(and(
+        eq(vendorInvoices.associationId, associationId),
+        eq(vendorInvoices.vendorName, vendorName),
+        eq(vendorInvoices.amount, amount),
+        eq(vendorInvoices.invoiceDate, invoiceDate),
+      ));
+    if (duplicateBySignature.length > 0) {
+      return {
+        ...this.emptyImportSummary("financial-invoices", "Potential duplicate invoice detected by vendor + amount + date. Import skipped.", dryRun),
+        skippedRows: 1,
+        details: [{
+          module: "financial-invoices",
+          action: "skip",
+          entityKey: `${vendorName}:${amount}:${invoiceDate.toISOString().slice(0, 10)}`,
+          reason: "Potential duplicate by vendor, amount, and invoice date.",
+        }],
+      };
+    }
+
+    let createdInvoiceId: string | null = null;
+    if (!dryRun) {
+      const created = await this.createVendorInvoice({
+        associationId,
+        vendorName,
+        invoiceNumber,
+        invoiceDate,
+        dueDate,
+        amount,
+        status,
+        accountId: null,
+        categoryId: null,
+        notes,
+      });
+      createdInvoiceId = created.id;
+    }
+
+    return {
+      imported: true,
+      dryRun,
+      targetModule: "financial-invoices",
+      createdPersons: 0,
+      updatedPersons: 0,
+      createdUnits: 0,
+      createdOwnerships: 0,
+      createdVendorInvoices: 1,
+      createdOwnerLedgerEntries: 0,
+      createdVendorInvoiceIds: createdInvoiceId ? [createdInvoiceId] : [],
+      createdOwnerLedgerEntryIds: [],
+      skippedRows: 0,
+      message: dryRun ? "Preview complete: 1 invoice would be imported into Financial Invoices." : "Invoice imported into Financial Invoices.",
+        details: [{
+          module: "financial-invoices",
+          action: "create",
+          entityKey: `${vendorName}:${invoiceNumber || "no-number"}`,
+          reason: dryRun ? "Invoice would be created." : "Invoice created.",
+          beforeJson: null,
+          afterJson: {
+            vendorName,
+            invoiceNumber,
+            amount,
+            invoiceDate,
+            dueDate,
+            status,
+          },
+        }],
+    };
+  }
+
+  private async importBankStatementRecord(
+    record: AiExtractedRecord,
+    mode: "preview" | "commit" = "commit",
+  ): Promise<AiIngestionImportSummary> {
+    const dryRun = mode === "preview";
+    if (!record.associationId) {
+      return this.emptyImportSummary("owner-ledger", "Association is required for bank statement import.", dryRun);
+    }
+    const { transactions, invalidCount } = normalizeBankStatementTransactions(record.payloadJson);
+    if (!transactions.length) {
+      return this.emptyImportSummary("owner-ledger", "No valid bank statement transactions found in payload.", dryRun);
+    }
+
+    const [associationUnits, allPersons] = await Promise.all([
+      this.getUnits(record.associationId),
+      db.select().from(persons),
+    ]);
+
+    let createdOwnerLedgerEntries = 0;
+    const createdOwnerLedgerEntryIds: string[] = [];
+    let skippedRows = invalidCount;
+    const details: AiIngestionImportSummary["details"] = [];
+
+    for (let index = 0; index < transactions.length; index += 1) {
+      const txn = transactions[index];
+      if (txn.amount == null || !txn.postedAt) {
+        skippedRows += 1;
+        details.push({
+          module: "owner-ledger",
+          action: "skip",
+          entityKey: `txn-${index + 1}`,
+          reason: "Missing amount or postedAt.",
+        });
+        continue;
+      }
+
+      const unit = txn.unitNumber
+        ? associationUnits.find((row) => row.unitNumber.toUpperCase() === txn.unitNumber)
+        : null;
+      if (!unit) {
+        skippedRows += 1;
+        const unitHints = associationUnits
+          .map((row) => row.unitNumber)
+          .filter((unitNumber) => (txn.unitNumber ? unitNumber.includes(txn.unitNumber.slice(0, 2)) : false))
+          .slice(0, 3);
+        details.push({
+          module: "owner-ledger",
+          action: "skip",
+          entityKey: `txn-${index + 1}`,
+          reason: "Unit could not be resolved for transaction.",
+          suggestions: unitHints.length ? unitHints.map((value) => `Try unit ${value}`) : undefined,
+        });
+        continue;
+      }
+
+      const person = allPersons.find((row) => {
+        if (txn.ownerEmail && row.email?.toLowerCase() === txn.ownerEmail) return true;
+        if (!txn.ownerName) return false;
+        const parsed = parseName(txn.ownerName);
+        if (!parsed) return false;
+        return row.firstName.toLowerCase() === parsed.firstName.toLowerCase() && row.lastName.toLowerCase() === parsed.lastName.toLowerCase();
+      });
+      if (!person) {
+        skippedRows += 1;
+        const personHints = allPersons
+          .filter((row) => {
+            if (txn.ownerEmail && row.email) return row.email.toLowerCase().includes(txn.ownerEmail.split("@")[0]);
+            if (txn.ownerName) {
+              const lower = txn.ownerName.toLowerCase();
+              return `${row.firstName} ${row.lastName}`.toLowerCase().includes(lower.split(" ")[0]);
+            }
+            return false;
+          })
+          .slice(0, 3)
+          .map((row) => `${row.firstName} ${row.lastName}${row.email ? ` <${row.email}>` : ""}`);
+        details.push({
+          module: "owner-ledger",
+          action: "skip",
+          entityKey: `txn-${index + 1}`,
+          reason: "Person could not be resolved for transaction.",
+          suggestions: personHints.length ? personHints : undefined,
+        });
+        continue;
+      }
+
+      const postedAt = toDate(txn.postedAt);
+      if (!postedAt) {
+        skippedRows += 1;
+        details.push({
+          module: "owner-ledger",
+          action: "skip",
+          entityKey: `txn-${index + 1}`,
+          reason: "Invalid postedAt date.",
+        });
+        continue;
+      }
+
+      const referenceId = `${record.id}:${index}`;
+      const [existing] = await db
+        .select({ id: ownerLedgerEntries.id })
+        .from(ownerLedgerEntries)
+        .where(and(
+          eq(ownerLedgerEntries.referenceType, "ai-bank-statement"),
+          eq(ownerLedgerEntries.referenceId, referenceId),
+        ));
+      if (existing) {
+        skippedRows += 1;
+        details.push({
+          module: "owner-ledger",
+          action: "skip",
+          entityKey: referenceId,
+          reason: "Transaction already imported.",
+        });
+        continue;
+      }
+
+      if (!dryRun) {
+        const created = await this.createOwnerLedgerEntry({
+          associationId: record.associationId,
+          unitId: unit.id,
+          personId: person.id,
+          entryType: txn.entryType,
+          amount: Math.abs(txn.amount),
+          postedAt,
+          description: txn.description ?? "Imported from bank statement",
+          referenceType: "ai-bank-statement",
+          referenceId,
+        });
+        createdOwnerLedgerEntryIds.push(created.id);
+      }
+      createdOwnerLedgerEntries += 1;
+        details.push({
+          module: "owner-ledger",
+          action: "create",
+          entityKey: referenceId,
+          reason: dryRun ? "Owner ledger entry would be created." : "Owner ledger entry created.",
+          beforeJson: null,
+          afterJson: {
+            associationId: record.associationId,
+            unitId: unit.id,
+            personId: person.id,
+            entryType: txn.entryType,
+            amount: Math.abs(txn.amount),
+            postedAt,
+            description: txn.description ?? "Imported from bank statement",
+          },
+        });
+    }
+
+    const imported = createdOwnerLedgerEntries > 0;
+    return {
+      imported,
+      dryRun,
+      targetModule: "owner-ledger",
+      createdPersons: 0,
+      updatedPersons: 0,
+      createdUnits: 0,
+      createdOwnerships: 0,
+      createdVendorInvoices: 0,
+      createdOwnerLedgerEntries,
+      createdVendorInvoiceIds: [],
+      createdOwnerLedgerEntryIds,
+      skippedRows,
+      message: imported
+        ? `${dryRun ? "Preview" : "Bank statement import"} complete: ${createdOwnerLedgerEntries} owner-ledger entries ${dryRun ? "would be" : ""} created.`
+        : "No owner-ledger entries were eligible for import from bank statement payload.",
+      details,
+    };
+  }
+
+  async importApprovedAiExtractedRecord(
+    id: string,
+    actorEmail?: string,
+    options?: { mode?: "preview" | "commit"; payloadOverride?: unknown },
+  ): Promise<AiIngestionImportSummary> {
+    const mode = options?.mode === "preview" ? "preview" : "commit";
+    const [record] = await db.select().from(aiExtractedRecords).where(eq(aiExtractedRecords.id, id));
+    if (!record) {
+      return this.emptyImportSummary("none", "Record not found.", mode === "preview");
+    }
+    if (mode === "commit" && record.reviewStatus !== "approved") {
+      return this.emptyImportSummary("none", "Record not approved for commit import.", false);
+    }
+    if (!record.associationId) {
+      return this.emptyImportSummary("none", "Association is required for import.", mode === "preview");
+    }
+    const payload = options?.payloadOverride ?? record.payloadJson;
+    const destinationPlan = extractDestinationRoutePlan(payload);
+    if (record.recordType === "owner-roster" && mode === "commit") {
+      const quality = getOwnerRosterQuality(payload);
+      if (quality && (quality.score < 0.7 || quality.warnings.some((warning) => /corrupted|invalid unit|incomplete owner names/i.test(warning)))) {
+        return this.emptyImportSummary(
+          "owners",
+          `Owner roster import blocked by quality gate. ${quality.warnings.join(" ") || "Extraction quality is below threshold."}`,
+          false,
+        );
+      }
+    }
+    let summary: AiIngestionImportSummary;
+    const routeModule = destinationPlan?.primaryModule ?? null;
+    switch (routeModule ?? record.recordType) {
+      case "owners":
+      case "owner-roster":
+        summary = await this.importOwnerRosterRecord(record.associationId, payload, actorEmail, mode);
+        break;
+      case "persons":
+      case "contact-roster":
+        summary = await this.importContactRosterRecord(payload, actorEmail, mode);
+        break;
+      case "financial-invoices":
+      case "invoice-draft":
+        summary = await this.importInvoiceDraftRecord(record.associationId, payload, mode);
+        break;
+      case "owner-ledger":
+      case "bank-statement":
+        summary = await this.importBankStatementRecord({ ...record, payloadJson: payload }, mode);
+        break;
+      default:
+        summary = this.emptyImportSummary(
+          "none",
+          routeModule
+            ? `No importer configured for routed module '${routeModule}'.`
+            : `No importer configured for recordType '${record.recordType}'.`,
+          mode === "preview",
+        );
+        break;
+    }
+
+    return {
+      ...summary,
+      destinationPlan,
+      routeMatched: destinationPlan ? summary.targetModule === destinationPlan.primaryModule : false,
+      sourceRecordId: record.id,
+      sourceRecordType: record.recordType,
+      sourceJobId: record.jobId,
+    };
+  }
+
+  async rollbackAiIngestionImportRun(runId: string, actorEmail?: string): Promise<{
+    rolledBack: boolean;
+    deletedVendorInvoices: number;
+    deletedOwnerLedgerEntries: number;
+    message: string;
+  }> {
+    const [run] = await db.select().from(aiIngestionImportRuns).where(eq(aiIngestionImportRuns.id, runId));
+    if (!run) {
+      return { rolledBack: false, deletedVendorInvoices: 0, deletedOwnerLedgerEntries: 0, message: "Import run not found." };
+    }
+    if (run.mode !== "commit") {
+      return { rolledBack: false, deletedVendorInvoices: 0, deletedOwnerLedgerEntries: 0, message: "Only commit runs can be rolled back." };
+    }
+    if (run.rolledBackAt) {
+      return { rolledBack: false, deletedVendorInvoices: 0, deletedOwnerLedgerEntries: 0, message: "Import run was already rolled back." };
+    }
+
+    const refs = (run.createdEntityRefsJson && typeof run.createdEntityRefsJson === "object"
+      ? run.createdEntityRefsJson
+      : {}) as {
+      vendorInvoiceIds?: unknown;
+      ownerLedgerEntryIds?: unknown;
+    };
+    const vendorInvoiceIds = Array.isArray(refs.vendorInvoiceIds) ? refs.vendorInvoiceIds.filter((id): id is string => typeof id === "string") : [];
+    const ownerLedgerEntryIds = Array.isArray(refs.ownerLedgerEntryIds) ? refs.ownerLedgerEntryIds.filter((id): id is string => typeof id === "string") : [];
+
+    let deletedVendorInvoices = 0;
+    let deletedOwnerLedgerEntries = 0;
+
+    if (ownerLedgerEntryIds.length > 0) {
+      const removed = await db
+        .delete(ownerLedgerEntries)
+        .where(inArray(ownerLedgerEntries.id, ownerLedgerEntryIds))
+        .returning({ id: ownerLedgerEntries.id });
+      deletedOwnerLedgerEntries = removed.length;
+    }
+
+    if (vendorInvoiceIds.length > 0) {
+      const removed = await db
+        .delete(vendorInvoices)
+        .where(inArray(vendorInvoices.id, vendorInvoiceIds))
+        .returning({ id: vendorInvoices.id });
+      deletedVendorInvoices = removed.length;
+    }
+
+    await db
+      .update(aiIngestionImportRuns)
+      .set({
+        runStatus: "rolled-back",
+        rolledBackAt: new Date(),
+        errorMessage: actorEmail ? `Rolled back by ${actorEmail}` : "Rolled back",
+        updatedAt: new Date(),
+      })
+      .where(eq(aiIngestionImportRuns.id, run.id));
+
+    return {
+      rolledBack: deletedVendorInvoices > 0 || deletedOwnerLedgerEntries > 0,
+      deletedVendorInvoices,
+      deletedOwnerLedgerEntries,
+      message: `Rollback complete. Removed ${deletedVendorInvoices} invoices and ${deletedOwnerLedgerEntries} owner-ledger entries.`,
+    };
+  }
+
+  async reprocessAiIngestionImportRun(runId: string, options?: {
+    rollbackFirst?: boolean;
+    actorEmail?: string;
+  }): Promise<{
+    reprocessed: boolean;
+    ingestionJobId: string | null;
+    rolledBack: boolean;
+    message: string;
+  }> {
+    const [run] = await db.select().from(aiIngestionImportRuns).where(eq(aiIngestionImportRuns.id, runId));
+    if (!run) {
+      return { reprocessed: false, ingestionJobId: null, rolledBack: false, message: "Import run not found." };
+    }
+
+    let rolledBack = false;
+    if (options?.rollbackFirst) {
+      if (run.mode !== "commit") {
+        return { reprocessed: false, ingestionJobId: run.ingestionJobId, rolledBack: false, message: "Only commit runs can be rolled back before reprocess." };
+      }
+      if (!run.rolledBackAt) {
+        const rollback = await this.rollbackAiIngestionImportRun(run.id, options.actorEmail);
+        if (!rollback.rolledBack && rollback.deletedVendorInvoices === 0 && rollback.deletedOwnerLedgerEntries === 0) {
+          return { reprocessed: false, ingestionJobId: run.ingestionJobId, rolledBack: false, message: rollback.message };
+        }
+        rolledBack = rollback.rolledBack;
+      }
+    } else if (run.mode === "commit" && !run.rolledBackAt) {
+      return {
+        reprocessed: false,
+        ingestionJobId: run.ingestionJobId,
+        rolledBack: false,
+        message: "Commit run must be rolled back before reprocess, or request rollback first.",
+      };
+    }
+
+    await this.processAiIngestionJob(run.ingestionJobId);
+    return {
+      reprocessed: true,
+      ingestionJobId: run.ingestionJobId,
+      rolledBack,
+      message: rolledBack ? "Import run rolled back and source job reprocessed." : "Source job reprocessed.",
+    };
+  }
+
+  async previewRollbackAiIngestionImportRun(runId: string): Promise<{
+    canRollback: boolean;
+    vendorInvoicesToDelete: number;
+    ownerLedgerEntriesToDelete: number;
+    missingRefs: number;
+    message: string;
+  }> {
+    const [run] = await db.select().from(aiIngestionImportRuns).where(eq(aiIngestionImportRuns.id, runId));
+    if (!run) {
+      return { canRollback: false, vendorInvoicesToDelete: 0, ownerLedgerEntriesToDelete: 0, missingRefs: 0, message: "Import run not found." };
+    }
+    if (run.mode !== "commit" || run.rolledBackAt) {
+      return { canRollback: false, vendorInvoicesToDelete: 0, ownerLedgerEntriesToDelete: 0, missingRefs: 0, message: "Run is not eligible for rollback preview." };
+    }
+
+    const refs = (run.createdEntityRefsJson && typeof run.createdEntityRefsJson === "object"
+      ? run.createdEntityRefsJson
+      : {}) as {
+      vendorInvoiceIds?: unknown;
+      ownerLedgerEntryIds?: unknown;
+    };
+    const vendorInvoiceIds = Array.isArray(refs.vendorInvoiceIds) ? refs.vendorInvoiceIds.filter((id): id is string => typeof id === "string") : [];
+    const ownerLedgerEntryIds = Array.isArray(refs.ownerLedgerEntryIds) ? refs.ownerLedgerEntryIds.filter((id): id is string => typeof id === "string") : [];
+
+    const [existingInvoices, existingLedger] = await Promise.all([
+      vendorInvoiceIds.length
+        ? db.select({ id: vendorInvoices.id }).from(vendorInvoices).where(inArray(vendorInvoices.id, vendorInvoiceIds))
+        : Promise.resolve([]),
+      ownerLedgerEntryIds.length
+        ? db.select({ id: ownerLedgerEntries.id }).from(ownerLedgerEntries).where(inArray(ownerLedgerEntries.id, ownerLedgerEntryIds))
+        : Promise.resolve([]),
+    ]);
+
+    const vendorInvoicesToDelete = existingInvoices.length;
+    const ownerLedgerEntriesToDelete = existingLedger.length;
+    const missingRefs = (vendorInvoiceIds.length - vendorInvoicesToDelete) + (ownerLedgerEntryIds.length - ownerLedgerEntriesToDelete);
+
+    return {
+      canRollback: vendorInvoicesToDelete > 0 || ownerLedgerEntriesToDelete > 0,
+      vendorInvoicesToDelete,
+      ownerLedgerEntriesToDelete,
+      missingRefs,
+      message: `Rollback preview: ${vendorInvoicesToDelete} invoices and ${ownerLedgerEntriesToDelete} owner-ledger entries would be deleted.`,
+    };
+  }
+
+  async getClauseRecords(filters?: { ingestionJobId?: string; associationId?: string; reviewStatus?: "pending-review" | "approved" | "rejected"; query?: string }): Promise<ClauseRecord[]> {
+    const clauses = await db.select().from(clauseRecords).orderBy(desc(clauseRecords.createdAt));
+    return clauses.filter((row) => {
+      if (filters?.ingestionJobId && row.ingestionJobId !== filters.ingestionJobId) return false;
+      if (filters?.associationId && row.associationId !== filters.associationId) return false;
+      if (filters?.reviewStatus && row.reviewStatus !== filters.reviewStatus) return false;
+      if (filters?.query) {
+        const q = filters.query.toLowerCase();
+        if (!row.title.toLowerCase().includes(q) && !row.clauseText.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  async createClauseRecord(data: InsertClauseRecord): Promise<ClauseRecord> {
+    const [result] = await db
+      .insert(clauseRecords)
+      .values({ ...data, reviewStatus: "pending-review", updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async reviewClauseRecord(id: string, payload: { reviewStatus: "approved" | "rejected"; title?: string; clauseText?: string; reviewedBy?: string | null }): Promise<ClauseRecord | undefined> {
+    const [result] = await db
+      .update(clauseRecords)
+      .set({
+        reviewStatus: payload.reviewStatus,
+        title: payload.title ?? undefined,
+        clauseText: payload.clauseText ?? undefined,
+        reviewedBy: payload.reviewedBy ?? null,
+        reviewedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(clauseRecords.id, id))
+      .returning();
+    return result;
+  }
+
+  async getClauseTags(clauseRecordId: string): Promise<ClauseTag[]> {
+    return db.select().from(clauseTags).where(eq(clauseTags.clauseRecordId, clauseRecordId)).orderBy(desc(clauseTags.createdAt));
+  }
+
+  async createClauseTag(data: InsertClauseTag): Promise<ClauseTag> {
+    const [result] = await db.insert(clauseTags).values(data).returning();
+    return result;
+  }
+
+  async getSuggestedLinks(clauseRecordId: string): Promise<SuggestedLink[]> {
+    return db.select().from(suggestedLinks).where(eq(suggestedLinks.clauseRecordId, clauseRecordId)).orderBy(desc(suggestedLinks.createdAt));
+  }
+
+  async createSuggestedLink(data: InsertSuggestedLink): Promise<SuggestedLink> {
+    const [result] = await db
+      .insert(suggestedLinks)
+      .values({ ...data, isApproved: 0, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateSuggestedLink(id: string, data: { isApproved?: number; confidenceScore?: number | null }): Promise<SuggestedLink | undefined> {
+    const [result] = await db
+      .update(suggestedLinks)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(suggestedLinks.id, id))
+      .returning();
+    return result;
+  }
+
+  async getApprovedClauseLinksForGovernance(associationId?: string): Promise<Array<{
+    clauseRecordId: string;
+    clauseTitle: string;
+    clauseText: string;
+    entityType: string;
+    entityId: string;
+    confidenceScore: number | null;
+    isApproved: number;
+  }>> {
+    const clauses = await this.getClauseRecords({ associationId, reviewStatus: "approved" });
+    if (!clauses.length) return [];
+    const clauseIdSet = new Set(clauses.map((c) => c.id));
+    const links = (await db.select().from(suggestedLinks).orderBy(desc(suggestedLinks.updatedAt)))
+      .filter((row) => row.isApproved === 1 && clauseIdSet.has(row.clauseRecordId));
+    const clauseMap = new Map(clauses.map((c) => [c.id, c]));
+    return links.map((link) => {
+      const clause = clauseMap.get(link.clauseRecordId)!;
+      return {
+        clauseRecordId: clause.id,
+        clauseTitle: clause.title,
+        clauseText: clause.clauseText,
+        entityType: link.entityType,
+        entityId: link.entityId,
+        confidenceScore: link.confidenceScore ?? null,
+        isApproved: link.isApproved,
+      };
+    });
+  }
+
+  async getNoticeTemplates(associationId?: string): Promise<NoticeTemplate[]> {
+    if (!associationId) {
+      return db.select().from(noticeTemplates).orderBy(desc(noticeTemplates.createdAt));
+    }
+    return db
+      .select()
+      .from(noticeTemplates)
+      .where(or(eq(noticeTemplates.associationId, associationId), isNull(noticeTemplates.associationId)))
+      .orderBy(desc(noticeTemplates.createdAt));
+  }
+
+  async createNoticeTemplate(data: InsertNoticeTemplate): Promise<NoticeTemplate> {
+    const [result] = await db
+      .insert(noticeTemplates)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateNoticeTemplate(id: string, data: Partial<InsertNoticeTemplate>): Promise<NoticeTemplate | undefined> {
+    const [result] = await db
+      .update(noticeTemplates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(noticeTemplates.id, id))
+      .returning();
+    return result;
+  }
+
+  private async renderNoticeContent(payload: {
+    associationId?: string | null;
+    templateId?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    variables?: Record<string, string>;
+  }): Promise<{ associationId: string | null; subject: string; body: string }> {
+    let associationId = payload.associationId ?? null;
+    let subject = payload.subject || "";
+    let body = payload.body || "";
+
+    if (payload.templateId) {
+      const [template] = await db.select().from(noticeTemplates).where(eq(noticeTemplates.id, payload.templateId));
+      if (!template) throw new Error("Notice template not found");
+      if (associationId && template.associationId && template.associationId !== associationId) {
+        throw new Error("Template association mismatch");
+      }
+      associationId = associationId ?? template.associationId ?? null;
+      subject = template.subjectTemplate;
+      body = template.bodyTemplate;
+    }
+
+    const vars = payload.variables ?? {};
+    for (const [key, value] of Object.entries(vars)) {
+      const token = new RegExp(`{{\\s*${key}\\s*}}`, "g");
+      subject = subject.replace(token, value);
+      body = body.replace(token, value);
+    }
+
+    if (associationId) {
+      const config = await this.getTenantConfig(associationId);
+      const footer = config?.defaultNoticeFooter?.trim();
+      if (footer && !body.includes(footer)) {
+        body = `${body}\n\n${footer}`.trim();
+      }
+    }
+
+    return { associationId, subject, body };
+  }
+
+  private async validateCommunicationReadiness(associationId: string, bypassReadinessGate?: boolean | null): Promise<void> {
+    if (bypassReadinessGate) return;
+    const readiness = await this.getAssociationContactReadiness(associationId);
+    if (!readiness.canSendNotices) {
+      throw new Error(
+        `Communication blocked by contact readiness gate: ${readiness.blockingReasons.join("; ")}`,
+      );
+    }
+  }
+
+  private async createCommunicationHistoryRecord(payload: InsertCommunicationHistory): Promise<CommunicationHistory> {
+    const [history] = await db.insert(communicationHistory).values(payload).returning();
+    return history;
+  }
+
+  private async deliverNoticeSend(send: NoticeSend, sentBy?: string | null): Promise<{ send: NoticeSend; history: CommunicationHistory }> {
+    const now = new Date();
+    const delivery = await sendPlatformEmail({
+      associationId: send.associationId ?? null,
+      to: send.recipientEmail,
+      subject: send.subjectRendered,
+      text: send.bodyRendered,
+      html: send.bodyRendered.includes("<") ? send.bodyRendered : undefined,
+      templateKey: send.templateId ?? "notice-send",
+      metadata: {
+        noticeSendId: send.id,
+        recipientPersonId: send.recipientPersonId ?? null,
+      },
+      enableTracking: true,
+    });
+    const [updatedSend] = await db
+      .update(noticeSends)
+      .set({
+        status: delivery.status,
+        provider: delivery.provider,
+        providerMessageId: delivery.messageId,
+        sentBy: sentBy ?? send.sentBy ?? null,
+        sentAt: now,
+      })
+      .where(eq(noticeSends.id, send.id))
+      .returning();
+
+    const history = await this.createCommunicationHistoryRecord({
+      associationId: updatedSend.associationId ?? null,
+      channel: "email",
+      direction: "outbound",
+      subject: updatedSend.subjectRendered,
+      bodySnippet: updatedSend.bodyRendered.slice(0, 500),
+      recipientEmail: updatedSend.recipientEmail,
+      recipientPersonId: updatedSend.recipientPersonId ?? null,
+      relatedType: delivery.status === "sent" ? "notice-send" : "notice-send-failed",
+      relatedId: updatedSend.id,
+      metadataJson: {
+        provider: updatedSend.provider,
+        providerMessageId: updatedSend.providerMessageId,
+        emailLogId: delivery.logId,
+        errorMessage: delivery.errorMessage ?? null,
+      },
+    });
+
+    if (delivery.status === "sent" && updatedSend.associationId) {
+      await this.upsertEmailThread({
+        associationId: updatedSend.associationId,
+        subject: updatedSend.subjectRendered || "(no subject)",
+        participantsJson: [updatedSend.recipientEmail],
+        source: "internal",
+      });
+    }
+
+    return { send: updatedSend, history };
+  }
+
+  async sendNotice(payload: {
+    associationId?: string | null;
+    templateId?: string | null;
+    recipientEmail: string;
+    recipientPersonId?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    variables?: Record<string, string>;
+    requireApproval?: boolean | null;
+    scheduledFor?: Date | string | null;
+    bypassReadinessGate?: boolean | null;
+    sentBy?: string | null;
+  }): Promise<{ send: NoticeSend; history: CommunicationHistory }> {
+    const rendered = await this.renderNoticeContent(payload);
+    if (rendered.associationId) {
+      await this.validateCommunicationReadiness(rendered.associationId, payload.bypassReadinessGate);
+    }
+    const scheduledForDate =
+      payload.scheduledFor == null
+        ? null
+        : payload.scheduledFor instanceof Date
+          ? payload.scheduledFor
+          : new Date(payload.scheduledFor);
+    const hasValidSchedule = Boolean(scheduledForDate && !Number.isNaN(scheduledForDate.getTime()));
+    const now = new Date();
+    const requireApproval = Boolean(payload.requireApproval);
+
+    const status = requireApproval
+      ? "pending-approval"
+      : hasValidSchedule && scheduledForDate! > now
+        ? "scheduled"
+        : "sent";
+
+    const [send] = await db
+      .insert(noticeSends)
+      .values({
+        associationId: rendered.associationId,
+        templateId: payload.templateId ?? null,
+        recipientEmail: payload.recipientEmail,
+        recipientPersonId: payload.recipientPersonId ?? null,
+        subjectRendered: rendered.subject,
+        bodyRendered: rendered.body,
+        status,
+        provider: status === "sent" ? "internal-queued" : "internal-queued",
+        providerMessageId: null,
+        sentBy: payload.sentBy ?? null,
+        sentAt: hasValidSchedule ? scheduledForDate! : now,
+      })
+      .returning();
+
+    if (status === "sent") {
+      return this.deliverNoticeSend(send, payload.sentBy ?? null);
+    }
+
+    const history = await this.createCommunicationHistoryRecord({
+      associationId: send.associationId ?? null,
+      channel: "email",
+      direction: "outbound",
+      subject: send.subjectRendered,
+      bodySnippet: send.bodyRendered.slice(0, 500),
+      recipientEmail: send.recipientEmail,
+      recipientPersonId: send.recipientPersonId ?? null,
+      relatedType: status === "scheduled" ? "notice-scheduled" : "notice-awaiting-approval",
+      relatedId: send.id,
+      metadataJson: {
+        status,
+        scheduledFor: send.sentAt.toISOString(),
+      },
+    });
+
+    return { send, history };
+  }
+
+  async getNoticeSends(associationId?: string, status?: string): Promise<NoticeSend[]> {
+    let rows = await db.select().from(noticeSends).orderBy(desc(noticeSends.sentAt));
+    if (associationId) {
+      rows = rows.filter((row) => row.associationId === associationId);
+    }
+    if (status) {
+      rows = rows.filter((row) => row.status === status);
+    }
+    return rows;
+  }
+
+  private async resolveNotificationRecipientResolution(payload: {
+    associationId: string;
+    audience: "owners" | "occupants" | "all";
+    ccOwners?: boolean;
+  }): Promise<NotificationRecipientResolution> {
+    const now = new Date();
+    const unitRows = await db.select().from(units).where(eq(units.associationId, payload.associationId));
+    const unitIds = unitRows.map((row) => row.id);
+    if (unitIds.length === 0) {
+      return {
+        recipients: [],
+        candidateCount: 0,
+        missingEmailCount: 0,
+        duplicateEmailCount: 0,
+        skippedRecipients: 0,
+      };
+    }
+
+    const [ownershipRows, occupancyRows] = await Promise.all([
+      db.select().from(ownerships).where(inArray(ownerships.unitId, unitIds)),
+      db.select().from(occupancies).where(inArray(occupancies.unitId, unitIds)),
+    ]);
+
+    const activeOwners = ownershipRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now));
+    const activeOccupancies = occupancyRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now));
+
+    const includeOwners = payload.audience === "owners" || payload.audience === "all" || Boolean(payload.ccOwners);
+    const includeOccupants = payload.audience === "occupants" || payload.audience === "all";
+
+    const rawRecipients: Array<{
+      personId: string;
+      role: "owner" | "occupant";
+      unitId: string;
+    }> = [];
+
+    if (includeOwners) {
+      for (const row of activeOwners) {
+        rawRecipients.push({
+          personId: row.personId,
+          role: "owner",
+          unitId: row.unitId,
+        });
+      }
+    }
+    if (includeOccupants) {
+      for (const row of activeOccupancies) {
+        rawRecipients.push({
+          personId: row.personId,
+          role: "occupant",
+          unitId: row.unitId,
+        });
+      }
+    }
+
+    const personIds = Array.from(new Set(rawRecipients.map((row) => row.personId)));
+    if (personIds.length === 0) {
+      return {
+        recipients: [],
+        candidateCount: 0,
+        missingEmailCount: 0,
+        duplicateEmailCount: 0,
+        skippedRecipients: 0,
+      };
+    }
+    const personRows = await db.select().from(persons).where(inArray(persons.id, personIds));
+    const personById = new Map(personRows.map((row) => [row.id, row]));
+
+    const deduped = new Map<string, NotificationRecipient>();
+    let missingEmailCount = 0;
+    let duplicateEmailCount = 0;
+    for (const row of rawRecipients) {
+      const person = personById.get(row.personId);
+      if (!person?.email?.trim()) {
+        missingEmailCount += 1;
+        continue;
+      }
+      const key = person.email.trim().toLowerCase();
+      if (!key) {
+        missingEmailCount += 1;
+        continue;
+      }
+      const existing = deduped.get(key);
+      if (!existing) {
+        deduped.set(key, {
+          personId: row.personId,
+          email: person.email,
+          role: row.role,
+          unitId: row.unitId,
+        });
+        continue;
+      }
+      duplicateEmailCount += 1;
+      if (existing.role === "occupant" && row.role === "owner") {
+        deduped.set(key, {
+          personId: row.personId,
+          email: person.email,
+          role: row.role,
+          unitId: row.unitId,
+        });
+      }
+    }
+
+    const recipients = Array.from(deduped.values()).sort((a, b) => a.email.localeCompare(b.email));
+    return {
+      recipients,
+      candidateCount: rawRecipients.length,
+      missingEmailCount,
+      duplicateEmailCount,
+      skippedRecipients: missingEmailCount + duplicateEmailCount,
+    };
+  }
+
+  async resolveNotificationRecipients(payload: {
+    associationId: string;
+    audience: "owners" | "occupants" | "all";
+    ccOwners?: boolean;
+  }): Promise<NotificationRecipient[]> {
+    const result = await this.resolveNotificationRecipientResolution(payload);
+    return result.recipients;
+  }
+
+  async resolveNotificationRecipientPreview(payload: {
+    associationId: string;
+    audience: "owners" | "occupants" | "all";
+    ccOwners?: boolean;
+  }): Promise<NotificationRecipientResolution> {
+    return this.resolveNotificationRecipientResolution(payload);
+  }
+
+  async sendTargetedNotice(payload: {
+    associationId: string;
+    audience: "owners" | "occupants" | "all";
+    ccOwners?: boolean;
+    templateId?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    variables?: Record<string, string>;
+    requireApproval?: boolean | null;
+    scheduledFor?: Date | string | null;
+    bypassReadinessGate?: boolean | null;
+    sentBy?: string | null;
+  }): Promise<{
+    recipientCount: number;
+    sentCount: number;
+    sendIds: string[];
+    skippedRecipients: number;
+    missingEmailCount: number;
+    duplicateEmailCount: number;
+  }> {
+    await this.validateCommunicationReadiness(payload.associationId, payload.bypassReadinessGate);
+    const resolution = await this.resolveNotificationRecipientResolution({
+      associationId: payload.associationId,
+      audience: payload.audience,
+      ccOwners: payload.ccOwners,
+    });
+    const recipients = resolution.recipients;
+
+    const results = await mapInBatches(recipients, 10, async (recipient) => {
+      return this.sendNotice({
+        associationId: payload.associationId,
+        templateId: payload.templateId ?? null,
+        recipientEmail: recipient.email,
+        recipientPersonId: recipient.personId,
+        subject: payload.subject ?? null,
+        body: payload.body ?? null,
+        variables: payload.variables,
+        requireApproval: payload.requireApproval ?? null,
+        scheduledFor: payload.scheduledFor ?? null,
+        bypassReadinessGate: true,
+        sentBy: payload.sentBy ?? null,
+      });
+    });
+    const sendIds = results.map((result) => result.send.id);
+
+    return {
+      recipientCount: recipients.length,
+      sentCount: sendIds.length,
+      sendIds,
+      skippedRecipients: resolution.skippedRecipients,
+      missingEmailCount: resolution.missingEmailCount,
+      duplicateEmailCount: resolution.duplicateEmailCount,
+    };
+  }
+
+  async getAssociationContactReadiness(associationId: string): Promise<{
+    associationId: string;
+    activeOwners: number;
+    activeOccupants: number;
+    contactableOwners: number;
+    contactableOccupants: number;
+    contactCoveragePercent: number;
+    canSendNotices: boolean;
+    blockingReasons: string[];
+  }> {
+    const now = new Date();
+    const unitRows = await db.select().from(units).where(eq(units.associationId, associationId));
+    const unitIds = unitRows.map((row) => row.id);
+    if (unitIds.length === 0) {
+      return {
+        associationId,
+        activeOwners: 0,
+        activeOccupants: 0,
+        contactableOwners: 0,
+        contactableOccupants: 0,
+        contactCoveragePercent: 0,
+        canSendNotices: false,
+        blockingReasons: ["No units configured for association."],
+      };
+    }
+
+    const [ownershipRows, occupancyRows] = await Promise.all([
+      db.select().from(ownerships).where(inArray(ownerships.unitId, unitIds)),
+      db.select().from(occupancies).where(inArray(occupancies.unitId, unitIds)),
+    ]);
+    const activeOwners = ownershipRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now));
+    const activeOccupants = occupancyRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now));
+
+    const personIds = Array.from(new Set([...activeOwners.map((row) => row.personId), ...activeOccupants.map((row) => row.personId)]));
+    const personRows = personIds.length > 0 ? await db.select().from(persons).where(inArray(persons.id, personIds)) : [];
+    const personById = new Map(personRows.map((row) => [row.id, row]));
+    const hasContact = (personId: string) => {
+      const person = personById.get(personId);
+      if (!person) return false;
+      return Boolean((person.email || "").trim() || (person.phone || "").trim());
+    };
+
+    const contactableOwners = activeOwners.filter((row) => hasContact(row.personId)).length;
+    const contactableOccupants = activeOccupants.filter((row) => hasContact(row.personId)).length;
+    const activePeopleCount = activeOwners.length + activeOccupants.length;
+    const contactablePeopleCount = contactableOwners + contactableOccupants;
+    const contactCoveragePercent = activePeopleCount > 0 ? Math.round((contactablePeopleCount / activePeopleCount) * 100) : 0;
+
+    const blockingReasons: string[] = [];
+    if (activeOwners.length === 0) blockingReasons.push("No active owners mapped to units.");
+    if (contactCoveragePercent < 70) blockingReasons.push(`Contact coverage ${contactCoveragePercent}% is below required 70%.`);
+
+    return {
+      associationId,
+      activeOwners: activeOwners.length,
+      activeOccupants: activeOccupants.length,
+      contactableOwners,
+      contactableOccupants,
+      contactCoveragePercent,
+      canSendNotices: blockingReasons.length === 0,
+      blockingReasons,
+    };
+  }
+
+  async getAssociationOnboardingCompleteness(associationId: string): Promise<{
+    associationId: string;
+    scorePercent: number;
+    components: {
+      unitsConfigured: { score: number; total: number; completed: number };
+      ownershipMapped: { score: number; total: number; completed: number };
+      occupancyMapped: { score: number; total: number; completed: number };
+      contactCoverage: { score: number; total: number; completed: number };
+      paymentConfig: { score: number; total: number; completed: number };
+    };
+  }> {
+    const unitRows = await db.select().from(units).where(eq(units.associationId, associationId));
+    const unitIds = unitRows.map((row) => row.id);
+
+    const [ownershipRows, occupancyRows, readiness, paymentMethods] = await Promise.all([
+      unitIds.length > 0 ? db.select().from(ownerships).where(inArray(ownerships.unitId, unitIds)) : Promise.resolve([]),
+      unitIds.length > 0 ? db.select().from(occupancies).where(inArray(occupancies.unitId, unitIds)) : Promise.resolve([]),
+      this.getAssociationContactReadiness(associationId),
+      this.getPaymentMethodConfigs(associationId),
+    ]);
+
+    const now = new Date();
+    const activeOwnershipUnitIds = new Set(
+      ownershipRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now)).map((row) => row.unitId),
+    );
+    const activeOccupancyUnitIds = new Set(
+      occupancyRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now)).map((row) => row.unitId),
+    );
+
+    const unitsConfigured = {
+      total: 1,
+      completed: unitRows.length > 0 ? 1 : 0,
+      score: unitRows.length > 0 ? 100 : 0,
+    };
+    const ownershipMapped = {
+      total: unitRows.length,
+      completed: activeOwnershipUnitIds.size,
+      score: unitRows.length > 0 ? Math.round((activeOwnershipUnitIds.size / unitRows.length) * 100) : 0,
+    };
+    const occupancyMapped = {
+      total: unitRows.length,
+      completed: activeOccupancyUnitIds.size,
+      score: unitRows.length > 0 ? Math.round((activeOccupancyUnitIds.size / unitRows.length) * 100) : 0,
+    };
+    const contactCoverage = {
+      total: 100,
+      completed: readiness.contactCoveragePercent,
+      score: readiness.contactCoveragePercent,
+    };
+    const paymentConfig = {
+      total: 1,
+      completed: paymentMethods.some((row) => row.isActive === 1) ? 1 : 0,
+      score: paymentMethods.some((row) => row.isActive === 1) ? 100 : 0,
+    };
+
+    const weighted =
+      (unitsConfigured.score * 0.15) +
+      (ownershipMapped.score * 0.25) +
+      (occupancyMapped.score * 0.2) +
+      (contactCoverage.score * 0.25) +
+      (paymentConfig.score * 0.15);
+
+    return {
+      associationId,
+      scorePercent: Math.round(weighted),
+      components: {
+        unitsConfigured,
+        ownershipMapped,
+        occupancyMapped,
+        contactCoverage,
+        paymentConfig,
+      },
+    };
+  }
+
+  async reviewNoticeSend(
+    id: string,
+    payload: { decision: "approved" | "rejected"; actedBy?: string | null },
+  ): Promise<{ send: NoticeSend; history: CommunicationHistory } | undefined> {
+    const [existing] = await db.select().from(noticeSends).where(eq(noticeSends.id, id));
+    if (!existing) return undefined;
+    if (existing.status !== "pending-approval") {
+      throw new Error("Only pending-approval notices can be reviewed");
+    }
+
+    if (payload.decision === "rejected") {
+      const [send] = await db
+        .update(noticeSends)
+        .set({
+          status: "rejected",
+          sentBy: payload.actedBy ?? existing.sentBy ?? null,
+        })
+        .where(eq(noticeSends.id, id))
+        .returning();
+
+      const history = await this.createCommunicationHistoryRecord({
+        associationId: send.associationId ?? null,
+        channel: "email",
+        direction: "outbound",
+        subject: send.subjectRendered,
+        bodySnippet: send.bodyRendered.slice(0, 500),
+        recipientEmail: send.recipientEmail,
+        recipientPersonId: send.recipientPersonId ?? null,
+        relatedType: "notice-approval-rejected",
+        relatedId: send.id,
+        metadataJson: { actedBy: payload.actedBy ?? null },
+      });
+      return { send, history };
+    }
+
+    if (existing.sentAt > new Date()) {
+      const [send] = await db
+        .update(noticeSends)
+        .set({
+          status: "scheduled",
+          sentBy: payload.actedBy ?? existing.sentBy ?? null,
+          provider: "internal-queued",
+          providerMessageId: null,
+        })
+        .where(eq(noticeSends.id, id))
+        .returning();
+
+      const history = await this.createCommunicationHistoryRecord({
+        associationId: send.associationId ?? null,
+        channel: "email",
+        direction: "outbound",
+        subject: send.subjectRendered,
+        bodySnippet: send.bodyRendered.slice(0, 500),
+        recipientEmail: send.recipientEmail,
+        recipientPersonId: send.recipientPersonId ?? null,
+        relatedType: "notice-approved-scheduled",
+        relatedId: send.id,
+        metadataJson: {
+          actedBy: payload.actedBy ?? null,
+          scheduledFor: send.sentAt.toISOString(),
+        },
+      });
+      return { send, history };
+    }
+
+    return this.deliverNoticeSend(existing, payload.actedBy ?? existing.sentBy ?? null);
+  }
+
+  async runScheduledNotices(options?: {
+    associationId?: string;
+    now?: Date;
+    actedBy?: string | null;
+  }): Promise<{ processed: number; sendIds: string[] }> {
+    const now = options?.now ?? new Date();
+    const ready = options?.associationId
+      ? await db
+          .select()
+          .from(noticeSends)
+          .where(
+            and(
+              eq(noticeSends.associationId, options.associationId),
+              eq(noticeSends.status, "scheduled"),
+              lte(noticeSends.sentAt, now),
+            ),
+          )
+      : await db
+          .select()
+          .from(noticeSends)
+          .where(and(eq(noticeSends.status, "scheduled"), lte(noticeSends.sentAt, now)));
+
+    const results = await mapInBatches(ready, 10, async (row) => {
+      return this.deliverNoticeSend(row, options?.actedBy ?? "scheduler@system");
+    });
+    const sendIds = results.map((result) => result.send.id);
+
+    return { processed: sendIds.length, sendIds };
+  }
+
+  async getCommunicationHistory(associationId?: string): Promise<CommunicationHistory[]> {
+    if (!associationId) {
+      return db.select().from(communicationHistory).orderBy(desc(communicationHistory.createdAt));
+    }
+    return db
+      .select()
+      .from(communicationHistory)
+      .where(eq(communicationHistory.associationId, associationId))
+      .orderBy(desc(communicationHistory.createdAt));
+  }
+
+  async getPermissionEnvelopes(associationId?: string): Promise<PermissionEnvelope[]> {
+    if (!associationId) {
+      return db.select().from(permissionEnvelopes).orderBy(desc(permissionEnvelopes.createdAt));
+    }
+    return db
+      .select()
+      .from(permissionEnvelopes)
+      .where(eq(permissionEnvelopes.associationId, associationId))
+      .orderBy(desc(permissionEnvelopes.createdAt));
+  }
+
+  async createPermissionEnvelope(data: InsertPermissionEnvelope): Promise<PermissionEnvelope> {
+    const [result] = await db
+      .insert(permissionEnvelopes)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updatePermissionEnvelope(id: string, data: Partial<InsertPermissionEnvelope>): Promise<PermissionEnvelope | undefined> {
+    const [result] = await db
+      .update(permissionEnvelopes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(permissionEnvelopes.id, id))
+      .returning();
+    return result;
+  }
+
+  async getAdminAssociationScopes(): Promise<AdminAssociationScope[]> {
+    return db.select().from(adminAssociationScopes).orderBy(desc(adminAssociationScopes.createdAt));
+  }
+
+  async getAdminAssociationScopesByUserId(adminUserId: string): Promise<AdminAssociationScope[]> {
+    return db
+      .select()
+      .from(adminAssociationScopes)
+      .where(eq(adminAssociationScopes.adminUserId, adminUserId))
+      .orderBy(desc(adminAssociationScopes.createdAt));
+  }
+
+  async upsertAdminAssociationScope(data: InsertAdminAssociationScope): Promise<AdminAssociationScope> {
+    const [existing] = await db
+      .select()
+      .from(adminAssociationScopes)
+      .where(and(eq(adminAssociationScopes.adminUserId, data.adminUserId), eq(adminAssociationScopes.associationId, data.associationId)));
+    if (!existing) {
+      const [created] = await db.insert(adminAssociationScopes).values(data).returning();
+      return created;
+    }
+    const [updated] = await db
+      .update(adminAssociationScopes)
+      .set({ scope: data.scope })
+      .where(eq(adminAssociationScopes.id, existing.id))
+      .returning();
+    return updated;
+  }
+
+  async getPortalAccesses(associationId?: string): Promise<PortalAccess[]> {
+    if (!associationId) return db.select().from(portalAccess).orderBy(desc(portalAccess.createdAt));
+    return db.select().from(portalAccess).where(eq(portalAccess.associationId, associationId)).orderBy(desc(portalAccess.createdAt));
+  }
+
+  async createPortalAccess(data: InsertPortalAccess): Promise<PortalAccess> {
+    const [result] = await db
+      .insert(portalAccess)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updatePortalAccess(id: string, data: Partial<InsertPortalAccess>): Promise<PortalAccess | undefined> {
+    const [result] = await db
+      .update(portalAccess)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(portalAccess.id, id))
+      .returning();
+    return result;
+  }
+
+  async getPortalAccessById(id: string): Promise<PortalAccess | undefined> {
+    const [result] = await db.select().from(portalAccess).where(eq(portalAccess.id, id));
+    return result;
+  }
+
+  async getPortalAccessByAssociationEmail(associationId: string, email: string): Promise<PortalAccess | undefined> {
+    const [result] = await db
+      .select()
+      .from(portalAccess)
+      .where(and(eq(portalAccess.associationId, associationId), eq(portalAccess.email, email)));
+    return result;
+  }
+
+  async touchPortalAccessLogin(id: string): Promise<void> {
+    await db.update(portalAccess).set({ lastLoginAt: new Date(), updatedAt: new Date() }).where(eq(portalAccess.id, id));
+  }
+
+  async getAssociationMemberships(associationId?: string): Promise<AssociationMembership[]> {
+    if (!associationId) return db.select().from(associationMemberships).orderBy(desc(associationMemberships.createdAt));
+    return db
+      .select()
+      .from(associationMemberships)
+      .where(eq(associationMemberships.associationId, associationId))
+      .orderBy(desc(associationMemberships.createdAt));
+  }
+
+  async upsertAssociationMembership(data: InsertAssociationMembership): Promise<AssociationMembership> {
+    const membershipType = data.membershipType ?? "owner";
+    const candidates = await db
+      .select()
+      .from(associationMemberships)
+      .where(
+        and(
+          eq(associationMemberships.associationId, data.associationId),
+          eq(associationMemberships.personId, data.personId),
+          eq(associationMemberships.membershipType, membershipType),
+        ),
+      );
+    const [existing] = candidates.filter((row) => row.unitId === (data.unitId ?? null));
+    if (!existing) {
+      const [created] = await db
+        .insert(associationMemberships)
+        .values({ ...data, membershipType, updatedAt: new Date() })
+        .returning();
+      return created;
+    }
+    const [updated] = await db
+      .update(associationMemberships)
+      .set({ ...data, membershipType, updatedAt: new Date() })
+      .where(eq(associationMemberships.id, existing.id))
+      .returning();
+    return updated;
+  }
+
+  async getTenantConfig(associationId: string): Promise<TenantConfig | undefined> {
+    const [result] = await db.select().from(tenantConfigs).where(eq(tenantConfigs.associationId, associationId));
+    return result;
+  }
+
+  async upsertTenantConfig(data: InsertTenantConfig): Promise<TenantConfig> {
+    const [existing] = await db.select().from(tenantConfigs).where(eq(tenantConfigs.associationId, data.associationId));
+    if (!existing) {
+      const [created] = await db.insert(tenantConfigs).values({ ...data, updatedAt: new Date() }).returning();
+      return created;
+    }
+    const [updated] = await db
+      .update(tenantConfigs)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(tenantConfigs.id, existing.id))
+      .returning();
+    return updated;
+  }
+
+  async getEmailThreads(associationId?: string): Promise<EmailThread[]> {
+    if (!associationId) return db.select().from(emailThreads).orderBy(desc(emailThreads.lastMessageAt));
+    return db
+      .select()
+      .from(emailThreads)
+      .where(eq(emailThreads.associationId, associationId))
+      .orderBy(desc(emailThreads.lastMessageAt));
+  }
+
+  async upsertEmailThread(data: InsertEmailThread): Promise<EmailThread> {
+    const [existing] = await db
+      .select()
+      .from(emailThreads)
+      .where(and(eq(emailThreads.associationId, data.associationId), eq(emailThreads.subject, data.subject)));
+    if (!existing) {
+      const [created] = await db
+        .insert(emailThreads)
+        .values({
+          ...data,
+          lastMessageAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      return created;
+    }
+    const incomingParticipants = Array.isArray(data.participantsJson) ? data.participantsJson : [];
+    const existingParticipants = Array.isArray(existing.participantsJson) ? existing.participantsJson : [];
+    const merged = Array.from(new Set([...existingParticipants, ...incomingParticipants]));
+    const [updated] = await db
+      .update(emailThreads)
+      .set({
+        participantsJson: merged,
+        source: data.source,
+        lastMessageAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(emailThreads.id, existing.id))
+      .returning();
+    return updated;
+  }
+
+  async getContactUpdateRequests(filters?: { associationId?: string; portalAccessId?: string }): Promise<ContactUpdateRequest[]> {
+    const rows = await db.select().from(contactUpdateRequests).orderBy(desc(contactUpdateRequests.createdAt));
+    return rows.filter((row) => {
+      if (filters?.associationId && row.associationId !== filters.associationId) return false;
+      if (filters?.portalAccessId && row.portalAccessId !== filters.portalAccessId) return false;
+      return true;
+    });
+  }
+
+  async createContactUpdateRequest(data: InsertContactUpdateRequest): Promise<ContactUpdateRequest> {
+    const [result] = await db
+      .insert(contactUpdateRequests)
+      .values({ ...data, reviewStatus: "pending", updatedAt: new Date() })
+      .returning();
+    await this.recordAuditEvent({
+      actorEmail: "portal-user",
+      action: "create",
+      entityType: "contact-update-request",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async reviewContactUpdateRequest(id: string, payload: { reviewStatus: "approved" | "rejected"; reviewedBy?: string | null }): Promise<ContactUpdateRequest | undefined> {
+    const [before] = await db.select().from(contactUpdateRequests).where(eq(contactUpdateRequests.id, id));
+    if (!before) return undefined;
+
+    const [result] = await db
+      .update(contactUpdateRequests)
+      .set({
+        reviewStatus: payload.reviewStatus,
+        reviewedBy: payload.reviewedBy ?? null,
+        reviewedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(contactUpdateRequests.id, id))
+      .returning();
+
+    if (payload.reviewStatus === "approved" && result.requestJson && typeof result.requestJson === "object") {
+      const patch = result.requestJson as Record<string, unknown>;
+      const personPatch: Partial<InsertPerson> = {};
+      if (typeof patch.email === "string") personPatch.email = patch.email;
+      if (typeof patch.phone === "string") personPatch.phone = patch.phone;
+      if (typeof patch.mailingAddress === "string") personPatch.mailingAddress = patch.mailingAddress;
+      if (typeof patch.emergencyContactName === "string") personPatch.emergencyContactName = patch.emergencyContactName;
+      if (typeof patch.emergencyContactPhone === "string") personPatch.emergencyContactPhone = patch.emergencyContactPhone;
+      if (typeof patch.contactPreference === "string") personPatch.contactPreference = patch.contactPreference;
+      if (Object.keys(personPatch).length > 0) {
+        await db.update(persons).set(personPatch).where(eq(persons.id, result.personId));
+      }
+    }
+
+    await this.recordAuditEvent({
+      actorEmail: payload.reviewedBy || "system",
+      action: "update",
+      entityType: "contact-update-request",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async getMaintenanceRequests(filters?: {
+    associationId?: string;
+    portalAccessId?: string;
+    status?: string;
+  }): Promise<MaintenanceRequest[]> {
+    let rows = await db.select().from(maintenanceRequests).orderBy(desc(maintenanceRequests.createdAt));
+    if (filters?.associationId) rows = rows.filter((row) => row.associationId === filters.associationId);
+    if (filters?.portalAccessId) rows = rows.filter((row) => row.submittedByPortalAccessId === filters.portalAccessId);
+    if (filters?.status) rows = rows.filter((row) => row.status === filters.status);
+    return rows;
+  }
+
+  private getMaintenanceResponseDueAt(priority: "low" | "medium" | "high" | "urgent", fromDate?: Date): Date {
+    const start = fromDate ? new Date(fromDate) : new Date();
+    const hoursByPriority: Record<string, number> = {
+      low: 120,
+      medium: 48,
+      high: 12,
+      urgent: 4,
+    };
+    const addHours = hoursByPriority[priority] ?? 48;
+    start.setTime(start.getTime() + addHours * 60 * 60 * 1000);
+    return start;
+  }
+
+  async createMaintenanceRequest(data: InsertMaintenanceRequest): Promise<MaintenanceRequest> {
+    const priority = data.priority ?? "medium";
+    const responseDueAt = this.getMaintenanceResponseDueAt(priority);
+    const [result] = await db
+      .insert(maintenanceRequests)
+      .values({
+        ...data,
+        priority,
+        status: data.status ?? "submitted",
+        responseDueAt,
+        escalationStage: 0,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    await this.createCommunicationHistoryRecord({
+      associationId: result.associationId,
+      channel: "portal",
+      direction: "inbound",
+      subject: `Maintenance request: ${result.title}`,
+      bodySnippet: result.description.slice(0, 500),
+      recipientEmail: null,
+      recipientPersonId: result.submittedByPersonId ?? null,
+      relatedType: "maintenance-request",
+      relatedId: result.id,
+      metadataJson: {
+        status: result.status,
+        priority: result.priority,
+      },
+    });
+
+    await this.recordAuditEvent({
+      actorEmail: result.submittedByEmail || "portal-user",
+      action: "create",
+      entityType: "maintenance-request",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async updateMaintenanceRequest(id: string, data: Partial<InsertMaintenanceRequest>): Promise<MaintenanceRequest | undefined> {
+    const [before] = await db.select().from(maintenanceRequests).where(eq(maintenanceRequests.id, id));
+    if (!before) return undefined;
+
+    const status = data.status ?? before.status;
+    const nextPriority = data.priority ?? before.priority;
+    const [result] = await db
+      .update(maintenanceRequests)
+      .set({
+        ...data,
+        status,
+        responseDueAt: before.responseDueAt ?? this.getMaintenanceResponseDueAt(nextPriority),
+        triagedAt: status === "triaged" && !before.triagedAt ? new Date() : before.triagedAt,
+        resolvedAt: status === "resolved" && !before.resolvedAt ? new Date() : before.resolvedAt,
+        closedAt: status === "closed" && !before.closedAt ? new Date() : before.closedAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(maintenanceRequests.id, id))
+      .returning();
+
+    if (before.status !== result.status) {
+      await this.createCommunicationHistoryRecord({
+        associationId: result.associationId,
+        channel: "email",
+        direction: "outbound",
+        subject: `Maintenance status update: ${result.title}`,
+        bodySnippet: `Status changed from ${before.status} to ${result.status}.`,
+        recipientEmail: result.submittedByEmail ?? null,
+        recipientPersonId: result.submittedByPersonId ?? null,
+        relatedType: "maintenance-request-status",
+        relatedId: result.id,
+        metadataJson: {
+          from: before.status,
+          to: result.status,
+        },
+      });
+    }
+
+    await this.recordAuditEvent({
+      actorEmail: "system",
+      action: "update",
+      entityType: "maintenance-request",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async runMaintenanceEscalationSweep(options?: {
+    associationId?: string;
+    now?: Date;
+    actorEmail?: string | null;
+  }): Promise<{
+    processed: number;
+    escalated: number;
+    escalatedIds: string[];
+  }> {
+    const now = options?.now ?? new Date();
+    const eligible = await this.getMaintenanceRequests({ associationId: options?.associationId });
+    const openItems = eligible.filter((row) =>
+      row.status === "submitted" || row.status === "triaged" || row.status === "in-progress",
+    );
+
+    const escalatedIds: string[] = [];
+    for (const item of openItems) {
+      if (!item.responseDueAt || item.responseDueAt > now) continue;
+      if (item.escalationStage >= 3) continue;
+
+      const nextStage = item.escalationStage + 1;
+      const [updated] = await db
+        .update(maintenanceRequests)
+        .set({
+          escalationStage: nextStage,
+          escalatedAt: now,
+          lastEscalationNoticeAt: now,
+          updatedAt: now,
+        })
+        .where(eq(maintenanceRequests.id, item.id))
+        .returning();
+
+      const supportEmail = (await this.getTenantConfig(updated.associationId))?.supportEmail ?? null;
+      await this.createCommunicationHistoryRecord({
+        associationId: updated.associationId,
+        channel: "email",
+        direction: "outbound",
+        subject: `Maintenance escalation stage ${nextStage}: ${updated.title}`,
+        bodySnippet: `Request ${updated.id} exceeded SLA response due at ${updated.responseDueAt?.toISOString()}.`,
+        recipientEmail: supportEmail,
+        recipientPersonId: null,
+        relatedType: "maintenance-escalation",
+        relatedId: updated.id,
+        metadataJson: {
+          escalationStage: nextStage,
+          priority: updated.priority,
+          actorEmail: options?.actorEmail ?? "scheduler@system",
+        },
+      });
+
+      await this.recordAuditEvent({
+        actorEmail: options?.actorEmail || "scheduler@system",
+        action: "update",
+        entityType: "maintenance-request-escalation",
+        entityId: updated.id,
+        associationId: updated.associationId,
+        beforeJson: item,
+        afterJson: updated,
+      });
+
+      escalatedIds.push(updated.id);
+    }
+
+    return {
+      processed: openItems.length,
+      escalated: escalatedIds.length,
+      escalatedIds,
+    };
+  }
+
+  async getPortalDocuments(portalAccessId: string): Promise<Document[]> {
+    const access = await this.getPortalAccessById(portalAccessId);
+    if (!access || access.status !== "active") return [];
+    const base = await db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.associationId, access.associationId), eq(documents.isPortalVisible, 1)));
+
+    if (access.role === "tenant") {
+      return base.filter((doc) => doc.portalAudience !== "owner");
+    }
+    return base;
+  }
+
+  async getPortalCommunicationHistory(portalAccessId: string): Promise<CommunicationHistory[]> {
+    const access = await this.getPortalAccessById(portalAccessId);
+    if (!access || access.status !== "active") return [];
+    const all = await this.getCommunicationHistory(access.associationId);
+    return all.filter((row) => row.recipientEmail === access.email || row.recipientPersonId === access.personId);
+  }
+
+  async getUnitChangeHistory(unitId: string): Promise<UnitChangeHistory[]> {
+    return db.select().from(unitChangeHistory).where(eq(unitChangeHistory.unitId, unitId)).orderBy(desc(unitChangeHistory.changedAt));
+  }
+
+  async createDocumentTag(data: InsertDocumentTag, actorEmail?: string): Promise<DocumentTag> {
+    const [result] = await db.insert(documentTags).values(data).returning();
+    const [doc] = await db.select({ associationId: documents.associationId }).from(documents).where(eq(documents.id, result.documentId));
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "document-tag",
+      entityId: result.id,
+      associationId: doc?.associationId || null,
+      beforeJson: null,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async getDocumentTags(documentId: string): Promise<DocumentTag[]> {
+    return db.select().from(documentTags).where(eq(documentTags.documentId, documentId));
+  }
+
+  async createDocumentVersion(data: InsertDocumentVersion, actorEmail?: string): Promise<DocumentVersion> {
+    const [result] = await db.insert(documentVersions).values(data).returning();
+    const [doc] = await db.select({ associationId: documents.associationId }).from(documents).where(eq(documents.id, result.documentId));
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "document-version",
+      entityId: result.id,
+      associationId: doc?.associationId || null,
+      beforeJson: null,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async getDocumentVersions(documentId: string): Promise<DocumentVersion[]> {
+    return db.select().from(documentVersions).where(eq(documentVersions.documentId, documentId)).orderBy(desc(documentVersions.versionNumber));
+  }
+
+  async getAuditLogs(associationId?: string): Promise<AuditLog[]> {
+    if (!associationId) {
+      return db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt));
+    }
+    return db.select().from(auditLogs).where(eq(auditLogs.associationId, associationId)).orderBy(desc(auditLogs.createdAt));
+  }
+
+  async getAdminUsers(): Promise<AdminUser[]> {
+    return db.select().from(adminUsers);
+  }
+
+  async getAdminUserById(id: string): Promise<AdminUser | undefined> {
+    const [result] = await db.select().from(adminUsers).where(eq(adminUsers.id, id));
+    return result;
+  }
+
+  async getAdminUserByEmail(email: string): Promise<AdminUser | undefined> {
+    const [result] = await db.select().from(adminUsers).where(eq(adminUsers.email, email));
+    return result;
+  }
+
+  async upsertAdminUser(data: InsertAdminUser): Promise<AdminUser> {
+    const existing = await this.getAdminUserByEmail(data.email);
+    if (!existing) {
+      const [created] = await db.insert(adminUsers).values(data).returning();
+      return created;
+    }
+
+    const [updated] = await db
+      .update(adminUsers)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(adminUsers.id, existing.id))
+      .returning();
+    return updated;
+  }
+
+  async updateAdminUserRole(id: string, role: NonNullable<InsertAdminUser["role"]>, changedBy: string, reason?: string): Promise<AdminUser | undefined> {
+    const [existing] = await db.select().from(adminUsers).where(eq(adminUsers.id, id));
+    if (!existing) return undefined;
+    if (!reason?.trim()) {
+      throw new Error("Reason is required for permission changes");
+    }
+
+    if (existing.role === "platform-admin" && role !== "platform-admin") {
+      const activeUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, 1));
+      const remainingPlatformAdmins = activeUsers.filter((user) => user.role === "platform-admin" && user.id !== id);
+      if (remainingPlatformAdmins.length === 0) {
+        throw new Error("Cannot remove the last platform-admin");
+      }
+    }
+
+    const [updated] = await db
+      .update(adminUsers)
+      .set({ role, updatedAt: new Date() })
+      .where(eq(adminUsers.id, id))
+      .returning();
+
+    await db.insert(permissionChangeLogs).values({
+      userId: existing.id,
+      oldRole: existing.role as NonNullable<InsertAdminUser["role"]>,
+      newRole: role,
+      changedBy,
+      reason: reason.trim(),
+    });
+
+    await this.recordAuditEvent({
+      actorEmail: changedBy,
+      action: "update",
+      entityType: "admin-user-role",
+      entityId: existing.id,
+      associationId: null,
+      beforeJson: { role: existing.role },
+      afterJson: { role: updated.role, reason: reason.trim() },
+    });
+
+    return updated;
+  }
+
+  async getAuthUserById(id: string): Promise<AuthUser | undefined> {
+    const [result] = await db.select().from(authUsers).where(eq(authUsers.id, id));
+    return result;
+  }
+
+  async getAuthUserByEmail(email: string): Promise<AuthUser | undefined> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return undefined;
+    const [result] = await db.select().from(authUsers).where(eq(authUsers.email, normalizedEmail));
+    return result;
+  }
+
+  async createAuthUser(data: InsertAuthUser): Promise<AuthUser> {
+    const [result] = await db
+      .insert(authUsers)
+      .values({
+        ...data,
+        email: data.email.trim().toLowerCase(),
+      })
+      .returning();
+    return result;
+  }
+
+  async updateAuthUser(id: string, data: Partial<InsertAuthUser>): Promise<AuthUser | undefined> {
+    const [existing] = await db.select().from(authUsers).where(eq(authUsers.id, id));
+    if (!existing) return undefined;
+
+    const [result] = await db
+      .update(authUsers)
+      .set({
+        ...data,
+        email: typeof data.email === "string" ? data.email.trim().toLowerCase() : data.email,
+        updatedAt: new Date(),
+      })
+      .where(eq(authUsers.id, id))
+      .returning();
+    return result;
+  }
+
+  async getAuthExternalAccount(provider: "google", providerAccountId: string): Promise<AuthExternalAccount | undefined> {
+    const normalizedProviderAccountId = providerAccountId.trim();
+    if (!normalizedProviderAccountId) return undefined;
+    const [result] = await db
+      .select()
+      .from(authExternalAccounts)
+      .where(and(
+        eq(authExternalAccounts.provider, provider),
+        eq(authExternalAccounts.providerAccountId, normalizedProviderAccountId),
+      ));
+    return result;
+  }
+
+  async getAuthExternalAccountByProviderEmail(provider: "google", providerEmail: string): Promise<AuthExternalAccount | undefined> {
+    const normalizedProviderEmail = providerEmail.trim().toLowerCase();
+    if (!normalizedProviderEmail) return undefined;
+    const [result] = await db
+      .select()
+      .from(authExternalAccounts)
+      .where(and(
+        eq(authExternalAccounts.provider, provider),
+        eq(authExternalAccounts.providerEmail, normalizedProviderEmail),
+      ));
+    return result;
+  }
+
+  async createAuthExternalAccount(data: InsertAuthExternalAccount): Promise<AuthExternalAccount> {
+    const [result] = await db
+      .insert(authExternalAccounts)
+      .values({
+        ...data,
+        providerAccountId: data.providerAccountId.trim(),
+        providerEmail: data.providerEmail ? data.providerEmail.trim().toLowerCase() : null,
+      })
+      .returning();
+    return result;
+  }
+
+  async upsertAuthExternalAccount(data: InsertAuthExternalAccount): Promise<AuthExternalAccount> {
+    const existing = await this.getAuthExternalAccount(data.provider, data.providerAccountId);
+    if (!existing) {
+      return this.createAuthExternalAccount(data);
+    }
+    const [result] = await db
+      .update(authExternalAccounts)
+      .set({
+        ...data,
+        providerAccountId: data.providerAccountId.trim(),
+        providerEmail: data.providerEmail ? data.providerEmail.trim().toLowerCase() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(authExternalAccounts.id, existing.id))
+      .returning();
+    return result;
+  }
+
+  async touchAuthUserLogin(userId: string): Promise<void> {
+    await db
+      .update(authUsers)
+      .set({
+        lastLoginAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(authUsers.id, userId));
   }
 
   async getDashboardStats() {
@@ -146,6 +8193,606 @@ export class DatabaseStorage implements IStorage {
       totalTenants: activeTenants.length,
       totalBoardMembers: activeBoardMembers.length,
       totalDocuments: allDocuments.length,
+    };
+  }
+
+  private async validateRoadmapDependencyIds(projectId: string, dependencyTaskIds: string[] = [], selfTaskId?: string): Promise<string[]> {
+    const uniqueIds = Array.from(new Set(dependencyTaskIds.filter(Boolean))).filter((id) => id !== selfTaskId);
+    if (uniqueIds.length === 0) return [];
+
+    const rows = await db
+      .select({ id: roadmapTasks.id, projectId: roadmapTasks.projectId })
+      .from(roadmapTasks)
+      .where(inArray(roadmapTasks.id, uniqueIds));
+
+    const foundIds = new Set(rows.map((r) => r.id));
+    const missingIds = uniqueIds.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) {
+      throw new Error(`Invalid dependency task IDs: ${missingIds.join(", ")}`);
+    }
+
+    const crossProject = rows.filter((r) => r.projectId !== projectId).map((r) => r.id);
+    if (crossProject.length > 0) {
+      throw new Error(`Dependencies must stay within the same project: ${crossProject.join(", ")}`);
+    }
+
+    return uniqueIds;
+  }
+
+  private async buildRoadmapResponse(): Promise<RoadmapResponse> {
+    const [projects, workstreams, tasks] = await Promise.all([
+      db.select().from(roadmapProjects),
+      db.select().from(roadmapWorkstreams),
+      db.select().from(roadmapTasks),
+    ]);
+
+    const taskByWorkstream = new Map<string, RoadmapTask[]>();
+    const taskByProject = new Map<string, RoadmapTask[]>();
+    for (const task of tasks) {
+      const wsList = taskByWorkstream.get(task.workstreamId) ?? [];
+      wsList.push(task);
+      taskByWorkstream.set(task.workstreamId, wsList);
+
+      const projectList = taskByProject.get(task.projectId) ?? [];
+      projectList.push(task);
+      taskByProject.set(task.projectId, projectList);
+    }
+
+    const workstreamCountByProject = workstreams.reduce<Record<string, number>>((acc, ws) => {
+      acc[ws.projectId] = (acc[ws.projectId] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    const workstreamsWithProgress = workstreams
+      .map((workstream) => {
+        const progress = computeProgress(taskByWorkstream.get(workstream.id) ?? []);
+        return {
+          ...workstream,
+          progress: {
+            ...progress,
+            workstreamId: workstream.id,
+          },
+        };
+      })
+      .sort((a, b) => {
+        if (a.projectId !== b.projectId) return a.projectId.localeCompare(b.projectId);
+        return a.orderIndex - b.orderIndex;
+      });
+
+    const projectsWithProgress = projects
+      .map((project) => {
+        const progress = computeProgress(taskByProject.get(project.id) ?? []);
+        return {
+          ...project,
+          progress: {
+            ...progress,
+            projectId: project.id,
+            workstreamCount: workstreamCountByProject[project.id] ?? 0,
+          },
+        };
+      })
+      .sort((a, b) => {
+        if (a.status === b.status) return a.title.localeCompare(b.title);
+        const rank: Record<string, number> = { active: 0, complete: 1, archived: 2 };
+        return (rank[a.status] ?? 99) - (rank[b.status] ?? 99);
+      });
+
+    const taskMap = new Map(tasks.map((task) => [task.id, task]));
+    const timeline = tasks
+      .map((task): TimelineItem => {
+        const startsBeforeDependenciesComplete = task.dependencyTaskIds.some((dependencyId) => {
+          const dependencyTask = taskMap.get(dependencyId);
+          if (!dependencyTask || !task.targetStartDate || !dependencyTask.completedDate) return false;
+          return task.targetStartDate < dependencyTask.completedDate;
+        });
+
+        return {
+          taskId: task.id,
+          projectId: task.projectId,
+          workstreamId: task.workstreamId,
+          title: task.title,
+          targetStartDate: task.targetStartDate,
+          targetEndDate: task.targetEndDate,
+          dependencyTaskIds: task.dependencyTaskIds,
+          startsBeforeDependenciesComplete,
+        };
+      })
+      .sort((a, b) => {
+        const aTime = a.targetStartDate?.getTime() ?? a.targetEndDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const bTime = b.targetStartDate?.getTime() ?? b.targetEndDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+
+    return {
+      projects: projectsWithProgress,
+      workstreams: workstreamsWithProgress,
+      tasks,
+      timeline,
+      refreshedAt: new Date().toISOString(),
+    };
+  }
+
+  async getRoadmap(): Promise<RoadmapResponse> {
+    return this.buildRoadmapResponse();
+  }
+
+  private async upsertExecutiveUpdateBySource(payload: {
+    sourceType: "roadmap-task" | "roadmap-project";
+    sourceKey: string;
+    legacySourceKeys?: string[];
+    status: "draft" | "published";
+    title: string;
+    headline: string;
+    summary: string;
+    problemStatement: string | null;
+    solutionSummary: string | null;
+    featuresDelivered: string[];
+    businessValue: string | null;
+    projectId: string | null;
+    workstreamId: string | null;
+    taskId: string | null;
+    deliveredAt: Date | null;
+  }): Promise<"created" | "updated"> {
+    const [exactMatch] = await db
+      .select()
+      .from(executiveUpdates)
+      .where(eq(executiveUpdates.sourceKey, payload.sourceKey))
+      .limit(1);
+
+    let current = exactMatch;
+    if (!current) {
+      const legacyKeys = (payload.legacySourceKeys ?? []).filter(Boolean);
+      if (legacyKeys.length) {
+        const legacyMatches = await db
+          .select()
+          .from(executiveUpdates)
+          .where(inArray(executiveUpdates.sourceKey, legacyKeys))
+          .limit(1);
+        current = legacyMatches[0];
+      }
+    }
+
+    if (!current) {
+      await db.insert(executiveUpdates).values({
+        title: payload.title,
+        headline: payload.headline,
+        summary: payload.summary,
+        problemStatement: payload.problemStatement,
+        solutionSummary: payload.solutionSummary,
+        featuresDelivered: payload.featuresDelivered,
+        businessValue: payload.businessValue,
+        status: payload.status,
+        sourceType: payload.sourceType,
+        sourceKey: payload.sourceKey,
+        projectId: payload.projectId,
+        workstreamId: payload.workstreamId,
+        taskId: payload.taskId,
+        deliveredAt: payload.deliveredAt,
+        displayOrder: 0,
+        createdBy: "system",
+        updatedAt: new Date(),
+      });
+      return "created";
+    }
+
+    const shouldUpdateSourceKey = current.sourceKey !== payload.sourceKey;
+    await db
+      .update(executiveUpdates)
+      .set({
+        title: payload.title,
+        headline: payload.headline,
+        summary: payload.summary,
+        problemStatement: payload.problemStatement,
+        solutionSummary: payload.solutionSummary,
+        featuresDelivered: payload.featuresDelivered,
+        businessValue: payload.businessValue,
+        status: payload.status,
+        ...(shouldUpdateSourceKey ? { sourceKey: payload.sourceKey } : {}),
+        projectId: payload.projectId,
+        workstreamId: payload.workstreamId,
+        taskId: payload.taskId,
+        deliveredAt: payload.deliveredAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(executiveUpdates.id, current.id));
+
+    return "updated";
+  }
+
+  private async syncExecutiveUpdateFromTask(taskId: string): Promise<"created" | "updated" | "skipped"> {
+    const [task] = await db.select().from(roadmapTasks).where(eq(roadmapTasks.id, taskId));
+    if (!task || task.status !== "done") return "skipped";
+
+    const [project] = await db.select().from(roadmapProjects).where(eq(roadmapProjects.id, task.projectId));
+    const [workstream] = await db.select().from(roadmapWorkstreams).where(eq(roadmapWorkstreams.id, task.workstreamId));
+    if (!project || !workstream) return "skipped";
+
+    return this.upsertExecutiveUpdateBySource({
+      sourceType: "roadmap-task",
+      sourceKey: `roadmap-task:${task.id}`,
+      status: "draft",
+      title: `${project.title}: ${task.title}`,
+      headline: task.title,
+      summary: `Delivered in ${workstream.title}. ${task.description || "Roadmap deliverable completed."}`,
+      problemStatement: `- Delivery Need: ${task.description || "Roadmap deliverable required completion."}`,
+      solutionSummary: `- Delivered Outcome: ${task.title} completed in ${workstream.title}.`,
+      featuresDelivered: [`Execution Item: ${task.title}`],
+      businessValue: `Moves ${project.title} forward with a completed, production-tracked deliverable.`,
+      projectId: project.id,
+      workstreamId: workstream.id,
+      taskId: task.id,
+      deliveredAt: task.completedDate ?? new Date(),
+    });
+  }
+
+  private async syncExecutiveUpdateFromProject(projectId: string): Promise<"created" | "updated" | "skipped"> {
+    const [project] = await db.select().from(roadmapProjects).where(eq(roadmapProjects.id, projectId));
+    if (!project || project.status !== "complete") return "skipped";
+
+    const tasks = await db.select().from(roadmapTasks).where(eq(roadmapTasks.projectId, project.id));
+    const doneCount = tasks.filter((task) => task.status === "done").length;
+    const totalCount = tasks.length;
+    const completion = totalCount === 0 ? 0 : Math.round((doneCount / totalCount) * 100);
+    const latestCompleted = tasks
+      .filter((task) => task.status === "done")
+      .map((task) => task.completedDate?.getTime() ?? 0)
+      .sort((a, b) => b - a)[0] ?? 0;
+    const deliveredAt = latestCompleted > 0 ? new Date(latestCompleted) : new Date();
+    const completedTaskTitles = tasks
+      .filter((task) => task.status === "done")
+      .slice(0, 8)
+      .map((task) => `Delivered Item: ${task.title}`);
+
+    return this.upsertExecutiveUpdateBySource({
+      sourceType: "roadmap-project",
+      sourceKey: `slide:roadmap-project:${project.id}`,
+      legacySourceKeys: [`roadmap-project:${project.id}`],
+      status: "published",
+      title: `${project.title} completed`,
+      headline: `${project.title} reached ${completion}%`,
+      summary: `Project completed with ${doneCount}/${totalCount} roadmap tasks delivered (${completion}%).`,
+      problemStatement: `- Program Goal: Complete ${project.title} with clear execution tracking.\n- Delivery Requirement: Close all planned roadmap tasks for this phase.`,
+      solutionSummary: `- Execution Result: ${project.title} is now complete.\n- Delivery Proof: ${doneCount} of ${totalCount} tasks are marked done (${completion}%).`,
+      featuresDelivered: completedTaskTitles.length ? completedTaskTitles : ["Delivery Status: Project marked complete on roadmap"],
+      businessValue: "Creates a clean executive proof point for customer-facing progress and product maturity.",
+      projectId: project.id,
+      workstreamId: null,
+      taskId: null,
+      deliveredAt,
+    });
+  }
+
+  async createRoadmapProject(data: InsertRoadmapProject): Promise<RoadmapProject> {
+    const [result] = await db.insert(roadmapProjects).values(data).returning();
+    return result;
+  }
+
+  async createRoadmapWorkstream(data: InsertRoadmapWorkstream): Promise<RoadmapWorkstream> {
+    const [project] = await db.select().from(roadmapProjects).where(eq(roadmapProjects.id, data.projectId));
+    if (!project) {
+      throw new Error("Project not found");
+    }
+    const [result] = await db.insert(roadmapWorkstreams).values(data).returning();
+    return result;
+  }
+
+  async createRoadmapTask(data: InsertRoadmapTask): Promise<RoadmapTask> {
+    const [workstream] = await db
+      .select()
+      .from(roadmapWorkstreams)
+      .where(eq(roadmapWorkstreams.id, data.workstreamId));
+
+    if (!workstream) {
+      throw new Error("Workstream not found");
+    }
+
+    if (workstream.projectId !== data.projectId) {
+      throw new Error("Task projectId must match workstream projectId");
+    }
+
+    const dependencyTaskIds = await this.validateRoadmapDependencyIds(data.projectId, data.dependencyTaskIds ?? []);
+    const status = data.status ?? "todo";
+
+    const [result] = await db
+      .insert(roadmapTasks)
+      .values({
+        ...data,
+        status,
+        dependencyTaskIds,
+        completedDate: status === "done" ? new Date() : null,
+      })
+      .returning();
+
+    if (result.status === "done") {
+      await this.syncExecutiveUpdateFromTask(result.id);
+    }
+
+    return result;
+  }
+
+  async updateRoadmapTask(id: string, data: Partial<InsertRoadmapTask>): Promise<RoadmapTask | undefined> {
+    const [existing] = await db.select().from(roadmapTasks).where(eq(roadmapTasks.id, id));
+    if (!existing) return undefined;
+
+    const nextProjectId = data.projectId ?? existing.projectId;
+    const nextWorkstreamId = data.workstreamId ?? existing.workstreamId;
+
+    const [workstream] = await db
+      .select()
+      .from(roadmapWorkstreams)
+      .where(eq(roadmapWorkstreams.id, nextWorkstreamId));
+    if (!workstream) {
+      throw new Error("Workstream not found");
+    }
+    if (workstream.projectId !== nextProjectId) {
+      throw new Error("Task projectId must match workstream projectId");
+    }
+
+    const status = data.status ?? existing.status;
+    let completedDate = existing.completedDate;
+    if (existing.status !== "done" && status === "done") {
+      completedDate = new Date();
+    }
+    if (existing.status === "done" && status !== "done") {
+      completedDate = null;
+    }
+
+    const dependencyTaskIds = data.dependencyTaskIds
+      ? await this.validateRoadmapDependencyIds(nextProjectId, data.dependencyTaskIds, id)
+      : existing.dependencyTaskIds;
+
+    const [result] = await db
+      .update(roadmapTasks)
+      .set({
+        ...data,
+        projectId: nextProjectId,
+        workstreamId: nextWorkstreamId,
+        status,
+        dependencyTaskIds,
+        completedDate,
+        updatedAt: new Date(),
+      })
+      .where(eq(roadmapTasks.id, id))
+      .returning();
+
+    if (result && result.status === "done") {
+      await this.syncExecutiveUpdateFromTask(result.id);
+    }
+
+    return result;
+  }
+
+  async updateRoadmapProject(id: string, data: Partial<InsertRoadmapProject>): Promise<RoadmapProject | undefined> {
+    if (data.status === "complete") {
+      const tasks = await db.select({ id: roadmapTasks.id, status: roadmapTasks.status }).from(roadmapTasks).where(eq(roadmapTasks.projectId, id));
+      const remaining = tasks.filter((task) => task.status !== "done").length;
+      if (remaining > 0) {
+        throw new Error(`Cannot mark project complete while ${remaining} task(s) are not done`);
+      }
+    }
+
+    const [result] = await db
+      .update(roadmapProjects)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(roadmapProjects.id, id))
+      .returning();
+    if (result && result.status === "complete") {
+      await this.syncExecutiveUpdateFromProject(result.id);
+    }
+    return result;
+  }
+
+  async updateRoadmapWorkstream(id: string, data: Partial<InsertRoadmapWorkstream>): Promise<RoadmapWorkstream | undefined> {
+    const [existing] = await db.select().from(roadmapWorkstreams).where(eq(roadmapWorkstreams.id, id));
+    if (!existing) return undefined;
+
+    if (data.projectId && data.projectId !== existing.projectId) {
+      const [targetProject] = await db.select({ id: roadmapProjects.id }).from(roadmapProjects).where(eq(roadmapProjects.id, data.projectId));
+      if (!targetProject) {
+        throw new Error("Project not found");
+      }
+
+      const linkedTasks = await db.select({ id: roadmapTasks.id }).from(roadmapTasks).where(eq(roadmapTasks.workstreamId, id)).limit(1);
+      if (linkedTasks.length > 0) {
+        throw new Error("Cannot move workstream to another project while tasks are linked; move tasks first");
+      }
+    }
+
+    const [result] = await db
+      .update(roadmapWorkstreams)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(roadmapWorkstreams.id, id))
+      .returning();
+    return result;
+  }
+
+  async getExecutiveUpdates(): Promise<ExecutiveUpdate[]> {
+    return db
+      .select()
+      .from(executiveUpdates)
+      .orderBy(desc(executiveUpdates.deliveredAt), desc(executiveUpdates.updatedAt), desc(executiveUpdates.createdAt));
+  }
+
+  async createExecutiveUpdate(data: InsertExecutiveUpdate): Promise<ExecutiveUpdate> {
+    const [result] = await db
+      .insert(executiveUpdates)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateExecutiveUpdate(id: string, data: Partial<InsertExecutiveUpdate>): Promise<ExecutiveUpdate | undefined> {
+    const [result] = await db
+      .update(executiveUpdates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(executiveUpdates.id, id))
+      .returning();
+    return result;
+  }
+
+  async getExecutiveEvidence(executiveUpdateId: string): Promise<ExecutiveEvidence[]> {
+    return db
+      .select()
+      .from(executiveEvidence)
+      .where(eq(executiveEvidence.executiveUpdateId, executiveUpdateId))
+      .orderBy(desc(executiveEvidence.createdAt));
+  }
+
+  async createExecutiveEvidence(data: InsertExecutiveEvidence): Promise<ExecutiveEvidence> {
+    const [result] = await db.insert(executiveEvidence).values(data).returning();
+    return result;
+  }
+
+  async syncExecutiveFromRoadmap(): Promise<{ created: number; updated: number }> {
+    const [tasks, projects] = await Promise.all([
+      db.select().from(roadmapTasks).where(eq(roadmapTasks.status, "done")),
+      db.select().from(roadmapProjects).where(eq(roadmapProjects.status, "complete")),
+    ]);
+
+    let created = 0;
+    let updated = 0;
+
+    for (const task of tasks) {
+      const result = await this.syncExecutiveUpdateFromTask(task.id);
+      if (result === "created") created += 1;
+      if (result === "updated") updated += 1;
+    }
+    for (const project of projects) {
+      const result = await this.syncExecutiveUpdateFromProject(project.id);
+      if (result === "created") created += 1;
+      if (result === "updated") updated += 1;
+    }
+
+    return { created, updated };
+  }
+
+  async getAnalysisHistory(resourceId: string, module: string) {
+    const [versions, runs] = await Promise.all([
+      db
+        .select()
+        .from(analysisVersions)
+        .where(and(eq(analysisVersions.resourceId, resourceId), eq(analysisVersions.module, module)))
+        .orderBy(desc(analysisVersions.version)),
+      db
+        .select()
+        .from(analysisRuns)
+        .where(and(eq(analysisRuns.resourceId, resourceId), eq(analysisRuns.module, module)))
+        .orderBy(desc(analysisRuns.createdAt)),
+    ]);
+
+    const versionsWithDiff = versions.map((version, index) => {
+      const previousVersion = versions[index + 1];
+      if (!previousVersion) {
+        return { ...version, diffFromPrevious: null };
+      }
+
+      return {
+        ...version,
+        diffFromPrevious: computeAnalysisDiff(previousVersion.payloadJson, version.payloadJson),
+      };
+    });
+
+    return {
+      versions: versionsWithDiff,
+      runs,
+    };
+  }
+
+  async createAnalysisVersion(data: InsertAnalysisVersion): Promise<AnalysisVersion> {
+    const [lastVersion] = await db
+      .select({ version: analysisVersions.version })
+      .from(analysisVersions)
+      .where(and(eq(analysisVersions.resourceId, data.resourceId), eq(analysisVersions.module, data.module)))
+      .orderBy(desc(analysisVersions.version))
+      .limit(1);
+
+    const [result] = await db
+      .insert(analysisVersions)
+      .values({
+        ...data,
+        version: (lastVersion?.version ?? 0) + 1,
+      })
+      .returning();
+
+    return result;
+  }
+
+  async createAnalysisRun(data: InsertAnalysisRun): Promise<AnalysisRun> {
+    const [result] = await db
+      .insert(analysisRuns)
+      .values(data)
+      .returning();
+
+    return result;
+  }
+
+  async revertAnalysisVersion(resourceId: string, module: string, versionId: string): Promise<AnalysisVersion> {
+    const [target] = await db
+      .select()
+      .from(analysisVersions)
+      .where(
+        and(
+          eq(analysisVersions.id, versionId),
+          eq(analysisVersions.resourceId, resourceId),
+          eq(analysisVersions.module, module),
+        ),
+      );
+
+    if (!target) {
+      throw new Error("Version not found");
+    }
+
+    return this.createAnalysisVersion({
+      resourceId,
+      module,
+      version: target.version,
+      payloadJson: target.payloadJson as any,
+      itemCount: target.itemCount,
+      trigger: `revert:${target.id}`,
+    });
+  }
+
+  async getAdminAnalytics(days: number) {
+    const boundedDays = Math.max(1, Math.min(days || 30, 365));
+    const since = new Date(Date.now() - boundedDays * 24 * 60 * 60 * 1000);
+
+    const [projects, workstreams, tasks, runs] = await Promise.all([
+      db.select().from(roadmapProjects),
+      db.select().from(roadmapWorkstreams),
+      db.select().from(roadmapTasks),
+      db.select().from(analysisRuns).where(gte(analysisRuns.createdAt, since)),
+    ]);
+
+    const totalRuns = runs.length;
+    const successCount = runs.filter((run) => run.success === 1).length;
+    const durationTotal = runs.reduce((acc, run) => acc + run.durationMs, 0);
+    const itemCountTotal = runs.reduce((acc, run) => acc + run.itemCount, 0);
+
+    const todo = tasks.filter((task) => task.status === "todo").length;
+    const inProgress = tasks.filter((task) => task.status === "in-progress").length;
+    const done = tasks.filter((task) => task.status === "done").length;
+
+    const throughput = tasks.filter((task) => task.completedDate && task.completedDate >= since).length;
+
+    return {
+      analyzerMetrics: {
+        totalRuns,
+        successRate: totalRuns === 0 ? 0 : Number(((successCount / totalRuns) * 100).toFixed(2)),
+        avgDurationMs: totalRuns === 0 ? 0 : Math.round(durationTotal / totalRuns),
+        avgItemCount: totalRuns === 0 ? 0 : Math.round(itemCountTotal / totalRuns),
+      },
+      roadmapMetrics: {
+        totalProjects: projects.length,
+        totalWorkstreams: workstreams.length,
+        totalTasks: tasks.length,
+        taskStatusDistribution: {
+          todo,
+          inProgress,
+          done,
+        },
+        completionRate: tasks.length === 0 ? 0 : Number(((done / tasks.length) * 100).toFixed(2)),
+        taskThroughput: throughput,
+      },
     };
   }
 }

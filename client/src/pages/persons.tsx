@@ -27,6 +27,9 @@ const formSchema = z.object({
   email: z.string().email("Invalid email").optional().or(z.literal("")),
   phone: z.string().optional(),
   mailingAddress: z.string().optional(),
+  emergencyContactName: z.string().optional(),
+  emergencyContactPhone: z.string().optional(),
+  contactPreference: z.string().optional(),
 });
 
 export default function PersonsPage() {
@@ -38,16 +41,25 @@ export default function PersonsPage() {
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { firstName: "", lastName: "", email: "", phone: "", mailingAddress: "" },
+    defaultValues: { firstName: "", lastName: "", email: "", phone: "", mailingAddress: "", emergencyContactName: "", emergencyContactPhone: "", contactPreference: "email" },
   });
 
   const createMutation = useMutation({
     mutationFn: (data: z.infer<typeof formSchema>) => {
-      const payload = { ...data, email: data.email || null, phone: data.phone || null, mailingAddress: data.mailingAddress || null };
+      const payload = {
+        ...data,
+        email: data.email || null,
+        phone: data.phone || null,
+        mailingAddress: data.mailingAddress || null,
+        emergencyContactName: data.emergencyContactName || null,
+        emergencyContactPhone: data.emergencyContactPhone || null,
+        contactPreference: data.contactPreference || "email",
+      };
       return apiRequest("POST", "/api/persons", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
       toast({ title: "Person created successfully" });
       setOpen(false);
       form.reset();
@@ -57,11 +69,20 @@ export default function PersonsPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: z.infer<typeof formSchema> & { id: string }) => {
-      const payload = { ...data, email: data.email || null, phone: data.phone || null, mailingAddress: data.mailingAddress || null };
+      const payload = {
+        ...data,
+        email: data.email || null,
+        phone: data.phone || null,
+        mailingAddress: data.mailingAddress || null,
+        emergencyContactName: data.emergencyContactName || null,
+        emergencyContactPhone: data.emergencyContactPhone || null,
+        contactPreference: data.contactPreference || "email",
+      };
       return apiRequest("PATCH", `/api/persons/${data.id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
       toast({ title: "Person updated successfully" });
       setOpen(false);
       setEditingId(null);
@@ -72,7 +93,16 @@ export default function PersonsPage() {
 
   function openEdit(p: Person) {
     setEditingId(p.id);
-    form.reset({ firstName: p.firstName, lastName: p.lastName, email: p.email ?? "", phone: p.phone ?? "", mailingAddress: p.mailingAddress ?? "" });
+    form.reset({
+      firstName: p.firstName,
+      lastName: p.lastName,
+      email: p.email ?? "",
+      phone: p.phone ?? "",
+      mailingAddress: p.mailingAddress ?? "",
+      emergencyContactName: p.emergencyContactName ?? "",
+      emergencyContactPhone: p.emergencyContactPhone ?? "",
+      contactPreference: p.contactPreference ?? "email",
+    });
     setOpen(true);
   }
 
@@ -138,6 +168,27 @@ export default function PersonsPage() {
                   <FormItem>
                     <FormLabel>Mailing Address</FormLabel>
                     <FormControl><Input data-testid="input-person-address" placeholder="123 Main St, Miami, FL" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="emergencyContactName" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Emergency Contact Name</FormLabel>
+                    <FormControl><Input placeholder="Emergency contact name" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="emergencyContactPhone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Emergency Contact Phone</FormLabel>
+                    <FormControl><Input placeholder="Emergency contact phone" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="contactPreference" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Contact Preference</FormLabel>
+                    <FormControl><Input placeholder="email / phone / sms" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />

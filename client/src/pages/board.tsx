@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -24,6 +24,7 @@ import {
 import { Plus, UserCheck } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { useActiveAssociation } from "@/hooks/use-active-association";
 
 const boardRoleOptions = ["President", "Vice President", "Treasurer", "Secretary", "Board Member"];
 
@@ -38,6 +39,7 @@ const formSchema = z.object({
 export default function BoardPage() {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
+  const { activeAssociationId, activeAssociationName } = useActiveAssociation();
 
   const { data: boardRoles, isLoading } = useQuery<BoardRole[]>({ queryKey: ["/api/board-roles"] });
   const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
@@ -47,6 +49,10 @@ export default function BoardPage() {
     resolver: zodResolver(formSchema),
     defaultValues: { personId: "", associationId: "", role: "", startDate: "", endDate: "" },
   });
+
+  useEffect(() => {
+    form.setValue("associationId", activeAssociationId, { shouldValidate: true });
+  }, [activeAssociationId, form]);
 
   const createMutation = useMutation({
     mutationFn: (data: z.infer<typeof formSchema>) => {
@@ -62,7 +68,7 @@ export default function BoardPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({ title: "Board role assigned successfully" });
       setOpen(false);
-      form.reset();
+      form.reset({ personId: "", associationId: activeAssociationId, role: "", startDate: "", endDate: "" });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
@@ -87,28 +93,19 @@ export default function BoardPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Board Members</h1>
-          <p className="text-muted-foreground">Manage board positions and membership.</p>
+          <p className="text-muted-foreground">Manage board positions for the current association context.</p>
         </div>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) form.reset(); }}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-board-role"><Plus className="h-4 w-4 mr-2" />Assign Role</Button>
+            <Button data-testid="button-add-board-role" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />Assign Role</Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>Assign Board Role</DialogTitle></DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField control={form.control} name="associationId" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Association</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-board-association"><SelectValue placeholder="Select association" /></SelectTrigger></FormControl>
-                      <SelectContent>
-                        {associations?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                  Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+                </div>
                 <FormField control={form.control} name="personId" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Person</FormLabel>

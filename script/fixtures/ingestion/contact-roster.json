@@ -1,0 +1,12 @@
+{
+  "label": "contact-roster-table",
+  "associationScoped": false,
+  "sourceFilename": "contact-roster.csv",
+  "contextNotes": "benchmark contact roster",
+  "sourceText": "Name,Email,Phone,Mailing Address\nPat Jordan,pat.jordan@example.com,555-300-2222,300 Main St\nAvery Smith,avery.smith@example.com,555-300-2223,302 Main St",
+  "expected": {
+    "recordType": "contact-roster",
+    "routeModule": "persons",
+    "minimumItems": 2
+  }
+}

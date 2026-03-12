@@ -1,0 +1,423 @@
+# Condo Property Manager - FTPH v2.1 Documentation
+
+## Document Metadata
+- Document Version: 2.1
+- Generated On: 2026-03-06
+- Status: Draft
+- Output Type: Full FTPH Write-Up
+
+## Platform Overview
+- Purpose: Provide a scalable condo association management platform supporting governance, owner/unit records, financial operations, document management, and operational workflows for condo associations beginning with an 18-unit complex in New Haven, Connecticut.
+- Context Mode: Both
+- Core Architecture: Product Root > Modules > Feature Sets > Functional Units
+
+### Initial Deployment Scope
+- Single condo complex
+- Board-managed operations
+- Manual data entry
+- No external integrations initially
+
+### Future Expansion Scope
+- Multiple condo associations
+- Platform-as-a-service
+- AI document ingestion
+- Email automation
+- Owner portal
+
+## Module List
+1. Unit, Owner & Occupancy Registry
+2. Governance & Board Administration
+3. Financial Operations & Fee Management
+4. Document & Record Management
+5. Meetings, Notes & Decision Records
+6. Operational Tasks, Compliance & Calendar
+7. Communications & Notice System
+8. Platform Services, Permissions & Audit
+
+## 1. Unit, Owner & Occupancy Registry
+- Purpose: Maintain authoritative registry of all units, owners, tenants, and contact relationships while preserving historical ownership and occupancy records.
+
+### 1.1 Feature Set: Unit Registry
+- Intent Summary: Establish the master record for each condo unit.
+- Description: Stores structural and operational data about units including identifiers, addresses, and future-ready allocation attributes.
+- User Story: As a property administrator, I want a master unit registry so I can track all units within the association.
+- Scope Boundary: Does not track maintenance requests, fee balances, or lease terms.
+- Feature Set-Level Functional Unit Summary: Provides creation, editing, and lifecycle tracking of unit records so units can anchor ownership, occupancy, fees, and documents.
+- Dependencies:
+  - Association configuration
+  - Owner registry
+- Risks:
+  - Incorrect initial data entry
+  - Unit structure complexity for future mixed-use or sub-unit cases
+- Open Questions:
+  - Should units support commercial-use flags from the initial release?
+  - Should square footage be required or optional at creation?
+- Implementation Notes: Model unit attributes to support future allocation methods such as flat fees and square-footage-based dues.
+
+#### Functional Units
+- 1.1.1 Create Unit Record [Data]
+  - User Story: As an administrator, I want to create a unit record so the unit exists in the association system.
+  - Acceptance Criteria:
+    - Given the administrator is on the unit registry page
+    - When the administrator enters required unit data and saves
+    - Then the system creates a unit with a unique identifier and association link
+
+- 1.1.2 Edit Unit Attributes [Data]
+  - User Story: As an administrator, I want to edit unit attributes so records remain accurate over time.
+  - Acceptance Criteria:
+    - Given an existing unit record exists
+    - When the administrator updates editable unit fields
+    - Then the system saves the changes and preserves the updated values
+
+- 1.1.3 Track Unit Lifecycle History [Logic]
+  - User Story: As an administrator, I want unit lifecycle history so important unit-level changes are preserved.
+  - Acceptance Criteria:
+    - Given a tracked unit field changes
+    - When the update is saved
+    - Then the system logs the change historically with timestamp and actor
+
+### 1.2 Feature Set: Owner Registry
+- Intent Summary: Maintain the master profile and ownership relationships for all unit owners.
+- Description: Supports one owner owning multiple units and multiple owners sharing one unit while preserving ownership history.
+- User Story: As a property administrator, I want a centralized owner registry so I can manage ownership relationships across the association.
+- Scope Boundary: Does not manage mortgage data, tax filings, or rental lease agreements.
+- Feature Set-Level Functional Unit Summary: Provides owner profile creation, owner-to-unit linking, and multi-owner relationship management so the platform can represent real ownership structures.
+- Dependencies:
+  - Unit registry
+  - Association configuration
+- Risks:
+  - Duplicate owner profiles due to inconsistent naming
+  - Improper historical handling when ownership changes
+- Open Questions:
+  - Should ownership percentages be required from the first release?
+  - Should mailing address history be preserved separately from owner identity history?
+- Implementation Notes: Use a reusable person/entity model so an owner can also serve as a board member or occupant contact without duplicate person records.
+
+#### Functional Units
+- 1.2.1 Create Owner Profile [Data]
+  - User Story: As an administrator, I want to create owner profiles so ownership relationships can be recorded.
+  - Acceptance Criteria:
+    - Given owner identity and contact details are entered
+    - When the administrator saves the form
+    - Then the system creates a reusable owner profile
+
+- 1.2.2 Link Owner to Unit [Logic]
+  - User Story: As an administrator, I want to associate an owner with a unit so current ownership is tracked accurately.
+  - Acceptance Criteria:
+    - Given both an owner and unit record exist
+    - When the administrator creates an ownership relationship
+    - Then the system stores the owner-unit link with effective dates
+
+- 1.2.3 Manage Multiple Owners [Logic]
+  - User Story: As an administrator, I want to support multiple owners so joint ownership can be recorded correctly.
+  - Acceptance Criteria:
+    - Given a unit supports more than one owner
+    - When the administrator adds multiple valid ownership records
+    - Then the system preserves all active and historical owner relationships without overwriting prior records
+
+### 1.3 Feature Set: Tenant Contact Registry
+- Intent Summary: Track emergency and operational contact details for occupants of rented units.
+- Description: Stores non-lease tenant contact information and occupancy relationships for safety, notices, and emergency access.
+- User Story: As a property administrator, I want tenant contact records for rented units so the association can reach occupants when needed.
+- Scope Boundary: Does not manage leases, rent payments, security deposits, or rental performance tracking.
+- Feature Set-Level Functional Unit Summary: Provides intake, storage, and historical tracking of occupant contact records so the association can manage tenant-facing communications without becoming a rental management system.
+- Dependencies:
+  - Unit registry
+  - Owner registry
+- Risks:
+  - Stale tenant data if owners do not update occupant details
+  - Confusion between owner mailing contacts and occupant contacts
+- Open Questions:
+  - Should owner-submitted tenant updates require admin approval before becoming active?
+  - Should emergency contact fields be separate from primary tenant contact fields?
+- Implementation Notes: Keep the data model contact-focused and occupancy-focused only, with no lease abstraction in the initial scope.
+
+#### Functional Units
+- 1.3.1 Submit Tenant Information Form [UX]
+  - User Story: As an owner or administrator, I want a simple form to submit tenant details so occupant contact data can be collected consistently.
+  - Acceptance Criteria:
+    - Given a rented unit needs occupant data
+    - When the form is completed and submitted
+    - Then the system captures the submission for storage or review
+
+- 1.3.2 Store Tenant Contact Record [Data]
+  - User Story: As an administrator, I want to store tenant contact records so the association can contact occupants directly when necessary.
+  - Acceptance Criteria:
+    - Given a valid occupant submission or manual entry exists
+    - When the administrator saves or approves the record
+    - Then the system stores the occupant contact against the correct unit
+
+- 1.3.3 Track Occupancy History [Logic]
+  - User Story: As an administrator, I want occupancy history so prior tenant contact periods are preserved over time.
+  - Acceptance Criteria:
+    - Given an occupant changes for a unit
+    - When the current occupancy record is ended and a new one is created
+    - Then the system preserves both historical and current occupancy periods
+
+## 2. Governance & Board Administration
+- Purpose: Track board composition, officer roles, governance structure, and service history.
+
+### 2.1 Feature Set: Board Member Registry
+- Intent Summary: Maintain the official roster of board members and officer roles.
+- Description: Links board service to owner/person records and tracks role titles, effective periods, and governance assignments.
+- User Story: As a property administrator, I want a board registry so the association always knows who is serving in what capacity.
+- Scope Boundary: Does not manage parliamentary procedure rules, voting outcomes, or meeting minutes in this feature set.
+- Feature Set-Level Functional Unit Summary: Provides role assignment, board metadata storage, and service history so governance roles remain traceable over time.
+- Dependencies:
+  - Owner registry
+  - Person/entity model
+- Risks:
+  - Board records becoming misaligned with actual service periods
+  - Duplicate board assignments for the same role and term
+- Open Questions:
+  - Should non-owner board service ever be allowed by configuration?
+  - Should interim appointments be tracked separately from elected terms?
+- Implementation Notes: Allow board service to reference the shared person model so role changes do not require duplicate profile creation.
+
+#### Functional Units
+- 2.1.1 Assign Board Member Role [Logic]
+- 2.1.2 Store Board Role Metadata [Data]
+- 2.1.3 Track Board Service History [Logic]
+
+## 3. Financial Operations & Fee Management
+- Purpose: Manage HOA dues, assessments, invoices, utility expenses, and owner-facing balances.
+
+### 3.1 Feature Set: Fee & Assessment Engine
+- Intent Summary: Generate and manage owner financial obligations such as common charges, assessments, and late fees.
+- Description: Supports flat-fee dues now while preserving extensibility for future allocation methods and installment assessments.
+- User Story: As a property administrator, I want a fee and assessment engine so financial obligations can be created and tracked consistently.
+- Scope Boundary: Does not include online payment processing, bank feeds, or full general-ledger accounting.
+- Feature Set-Level Functional Unit Summary: Provides charge configuration, assessment creation, late-fee logic, and owner balance visibility so the association can manage receivables operationally.
+- Dependencies:
+  - Unit registry
+  - Owner registry
+- Risks:
+  - Improper charge calculations if ownership dates are inaccurate
+  - Rule complexity expanding too early beyond MVP needs
+- Open Questions:
+  - Should late fees be applied automatically or only after admin review in the first release?
+  - Should assessments support owner-level overrides from day one?
+- Implementation Notes: Model fee rules separately from posted charges so future changes do not rewrite financial history.
+
+#### Functional Units
+- 3.1.1 Create HOA Fee Schedule [Logic]
+- 3.1.2 Create Special Assessment [Logic]
+- 3.1.3 Calculate Late Fees [Logic]
+- 3.1.4 Track Owner Ledger Balance [Data]
+
+### 3.2 Feature Set: Expense & Invoice Tracking
+- Intent Summary: Record association expenses, utility payments, invoices, and related attachments.
+- Description: Provides structured operational expense tracking for bills, vendor invoices, and utility-related costs.
+- User Story: As a property administrator, I want expense and invoice records so the association can track what it owes and what it has paid.
+- Scope Boundary: Does not include bank reconciliation, AP automation, or tax return preparation workflows.
+- Feature Set-Level Functional Unit Summary: Provides invoice entry, utility payment tracking, and attachment storage so expense records remain centralized and auditable.
+- Dependencies:
+  - Document repository
+  - Financial account configuration
+- Risks:
+  - Missing attachments reducing auditability
+  - Expense categories becoming inconsistent without standards
+- Open Questions:
+  - Should vendor records be their own feature set in the next iteration?
+  - Should utilities be modeled under a separate account framework from other expenses?
+- Implementation Notes: Use shared attachment and categorization patterns so invoices and utility bills can be filtered consistently later.
+
+#### Functional Units
+- 3.2.1 Record Vendor Invoice [Data]
+- 3.2.2 Track Utility Payments [Data]
+- 3.2.3 Store Expense Attachments [Data]
+
+## 4. Document & Record Management
+- Purpose: Centralize governing documents, budgets, insurance records, contracts, minutes, and supporting files.
+
+### 4.1 Feature Set: Document Repository
+- Intent Summary: Provide a structured document repository with tagging and version awareness.
+- Description: Stores uploaded files and associates them to relevant operational entities such as association, unit, owner, meeting, or financial record.
+- User Story: As a property administrator, I want a document repository so important records are centralized and retrievable.
+- Scope Boundary: Does not perform AI extraction or autonomous compliance analysis in this feature set.
+- Feature Set-Level Functional Unit Summary: Provides upload, tagging, and version control foundations so documents can support every major module in the platform.
+- Dependencies:
+  - Association registry
+  - Shared entity tagging model
+- Risks:
+  - Unstructured uploads reducing findability
+  - Version confusion if replacement logic is unclear
+- Open Questions:
+  - Should retention policies be enforced from the first release or configured later?
+  - Should owner-visible and internal-only visibility flags be included now?
+- Implementation Notes: Use a flexible tagging model so documents can be associated with multiple entity types without duplicated storage patterns.
+
+#### Functional Units
+- 4.1.1 Upload Document [UX]
+- 4.1.2 Tag Document to Entity [Logic]
+- 4.1.3 Maintain Document Version History [Logic]
+
+### 4.2 Feature Set: AI Document Ingestion
+- Intent Summary: Use AI-assisted extraction to convert raw uploads or pasted text into structured, reviewable records.
+- Description: Supports ingestion jobs, candidate metadata extraction, and human-reviewed parsing for documents such as bylaws, invoices, budgets, and minutes.
+- User Story: As a property administrator, I want AI-assisted document ingestion so manual data-entry effort can be reduced without sacrificing control.
+- Scope Boundary: Does not allow autonomous legal interpretation or automatic production updates without human approval.
+- Feature Set-Level Functional Unit Summary: Provides intake, extraction, and structured storage of reviewable AI outputs so documents can become searchable and actionable.
+- Dependencies:
+  - Document repository
+  - Review workflow model
+- Risks:
+  - Incorrect extraction causing bad downstream associations
+  - Overreliance on AI confidence without human review
+- Open Questions:
+  - Should document-type-specific extraction templates be included in the first AI iteration?
+  - Should parsed data save as draft records or only as extraction artifacts initially?
+- Implementation Notes: Build a review-first extraction pipeline where all AI outputs remain editable and traceable to the original source.
+
+#### Functional Units
+- 4.2.1 Upload Raw Document for Parsing [UX]
+- 4.2.2 Extract Document Metadata [Logic]
+- 4.2.3 Store Parsed Data [Data]
+
+## 5. Meetings, Notes & Decision Records
+- Purpose: Track association meetings, preserve notes and minutes, and maintain a searchable record of decisions.
+
+### 5.1 Feature Set: Meeting Tracker
+- Intent Summary: Manage meeting records, supporting notes, and publishable summaries.
+- Description: Stores meeting metadata, notes, attachments, and publish states for board and association meetings.
+- User Story: As a property administrator, I want to track meetings and related records so governance activity is organized and defensible.
+- Scope Boundary: Does not implement full voting procedure rules, owner portal publishing, or automated scheduling integrations in this feature set.
+- Feature Set-Level Functional Unit Summary: Provides meeting creation, note capture, and summary publication support so governance records can be created and shared consistently.
+- Dependencies:
+  - Board member registry
+  - Document repository
+- Risks:
+  - Informal note-taking leading to incomplete minutes
+  - Confusion between internal draft notes and approved summaries
+- Open Questions:
+  - Should agenda items be first-class records in the initial release?
+  - Should meeting categories be configurable by association?
+- Implementation Notes: Separate draft notes from final summaries so governance workflows can mature without overwriting raw records.
+
+#### Functional Units
+- 5.1.1 Schedule Meeting Record [Data]
+- 5.1.2 Record Meeting Notes [Data]
+- 5.1.3 Publish Meeting Summary [Logic]
+
+## 6. Operational Tasks, Compliance & Calendar
+- Purpose: Ensure board obligations, recurring tasks, and governance deadlines are visible and trackable.
+
+### 6.1 Feature Set: Annual Compliance Checklist
+- Intent Summary: Provide a recurring annual checklist for required governance and operational responsibilities.
+- Description: Tracks recurring tasks such as budget review, ratification, insurance renewal, record reviews, and other board-administered duties.
+- User Story: As a property administrator, I want an annual compliance checklist so critical association responsibilities are not missed.
+- Scope Boundary: Does not perform legal compliance verification or external governmental filing submission.
+- Feature Set-Level Functional Unit Summary: Provides task generation, progress tracking, and dashboard visibility so annual obligations can be monitored operationally.
+- Dependencies:
+  - Meeting tracker
+  - Association configuration
+- Risks:
+  - Checklist incompleteness if requirements differ by governing documents
+  - Tasks becoming stale without ownership and due-date discipline
+- Open Questions:
+  - Should checklist templates vary by state and later by bylaws?
+  - Should overdue escalation rules exist in the MVP or later?
+- Implementation Notes: Start with a configurable template model so state-level and bylaw-driven requirements can be layered in later.
+
+#### Functional Units
+- 6.1.1 Create Annual Governance Tasks [Logic]
+- 6.1.2 Track Task Completion [Data]
+- 6.1.3 Display Compliance Dashboard [UX]
+
+## 7. Communications & Notice System
+- Purpose: Provide structured communications, template-based notices, and communication history for owners and occupants.
+
+### 7.1 Feature Set: Notice Automation
+- Intent Summary: Generate and manage repeatable notices and track outbound communication history.
+- Description: Supports templated notices, email sends, and communication logging for association-to-owner or association-to-occupant outreach.
+- User Story: As a property administrator, I want notice automation support so routine communication can be managed consistently.
+- Scope Boundary: Does not include complex campaign automation, SMS channels, or two-way support-ticket workflows in the first iteration.
+- Feature Set-Level Functional Unit Summary: Provides template generation, outbound send actions, and historical logging so communications remain consistent and auditable.
+- Dependencies:
+  - Owner registry
+  - Tenant contact registry
+- Risks:
+  - Sending notices to stale contacts
+  - Template errors leading to inaccurate communications
+- Open Questions:
+  - Should sends require preview approval before dispatch in the first release?
+  - Should notices be association-scoped templates or globally reusable templates by default?
+- Implementation Notes: Design the communication log as a first-class record so future Gmail sync and owner portal visibility can build on it cleanly.
+
+#### Functional Units
+- 7.1.1 Generate Notice Template [Logic]
+- 7.1.2 Send Email Notice [Integration]
+- 7.1.3 Log Communication History [Data]
+
+## 8. Platform Services, Permissions & Audit
+- Purpose: Provide foundational infrastructure for secure access, permissions, and change traceability.
+
+### 8.1 Feature Set: Role-Based Permissions
+- Intent Summary: Control who can view, create, edit, or administer records across the platform.
+- Description: Defines role-based access patterns for internal admins, board members, managers, and future external users.
+- User Story: As a platform administrator, I want role-based permissions so users only access functions and data appropriate to their role.
+- Scope Boundary: Does not include SSO, external identity providers, or advanced attribute-based access control in the first release.
+- Feature Set-Level Functional Unit Summary: Provides role assignment, access restriction, and permission validation so the platform remains secure and operationally controlled.
+- Dependencies:
+  - User account model
+  - Audit logging framework
+- Risks:
+  - Overly broad permissions exposing sensitive data
+  - Role sprawl causing unclear authorization behavior
+- Open Questions:
+  - Should board members have edit access to all governance modules or only selected records?
+  - Should owner-facing roles be introduced in the same permission model or isolated later?
+- Implementation Notes: Start with a simple role-based model that can expand later to association-scoped permissions and external portal roles.
+
+#### Functional Units
+- 8.1.1 Assign User Role [Security]
+- 8.1.2 Restrict Data Access [Security]
+- 8.1.3 Validate Permission Changes [Logic]
+
+## Assumptions
+- Rental tenant tracking is limited to contact information only.
+- Initial build does not integrate payment gateways.
+- Units currently share equal HOA fee structures.
+- CT-level rules are prioritized before condo-specific bylaw automation.
+- The platform is designed to become multi-association even if the first deployment is a single condo complex.
+
+## Coverage Check
+- Total raw items received: 22
+- Total normalized items mapped: 22
+- Unmapped items: None
+
+## Input-to-Output Trace Map
+- "unit list with addresses" -> "1.1 Unit Registry"
+- "unit owner contact information" -> "1.2 Owner Registry"
+- "tenant emergency contact information" -> "1.3 Tenant Contact Registry"
+- "board member records" -> "2.1 Board Member Registry"
+- "hoa/common fee tracking" -> "3.1 Fee & Assessment Engine"
+- "assessments tracking" -> "3.1 Fee & Assessment Engine"
+- "late fee tracking" -> "3.1 Fee & Assessment Engine"
+- "owner ledger visibility" -> "3.1.4 Track Owner Ledger Balance [Data]"
+- "expense and invoice tracking" -> "3.2 Expense & Invoice Tracking"
+- "utility payment tracking" -> "3.2.2 Track Utility Payments [Data]"
+- "document repository" -> "4.1 Document Repository"
+- "ai-powered document and paste uploads" -> "4.2 AI Document Ingestion"
+- "meeting tracking" -> "5.1 Meeting Tracker"
+- "meeting notes repository" -> "5.1.2 Record Meeting Notes [Data]"
+- "budget meeting support" -> "5.1 Meeting Tracker"
+- "yearly responsibilities checklist" -> "6.1 Annual Compliance Checklist"
+- "dashboard for deadlines and tasks" -> "6.1.3 Display Compliance Dashboard [UX]"
+- "kanban/workstream/task view" -> "6.1 Annual Compliance Checklist"
+- "owner and tenant notices" -> "7.1 Notice Automation"
+- "gmail integration foundation" -> "7.1.2 Send Email Notice [Integration]"
+- "limited permissions and future self-service access" -> "8.1 Role-Based Permissions"
+- "scalable platform foundation for multiple complexes" -> "8. Platform Services, Permissions & Audit"
+
+## Quality Gate Checklist
+- Hierarchy valid (Module > Feature Set > Functional Unit): Pass
+- Numbering sequential and unique: Pass
+- No duplicate functional units: Pass
+- Each feature set has >= 1 functional unit: Pass
+- Scope boundary present for each feature set: Pass
+- Dependencies, Risks, Open Questions present for each feature set: Pass
+- User story present for each functional unit: Pass
+- Acceptance criteria present (2-4) for each functional unit: Pass
+- All assumptions isolated in Assumptions section: Pass
+- All raw items mapped or marked unmapped: Pass

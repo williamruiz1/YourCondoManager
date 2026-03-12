@@ -1,0 +1,195 @@
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import type { Association, ExpenseAttachment, FinancialAccount, FinancialCategory, UtilityPayment } from "@shared/schema";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useActiveAssociation } from "@/hooks/use-active-association";
+
+const utilitySchema = z.object({
+  associationId: z.string().min(1),
+  utilityType: z.string().min(1),
+  providerName: z.string().min(1),
+  servicePeriodStart: z.string().optional(),
+  servicePeriodEnd: z.string().optional(),
+  dueDate: z.string().optional(),
+  paidDate: z.string().optional(),
+  amount: z.coerce.number().positive(),
+  status: z.enum(["due", "scheduled", "paid"]),
+  accountId: z.string().optional(),
+  categoryId: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+function adminHeaders() {
+  return {
+    "x-admin-api-key": localStorage.getItem("adminApiKey") || "dev-admin-key",
+    "x-admin-user-email": localStorage.getItem("adminUserEmail") || "admin@local",
+  };
+}
+
+export default function FinancialUtilitiesPage() {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [attachmentUtilityId, setAttachmentUtilityId] = useState<string>("");
+  const [attachmentAssocId, setAttachmentAssocId] = useState<string>("");
+  const [attachmentTitle, setAttachmentTitle] = useState("");
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { activeAssociationId, activeAssociationName } = useActiveAssociation();
+
+  const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
+  const { data: accounts } = useQuery<FinancialAccount[]>({ queryKey: ["/api/financial/accounts"] });
+  const { data: categories } = useQuery<FinancialCategory[]>({ queryKey: ["/api/financial/categories"] });
+  const { data: utilities } = useQuery<UtilityPayment[]>({ queryKey: ["/api/financial/utilities"] });
+  const { data: attachments } = useQuery<ExpenseAttachment[]>({ queryKey: ["/api/financial/expense-attachments"] });
+
+  const form = useForm<z.infer<typeof utilitySchema>>({
+    resolver: zodResolver(utilitySchema),
+    defaultValues: {
+      associationId: "",
+      utilityType: "",
+      providerName: "",
+      servicePeriodStart: "",
+      servicePeriodEnd: "",
+      dueDate: "",
+      paidDate: "",
+      amount: 0,
+      status: "due",
+      accountId: "",
+      categoryId: "",
+      notes: "",
+    },
+  });
+
+  useEffect(() => {
+    form.setValue("associationId", activeAssociationId, { shouldValidate: true });
+    setAttachmentAssocId(activeAssociationId);
+  }, [activeAssociationId, form]);
+
+  const createUtility = useMutation({
+    mutationFn: async (v: z.infer<typeof utilitySchema>) => {
+      const payload = {
+        ...v,
+        servicePeriodStart: v.servicePeriodStart ? new Date(v.servicePeriodStart).toISOString() : null,
+        servicePeriodEnd: v.servicePeriodEnd ? new Date(v.servicePeriodEnd).toISOString() : null,
+        dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null,
+        paidDate: v.paidDate ? new Date(v.paidDate).toISOString() : null,
+        accountId: v.accountId || null,
+        categoryId: v.categoryId || null,
+        notes: v.notes || null,
+      };
+      const res = await apiRequest("POST", "/api/financial/utilities", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/utilities"] });
+      setOpen(false);
+      form.reset({ associationId: activeAssociationId, utilityType: "", providerName: "", servicePeriodStart: "", servicePeriodEnd: "", dueDate: "", paidDate: "", amount: 0, status: "due", accountId: "", categoryId: "", notes: "" });
+      toast({ title: "Utility payment saved" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const uploadAttachment = useMutation({
+    mutationFn: async () => {
+      if (!attachmentFile || !attachmentUtilityId || !attachmentAssocId || !attachmentTitle) {
+        throw new Error("Utility, association, title and file are required");
+      }
+      const fd = new FormData();
+      fd.append("associationId", attachmentAssocId);
+      fd.append("expenseType", "utility-payment");
+      fd.append("expenseId", attachmentUtilityId);
+      fd.append("title", attachmentTitle);
+      fd.append("file", attachmentFile);
+      const res = await fetch("/api/financial/expense-attachments", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/expense-attachments"] });
+      setAttachmentFile(null);
+      setAttachmentUtilityId("");
+      setAttachmentAssocId("");
+      setAttachmentTitle("");
+      toast({ title: "Attachment uploaded" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Utility Payments</h1>
+          <p className="text-muted-foreground">Track utility bills, statuses, and attachments for the current association context.</p>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Utility Payment</Button></DialogTrigger>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Create Utility Payment</DialogTitle></DialogHeader>
+            <Form {...form}>
+              <form className="space-y-4" onSubmit={form.handleSubmit((v) => createUtility.mutate(v))}>
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                  Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField control={form.control} name="utilityType" render={({ field }) => (<FormItem><FormLabel>Utility Type</FormLabel><FormControl><Input placeholder="Water" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={form.control} name="providerName" render={({ field }) => (<FormItem><FormLabel>Provider</FormLabel><FormControl><Input placeholder="Provider" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={form.control} name="status" render={({ field }) => (
+                    <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="due">due</SelectItem><SelectItem value="scheduled">scheduled</SelectItem><SelectItem value="paid">paid</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                  )} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={form.control} name="paidDate" render={({ field }) => (<FormItem><FormLabel>Paid Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                </div>
+                <Button className="w-full" type="submit" disabled={createUtility.isPending}>Save</Button>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Card><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Provider</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead></TableRow></TableHeader><TableBody>{(utilities ?? []).map((row) => (<TableRow key={row.id}><TableCell>{row.utilityType}</TableCell><TableCell>{row.providerName}</TableCell><TableCell>${row.amount.toFixed(2)}</TableCell><TableCell><Badge variant="secondary">{row.status}</Badge></TableCell><TableCell>{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "-"}</TableCell></TableRow>))}</TableBody></Table></CardContent></Card>
+
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <h2 className="text-lg font-semibold">Utility Attachments</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <Select value={attachmentUtilityId || "none"} onValueChange={(v) => { const id = v === "none" ? "" : v; setAttachmentUtilityId(id); const row = (utilities ?? []).find((i) => i.id === id); setAttachmentAssocId(row?.associationId || ""); }}><SelectTrigger><SelectValue placeholder="Utility record" /></SelectTrigger><SelectContent><SelectItem value="none">select utility</SelectItem>{(utilities ?? []).map((i) => <SelectItem key={i.id} value={i.id}>{i.utilityType} {i.providerName}</SelectItem>)}</SelectContent></Select>
+            <Input placeholder="Attachment title" value={attachmentTitle} onChange={(e) => setAttachmentTitle(e.target.value)} />
+            <div className="border rounded-md p-2 text-sm cursor-pointer" onClick={() => fileRef.current?.click()}>{attachmentFile?.name || "Choose file"}<input ref={fileRef} type="file" className="hidden" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} /></div>
+            <Button onClick={() => uploadAttachment.mutate()} disabled={uploadAttachment.isPending}>Upload</Button>
+          </div>
+          <Table>
+            <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Utility</TableHead><TableHead>File</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {(attachments ?? []).filter((a) => a.expenseType === "utility-payment").map((a) => (
+                <TableRow key={a.id}><TableCell>{a.title}</TableCell><TableCell>{a.expenseId}</TableCell><TableCell><a className="underline text-sm" href={a.fileUrl} target="_blank" rel="noreferrer">Open</a></TableCell></TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

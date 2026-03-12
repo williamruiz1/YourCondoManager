@@ -1,0 +1,12 @@
+{
+  "label": "bank-statement-basic",
+  "associationScoped": false,
+  "sourceFilename": "statement.txt",
+  "contextNotes": "benchmark bank statement",
+  "sourceText": "Statement Period: 2025-01-01 to 2025-01-31\n2025-01-12 Unit A-201 HOA payment $-450.00\n2025-01-15 Unit A-202 Late fee $50.00",
+  "expected": {
+    "recordType": "bank-statement",
+    "routeModule": "owner-ledger",
+    "minimumTransactions": 2
+  }
+}

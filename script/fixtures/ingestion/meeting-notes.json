@@ -1,0 +1,12 @@
+{
+  "label": "meeting-notes-basic",
+  "associationScoped": false,
+  "sourceFilename": "minutes.txt",
+  "contextNotes": "benchmark meeting notes",
+  "sourceText": "Board Meeting Minutes\nAgenda: budget update and reserve study\nResolution: approve 2026 budget draft",
+  "expected": {
+    "recordType": "meeting-notes",
+    "routeModule": "governance",
+    "requiresSummary": true
+  }
+}

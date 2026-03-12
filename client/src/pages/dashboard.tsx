@@ -1,7 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, DoorOpen, Users, Home, UserCheck, FileText } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { useAssociationContext } from "@/context/association-context";
 
 interface DashboardStats {
   totalAssociations: number;
@@ -10,6 +13,13 @@ interface DashboardStats {
   totalTenants: number;
   totalBoardMembers: number;
   totalDocuments: number;
+}
+
+interface AssociationSummary {
+  id: string;
+  name: string;
+  city: string;
+  state: string;
 }
 
 function StatCard({
@@ -48,8 +58,12 @@ function StatCard({
 }
 
 export default function DashboardPage() {
+  const { activeAssociationId, setActiveAssociationId } = useAssociationContext();
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
+  });
+  const { data: associations = [], isLoading: associationsLoading } = useQuery<AssociationSummary[]>({
+    queryKey: ["/api/associations"],
   });
 
   const cards = [
@@ -104,7 +118,7 @@ export default function DashboardPage() {
           Dashboard
         </h1>
         <p className="text-muted-foreground">
-          Overview of your condo property management platform.
+          Portfolio overview across all managed associations.
         </p>
       </div>
 
@@ -113,6 +127,61 @@ export default function DashboardPage() {
           <StatCard key={card.title} {...card} loading={isLoading} />
         ))}
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Associations</CardTitle>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/associations">Manage Associations</Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {associationsLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-5 w-4/5" />
+            </div>
+          ) : associations.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No associations yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {associations.slice(0, 5).map((association) => (
+                <div key={association.id} className="flex items-center justify-between rounded-md border p-2">
+                  <div>
+                    <p className="text-sm font-medium">{association.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {association.city}, {association.state}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={association.id === activeAssociationId ? "default" : "outline"}
+                    onClick={() => setActiveAssociationId(association.id)}
+                    data-testid={`button-set-dashboard-context-${association.id}`}
+                  >
+                    {association.id === activeAssociationId ? "In Context" : "Use Context"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {activeAssociationId ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Current Association Context</CardTitle>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/association-context">Open In-Context View</Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Portfolio stays here on the dashboard. Use the in-context view for the selected association’s overview,
+            documents, buildings, units, ownership, and occupancy workflow.
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

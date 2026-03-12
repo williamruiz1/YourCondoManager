@@ -1,0 +1,12 @@
+{
+  "label": "invoice-draft-basic",
+  "associationScoped": false,
+  "sourceFilename": "invoice.txt",
+  "contextNotes": "benchmark invoice draft",
+  "sourceText": "Vendor: Coastal Electric\nInvoice # INV-4021\nInvoice Date: 2025-01-10\nDue Date: 2025-01-24\nAmount Due: $842.35",
+  "expected": {
+    "recordType": "invoice-draft",
+    "routeModule": "financial-invoices",
+    "requiresAmount": true
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "label": "owner-roster-address-block",
+  "associationScoped": true,
+  "sourceFilename": "owner-roster.txt",
+  "contextNotes": "benchmark owner roster with repeating address and unit blocks",
+  "sourceText": "1415 Quinnipiac Ave New Haven CT 06513\nA Alex Rivera alex.rivera@example.com 203-555-1000\nB Jordan Blake jordan.blake@example.com 203-555-1001\n\n1417 Quinnipiac Ave New Haven CT 06513\nA Taylor Morgan taylor.morgan@example.com 203-555-1002",
+  "expected": {
+    "recordType": "owner-roster",
+    "routeModule": "owners",
+    "minimumItems": 3,
+    "requiresNormalizedEntries": true
+  }
+}
