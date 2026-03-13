@@ -64,12 +64,14 @@ const addVersionSchema = z.object({
 });
 
 function getAdminHeaders() {
-  const apiKey = window.localStorage.getItem("adminApiKey") || "dev-admin-key";
-  const adminUserEmail = window.localStorage.getItem("adminUserEmail") || "admin@local";
-  return {
-    "x-admin-api-key": apiKey,
-    "x-admin-user-email": adminUserEmail,
-  };
+  const apiKey = (window.localStorage.getItem("adminApiKey") || "").trim();
+  const adminUserEmail = (window.localStorage.getItem("adminUserEmail") || "").trim().toLowerCase();
+  const headers: Record<string, string> = {};
+  if (apiKey && adminUserEmail) {
+    headers["x-admin-api-key"] = apiKey;
+    headers["x-admin-user-email"] = adminUserEmail;
+  }
+  return headers;
 }
 
 export default function DocumentsPage() {

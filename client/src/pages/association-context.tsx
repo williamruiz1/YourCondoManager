@@ -344,7 +344,7 @@ export default function AssociationContextPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Buildings and Units</CardTitle>
           <Button asChild size="sm" variant="outline">
-            <Link href="/units">Manage Units</Link>
+            <Link href="/app/units">Manage Units</Link>
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -390,7 +390,7 @@ export default function AssociationContextPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Association Documents</CardTitle>
           <Button asChild size="sm" variant="outline">
-            <Link href="/documents">Open Documents</Link>
+            <Link href="/app/documents">Open Documents</Link>
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">

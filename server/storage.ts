@@ -2850,6 +2850,7 @@ export interface IStorage {
   getPortalDocuments(portalAccessId: string): Promise<Document[]>;
   getPortalCommunicationHistory(portalAccessId: string): Promise<CommunicationHistory[]>;
   getUnitChangeHistory(unitId: string): Promise<UnitChangeHistory[]>;
+  getAssociationIdForScopedResource(resourceType: string, id: string): Promise<string | null | undefined>;
   createDocumentTag(data: InsertDocumentTag, actorEmail?: string): Promise<DocumentTag>;
   getDocumentTags(documentId: string): Promise<DocumentTag[]>;
   createDocumentVersion(data: InsertDocumentVersion, actorEmail?: string): Promise<DocumentVersion>;
@@ -7949,6 +7950,210 @@ export class DatabaseStorage implements IStorage {
 
   async getUnitChangeHistory(unitId: string): Promise<UnitChangeHistory[]> {
     return db.select().from(unitChangeHistory).where(eq(unitChangeHistory.unitId, unitId)).orderBy(desc(unitChangeHistory.changedAt));
+  }
+
+  async getAssociationIdForScopedResource(resourceType: string, id: string): Promise<string | null | undefined> {
+    switch (resourceType) {
+      case "board-role": {
+        const [result] = await db.select({ associationId: boardRoles.associationId }).from(boardRoles).where(eq(boardRoles.id, id));
+        return result?.associationId;
+      }
+      case "document": {
+        const [result] = await db.select({ associationId: documents.associationId }).from(documents).where(eq(documents.id, id));
+        return result?.associationId;
+      }
+      case "document-tag": {
+        const [result] = await db
+          .select({ associationId: documents.associationId })
+          .from(documentTags)
+          .innerJoin(documents, eq(documents.id, documentTags.documentId))
+          .where(eq(documentTags.id, id));
+        return result?.associationId;
+      }
+      case "document-version": {
+        const [result] = await db
+          .select({ associationId: documents.associationId })
+          .from(documentVersions)
+          .innerJoin(documents, eq(documents.id, documentVersions.documentId))
+          .where(eq(documentVersions.id, id));
+        return result?.associationId;
+      }
+      case "hoa-fee-schedule": {
+        const [result] = await db.select({ associationId: hoaFeeSchedules.associationId }).from(hoaFeeSchedules).where(eq(hoaFeeSchedules.id, id));
+        return result?.associationId;
+      }
+      case "special-assessment": {
+        const [result] = await db.select({ associationId: specialAssessments.associationId }).from(specialAssessments).where(eq(specialAssessments.id, id));
+        return result?.associationId;
+      }
+      case "late-fee-rule": {
+        const [result] = await db.select({ associationId: lateFeeRules.associationId }).from(lateFeeRules).where(eq(lateFeeRules.id, id));
+        return result?.associationId;
+      }
+      case "financial-account": {
+        const [result] = await db.select({ associationId: financialAccounts.associationId }).from(financialAccounts).where(eq(financialAccounts.id, id));
+        return result?.associationId;
+      }
+      case "financial-category": {
+        const [result] = await db.select({ associationId: financialCategories.associationId }).from(financialCategories).where(eq(financialCategories.id, id));
+        return result?.associationId;
+      }
+      case "budget": {
+        const [result] = await db.select({ associationId: budgets.associationId }).from(budgets).where(eq(budgets.id, id));
+        return result?.associationId;
+      }
+      case "budget-version": {
+        const [result] = await db
+          .select({ associationId: budgets.associationId })
+          .from(budgetVersions)
+          .innerJoin(budgets, eq(budgets.id, budgetVersions.budgetId))
+          .where(eq(budgetVersions.id, id));
+        return result?.associationId;
+      }
+      case "budget-line": {
+        const [result] = await db
+          .select({ associationId: budgets.associationId })
+          .from(budgetLines)
+          .innerJoin(budgetVersions, eq(budgetVersions.id, budgetLines.budgetVersionId))
+          .innerJoin(budgets, eq(budgets.id, budgetVersions.budgetId))
+          .where(eq(budgetLines.id, id));
+        return result?.associationId;
+      }
+      case "vendor-invoice": {
+        const [result] = await db.select({ associationId: vendorInvoices.associationId }).from(vendorInvoices).where(eq(vendorInvoices.id, id));
+        return result?.associationId;
+      }
+      case "utility-payment": {
+        const [result] = await db.select({ associationId: utilityPayments.associationId }).from(utilityPayments).where(eq(utilityPayments.id, id));
+        return result?.associationId;
+      }
+      case "payment-method-config": {
+        const [result] = await db.select({ associationId: paymentMethodConfigs.associationId }).from(paymentMethodConfigs).where(eq(paymentMethodConfigs.id, id));
+        return result?.associationId;
+      }
+      case "governance-meeting": {
+        const [result] = await db.select({ associationId: governanceMeetings.associationId }).from(governanceMeetings).where(eq(governanceMeetings.id, id));
+        return result?.associationId;
+      }
+      case "meeting-agenda-item": {
+        const [result] = await db
+          .select({ associationId: governanceMeetings.associationId })
+          .from(meetingAgendaItems)
+          .innerJoin(governanceMeetings, eq(governanceMeetings.id, meetingAgendaItems.meetingId))
+          .where(eq(meetingAgendaItems.id, id));
+        return result?.associationId;
+      }
+      case "meeting-note": {
+        const [result] = await db
+          .select({ associationId: governanceMeetings.associationId })
+          .from(meetingNotes)
+          .innerJoin(governanceMeetings, eq(governanceMeetings.id, meetingNotes.meetingId))
+          .where(eq(meetingNotes.id, id));
+        return result?.associationId;
+      }
+      case "resolution": {
+        const [result] = await db.select({ associationId: resolutions.associationId }).from(resolutions).where(eq(resolutions.id, id));
+        return result?.associationId;
+      }
+      case "vote-record": {
+        const [result] = await db
+          .select({ associationId: resolutions.associationId })
+          .from(voteRecords)
+          .innerJoin(resolutions, eq(resolutions.id, voteRecords.resolutionId))
+          .where(eq(voteRecords.id, id));
+        return result?.associationId;
+      }
+      case "calendar-event": {
+        const [result] = await db.select({ associationId: calendarEvents.associationId }).from(calendarEvents).where(eq(calendarEvents.id, id));
+        return result?.associationId;
+      }
+      case "governance-template": {
+        const [result] = await db.select({ associationId: governanceComplianceTemplates.associationId }).from(governanceComplianceTemplates).where(eq(governanceComplianceTemplates.id, id));
+        return result?.associationId;
+      }
+      case "governance-template-item": {
+        const [result] = await db
+          .select({ associationId: governanceComplianceTemplates.associationId })
+          .from(governanceTemplateItems)
+          .innerJoin(governanceComplianceTemplates, eq(governanceComplianceTemplates.id, governanceTemplateItems.templateId))
+          .where(eq(governanceTemplateItems.id, id));
+        return result?.associationId;
+      }
+      case "annual-governance-task": {
+        const [result] = await db.select({ associationId: annualGovernanceTasks.associationId }).from(annualGovernanceTasks).where(eq(annualGovernanceTasks.id, id));
+        return result?.associationId;
+      }
+      case "ai-ingestion-job": {
+        const [result] = await db.select({ associationId: aiIngestionJobs.associationId }).from(aiIngestionJobs).where(eq(aiIngestionJobs.id, id));
+        return result?.associationId;
+      }
+      case "ai-extracted-record": {
+        const [result] = await db.select({ associationId: aiExtractedRecords.associationId }).from(aiExtractedRecords).where(eq(aiExtractedRecords.id, id));
+        return result?.associationId;
+      }
+      case "ai-ingestion-import-run": {
+        const [result] = await db.select({ associationId: aiIngestionImportRuns.associationId }).from(aiIngestionImportRuns).where(eq(aiIngestionImportRuns.id, id));
+        return result?.associationId;
+      }
+      case "clause-record": {
+        const [result] = await db.select({ associationId: clauseRecords.associationId }).from(clauseRecords).where(eq(clauseRecords.id, id));
+        return result?.associationId;
+      }
+      case "clause-tag": {
+        const [result] = await db
+          .select({ associationId: clauseRecords.associationId })
+          .from(clauseTags)
+          .innerJoin(clauseRecords, eq(clauseRecords.id, clauseTags.clauseRecordId))
+          .where(eq(clauseTags.id, id));
+        return result?.associationId;
+      }
+      case "suggested-link": {
+        const [result] = await db
+          .select({ associationId: clauseRecords.associationId })
+          .from(suggestedLinks)
+          .innerJoin(clauseRecords, eq(clauseRecords.id, suggestedLinks.clauseRecordId))
+          .where(eq(suggestedLinks.id, id));
+        return result?.associationId;
+      }
+      case "notice-template": {
+        const [result] = await db.select({ associationId: noticeTemplates.associationId }).from(noticeTemplates).where(eq(noticeTemplates.id, id));
+        return result?.associationId;
+      }
+      case "notice-send": {
+        const [result] = await db.select({ associationId: noticeSends.associationId }).from(noticeSends).where(eq(noticeSends.id, id));
+        return result?.associationId;
+      }
+      case "communication-history": {
+        const [result] = await db.select({ associationId: communicationHistory.associationId }).from(communicationHistory).where(eq(communicationHistory.id, id));
+        return result?.associationId;
+      }
+      case "permission-envelope": {
+        const [result] = await db.select({ associationId: permissionEnvelopes.associationId }).from(permissionEnvelopes).where(eq(permissionEnvelopes.id, id));
+        return result?.associationId;
+      }
+      case "portal-access": {
+        const [result] = await db.select({ associationId: portalAccess.associationId }).from(portalAccess).where(eq(portalAccess.id, id));
+        return result?.associationId;
+      }
+      case "association-membership": {
+        const [result] = await db.select({ associationId: associationMemberships.associationId }).from(associationMemberships).where(eq(associationMemberships.id, id));
+        return result?.associationId;
+      }
+      case "tenant-config": {
+        const [result] = await db.select({ associationId: tenantConfigs.associationId }).from(tenantConfigs).where(eq(tenantConfigs.id, id));
+        return result?.associationId;
+      }
+      case "maintenance-request": {
+        const [result] = await db.select({ associationId: maintenanceRequests.associationId }).from(maintenanceRequests).where(eq(maintenanceRequests.id, id));
+        return result?.associationId;
+      }
+      case "contact-update-request": {
+        const [result] = await db.select({ associationId: contactUpdateRequests.associationId }).from(contactUpdateRequests).where(eq(contactUpdateRequests.id, id));
+        return result?.associationId;
+      }
+      default:
+        return undefined;
+    }
   }
 
   async createDocumentTag(data: InsertDocumentTag, actorEmail?: string): Promise<DocumentTag> {

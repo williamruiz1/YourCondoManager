@@ -98,7 +98,8 @@ const TEXT_PARSEABLE_EXTENSIONS = new Set([
   ".eml",
 ]);
 
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "dev-admin-key";
+const ADMIN_API_KEY = (process.env.ADMIN_API_KEY || "").trim();
+const isPublishedState = process.env.NODE_ENV === "production";
 
 function getParam(value: string | string[] | undefined): string {
   if (!value) return "";
@@ -109,7 +110,7 @@ function getAssociationIdQuery(req: Request): string | undefined {
   const requested = typeof req.query.associationId === "string" ? req.query.associationId : undefined;
   const adminReq = req as AdminRequest;
 
-  if (!adminReq.adminRole || adminReq.adminRole === "platform-admin") {
+  if (!isPublishedState || !adminReq.adminRole || adminReq.adminRole === "platform-admin") {
     return requested;
   }
 
@@ -328,11 +329,27 @@ async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction
     return next();
   }
 
+  const adminUserEmail = (req.header("x-admin-user-email") || "").trim().toLowerCase();
+
+  if (!ADMIN_API_KEY) {
+    if (process.env.NODE_ENV !== "production" && adminUserEmail) {
+      const adminUser = await storage.getAdminUserByEmail(adminUserEmail);
+      if (adminUser && adminUser.isActive === 1) {
+        await applyAdminContext(req, adminUser);
+        req.adminUserEmail = adminUserEmail;
+        return next();
+      }
+    }
+    return res.status(403).json({ message: "Admin access required" });
+  }
+
   const providedKey = req.header("x-admin-api-key");
   if (!providedKey || providedKey !== ADMIN_API_KEY) {
     return res.status(403).json({ message: "Admin access required" });
   }
-  const adminUserEmail = req.header("x-admin-user-email") || "admin@local";
+  if (!adminUserEmail) {
+    return res.status(403).json({ message: "Admin access required" });
+  }
   const adminUser = await storage.getAdminUserByEmail(adminUserEmail);
   if (!adminUser || adminUser.isActive !== 1) {
     return res.status(403).json({ message: "Inactive or unknown admin user" });
@@ -343,6 +360,7 @@ async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction
 }
 
 function assertAssociationScope(req: AdminRequest, associationId: string) {
+  if (!isPublishedState) return;
   if (req.adminRole === "platform-admin") return;
   const scopedAssociationIds = req.adminScopedAssociationIds ?? [];
   if (!associationId) {
@@ -351,6 +369,21 @@ function assertAssociationScope(req: AdminRequest, associationId: string) {
   if (!scopedAssociationIds.includes(associationId)) {
     throw new Error("Association is outside admin scope");
   }
+}
+
+function assertAssociationInputScope(req: AdminRequest, associationId: string | null | undefined) {
+  if (!isPublishedState || req.adminRole === "platform-admin") return;
+  if (!associationId) {
+    throw new Error("associationId is required");
+  }
+  assertAssociationScope(req, associationId);
+}
+
+async function assertResourceScope(req: AdminRequest, resourceType: string, id: string) {
+  if (!isPublishedState || req.adminRole === "platform-admin") return;
+  const associationId = await storage.getAssociationIdForScopedResource(resourceType, id);
+  if (!associationId) return;
+  assertAssociationScope(req, associationId);
 }
 
 function requireAdminRole(roles: AdminRole[]) {
@@ -392,7 +425,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/associations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getAssociations({ includeArchived: getIncludeArchivedQuery(req) });
-      res.json(result);
+      const adminReq = req as AdminRequest;
+      const scopedResult = adminReq.adminRole === "platform-admin"
+        ? result
+        : result.filter((association) => (adminReq.adminScopedAssociationIds ?? []).includes(association.id));
+      res.json(scopedResult);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -834,6 +871,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/board-roles/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "board-role", getParam(req.params.id));
       const deleted = await storage.deleteBoardRole(getParam(req.params.id), req.adminUserEmail);
       if (!deleted) return res.status(404).json({ message: "Not found" });
       res.status(204).send();
@@ -874,6 +912,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/documents/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "document", getParam(req.params.id));
       const deleted = await storage.deleteDocument(getParam(req.params.id), req.adminUserEmail);
       if (!deleted) return res.status(404).json({ message: "Not found" });
       res.status(204).send();
@@ -884,7 +923,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/documents/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "document", getParam(req.params.id));
       const parsed = insertDocumentSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req, parsed.associationId ?? null);
+      }
       const result = await storage.updateDocument(getParam(req.params.id), parsed, req.adminUserEmail);
       if (!result) return res.status(404).json({ message: "Document not found" });
       res.json(result);
@@ -895,6 +938,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/documents/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "document", getParam(req.params.id));
       const result = await storage.getDocumentTags(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -904,6 +948,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/documents/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "document", getParam(req.params.id));
       const parsed = insertDocumentTagSchema.parse({
         ...req.body,
         documentId: getParam(req.params.id),
@@ -920,6 +965,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/documents/:id/versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "document", getParam(req.params.id));
       const result = await storage.getDocumentVersions(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -930,6 +976,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/documents/:id/versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
     try {
       const documentId = getParam(req.params.id);
+      await assertResourceScope(req, "document", documentId);
       const existingVersions = await storage.getDocumentVersions(documentId);
       const file = req.file;
       const title = req.body.title;
@@ -967,11 +1014,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       const providedAdminKey = req.header("x-admin-api-key");
-      if (providedAdminKey && providedAdminKey === ADMIN_API_KEY) {
-        const adminUserEmail = req.header("x-admin-user-email") || "admin@local";
-        const adminUser = await storage.getAdminUserByEmail(adminUserEmail);
-        if (adminUser && adminUser.isActive === 1) {
-          return res.sendFile(filePath);
+      if (providedAdminKey && ADMIN_API_KEY && providedAdminKey === ADMIN_API_KEY) {
+        const adminUserEmail = (req.header("x-admin-user-email") || "").trim().toLowerCase();
+        if (adminUserEmail) {
+          const adminUser = await storage.getAdminUserByEmail(adminUserEmail);
+          if (adminUser && adminUser.isActive === 1) {
+            return res.sendFile(filePath);
+          }
         }
       }
 
@@ -1016,6 +1065,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/financial/fee-schedules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertHoaFeeScheduleSchema.parse(req.body);
+      assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createHoaFeeSchedule(parsed);
       res.status(201).json(result);
     } catch (error: any) {
@@ -1025,7 +1075,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/fee-schedules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "hoa-fee-schedule", getParam(req.params.id));
       const parsed = insertHoaFeeScheduleSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateHoaFeeSchedule(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Fee schedule not found" });
       res.json(result);
@@ -1046,6 +1100,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/financial/assessments", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertSpecialAssessmentSchema.parse(req.body);
+      assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createSpecialAssessment(parsed);
       res.status(201).json(result);
     } catch (error: any) {
@@ -1055,7 +1110,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/assessments/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "special-assessment", getParam(req.params.id));
       const parsed = insertSpecialAssessmentSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateSpecialAssessment(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Assessment not found" });
       res.json(result);
@@ -1076,6 +1135,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/financial/late-fee-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertLateFeeRuleSchema.parse(req.body);
+      assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createLateFeeRule(parsed);
       res.status(201).json(result);
     } catch (error: any) {
@@ -1085,7 +1145,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/late-fee-rules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "late-fee-rule", getParam(req.params.id));
       const parsed = insertLateFeeRuleSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateLateFeeRule(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Late fee rule not found" });
       res.json(result);
@@ -1153,7 +1217,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/accounts/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "financial-account", getParam(req.params.id));
       const parsed = insertFinancialAccountSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateFinancialAccount(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Account not found" });
       res.json(result);
@@ -1184,7 +1252,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/categories/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "financial-category", getParam(req.params.id));
       const parsed = insertFinancialCategorySchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateFinancialCategory(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Category not found" });
       res.json(result);
@@ -1215,7 +1287,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/budgets/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "budget", getParam(req.params.id));
       const parsed = insertBudgetSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateBudget(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Budget not found" });
       res.json(result);
@@ -1226,6 +1302,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/financial/budgets/:budgetId/versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "budget", getParam(req.params.budgetId));
       const result = await storage.getBudgetVersions(getParam(req.params.budgetId));
       res.json(result);
     } catch (error: any) {
@@ -1236,6 +1313,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/financial/budget-versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertBudgetVersionSchema.parse(req.body);
+      await assertResourceScope(req as AdminRequest, "budget", parsed.budgetId);
       const result = await storage.createBudgetVersion(parsed);
       res.status(201).json(result);
     } catch (error: any) {
@@ -1245,6 +1323,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/budget-versions/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "budget-version", getParam(req.params.id));
       const parsed = insertBudgetVersionSchema.partial().parse(req.body);
       const result = await storage.updateBudgetVersion(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Budget version not found" });
@@ -1256,6 +1335,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/financial/budget-versions/:budgetVersionId/lines", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "budget-version", getParam(req.params.budgetVersionId));
       const result = await storage.getBudgetLines(getParam(req.params.budgetVersionId));
       res.json(result);
     } catch (error: any) {
@@ -1266,6 +1346,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/financial/budget-lines", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertBudgetLineSchema.parse(req.body);
+      await assertResourceScope(req as AdminRequest, "budget-version", parsed.budgetVersionId);
       const result = await storage.createBudgetLine(parsed);
       res.status(201).json(result);
     } catch (error: any) {
@@ -1275,6 +1356,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/budget-lines/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "budget-line", getParam(req.params.id));
       const parsed = insertBudgetLineSchema.partial().parse(req.body);
       const result = await storage.updateBudgetLine(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Budget line not found" });
@@ -1319,7 +1401,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/invoices/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "vendor-invoice", getParam(req.params.id));
       const parsed = insertVendorInvoiceSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateVendorInvoice(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Invoice not found" });
       res.json(result);
@@ -1350,7 +1436,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/utilities/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "utility-payment", getParam(req.params.id));
       const parsed = insertUtilityPaymentSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateUtilityPayment(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Utility payment not found" });
       res.json(result);
@@ -1381,7 +1471,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/financial/payment-methods/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "payment-method-config", getParam(req.params.id));
       const parsed = insertPaymentMethodConfigSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updatePaymentMethodConfig(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Payment method config not found" });
       res.json(result);
@@ -1646,7 +1740,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/governance/meetings/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "governance-meeting", getParam(req.params.id));
       const parsed = insertGovernanceMeetingSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateGovernanceMeeting(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Meeting not found" });
       res.json(result);
@@ -1657,6 +1755,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/governance/meetings/:id/agenda-items", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "governance-meeting", getParam(req.params.id));
       const result = await storage.getMeetingAgendaItems(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -1666,6 +1765,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/governance/meetings/:id/agenda-items", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "governance-meeting", getParam(req.params.id));
       const parsed = insertMeetingAgendaItemSchema.parse({
         ...req.body,
         meetingId: getParam(req.params.id),
@@ -1679,6 +1779,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/governance/meetings/:id/notes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "governance-meeting", getParam(req.params.id));
       const result = await storage.getMeetingNotes(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -1688,6 +1789,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/governance/meetings/:id/notes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "governance-meeting", getParam(req.params.id));
       const parsed = insertMeetingNoteSchema.parse({
         ...req.body,
         meetingId: getParam(req.params.id),
@@ -1702,6 +1804,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/governance/meeting-notes/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "meeting-note", getParam(req.params.id));
       const parsed = insertMeetingNoteSchema.partial().parse(req.body);
       const result = await storage.updateMeetingNote(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Meeting note not found" });
@@ -1733,7 +1836,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/governance/resolutions/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "resolution", getParam(req.params.id));
       const parsed = insertResolutionSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateResolution(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Resolution not found" });
       res.json(result);
@@ -1744,6 +1851,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/governance/resolutions/:id/votes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "resolution", getParam(req.params.id));
       const result = await storage.getVoteRecords(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -1753,6 +1861,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/governance/resolutions/:id/votes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "resolution", getParam(req.params.id));
       const parsed = insertVoteRecordSchema.parse({
         ...req.body,
         resolutionId: getParam(req.params.id),
@@ -1786,7 +1895,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/governance/calendar/events/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "calendar-event", getParam(req.params.id));
       const parsed = insertCalendarEventSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateCalendarEvent(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Calendar event not found" });
       res.json(result);
@@ -1825,6 +1938,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/governance/templates/:templateId/items", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId));
       const result = await storage.getGovernanceTemplateItems(getParam(req.params.templateId));
       res.json(result);
     } catch (error: any) {
@@ -1834,6 +1948,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/governance/templates/:templateId/items", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId));
       const parsed = insertGovernanceTemplateItemSchema.parse({
         ...req.body,
         templateId: getParam(req.params.templateId),
@@ -1867,7 +1982,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/governance/tasks/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "annual-governance-task", getParam(req.params.id));
       const parsed = insertAnnualGovernanceTaskSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateAnnualGovernanceTask(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Governance task not found" });
       res.json(result);
@@ -1930,6 +2049,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/ai/ingestion/rollout-policy", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = typeof req.query.associationId === "string" ? req.query.associationId : "";
+      assertAssociationInputScope(req as AdminRequest, associationId || null);
       if (!associationId) return res.status(400).json({ message: "associationId is required." });
       const config = await storage.getTenantConfig(associationId);
       const mode = normalizeAiIngestionRolloutMode(config?.aiIngestionRolloutMode);
@@ -1948,6 +2068,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/ai/ingestion/rollout-policy", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = typeof req.body.associationId === "string" ? req.body.associationId : "";
+      assertAssociationInputScope(req, associationId || null);
       if (!associationId) return res.status(400).json({ message: "associationId is required." });
       const existing = await storage.getTenantConfig(associationId);
       const mode = normalizeAiIngestionRolloutMode(req.body.mode);
@@ -2041,6 +2162,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/ai/ingestion/jobs/:id/process", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "ai-ingestion-job", getParam(req.params.id));
       const result = await storage.processAiIngestionJob(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -2050,6 +2172,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/ai/ingestion/jobs/:id/records", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "ai-ingestion-job", getParam(req.params.id));
       const result = await storage.getAiExtractedRecords(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -2059,6 +2182,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/ai/ingestion/records/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "ai-extracted-record", getParam(req.params.id));
       const status = req.body?.reviewStatus;
       if (status !== "approved" && status !== "rejected") {
         return res.status(400).json({ message: "reviewStatus must be approved or rejected" });
@@ -2123,6 +2247,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/ai/ingestion/records/:id/import-runs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "ai-extracted-record", getParam(req.params.id));
       const result = await storage.getAiIngestionImportRuns(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -2132,6 +2257,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/ai/ingestion/records/:id/bank-resolution", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "ai-extracted-record", getParam(req.params.id));
       const result = await storage.getBankStatementResolutionHints(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -2141,6 +2267,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/ai/ingestion/import-runs/:runId/rollback", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "ai-ingestion-import-run", getParam(req.params.runId));
       const result = await storage.rollbackAiIngestionImportRun(getParam(req.params.runId), req.adminUserEmail || undefined);
       res.json(result);
     } catch (error: any) {
@@ -2150,6 +2277,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/ai/ingestion/import-runs/:runId/rollback-preview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "ai-ingestion-import-run", getParam(req.params.runId));
       const result = await storage.previewRollbackAiIngestionImportRun(getParam(req.params.runId));
       res.json(result);
     } catch (error: any) {
@@ -2159,6 +2287,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/ai/ingestion/import-runs/:runId/reprocess", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "ai-ingestion-import-run", getParam(req.params.runId));
       const result = await storage.reprocessAiIngestionImportRun(getParam(req.params.runId), {
         rollbackFirst: Boolean(req.body?.rollbackFirst),
         actorEmail: req.adminUserEmail || undefined,
@@ -2189,6 +2318,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/ai/ingestion/clauses/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "clause-record", getParam(req.params.id));
       const status = req.body?.reviewStatus;
       if (status !== "approved" && status !== "rejected") {
         return res.status(400).json({ message: "reviewStatus must be approved or rejected" });
@@ -2210,6 +2340,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/ai/ingestion/clauses/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
       const result = await storage.getClauseTags(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -2219,6 +2350,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/ai/ingestion/clauses/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
       const parsed = insertClauseTagSchema.parse({
         clauseRecordId: getParam(req.params.id),
         tag: req.body?.tag,
@@ -2232,6 +2364,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/ai/ingestion/clauses/:id/suggested-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
       const result = await storage.getSuggestedLinks(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -2241,6 +2374,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/ai/ingestion/clauses/:id/suggested-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
       const parsed = insertSuggestedLinkSchema.parse({
         clauseRecordId: getParam(req.params.id),
         entityType: req.body?.entityType,
@@ -2256,6 +2390,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/ai/ingestion/suggested-links/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "suggested-link", getParam(req.params.id));
       const payload: { isApproved?: number; confidenceScore?: number | null } = {};
       if (typeof req.body?.isApproved === "boolean") payload.isApproved = req.body.isApproved ? 1 : 0;
       if (req.body?.isApproved === 0 || req.body?.isApproved === 1) payload.isApproved = req.body.isApproved;
@@ -2304,7 +2439,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/communications/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "notice-template", getParam(req.params.id));
       const parsed = insertNoticeTemplateSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateNoticeTemplate(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Template not found" });
       res.json(result);
@@ -2328,6 +2467,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (scheduledFor && Number.isNaN(scheduledFor.getTime())) {
         return res.status(400).json({ message: "scheduledFor must be a valid date string" });
       }
+      assertAssociationInputScope(req, req.body.associationId || null);
       const result = await storage.sendNotice({
         associationId: req.body.associationId || null,
         templateId: req.body.templateId || null,
@@ -2406,6 +2546,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/communications/readiness", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
+      assertAssociationInputScope(req as AdminRequest, associationId || null);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const result = await storage.getAssociationContactReadiness(associationId);
       res.json(result);
@@ -2417,6 +2558,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/onboarding/completeness", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
+      assertAssociationInputScope(req as AdminRequest, associationId || null);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const result = await storage.getAssociationOnboardingCompleteness(associationId);
       res.json(result);
@@ -2428,6 +2570,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/onboarding/state", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
+      assertAssociationInputScope(req as AdminRequest, associationId || null);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const result = await storage.getAssociationOnboardingState(associationId);
       res.json(result);
@@ -2497,6 +2640,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/communications/sends/:id/approval", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "notice-send", getParam(req.params.id));
       const decision = req.body?.decision;
       if (decision !== "approved" && decision !== "rejected") {
         return res.status(400).json({ message: "decision must be approved or rejected" });
@@ -2515,6 +2659,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/communications/run-scheduled", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req) || req.body?.associationId || undefined;
+      assertAssociationInputScope(req, associationId ?? null);
       const result = await storage.runScheduledNotices({
         associationId,
         actedBy: req.adminUserEmail || "scheduler@system",
@@ -2560,7 +2705,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/maintenance/requests/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "maintenance-request", getParam(req.params.id));
       const parsed = insertMaintenanceRequestSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updateMaintenanceRequest(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Maintenance request not found" });
       res.json(result);
@@ -2571,6 +2720,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/maintenance/escalations/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      assertAssociationInputScope(req, (getAssociationIdQuery(req) || req.body?.associationId || null) as string | null);
       const result = await storage.runMaintenanceEscalationSweep({
         associationId: getAssociationIdQuery(req) || req.body?.associationId || undefined,
         actorEmail: req.adminUserEmail || "scheduler@system",
@@ -2593,6 +2743,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/platform/permission-envelopes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertPermissionEnvelopeSchema.parse(req.body);
+      assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
       const result = await storage.createPermissionEnvelope(parsed);
       res.status(201).json(result);
     } catch (error: any) {
@@ -2602,7 +2753,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/platform/permission-envelopes/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "permission-envelope", getParam(req.params.id));
       const parsed = insertPermissionEnvelopeSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updatePermissionEnvelope(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Permission envelope not found" });
       res.json(result);
@@ -2644,6 +2799,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/platform/tenant-config", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertTenantConfigSchema.parse(req.body);
+      assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.upsertTenantConfig(parsed);
       res.status(201).json(result);
     } catch (error: any) {
@@ -2689,6 +2845,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const to = getParam(req.body?.to);
       if (!to) return res.status(400).json({ message: "to is required" });
+      assertAssociationInputScope(req, req.body?.associationId || null);
       const result = await storage.sendNotice({
         associationId: req.body?.associationId || null,
         recipientEmail: to,
@@ -2721,6 +2878,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const result = await getEmailLog(getParam(req.params.id));
       if (!result) return res.status(404).json({ message: "Email log not found" });
+      assertAssociationInputScope(req as AdminRequest, result.associationId ?? null);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -2783,6 +2941,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/portal/access", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertPortalAccessSchema.parse(req.body);
+      assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createPortalAccess(parsed);
       res.status(201).json(result);
     } catch (error: any) {
@@ -2792,7 +2951,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/portal/access/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
+      await assertResourceScope(req as AdminRequest, "portal-access", getParam(req.params.id));
       const parsed = insertPortalAccessSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
       const result = await storage.updatePortalAccess(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Portal access not found" });
       res.json(result);
@@ -2813,6 +2976,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/portal/memberships", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertAssociationMembershipSchema.parse(req.body);
+      assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.upsertAssociationMembership(parsed);
       res.status(201).json(result);
     } catch (error: any) {
@@ -2831,6 +2995,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/portal/contact-updates/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      await assertResourceScope(req, "contact-update-request", getParam(req.params.id));
       const reviewStatus = req.body?.reviewStatus;
       if (reviewStatus !== "approved" && reviewStatus !== "rejected") {
         return res.status(400).json({ message: "reviewStatus must be approved or rejected" });

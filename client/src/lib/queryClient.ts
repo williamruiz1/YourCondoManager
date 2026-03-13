@@ -1,13 +1,13 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 function getAdminApiKey() {
-  if (typeof window === "undefined") return "dev-admin-key";
-  return window.localStorage.getItem("adminApiKey") || "dev-admin-key";
+  if (typeof window === "undefined") return "";
+  return (window.localStorage.getItem("adminApiKey") || "").trim();
 }
 
 function getAdminUserEmail() {
-  if (typeof window === "undefined") return "admin@local";
-  return window.localStorage.getItem("adminUserEmail") || "admin@local";
+  if (typeof window === "undefined") return "";
+  return (window.localStorage.getItem("adminUserEmail") || "").trim().toLowerCase();
 }
 
 function getActiveAssociationId() {
@@ -42,8 +42,14 @@ function buildHeaders(url: string, hasBody: boolean) {
   const headers: Record<string, string> = {};
   if (hasBody) headers["Content-Type"] = "application/json";
   if (url.startsWith("/api") && !url.startsWith("/api/uploads")) {
-    headers["x-admin-api-key"] = getAdminApiKey();
-    headers["x-admin-user-email"] = getAdminUserEmail();
+    const adminApiKey = getAdminApiKey();
+    const adminUserEmail = getAdminUserEmail();
+    if (adminUserEmail) {
+      headers["x-admin-user-email"] = adminUserEmail;
+    }
+    if (adminApiKey && adminUserEmail) {
+      headers["x-admin-api-key"] = adminApiKey;
+    }
   }
   return headers;
 }

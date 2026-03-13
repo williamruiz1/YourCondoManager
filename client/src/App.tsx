@@ -1,19 +1,22 @@
+import type { CSSProperties } from "react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Switch, Route } from "wouter";
-import { Link, useLocation } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { Link, Route, Switch, useLocation } from "wouter";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { AssociationProvider, useAssociationContext } from "@/context/association-context";
 
+const LandingPage = lazy(() => import("@/pages/landing"));
+const WorkspacePreviewPage = lazy(() => import("@/pages/workspace-preview"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const AssociationsPage = lazy(() => import("@/pages/associations"));
 const AssociationContextPage = lazy(() => import("@/pages/association-context"));
@@ -43,44 +46,19 @@ const PlatformControlsPage = lazy(() => import("@/pages/platform-controls"));
 const OwnerPortalPage = lazy(() => import("@/pages/owner-portal"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
-function Router() {
-  return (
-    <Suspense fallback={<RouteFallback />}>
-      <Switch>
-        <Route path="/" component={DashboardPage} />
-        <Route path="/associations" component={AssociationsPage} />
-        <Route path="/association-context" component={AssociationContextPage} />
-        <Route path="/units" component={UnitsPage} />
-        <Route path="/persons" component={PersonsPage} />
-        <Route path="/owners" component={OwnersPage} />
-        <Route path="/occupancy" component={OccupancyPage} />
-        <Route path="/board" component={BoardPage} />
-        <Route path="/documents" component={DocumentsPage} />
-        <Route path="/roadmap" component={RoadmapPage} />
-        <Route path="/admin" component={RoadmapPage} />
-        <Route path="/admin/roadmap" component={RoadmapPage} />
-        <Route path="/admin/users" component={AdminUsersPage} />
-        <Route path="/admin/executive" component={ExecutivePage} />
-        <Route path="/financial/fees" component={FinancialFeesPage} />
-        <Route path="/financial/assessments" component={FinancialAssessmentsPage} />
-        <Route path="/financial/late-fees" component={FinancialLateFeesPage} />
-        <Route path="/financial/foundation" component={FinancialFoundationPage} />
-        <Route path="/financial/invoices" component={FinancialInvoicesPage} />
-        <Route path="/financial/utilities" component={FinancialUtilitiesPage} />
-        <Route path="/financial/ledger" component={FinancialLedgerPage} />
-        <Route path="/financial/budgets" component={FinancialBudgetsPage} />
-        <Route path="/financial/payments" component={FinancialPaymentsPage} />
-        <Route path="/governance/meetings" component={MeetingsPage} />
-        <Route path="/governance/compliance" component={GovernanceCompliancePage} />
-        <Route path="/ai/ingestion" component={AiIngestionPage} />
-        <Route path="/communications" component={CommunicationsPage} />
-        <Route path="/platform/controls" component={PlatformControlsPage} />
-        <Route path="/portal" component={OwnerPortalPage} />
-        <Route component={NotFound} />
-      </Switch>
-    </Suspense>
-  );
-}
+type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+
+type AuthSession = {
+  authenticated: boolean;
+  user?: {
+    email?: string | null;
+  };
+  admin?: {
+    id: string;
+    email: string;
+    role: AdminRole;
+  } | null;
+};
 
 function RouteFallback() {
   return (
@@ -90,37 +68,371 @@ function RouteFallback() {
   );
 }
 
-function App() {
+function RouteRedirect({ to }: { to: string }) {
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    navigate(to);
+  }, [navigate, to]);
+
+  return <RouteFallback />;
+}
+
+function WorkspaceRouter() {
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <Switch>
+        <Route path="/app" component={DashboardPage} />
+        <Route path="/app/associations" component={AssociationsPage} />
+        <Route path="/app/association-context" component={AssociationContextPage} />
+        <Route path="/app/units" component={UnitsPage} />
+        <Route path="/app/persons" component={PersonsPage} />
+        <Route path="/app/owners" component={OwnersPage} />
+        <Route path="/app/occupancy" component={OccupancyPage} />
+        <Route path="/app/board" component={BoardPage} />
+        <Route path="/app/documents" component={DocumentsPage} />
+        <Route path="/app/admin" component={RoadmapPage} />
+        <Route path="/app/admin/roadmap" component={RoadmapPage} />
+        <Route path="/app/admin/users" component={AdminUsersPage} />
+        <Route path="/app/admin/executive" component={ExecutivePage} />
+        <Route path="/app/financial/fees" component={FinancialFeesPage} />
+        <Route path="/app/financial/assessments" component={FinancialAssessmentsPage} />
+        <Route path="/app/financial/late-fees" component={FinancialLateFeesPage} />
+        <Route path="/app/financial/foundation" component={FinancialFoundationPage} />
+        <Route path="/app/financial/invoices" component={FinancialInvoicesPage} />
+        <Route path="/app/financial/utilities" component={FinancialUtilitiesPage} />
+        <Route path="/app/financial/ledger" component={FinancialLedgerPage} />
+        <Route path="/app/financial/budgets" component={FinancialBudgetsPage} />
+        <Route path="/app/financial/payments" component={FinancialPaymentsPage} />
+        <Route path="/app/governance/meetings" component={MeetingsPage} />
+        <Route path="/app/governance/compliance" component={GovernanceCompliancePage} />
+        <Route path="/app/ai/ingestion" component={AiIngestionPage} />
+        <Route path="/app/communications" component={CommunicationsPage} />
+        <Route path="/app/platform/controls" component={PlatformControlsPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
+  );
+}
+
+function PublicRouter({
+  hasWorkspaceAccess,
+  onOpenAdminAuth,
+  onStartGoogleSignIn,
+}: {
+  hasWorkspaceAccess: boolean;
+  onOpenAdminAuth: () => void;
+  onStartGoogleSignIn: () => void;
+}) {
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <Switch>
+        <Route path="/">
+          <LandingPage
+            hasWorkspaceAccess={hasWorkspaceAccess}
+            onOpenAdminAuth={onOpenAdminAuth}
+            onStartGoogleSignIn={onStartGoogleSignIn}
+          />
+        </Route>
+        <Route path="/portal" component={OwnerPortalPage} />
+        <Route path="/associations">
+          <RouteRedirect to="/app/associations" />
+        </Route>
+        <Route path="/association-context">
+          <RouteRedirect to="/app/association-context" />
+        </Route>
+        <Route path="/units">
+          <RouteRedirect to="/app/units" />
+        </Route>
+        <Route path="/persons">
+          <RouteRedirect to="/app/persons" />
+        </Route>
+        <Route path="/owners">
+          <RouteRedirect to="/app/owners" />
+        </Route>
+        <Route path="/occupancy">
+          <RouteRedirect to="/app/occupancy" />
+        </Route>
+        <Route path="/board">
+          <RouteRedirect to="/app/board" />
+        </Route>
+        <Route path="/documents">
+          <RouteRedirect to="/app/documents" />
+        </Route>
+        <Route path="/roadmap">
+          <RouteRedirect to="/app/admin/roadmap" />
+        </Route>
+        <Route path="/admin">
+          <RouteRedirect to="/app/admin/roadmap" />
+        </Route>
+        <Route path="/admin/roadmap">
+          <RouteRedirect to="/app/admin/roadmap" />
+        </Route>
+        <Route path="/admin/users">
+          <RouteRedirect to="/app/admin/users" />
+        </Route>
+        <Route path="/admin/executive">
+          <RouteRedirect to="/app/admin/executive" />
+        </Route>
+        <Route path="/financial/fees">
+          <RouteRedirect to="/app/financial/fees" />
+        </Route>
+        <Route path="/financial/assessments">
+          <RouteRedirect to="/app/financial/assessments" />
+        </Route>
+        <Route path="/financial/late-fees">
+          <RouteRedirect to="/app/financial/late-fees" />
+        </Route>
+        <Route path="/financial/foundation">
+          <RouteRedirect to="/app/financial/foundation" />
+        </Route>
+        <Route path="/financial/invoices">
+          <RouteRedirect to="/app/financial/invoices" />
+        </Route>
+        <Route path="/financial/utilities">
+          <RouteRedirect to="/app/financial/utilities" />
+        </Route>
+        <Route path="/financial/ledger">
+          <RouteRedirect to="/app/financial/ledger" />
+        </Route>
+        <Route path="/financial/budgets">
+          <RouteRedirect to="/app/financial/budgets" />
+        </Route>
+        <Route path="/financial/payments">
+          <RouteRedirect to="/app/financial/payments" />
+        </Route>
+        <Route path="/governance/meetings">
+          <RouteRedirect to="/app/governance/meetings" />
+        </Route>
+        <Route path="/governance/compliance">
+          <RouteRedirect to="/app/governance/compliance" />
+        </Route>
+        <Route path="/ai/ingestion">
+          <RouteRedirect to="/app/ai/ingestion" />
+        </Route>
+        <Route path="/communications">
+          <RouteRedirect to="/app/communications" />
+        </Route>
+        <Route path="/platform/controls">
+          <RouteRedirect to="/app/platform/controls" />
+        </Route>
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
+  );
+}
+
+function AdminAuthDialog({
+  open,
+  onOpenChange,
+  adminApiKey,
+  adminUserEmail,
+  onAdminApiKeyChange,
+  onAdminUserEmailChange,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  adminApiKey: string;
+  adminUserEmail: string;
+  onAdminApiKeyChange: (value: string) => void;
+  onAdminUserEmailChange: (value: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Admin Authentication</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="grid gap-1">
+            <Label htmlFor="admin-api-key">Admin API Key</Label>
+            <Input
+              id="admin-api-key"
+              type="password"
+              value={adminApiKey}
+              onChange={(event) => onAdminApiKeyChange(event.target.value)}
+              placeholder="Enter ADMIN_API_KEY value"
+              data-testid="input-admin-api-key"
+            />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="admin-user-email">Admin User Email</Label>
+            <Input
+              id="admin-user-email"
+              value={adminUserEmail}
+              onChange={(event) => onAdminUserEmailChange(event.target.value)}
+              placeholder="admin@example.com"
+              data-testid="input-admin-user-email"
+            />
+          </div>
+          <Button onClick={onSave} data-testid="button-save-admin-auth">Save</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function HeaderActions({
+  authSession,
+  adminAuthConfigured,
+  adminUserEmail,
+  adminRole,
+  onOpenAdminAuth,
+  onStartGoogleSignIn,
+  onLogoutGoogleSession,
+}: {
+  authSession: AuthSession | null | undefined;
+  adminAuthConfigured: boolean;
+  adminUserEmail: string;
+  adminRole: AdminRole | null;
+  onOpenAdminAuth: () => void;
+  onStartGoogleSignIn: () => void;
+  onLogoutGoogleSession: () => Promise<void>;
+}) {
+  const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
+
+  return (
+    <div className="flex items-center justify-end gap-2">
+      <Select value={activeAssociationId} onValueChange={setActiveAssociationId}>
+        <SelectTrigger className="h-8 w-64" data-testid="select-active-association">
+          <SelectValue placeholder="Select association" />
+        </SelectTrigger>
+        <SelectContent>
+          {associations.map((association) => (
+            <SelectItem key={association.id} value={association.id}>
+              {association.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {adminRole ? <Badge variant="secondary">{adminRole}</Badge> : null}
+      {!adminRole && adminAuthConfigured ? <Badge variant="outline">{adminUserEmail || "Admin API"}</Badge> : null}
+      <Button
+        size="sm"
+        variant={adminAuthConfigured ? "outline" : "default"}
+        onClick={onOpenAdminAuth}
+        data-testid="button-open-admin-auth"
+      >
+        {adminAuthConfigured ? "Admin Auth" : "Set Admin Auth"}
+      </Button>
+      <Button
+        size="sm"
+        variant={authSession?.authenticated ? "outline" : "default"}
+        onClick={onStartGoogleSignIn}
+        data-testid="button-google-signin"
+      >
+        {authSession?.authenticated ? `Google: ${authSession.user?.email || "Signed in"}` : "Sign in with Google"}
+      </Button>
+      {authSession?.authenticated ? (
+        <Button size="sm" variant="outline" onClick={() => void onLogoutGoogleSession()} data-testid="button-google-signout">
+          Sign out
+        </Button>
+      ) : null}
+      <Button asChild size="sm" data-testid="button-open-admin-roadmap-global">
+        <Link href="/app/admin/roadmap">Admin Roadmap</Link>
+      </Button>
+    </div>
+  );
+}
+
+function AdminPageTabs() {
+  const [location] = useLocation();
+
+  const tabs = [
+    { label: "Roadmap", href: "/app/admin/roadmap", isActive: location === "/app/admin" || location === "/app/admin/roadmap" },
+    { label: "Executive", href: "/app/admin/executive", isActive: location === "/app/admin/executive" },
+    { label: "Admin Users", href: "/app/admin/users", isActive: location === "/app/admin/users" },
+  ];
+
+  return (
+    <div className="border-b px-3 py-2">
+      <div className="flex items-center gap-2" data-testid="tabs-admin-inpage">
+        {tabs.map((tab) => (
+          <Button
+            key={tab.href}
+            asChild
+            size="sm"
+            variant={tab.isActive ? "default" : "outline"}
+            data-testid={`tab-admin-${tab.label.toLowerCase().replace(/\s+/g, "-")}`}
+          >
+            <Link href={tab.href}>{tab.label}</Link>
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MainContent() {
+  const [location] = useLocation();
+  const showAdminTabs =
+    location === "/app/admin" ||
+    location === "/app/admin/roadmap" ||
+    location === "/app/admin/executive" ||
+    location === "/app/admin/users";
+
+  return (
+    <>
+      {showAdminTabs ? <AdminPageTabs /> : null}
+      <main className="flex-1 overflow-auto">
+        <WorkspaceRouter />
+      </main>
+    </>
+  );
+}
+
+function WorkspaceShell({
+  authSession,
+  adminAuthConfigured,
+  adminUserEmail,
+  adminRole,
+  onOpenAdminAuth,
+  onStartGoogleSignIn,
+  onLogoutGoogleSession,
+}: {
+  authSession: AuthSession | null | undefined;
+  adminAuthConfigured: boolean;
+  adminUserEmail: string;
+  adminRole: AdminRole | null;
+  onOpenAdminAuth: () => void;
+  onStartGoogleSignIn: () => void;
+  onLogoutGoogleSession: () => Promise<void>;
+}) {
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AssociationProvider>
-          <SidebarProvider style={style as React.CSSProperties}>
-            <div className="flex h-screen w-full">
-              <AppSidebar />
-              <div className="flex flex-col flex-1 min-w-0">
-                <header className="flex items-center justify-between gap-2 p-2 border-b h-12">
-                  <SidebarTrigger data-testid="button-sidebar-toggle" />
-                  <HeaderActions />
-                </header>
-                <MainContent />
-              </div>
-            </div>
-          </SidebarProvider>
-        </AssociationProvider>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <AssociationProvider>
+      <SidebarProvider style={style as CSSProperties}>
+        <div className="flex h-screen w-full">
+          <AppSidebar adminRole={adminRole} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <header className="flex h-12 items-center justify-between gap-2 border-b p-2">
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
+              <HeaderActions
+                authSession={authSession}
+                adminAuthConfigured={adminAuthConfigured}
+                adminUserEmail={adminUserEmail}
+                adminRole={adminRole}
+                onOpenAdminAuth={onOpenAdminAuth}
+                onStartGoogleSignIn={onStartGoogleSignIn}
+                onLogoutGoogleSession={onLogoutGoogleSession}
+              />
+            </header>
+            <MainContent />
+          </div>
+        </div>
+      </SidebarProvider>
+    </AssociationProvider>
   );
 }
 
-function HeaderActions() {
-  const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
+function AuthAwareApp() {
+  const [location] = useLocation();
   const [authOpen, setAuthOpen] = useState(false);
   const [adminApiKey, setAdminApiKey] = useState("");
   const [adminUserEmail, setAdminUserEmail] = useState("");
@@ -133,8 +445,8 @@ function HeaderActions() {
   }, []);
 
   const adminAuthConfigured = adminApiKey.length > 0 && adminUserEmail.length > 0;
-  const { data: authMe, refetch: refetchAuthMe } = useQuery<{ authenticated: boolean; user?: { email?: string } } | null>({
-    queryKey: ["/api/auth/me", "header"],
+  const { data: authSession, refetch: refetchAuthSession } = useQuery<AuthSession | null>({
+    queryKey: ["/api/auth/me", "session"],
     queryFn: async () => {
       const res = await fetch("/api/auth/me", { credentials: "include" });
       if (res.status === 401) return null;
@@ -164,15 +476,15 @@ function HeaderActions() {
         window.localStorage.setItem("authRestorePayload", payload.authRestore.trim());
       }
       queryClient.invalidateQueries();
-      refetchAuthMe();
+      refetchAuthSession();
       window.location.reload();
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [refetchAuthMe]);
+  }, [refetchAuthSession]);
 
   useEffect(() => {
-    if (authMe?.authenticated) return;
+    if (authSession?.authenticated) return;
     if (authRestoreAttemptedRef.current) return;
     const payload = (window.localStorage.getItem("authRestorePayload") || "").trim();
     if (!payload) return;
@@ -189,15 +501,15 @@ function HeaderActions() {
           window.localStorage.removeItem("authRestorePayload");
           return;
         }
-        await refetchAuthMe();
+        await refetchAuthSession();
         queryClient.invalidateQueries();
       })
       .catch(() => {
         window.localStorage.removeItem("authRestorePayload");
       });
-  }, [authMe, refetchAuthMe]);
+  }, [authSession, refetchAuthSession]);
 
-  function startGoogleSignIn(forceSelect = false) {
+  function startGoogleSignIn(forceSelect = true) {
     if (typeof window === "undefined") return;
     const returnTo = `${window.location.pathname}${window.location.search}`;
     const url = `/api/auth/google?popup=1&returnTo=${encodeURIComponent(returnTo)}${forceSelect ? "&forceSelect=1" : ""}`;
@@ -212,7 +524,7 @@ function HeaderActions() {
       if (!popup.closed) return;
       window.clearInterval(timer);
       queryClient.invalidateQueries();
-      refetchAuthMe();
+      refetchAuthSession();
     }, 400);
   }
 
@@ -244,120 +556,62 @@ function HeaderActions() {
       window.localStorage.removeItem("authRestorePayload");
       authRestoreAttemptedRef.current = false;
       queryClient.invalidateQueries();
-      await refetchAuthMe();
+      await refetchAuthSession();
     }
   }
 
-  return (
-    <div className="flex items-center gap-2">
-      <Select value={activeAssociationId} onValueChange={setActiveAssociationId}>
-        <SelectTrigger className="h-8 w-64" data-testid="select-active-association">
-          <SelectValue placeholder="Select association" />
-        </SelectTrigger>
-        <SelectContent>
-          {associations.map((association) => (
-            <SelectItem key={association.id} value={association.id}>
-              {association.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Dialog open={authOpen} onOpenChange={setAuthOpen}>
-        <DialogTrigger asChild>
-          <Button size="sm" variant={adminAuthConfigured ? "outline" : "default"} data-testid="button-open-admin-auth">
-            {adminAuthConfigured ? "Admin Auth" : "Set Admin Auth"}
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Admin Authentication</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-1">
-              <Label htmlFor="admin-api-key">Admin API Key</Label>
-              <Input
-                id="admin-api-key"
-                type="password"
-                value={adminApiKey}
-                onChange={(event) => setAdminApiKey(event.target.value)}
-                placeholder="Enter ADMIN_API_KEY value"
-                data-testid="input-admin-api-key"
-              />
-            </div>
-            <div className="grid gap-1">
-              <Label htmlFor="admin-user-email">Admin User Email</Label>
-              <Input
-                id="admin-user-email"
-                value={adminUserEmail}
-                onChange={(event) => setAdminUserEmail(event.target.value)}
-                placeholder="admin@example.com"
-                data-testid="input-admin-user-email"
-              />
-            </div>
-            <Button onClick={saveAdminAuth} data-testid="button-save-admin-auth">Save</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Button size="sm" variant={authMe?.authenticated ? "outline" : "default"} onClick={() => startGoogleSignIn(true)} data-testid="button-google-signin">
-        {authMe?.authenticated ? `Google: ${authMe.user?.email || "Signed in"}` : "Sign in with Google"}
-      </Button>
-      {authMe?.authenticated ? (
-        <Button size="sm" variant="outline" onClick={logoutGoogleSession} data-testid="button-google-signout">
-          Sign out
-        </Button>
-      ) : null}
-      <Button asChild size="sm" data-testid="button-open-admin-roadmap-global">
-        <Link href="/admin/roadmap">Admin Roadmap</Link>
-      </Button>
-    </div>
-  );
-}
-
-function AdminPageTabs() {
-  const [location] = useLocation();
-
-  const tabs = [
-    { label: "Roadmap", href: "/admin/roadmap", isActive: location === "/roadmap" || location === "/admin" || location === "/admin/roadmap" },
-    { label: "Executive", href: "/admin/executive", isActive: location === "/admin/executive" },
-    { label: "Admin Users", href: "/admin/users", isActive: location === "/admin/users" },
-  ];
-
-  return (
-    <div className="border-b px-3 py-2">
-      <div className="flex items-center gap-2" data-testid="tabs-admin-inpage">
-        {tabs.map((tab) => (
-          <Button
-            key={tab.href}
-            asChild
-            size="sm"
-            variant={tab.isActive ? "default" : "outline"}
-            data-testid={`tab-admin-${tab.label.toLowerCase().replace(/\s+/g, "-")}`}
-          >
-            <Link href={tab.href}>{tab.label}</Link>
-          </Button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function MainContent() {
-  const [location] = useLocation();
-  const showAdminTabs =
-    location === "/roadmap" ||
-    location === "/admin" ||
-    location === "/admin/roadmap" ||
-    location === "/admin/executive" ||
-    location === "/admin/users";
+  const adminRole = authSession?.admin?.role ?? null;
+  const hasWorkspaceAccess = adminAuthConfigured || Boolean(authSession?.authenticated && authSession.admin);
+  const isWorkspaceRoute = location === "/app" || location.startsWith("/app/");
 
   return (
     <>
-      {showAdminTabs ? <AdminPageTabs /> : null}
-      <main className="flex-1 overflow-auto">
-        <Router />
-      </main>
+      <AdminAuthDialog
+        open={authOpen}
+        onOpenChange={setAuthOpen}
+        adminApiKey={adminApiKey}
+        adminUserEmail={adminUserEmail}
+        onAdminApiKeyChange={setAdminApiKey}
+        onAdminUserEmailChange={setAdminUserEmail}
+        onSave={saveAdminAuth}
+      />
+      {isWorkspaceRoute ? (
+        hasWorkspaceAccess ? (
+          <WorkspaceShell
+            authSession={authSession}
+            adminAuthConfigured={adminAuthConfigured}
+            adminUserEmail={adminUserEmail}
+            adminRole={adminRole}
+            onOpenAdminAuth={() => setAuthOpen(true)}
+            onStartGoogleSignIn={() => startGoogleSignIn(true)}
+            onLogoutGoogleSession={logoutGoogleSession}
+          />
+        ) : (
+          <Suspense fallback={<RouteFallback />}>
+            <WorkspacePreviewPage
+              onOpenAdminAuth={() => setAuthOpen(true)}
+              onStartGoogleSignIn={() => startGoogleSignIn(true)}
+            />
+          </Suspense>
+        )
+      ) : (
+        <PublicRouter
+          hasWorkspaceAccess={hasWorkspaceAccess}
+          onOpenAdminAuth={() => setAuthOpen(true)}
+          onStartGoogleSignIn={() => startGoogleSignIn(true)}
+        />
+      )}
     </>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <AuthAwareApp />
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}

@@ -42,11 +42,14 @@ import {
 import type { Document } from "@shared/schema";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 
+type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+
 type NavLink = {
   title: string;
   url: string;
   icon: LucideIcon;
   activePrefix?: string;
+  roles?: AdminRole[];
 };
 
 type NavModule = NavLink & {
@@ -62,12 +65,12 @@ const navSections: NavSection[] = [
   {
     label: "Overview",
     modules: [
-      { title: "Dashboard", url: "/", icon: LayoutDashboard },
+      { title: "Dashboard", url: "/app", icon: LayoutDashboard },
       {
         title: "Associations",
-        url: "/associations",
+        url: "/app/associations",
         icon: Building2,
-        activePrefix: "/associations",
+        activePrefix: "/app/associations",
       },
     ],
   },
@@ -76,13 +79,14 @@ const navSections: NavSection[] = [
     modules: [
       {
         title: "Units",
-        url: "/units",
+        url: "/app/units",
         icon: DoorOpen,
-        activePrefix: "/units",
+        activePrefix: "/app/units",
+        roles: ["platform-admin", "board-admin", "manager"],
         children: [
-          { title: "People", url: "/persons", icon: Contact },
-          { title: "Owners", url: "/owners", icon: Users },
-          { title: "Occupancy", url: "/occupancy", icon: Home },
+          { title: "People", url: "/app/persons", icon: Contact, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Owners", url: "/app/owners", icon: Users, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Occupancy", url: "/app/occupancy", icon: Home, roles: ["platform-admin", "board-admin", "manager"] },
         ],
       },
     ],
@@ -92,11 +96,12 @@ const navSections: NavSection[] = [
     modules: [
       {
         title: "Board Members",
-        url: "/board",
+        url: "/app/board",
         icon: UserCheck,
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
         children: [
-          { title: "Meetings", url: "/governance/meetings", icon: CalendarDays },
-          { title: "Compliance", url: "/governance/compliance", icon: ClipboardCheck },
+          { title: "Meetings", url: "/app/governance/meetings", icon: CalendarDays, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+          { title: "Compliance", url: "/app/governance/compliance", icon: ClipboardCheck, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
         ],
       },
     ],
@@ -106,18 +111,19 @@ const navSections: NavSection[] = [
     modules: [
       {
         title: "Finance Setup",
-        url: "/financial/foundation",
+        url: "/app/financial/foundation",
         icon: FolderCog,
-        activePrefix: "/financial",
+        activePrefix: "/app/financial",
+        roles: ["platform-admin", "board-admin", "manager"],
         children: [
-          { title: "Fee Schedules", url: "/financial/fees", icon: CircleDollarSign },
-          { title: "Assessments", url: "/financial/assessments", icon: Landmark },
-          { title: "Late Fees", url: "/financial/late-fees", icon: Percent },
-          { title: "Invoices", url: "/financial/invoices", icon: ReceiptText },
-          { title: "Utilities", url: "/financial/utilities", icon: Lightbulb },
-          { title: "Owner Ledger", url: "/financial/ledger", icon: BookOpenCheck },
-          { title: "Payments", url: "/financial/payments", icon: CircleDollarSign },
-          { title: "Budgets", url: "/financial/budgets", icon: Calculator },
+          { title: "Fee Schedules", url: "/app/financial/fees", icon: CircleDollarSign, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Assessments", url: "/app/financial/assessments", icon: Landmark, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Late Fees", url: "/app/financial/late-fees", icon: Percent, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Invoices", url: "/app/financial/invoices", icon: ReceiptText, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Utilities", url: "/app/financial/utilities", icon: Lightbulb, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Owner Ledger", url: "/app/financial/ledger", icon: BookOpenCheck, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+          { title: "Payments", url: "/app/financial/payments", icon: CircleDollarSign, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Budgets", url: "/app/financial/budgets", icon: Calculator, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
         ],
       },
     ],
@@ -127,10 +133,11 @@ const navSections: NavSection[] = [
     modules: [
       {
         title: "Communications",
-        url: "/communications",
+        url: "/app/communications",
         icon: MessageSquare,
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
         children: [
-          { title: "AI Ingestion", url: "/ai/ingestion", icon: Bot },
+          { title: "AI Ingestion", url: "/app/ai/ingestion", icon: Bot, roles: ["platform-admin", "board-admin", "manager"] },
         ],
       },
     ],
@@ -140,12 +147,13 @@ const navSections: NavSection[] = [
     modules: [
       {
         title: "Platform Controls",
-        url: "/platform/controls",
+        url: "/app/platform/controls",
         icon: SlidersHorizontal,
-        activePrefix: "/platform",
+        activePrefix: "/app/platform",
+        roles: ["platform-admin"],
         children: [
-          { title: "Owner Portal", url: "/portal", icon: Contact },
-          { title: "Admin Roadmap", url: "/admin/roadmap", icon: ListChecks, activePrefix: "/admin" },
+          { title: "Owner Portal", url: "/portal", icon: Contact, roles: ["platform-admin"] },
+          { title: "Admin Roadmap", url: "/app/admin/roadmap", icon: ListChecks, activePrefix: "/app/admin", roles: ["platform-admin", "board-admin"] },
         ],
       },
     ],
@@ -154,18 +162,35 @@ const navSections: NavSection[] = [
 
 function isLinkActive(location: string, item: NavLink): boolean {
   const activeBase = item.activePrefix ?? item.url;
-  return item.url === "/" ? location === "/" : location.startsWith(activeBase);
+  return item.url === "/app" ? location === "/app" : location.startsWith(activeBase);
 }
 
-export function AppSidebar() {
+function canAccess(item: NavLink, role?: AdminRole | null) {
+  if (!item.roles || item.roles.length === 0) return true;
+  if (!role) return true;
+  return item.roles.includes(role);
+}
+
+export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
   const [location] = useLocation();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { data: documents = [] } = useQuery<Document[]>({
     queryKey: ["/api/documents"],
     enabled: Boolean(activeAssociationId),
   });
-  const overviewSection = navSections.find((section) => section.label === "Overview");
-  const remainingSections = navSections.filter((section) => section.label !== "Overview");
+  const visibleSections = navSections
+    .map((section) => ({
+      ...section,
+      modules: section.modules
+        .filter((module) => canAccess(module, adminRole))
+        .map((module) => ({
+          ...module,
+          children: module.children?.filter((child) => canAccess(child, adminRole)),
+        })),
+    }))
+    .filter((section) => section.modules.length > 0);
+  const overviewSection = visibleSections.find((section) => section.label === "Overview");
+  const remainingSections = visibleSections.filter((section) => section.label !== "Overview");
 
   return (
     <Sidebar>
@@ -218,7 +243,7 @@ export function AppSidebar() {
             <div className="mx-2 mb-3 rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3">
               {activeAssociationId ? (
                 <Link
-                  href="/association-context"
+                  href="/app/association-context"
                   className="block rounded-md transition-colors hover:bg-sidebar-accent/60 focus:outline-none focus:ring-2 focus:ring-sidebar-ring"
                   data-testid="link-selected-association-overview"
                 >
@@ -234,8 +259,8 @@ export function AppSidebar() {
               <div className="mt-3 space-y-1">
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={location.startsWith("/documents")}>
-                      <Link href="/documents">
+                    <SidebarMenuButton asChild isActive={location.startsWith("/app/documents")}>
+                      <Link href="/app/documents">
                         <FileText className="h-4 w-4" />
                         <span>Documents</span>
                       </Link>

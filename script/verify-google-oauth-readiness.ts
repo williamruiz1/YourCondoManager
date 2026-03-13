@@ -60,6 +60,8 @@ async function verifyCodeAndConfig() {
   assertContains(envExample, "GOOGLE_CLIENT_ID=", "missing GOOGLE_CLIENT_ID in .env.example");
   assertContains(envExample, "GOOGLE_CLIENT_SECRET=", "missing GOOGLE_CLIENT_SECRET in .env.example");
   assertContains(envExample, "GOOGLE_CALLBACK_URL=", "missing GOOGLE_CALLBACK_URL in .env.example");
+  assertContains(envExample, "GOOGLE_CALLBACK_URL_STRICT=", "missing GOOGLE_CALLBACK_URL_STRICT in .env.example");
+  assertContains(envExample, "GOOGLE_CALLBACK_PATH=", "missing GOOGLE_CALLBACK_PATH in .env.example");
   assertContains(envExample, "SESSION_SECRET=", "missing SESSION_SECRET in .env.example");
 
   assert.equal(

@@ -30,10 +30,13 @@ const invoiceSchema = z.object({
 });
 
 function adminHeaders() {
-  return {
-    "x-admin-api-key": localStorage.getItem("adminApiKey") || "dev-admin-key",
-    "x-admin-user-email": localStorage.getItem("adminUserEmail") || "admin@local",
-  };
+  const adminApiKey = (localStorage.getItem("adminApiKey") || "").trim();
+  const adminUserEmail = (localStorage.getItem("adminUserEmail") || "").trim().toLowerCase();
+  const headers: Record<string, string> = {};
+  if (!adminApiKey || !adminUserEmail) return headers;
+  headers["x-admin-api-key"] = adminApiKey;
+  headers["x-admin-user-email"] = adminUserEmail;
+  return headers;
 }
 
 export default function FinancialInvoicesPage() {

@@ -132,7 +132,7 @@ export default function DashboardPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Associations</CardTitle>
           <Button asChild size="sm" variant="outline">
-            <Link href="/associations">Manage Associations</Link>
+            <Link href="/app/associations">Manage Associations</Link>
           </Button>
         </CardHeader>
         <CardContent>
@@ -173,7 +173,7 @@ export default function DashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Current Association Context</CardTitle>
             <Button asChild size="sm" variant="outline">
-              <Link href="/association-context">Open In-Context View</Link>
+              <Link href="/app/association-context">Open In-Context View</Link>
             </Button>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">

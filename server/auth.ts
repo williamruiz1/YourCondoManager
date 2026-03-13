@@ -74,12 +74,13 @@ function getGoogleOAuthConfig() {
   const clientID = (process.env.GOOGLE_CLIENT_ID || "").trim();
   const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
   const callbackURL = (process.env.GOOGLE_CALLBACK_URL || "").trim();
+  const callbackUrlStrict = ["1", "true", "yes"].includes((process.env.GOOGLE_CALLBACK_URL_STRICT || "").trim().toLowerCase());
   const callbackPathRaw = (process.env.GOOGLE_CALLBACK_PATH || "/api/auth/google/callback").trim();
   const callbackPath = callbackPathRaw.startsWith("/") && !callbackPathRaw.startsWith("//")
     ? callbackPathRaw
     : "/api/auth/google/callback";
   const enabled = Boolean(clientID && clientSecret);
-  return { enabled, clientID, clientSecret, callbackURL, callbackPath };
+  return { enabled, clientID, clientSecret, callbackURL, callbackPath, callbackUrlStrict };
 }
 
 function requestOrigin(req: Request): string | null {
@@ -95,10 +96,21 @@ function requestOrigin(req: Request): string | null {
 
 function resolveGoogleCallbackUrl(req: Request): string | null {
   const config = getGoogleOAuthConfig();
-  if (config.callbackURL) return config.callbackURL;
   const origin = requestOrigin(req);
-  if (!origin) return null;
-  return `${origin}${config.callbackPath}`;
+  if (!origin) return config.callbackURL || null;
+
+  const dynamicCallbackUrl = `${origin}${config.callbackPath}`;
+  if (!config.callbackURL) return dynamicCallbackUrl;
+  if (config.callbackUrlStrict) return config.callbackURL;
+
+  try {
+    const pinned = new URL(config.callbackURL);
+    const current = new URL(origin);
+    const sameOrigin = pinned.protocol === current.protocol && pinned.host === current.host;
+    return sameOrigin ? config.callbackURL : dynamicCallbackUrl;
+  } catch {
+    return dynamicCallbackUrl;
+  }
 }
 
 function profilePictureUrl(profile: Profile): string | null {
@@ -121,51 +133,11 @@ function profileNames(profile: Profile): { firstName: string | null; lastName: s
   };
 }
 
-async function ensureBootstrapForAuthenticatedUser(input: {
-  email: string;
-  firstName: string | null;
-  lastName: string | null;
-}): Promise<{ adminUserId: string | null }> {
-  let adminUser = await storage.getAdminUserByEmail(input.email);
-  if (!adminUser) {
-    adminUser = await storage.upsertAdminUser({
-      email: input.email,
-      role: "manager",
-      isActive: 1,
-    });
+async function resolveExistingAdminForAuthenticatedUser(input: { email: string }): Promise<{ adminUserId: string | null }> {
+  const adminUser = await storage.getAdminUserByEmail(input.email);
+  if (!adminUser || adminUser.isActive !== 1) {
+    return { adminUserId: null };
   }
-
-  if (adminUser.isActive !== 1) {
-    adminUser = await storage.upsertAdminUser({
-      email: input.email,
-      role: adminUser.role,
-      isActive: 1,
-    });
-  }
-
-  const existingScopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
-  if (existingScopes.length === 0) {
-    const availableAssociations = await storage.getAssociations({ includeArchived: false });
-    let targetAssociation = availableAssociations[0];
-
-    if (!targetAssociation) {
-      const displayName = [input.firstName, input.lastName].filter(Boolean).join(" ").trim() || "New User";
-      targetAssociation = await storage.createAssociation({
-        name: `${displayName} Workspace`,
-        address: "Address pending",
-        city: "Unknown",
-        state: "Unknown",
-        country: "USA",
-      }, input.email);
-    }
-
-    await storage.upsertAdminAssociationScope({
-      adminUserId: adminUser.id,
-      associationId: targetAssociation.id,
-      scope: "read-write",
-    });
-  }
-
   return { adminUserId: adminUser.id };
 }
 
@@ -225,11 +197,7 @@ function configurePassport() {
             linkedUser = await storage.getAuthUserByEmail(email);
           }
 
-          const bootstrap = await ensureBootstrapForAuthenticatedUser({
-            email,
-            firstName: names.firstName,
-            lastName: names.lastName,
-          });
+          const bootstrap = await resolveExistingAdminForAuthenticatedUser({ email });
 
           if (!linkedUser) {
             linkedUser = await storage.createAuthUser({
@@ -242,7 +210,7 @@ function configurePassport() {
             });
           } else {
             linkedUser = await storage.updateAuthUser(linkedUser.id, {
-              adminUserId: linkedUser.adminUserId || bootstrap.adminUserId,
+              adminUserId: bootstrap.adminUserId,
               firstName: names.firstName ?? linkedUser.firstName,
               lastName: names.lastName ?? linkedUser.lastName,
               avatarUrl: avatarUrl ?? linkedUser.avatarUrl,
@@ -393,13 +361,24 @@ export function registerAuthRoutes(app: Express) {
     });
   });
 
-  app.get("/api/auth/me", (req: Request, res: Response) => {
+  app.get("/api/auth/me", async (req: Request, res: Response) => {
     if (!req.isAuthenticated?.() || !req.user) {
       return res.status(401).json({ authenticated: false });
     }
+    const authUser = req.user as { adminUserId?: string | null; email?: string | null };
+    const adminUser = authUser.adminUserId
+      ? await storage.getAdminUserById(authUser.adminUserId)
+      : (authUser.email ? await storage.getAdminUserByEmail(authUser.email) : undefined);
     return res.json({
       authenticated: true,
       user: req.user,
+      admin: adminUser && adminUser.isActive === 1
+        ? {
+            id: adminUser.id,
+            email: adminUser.email,
+            role: adminUser.role,
+          }
+        : null,
     });
   });
 

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
@@ -156,7 +156,7 @@ export default function UnitsPage() {
   function onSubmitUnit(values: z.infer<typeof unitFormSchema>) {
     const selectedBuilding = values.buildingId ? buildingById.get(values.buildingId) : undefined;
 
-    if (!editingId && !values.buildingId) {
+    if (!editingId && !values.buildingId && !editingLegacyBuilding) {
       toast({ title: "Select or create a building first", variant: "destructive" });
       return;
     }
@@ -165,7 +165,7 @@ export default function UnitsPage() {
       associationId: values.associationId,
       buildingId: values.buildingId || null,
       unitNumber: values.unitNumber.trim(),
-      building: selectedBuilding?.name ?? (editingId ? editingLegacyBuilding : null),
+      building: selectedBuilding?.name ?? editingLegacyBuilding ?? null,
       squareFootage:
         typeof values.squareFootage === "number" && !Number.isNaN(values.squareFootage)
           ? values.squareFootage
@@ -202,17 +202,18 @@ export default function UnitsPage() {
     setOpen(true);
   }
 
-  function openUnitDialog() {
-    if (!buildings.length) {
+  function openUnitDialog(buildingId?: string, legacyBuildingName?: string) {
+    if (!buildings.length && !legacyBuildingName) {
       toast({ title: "Add a building first", description: "Create the building before adding units to it.", variant: "destructive" });
       return;
     }
+    const selectedBuildingId = buildingId && buildingById.has(buildingId) ? buildingId : (buildings[0]?.id ?? "");
     setDialogMode("unit");
     setEditingId(null);
-    setEditingLegacyBuilding(null);
+    setEditingLegacyBuilding(legacyBuildingName ?? null);
     unitForm.reset({
       associationId: activeAssociationId,
-      buildingId: buildings[0]?.id ?? "",
+      buildingId: legacyBuildingName ? "" : selectedBuildingId,
       unitNumber: "",
       squareFootage: undefined,
     });
@@ -240,24 +241,42 @@ export default function UnitsPage() {
       ownershipCountByUnit.set(ownership.unitId, (ownershipCountByUnit.get(ownership.unitId) ?? 0) + 1);
     }
     const occupancyByUnit = new Map(occupancies.map((occupancy) => [occupancy.unitId, occupancy.occupancyType]));
-    const groups = new Map<string, Unit[]>();
+    const groups = new Map<string, { buildingId: string | null; building: string; units: Unit[] }>();
+    for (const building of buildings) {
+      groups.set(building.id, {
+        buildingId: building.id,
+        building: building.name,
+        units: [],
+      });
+    }
     for (const unit of units ?? []) {
-      const key = unit.buildingId ? (buildingById.get(unit.buildingId)?.name ?? unit.building ?? "Unassigned Building") : (unit.building?.trim() || "Unassigned Building");
-      groups.set(key, [...(groups.get(key) ?? []), unit]);
+      const key = unit.buildingId ?? `legacy:${unit.building?.trim() || "unassigned"}`;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.units.push(unit);
+        continue;
+      }
+      groups.set(key, {
+        buildingId: unit.buildingId ?? null,
+        building: unit.building?.trim() || "Unassigned Building",
+        units: [unit],
+      });
     }
 
-    return Array.from(groups.entries())
-      .map(([building, buildingUnits]) => ({
-        building,
-        units: buildingUnits.sort((left, right) => left.unitNumber.localeCompare(right.unitNumber)),
-        unitCount: buildingUnits.length,
-        occupiedCount: buildingUnits.filter((unit) => occupancyByUnit.has(unit.id)).length,
-        ownerLinkedCount: buildingUnits.filter((unit) => (ownershipCountByUnit.get(unit.id) ?? 0) > 0).length,
+    return Array.from(groups.values())
+      .map((group) => ({
+        buildingId: group.buildingId,
+        building: group.building,
+        isLegacyGroup: !group.buildingId,
+        units: group.units.sort((left, right) => left.unitNumber.localeCompare(right.unitNumber)),
+        unitCount: group.units.length,
+        occupiedCount: group.units.filter((unit) => occupancyByUnit.has(unit.id)).length,
+        ownerLinkedCount: group.units.filter((unit) => (ownershipCountByUnit.get(unit.id) ?? 0) > 0).length,
         occupancyByUnit,
         ownershipCountByUnit,
       }))
       .sort((left, right) => left.building.localeCompare(right.building));
-  }, [buildingById, residentialDataset, units]);
+  }, [buildingById, buildings, residentialDataset, units]);
 
   return (
     <div className="p-6 space-y-6">
@@ -274,7 +293,7 @@ export default function UnitsPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={openUnitDialog}
+            onClick={() => openUnitDialog()}
             data-testid="button-add-unit"
             disabled={!activeAssociationId || !buildings.length}
           >
@@ -352,6 +371,11 @@ export default function UnitsPage() {
                   <FormField control={unitForm.control} name="buildingId" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Building</FormLabel>
+                      {editingLegacyBuilding && !field.value ? (
+                        <div className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm">
+                          Adding to legacy building group: <span className="font-medium">{editingLegacyBuilding}</span>
+                        </div>
+                      ) : null}
                       <Select value={field.value || ""} onValueChange={field.onChange}>
                         <FormControl>
                           <SelectTrigger data-testid="select-unit-building">
@@ -366,6 +390,10 @@ export default function UnitsPage() {
                       </Select>
                       {!editingId && !buildings.length ? (
                         <div className="text-xs text-muted-foreground">Add a building in Step 1 to continue.</div>
+                      ) : editingLegacyBuilding && !field.value ? (
+                        <div className="text-xs text-muted-foreground">
+                          You can keep this legacy building group or switch to a saved building record.
+                        </div>
                       ) : null}
                       <FormMessage />
                     </FormItem>
@@ -417,15 +445,33 @@ export default function UnitsPage() {
                   <div key={group.building} className="rounded-lg border p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-medium">{group.building}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium">{group.building}</div>
+                          {group.isLegacyGroup ? <Badge variant="outline">Legacy</Badge> : null}
+                        </div>
                         <div className="text-xs text-muted-foreground">{group.unitCount} total units</div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
                         <Badge variant="outline">{group.ownerLinkedCount} owned</Badge>
                         <Badge variant="secondary">{group.occupiedCount} occupied</Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openUnitDialog(group.buildingId ?? undefined, group.isLegacyGroup ? group.building : undefined)}
+                          data-testid={`button-add-unit-for-building-${group.buildingId ?? group.building}`}
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add Unit
+                        </Button>
                       </div>
                     </div>
                     <div className="space-y-2">
+                      {group.units.length === 0 ? (
+                        <div className="rounded-md bg-muted/20 px-3 py-4 text-sm text-muted-foreground">
+                          No units yet in this building.
+                        </div>
+                      ) : null}
                       {group.units.map((unit) => (
                         <div key={unit.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-sm">
                           <span>Unit {unit.unitNumber}</span>
