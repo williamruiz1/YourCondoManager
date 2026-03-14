@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Unit, Association, Building } from "@shared/schema";
+import type { Unit, Association, Building, WorkOrder } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -59,6 +59,7 @@ export default function UnitsPage() {
   const { data: units, isLoading } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
   const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
   const { data: buildings = [], isLoading: buildingsLoading } = useQuery<Building[]>({ queryKey: ["/api/buildings"] });
+  const { data: workOrders = [] } = useQuery<WorkOrder[]>({ queryKey: ["/api/work-orders"] });
 
   const unitForm = useForm<z.infer<typeof unitFormSchema>>({
     resolver: zodResolver(unitFormSchema),
@@ -241,6 +242,13 @@ export default function UnitsPage() {
       ownershipCountByUnit.set(ownership.unitId, (ownershipCountByUnit.get(ownership.unitId) ?? 0) + 1);
     }
     const occupancyByUnit = new Map(occupancies.map((occupancy) => [occupancy.unitId, occupancy.occupancyType]));
+    const workOrdersByUnit = new Map<string, WorkOrder[]>();
+    for (const workOrder of workOrders) {
+      if (!workOrder.unitId) continue;
+      const current = workOrdersByUnit.get(workOrder.unitId) ?? [];
+      current.push(workOrder);
+      workOrdersByUnit.set(workOrder.unitId, current.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()));
+    }
     const groups = new Map<string, { buildingId: string | null; building: string; units: Unit[] }>();
     for (const building of buildings) {
       groups.set(building.id, {
@@ -274,9 +282,10 @@ export default function UnitsPage() {
         ownerLinkedCount: group.units.filter((unit) => (ownershipCountByUnit.get(unit.id) ?? 0) > 0).length,
         occupancyByUnit,
         ownershipCountByUnit,
+        workOrdersByUnit,
       }))
       .sort((left, right) => left.building.localeCompare(right.building));
-  }, [buildingById, buildings, residentialDataset, units]);
+  }, [buildingById, buildings, residentialDataset, units, workOrders]);
 
   return (
     <div className="p-6 space-y-6">
@@ -473,18 +482,33 @@ export default function UnitsPage() {
                         </div>
                       ) : null}
                       {group.units.map((unit) => (
-                        <div key={unit.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-sm">
-                          <span>Unit {unit.unitNumber}</span>
-                          <div className="flex gap-2">
-                            <Badge variant="outline">{group.ownershipCountByUnit.get(unit.id) ?? 0} owners</Badge>
-                            <Badge variant={group.occupancyByUnit.get(unit.id) === "TENANT" ? "secondary" : "default"}>
-                              {group.occupancyByUnit.get(unit.id) === "OWNER_OCCUPIED"
-                                ? "Owner Occupied"
-                                : group.occupancyByUnit.get(unit.id) === "TENANT"
-                                  ? "Tenant"
-                                  : "Vacant"}
-                            </Badge>
+                        <div key={unit.id} className="rounded-md bg-muted/30 px-3 py-3 text-sm space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span>Unit {unit.unitNumber}</span>
+                            <div className="flex gap-2">
+                              <Badge variant="outline">{group.ownershipCountByUnit.get(unit.id) ?? 0} owners</Badge>
+                              <Badge variant="outline">{group.workOrdersByUnit.get(unit.id)?.length ?? 0} work orders</Badge>
+                              <Badge variant={group.occupancyByUnit.get(unit.id) === "TENANT" ? "secondary" : "default"}>
+                                {group.occupancyByUnit.get(unit.id) === "OWNER_OCCUPIED"
+                                  ? "Owner Occupied"
+                                  : group.occupancyByUnit.get(unit.id) === "TENANT"
+                                    ? "Tenant"
+                                    : "Vacant"}
+                              </Badge>
+                            </div>
                           </div>
+                          {(group.workOrdersByUnit.get(unit.id) ?? []).slice(0, 3).map((workOrder) => (
+                            <div key={workOrder.id} className="flex items-center justify-between rounded border bg-background px-3 py-2 text-xs">
+                              <div>
+                                <div className="font-medium">{workOrder.title}</div>
+                                <div className="text-muted-foreground">{new Date(workOrder.updatedAt).toLocaleString()}</div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Badge variant="secondary">{workOrder.status}</Badge>
+                                <Badge variant="outline">{workOrder.priority}</Badge>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>

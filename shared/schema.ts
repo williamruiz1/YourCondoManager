@@ -308,9 +308,30 @@ export const budgetLines = pgTable("budget_lines", {
 });
 
 export const invoiceStatusEnum = pgEnum("invoice_status", ["draft", "received", "approved", "paid", "void"]);
+export const vendorStatusEnum = pgEnum("vendor_status", ["active", "inactive", "pending-renewal"]);
+export const vendors = pgTable("vendors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  name: text("name").notNull(),
+  trade: text("trade").notNull().default("general"),
+  serviceArea: text("service_area"),
+  primaryContactName: text("primary_contact_name"),
+  primaryEmail: text("primary_email"),
+  primaryPhone: text("primary_phone"),
+  licenseNumber: text("license_number"),
+  insuranceExpiresAt: timestamp("insurance_expires_at"),
+  status: vendorStatusEnum("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueVendorPerAssociation: uniqueIndex("vendors_association_name_uq").on(table.associationId, table.name),
+}));
+
 export const vendorInvoices = pgTable("vendor_invoices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
+  vendorId: varchar("vendor_id").references(() => vendors.id),
   vendorName: text("vendor_name").notNull(),
   invoiceNumber: text("invoice_number"),
   invoiceDate: timestamp("invoice_date").notNull(),
@@ -774,6 +795,62 @@ export const associationMemberships = pgTable("association_memberships", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const onboardingResidentTypeEnum = pgEnum("onboarding_resident_type", ["owner", "tenant"]);
+export const onboardingInviteStatusEnum = pgEnum("onboarding_invite_status", ["active", "submitted", "approved", "rejected", "expired", "revoked"]);
+export const onboardingSubmissionStatusEnum = pgEnum("onboarding_submission_status", ["pending", "approved", "rejected"]);
+
+export const onboardingInvites = pgTable("onboarding_invites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  residentType: onboardingResidentTypeEnum("resident_type").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  deliveryChannel: text("delivery_channel").notNull().default("link"),
+  token: text("token").notNull(),
+  status: onboardingInviteStatusEnum("status").notNull().default("active"),
+  expiresAt: timestamp("expires_at"),
+  createdBy: text("created_by"),
+  lastSentAt: timestamp("last_sent_at"),
+  submittedAt: timestamp("submitted_at"),
+  approvedAt: timestamp("approved_at"),
+  rejectedAt: timestamp("rejected_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueOnboardingInviteToken: uniqueIndex("onboarding_invites_token_uq").on(table.token),
+}));
+
+export const onboardingSubmissions = pgTable("onboarding_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inviteId: varchar("invite_id").references(() => onboardingInvites.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  residentType: onboardingResidentTypeEnum("resident_type").notNull(),
+  sourceChannel: text("source_channel").notNull().default("unit-link"),
+  status: onboardingSubmissionStatusEnum("status").notNull().default("pending"),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  mailingAddress: text("mailing_address"),
+  emergencyContactName: text("emergency_contact_name"),
+  emergencyContactPhone: text("emergency_contact_phone"),
+  contactPreference: text("contact_preference").notNull().default("email"),
+  startDate: timestamp("start_date").notNull(),
+  ownershipPercentage: real("ownership_percentage"),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  createdPersonId: varchar("created_person_id").references(() => persons.id),
+  createdOccupancyId: varchar("created_occupancy_id").references(() => occupancies.id),
+  createdOwnershipId: varchar("created_ownership_id").references(() => ownerships.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const tenantConfigs = pgTable("tenant_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -849,6 +926,127 @@ export const maintenanceRequests = pgTable("maintenance_requests", {
   triagedAt: timestamp("triaged_at"),
   resolvedAt: timestamp("resolved_at"),
   closedAt: timestamp("closed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const workOrderStatusEnum = pgEnum("work_order_status", ["open", "assigned", "in-progress", "pending-review", "closed", "cancelled"]);
+export const workOrders = pgTable("work_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  maintenanceRequestId: varchar("maintenance_request_id").references(() => maintenanceRequests.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  vendorId: varchar("vendor_id").references(() => vendors.id),
+  vendorInvoiceId: varchar("vendor_invoice_id").references(() => vendorInvoices.id),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  locationText: text("location_text"),
+  category: text("category").notNull().default("general"),
+  priority: maintenanceRequestPriorityEnum("priority").notNull().default("medium"),
+  status: workOrderStatusEnum("status").notNull().default("open"),
+  assignedTo: text("assigned_to"),
+  estimatedCost: real("estimated_cost"),
+  actualCost: real("actual_cost"),
+  scheduledFor: timestamp("scheduled_for"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  resolutionNotes: text("resolution_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueMaintenanceRequestWorkOrder: uniqueIndex("work_orders_request_uq").on(table.maintenanceRequestId),
+}));
+
+export const inspectionLocationTypeEnum = pgEnum("inspection_location_type", ["unit", "common-area", "building"]);
+export const inspectionConditionEnum = pgEnum("inspection_condition", ["excellent", "good", "fair", "poor", "critical"]);
+export const inspectionFindingSeverityEnum = pgEnum("inspection_finding_severity", ["low", "medium", "high", "critical"]);
+export const inspectionFindingStatusEnum = pgEnum("inspection_finding_status", ["open", "monitoring", "resolved"]);
+
+export const inspectionRecords = pgTable("inspection_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  locationType: inspectionLocationTypeEnum("location_type").notNull().default("unit"),
+  locationText: text("location_text").notNull(),
+  inspectionType: text("inspection_type").notNull().default("routine"),
+  inspectorName: text("inspector_name").notNull(),
+  overallCondition: inspectionConditionEnum("overall_condition").notNull().default("good"),
+  summary: text("summary"),
+  inspectedAt: timestamp("inspected_at").notNull().defaultNow(),
+  findingsJson: jsonb("findings_json").notNull().default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const maintenanceFrequencyUnitEnum = pgEnum("maintenance_frequency_unit", ["month", "quarter", "year"]);
+export const maintenanceScheduleStatusEnum = pgEnum("maintenance_schedule_status", ["active", "paused", "archived"]);
+export const maintenanceInstanceStatusEnum = pgEnum("maintenance_instance_status", ["scheduled", "due", "converted", "completed", "skipped"]);
+
+export const maintenanceScheduleTemplates = pgTable("maintenance_schedule_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  vendorId: varchar("vendor_id").references(() => vendors.id),
+  title: text("title").notNull(),
+  component: text("component").notNull(),
+  description: text("description"),
+  locationText: text("location_text").notNull(),
+  frequencyUnit: maintenanceFrequencyUnitEnum("frequency_unit").notNull().default("quarter"),
+  frequencyInterval: integer("frequency_interval").notNull().default(1),
+  responsibleParty: text("responsible_party"),
+  autoCreateWorkOrder: integer("auto_create_work_order").notNull().default(0),
+  nextDueAt: timestamp("next_due_at").notNull(),
+  status: maintenanceScheduleStatusEnum("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const maintenanceScheduleInstances = pgTable("maintenance_schedule_instances", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateId: varchar("template_id").notNull().references(() => maintenanceScheduleTemplates.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  vendorId: varchar("vendor_id").references(() => vendors.id),
+  workOrderId: varchar("work_order_id").references(() => workOrders.id),
+  title: text("title").notNull(),
+  component: text("component").notNull(),
+  locationText: text("location_text").notNull(),
+  dueAt: timestamp("due_at").notNull(),
+  status: maintenanceInstanceStatusEnum("status").notNull().default("scheduled"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const boardPackageStatusEnum = pgEnum("board_package_status", ["draft", "approved", "distributed"]);
+export const boardPackageTemplates = pgTable("board_package_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  title: text("title").notNull(),
+  frequency: text("frequency").notNull().default("monthly"),
+  autoGenerate: integer("auto_generate").notNull().default(0),
+  meetingType: text("meeting_type"),
+  generateDaysBefore: integer("generate_days_before").notNull().default(7),
+  lastAutoGeneratedAt: timestamp("last_auto_generated_at"),
+  sectionsJson: jsonb("sections_json").notNull().default(sql`'[]'::jsonb`),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const boardPackages = pgTable("board_packages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateId: varchar("template_id").references(() => boardPackageTemplates.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  meetingId: varchar("meeting_id").references(() => governanceMeetings.id),
+  title: text("title").notNull(),
+  periodLabel: text("period_label").notNull(),
+  status: boardPackageStatusEnum("status").notNull().default("draft"),
+  contentJson: jsonb("content_json").notNull().default(sql`'[]'::jsonb`),
+  annotationsJson: jsonb("annotations_json").notNull().default(sql`'[]'::jsonb`),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  distributedBy: text("distributed_by"),
+  distributedAt: timestamp("distributed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -981,6 +1179,7 @@ export const insertFinancialCategorySchema = createInsertSchema(financialCategor
 export const insertBudgetSchema = createInsertSchema(budgets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertBudgetVersionSchema = createInsertSchema(budgetVersions).omit({ id: true, createdAt: true, updatedAt: true, ratifiedAt: true });
 export const insertBudgetLineSchema = createInsertSchema(budgetLines).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorInvoiceSchema = createInsertSchema(vendorInvoices).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUtilityPaymentSchema = createInsertSchema(utilityPayments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentMethodConfigSchema = createInsertSchema(paymentMethodConfigs).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1013,6 +1212,30 @@ export const insertPermissionEnvelopeSchema = createInsertSchema(permissionEnvel
 export const insertAdminAssociationScopeSchema = createInsertSchema(adminAssociationScopes).omit({ id: true, createdAt: true });
 export const insertPortalAccessSchema = createInsertSchema(portalAccess).omit({ id: true, createdAt: true, updatedAt: true, lastLoginAt: true });
 export const insertAssociationMembershipSchema = createInsertSchema(associationMemberships).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertOnboardingInviteSchema = createInsertSchema(onboardingInvites).omit({
+  id: true,
+  token: true,
+  status: true,
+  submittedAt: true,
+  approvedAt: true,
+  rejectedAt: true,
+  revokedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertOnboardingSubmissionSchema = createInsertSchema(onboardingSubmissions).omit({
+  id: true,
+  status: true,
+  submittedAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  rejectionReason: true,
+  createdPersonId: true,
+  createdOccupancyId: true,
+  createdOwnershipId: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertTenantConfigSchema = createInsertSchema(tenantConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEmailThreadSchema = createInsertSchema(emailThreads).omit({ id: true, createdAt: true, updatedAt: true, lastMessageAt: true });
 export const insertContactUpdateRequestSchema = createInsertSchema(contactUpdateRequests).omit({ id: true, createdAt: true, updatedAt: true, reviewStatus: true, reviewedBy: true, reviewedAt: true });
@@ -1027,6 +1250,46 @@ export const insertMaintenanceRequestSchema = createInsertSchema(maintenanceRequ
   triagedAt: true,
   resolvedAt: true,
   closedAt: true,
+});
+export const insertWorkOrderSchema = createInsertSchema(workOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  startedAt: true,
+  completedAt: true,
+});
+export const inspectionFindingItemSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional().nullable(),
+  severity: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+  status: z.enum(["open", "monitoring", "resolved"]).default("open"),
+  photoUrls: z.array(z.string()).default([]),
+  linkedWorkOrderId: z.string().nullable().optional(),
+});
+export const insertInspectionRecordSchema = createInsertSchema(inspectionRecords)
+  .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    findingsJson: z.array(inspectionFindingItemSchema).optional(),
+  });
+export const insertMaintenanceScheduleTemplateSchema = createInsertSchema(maintenanceScheduleTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertMaintenanceScheduleInstanceSchema = createInsertSchema(maintenanceScheduleInstances).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertBoardPackageTemplateSchema = createInsertSchema(boardPackageTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertBoardPackageSchema = createInsertSchema(boardPackages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 export const insertRoadmapProjectSchema = createInsertSchema(roadmapProjects).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertRoadmapWorkstreamSchema = createInsertSchema(roadmapWorkstreams).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1086,6 +1349,8 @@ export type BudgetVersion = typeof budgetVersions.$inferSelect;
 export type InsertBudgetVersion = z.infer<typeof insertBudgetVersionSchema>;
 export type BudgetLine = typeof budgetLines.$inferSelect;
 export type InsertBudgetLine = z.infer<typeof insertBudgetLineSchema>;
+export type Vendor = typeof vendors.$inferSelect;
+export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorInvoice = typeof vendorInvoices.$inferSelect;
 export type InsertVendorInvoice = z.infer<typeof insertVendorInvoiceSchema>;
 export type UtilityPayment = typeof utilityPayments.$inferSelect;
@@ -1150,6 +1415,10 @@ export type PortalAccess = typeof portalAccess.$inferSelect;
 export type InsertPortalAccess = z.infer<typeof insertPortalAccessSchema>;
 export type AssociationMembership = typeof associationMemberships.$inferSelect;
 export type InsertAssociationMembership = z.infer<typeof insertAssociationMembershipSchema>;
+export type OnboardingInvite = typeof onboardingInvites.$inferSelect;
+export type InsertOnboardingInvite = z.infer<typeof insertOnboardingInviteSchema>;
+export type OnboardingSubmission = typeof onboardingSubmissions.$inferSelect;
+export type InsertOnboardingSubmission = z.infer<typeof insertOnboardingSubmissionSchema>;
 export type TenantConfig = typeof tenantConfigs.$inferSelect;
 export type InsertTenantConfig = z.infer<typeof insertTenantConfigSchema>;
 export type EmailThread = typeof emailThreads.$inferSelect;
@@ -1158,6 +1427,19 @@ export type ContactUpdateRequest = typeof contactUpdateRequests.$inferSelect;
 export type InsertContactUpdateRequest = z.infer<typeof insertContactUpdateRequestSchema>;
 export type MaintenanceRequest = typeof maintenanceRequests.$inferSelect;
 export type InsertMaintenanceRequest = z.infer<typeof insertMaintenanceRequestSchema>;
+export type WorkOrder = typeof workOrders.$inferSelect;
+export type InsertWorkOrder = z.infer<typeof insertWorkOrderSchema>;
+export type InspectionRecord = typeof inspectionRecords.$inferSelect;
+export type InspectionFindingItem = z.infer<typeof inspectionFindingItemSchema>;
+export type InsertInspectionRecord = z.infer<typeof insertInspectionRecordSchema>;
+export type MaintenanceScheduleTemplate = typeof maintenanceScheduleTemplates.$inferSelect;
+export type InsertMaintenanceScheduleTemplate = z.infer<typeof insertMaintenanceScheduleTemplateSchema>;
+export type MaintenanceScheduleInstance = typeof maintenanceScheduleInstances.$inferSelect;
+export type InsertMaintenanceScheduleInstance = z.infer<typeof insertMaintenanceScheduleInstanceSchema>;
+export type BoardPackageTemplate = typeof boardPackageTemplates.$inferSelect;
+export type InsertBoardPackageTemplate = z.infer<typeof insertBoardPackageTemplateSchema>;
+export type BoardPackage = typeof boardPackages.$inferSelect;
+export type InsertBoardPackage = z.infer<typeof insertBoardPackageSchema>;
 export type RoadmapProject = typeof roadmapProjects.$inferSelect;
 export type InsertRoadmapProject = z.infer<typeof insertRoadmapProjectSchema>;
 export type RoadmapWorkstream = typeof roadmapWorkstreams.$inferSelect;

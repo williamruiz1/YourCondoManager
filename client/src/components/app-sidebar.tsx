@@ -23,6 +23,9 @@ import {
   MessageSquare,
   SlidersHorizontal,
   ListChecks,
+  BriefcaseBusiness,
+  ClipboardList,
+  PackageOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -100,6 +103,7 @@ const navSections: NavSection[] = [
         icon: UserCheck,
         roles: ["platform-admin", "board-admin", "manager", "viewer"],
         children: [
+          { title: "Board Packages", url: "/app/governance/board-packages", icon: PackageOpen, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
           { title: "Meetings", url: "/app/governance/meetings", icon: CalendarDays, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
           { title: "Compliance", url: "/app/governance/compliance", icon: ClipboardCheck, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
         ],
@@ -131,6 +135,36 @@ const navSections: NavSection[] = [
   {
     label: "Operations",
     modules: [
+      {
+        title: "Operations Dashboard",
+        url: "/app/operations/dashboard",
+        icon: LayoutDashboard,
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
+      },
+      {
+        title: "Vendors",
+        url: "/app/vendors",
+        icon: BriefcaseBusiness,
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
+      },
+      {
+        title: "Work Orders",
+        url: "/app/work-orders",
+        icon: ClipboardList,
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
+      },
+      {
+        title: "Maintenance Schedules",
+        url: "/app/maintenance-schedules",
+        icon: CalendarDays,
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
+      },
+      {
+        title: "Inspections",
+        url: "/app/inspections",
+        icon: ClipboardCheck,
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
+      },
       {
         title: "Communications",
         url: "/app/communications",

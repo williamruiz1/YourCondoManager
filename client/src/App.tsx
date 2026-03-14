@@ -18,6 +18,7 @@ import { AssociationProvider, useAssociationContext } from "@/context/associatio
 const LandingPage = lazy(() => import("@/pages/landing"));
 const WorkspacePreviewPage = lazy(() => import("@/pages/workspace-preview"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
+const OperationsDashboardPage = lazy(() => import("@/pages/operations-dashboard"));
 const AssociationsPage = lazy(() => import("@/pages/associations"));
 const AssociationContextPage = lazy(() => import("@/pages/association-context"));
 const UnitsPage = lazy(() => import("@/pages/units"));
@@ -38,12 +39,18 @@ const FinancialUtilitiesPage = lazy(() => import("@/pages/financial-utilities"))
 const FinancialLedgerPage = lazy(() => import("@/pages/financial-ledger"));
 const FinancialBudgetsPage = lazy(() => import("@/pages/financial-budgets"));
 const FinancialPaymentsPage = lazy(() => import("@/pages/financial-payments"));
+const VendorsPage = lazy(() => import("@/pages/vendors"));
+const WorkOrdersPage = lazy(() => import("@/pages/work-orders"));
+const MaintenanceSchedulesPage = lazy(() => import("@/pages/maintenance-schedules"));
+const InspectionsPage = lazy(() => import("@/pages/inspections"));
+const BoardPackagesPage = lazy(() => import("@/pages/board-packages"));
 const MeetingsPage = lazy(() => import("@/pages/meetings"));
 const GovernanceCompliancePage = lazy(() => import("@/pages/governance-compliance"));
 const AiIngestionPage = lazy(() => import("@/pages/ai-ingestion"));
 const CommunicationsPage = lazy(() => import("@/pages/communications"));
 const PlatformControlsPage = lazy(() => import("@/pages/platform-controls"));
 const OwnerPortalPage = lazy(() => import("@/pages/owner-portal"));
+const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
@@ -83,6 +90,7 @@ function WorkspaceRouter() {
     <Suspense fallback={<RouteFallback />}>
       <Switch>
         <Route path="/app" component={DashboardPage} />
+        <Route path="/app/operations/dashboard" component={OperationsDashboardPage} />
         <Route path="/app/associations" component={AssociationsPage} />
         <Route path="/app/association-context" component={AssociationContextPage} />
         <Route path="/app/units" component={UnitsPage} />
@@ -104,6 +112,11 @@ function WorkspaceRouter() {
         <Route path="/app/financial/ledger" component={FinancialLedgerPage} />
         <Route path="/app/financial/budgets" component={FinancialBudgetsPage} />
         <Route path="/app/financial/payments" component={FinancialPaymentsPage} />
+        <Route path="/app/vendors" component={VendorsPage} />
+        <Route path="/app/work-orders" component={WorkOrdersPage} />
+        <Route path="/app/maintenance-schedules" component={MaintenanceSchedulesPage} />
+        <Route path="/app/inspections" component={InspectionsPage} />
+        <Route path="/app/governance/board-packages" component={BoardPackagesPage} />
         <Route path="/app/governance/meetings" component={MeetingsPage} />
         <Route path="/app/governance/compliance" component={GovernanceCompliancePage} />
         <Route path="/app/ai/ingestion" component={AiIngestionPage} />
@@ -135,8 +148,12 @@ function PublicRouter({
           />
         </Route>
         <Route path="/portal" component={OwnerPortalPage} />
+        <Route path="/onboarding/:token" component={OnboardingInvitePage} />
         <Route path="/associations">
           <RouteRedirect to="/app/associations" />
+        </Route>
+        <Route path="/operations/dashboard">
+          <RouteRedirect to="/app/operations/dashboard" />
         </Route>
         <Route path="/association-context">
           <RouteRedirect to="/app/association-context" />
@@ -200,6 +217,21 @@ function PublicRouter({
         </Route>
         <Route path="/financial/payments">
           <RouteRedirect to="/app/financial/payments" />
+        </Route>
+        <Route path="/vendors">
+          <RouteRedirect to="/app/vendors" />
+        </Route>
+        <Route path="/work-orders">
+          <RouteRedirect to="/app/work-orders" />
+        </Route>
+        <Route path="/governance/board-packages">
+          <RouteRedirect to="/app/governance/board-packages" />
+        </Route>
+        <Route path="/maintenance-schedules">
+          <RouteRedirect to="/app/maintenance-schedules" />
+        </Route>
+        <Route path="/inspections">
+          <RouteRedirect to="/app/inspections" />
         </Route>
         <Route path="/governance/meetings">
           <RouteRedirect to="/app/governance/meetings" />

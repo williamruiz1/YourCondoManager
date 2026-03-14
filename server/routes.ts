@@ -5,6 +5,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { registerAuthRoutes } from "./auth";
+import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
 import {
   getEmailLog,
   getEmailLogs,
@@ -29,6 +30,8 @@ import {
   insertAssociationSchema,
   insertBuildingSchema,
   insertBoardRoleSchema,
+  insertBoardPackageSchema,
+  insertBoardPackageTemplateSchema,
   insertDocumentSchema,
   insertDocumentTagSchema,
   insertAnnualGovernanceTaskSchema,
@@ -56,15 +59,20 @@ import {
   insertNoticeTemplateSchema,
   insertPortalAccessSchema,
   insertAssociationMembershipSchema,
+  insertOnboardingInviteSchema,
   insertTenantConfigSchema,
   insertContactUpdateRequestSchema,
+  insertInspectionRecordSchema,
+  insertMaintenanceScheduleTemplateSchema,
   insertMaintenanceRequestSchema,
+  insertWorkOrderSchema,
   insertPermissionEnvelopeSchema,
   insertResolutionSchema,
   insertSpecialAssessmentSchema,
   insertUnitSchema,
   insertUtilityPaymentSchema,
   insertPaymentMethodConfigSchema,
+  insertVendorSchema,
   insertVendorInvoiceSchema,
   insertVoteRecordSchema,
 } from "@shared/schema";
@@ -1379,6 +1387,91 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/vendors", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getVendors(getAssociationIdQuery(req));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/vendors", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const parsed = insertVendorSchema.parse(req.body);
+      assertAssociationScope(req as AdminRequest, parsed.associationId);
+      const result = await storage.createVendor(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/vendors/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      await assertResourceScope(req as AdminRequest, "vendor", getParam(req.params.id));
+      const parsed = insertVendorSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
+      }
+      const result = await storage.updateVendor(getParam(req.params.id), parsed);
+      if (!result) return res.status(404).json({ message: "Vendor not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/vendors/renewal-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getVendorRenewalAlerts(getAssociationIdQuery(req));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/vendors/:id/documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      await assertResourceScope(req as AdminRequest, "vendor", getParam(req.params.id));
+      const result = await storage.getVendorDocuments(getParam(req.params.id));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/vendors/:id/documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+    try {
+      const vendorId = getParam(req.params.id);
+      await assertResourceScope(req, "vendor", vendorId);
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ message: "File is required" });
+      }
+      const vendorAssociationId = await storage.getAssociationIdForScopedResource("vendor", vendorId);
+      if (!vendorAssociationId) {
+        return res.status(404).json({ message: "Vendor not found" });
+      }
+      assertAssociationScope(req, vendorAssociationId);
+
+      const result = await storage.createVendorDocument(
+        vendorId,
+        {
+          associationId: vendorAssociationId,
+          title: String(req.body.title || ""),
+          documentType: String(req.body.documentType || "Vendor"),
+          uploadedBy: req.body.uploadedBy || req.adminUserEmail || null,
+          fileUrl: `/api/uploads/${file.filename}`,
+        },
+        req.adminUserEmail,
+      );
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.get("/api/financial/invoices", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getVendorInvoices(getAssociationIdQuery(req));
@@ -2579,6 +2672,78 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/onboarding/invites", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      const result = await storage.getOnboardingInvites(associationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/invites", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const parsed = insertOnboardingInviteSchema.parse({
+        associationId: req.body.associationId,
+        unitId: req.body.unitId,
+        residentType: req.body.residentType,
+        email: req.body.email || null,
+        phone: req.body.phone || null,
+        deliveryChannel: req.body.deliveryChannel || "link",
+        expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
+        createdBy: req.adminUserEmail || null,
+      });
+      assertAssociationScope(req, parsed.associationId);
+      const result = await storage.createOnboardingInvite(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/onboarding/submissions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      const result = await storage.getOnboardingSubmissions(associationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/invites/:id/send", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const id = getParam(req.params.id);
+      await assertResourceScope(req, "onboarding-invite", id);
+      const result = await storage.sendOnboardingInvite(id, req.adminUserEmail || null);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/invites/reminders/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.body?.associationId);
+      assertAssociationScope(req, associationId);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      const olderThanHours = typeof req.body?.olderThanHours === "number" ? req.body.olderThanHours : 24;
+      const result = await storage.runOnboardingInviteReminderSweep({
+        associationId,
+        sentBy: req.adminUserEmail || null,
+        olderThanHours,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.post("/api/onboarding/intake", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const associationId = getParam(req.body.associationId);
@@ -2611,6 +2776,76 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
         startDate,
         ownershipPercentage: typeof req.body.ownershipPercentage === "number" ? req.body.ownershipPercentage : null,
+      });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/onboarding/submissions/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const id = getParam(req.params.id);
+      const decision = req.body?.decision;
+      if (decision !== "approved" && decision !== "rejected") {
+        return res.status(400).json({ message: "decision must be approved or rejected" });
+      }
+      await assertResourceScope(req, "onboarding-submission", id);
+      const result = await storage.reviewOnboardingSubmission(id, {
+        decision,
+        reviewedBy: req.adminUserEmail || "system",
+        rejectionReason: typeof req.body?.rejectionReason === "string" ? req.body.rejectionReason : null,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/public/onboarding/invite/:token", async (req, res) => {
+    try {
+      const token = getParam(req.params.token);
+      if (!token) return res.status(400).json({ message: "token is required" });
+      const invite = await storage.getOnboardingInviteByToken(token);
+      if (!invite) return res.status(404).json({ message: "Invite not found" });
+      res.json({
+        id: invite.id,
+        associationId: invite.associationId,
+        associationName: invite.associationName,
+        unitId: invite.unitId,
+        unitLabel: invite.unitLabel,
+        residentType: invite.residentType,
+        status: invite.status,
+        email: invite.email,
+        phone: invite.phone,
+        expiresAt: invite.expiresAt,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/public/onboarding/invite/:token/submit", async (req, res) => {
+    try {
+      const token = getParam(req.params.token);
+      if (!token) return res.status(400).json({ message: "token is required" });
+      const startDate = new Date(req.body?.startDate);
+      if (Number.isNaN(startDate.getTime())) return res.status(400).json({ message: "startDate must be valid" });
+      const firstName = typeof req.body?.firstName === "string" ? req.body.firstName.trim() : "";
+      const lastName = typeof req.body?.lastName === "string" ? req.body.lastName.trim() : "";
+      if (!firstName || !lastName) return res.status(400).json({ message: "firstName and lastName are required" });
+
+      const result = await storage.createOnboardingSubmissionFromInvite(token, {
+        firstName,
+        lastName,
+        email: typeof req.body?.email === "string" ? req.body.email.trim() || null : null,
+        phone: typeof req.body?.phone === "string" ? req.body.phone.trim() || null : null,
+        mailingAddress: typeof req.body?.mailingAddress === "string" ? req.body.mailingAddress.trim() || null : null,
+        emergencyContactName: typeof req.body?.emergencyContactName === "string" ? req.body.emergencyContactName.trim() || null : null,
+        emergencyContactPhone: typeof req.body?.emergencyContactPhone === "string" ? req.body.emergencyContactPhone.trim() || null : null,
+        contactPreference: typeof req.body?.contactPreference === "string" ? req.body.contactPreference.trim() || "email" : "email",
+        startDate,
+        ownershipPercentage: typeof req.body?.ownershipPercentage === "number" ? req.body.ownershipPercentage : null,
       });
       res.status(201).json(result);
     } catch (error: any) {
@@ -2725,6 +2960,203 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         associationId: getAssociationIdQuery(req) || req.body?.associationId || undefined,
         actorEmail: req.adminUserEmail || "scheduler@system",
       });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/work-orders", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getWorkOrders({
+        associationId: getAssociationIdQuery(req),
+        unitId: typeof req.query.unitId === "string" ? req.query.unitId : undefined,
+        vendorId: typeof req.query.vendorId === "string" ? req.query.vendorId : undefined,
+        maintenanceRequestId: typeof req.query.maintenanceRequestId === "string" ? req.query.maintenanceRequestId : undefined,
+        status: typeof req.query.status === "string" ? req.query.status : undefined,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/work-orders", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const parsed = insertWorkOrderSchema.parse(req.body);
+      assertAssociationScope(req, parsed.associationId);
+      const result = await storage.createWorkOrder(parsed, req.adminUserEmail);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/work-orders/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      await assertResourceScope(req, "work-order", getParam(req.params.id));
+      const parsed = insertWorkOrderSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req, parsed.associationId ?? null);
+      }
+      const result = await storage.updateWorkOrder(getParam(req.params.id), parsed, req.adminUserEmail);
+      if (!result) return res.status(404).json({ message: "Work order not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/maintenance/requests/:id/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      await assertResourceScope(req, "maintenance-request", getParam(req.params.id));
+      const parsed = insertWorkOrderSchema.partial().parse({
+        ...req.body,
+        associationId: req.body?.associationId ?? getAssociationIdQuery(req),
+      });
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req, parsed.associationId ?? null);
+      }
+      const result = await storage.convertMaintenanceRequestToWorkOrder(getParam(req.params.id), parsed, req.adminUserEmail);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/inspections", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getInspectionRecords({
+        associationId: getAssociationIdQuery(req),
+        unitId: typeof req.query.unitId === "string" ? req.query.unitId : undefined,
+        inspectionType: typeof req.query.inspectionType === "string" ? req.query.inspectionType : undefined,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/inspections", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const parsed = insertInspectionRecordSchema.parse(req.body);
+      assertAssociationScope(req, parsed.associationId);
+      const result = await storage.createInspectionRecord(parsed, req.adminUserEmail);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/inspections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      await assertResourceScope(req, "inspection-record", getParam(req.params.id));
+      const parsed = insertInspectionRecordSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req, parsed.associationId ?? null);
+      }
+      const result = await storage.updateInspectionRecord(getParam(req.params.id), parsed, req.adminUserEmail);
+      if (!result) return res.status(404).json({ message: "Inspection record not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/inspections/:id/findings/:findingIndex/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      await assertResourceScope(req, "inspection-record", getParam(req.params.id));
+      const parsed = insertWorkOrderSchema.partial().parse({
+        ...req.body,
+        associationId: req.body?.associationId ?? getAssociationIdQuery(req),
+      });
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req, parsed.associationId ?? null);
+      }
+      const result = await storage.convertInspectionFindingToWorkOrder(
+        getParam(req.params.id),
+        Number.parseInt(getParam(req.params.findingIndex), 10),
+        parsed,
+        req.adminUserEmail,
+      );
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/maintenance/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      const [templates, instances] = await Promise.all([
+        storage.getMaintenanceScheduleTemplates({
+          associationId,
+          unitId: typeof req.query.unitId === "string" ? req.query.unitId : undefined,
+          status: typeof req.query.status === "string" ? req.query.status : undefined,
+        }),
+        storage.getMaintenanceScheduleInstances({
+          associationId,
+          templateId: typeof req.query.templateId === "string" ? req.query.templateId : undefined,
+          status: typeof req.query.instanceStatus === "string" ? req.query.instanceStatus : undefined,
+        }),
+      ]);
+      res.json({ templates, instances });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/maintenance/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const parsed = insertMaintenanceScheduleTemplateSchema.parse(req.body);
+      assertAssociationScope(req, parsed.associationId);
+      const result = await storage.createMaintenanceScheduleTemplate(parsed, req.adminUserEmail);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/maintenance/schedules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      await assertResourceScope(req, "maintenance-schedule-template", getParam(req.params.id));
+      const parsed = insertMaintenanceScheduleTemplateSchema.partial().parse(req.body);
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req, parsed.associationId ?? null);
+      }
+      const result = await storage.updateMaintenanceScheduleTemplate(getParam(req.params.id), parsed, req.adminUserEmail);
+      if (!result) return res.status(404).json({ message: "Maintenance schedule template not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/maintenance/schedules/:id/generate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      await assertResourceScope(req, "maintenance-schedule-template", getParam(req.params.id));
+      const throughDate = req.body?.throughDate ? new Date(req.body.throughDate) : undefined;
+      const result = await storage.generateMaintenanceScheduleInstances(getParam(req.params.id), {
+        throughDate,
+        actorEmail: req.adminUserEmail || "system",
+      });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/maintenance/instances/:id/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      await assertResourceScope(req, "maintenance-schedule-instance", getParam(req.params.id));
+      const parsed = insertWorkOrderSchema.partial().parse({
+        ...req.body,
+        associationId: req.body?.associationId ?? getAssociationIdQuery(req),
+      });
+      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
+        assertAssociationInputScope(req, parsed.associationId ?? null);
+      }
+      const result = await storage.convertMaintenanceInstanceToWorkOrder(getParam(req.params.id), parsed, req.adminUserEmail);
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -3084,6 +3516,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.post("/api/portal/maintenance-attachments", requirePortal, upload.array("files", 5), async (req: PortalRequest, res) => {
+    try {
+      const files = Array.isArray(req.files) ? req.files : [];
+      if (!files.length) {
+        return res.status(400).json({ message: "At least one file is required" });
+      }
+      const urls = files.map((file) => `/api/uploads/${file.filename}`);
+      res.status(201).json({ urls });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.post("/api/portal/maintenance-requests", requirePortal, async (req: PortalRequest, res) => {
     try {
       const parsed = insertMaintenanceRequestSchema.parse({
@@ -3224,6 +3669,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/admin/roadmap/feature-tree", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (_req, res) => {
+    try {
+      const result = await buildFtphDocumentationFeatureTree();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/admin/projects", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const parsed = insertRoadmapProjectSchema.parse(req.body);
@@ -3342,6 +3796,123 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const days = Number(req.query.days ?? 30);
       const result = await storage.getAdminAnalytics(days);
       res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/board-packages/templates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      res.json(await storage.getBoardPackageTemplates(getAssociationIdQuery(req)));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/board-packages/templates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const parsed = insertBoardPackageTemplateSchema.parse(req.body);
+      assertAssociationScope(req as AdminRequest, parsed.associationId);
+      res.status(201).json(await storage.createBoardPackageTemplate(parsed));
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/admin/board-packages/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      await assertResourceScope(req as AdminRequest, "board-package-template", getParam(req.params.id));
+      const parsed = insertBoardPackageTemplateSchema.partial().parse(req.body);
+      const result = await storage.updateBoardPackageTemplate(getParam(req.params.id), parsed);
+      if (!result) return res.status(404).json({ message: "Board package template not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/board-packages", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      res.json(await storage.getBoardPackages(getAssociationIdQuery(req)));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/board-packages/generate/:templateId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      await assertResourceScope(req as AdminRequest, "board-package-template", getParam(req.params.templateId));
+      res.status(201).json(await storage.generateBoardPackage(getParam(req.params.templateId), {
+        periodLabel: req.body?.periodLabel,
+        meetingId: req.body?.meetingId,
+      }));
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/board-packages/run-scheduled", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req) || req.body?.associationId;
+      if (associationId) {
+        assertAssociationScope(req as AdminRequest, associationId);
+      }
+      res.json(await storage.runScheduledBoardPackageGeneration({
+        associationId: associationId || undefined,
+        actorEmail: (req as AdminRequest).adminUserEmail || "admin",
+      }));
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/board-packages/:id/distribute", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      await assertResourceScope(req as AdminRequest, "board-package", getParam(req.params.id));
+      const recipientEmails = Array.isArray(req.body?.recipientEmails)
+        ? req.body.recipientEmails.filter((value: unknown): value is string => typeof value === "string")
+        : [];
+      res.json(await storage.distributeBoardPackage(getParam(req.params.id), {
+        recipientEmails,
+        message: typeof req.body?.message === "string" ? req.body.message : null,
+        actorEmail: (req as AdminRequest).adminUserEmail || "admin",
+      }));
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/admin/board-packages/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      await assertResourceScope(req as AdminRequest, "board-package", getParam(req.params.id));
+      const parsed = insertBoardPackageSchema.partial().parse(req.body);
+      const result = await storage.updateBoardPackage(getParam(req.params.id), parsed, (req as AdminRequest).adminUserEmail || "admin");
+      if (!result) return res.status(404).json({ message: "Board package not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/operations/dashboard", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getOperationsDashboard(getAssociationIdQuery(req));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/operations/reports/:reportType", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const reportType = getParam(req.params.reportType);
+      if (reportType !== "vendors" && reportType !== "work-orders" && reportType !== "maintenance") {
+        return res.status(400).json({ message: "Invalid report type" });
+      }
+      const result = await storage.exportOperationsReport(reportType, getAssociationIdQuery(req));
+      res.setHeader("Content-Type", result.contentType);
+      res.setHeader("Content-Disposition", `attachment; filename=\"${result.filename}\"`);
+      res.send(result.body);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

@@ -17,6 +17,15 @@ const app = express();
 const httpServer = createServer(app);
 const PgStore = connectPgSimple(session);
 
+httpServer.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EADDRINUSE") {
+    console.error("Port 5000 is already in use. Stop the existing dev server before starting a new one.");
+    process.exit(1);
+  }
+  console.error("HTTP server failed to start:", error);
+  process.exit(1);
+});
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -89,12 +98,13 @@ export function log(message: string, source = "express") {
 }
 
 async function runAutomationSweep() {
-  const [scheduledResult, escalationResult] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
+    storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
   ]);
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}`,
     "automation",
   );
 }
@@ -185,8 +195,6 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  startAutomationJobs();
-
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
@@ -200,6 +208,7 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      startAutomationJobs();
     },
   );
 })();

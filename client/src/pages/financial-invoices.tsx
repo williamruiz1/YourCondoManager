@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import type { Association, ExpenseAttachment, FinancialAccount, FinancialCategory, VendorInvoice } from "@shared/schema";
+import type { ExpenseAttachment, FinancialAccount, FinancialCategory, Vendor, VendorInvoice } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 
 const invoiceSchema = z.object({
   associationId: z.string().min(1),
+  vendorId: z.string().min(1, "Vendor is required"),
   vendorName: z.string().min(1),
   invoiceNumber: z.string().optional(),
   invoiceDate: z.string().min(1),
@@ -49,7 +50,7 @@ export default function FinancialInvoicesPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
 
-  const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
+  const { data: vendors } = useQuery<Vendor[]>({ queryKey: ["/api/vendors"] });
   const { data: accounts } = useQuery<FinancialAccount[]>({ queryKey: ["/api/financial/accounts"] });
   const { data: categories } = useQuery<FinancialCategory[]>({ queryKey: ["/api/financial/categories"] });
   const { data: invoices } = useQuery<VendorInvoice[]>({ queryKey: ["/api/financial/invoices"] });
@@ -59,6 +60,7 @@ export default function FinancialInvoicesPage() {
     resolver: zodResolver(invoiceSchema),
     defaultValues: {
       associationId: "",
+      vendorId: "",
       vendorName: "",
       invoiceNumber: "",
       invoiceDate: "",
@@ -73,6 +75,8 @@ export default function FinancialInvoicesPage() {
 
   useEffect(() => {
     form.setValue("associationId", activeAssociationId, { shouldValidate: true });
+    form.setValue("vendorId", "", { shouldValidate: false });
+    form.setValue("vendorName", "", { shouldValidate: false });
     setAttachmentAssocId(activeAssociationId);
   }, [activeAssociationId, form]);
 
@@ -92,7 +96,19 @@ export default function FinancialInvoicesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/financial/invoices"] });
       setOpen(false);
-      form.reset({ associationId: activeAssociationId, vendorName: "", invoiceNumber: "", invoiceDate: "", dueDate: "", amount: 0, status: "received", accountId: "", categoryId: "", notes: "" });
+      form.reset({
+        associationId: activeAssociationId,
+        vendorId: "",
+        vendorName: "",
+        invoiceNumber: "",
+        invoiceDate: "",
+        dueDate: "",
+        amount: 0,
+        status: "received",
+        accountId: "",
+        categoryId: "",
+        notes: "",
+      });
       toast({ title: "Invoice created" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -145,7 +161,41 @@ export default function FinancialInvoicesPage() {
                 <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                   Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                 </div>
-                <FormField control={form.control} name="vendorName" render={({ field }) => (<FormItem><FormLabel>Vendor</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField
+                  control={form.control}
+                  name="vendorId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Vendor</FormLabel>
+                      <Select
+                        value={field.value || "none"}
+                        onValueChange={(value) => {
+                          const nextValue = value === "none" ? "" : value;
+                          const vendor = (vendors ?? []).find((item) => item.id === nextValue);
+                          field.onChange(nextValue);
+                          form.setValue("vendorName", vendor?.name || "", { shouldValidate: true });
+                        }}
+                      >
+                        <FormControl>
+                          <SelectTrigger><SelectValue placeholder="Select vendor" /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">select vendor</SelectItem>
+                          {(vendors ?? []).map((vendor) => (
+                            <SelectItem key={vendor.id} value={vendor.id}>
+                              {vendor.name} · {vendor.trade}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <input type="hidden" {...form.register("vendorName")} />
+                <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Invoices are filed under the selected association’s vendor registry. Create the vendor in `/app/vendors` first if it does not exist yet.
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField control={form.control} name="invoiceNumber" render={({ field }) => (<FormItem><FormLabel>Invoice #</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />

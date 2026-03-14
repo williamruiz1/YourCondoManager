@@ -20,6 +20,8 @@ import {
   buildings,
   annualGovernanceTasks,
   boardRoles,
+  boardPackages,
+  boardPackageTemplates,
   budgetLines,
   budgets,
   budgetVersions,
@@ -28,6 +30,9 @@ import {
   clauseTags,
   communicationHistory,
   contactUpdateRequests,
+  inspectionRecords,
+  maintenanceScheduleInstances,
+  maintenanceScheduleTemplates,
   maintenanceRequests,
   documentTags,
   documentVersions,
@@ -61,6 +66,8 @@ import {
   paymentMethodConfigs,
   paymentWebhookEvents,
   permissionEnvelopes,
+  onboardingInvites,
+  onboardingSubmissions,
   portalAccess,
   resolutions,
   suggestedLinks,
@@ -69,6 +76,8 @@ import {
   unitChangeHistory,
   units,
   voteRecords,
+  vendors,
+  workOrders,
   type AdminAssociationScope,
   type AssociationMembership,
   type AdminUser,
@@ -84,6 +93,8 @@ import {
   type Building,
   type AnnualGovernanceTask,
   type BoardRole,
+  type BoardPackage,
+  type BoardPackageTemplate,
   type Budget,
   type BudgetLine,
   type BudgetVersion,
@@ -92,7 +103,13 @@ import {
   type ClauseTag,
   type CommunicationHistory,
   type ContactUpdateRequest,
+  type InspectionFindingItem,
+  type InspectionRecord,
+  type InsertMaintenanceScheduleInstance,
+  type InsertMaintenanceScheduleTemplate,
   type MaintenanceRequest,
+  type MaintenanceScheduleInstance,
+  type MaintenanceScheduleTemplate,
   type DocumentTag,
   type DocumentVersion,
   type Document,
@@ -112,6 +129,8 @@ import {
   type InsertBuilding,
   type InsertAnnualGovernanceTask,
   type InsertBoardRole,
+  type InsertBoardPackage,
+  type InsertBoardPackageTemplate,
   type InsertBudget,
   type InsertBudgetLine,
   type InsertBudgetVersion,
@@ -120,6 +139,7 @@ import {
   type InsertClauseTag,
   type InsertCommunicationHistory,
   type InsertContactUpdateRequest,
+  type InsertInspectionRecord,
   type InsertMaintenanceRequest,
   type InsertDocument,
   type InsertDocumentTag,
@@ -151,6 +171,8 @@ import {
   type InsertLateFeeRule,
   type InsertNoticeSend,
   type InsertNoticeTemplate,
+  type InsertOnboardingInvite,
+  type InsertOnboardingSubmission,
   type InsertPermissionEnvelope,
   type InsertPortalAccess,
   type InsertResolution,
@@ -159,6 +181,7 @@ import {
   type InsertUnit,
   type InsertUtilityPayment,
   type InsertVendorInvoice,
+  type InsertWorkOrder,
   type InsertVoteRecord,
   type Occupancy,
   type Ownership,
@@ -187,6 +210,8 @@ import {
   type LateFeeRule,
   type NoticeSend,
   type NoticeTemplate,
+  type OnboardingInvite,
+  type OnboardingSubmission,
   type PermissionEnvelope,
   type PortalAccess,
   type Resolution,
@@ -195,7 +220,10 @@ import {
   type SpecialAssessment,
   type Unit,
   type UtilityPayment,
+  type Vendor,
+  type InsertVendor,
   type VendorInvoice,
+  type WorkOrder,
   type VoteRecord,
   type TenantConfig,
   utilityPayments,
@@ -2468,6 +2496,32 @@ export interface IStorage {
     occupancy: Occupancy;
     ownership: Ownership | null;
   }>;
+  getOnboardingInvites(associationId: string): Promise<Array<OnboardingInvite & { unitLabel?: string; associationName?: string }>>;
+  createOnboardingInvite(data: InsertOnboardingInvite): Promise<OnboardingInvite & { inviteUrl: string }>;
+  getOnboardingInviteByToken(token: string): Promise<(OnboardingInvite & { unitLabel?: string; associationName?: string }) | undefined>;
+  sendOnboardingInvite(id: string, sentBy?: string | null): Promise<{ invite: OnboardingInvite; history: CommunicationHistory; delivery: { status: "sent" | "failed"; logId: string; provider: string; messageId: string | null; errorMessage?: string | null } }>;
+  runOnboardingInviteReminderSweep(input: { associationId: string; sentBy?: string | null; olderThanHours?: number }): Promise<{ processed: number; sent: number; failed: number }>;
+  createOnboardingSubmissionFromInvite(token: string, input: {
+    firstName: string;
+    lastName: string;
+    email?: string | null;
+    phone?: string | null;
+    mailingAddress?: string | null;
+    emergencyContactName?: string | null;
+    emergencyContactPhone?: string | null;
+    contactPreference?: string | null;
+    startDate: Date;
+    ownershipPercentage?: number | null;
+  }): Promise<OnboardingSubmission>;
+  getOnboardingSubmissions(associationId: string): Promise<Array<OnboardingSubmission & {
+    unitLabel?: string;
+    associationName?: string;
+    inviteEmail?: string | null;
+    matchedPersonId?: string | null;
+    matchBasis?: "email" | "name" | "none";
+    reviewNotes?: string[];
+  }>>;
+  reviewOnboardingSubmission(id: string, input: { decision: "approved" | "rejected"; reviewedBy: string; rejectionReason?: string | null }): Promise<OnboardingSubmission>;
   getResidentialDataset(associationId?: string): Promise<ResidentialDataset>;
   getAssociationOnboardingState(associationId: string): Promise<{
     associationId: string;
@@ -2494,7 +2548,9 @@ export interface IStorage {
   deleteBoardRole(id: string, actorEmail?: string): Promise<boolean>;
 
   getDocuments(associationId?: string): Promise<Document[]>;
+  getVendorDocuments(vendorId: string): Promise<Document[]>;
   createDocument(data: InsertDocument, actorEmail?: string): Promise<Document>;
+  createVendorDocument(vendorId: string, data: InsertDocument, actorEmail?: string): Promise<Document>;
   updateDocument(id: string, data: Partial<InsertDocument>, actorEmail?: string): Promise<Document | undefined>;
   deleteDocument(id: string, actorEmail?: string): Promise<boolean>;
   getHoaFeeSchedules(associationId?: string): Promise<HoaFeeSchedule[]>;
@@ -2542,6 +2598,10 @@ export interface IStorage {
     categoryId: string | null;
   }>>;
   getVendorInvoices(associationId?: string): Promise<VendorInvoice[]>;
+  getVendors(associationId?: string): Promise<Vendor[]>;
+  getVendorRenewalAlerts(associationId?: string): Promise<Array<{ vendorId: string; vendorName: string; associationId: string; daysUntilExpiry: number; severity: "expired" | "due-soon"; insuranceExpiresAt: Date }>>;
+  createVendor(data: InsertVendor): Promise<Vendor>;
+  updateVendor(id: string, data: Partial<InsertVendor>): Promise<Vendor | undefined>;
   createVendorInvoice(data: InsertVendorInvoice): Promise<VendorInvoice>;
   updateVendorInvoice(id: string, data: Partial<InsertVendorInvoice>): Promise<VendorInvoice | undefined>;
   getUtilityPayments(associationId?: string): Promise<UtilityPayment[]>;
@@ -2838,6 +2898,47 @@ export interface IStorage {
   }): Promise<MaintenanceRequest[]>;
   createMaintenanceRequest(data: InsertMaintenanceRequest): Promise<MaintenanceRequest>;
   updateMaintenanceRequest(id: string, data: Partial<InsertMaintenanceRequest>): Promise<MaintenanceRequest | undefined>;
+  getWorkOrders(filters?: {
+    associationId?: string;
+    unitId?: string;
+    vendorId?: string;
+    maintenanceRequestId?: string;
+    status?: string;
+  }): Promise<WorkOrder[]>;
+  createWorkOrder(data: InsertWorkOrder, actorEmail?: string): Promise<WorkOrder>;
+  updateWorkOrder(id: string, data: Partial<InsertWorkOrder>, actorEmail?: string): Promise<WorkOrder | undefined>;
+  convertMaintenanceRequestToWorkOrder(id: string, payload?: Partial<InsertWorkOrder>, actorEmail?: string): Promise<WorkOrder>;
+  getInspectionRecords(filters?: {
+    associationId?: string;
+    unitId?: string;
+    inspectionType?: string;
+  }): Promise<InspectionRecord[]>;
+  createInspectionRecord(data: InsertInspectionRecord, actorEmail?: string): Promise<InspectionRecord>;
+  updateInspectionRecord(id: string, data: Partial<InsertInspectionRecord>, actorEmail?: string): Promise<InspectionRecord | undefined>;
+  convertInspectionFindingToWorkOrder(
+    id: string,
+    findingIndex: number,
+    payload?: Partial<InsertWorkOrder>,
+    actorEmail?: string,
+  ): Promise<WorkOrder>;
+  getMaintenanceScheduleTemplates(filters?: { associationId?: string; unitId?: string; status?: string }): Promise<MaintenanceScheduleTemplate[]>;
+  createMaintenanceScheduleTemplate(data: InsertMaintenanceScheduleTemplate, actorEmail?: string): Promise<MaintenanceScheduleTemplate>;
+  updateMaintenanceScheduleTemplate(
+    id: string,
+    data: Partial<InsertMaintenanceScheduleTemplate>,
+    actorEmail?: string,
+  ): Promise<MaintenanceScheduleTemplate | undefined>;
+  getMaintenanceScheduleInstances(filters?: { associationId?: string; templateId?: string; status?: string }): Promise<MaintenanceScheduleInstance[]>;
+  createMaintenanceScheduleInstance(data: InsertMaintenanceScheduleInstance, actorEmail?: string): Promise<MaintenanceScheduleInstance>;
+  generateMaintenanceScheduleInstances(
+    templateId: string,
+    options?: { throughDate?: Date; actorEmail?: string | null },
+  ): Promise<MaintenanceScheduleInstance[]>;
+  convertMaintenanceInstanceToWorkOrder(
+    id: string,
+    payload?: Partial<InsertWorkOrder>,
+    actorEmail?: string,
+  ): Promise<WorkOrder>;
   runMaintenanceEscalationSweep(options?: {
     associationId?: string;
     now?: Date;
@@ -2879,6 +2980,46 @@ export interface IStorage {
     totalBoardMembers: number;
     totalDocuments: number;
   }>;
+  getOperationsDashboard(associationId?: string): Promise<{
+    totals: {
+      openWorkOrders: number;
+      dueMaintenance: number;
+      openFindings: number;
+      activeVendors: number;
+      pendingRenewalVendors: number;
+      overdueInstances: number;
+    };
+    workOrderAging: { open: number; inProgress: number; pendingReview: number; closed: number };
+    vendorStatus: { active: number; inactive: number; pendingRenewal: number };
+    recentWorkOrders: WorkOrder[];
+    dueInstances: MaintenanceScheduleInstance[];
+    recentInspections: InspectionRecord[];
+    recentAudit: AuditLog[];
+  }>;
+  exportOperationsReport(
+    reportType: "vendors" | "work-orders" | "maintenance",
+    associationId?: string,
+  ): Promise<{ filename: string; contentType: string; body: string }>;
+  getBoardPackageTemplates(associationId?: string): Promise<BoardPackageTemplate[]>;
+  createBoardPackageTemplate(data: InsertBoardPackageTemplate): Promise<BoardPackageTemplate>;
+  updateBoardPackageTemplate(id: string, data: Partial<InsertBoardPackageTemplate>): Promise<BoardPackageTemplate | undefined>;
+  getBoardPackages(associationId?: string): Promise<BoardPackage[]>;
+  createBoardPackage(data: InsertBoardPackage): Promise<BoardPackage>;
+  updateBoardPackage(id: string, data: Partial<InsertBoardPackage>, actorEmail?: string): Promise<BoardPackage | undefined>;
+  generateBoardPackage(templateId: string, options?: { periodLabel?: string; meetingId?: string | null }): Promise<BoardPackage>;
+  runScheduledBoardPackageGeneration(options?: {
+    associationId?: string;
+    now?: Date;
+    actorEmail?: string | null;
+  }): Promise<{
+    processed: number;
+    generated: number;
+    packageIds: string[];
+  }>;
+  distributeBoardPackage(
+    id: string,
+    payload?: { recipientEmails?: string[]; message?: string | null; actorEmail?: string | null },
+  ): Promise<{ boardPackage: BoardPackage; recipients: string[]; historyIds: string[] }>;
 
   getRoadmap(): Promise<RoadmapResponse>;
   createRoadmapProject(data: InsertRoadmapProject): Promise<RoadmapProject>;
@@ -2923,6 +3064,64 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   private async recordAuditEvent(event: InsertAuditLog) {
     await db.insert(auditLogs).values(event);
+  }
+
+  private normalizeEmail(value?: string | null): string {
+    return (value || "").trim().toLowerCase();
+  }
+
+  private normalizeName(value?: string | null): string {
+    return (value || "").trim().toLowerCase();
+  }
+
+  private async findMatchingOnboardingPerson(input: {
+    associationId: string;
+    firstName: string;
+    lastName: string;
+    email?: string | null;
+  }): Promise<{ person: Person | null; matchBasis: "email" | "name" | "none"; reviewNotes: string[]; requiresManualReview: boolean }> {
+    const people = await this.getPersons(input.associationId);
+    const normalizedEmail = this.normalizeEmail(input.email);
+    if (normalizedEmail) {
+      const emailMatch = people.find((person) => this.normalizeEmail(person.email) === normalizedEmail) ?? null;
+      if (emailMatch) {
+        return {
+          person: emailMatch,
+          matchBasis: "email",
+          reviewNotes: [`Matched existing resident by email ${normalizedEmail}.`],
+          requiresManualReview: false,
+        };
+      }
+    }
+
+    const normalizedFirst = this.normalizeName(input.firstName);
+    const normalizedLast = this.normalizeName(input.lastName);
+    const nameMatches = people.filter((person) =>
+      this.normalizeName(person.firstName) === normalizedFirst && this.normalizeName(person.lastName) === normalizedLast,
+    );
+    if (nameMatches.length === 1) {
+      return {
+        person: nameMatches[0],
+        matchBasis: "name",
+        reviewNotes: ["Matched a single existing resident by first and last name."],
+        requiresManualReview: false,
+      };
+    }
+    if (nameMatches.length > 1) {
+      return {
+        person: null,
+        matchBasis: "none",
+        reviewNotes: [`Found ${nameMatches.length} existing residents with the same name; manual review is required.`],
+        requiresManualReview: true,
+      };
+    }
+
+    return {
+      person: null,
+      matchBasis: "none",
+      reviewNotes: ["No existing resident match was found; approval will create a new person record."],
+      requiresManualReview: false,
+    };
   }
 
   async getAssociations(options?: { includeArchived?: boolean }): Promise<Association[]> {
@@ -3481,19 +3680,40 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Unit not found for association");
     }
 
-    const [person] = await db
-      .insert(persons)
-      .values({
-        firstName: input.person.firstName,
-        lastName: input.person.lastName,
-        email: input.person.email ?? null,
-        phone: input.person.phone ?? null,
-        mailingAddress: input.person.mailingAddress ?? null,
-        emergencyContactName: input.person.emergencyContactName ?? null,
-        emergencyContactPhone: input.person.emergencyContactPhone ?? null,
-        contactPreference: input.person.contactPreference ?? "email",
-      })
-      .returning();
+    const match = await this.findMatchingOnboardingPerson({
+      associationId: input.associationId,
+      firstName: input.person.firstName,
+      lastName: input.person.lastName,
+      email: input.person.email ?? null,
+    });
+
+    let person: Person;
+    if (match.person) {
+      person = match.person;
+      const patch: Partial<InsertPerson> = {};
+      if (!person.email && input.person.email) patch.email = input.person.email;
+      if (!person.phone && input.person.phone) patch.phone = input.person.phone;
+      if (!person.mailingAddress && input.person.mailingAddress) patch.mailingAddress = input.person.mailingAddress;
+      if (!person.emergencyContactName && input.person.emergencyContactName) patch.emergencyContactName = input.person.emergencyContactName;
+      if (!person.emergencyContactPhone && input.person.emergencyContactPhone) patch.emergencyContactPhone = input.person.emergencyContactPhone;
+      if (Object.keys(patch).length > 0) {
+        person = (await this.updatePerson(person.id, patch, "system")) ?? person;
+      }
+    } else {
+      [person] = await db
+        .insert(persons)
+        .values({
+          firstName: input.person.firstName,
+          lastName: input.person.lastName,
+          email: input.person.email ?? null,
+          phone: input.person.phone ?? null,
+          mailingAddress: input.person.mailingAddress ?? null,
+          emergencyContactName: input.person.emergencyContactName ?? null,
+          emergencyContactPhone: input.person.emergencyContactPhone ?? null,
+          contactPreference: input.person.contactPreference ?? "email",
+        })
+        .returning();
+    }
 
     const occupancy = await this.createOccupancy({
       unitId: input.unitId,
@@ -3515,6 +3735,425 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { person, occupancy, ownership };
+  }
+
+  async getOnboardingInvites(associationId: string): Promise<Array<OnboardingInvite & { unitLabel?: string; associationName?: string }>> {
+    const rows = await db
+      .select({
+        invite: onboardingInvites,
+        unitNumber: units.unitNumber,
+        associationName: associations.name,
+      })
+      .from(onboardingInvites)
+      .innerJoin(units, eq(units.id, onboardingInvites.unitId))
+      .innerJoin(associations, eq(associations.id, onboardingInvites.associationId))
+      .where(eq(onboardingInvites.associationId, associationId))
+      .orderBy(desc(onboardingInvites.createdAt));
+
+    return rows.map(({ invite, unitNumber, associationName }) => ({
+      ...invite,
+      unitLabel: unitNumber,
+      associationName,
+    }));
+  }
+
+  async createOnboardingInvite(data: InsertOnboardingInvite): Promise<OnboardingInvite & { inviteUrl: string }> {
+    const [unit] = await db.select().from(units).where(eq(units.id, data.unitId));
+    if (!unit || unit.associationId !== data.associationId) {
+      throw new Error("Unit not found for association");
+    }
+
+    const token = randomBytes(24).toString("base64url");
+    const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
+    if (expiresAt && Number.isNaN(expiresAt.getTime())) {
+      throw new Error("expiresAt must be a valid date");
+    }
+
+    const [invite] = await db
+      .insert(onboardingInvites)
+      .values({
+        associationId: data.associationId,
+        unitId: data.unitId,
+        residentType: data.residentType,
+        email: data.email ?? null,
+        phone: data.phone ?? null,
+        deliveryChannel: data.deliveryChannel ?? "link",
+        token,
+        status: "active",
+        expiresAt,
+        createdBy: data.createdBy ?? null,
+        lastSentAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    const appBaseUrl = (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+    return {
+      ...invite,
+      inviteUrl: `${appBaseUrl}/onboarding/${encodeURIComponent(invite.token)}`,
+    };
+  }
+
+  async getOnboardingInviteByToken(token: string): Promise<(OnboardingInvite & { unitLabel?: string; associationName?: string }) | undefined> {
+    const [row] = await db
+      .select({
+        invite: onboardingInvites,
+        unitNumber: units.unitNumber,
+        associationName: associations.name,
+      })
+      .from(onboardingInvites)
+      .innerJoin(units, eq(units.id, onboardingInvites.unitId))
+      .innerJoin(associations, eq(associations.id, onboardingInvites.associationId))
+      .where(eq(onboardingInvites.token, token));
+
+    if (!row) return undefined;
+
+    let invite = row.invite;
+    if (invite.status === "active" && invite.expiresAt && invite.expiresAt.getTime() < Date.now()) {
+      const [expired] = await db
+        .update(onboardingInvites)
+        .set({ status: "expired", updatedAt: new Date() })
+        .where(eq(onboardingInvites.id, invite.id))
+        .returning();
+      invite = expired;
+    }
+
+    return {
+      ...invite,
+      unitLabel: row.unitNumber,
+      associationName: row.associationName,
+    };
+  }
+
+  async sendOnboardingInvite(
+    id: string,
+    sentBy?: string | null,
+  ): Promise<{
+    invite: OnboardingInvite;
+    history: CommunicationHistory;
+    delivery: { status: "sent" | "failed"; logId: string; provider: string; messageId: string | null; errorMessage?: string | null };
+  }> {
+    const [row] = await db
+      .select({
+        invite: onboardingInvites,
+        unitNumber: units.unitNumber,
+        associationName: associations.name,
+      })
+      .from(onboardingInvites)
+      .innerJoin(units, eq(units.id, onboardingInvites.unitId))
+      .innerJoin(associations, eq(associations.id, onboardingInvites.associationId))
+      .where(eq(onboardingInvites.id, id));
+
+    if (!row) throw new Error("Onboarding invite not found");
+    if (!row.invite.email || !row.invite.email.trim()) {
+      throw new Error("Onboarding invite email is required to send outreach");
+    }
+
+    const appBaseUrl = (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+    const inviteUrl = `${appBaseUrl}/onboarding/${encodeURIComponent(row.invite.token)}`;
+    const subject = `${row.associationName} onboarding for Unit ${row.unitNumber}`;
+    const body = [
+      `You have been invited to complete ${row.invite.residentType} onboarding for ${row.associationName}.`,
+      `Unit: ${row.unitNumber}`,
+      "",
+      `Complete your onboarding form here: ${inviteUrl}`,
+      "",
+      "If you were not expecting this message, contact the association administrator.",
+    ].join("\n");
+
+    const delivery = await sendPlatformEmail({
+      associationId: row.invite.associationId,
+      to: row.invite.email,
+      subject,
+      text: body,
+      templateKey: "onboarding-invite",
+      metadata: {
+        onboardingInviteId: row.invite.id,
+        residentType: row.invite.residentType,
+        unitId: row.invite.unitId,
+      },
+      enableTracking: true,
+    });
+
+    const [invite] = await db
+      .update(onboardingInvites)
+      .set({
+        lastSentAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(onboardingInvites.id, row.invite.id))
+      .returning();
+
+    const history = await this.createCommunicationHistoryRecord({
+      associationId: invite.associationId,
+      channel: "email",
+      direction: "outbound",
+      subject,
+      bodySnippet: body.slice(0, 500),
+      recipientEmail: invite.email,
+      recipientPersonId: null,
+      relatedType: delivery.status === "sent" ? "onboarding-invite" : "onboarding-invite-failed",
+      relatedId: invite.id,
+      metadataJson: {
+        inviteUrl,
+        emailLogId: delivery.logId,
+        provider: delivery.provider,
+        providerMessageId: delivery.messageId,
+        sentBy: sentBy ?? null,
+        errorMessage: delivery.errorMessage ?? null,
+      },
+    });
+
+    if (delivery.status === "sent") {
+      await this.upsertEmailThread({
+        associationId: invite.associationId,
+        subject,
+        participantsJson: [invite.email],
+        source: "internal",
+      });
+    }
+
+    return { invite, history, delivery };
+  }
+
+  async runOnboardingInviteReminderSweep(input: {
+    associationId: string;
+    sentBy?: string | null;
+    olderThanHours?: number;
+  }): Promise<{ processed: number; sent: number; failed: number }> {
+    const olderThanHours = Number.isFinite(input.olderThanHours) ? Math.max(0, Number(input.olderThanHours)) : 24;
+    const cutoff = new Date(Date.now() - olderThanHours * 60 * 60 * 1000);
+    const invites = await db
+      .select()
+      .from(onboardingInvites)
+      .where(eq(onboardingInvites.associationId, input.associationId))
+      .orderBy(desc(onboardingInvites.createdAt));
+
+    const eligible = invites.filter((invite) => {
+      if (invite.status !== "active") return false;
+      if (!invite.email || !invite.email.trim()) return false;
+      if (invite.expiresAt && invite.expiresAt.getTime() < Date.now()) return false;
+      if (!invite.lastSentAt) return true;
+      return invite.lastSentAt <= cutoff;
+    });
+
+    let sent = 0;
+    let failed = 0;
+    for (const invite of eligible) {
+      const result = await this.sendOnboardingInvite(invite.id, input.sentBy ?? null);
+      if (result.delivery.status === "sent") sent += 1;
+      else failed += 1;
+    }
+
+    return {
+      processed: eligible.length,
+      sent,
+      failed,
+    };
+  }
+
+  async createOnboardingSubmissionFromInvite(token: string, input: {
+    firstName: string;
+    lastName: string;
+    email?: string | null;
+    phone?: string | null;
+    mailingAddress?: string | null;
+    emergencyContactName?: string | null;
+    emergencyContactPhone?: string | null;
+    contactPreference?: string | null;
+    startDate: Date;
+    ownershipPercentage?: number | null;
+  }): Promise<OnboardingSubmission> {
+    const invite = await this.getOnboardingInviteByToken(token);
+    if (!invite) throw new Error("Onboarding invite not found");
+    if (invite.status !== "active") {
+      throw new Error(`Invite is ${invite.status}`);
+    }
+    if (Number.isNaN(input.startDate.getTime())) {
+      throw new Error("startDate must be valid");
+    }
+    if (invite.residentType === "tenant" && !(input.email || "").trim() && !(input.phone || "").trim()) {
+      throw new Error("Tenant intake requires at least an email or phone number");
+    }
+
+    const [submission] = await db
+      .insert(onboardingSubmissions)
+      .values({
+        inviteId: invite.id,
+        associationId: invite.associationId,
+        unitId: invite.unitId,
+        residentType: invite.residentType,
+        sourceChannel: "unit-link",
+        status: "pending",
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email ?? null,
+        phone: input.phone ?? null,
+        mailingAddress: input.mailingAddress ?? null,
+        emergencyContactName: input.emergencyContactName ?? null,
+        emergencyContactPhone: input.emergencyContactPhone ?? null,
+        contactPreference: input.contactPreference ?? "email",
+        startDate: input.startDate,
+        ownershipPercentage: invite.residentType === "owner" ? (input.ownershipPercentage ?? 100) : null,
+        submittedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    await db
+      .update(onboardingInvites)
+      .set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() })
+      .where(eq(onboardingInvites.id, invite.id));
+
+    return submission;
+  }
+
+  async getOnboardingSubmissions(associationId: string): Promise<Array<OnboardingSubmission & {
+    unitLabel?: string;
+    associationName?: string;
+    inviteEmail?: string | null;
+    matchedPersonId?: string | null;
+    matchBasis?: "email" | "name" | "none";
+    reviewNotes?: string[];
+  }>> {
+    const rows = await db
+      .select({
+        submission: onboardingSubmissions,
+        unitNumber: units.unitNumber,
+        associationName: associations.name,
+        inviteEmail: onboardingInvites.email,
+      })
+      .from(onboardingSubmissions)
+      .innerJoin(units, eq(units.id, onboardingSubmissions.unitId))
+      .innerJoin(associations, eq(associations.id, onboardingSubmissions.associationId))
+      .leftJoin(onboardingInvites, eq(onboardingInvites.id, onboardingSubmissions.inviteId))
+      .where(eq(onboardingSubmissions.associationId, associationId))
+      .orderBy(desc(onboardingSubmissions.submittedAt));
+
+    return Promise.all(rows.map(async ({ submission, unitNumber, associationName, inviteEmail }) => {
+      const match = await this.findMatchingOnboardingPerson({
+        associationId: submission.associationId,
+        firstName: submission.firstName,
+        lastName: submission.lastName,
+        email: submission.email ?? inviteEmail ?? null,
+      });
+      return {
+        ...submission,
+        unitLabel: unitNumber,
+        associationName,
+        inviteEmail,
+        matchedPersonId: match.person?.id ?? null,
+        matchBasis: match.matchBasis,
+        reviewNotes: match.reviewNotes,
+      };
+    }));
+  }
+
+  async reviewOnboardingSubmission(
+    id: string,
+    input: { decision: "approved" | "rejected"; reviewedBy: string; rejectionReason?: string | null },
+  ): Promise<OnboardingSubmission> {
+    const [submission] = await db.select().from(onboardingSubmissions).where(eq(onboardingSubmissions.id, id));
+    if (!submission) throw new Error("Onboarding submission not found");
+    if (submission.status !== "pending") throw new Error("Only pending submissions can be reviewed");
+
+    if (input.decision === "rejected") {
+      const [rejected] = await db
+        .update(onboardingSubmissions)
+        .set({
+          status: "rejected",
+          reviewedBy: input.reviewedBy,
+          reviewedAt: new Date(),
+          rejectionReason: input.rejectionReason ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(onboardingSubmissions.id, id))
+        .returning();
+
+      if (submission.inviteId) {
+        await db
+          .update(onboardingInvites)
+          .set({ status: "rejected", rejectedAt: new Date(), updatedAt: new Date() })
+          .where(eq(onboardingInvites.id, submission.inviteId));
+      }
+
+      return rejected;
+    }
+
+    const match = await this.findMatchingOnboardingPerson({
+      associationId: submission.associationId,
+      firstName: submission.firstName,
+      lastName: submission.lastName,
+      email: submission.email ?? null,
+    });
+    if (match.requiresManualReview) {
+      throw new Error(match.reviewNotes.join(" "));
+    }
+
+    const result = await this.submitOnboardingIntake({
+      associationId: submission.associationId,
+      unitId: submission.unitId,
+      occupancyType: submission.residentType === "owner" ? "OWNER_OCCUPIED" : "TENANT",
+      person: {
+        firstName: submission.firstName,
+        lastName: submission.lastName,
+        email: submission.email ?? null,
+        phone: submission.phone ?? null,
+        mailingAddress: submission.mailingAddress ?? null,
+        emergencyContactName: submission.emergencyContactName ?? null,
+        emergencyContactPhone: submission.emergencyContactPhone ?? null,
+        contactPreference: submission.contactPreference ?? "email",
+      },
+      startDate: submission.startDate,
+      ownershipPercentage: submission.ownershipPercentage ?? null,
+    });
+
+    await this.upsertAssociationMembership({
+      associationId: submission.associationId,
+      personId: result.person.id,
+      unitId: submission.unitId,
+      membershipType: submission.residentType,
+      status: "active",
+      isPrimary: 1,
+    });
+
+    if ((submission.email || "").trim()) {
+      const existingPortalAccess = await this.getPortalAccessByAssociationEmail(submission.associationId, submission.email || "");
+      if (!existingPortalAccess) {
+        await this.createPortalAccess({
+          associationId: submission.associationId,
+          personId: result.person.id,
+          unitId: submission.unitId,
+          email: submission.email || "",
+          role: submission.residentType,
+          status: "active",
+        });
+      }
+    }
+
+    const [approved] = await db
+      .update(onboardingSubmissions)
+      .set({
+        status: "approved",
+        reviewedBy: input.reviewedBy,
+        reviewedAt: new Date(),
+        rejectionReason: null,
+        createdPersonId: result.person.id,
+        createdOccupancyId: result.occupancy.id,
+        createdOwnershipId: result.ownership?.id ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(onboardingSubmissions.id, id))
+      .returning();
+
+    if (submission.inviteId) {
+      await db
+        .update(onboardingInvites)
+        .set({ status: "approved", approvedAt: new Date(), updatedAt: new Date() })
+        .where(eq(onboardingInvites.id, submission.inviteId));
+    }
+
+    return approved;
   }
 
   async getResidentialDataset(associationId?: string): Promise<ResidentialDataset> {
@@ -3767,6 +4406,25 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(documents).where(eq(documents.associationId, associationId));
   }
 
+  async getVendorDocuments(vendorId: string): Promise<Document[]> {
+    return db
+      .select({
+        id: documents.id,
+        associationId: documents.associationId,
+        title: documents.title,
+        fileUrl: documents.fileUrl,
+        documentType: documents.documentType,
+        isPortalVisible: documents.isPortalVisible,
+        portalAudience: documents.portalAudience,
+        uploadedBy: documents.uploadedBy,
+        createdAt: documents.createdAt,
+      })
+      .from(documents)
+      .innerJoin(documentTags, eq(documentTags.documentId, documents.id))
+      .where(and(eq(documentTags.entityType, "vendor"), eq(documentTags.entityId, vendorId)))
+      .orderBy(desc(documents.createdAt));
+  }
+
   async createDocument(data: InsertDocument, actorEmail?: string): Promise<Document> {
     const [result] = await db.insert(documents).values(data).returning();
     await db.insert(documentVersions).values({
@@ -3785,6 +4443,27 @@ export class DatabaseStorage implements IStorage {
       beforeJson: null,
       afterJson: result,
     });
+    return result;
+  }
+
+  async createVendorDocument(vendorId: string, data: InsertDocument, actorEmail?: string): Promise<Document> {
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, vendorId));
+    if (!vendor) {
+      throw new Error("Vendor not found");
+    }
+    if (vendor.associationId !== data.associationId) {
+      throw new Error("Vendor does not belong to the selected association");
+    }
+
+    const result = await this.createDocument(data, actorEmail);
+    await this.createDocumentTag(
+      {
+        documentId: result.id,
+        entityType: "vendor",
+        entityId: vendor.id,
+      },
+      actorEmail,
+    );
     return result;
   }
 
@@ -4195,18 +4874,167 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(vendorInvoices.createdAt));
   }
 
+  async getVendors(associationId?: string): Promise<Vendor[]> {
+    if (!associationId) return db.select().from(vendors).orderBy(desc(vendors.updatedAt), desc(vendors.createdAt));
+    return db
+      .select()
+      .from(vendors)
+      .where(eq(vendors.associationId, associationId))
+      .orderBy(desc(vendors.updatedAt), desc(vendors.createdAt));
+  }
+
+  async getVendorRenewalAlerts(associationId?: string): Promise<Array<{ vendorId: string; vendorName: string; associationId: string; daysUntilExpiry: number; severity: "expired" | "due-soon"; insuranceExpiresAt: Date }>> {
+    const rows = await this.getVendors(associationId);
+    const now = new Date();
+    const alerts = rows
+      .filter((vendor) => Boolean(vendor.insuranceExpiresAt) && vendor.status !== "inactive")
+      .map((vendor) => {
+        const insuranceExpiresAt = new Date(vendor.insuranceExpiresAt as Date);
+        const daysUntilExpiry = Math.floor((insuranceExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        return {
+          vendorId: vendor.id,
+          vendorName: vendor.name,
+          associationId: vendor.associationId,
+          daysUntilExpiry,
+          severity: daysUntilExpiry < 0 ? "expired" as const : "due-soon" as const,
+          insuranceExpiresAt,
+        };
+      })
+      .filter((item) => item.daysUntilExpiry <= 30)
+      .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
+
+    return alerts;
+  }
+
+  private deriveVendorStatus(
+    status: InsertVendor["status"] | undefined,
+    insuranceExpiresAt: Date | null | undefined,
+  ): "active" | "inactive" | "pending-renewal" {
+    if (status === "inactive") return "inactive" as const;
+    if (insuranceExpiresAt) {
+      const daysUntilExpiry = Math.floor((insuranceExpiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      if (daysUntilExpiry <= 30) return "pending-renewal" as const;
+    }
+    return status === "pending-renewal" ? "pending-renewal" : "active";
+  }
+
+  async createVendor(data: InsertVendor): Promise<Vendor> {
+    const insuranceExpiresAt = data.insuranceExpiresAt ? new Date(data.insuranceExpiresAt) : null;
+    const status = this.deriveVendorStatus(data.status, insuranceExpiresAt);
+    const [result] = await db
+      .insert(vendors)
+      .values({ ...data, insuranceExpiresAt, status, updatedAt: new Date() })
+      .returning();
+    return result;
+  }
+
+  async updateVendor(id: string, data: Partial<InsertVendor>): Promise<Vendor | undefined> {
+    const [before] = await db.select().from(vendors).where(eq(vendors.id, id));
+    if (!before) return undefined;
+    const insuranceExpiresAt = data.insuranceExpiresAt === undefined
+      ? before.insuranceExpiresAt
+      : (data.insuranceExpiresAt ? new Date(data.insuranceExpiresAt) : null);
+    const status = this.deriveVendorStatus(data.status ?? before.status, insuranceExpiresAt);
+    const [result] = await db
+      .update(vendors)
+      .set({ ...data, insuranceExpiresAt, status, updatedAt: new Date() })
+      .where(eq(vendors.id, id))
+      .returning();
+    return result;
+  }
+
+  private async normalizeVendorInvoiceData(
+    data: Pick<InsertVendorInvoice, "associationId" | "vendorId" | "vendorName">,
+    existing?: VendorInvoice,
+  ): Promise<Pick<InsertVendorInvoice, "vendorId" | "vendorName">> {
+    const associationId = data.associationId ?? existing?.associationId;
+    const nextVendorId = data.vendorId !== undefined ? data.vendorId : (existing?.vendorId ?? null);
+    const inputVendorName = data.vendorName !== undefined ? data.vendorName : existing?.vendorName;
+    const trimmedVendorName = typeof inputVendorName === "string" ? inputVendorName.trim() : "";
+
+    if (nextVendorId) {
+      const [vendor] = await db.select().from(vendors).where(eq(vendors.id, nextVendorId));
+      if (!vendor) {
+        throw new Error("Vendor not found");
+      }
+      if (associationId && vendor.associationId !== associationId) {
+        throw new Error("Vendor does not belong to the selected association");
+      }
+      return {
+        vendorId: vendor.id,
+        vendorName: vendor.name,
+      };
+    }
+
+    if (!trimmedVendorName) {
+      throw new Error("Vendor name is required");
+    }
+
+    if (!associationId) {
+      throw new Error("Association is required for vendor filing");
+    }
+
+    const [existingVendor] = await db
+      .select()
+      .from(vendors)
+      .where(and(eq(vendors.associationId, associationId), eq(vendors.name, trimmedVendorName)))
+      .limit(1);
+
+    if (existingVendor) {
+      return {
+        vendorId: existingVendor.id,
+        vendorName: existingVendor.name,
+      };
+    }
+
+    const [createdVendor] = await db
+      .insert(vendors)
+      .values({
+        associationId,
+        name: trimmedVendorName,
+        trade: "general",
+        status: "active",
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    return {
+      vendorId: createdVendor.id,
+      vendorName: createdVendor.name,
+    };
+  }
+
   async createVendorInvoice(data: InsertVendorInvoice): Promise<VendorInvoice> {
+    const vendorFields = await this.normalizeVendorInvoiceData(data);
     const [result] = await db
       .insert(vendorInvoices)
-      .values({ ...data, updatedAt: new Date() })
+      .values({ ...data, ...vendorFields, updatedAt: new Date() })
       .returning();
     return result;
   }
 
   async updateVendorInvoice(id: string, data: Partial<InsertVendorInvoice>): Promise<VendorInvoice | undefined> {
+    const [existing] = await db.select().from(vendorInvoices).where(eq(vendorInvoices.id, id));
+    if (!existing) return undefined;
+
+    const vendorFields =
+      data.vendorId !== undefined || data.vendorName !== undefined || data.associationId !== undefined
+        ? await this.normalizeVendorInvoiceData(
+            {
+              associationId: data.associationId ?? existing.associationId,
+              vendorId: data.vendorId !== undefined ? data.vendorId : existing.vendorId,
+              vendorName: data.vendorName !== undefined ? data.vendorName : existing.vendorName,
+            },
+            existing,
+          )
+        : {
+            vendorId: existing.vendorId,
+            vendorName: existing.vendorName,
+          };
+
     const [result] = await db
       .update(vendorInvoices)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data, ...vendorFields, updatedAt: new Date() })
       .where(eq(vendorInvoices.id, id))
       .returning();
     return result;
@@ -7857,6 +8685,637 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  private async validateWorkOrderAssociations(data: {
+    associationId: string;
+    unitId?: string | null;
+    vendorId?: string | null;
+    maintenanceRequestId?: string | null;
+    vendorInvoiceId?: string | null;
+  }) {
+    if (data.unitId) {
+      const [unit] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, data.unitId));
+      if (!unit) throw new Error("Unit not found");
+      if (unit.associationId !== data.associationId) throw new Error("Unit does not belong to the selected association");
+    }
+
+    if (data.vendorId) {
+      const [vendor] = await db.select({ associationId: vendors.associationId }).from(vendors).where(eq(vendors.id, data.vendorId));
+      if (!vendor) throw new Error("Vendor not found");
+      if (vendor.associationId !== data.associationId) throw new Error("Vendor does not belong to the selected association");
+    }
+
+    if (data.maintenanceRequestId) {
+      const [request] = await db
+        .select({ associationId: maintenanceRequests.associationId })
+        .from(maintenanceRequests)
+        .where(eq(maintenanceRequests.id, data.maintenanceRequestId));
+      if (!request) throw new Error("Maintenance request not found");
+      if (request.associationId !== data.associationId) throw new Error("Maintenance request does not belong to the selected association");
+    }
+
+    if (data.vendorInvoiceId) {
+      const [invoice] = await db
+        .select({ associationId: vendorInvoices.associationId, vendorId: vendorInvoices.vendorId })
+        .from(vendorInvoices)
+        .where(eq(vendorInvoices.id, data.vendorInvoiceId));
+      if (!invoice) throw new Error("Vendor invoice not found");
+      if (invoice.associationId !== data.associationId) throw new Error("Vendor invoice does not belong to the selected association");
+      if (data.vendorId && invoice.vendorId && invoice.vendorId !== data.vendorId) {
+        throw new Error("Vendor invoice does not belong to the selected vendor");
+      }
+    }
+  }
+
+  private normalizeInspectionFindings(findings: unknown): InspectionFindingItem[] {
+    if (!Array.isArray(findings)) return [];
+    const normalized: InspectionFindingItem[] = [];
+    for (const finding of findings) {
+      if (!finding || typeof finding !== "object") continue;
+      const item = finding as Record<string, unknown>;
+      const title = typeof item.title === "string" ? item.title.trim() : "";
+      if (!title) continue;
+      normalized.push({
+        title,
+        description: typeof item.description === "string" ? item.description.trim() : null,
+        severity:
+          item.severity === "low" || item.severity === "medium" || item.severity === "high" || item.severity === "critical"
+            ? item.severity
+            : "medium",
+        status: item.status === "monitoring" || item.status === "resolved" ? item.status : "open",
+        photoUrls: Array.isArray(item.photoUrls) ? item.photoUrls.filter((value): value is string => typeof value === "string" && value.trim().length > 0) : [],
+        linkedWorkOrderId: typeof item.linkedWorkOrderId === "string" && item.linkedWorkOrderId.trim().length > 0 ? item.linkedWorkOrderId : null,
+      });
+    }
+    return normalized;
+  }
+
+  async getInspectionRecords(filters?: {
+    associationId?: string;
+    unitId?: string;
+    inspectionType?: string;
+  }): Promise<InspectionRecord[]> {
+    let rows = await db.select().from(inspectionRecords).orderBy(desc(inspectionRecords.inspectedAt), desc(inspectionRecords.updatedAt));
+    if (filters?.associationId) rows = rows.filter((row) => row.associationId === filters.associationId);
+    if (filters?.unitId) rows = rows.filter((row) => row.unitId === filters.unitId);
+    if (filters?.inspectionType) rows = rows.filter((row) => row.inspectionType === filters.inspectionType);
+    return rows;
+  }
+
+  async createInspectionRecord(data: InsertInspectionRecord, actorEmail?: string): Promise<InspectionRecord> {
+    if (data.unitId) {
+      const [unit] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, data.unitId));
+      if (!unit) throw new Error("Unit not found");
+      if (unit.associationId !== data.associationId) throw new Error("Unit does not belong to the selected association");
+    }
+
+    const now = new Date();
+    const [result] = await db
+      .insert(inspectionRecords)
+      .values({
+        ...data,
+        findingsJson: this.normalizeInspectionFindings(data.findingsJson),
+        updatedAt: now,
+      })
+      .returning();
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "inspection-record",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async updateInspectionRecord(id: string, data: Partial<InsertInspectionRecord>, actorEmail?: string): Promise<InspectionRecord | undefined> {
+    const [before] = await db.select().from(inspectionRecords).where(eq(inspectionRecords.id, id));
+    if (!before) return undefined;
+
+    const nextAssociationId = data.associationId ?? before.associationId;
+    const nextUnitId = data.unitId !== undefined ? data.unitId : before.unitId;
+    if (nextUnitId) {
+      const [unit] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, nextUnitId));
+      if (!unit) throw new Error("Unit not found");
+      if (unit.associationId !== nextAssociationId) throw new Error("Unit does not belong to the selected association");
+    }
+
+    const [result] = await db
+      .update(inspectionRecords)
+      .set({
+        ...data,
+        associationId: nextAssociationId,
+        findingsJson: data.findingsJson !== undefined ? this.normalizeInspectionFindings(data.findingsJson) : before.findingsJson,
+        updatedAt: new Date(),
+      })
+      .where(eq(inspectionRecords.id, id))
+      .returning();
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "update",
+      entityType: "inspection-record",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async convertInspectionFindingToWorkOrder(
+    id: string,
+    findingIndex: number,
+    payload?: Partial<InsertWorkOrder>,
+    actorEmail?: string,
+  ): Promise<WorkOrder> {
+    const [record] = await db.select().from(inspectionRecords).where(eq(inspectionRecords.id, id));
+    if (!record) throw new Error("Inspection record not found");
+
+    const findings = this.normalizeInspectionFindings(record.findingsJson);
+    const finding = findings[findingIndex];
+    if (!finding) throw new Error("Inspection finding not found");
+    if (finding.linkedWorkOrderId) {
+      const [existing] = await db.select().from(workOrders).where(eq(workOrders.id, finding.linkedWorkOrderId));
+      if (existing) return existing;
+    }
+
+    const workOrder = await this.createWorkOrder(
+      {
+        associationId: record.associationId,
+        unitId: payload?.unitId ?? record.unitId ?? null,
+        vendorId: payload?.vendorId ?? null,
+        vendorInvoiceId: payload?.vendorInvoiceId ?? null,
+        maintenanceRequestId: payload?.maintenanceRequestId ?? null,
+        title: payload?.title ?? `${record.inspectionType}: ${finding.title}`,
+        description: payload?.description ?? [finding.description, record.summary].filter(Boolean).join("\n\n"),
+        locationText: payload?.locationText ?? record.locationText,
+        category: payload?.category ?? "inspection-follow-up",
+        priority:
+          payload?.priority ??
+          (finding.severity === "critical" ? "urgent" : finding.severity === "high" ? "high" : finding.severity === "low" ? "low" : "medium"),
+        status: payload?.status ?? "open",
+        assignedTo: payload?.assignedTo ?? null,
+        estimatedCost: payload?.estimatedCost ?? null,
+        actualCost: payload?.actualCost ?? null,
+        scheduledFor: payload?.scheduledFor ?? null,
+        resolutionNotes: payload?.resolutionNotes ?? null,
+      },
+      actorEmail,
+    );
+
+    findings[findingIndex] = {
+      ...finding,
+      linkedWorkOrderId: workOrder.id,
+      status: finding.status === "resolved" ? "resolved" : "monitoring",
+    };
+
+    await db
+      .update(inspectionRecords)
+      .set({
+        findingsJson: findings,
+        updatedAt: new Date(),
+      })
+      .where(eq(inspectionRecords.id, id));
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "inspection-finding-conversion",
+      entityId: workOrder.id,
+      associationId: record.associationId,
+      beforeJson: { inspectionRecordId: record.id, findingIndex, finding },
+      afterJson: { workOrderId: workOrder.id, findingIndex, finding: findings[findingIndex] },
+    });
+
+    return workOrder;
+  }
+
+  private computeNextMaintenanceDueAt(
+    dueAt: Date,
+    frequencyUnit: MaintenanceScheduleTemplate["frequencyUnit"],
+    frequencyInterval: number,
+  ) {
+    const next = new Date(dueAt);
+    const interval = Math.max(1, frequencyInterval || 1);
+    if (frequencyUnit === "year") {
+      next.setFullYear(next.getFullYear() + interval);
+      return next;
+    }
+    if (frequencyUnit === "quarter") {
+      next.setMonth(next.getMonth() + interval * 3);
+      return next;
+    }
+    next.setMonth(next.getMonth() + interval);
+    return next;
+  }
+
+  async getMaintenanceScheduleTemplates(filters?: { associationId?: string; unitId?: string; status?: string }): Promise<MaintenanceScheduleTemplate[]> {
+    let rows = await db
+      .select()
+      .from(maintenanceScheduleTemplates)
+      .orderBy(desc(maintenanceScheduleTemplates.updatedAt), desc(maintenanceScheduleTemplates.createdAt));
+    if (filters?.associationId) rows = rows.filter((row) => row.associationId === filters.associationId);
+    if (filters?.unitId) rows = rows.filter((row) => row.unitId === filters.unitId);
+    if (filters?.status) rows = rows.filter((row) => row.status === filters.status);
+    return rows;
+  }
+
+  async createMaintenanceScheduleTemplate(data: InsertMaintenanceScheduleTemplate, actorEmail?: string): Promise<MaintenanceScheduleTemplate> {
+    await this.validateWorkOrderAssociations({
+      associationId: data.associationId,
+      unitId: data.unitId ?? undefined,
+      vendorId: data.vendorId ?? undefined,
+    });
+
+    const [result] = await db
+      .insert(maintenanceScheduleTemplates)
+      .values({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "maintenance-schedule-template",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async updateMaintenanceScheduleTemplate(
+    id: string,
+    data: Partial<InsertMaintenanceScheduleTemplate>,
+    actorEmail?: string,
+  ): Promise<MaintenanceScheduleTemplate | undefined> {
+    const [before] = await db.select().from(maintenanceScheduleTemplates).where(eq(maintenanceScheduleTemplates.id, id));
+    if (!before) return undefined;
+
+    await this.validateWorkOrderAssociations({
+      associationId: data.associationId ?? before.associationId,
+      unitId: data.unitId !== undefined ? data.unitId : before.unitId,
+      vendorId: data.vendorId !== undefined ? data.vendorId : before.vendorId,
+    });
+
+    const [result] = await db
+      .update(maintenanceScheduleTemplates)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(maintenanceScheduleTemplates.id, id))
+      .returning();
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "update",
+      entityType: "maintenance-schedule-template",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async getMaintenanceScheduleInstances(filters?: { associationId?: string; templateId?: string; status?: string }): Promise<MaintenanceScheduleInstance[]> {
+    let rows = await db
+      .select()
+      .from(maintenanceScheduleInstances)
+      .orderBy(maintenanceScheduleInstances.dueAt, desc(maintenanceScheduleInstances.updatedAt));
+    if (filters?.associationId) rows = rows.filter((row) => row.associationId === filters.associationId);
+    if (filters?.templateId) rows = rows.filter((row) => row.templateId === filters.templateId);
+    if (filters?.status) rows = rows.filter((row) => row.status === filters.status);
+    return rows;
+  }
+
+  async createMaintenanceScheduleInstance(data: InsertMaintenanceScheduleInstance, actorEmail?: string): Promise<MaintenanceScheduleInstance> {
+    await this.validateWorkOrderAssociations({
+      associationId: data.associationId,
+      unitId: data.unitId ?? undefined,
+      vendorId: data.vendorId ?? undefined,
+    });
+
+    const [result] = await db
+      .insert(maintenanceScheduleInstances)
+      .values({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "maintenance-schedule-instance",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async generateMaintenanceScheduleInstances(
+    templateId: string,
+    options?: { throughDate?: Date; actorEmail?: string | null },
+  ): Promise<MaintenanceScheduleInstance[]> {
+    const [template] = await db.select().from(maintenanceScheduleTemplates).where(eq(maintenanceScheduleTemplates.id, templateId));
+    if (!template) throw new Error("Maintenance schedule template not found");
+
+    const throughDate = options?.throughDate ?? this.computeNextMaintenanceDueAt(new Date(template.nextDueAt), template.frequencyUnit, 3);
+    const existing = await this.getMaintenanceScheduleInstances({ templateId });
+    const existingDueKeys = new Set(existing.map((row) => new Date(row.dueAt).toISOString()));
+    const created: MaintenanceScheduleInstance[] = [];
+    let dueAt = new Date(template.nextDueAt);
+
+    while (dueAt <= throughDate) {
+      const dueKey = dueAt.toISOString();
+      if (!existingDueKeys.has(dueKey)) {
+        const instance = await this.createMaintenanceScheduleInstance(
+          {
+            templateId: template.id,
+            associationId: template.associationId,
+            unitId: template.unitId,
+            vendorId: template.vendorId,
+            workOrderId: null,
+            title: template.title,
+            component: template.component,
+            locationText: template.locationText,
+            dueAt,
+            status: dueAt <= new Date() ? "due" : "scheduled",
+          },
+          options?.actorEmail || undefined,
+        );
+        created.push(instance);
+      }
+      dueAt = this.computeNextMaintenanceDueAt(dueAt, template.frequencyUnit, template.frequencyInterval);
+    }
+
+    const [updatedTemplate] = await db
+      .update(maintenanceScheduleTemplates)
+      .set({
+        nextDueAt: dueAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(maintenanceScheduleTemplates.id, template.id))
+      .returning();
+
+    await this.recordAuditEvent({
+      actorEmail: options?.actorEmail || "system",
+      action: "update",
+      entityType: "maintenance-schedule-template-generation",
+      entityId: updatedTemplate.id,
+      associationId: updatedTemplate.associationId,
+      beforeJson: template,
+      afterJson: updatedTemplate,
+    });
+
+    return created;
+  }
+
+  async convertMaintenanceInstanceToWorkOrder(
+    id: string,
+    payload?: Partial<InsertWorkOrder>,
+    actorEmail?: string,
+  ): Promise<WorkOrder> {
+    const [instance] = await db.select().from(maintenanceScheduleInstances).where(eq(maintenanceScheduleInstances.id, id));
+    if (!instance) throw new Error("Maintenance schedule instance not found");
+    if (instance.workOrderId) {
+      const [existing] = await db.select().from(workOrders).where(eq(workOrders.id, instance.workOrderId));
+      if (existing) return existing;
+    }
+
+    const workOrder = await this.createWorkOrder(
+      {
+        associationId: instance.associationId,
+        unitId: payload?.unitId ?? instance.unitId ?? null,
+        vendorId: payload?.vendorId ?? instance.vendorId ?? null,
+        vendorInvoiceId: payload?.vendorInvoiceId ?? null,
+        maintenanceRequestId: payload?.maintenanceRequestId ?? null,
+        title: payload?.title ?? instance.title,
+        description: payload?.description ?? `Preventive maintenance for ${instance.component}`,
+        locationText: payload?.locationText ?? instance.locationText,
+        category: payload?.category ?? "preventive-maintenance",
+        priority: payload?.priority ?? "medium",
+        status: payload?.status ?? "open",
+        assignedTo: payload?.assignedTo ?? null,
+        estimatedCost: payload?.estimatedCost ?? null,
+        actualCost: payload?.actualCost ?? null,
+        scheduledFor: payload?.scheduledFor ?? instance.dueAt,
+        resolutionNotes: payload?.resolutionNotes ?? null,
+      },
+      actorEmail,
+    );
+
+    await db
+      .update(maintenanceScheduleInstances)
+      .set({
+        workOrderId: workOrder.id,
+        status: "converted",
+        updatedAt: new Date(),
+      })
+      .where(eq(maintenanceScheduleInstances.id, id));
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "maintenance-schedule-instance-conversion",
+      entityId: workOrder.id,
+      associationId: instance.associationId,
+      beforeJson: instance,
+      afterJson: { workOrderId: workOrder.id, instanceId: instance.id },
+    });
+
+    return workOrder;
+  }
+
+  async getWorkOrders(filters?: {
+    associationId?: string;
+    unitId?: string;
+    vendorId?: string;
+    maintenanceRequestId?: string;
+    status?: string;
+  }): Promise<WorkOrder[]> {
+    let rows = await db.select().from(workOrders).orderBy(desc(workOrders.updatedAt), desc(workOrders.createdAt));
+    if (filters?.associationId) rows = rows.filter((row) => row.associationId === filters.associationId);
+    if (filters?.unitId) rows = rows.filter((row) => row.unitId === filters.unitId);
+    if (filters?.vendorId) rows = rows.filter((row) => row.vendorId === filters.vendorId);
+    if (filters?.maintenanceRequestId) rows = rows.filter((row) => row.maintenanceRequestId === filters.maintenanceRequestId);
+    if (filters?.status) rows = rows.filter((row) => row.status === filters.status);
+    return rows;
+  }
+
+  async createWorkOrder(data: InsertWorkOrder, actorEmail?: string): Promise<WorkOrder> {
+    await this.validateWorkOrderAssociations(data);
+
+    const status = data.status ?? "open";
+    const now = new Date();
+    const [result] = await db
+      .insert(workOrders)
+      .values({
+        ...data,
+        status,
+        startedAt: status === "in-progress" ? now : null,
+        completedAt: status === "closed" ? now : null,
+        updatedAt: now,
+      })
+      .returning();
+
+    if (result.maintenanceRequestId) {
+      await this.updateMaintenanceRequest(result.maintenanceRequestId, {
+        status: status === "closed" ? "resolved" : status === "in-progress" ? "in-progress" : "triaged",
+        assignedTo: result.assignedTo ?? undefined,
+      });
+
+      const [request] = await db.select().from(maintenanceRequests).where(eq(maintenanceRequests.id, result.maintenanceRequestId));
+      if (request?.submittedByEmail || request?.submittedByPersonId) {
+        await this.createCommunicationHistoryRecord({
+          associationId: result.associationId,
+          channel: "email",
+          direction: "outbound",
+          subject: `Maintenance work order created: ${result.title}`,
+          bodySnippet: `Your maintenance request has been converted into a managed work order with status ${result.status}.`,
+          recipientEmail: request.submittedByEmail ?? null,
+          recipientPersonId: request.submittedByPersonId ?? null,
+          relatedType: "work-order-created",
+          relatedId: result.id,
+          metadataJson: {
+            maintenanceRequestId: request.id,
+            status: result.status,
+            vendorId: result.vendorId,
+          },
+        });
+      }
+    }
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "work-order",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async updateWorkOrder(id: string, data: Partial<InsertWorkOrder>, actorEmail?: string): Promise<WorkOrder | undefined> {
+    const [before] = await db.select().from(workOrders).where(eq(workOrders.id, id));
+    if (!before) return undefined;
+
+    const nextAssociationId = data.associationId ?? before.associationId;
+    await this.validateWorkOrderAssociations({
+      associationId: nextAssociationId,
+      unitId: data.unitId !== undefined ? data.unitId : before.unitId,
+      vendorId: data.vendorId !== undefined ? data.vendorId : before.vendorId,
+      maintenanceRequestId: data.maintenanceRequestId !== undefined ? data.maintenanceRequestId : before.maintenanceRequestId,
+      vendorInvoiceId: data.vendorInvoiceId !== undefined ? data.vendorInvoiceId : before.vendorInvoiceId,
+    });
+
+    const status = data.status ?? before.status;
+    const now = new Date();
+    const [result] = await db
+      .update(workOrders)
+      .set({
+        ...data,
+        associationId: nextAssociationId,
+        status,
+        startedAt: status === "in-progress" && !before.startedAt ? now : before.startedAt,
+        completedAt: status === "closed" ? (before.completedAt ?? now) : before.completedAt,
+        updatedAt: now,
+      })
+      .where(eq(workOrders.id, id))
+      .returning();
+
+    if (result.maintenanceRequestId) {
+      await this.updateMaintenanceRequest(result.maintenanceRequestId, {
+        status: status === "closed" ? "resolved" : status === "in-progress" ? "in-progress" : "triaged",
+        assignedTo: result.assignedTo ?? undefined,
+        resolutionNotes: result.resolutionNotes ?? undefined,
+      });
+
+      const [request] = await db.select().from(maintenanceRequests).where(eq(maintenanceRequests.id, result.maintenanceRequestId));
+      if ((before.status !== result.status || before.assignedTo !== result.assignedTo) && (request?.submittedByEmail || request?.submittedByPersonId)) {
+        await this.createCommunicationHistoryRecord({
+          associationId: result.associationId,
+          channel: "email",
+          direction: "outbound",
+          subject: `Maintenance work order update: ${result.title}`,
+          bodySnippet: `Work order status is now ${result.status}${result.assignedTo ? ` and assigned to ${result.assignedTo}` : ""}.`,
+          recipientEmail: request.submittedByEmail ?? null,
+          recipientPersonId: request.submittedByPersonId ?? null,
+          relatedType: "work-order-status",
+          relatedId: result.id,
+          metadataJson: {
+            maintenanceRequestId: request.id,
+            fromStatus: before.status,
+            toStatus: result.status,
+            assignedTo: result.assignedTo,
+          },
+        });
+      }
+    }
+
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "update",
+      entityType: "work-order",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+
+    return result;
+  }
+
+  async convertMaintenanceRequestToWorkOrder(id: string, payload?: Partial<InsertWorkOrder>, actorEmail?: string): Promise<WorkOrder> {
+    const [request] = await db.select().from(maintenanceRequests).where(eq(maintenanceRequests.id, id));
+    if (!request) throw new Error("Maintenance request not found");
+
+    const existing = await this.getWorkOrders({ maintenanceRequestId: id });
+    if (existing[0]) {
+      return existing[0];
+    }
+
+    return this.createWorkOrder(
+      {
+        associationId: request.associationId,
+        maintenanceRequestId: request.id,
+        unitId: payload?.unitId ?? request.unitId ?? null,
+        vendorId: payload?.vendorId ?? null,
+        vendorInvoiceId: payload?.vendorInvoiceId ?? null,
+        title: payload?.title ?? request.title,
+        description: payload?.description ?? request.description,
+        locationText: payload?.locationText ?? request.locationText ?? null,
+        category: payload?.category ?? request.category,
+        priority: payload?.priority ?? request.priority,
+        status: payload?.status ?? "open",
+        assignedTo: payload?.assignedTo ?? request.assignedTo ?? null,
+        estimatedCost: payload?.estimatedCost ?? null,
+        actualCost: payload?.actualCost ?? null,
+        scheduledFor: payload?.scheduledFor ?? null,
+        resolutionNotes: payload?.resolutionNotes ?? request.resolutionNotes ?? null,
+      },
+      actorEmail,
+    );
+  }
+
   async runMaintenanceEscalationSweep(options?: {
     associationId?: string;
     now?: Date;
@@ -7877,7 +9336,8 @@ export class DatabaseStorage implements IStorage {
       if (!item.responseDueAt || item.responseDueAt > now) continue;
       if (item.escalationStage >= 3) continue;
 
-      const nextStage = item.escalationStage + 1;
+      const increment = item.priority === "urgent" ? 2 : 1;
+      const nextStage = Math.min(3, item.escalationStage + increment);
       const [updated] = await db
         .update(maintenanceRequests)
         .set({
@@ -7894,7 +9354,7 @@ export class DatabaseStorage implements IStorage {
         associationId: updated.associationId,
         channel: "email",
         direction: "outbound",
-        subject: `Maintenance escalation stage ${nextStage}: ${updated.title}`,
+        subject: `${updated.priority === "urgent" ? "Urgent " : ""}maintenance escalation stage ${nextStage}: ${updated.title}`,
         bodySnippet: `Request ${updated.id} exceeded SLA response due at ${updated.responseDueAt?.toISOString()}.`,
         recipientEmail: supportEmail,
         recipientPersonId: null,
@@ -8002,6 +9462,20 @@ export class DatabaseStorage implements IStorage {
         const [result] = await db.select({ associationId: budgets.associationId }).from(budgets).where(eq(budgets.id, id));
         return result?.associationId;
       }
+      case "onboarding-submission": {
+        const [result] = await db
+          .select({ associationId: onboardingSubmissions.associationId })
+          .from(onboardingSubmissions)
+          .where(eq(onboardingSubmissions.id, id));
+        return result?.associationId;
+      }
+      case "onboarding-invite": {
+        const [result] = await db
+          .select({ associationId: onboardingInvites.associationId })
+          .from(onboardingInvites)
+          .where(eq(onboardingInvites.id, id));
+        return result?.associationId;
+      }
       case "budget-version": {
         const [result] = await db
           .select({ associationId: budgets.associationId })
@@ -8021,6 +9495,10 @@ export class DatabaseStorage implements IStorage {
       }
       case "vendor-invoice": {
         const [result] = await db.select({ associationId: vendorInvoices.associationId }).from(vendorInvoices).where(eq(vendorInvoices.id, id));
+        return result?.associationId;
+      }
+      case "vendor": {
+        const [result] = await db.select({ associationId: vendors.associationId }).from(vendors).where(eq(vendors.id, id));
         return result?.associationId;
       }
       case "utility-payment": {
@@ -8147,6 +9625,30 @@ export class DatabaseStorage implements IStorage {
         const [result] = await db.select({ associationId: maintenanceRequests.associationId }).from(maintenanceRequests).where(eq(maintenanceRequests.id, id));
         return result?.associationId;
       }
+      case "work-order": {
+        const [result] = await db.select({ associationId: workOrders.associationId }).from(workOrders).where(eq(workOrders.id, id));
+        return result?.associationId;
+      }
+      case "inspection-record": {
+        const [result] = await db.select({ associationId: inspectionRecords.associationId }).from(inspectionRecords).where(eq(inspectionRecords.id, id));
+        return result?.associationId;
+      }
+      case "maintenance-schedule-template": {
+        const [result] = await db.select({ associationId: maintenanceScheduleTemplates.associationId }).from(maintenanceScheduleTemplates).where(eq(maintenanceScheduleTemplates.id, id));
+        return result?.associationId;
+      }
+      case "maintenance-schedule-instance": {
+        const [result] = await db.select({ associationId: maintenanceScheduleInstances.associationId }).from(maintenanceScheduleInstances).where(eq(maintenanceScheduleInstances.id, id));
+        return result?.associationId;
+      }
+      case "board-package-template": {
+        const [result] = await db.select({ associationId: boardPackageTemplates.associationId }).from(boardPackageTemplates).where(eq(boardPackageTemplates.id, id));
+        return result?.associationId;
+      }
+      case "board-package": {
+        const [result] = await db.select({ associationId: boardPackages.associationId }).from(boardPackages).where(eq(boardPackages.id, id));
+        return result?.associationId;
+      }
       case "contact-update-request": {
         const [result] = await db.select({ associationId: contactUpdateRequests.associationId }).from(contactUpdateRequests).where(eq(contactUpdateRequests.id, id));
         return result?.associationId;
@@ -8157,8 +9659,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createDocumentTag(data: InsertDocumentTag, actorEmail?: string): Promise<DocumentTag> {
+    const [doc] = await db.select({ associationId: documents.associationId }).from(documents).where(eq(documents.id, data.documentId));
+    if (!doc) {
+      throw new Error("Document not found");
+    }
+    if (data.entityType === "vendor") {
+      const [vendor] = await db.select({ associationId: vendors.associationId }).from(vendors).where(eq(vendors.id, data.entityId));
+      if (!vendor) {
+        throw new Error("Vendor not found");
+      }
+      if (vendor.associationId !== doc.associationId) {
+        throw new Error("Vendor and document must belong to the same association");
+      }
+    }
+
     const [result] = await db.insert(documentTags).values(data).returning();
-    const [doc] = await db.select({ associationId: documents.associationId }).from(documents).where(eq(documents.id, result.documentId));
     await this.recordAuditEvent({
       actorEmail: actorEmail || "system",
       action: "create",
@@ -8399,6 +9914,572 @@ export class DatabaseStorage implements IStorage {
       totalBoardMembers: activeBoardMembers.length,
       totalDocuments: allDocuments.length,
     };
+  }
+
+  async getOperationsDashboard(associationId?: string) {
+    const [allWorkOrders, allVendors, allInspections, allInstances, allAuditLogs] = await Promise.all([
+      this.getWorkOrders({ associationId }),
+      this.getVendors(associationId),
+      this.getInspectionRecords({ associationId }),
+      this.getMaintenanceScheduleInstances({ associationId }),
+      this.getAuditLogs(associationId),
+    ]);
+
+    const now = new Date();
+    const dueInstances = allInstances.filter((instance) => instance.status === "due" || instance.dueAt <= now);
+    const openWorkOrders = allWorkOrders.filter((order) => order.status !== "closed" && order.status !== "cancelled");
+    const openFindings = allInspections
+      .flatMap((record) => this.normalizeInspectionFindings(record.findingsJson))
+      .filter((finding) => finding.status !== "resolved").length;
+
+    const opsEntityTypes = new Set([
+      "vendor",
+      "work-order",
+      "inspection-record",
+      "inspection-finding-conversion",
+      "maintenance-schedule-template",
+      "maintenance-schedule-instance",
+      "maintenance-schedule-template-generation",
+      "maintenance-schedule-instance-conversion",
+    ]);
+
+    return {
+      totals: {
+        openWorkOrders: openWorkOrders.length,
+        dueMaintenance: dueInstances.length,
+        openFindings,
+        activeVendors: allVendors.filter((vendor) => vendor.status === "active").length,
+        pendingRenewalVendors: allVendors.filter((vendor) => vendor.status === "pending-renewal").length,
+        overdueInstances: allInstances.filter((instance) => instance.dueAt < now && !instance.workOrderId && instance.status !== "completed").length,
+      },
+      workOrderAging: {
+        open: allWorkOrders.filter((order) => order.status === "open" || order.status === "assigned").length,
+        inProgress: allWorkOrders.filter((order) => order.status === "in-progress").length,
+        pendingReview: allWorkOrders.filter((order) => order.status === "pending-review").length,
+        closed: allWorkOrders.filter((order) => order.status === "closed").length,
+      },
+      vendorStatus: {
+        active: allVendors.filter((vendor) => vendor.status === "active").length,
+        inactive: allVendors.filter((vendor) => vendor.status === "inactive").length,
+        pendingRenewal: allVendors.filter((vendor) => vendor.status === "pending-renewal").length,
+      },
+      recentWorkOrders: allWorkOrders.slice(0, 8),
+      dueInstances: dueInstances.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime()).slice(0, 8),
+      recentInspections: allInspections.slice(0, 8),
+      recentAudit: allAuditLogs.filter((entry) => opsEntityTypes.has(entry.entityType)).slice(0, 10),
+    };
+  }
+
+  async exportOperationsReport(
+    reportType: "vendors" | "work-orders" | "maintenance",
+    associationId?: string,
+  ) {
+    const escapeCsv = (value: unknown) => {
+      const text = value == null ? "" : String(value);
+      if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+        return `"${text.replace(/"/g, "\"\"")}"`;
+      }
+      return text;
+    };
+
+    if (reportType === "vendors") {
+      const vendors = await this.getVendors(associationId);
+      const rows = [
+        ["name", "trade", "status", "serviceArea", "primaryContactName", "primaryEmail", "insuranceExpiresAt"],
+        ...vendors.map((vendor) => [
+          vendor.name,
+          vendor.trade,
+          vendor.status,
+          vendor.serviceArea ?? "",
+          vendor.primaryContactName ?? "",
+          vendor.primaryEmail ?? "",
+          vendor.insuranceExpiresAt?.toISOString() ?? "",
+        ]),
+      ];
+      return {
+        filename: "vendor-report.csv",
+        contentType: "text/csv; charset=utf-8",
+        body: rows.map((row) => row.map(escapeCsv).join(",")).join("\n"),
+      };
+    }
+
+    if (reportType === "work-orders") {
+      const workOrders = await this.getWorkOrders({ associationId });
+      const rows = [
+        ["title", "status", "priority", "locationText", "assignedTo", "estimatedCost", "actualCost", "vendorId", "unitId", "updatedAt"],
+        ...workOrders.map((order) => [
+          order.title,
+          order.status,
+          order.priority,
+          order.locationText ?? "",
+          order.assignedTo ?? "",
+          order.estimatedCost ?? "",
+          order.actualCost ?? "",
+          order.vendorId ?? "",
+          order.unitId ?? "",
+          order.updatedAt.toISOString(),
+        ]),
+      ];
+      return {
+        filename: "work-order-report.csv",
+        contentType: "text/csv; charset=utf-8",
+        body: rows.map((row) => row.map(escapeCsv).join(",")).join("\n"),
+      };
+    }
+
+    const [templates, instances] = await Promise.all([
+      this.getMaintenanceScheduleTemplates({ associationId }),
+      this.getMaintenanceScheduleInstances({ associationId }),
+    ]);
+    const templateById = new Map(templates.map((template) => [template.id, template]));
+    const rows = [
+      ["templateTitle", "component", "locationText", "dueAt", "instanceStatus", "workOrderId", "templateStatus"],
+      ...instances.map((instance) => {
+        const template = templateById.get(instance.templateId);
+        return [
+          instance.title,
+          instance.component,
+          instance.locationText,
+          instance.dueAt.toISOString(),
+          instance.status,
+          instance.workOrderId ?? "",
+          template?.status ?? "",
+        ];
+      }),
+    ];
+    return {
+      filename: "maintenance-report.csv",
+      contentType: "text/csv; charset=utf-8",
+      body: rows.map((row) => row.map(escapeCsv).join(",")).join("\n"),
+    };
+  }
+
+  async getBoardPackageTemplates(associationId?: string): Promise<BoardPackageTemplate[]> {
+    if (!associationId) {
+      return db.select().from(boardPackageTemplates).orderBy(desc(boardPackageTemplates.updatedAt), desc(boardPackageTemplates.createdAt));
+    }
+    return db
+      .select()
+      .from(boardPackageTemplates)
+      .where(eq(boardPackageTemplates.associationId, associationId))
+      .orderBy(desc(boardPackageTemplates.updatedAt), desc(boardPackageTemplates.createdAt));
+  }
+
+  async createBoardPackageTemplate(data: InsertBoardPackageTemplate): Promise<BoardPackageTemplate> {
+    const [result] = await db.insert(boardPackageTemplates).values({ ...data, updatedAt: new Date() }).returning();
+    await this.recordAuditEvent({
+      actorEmail: "system",
+      action: "create",
+      entityType: "board-package-template",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async updateBoardPackageTemplate(id: string, data: Partial<InsertBoardPackageTemplate>): Promise<BoardPackageTemplate | undefined> {
+    const [before] = await db.select().from(boardPackageTemplates).where(eq(boardPackageTemplates.id, id));
+    if (!before) return undefined;
+    const [result] = await db
+      .update(boardPackageTemplates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(boardPackageTemplates.id, id))
+      .returning();
+    await this.recordAuditEvent({
+      actorEmail: "system",
+      action: "update",
+      entityType: "board-package-template",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async getBoardPackages(associationId?: string): Promise<BoardPackage[]> {
+    if (!associationId) {
+      return db.select().from(boardPackages).orderBy(desc(boardPackages.updatedAt), desc(boardPackages.createdAt));
+    }
+    return db
+      .select()
+      .from(boardPackages)
+      .where(eq(boardPackages.associationId, associationId))
+      .orderBy(desc(boardPackages.updatedAt), desc(boardPackages.createdAt));
+  }
+
+  async createBoardPackage(data: InsertBoardPackage): Promise<BoardPackage> {
+    const [result] = await db.insert(boardPackages).values({ ...data, updatedAt: new Date() }).returning();
+    await this.recordAuditEvent({
+      actorEmail: "system",
+      action: "create",
+      entityType: "board-package",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async updateBoardPackage(id: string, data: Partial<InsertBoardPackage>, actorEmail?: string): Promise<BoardPackage | undefined> {
+    const [before] = await db.select().from(boardPackages).where(eq(boardPackages.id, id));
+    if (!before) return undefined;
+    const nextStatus = data.status ?? before.status;
+    const now = new Date();
+    const [result] = await db
+      .update(boardPackages)
+      .set({
+        ...data,
+        approvedBy:
+          nextStatus === "approved"
+            ? data.approvedBy ?? before.approvedBy ?? actorEmail ?? "system"
+            : nextStatus === "draft"
+              ? null
+              : before.approvedBy,
+        approvedAt:
+          nextStatus === "approved"
+            ? data.approvedAt ?? before.approvedAt ?? now
+            : nextStatus === "draft"
+              ? null
+              : before.approvedAt,
+        distributedBy:
+          nextStatus === "distributed"
+            ? data.distributedBy ?? before.distributedBy ?? actorEmail ?? "system"
+            : nextStatus === "draft"
+              ? null
+              : before.distributedBy,
+        distributedAt:
+          nextStatus === "distributed"
+            ? data.distributedAt ?? before.distributedAt ?? now
+            : nextStatus === "draft"
+              ? null
+              : before.distributedAt,
+        updatedAt: now,
+      })
+      .where(eq(boardPackages.id, id))
+      .returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "update",
+      entityType: "board-package",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  private getBoardPackagePeriodLabel(template: BoardPackageTemplate, scheduledAt?: Date) {
+    const baseDate = scheduledAt ? new Date(scheduledAt) : new Date();
+    if (template.frequency === "meeting-driven") {
+      return `${template.meetingType || "meeting"} · ${baseDate.toLocaleDateString("en-US")}`;
+    }
+    if (template.frequency === "annual") {
+      return String(baseDate.getFullYear());
+    }
+    if (template.frequency === "quarterly") {
+      return `Q${Math.floor(baseDate.getMonth() / 3) + 1} ${baseDate.getFullYear()}`;
+    }
+    return baseDate.toLocaleString("en-US", { month: "long", year: "numeric" });
+  }
+
+  async generateBoardPackage(templateId: string, options?: { periodLabel?: string; meetingId?: string | null }): Promise<BoardPackage> {
+    const [template] = await db.select().from(boardPackageTemplates).where(eq(boardPackageTemplates.id, templateId));
+    if (!template) throw new Error("Board package template not found");
+    const [meeting] = options?.meetingId
+      ? await db.select().from(governanceMeetings).where(eq(governanceMeetings.id, options.meetingId))
+      : [undefined];
+    if (meeting && meeting.associationId !== template.associationId) {
+      throw new Error("Meeting does not belong to the selected association");
+    }
+
+    const periodLabel = options?.periodLabel || this.getBoardPackagePeriodLabel(template, meeting?.scheduledAt ? new Date(meeting.scheduledAt) : undefined);
+    const [existing] = await db
+      .select()
+      .from(boardPackages)
+      .where(
+        and(
+          eq(boardPackages.templateId, template.id),
+          eq(boardPackages.periodLabel, periodLabel),
+          meeting ? eq(boardPackages.meetingId, meeting.id) : isNull(boardPackages.meetingId),
+        ),
+      );
+    if (existing) return existing;
+
+    const sections = Array.isArray(template.sectionsJson)
+      ? template.sectionsJson.filter((value): value is string => typeof value === "string")
+      : [];
+    const operations = await this.getOperationsDashboard(template.associationId);
+    const meetings = await this.getGovernanceMeetings(template.associationId);
+    const budgets = await this.getBudgets(template.associationId);
+    const ledgerEntries = await this.getOwnerLedgerEntries(template.associationId);
+
+    const content = sections.map((sectionKey) => {
+      if (sectionKey === "financial") {
+        const receivable = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "charge" || entry.entryType === "late-fee" ? entry.amount : 0), 0);
+        const payments = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "payment" ? entry.amount : 0), 0);
+        return {
+          key: "financial",
+          title: "Financial Summary",
+          items: [
+            `Open receivables posted: ${receivable.toFixed(2)}`,
+            `Payments recorded: ${payments.toFixed(2)}`,
+            `Budget count: ${budgets.length}`,
+          ],
+        };
+      }
+      if (sectionKey === "governance") {
+        return {
+          key: "governance",
+          title: "Governance Summary",
+          items: [
+            `Meetings tracked: ${meetings.length}`,
+            `Completed meetings: ${meetings.filter((meeting) => meeting.status === "completed").length}`,
+            `Published summaries: ${meetings.filter((meeting) => meeting.summaryStatus === "published").length}`,
+          ],
+        };
+      }
+      if (sectionKey === "maintenance") {
+        return {
+          key: "maintenance",
+          title: "Operations Summary",
+          items: [
+            `Open work orders: ${operations.totals.openWorkOrders}`,
+            `Due maintenance instances: ${operations.totals.dueMaintenance}`,
+            `Open inspection findings: ${operations.totals.openFindings}`,
+          ],
+        };
+      }
+      if (sectionKey === "delinquency") {
+        const unpaidCharges = ledgerEntries.filter((entry) => entry.entryType === "charge" || entry.entryType === "late-fee").length;
+        return {
+          key: "delinquency",
+          title: "Delinquency Snapshot",
+          items: [
+            `Charge entries posted: ${unpaidCharges}`,
+            `Payments posted: ${ledgerEntries.filter((entry) => entry.entryType === "payment").length}`,
+            `Pending renewal vendors: ${operations.totals.pendingRenewalVendors}`,
+          ],
+        };
+      }
+      return {
+        key: sectionKey,
+        title: sectionKey,
+        items: [],
+      };
+    });
+
+    return this.createBoardPackage({
+      templateId: template.id,
+      associationId: template.associationId,
+      meetingId: meeting?.id ?? null,
+      title: `${template.title} Package`,
+      periodLabel,
+      status: "draft",
+      contentJson: content,
+      annotationsJson: [],
+    });
+  }
+
+  async runScheduledBoardPackageGeneration(options?: {
+    associationId?: string;
+    now?: Date;
+    actorEmail?: string | null;
+  }): Promise<{
+    processed: number;
+    generated: number;
+    packageIds: string[];
+  }> {
+    const now = options?.now ?? new Date();
+    const templates = (await this.getBoardPackageTemplates(options?.associationId)).filter((template) => Boolean(template.autoGenerate));
+    const packageIds: string[] = [];
+
+    for (const template of templates) {
+      const meetings = (await this.getGovernanceMeetings(template.associationId))
+        .filter((meeting) => meeting.status === "scheduled")
+        .filter((meeting) => !template.meetingType || meeting.meetingType === template.meetingType);
+      const leadDays = Math.max(0, template.generateDaysBefore || 0);
+      let generatedForTemplate = false;
+
+      for (const meeting of meetings) {
+        const triggerAt = new Date(meeting.scheduledAt);
+        triggerAt.setDate(triggerAt.getDate() - leadDays);
+        if (triggerAt > now) continue;
+
+        const periodLabel = this.getBoardPackagePeriodLabel(template, new Date(meeting.scheduledAt));
+        const [existing] = await db
+          .select()
+          .from(boardPackages)
+          .where(
+            and(
+              eq(boardPackages.templateId, template.id),
+              eq(boardPackages.meetingId, meeting.id),
+              eq(boardPackages.periodLabel, periodLabel),
+            ),
+          );
+        if (existing) continue;
+
+        const created = await this.generateBoardPackage(template.id, {
+          meetingId: meeting.id,
+          periodLabel,
+        });
+        packageIds.push(created.id);
+        generatedForTemplate = true;
+      }
+
+      if (generatedForTemplate) {
+        await db
+          .update(boardPackageTemplates)
+          .set({
+            lastAutoGeneratedAt: now,
+            updatedAt: new Date(),
+          })
+          .where(eq(boardPackageTemplates.id, template.id));
+
+        await this.recordAuditEvent({
+          actorEmail: options?.actorEmail || "scheduler@system",
+          action: "update",
+          entityType: "board-package-template-scheduled-generation",
+          entityId: template.id,
+          associationId: template.associationId,
+          beforeJson: template,
+          afterJson: { lastAutoGeneratedAt: now, generatedCount: packageIds.length },
+        });
+      }
+    }
+
+    return {
+      processed: templates.length,
+      generated: packageIds.length,
+      packageIds,
+    };
+  }
+
+  private async getDefaultBoardPackageRecipients(associationId: string): Promise<string[]> {
+    const rows = await db
+      .select({
+        email: adminUsers.email,
+        role: adminUsers.role,
+        isActive: adminUsers.isActive,
+      })
+      .from(adminAssociationScopes)
+      .innerJoin(adminUsers, eq(adminUsers.id, adminAssociationScopes.adminUserId))
+      .where(eq(adminAssociationScopes.associationId, associationId));
+
+    return Array.from(
+      new Set(
+        rows
+          .filter((row) => row.isActive === 1)
+          .filter((row) => row.role === "platform-admin" || row.role === "board-admin" || row.role === "viewer")
+          .map((row) => row.email.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  private renderBoardPackageText(boardPackage: BoardPackage): string {
+    const sections = Array.isArray(boardPackage.contentJson) ? boardPackage.contentJson : [];
+    const sectionText = sections.map((section: any, index: number) => {
+      const title = typeof section?.title === "string" ? section.title : `Section ${index + 1}`;
+      const items = Array.isArray(section?.items) ? section.items.map((item: unknown) => `- ${String(item)}`).join("\n") : "- No items";
+      return `${title}\n${items}`;
+    }).join("\n\n");
+    return `${boardPackage.title}\n${boardPackage.periodLabel}\n\n${sectionText}`.trim();
+  }
+
+  private renderBoardPackageHtml(boardPackage: BoardPackage, message?: string | null): string {
+    const sections = Array.isArray(boardPackage.contentJson) ? boardPackage.contentJson : [];
+    const safeMessage = message ? `<p>${message.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\n", "<br/>")}</p>` : "";
+    const sectionHtml = sections.map((section: any, index: number) => {
+      const title = typeof section?.title === "string" ? section.title : `Section ${index + 1}`;
+      const items = Array.isArray(section?.items) ? section.items.map((item: unknown) => `<li>${String(item)}</li>`).join("") : "<li>No items</li>";
+      return `<section><h3>${title}</h3><ul>${items}</ul></section>`;
+    }).join("");
+    return `<div><h2>${boardPackage.title}</h2><p>${boardPackage.periodLabel}</p>${safeMessage}${sectionHtml}</div>`;
+  }
+
+  async distributeBoardPackage(
+    id: string,
+    payload?: { recipientEmails?: string[]; message?: string | null; actorEmail?: string | null },
+  ): Promise<{ boardPackage: BoardPackage; recipients: string[]; historyIds: string[] }> {
+    const [boardPackage] = await db.select().from(boardPackages).where(eq(boardPackages.id, id));
+    if (!boardPackage) throw new Error("Board package not found");
+    if (boardPackage.status === "draft") {
+      throw new Error("Board package must be approved before distribution");
+    }
+
+    const explicitRecipients = Array.isArray(payload?.recipientEmails)
+      ? payload!.recipientEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)
+      : [];
+    const recipients = explicitRecipients.length > 0
+      ? Array.from(new Set(explicitRecipients))
+      : await this.getDefaultBoardPackageRecipients(boardPackage.associationId);
+    if (recipients.length === 0) {
+      throw new Error("No board package recipients are available");
+    }
+
+    const historyIds: string[] = [];
+    const textBody = this.renderBoardPackageText(boardPackage);
+    const htmlBody = this.renderBoardPackageHtml(boardPackage, payload?.message ?? null);
+    const actorEmail = payload?.actorEmail || "system";
+
+    for (const recipientEmail of recipients) {
+      const delivery = await sendPlatformEmail({
+        associationId: boardPackage.associationId,
+        to: recipientEmail,
+        subject: `${boardPackage.title} - ${boardPackage.periodLabel}`,
+        text: [payload?.message || "", textBody].filter(Boolean).join("\n\n"),
+        html: htmlBody,
+        templateKey: "board-package-distribution",
+        metadata: {
+          boardPackageId: boardPackage.id,
+          associationId: boardPackage.associationId,
+        },
+        attachments: [
+          {
+            filename: `${boardPackage.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "board-package"}.txt`,
+            contentType: "text/plain; charset=utf-8",
+            content: textBody,
+          },
+        ],
+        enableTracking: true,
+      });
+
+      const history = await this.createCommunicationHistoryRecord({
+        associationId: boardPackage.associationId,
+        channel: "email",
+        direction: "outbound",
+        subject: `${boardPackage.title} - ${boardPackage.periodLabel}`,
+        bodySnippet: textBody.slice(0, 500),
+        recipientEmail,
+        recipientPersonId: null,
+        relatedType: "board-package-distribution",
+        relatedId: boardPackage.id,
+        metadataJson: {
+          emailLogId: delivery.logId,
+          provider: delivery.provider,
+          providerMessageId: delivery.messageId,
+          distributedBy: actorEmail,
+          message: payload?.message ?? null,
+        },
+      });
+      historyIds.push(history.id);
+
+      await this.upsertEmailThread({
+        associationId: boardPackage.associationId,
+        subject: `${boardPackage.title} - ${boardPackage.periodLabel}`,
+        participantsJson: [recipientEmail],
+        source: "internal",
+      });
+    }
+
+    const updated = await this.updateBoardPackage(boardPackage.id, { status: "distributed" }, actorEmail);
+    if (!updated) throw new Error("Board package not found after distribution");
+    return { boardPackage: updated, recipients, historyIds };
   }
 
   private async validateRoadmapDependencyIds(projectId: string, dependencyTaskIds: string[] = [], selfTaskId?: string): Promise<string[]> {

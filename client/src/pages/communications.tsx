@@ -9,8 +9,11 @@ import type {
   MaintenanceRequest,
   NoticeSend,
   NoticeTemplate,
+  OnboardingInvite,
+  OnboardingSubmission,
   PaymentMethodConfig,
   Person,
+  Unit,
 } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -86,10 +89,22 @@ export default function CommunicationsPage() {
     requireApproval: false,
     scheduledFor: "",
   });
+  const [onboardingInviteForm, setOnboardingInviteForm] = useState({
+    unitId: "",
+    residentType: "owner" as "owner" | "tenant",
+    email: "",
+    phone: "",
+    expiresAt: "",
+  });
+  const [reminderSweepHours, setReminderSweepHours] = useState("24");
   const selectedAssociationId = activeAssociationId;
 
   const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
   const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
+  const { data: units } = useQuery<Unit[]>({
+    queryKey: [selectedAssociationId ? `/api/units?associationId=${selectedAssociationId}` : "/api/units"],
+    enabled: Boolean(selectedAssociationId),
+  });
   const { data: templates } = useQuery<NoticeTemplate[]>({ queryKey: ["/api/communications/templates"] });
   const { data: history } = useQuery<CommunicationHistory[]>({ queryKey: ["/api/communications/history"] });
   const { data: pendingSends } = useQuery<NoticeSend[]>({
@@ -119,6 +134,14 @@ export default function CommunicationsPage() {
     queryKey: [`/api/onboarding/completeness?associationId=${selectedAssociationId}`],
     enabled: Boolean(selectedAssociationId),
   });
+  const { data: onboardingInvites } = useQuery<Array<OnboardingInvite & { unitLabel?: string; associationName?: string; inviteUrl?: string }>>({
+    queryKey: [selectedAssociationId ? `/api/onboarding/invites?associationId=${selectedAssociationId}` : "/api/onboarding/invites"],
+    enabled: Boolean(selectedAssociationId),
+  });
+  const { data: onboardingSubmissions } = useQuery<Array<OnboardingSubmission & { unitLabel?: string; associationName?: string; inviteEmail?: string | null }>>({
+    queryKey: [selectedAssociationId ? `/api/onboarding/submissions?associationId=${selectedAssociationId}` : "/api/onboarding/submissions"],
+    enabled: Boolean(selectedAssociationId),
+  });
   const { data: contactUpdates } = useQuery<ContactUpdateRequest[]>({
     queryKey: [selectedAssociationId ? `/api/portal/contact-updates/admin?associationId=${selectedAssociationId}` : "/api/portal/contact-updates/admin"],
   });
@@ -138,6 +161,13 @@ export default function CommunicationsPage() {
     setTargetedForm((prev) => ({ ...prev, associationId: activeAssociationId }));
     setPaymentMethodForm((prev) => ({ ...prev, associationId: activeAssociationId }));
     setPaymentInstructionForm((prev) => ({ ...prev, associationId: activeAssociationId }));
+    setOnboardingInviteForm({
+      unitId: "",
+      residentType: "owner",
+      email: "",
+      phone: "",
+      expiresAt: "",
+    });
     setRecipientPreview(null);
   }, [activeAssociationId]);
 
@@ -322,6 +352,128 @@ export default function CommunicationsPage() {
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  const createOnboardingInvite = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssociationId) throw new Error("Association is required");
+      if (!onboardingInviteForm.unitId) throw new Error("Unit is required");
+      const res = await apiRequest("POST", "/api/onboarding/invites", {
+        associationId: selectedAssociationId,
+        unitId: onboardingInviteForm.unitId,
+        residentType: onboardingInviteForm.residentType,
+        email: onboardingInviteForm.email.trim() || null,
+        phone: onboardingInviteForm.phone.trim() || null,
+        deliveryChannel: "link",
+        expiresAt: onboardingInviteForm.expiresAt ? new Date(onboardingInviteForm.expiresAt).toISOString() : null,
+      });
+      return res.json() as Promise<OnboardingInvite & { inviteUrl: string }>;
+    },
+    onSuccess: async (result) => {
+      queryClient.invalidateQueries({
+        queryKey: [selectedAssociationId ? `/api/onboarding/invites?associationId=${selectedAssociationId}` : "/api/onboarding/invites"],
+      });
+      setOnboardingInviteForm((prev) => ({
+        ...prev,
+        unitId: "",
+        email: "",
+        phone: "",
+        expiresAt: "",
+      }));
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(result.inviteUrl);
+      }
+      toast({ title: "Onboarding link created", description: "Invite URL copied to clipboard when supported." });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const reviewOnboardingSubmission = useMutation({
+    mutationFn: async (payload: { id: string; decision: "approved" | "rejected" }) => {
+      const res = await apiRequest("PATCH", `/api/onboarding/submissions/${payload.id}/review`, {
+        decision: payload.decision,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [selectedAssociationId ? `/api/onboarding/submissions?associationId=${selectedAssociationId}` : "/api/onboarding/submissions"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [selectedAssociationId ? `/api/onboarding/invites?associationId=${selectedAssociationId}` : "/api/onboarding/invites"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/communications/readiness?associationId=${selectedAssociationId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/onboarding/completeness?associationId=${selectedAssociationId}`] });
+      toast({ title: "Onboarding submission reviewed" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const sendOnboardingInvite = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const res = await apiRequest("POST", `/api/onboarding/invites/${inviteId}/send`, {});
+      return res.json() as Promise<{ delivery: { status: "sent" | "failed"; errorMessage?: string | null } }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: [selectedAssociationId ? `/api/onboarding/invites?associationId=${selectedAssociationId}` : "/api/onboarding/invites"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/communications/history"] });
+      toast({
+        title: result.delivery.status === "sent" ? "Onboarding invite sent" : "Invite send failed",
+        description: result.delivery.errorMessage || undefined,
+        variant: result.delivery.status === "sent" ? "default" : "destructive",
+      });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const runOnboardingReminderSweep = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssociationId) throw new Error("Association is required");
+      const res = await apiRequest("POST", "/api/onboarding/invites/reminders/run", {
+        associationId: selectedAssociationId,
+        olderThanHours: Number(reminderSweepHours || "24"),
+      });
+      return res.json() as Promise<{ processed: number; sent: number; failed: number }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: [selectedAssociationId ? `/api/onboarding/invites?associationId=${selectedAssociationId}` : "/api/onboarding/invites"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/communications/history"] });
+      toast({
+        title: "Reminder sweep complete",
+        description: `Processed ${result.processed}, sent ${result.sent}, failed ${result.failed}.`,
+      });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const onboardingMetrics = useMemo(() => {
+    const invites = onboardingInvites ?? [];
+    const submissions = onboardingSubmissions ?? [];
+    const activeInvites = invites.filter((row) => row.status === "active").length;
+    const submittedInvites = invites.filter((row) => row.status === "submitted").length;
+    const approvedInvites = invites.filter((row) => row.status === "approved").length;
+    const sentInvites = invites.filter((row) => Boolean(row.lastSentAt)).length;
+    const pendingSubmissions = submissions.filter((row) => row.status === "pending").length;
+    const approvedSubmissions = submissions.filter((row) => row.status === "approved").length;
+    const rejectedSubmissions = submissions.filter((row) => row.status === "rejected").length;
+    return {
+      totalInvites: invites.length,
+      activeInvites,
+      submittedInvites,
+      approvedInvites,
+      sentInvites,
+      pendingSubmissions,
+      approvedSubmissions,
+      rejectedSubmissions,
+    };
+  }, [onboardingInvites, onboardingSubmissions]);
 
   const updateMaintenanceStatus = useMutation({
     mutationFn: async (payload: { id: string; status: "triaged" | "in-progress" | "resolved" | "closed" | "rejected" }) => {
@@ -559,6 +711,173 @@ export default function CommunicationsPage() {
               {readiness?.blockingReasons.join(" ")}
             </div>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold">Unit-Linked Onboarding Links</h2>
+              <div className="text-sm text-muted-foreground">
+                Generate owner or tenant intake links bound to the current association and unit.
+              </div>
+            </div>
+            <Badge variant="secondary">Invites: {(onboardingInvites ?? []).length}</Badge>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">Sent: <span className="font-medium">{onboardingMetrics.sentInvites}</span></div>
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">Active: <span className="font-medium">{onboardingMetrics.activeInvites}</span></div>
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">Submitted: <span className="font-medium">{onboardingMetrics.pendingSubmissions + onboardingMetrics.approvedSubmissions + onboardingMetrics.rejectedSubmissions}</span></div>
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">Approved: <span className="font-medium">{onboardingMetrics.approvedSubmissions}</span></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <Select value={onboardingInviteForm.unitId || "none"} onValueChange={(v) => setOnboardingInviteForm((p) => ({ ...p, unitId: v === "none" ? "" : v }))}>
+              <SelectTrigger><SelectValue placeholder="Unit" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">select unit</SelectItem>
+                {(units ?? []).map((unit) => (
+                  <SelectItem key={unit.id} value={unit.id}>Unit {unit.unitNumber}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={onboardingInviteForm.residentType} onValueChange={(v) => setOnboardingInviteForm((p) => ({ ...p, residentType: v as "owner" | "tenant" }))}>
+              <SelectTrigger><SelectValue placeholder="Resident type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="owner">Owner</SelectItem>
+                <SelectItem value="tenant">Tenant</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input placeholder="Email (optional)" value={onboardingInviteForm.email} onChange={(e) => setOnboardingInviteForm((p) => ({ ...p, email: e.target.value }))} />
+            <Input placeholder="Phone (optional)" value={onboardingInviteForm.phone} onChange={(e) => setOnboardingInviteForm((p) => ({ ...p, phone: e.target.value }))} />
+            <Input type="datetime-local" value={onboardingInviteForm.expiresAt} onChange={(e) => setOnboardingInviteForm((p) => ({ ...p, expiresAt: e.target.value }))} />
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => createOnboardingInvite.mutate()} disabled={createOnboardingInvite.isPending || !selectedAssociationId}>
+              Create Onboarding Link
+            </Button>
+            <Input
+              className="max-w-[180px]"
+              type="number"
+              min="0"
+              placeholder="Hours since last send"
+              value={reminderSweepHours}
+              onChange={(e) => setReminderSweepHours(e.target.value)}
+            />
+            <Button
+              variant="outline"
+              onClick={() => runOnboardingReminderSweep.mutate()}
+              disabled={runOnboardingReminderSweep.isPending || !selectedAssociationId}
+            >
+              Run Reminder Sweep
+            </Button>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Unit</TableHead>
+                <TableHead>Resident</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Contact Target</TableHead>
+                <TableHead>Last Sent</TableHead>
+                <TableHead>Link</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(onboardingInvites ?? []).slice(0, 25).map((invite) => {
+                const inviteUrl = typeof window === "undefined" ? `/onboarding/${invite.token}` : `${window.location.origin}/onboarding/${invite.token}`;
+                return (
+                  <TableRow key={invite.id}>
+                    <TableCell>{invite.unitLabel ? `Unit ${invite.unitLabel}` : invite.unitId}</TableCell>
+                    <TableCell className="capitalize">{invite.residentType}</TableCell>
+                    <TableCell><Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge></TableCell>
+                    <TableCell>{invite.email || invite.phone || "-"}</TableCell>
+                    <TableCell>{invite.lastSentAt ? new Date(invite.lastSentAt).toLocaleString() : "-"}</TableCell>
+                    <TableCell className="max-w-[360px] truncate">
+                      <button
+                        type="button"
+                        className="underline text-sm"
+                        onClick={() => navigator?.clipboard?.writeText?.(inviteUrl)}
+                      >
+                        {inviteUrl}
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => sendOnboardingInvite.mutate(invite.id)}
+                        disabled={sendOnboardingInvite.isPending || !invite.email}
+                      >
+                        {invite.lastSentAt ? "Resend" : "Send"}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {(onboardingInvites ?? []).length === 0 ? (
+                <TableRow><TableCell colSpan={7} className="text-muted-foreground">No onboarding links created yet.</TableCell></TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold">Onboarding Submission Queue</h2>
+              <div className="text-sm text-muted-foreground">
+                Review owner and tenant submissions before they create live records.
+              </div>
+            </div>
+            <Badge variant="secondary">Pending: {(onboardingSubmissions ?? []).filter((row) => row.status === "pending").length}</Badge>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Submitted</TableHead>
+                <TableHead>Unit</TableHead>
+                <TableHead>Resident</TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(onboardingSubmissions ?? []).slice(0, 50).map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell>{new Date(row.submittedAt).toLocaleString()}</TableCell>
+                  <TableCell>{row.unitLabel ? `Unit ${row.unitLabel}` : row.unitId}</TableCell>
+                  <TableCell>{row.firstName} {row.lastName} · <span className="capitalize">{row.residentType}</span></TableCell>
+                  <TableCell>{row.email || row.phone || row.inviteEmail || "-"}</TableCell>
+                  <TableCell><Badge variant={row.status === "pending" ? "secondary" : "outline"}>{row.status}</Badge></TableCell>
+                  <TableCell className="space-x-2">
+                    <Button
+                      size="sm"
+                      onClick={() => reviewOnboardingSubmission.mutate({ id: row.id, decision: "approved" })}
+                      disabled={reviewOnboardingSubmission.isPending || row.status !== "pending"}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => reviewOnboardingSubmission.mutate({ id: row.id, decision: "rejected" })}
+                      disabled={reviewOnboardingSubmission.isPending || row.status !== "pending"}
+                    >
+                      Reject
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {(onboardingSubmissions ?? []).length === 0 ? (
+                <TableRow><TableCell colSpan={6} className="text-muted-foreground">No onboarding submissions yet.</TableCell></TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 

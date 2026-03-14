@@ -7,6 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const maintenanceCategories = ["general", "plumbing", "electrical", "hvac", "common-area", "security", "other"];
+const maintenancePriorities = ["low", "medium", "high", "urgent"] as const;
 
 function portalHeaders(portalAccessId: string) {
   return {
@@ -28,6 +32,7 @@ export default function OwnerPortalPage() {
   const [maintenanceLocation, setMaintenanceLocation] = useState("");
   const [maintenanceCategory, setMaintenanceCategory] = useState("general");
   const [maintenancePriority, setMaintenancePriority] = useState("medium");
+  const [maintenanceFiles, setMaintenanceFiles] = useState<File[]>([]);
 
   const login = useMutation({
     mutationFn: async () => {
@@ -123,6 +128,22 @@ export default function OwnerPortalPage() {
 
   const submitMaintenanceRequest = useMutation({
     mutationFn: async () => {
+      let attachmentUrlsJson: string[] = [];
+      if (maintenanceFiles.length > 0) {
+        const formData = new FormData();
+        for (const file of maintenanceFiles) {
+          formData.append("files", file);
+        }
+        const uploadRes = await fetch("/api/portal/maintenance-attachments", {
+          method: "POST",
+          headers: portalHeaders(portalAccessId),
+          body: formData,
+        });
+        if (!uploadRes.ok) throw new Error(await uploadRes.text());
+        const uploadJson = await uploadRes.json() as { urls: string[] };
+        attachmentUrlsJson = uploadJson.urls;
+      }
+
       const res = await fetch("/api/portal/maintenance-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
@@ -132,7 +153,7 @@ export default function OwnerPortalPage() {
           locationText: maintenanceLocation || null,
           category: maintenanceCategory,
           priority: maintenancePriority,
-          attachmentUrlsJson: [],
+          attachmentUrlsJson,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -144,6 +165,7 @@ export default function OwnerPortalPage() {
       setMaintenanceLocation("");
       setMaintenanceCategory("general");
       setMaintenancePriority("medium");
+      setMaintenanceFiles([]);
       await refetchMaintenanceRequests();
     },
   });
@@ -152,6 +174,11 @@ export default function OwnerPortalPage() {
     if (!me) return "Portal User";
     return `${me.email} (${me.role})`;
   }, [me]);
+
+  const maintenanceUpdates = useMemo(
+    () => (notices ?? []).filter((notice) => (notice.relatedType || "").startsWith("maintenance") || (notice.relatedType || "").startsWith("work-order")),
+    [notices],
+  );
 
   if (!portalAccessId) {
     return (
@@ -291,12 +318,38 @@ export default function OwnerPortalPage() {
       <Card>
         <CardContent className="p-6 space-y-3">
           <h2 className="text-lg font-semibold">Submit Maintenance Request</h2>
+          <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+            SLA policy: `urgent` requests target response within 4 hours and escalate faster if overdue. `high` targets 12 hours, `medium` 48 hours, `low` 120 hours.
+          </div>
           <Input placeholder="Issue title" value={maintenanceTitle} onChange={(e) => setMaintenanceTitle(e.target.value)} />
           <Textarea placeholder="Describe the issue" value={maintenanceDescription} onChange={(e) => setMaintenanceDescription(e.target.value)} />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Input placeholder="Location (unit/common area)" value={maintenanceLocation} onChange={(e) => setMaintenanceLocation(e.target.value)} />
-            <Input placeholder="Category" value={maintenanceCategory} onChange={(e) => setMaintenanceCategory(e.target.value)} />
-            <Input placeholder="Priority (low/medium/high/urgent)" value={maintenancePriority} onChange={(e) => setMaintenancePriority(e.target.value)} />
+            <Select value={maintenanceCategory} onValueChange={setMaintenanceCategory}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {maintenanceCategories.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={maintenancePriority} onValueChange={setMaintenancePriority}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {maintenancePriorities.map((priority) => <SelectItem key={priority} value={priority}>{priority}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Input
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={(e) => setMaintenanceFiles(Array.from(e.target.files ?? []))}
+            />
+            {maintenanceFiles.length > 0 ? (
+              <div className="text-xs text-muted-foreground">
+                Photos ready: {maintenanceFiles.map((file) => file.name).join(", ")}
+              </div>
+            ) : null}
           </div>
           <Button
             onClick={() => submitMaintenanceRequest.mutate()}
@@ -305,28 +358,61 @@ export default function OwnerPortalPage() {
             Submit Maintenance Request
           </Button>
 
+          <div className="space-y-3">
+            {(maintenanceRequests ?? []).map((request) => (
+              <div key={request.id} className="rounded-md border p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="font-medium">{request.title}</div>
+                    <div className="text-xs text-muted-foreground">{request.locationText || "Location not specified"} · {request.category}</div>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge variant="secondary">{request.status}</Badge>
+                    <Badge variant={request.priority === "urgent" ? "destructive" : "outline"}>{request.priority}</Badge>
+                    <Badge variant="outline">Escalation {request.escalationStage}</Badge>
+                  </div>
+                </div>
+                <div className="text-sm text-muted-foreground">{request.description}</div>
+                <div className="text-xs text-muted-foreground">
+                  Submitted {new Date(request.createdAt).toLocaleString()} · SLA due {request.responseDueAt ? new Date(request.responseDueAt).toLocaleString() : "-"}
+                </div>
+                {request.resolutionNotes ? <div className="text-sm">Resolution: {request.resolutionNotes}</div> : null}
+                {Array.isArray(request.attachmentUrlsJson) && request.attachmentUrlsJson.length > 0 ? (
+                  <div className="flex gap-2 flex-wrap">
+                    {request.attachmentUrlsJson.map((url, index) => (
+                      <a key={url} href={url} className="underline text-xs" target="_blank" rel="noreferrer">Photo {index + 1}</a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            {(maintenanceRequests ?? []).length === 0 ? <div className="text-sm text-muted-foreground">No maintenance requests submitted yet.</div> : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-6 space-y-3">
+          <h2 className="text-lg font-semibold">Maintenance Updates</h2>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>SLA Due</TableHead>
-                <TableHead>Escalation</TableHead>
-                <TableHead>Created</TableHead>
+                <TableHead>Subject</TableHead>
+                <TableHead>Update</TableHead>
+                <TableHead>When</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(maintenanceRequests ?? []).map((request) => (
-                <TableRow key={request.id}>
-                  <TableCell>{request.title}</TableCell>
-                  <TableCell><Badge variant="secondary">{request.status}</Badge></TableCell>
-                  <TableCell>{request.priority}</TableCell>
-                  <TableCell>{request.responseDueAt ? new Date(request.responseDueAt).toLocaleString() : "-"}</TableCell>
-                  <TableCell>{request.escalationStage}</TableCell>
-                  <TableCell>{new Date(request.createdAt).toLocaleString()}</TableCell>
+              {maintenanceUpdates.map((notice) => (
+                <TableRow key={notice.id}>
+                  <TableCell>{notice.subject || "-"}</TableCell>
+                  <TableCell className="max-w-[520px]">{notice.bodySnippet || "-"}</TableCell>
+                  <TableCell>{new Date(notice.createdAt).toLocaleString()}</TableCell>
                 </TableRow>
               ))}
+              {maintenanceUpdates.length === 0 ? (
+                <TableRow><TableCell colSpan={3} className="text-muted-foreground">No maintenance updates yet.</TableCell></TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </CardContent>

@@ -1,9 +1,9 @@
 # Condo Property Manager - FTPH v2.1 Documentation
 
 ## Document Metadata
-- Document Version: 2.1
+- Document Version: 2.2
 - Generated On: 2026-03-06
-- Status: Draft
+- Status: Draft with implementation gap addendum
 - Output Type: Full FTPH Write-Up
 
 ## Platform Overview
@@ -33,6 +33,36 @@
 6. Operational Tasks, Compliance & Calendar
 7. Communications & Notice System
 8. Platform Services, Permissions & Audit
+
+## Implementation Gap Addendum
+- Addendum Date: 2026-03-14
+- Purpose: Record implementation gaps discovered during post-publication comparison of the FTPH target model against the live product and Admin roadmap.
+
+### Gaps Not Explicitly Captured in the Original v2.1 Draft
+- Financial operations are structurally broad, but the live platform still lacks a full production payment loop:
+  - no hosted ACH/card checkout
+  - no owner-managed saved payment methods
+  - no autopay enrollment and recurring collections
+  - no delinquency workflow or collections handoff
+  - no bank reconciliation workflow
+  - no board-ready financial report/export suite
+  - payment gateway validation exists, but live provider handshake and transaction hardening were not originally spelled out as a remaining gap
+- Property operations are only partially represented in v2.1:
+  - maintenance requests exist in the product, but vendor registry, work orders, preventive maintenance, and inspection records were not called out strongly enough as missing operational layers
+- Communications and platform services are broadly present, but the original draft understated remaining production-hardening work:
+  - trusted outbound delivery hardening
+  - authorization tightening
+  - auth/session hardening
+  - document-delivery/access hardening
+- The original v2.1 draft correctly scoped several items out, but it did not distinguish between:
+  - intentionally out-of-scope v2.1 items
+  - future-phase capabilities already planned for phases 6-10
+  - implementation gaps inside partially delivered live modules
+
+### Implementation-Status Interpretation
+- Delivered: broadly usable in the live product
+- Partial: published and usable in some form, but still missing critical end-to-end workflows or production hardening
+- Inactive: planned in documentation, but not yet delivered in live product
 
 ## 1. Unit, Owner & Occupancy Registry
 - Purpose: Maintain authoritative registry of all units, owners, tenants, and contact relationships while preserving historical ownership and occupancy records.
@@ -187,6 +217,7 @@
 - Description: Supports flat-fee dues now while preserving extensibility for future allocation methods and installment assessments.
 - User Story: As a property administrator, I want a fee and assessment engine so financial obligations can be created and tracked consistently.
 - Scope Boundary: Does not include online payment processing, bank feeds, or full general-ledger accounting.
+- Implementation Gap Note: The live platform can calculate obligations and post ledger activity, but still lacks production payment collection, autopay, delinquency handling, reconciliation, and finance-report closure workflows.
 - Feature Set-Level Functional Unit Summary: Provides charge configuration, assessment creation, late-fee logic, and owner balance visibility so the association can manage receivables operationally.
 - Dependencies:
   - Unit registry
@@ -210,6 +241,7 @@
 - Description: Provides structured operational expense tracking for bills, vendor invoices, and utility-related costs.
 - User Story: As a property administrator, I want expense and invoice records so the association can track what it owes and what it has paid.
 - Scope Boundary: Does not include bank reconciliation, AP automation, or tax return preparation workflows.
+- Implementation Gap Note: The live platform supports invoice and utility tracking, but vendor registry separation, invoice-to-work-order linkage, and reconciliation-period controls remain outstanding.
 - Feature Set-Level Functional Unit Summary: Provides invoice entry, utility payment tracking, and attachment storage so expense records remain centralized and auditable.
 - Dependencies:
   - Document repository
@@ -302,6 +334,10 @@
 ## 6. Operational Tasks, Compliance & Calendar
 - Purpose: Ensure board obligations, recurring tasks, and governance deadlines are visible and trackable.
 
+### Module Implementation Gap Note
+- Governance tasking is delivered, but property-operations workflows are not complete in the live platform.
+- Maintenance requests and escalation fields exist, yet the broader operational layer still lacks vendor management, work-order lifecycle management, preventive maintenance scheduling, and inspection records.
+
 ### 6.1 Feature Set: Annual Compliance Checklist
 - Intent Summary: Provide a recurring annual checklist for required governance and operational responsibilities.
 - Description: Tracks recurring tasks such as budget review, ratification, insurance renewal, record reviews, and other board-administered duties.
@@ -327,6 +363,10 @@
 ## 7. Communications & Notice System
 - Purpose: Provide structured communications, template-based notices, and communication history for owners and occupants.
 
+### Module Implementation Gap Note
+- Core communications and templated notices are live, but the remaining gaps are delivery trust and production integrity rather than missing foundational feature coverage.
+- The original draft did not explicitly record that outbound delivery verification and productionized notice trust would remain active hardening tracks after initial publication.
+
 ### 7.1 Feature Set: Notice Automation
 - Intent Summary: Generate and manage repeatable notices and track outbound communication history.
 - Description: Supports templated notices, email sends, and communication logging for association-to-owner or association-to-occupant outreach.
@@ -351,6 +391,9 @@
 
 ## 8. Platform Services, Permissions & Audit
 - Purpose: Provide foundational infrastructure for secure access, permissions, and change traceability.
+
+### Module Implementation Gap Note
+- Platform controls, roles, and audit are live, but the original draft understated how much hardening would still be required around session/auth controls, fine-grained authorization, OAuth cutover, and document access integrity.
 
 ### 8.1 Feature Set: Role-Based Permissions
 - Intent Summary: Control who can view, create, edit, or administer records across the platform.
@@ -380,6 +423,25 @@
 - Units currently share equal HOA fee structures.
 - CT-level rules are prioritized before condo-specific bylaw automation.
 - The platform is designed to become multi-association even if the first deployment is a single condo complex.
+
+## Recorded Post-Publication Gaps to Carry Forward
+- Phase 6 candidate gaps:
+  - hosted owner payment flow
+  - saved payment methods
+  - autopay and recurring collections
+  - delinquency workflow and collections handoff
+  - bank reconciliation
+  - financial report package/export
+- Phase 7 candidate gaps:
+  - vendor registry
+  - work-order management
+  - preventive maintenance
+  - inspection records
+- Parallel hardening gaps:
+  - auth and authorization tightening
+  - trusted communications delivery
+  - document access and delivery hardening
+  - AI/document ingestion trust improvements
 
 ## Coverage Check
 - Total raw items received: 22
