@@ -598,6 +598,21 @@ function AuthAwareApp() {
   const hasWorkspaceAccess = adminAuthConfigured || Boolean(authSession?.authenticated && authSession.admin);
   const isWorkspaceRoute = location === "/app" || location.startsWith("/app/");
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isWorkspaceRoute) return;
+    if (hasWorkspaceAccess) {
+      window.sessionStorage.removeItem("autoGoogleSignInAttempted");
+      return;
+    }
+    if (adminAuthConfigured) return;
+    const search = window.location.search || "";
+    if (search.includes("auth=failed")) return;
+    if (window.sessionStorage.getItem("autoGoogleSignInAttempted") === "1") return;
+    window.sessionStorage.setItem("autoGoogleSignInAttempted", "1");
+    startGoogleSignIn(true);
+  }, [isWorkspaceRoute, hasWorkspaceAccess, adminAuthConfigured]);
+
   return (
     <>
       <AdminAuthDialog

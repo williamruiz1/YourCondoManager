@@ -57,9 +57,9 @@ const sessionCookieSameSite = (() => {
   return "lax";
 })();
 const forceSecureCookie = (process.env.SESSION_COOKIE_SECURE || "").trim().toLowerCase();
-const sessionCookieSecure = forceSecureCookie
+const sessionCookieSecure: boolean | "auto" = forceSecureCookie
   ? forceSecureCookie === "1" || forceSecureCookie === "true" || forceSecureCookie === "yes"
-  : isProduction;
+  : (isProduction ? "auto" : false);
 
 app.use(session({
   store: new PgStore({
