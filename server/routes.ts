@@ -512,6 +512,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/debug/admin-context", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const allAssociations = await storage.getAssociations({ includeArchived: true });
+      const scopedAssociationIds = req.adminRole === "platform-admin"
+        ? allAssociations.map((association) => association.id)
+        : (req.adminScopedAssociationIds ?? []);
+      const scopedAssociations = allAssociations
+        .filter((association) => scopedAssociationIds.includes(association.id))
+        .map((association) => ({
+          id: association.id,
+          name: association.name,
+          isArchived: association.isArchived,
+        }));
+
+      res.json({
+        runtime: {
+          nodeEnv: process.env.NODE_ENV || null,
+          isPublishedState,
+        },
+        resolvedAdmin: {
+          adminUserId: req.adminUserId || null,
+          adminUserEmail: req.adminUserEmail || null,
+          adminRole: req.adminRole || null,
+          scopedAssociationIds,
+          scopedAssociations,
+        },
+        requestAuthSignals: {
+          hasSessionUser: Boolean((req as Request & { user?: unknown }).user),
+          headerAdminUserEmail: (req.header("x-admin-user-email") || "").trim().toLowerCase() || null,
+          hasAdminApiKeyHeader: Boolean((req.header("x-admin-api-key") || "").trim()),
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/associations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertAssociationSchema.parse(req.body);

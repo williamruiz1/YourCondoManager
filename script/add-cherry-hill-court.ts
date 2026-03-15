@@ -1,6 +1,6 @@
 import { db } from "../server/db";
 import { adminAssociationScopes, adminUsers, associations, authUsers, persons, portalAccess } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 async function main() {
   const email = "chcmgmt18@gmail.com";
@@ -85,9 +85,51 @@ async function main() {
     });
   }
 
+  const [sunsetAssociation] = await db.select().from(associations).where(eq(associations.name, "Sunset Towers")).limit(1);
+  const cherryAssociationIds = Array.from(new Set([association.id]));
+
+  const scopedAdminUsers = sunsetAssociation
+    ? await db
+      .select({ adminUserId: adminAssociationScopes.adminUserId })
+      .from(adminAssociationScopes)
+      .where(eq(adminAssociationScopes.associationId, sunsetAssociation.id))
+    : [];
+
+  const fallbackAdminIds = Array.from(new Set(scopedAdminUsers.map((row) => row.adminUserId).filter(Boolean)));
+  for (const scopedAdminUserId of fallbackAdminIds) {
+    for (const cherryAssociationId of cherryAssociationIds) {
+      const [existingScoped] = await db
+        .select()
+        .from(adminAssociationScopes)
+        .where(and(
+          eq(adminAssociationScopes.adminUserId, scopedAdminUserId),
+          eq(adminAssociationScopes.associationId, cherryAssociationId),
+        ))
+        .limit(1);
+      if (!existingScoped) {
+        await db.insert(adminAssociationScopes).values({
+          adminUserId: scopedAdminUserId,
+          associationId: cherryAssociationId,
+          scope: "read-write",
+        });
+      }
+    }
+  }
+
   const [existingAuthUser] = await db.select().from(authUsers).where(eq(authUsers.email, email)).limit(1);
   if (existingAuthUser && existingAuthUser.adminUserId !== adminUser.id) {
     await db.update(authUsers).set({ adminUserId: adminUser.id, updatedAt: new Date() }).where(eq(authUsers.id, existingAuthUser.id));
+  }
+
+  const variantEmails = [email, "chcmgmt18@googlemail.com"];
+  const authEmailVariants = await db.select().from(authUsers).where(inArray(authUsers.email, variantEmails));
+  for (const authVariant of authEmailVariants) {
+    if (authVariant.adminUserId !== adminUser.id) {
+      await db
+        .update(authUsers)
+        .set({ adminUserId: adminUser.id, updatedAt: new Date() })
+        .where(eq(authUsers.id, authVariant.id));
+    }
   }
 
   console.log(`Association ${association.name} linked and scoped to ${email}`);
