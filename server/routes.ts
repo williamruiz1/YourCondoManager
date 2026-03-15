@@ -316,6 +316,47 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
 }
 
 async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
+  async function resolveOrBootstrapAdminFromEmail(
+    email: string,
+    authUserId?: string,
+  ): Promise<Awaited<ReturnType<typeof storage.getAdminUserByEmail>>> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return undefined;
+    const existing = await storage.getAdminUserByEmail(normalizedEmail);
+    if (existing && existing.isActive === 1) return existing;
+
+    const portalRows = await storage.getPortalAccessesByEmail(normalizedEmail);
+    const activeAssociationIds = Array.from(new Set(
+      portalRows
+        .filter((row) => row.status === "active")
+        .map((row) => row.associationId),
+    ));
+    if (activeAssociationIds.length === 0) return undefined;
+
+    const createdOrUpdated = await storage.upsertAdminUser({
+      email: normalizedEmail,
+      role: "board-admin",
+      isActive: 1,
+    });
+    for (const associationId of activeAssociationIds) {
+      await storage.upsertAdminAssociationScope({
+        adminUserId: createdOrUpdated.id,
+        associationId,
+        scope: "read-write",
+      });
+    }
+    if (authUserId) {
+      await storage.updateAuthUser(authUserId, { adminUserId: createdOrUpdated.id });
+    }
+    console.warn("[auth-admin-link][portal-bootstrap]", {
+      authUserId: authUserId || null,
+      email: normalizedEmail,
+      adminUserId: createdOrUpdated.id,
+      hydratedAssociationIds: activeAssociationIds,
+    });
+    return createdOrUpdated;
+  }
+
   const authUser = req.user as { id?: string; adminUserId?: string | null; email?: string | null } | undefined;
   if (req.isAuthenticated?.() && authUser) {
     const adminById = authUser.adminUserId
@@ -341,6 +382,9 @@ async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
         });
       }
     }
+    if (!resolvedAdmin && authUser.email) {
+      resolvedAdmin = await resolveOrBootstrapAdminFromEmail(authUser.email, authUser.id);
+    }
 
     if (resolvedAdmin && resolvedAdmin.isActive === 1) {
       await applyAdminContext(req, resolvedAdmin);
@@ -365,9 +409,12 @@ async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
   const adminUser = sessionAuthUser.adminUserId
     ? await storage.getAdminUserById(sessionAuthUser.adminUserId)
     : await storage.getAdminUserByEmail(sessionAuthUser.email);
-  if (!adminUser || adminUser.isActive !== 1) return false;
+  const fallbackAdmin = (!adminUser || adminUser.isActive !== 1)
+    ? await resolveOrBootstrapAdminFromEmail(sessionAuthUser.email, sessionAuthUser.id)
+    : adminUser;
+  if (!fallbackAdmin || fallbackAdmin.isActive !== 1) return false;
 
-  await applyAdminContext(req, adminUser);
+  await applyAdminContext(req, fallbackAdmin);
   return true;
 }
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { execFile } from "child_process";
 import { readFile } from "fs/promises";
@@ -12098,20 +12098,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAdminUserByEmail(email: string): Promise<AdminUser | undefined> {
-    const [result] = await db.select().from(adminUsers).where(eq(adminUsers.email, email));
+    const normalizedEmail = email.trim().toLowerCase();
+    const [result] = await db.select().from(adminUsers).where(ilike(adminUsers.email, normalizedEmail));
     return result;
   }
 
   async upsertAdminUser(data: InsertAdminUser): Promise<AdminUser> {
-    const existing = await this.getAdminUserByEmail(data.email);
+    const normalizedEmail = data.email.trim().toLowerCase();
+    const existing = await this.getAdminUserByEmail(normalizedEmail);
     if (!existing) {
-      const [created] = await db.insert(adminUsers).values(data).returning();
+      const [created] = await db.insert(adminUsers).values({ ...data, email: normalizedEmail }).returning();
       return created;
     }
 
     const [updated] = await db
       .update(adminUsers)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data, email: normalizedEmail, updatedAt: new Date() })
       .where(eq(adminUsers.id, existing.id))
       .returning();
     return updated;
