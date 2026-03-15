@@ -44,15 +44,17 @@ app.use(express.urlencoded({ extended: false }));
 
 const isProduction = process.env.NODE_ENV === "production";
 if (isProduction) {
-  app.set("trust proxy", 1);
+  // Replit production traffic can traverse multiple proxy hops.
+  // Trust forwarded proto/host so secure session cookies are issued reliably.
+  app.set("trust proxy", true);
 }
 
 const sessionSecret = process.env.SESSION_SECRET?.trim() || "dev-session-secret";
 const sessionMaxAgeMs = Math.max(60_000, Number(process.env.SESSION_MAX_AGE_MS || 7 * 24 * 60 * 60 * 1000));
 const sessionCookieSameSite = (() => {
-  const raw = (process.env.SESSION_COOKIE_SAME_SITE || (isProduction ? "none" : "lax")).trim().toLowerCase();
+  const raw = (process.env.SESSION_COOKIE_SAME_SITE || "lax").trim().toLowerCase();
   if (raw === "strict" || raw === "lax" || raw === "none") return raw;
-  return isProduction ? "none" : "lax";
+  return "lax";
 })();
 const forceSecureCookie = (process.env.SESSION_COOKIE_SECURE || "").trim().toLowerCase();
 const sessionCookieSecure = forceSecureCookie
@@ -69,6 +71,7 @@ app.use(session({
   secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
+  proxy: isProduction,
   rolling: true,
   cookie: {
     httpOnly: true,

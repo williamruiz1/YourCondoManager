@@ -101,7 +101,25 @@ export function resolveGoogleCallbackUrl(req: Request): string | null {
 
   const dynamicCallbackUrl = `${origin}${config.callbackPath}`;
   if (!config.callbackURL) return dynamicCallbackUrl;
-  if (config.callbackUrlStrict) return config.callbackURL;
+  if (config.callbackUrlStrict) {
+    try {
+      const pinned = new URL(config.callbackURL);
+      const current = new URL(origin);
+      const sameOrigin = pinned.protocol === current.protocol && pinned.host === current.host;
+      if (!sameOrigin) {
+        // Prefer the active request host to avoid session/cookie split across domains.
+        console.warn("[auth][callback-url-strict-mismatch]", {
+          configuredCallbackUrl: config.callbackURL,
+          requestOrigin: origin,
+          resolvedCallbackUrl: dynamicCallbackUrl,
+        });
+        return dynamicCallbackUrl;
+      }
+    } catch {
+      return dynamicCallbackUrl;
+    }
+    return config.callbackURL;
+  }
 
   try {
     const pinned = new URL(config.callbackURL);
