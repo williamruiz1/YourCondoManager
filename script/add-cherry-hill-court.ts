@@ -1,5 +1,5 @@
 import { db } from "../server/db";
-import { associations, persons, portalAccess } from "@shared/schema";
+import { adminAssociationScopes, adminUsers, associations, authUsers, persons, portalAccess } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 async function main() {
@@ -56,7 +56,41 @@ async function main() {
     });
   }
 
-  console.log(`Association ${association.name} linked to ${email}`);
+  const [existingAdminUser] = await db.select().from(adminUsers).where(eq(adminUsers.email, email)).limit(1);
+  const adminUser =
+    existingAdminUser ||
+    (
+      await db
+        .insert(adminUsers)
+        .values({
+          email,
+          role: "board-admin",
+          isActive: 1,
+        })
+        .returning()
+    )[0];
+
+  const [existingScope] = await db
+    .select()
+    .from(adminAssociationScopes)
+    .where(eq(adminAssociationScopes.adminUserId, adminUser.id))
+    .where(eq(adminAssociationScopes.associationId, association.id))
+    .limit(1);
+
+  if (!existingScope) {
+    await db.insert(adminAssociationScopes).values({
+      adminUserId: adminUser.id,
+      associationId: association.id,
+      scope: "read-write",
+    });
+  }
+
+  const [existingAuthUser] = await db.select().from(authUsers).where(eq(authUsers.email, email)).limit(1);
+  if (existingAuthUser && existingAuthUser.adminUserId !== adminUser.id) {
+    await db.update(authUsers).set({ adminUserId: adminUser.id, updatedAt: new Date() }).where(eq(authUsers.id, existingAuthUser.id));
+  }
+
+  console.log(`Association ${association.name} linked and scoped to ${email}`);
 }
 
 main().catch((error) => {
