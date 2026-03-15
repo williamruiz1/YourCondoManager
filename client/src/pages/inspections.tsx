@@ -53,20 +53,28 @@ const emptyForm: InspectionForm = {
 
 function parseFindings(value: unknown): InspectionFindingItem[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const finding = item as Record<string, unknown>;
-      return {
-        title: typeof finding.title === "string" ? finding.title : "",
-        description: typeof finding.description === "string" ? finding.description : "",
-        severity: finding.severity === "low" || finding.severity === "medium" || finding.severity === "high" || finding.severity === "critical" ? finding.severity : "medium",
-        status: finding.status === "monitoring" || finding.status === "resolved" ? finding.status : "open",
-        photoUrls: Array.isArray(finding.photoUrls) ? finding.photoUrls.filter((entry): entry is string => typeof entry === "string") : [],
-        linkedWorkOrderId: typeof finding.linkedWorkOrderId === "string" ? finding.linkedWorkOrderId : null,
-      } satisfies InspectionFindingItem;
-    })
-    .filter((item): item is InspectionFindingItem => Boolean(item));
+  const normalized: InspectionFindingItem[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const finding = item as Record<string, unknown>;
+    const title = typeof finding.title === "string" ? finding.title.trim() : "";
+    if (!title) continue;
+    normalized.push({
+      title,
+      description: typeof finding.description === "string" ? finding.description.trim() : null,
+      severity:
+        finding.severity === "low" || finding.severity === "medium" || finding.severity === "high" || finding.severity === "critical"
+          ? finding.severity
+          : "medium",
+      status: finding.status === "monitoring" || finding.status === "resolved" ? finding.status : "open",
+      photoUrls: Array.isArray(finding.photoUrls)
+        ? finding.photoUrls.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+        : [],
+      linkedWorkOrderId:
+        typeof finding.linkedWorkOrderId === "string" && finding.linkedWorkOrderId.trim().length > 0 ? finding.linkedWorkOrderId : null,
+    });
+  }
+  return normalized;
 }
 
 function toForm(record: InspectionRecord): InspectionForm {

@@ -8,6 +8,11 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "bootstrap:agent": "tsx script/generate-agent-bootstrap-manifest.ts && tsx script/generate-agent-durable-memory.ts",
+    "backbone:friction": "tsx script/log-agent-backbone-friction.ts",
+    "backbone:closeout": "tsx script/generate-agent-backbone-closeout.ts",
+    "backbone:metrics": "tsx script/generate-agent-backbone-metrics.ts",
+    "backbone:sync-friction": "tsx script/sync-agent-backbone-friction-tasks.ts",
     "benchmark:ingestion": "tsx script/benchmark-ai-ingestion-accuracy.ts",
     "db:push": "drizzle-kit push"
   },

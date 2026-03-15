@@ -1,0 +1,663 @@
+{
+  "generatedAt": "2026-03-15T14:30:18.733Z",
+  "purpose": "Reusable startup snapshot for coding agents working in the CondoManager workspace.",
+  "repository": {
+    "root": "/home/runner/workspace",
+    "keyFiles": {
+      "appShell": "client/src/App.tsx",
+      "routes": "server/routes.ts",
+      "storage": "server/storage.ts",
+      "schema": "shared/schema.ts",
+      "agentInstructions": "AGENTS.md"
+    }
+  },
+  "environment": {
+    "packageManager": "npm",
+    "requiredEnv": [
+      "DATABASE_URL"
+    ],
+    "primaryCommands": [
+      "npm run dev",
+      "npm run build",
+      "npm run start",
+      "npm run check",
+      "npm run db:push",
+      "npm run bootstrap:agent"
+    ],
+    "verificationNote": "TypeScript checks currently surface an existing RegExpStringIterator issue in server/storage.ts around matchAll iteration. Treat it as a known repo issue unless that area is being changed."
+  },
+  "routes": {
+    "total": 69,
+    "appRoutes": 33,
+    "publicRoutes": 36,
+    "entries": [
+      {
+        "path": "/",
+        "component": null,
+        "redirectTo": null
+      },
+      {
+        "path": "/admin",
+        "component": null,
+        "redirectTo": "/app/admin/roadmap"
+      },
+      {
+        "path": "/admin/executive",
+        "component": null,
+        "redirectTo": "/app/admin/executive"
+      },
+      {
+        "path": "/admin/roadmap",
+        "component": null,
+        "redirectTo": "/app/admin/roadmap"
+      },
+      {
+        "path": "/admin/users",
+        "component": null,
+        "redirectTo": "/app/admin/users"
+      },
+      {
+        "path": "/ai/ingestion",
+        "component": null,
+        "redirectTo": "/app/ai/ingestion"
+      },
+      {
+        "path": "/app",
+        "component": "DashboardPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/admin",
+        "component": "RoadmapPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/admin/executive",
+        "component": "ExecutivePage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/admin/roadmap",
+        "component": "RoadmapPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/admin/users",
+        "component": "AdminUsersPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/ai/ingestion",
+        "component": "AiIngestionPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/association-context",
+        "component": "AssociationContextPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/associations",
+        "component": "AssociationsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/board",
+        "component": "BoardPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/communications",
+        "component": "CommunicationsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/documents",
+        "component": "DocumentsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/assessments",
+        "component": "FinancialAssessmentsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/budgets",
+        "component": "FinancialBudgetsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/fees",
+        "component": "FinancialFeesPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/foundation",
+        "component": "FinancialFoundationPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/invoices",
+        "component": "FinancialInvoicesPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/late-fees",
+        "component": "FinancialLateFeesPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/ledger",
+        "component": "FinancialLedgerPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/payments",
+        "component": "FinancialPaymentsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/utilities",
+        "component": "FinancialUtilitiesPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/governance/board-packages",
+        "component": "BoardPackagesPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/governance/compliance",
+        "component": "GovernanceCompliancePage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/governance/meetings",
+        "component": "MeetingsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/inspections",
+        "component": "InspectionsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/maintenance-schedules",
+        "component": "MaintenanceSchedulesPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/occupancy",
+        "component": "OccupancyPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/operations/dashboard",
+        "component": "OperationsDashboardPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/owners",
+        "component": "OwnersPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/persons",
+        "component": "PersonsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/platform/controls",
+        "component": "PlatformControlsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/units",
+        "component": "UnitsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/vendors",
+        "component": "VendorsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/work-orders",
+        "component": "WorkOrdersPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/association-context",
+        "component": null,
+        "redirectTo": "/app/association-context"
+      },
+      {
+        "path": "/associations",
+        "component": null,
+        "redirectTo": "/app/associations"
+      },
+      {
+        "path": "/board",
+        "component": null,
+        "redirectTo": "/app/board"
+      },
+      {
+        "path": "/communications",
+        "component": null,
+        "redirectTo": "/app/communications"
+      },
+      {
+        "path": "/documents",
+        "component": null,
+        "redirectTo": "/app/documents"
+      },
+      {
+        "path": "/financial/assessments",
+        "component": null,
+        "redirectTo": "/app/financial/assessments"
+      },
+      {
+        "path": "/financial/budgets",
+        "component": null,
+        "redirectTo": "/app/financial/budgets"
+      },
+      {
+        "path": "/financial/fees",
+        "component": null,
+        "redirectTo": "/app/financial/fees"
+      },
+      {
+        "path": "/financial/foundation",
+        "component": null,
+        "redirectTo": "/app/financial/foundation"
+      },
+      {
+        "path": "/financial/invoices",
+        "component": null,
+        "redirectTo": "/app/financial/invoices"
+      },
+      {
+        "path": "/financial/late-fees",
+        "component": null,
+        "redirectTo": "/app/financial/late-fees"
+      },
+      {
+        "path": "/financial/ledger",
+        "component": null,
+        "redirectTo": "/app/financial/ledger"
+      },
+      {
+        "path": "/financial/payments",
+        "component": null,
+        "redirectTo": "/app/financial/payments"
+      },
+      {
+        "path": "/financial/utilities",
+        "component": null,
+        "redirectTo": "/app/financial/utilities"
+      },
+      {
+        "path": "/governance/board-packages",
+        "component": null,
+        "redirectTo": "/app/governance/board-packages"
+      },
+      {
+        "path": "/governance/compliance",
+        "component": null,
+        "redirectTo": "/app/governance/compliance"
+      },
+      {
+        "path": "/governance/meetings",
+        "component": null,
+        "redirectTo": "/app/governance/meetings"
+      },
+      {
+        "path": "/inspections",
+        "component": null,
+        "redirectTo": "/app/inspections"
+      },
+      {
+        "path": "/maintenance-schedules",
+        "component": null,
+        "redirectTo": "/app/maintenance-schedules"
+      },
+      {
+        "path": "/occupancy",
+        "component": null,
+        "redirectTo": "/app/occupancy"
+      },
+      {
+        "path": "/onboarding/:token",
+        "component": "OnboardingInvitePage",
+        "redirectTo": null
+      },
+      {
+        "path": "/operations/dashboard",
+        "component": null,
+        "redirectTo": "/app/operations/dashboard"
+      },
+      {
+        "path": "/owners",
+        "component": null,
+        "redirectTo": "/app/owners"
+      },
+      {
+        "path": "/persons",
+        "component": null,
+        "redirectTo": "/app/persons"
+      },
+      {
+        "path": "/platform/controls",
+        "component": null,
+        "redirectTo": "/app/platform/controls"
+      },
+      {
+        "path": "/portal",
+        "component": "OwnerPortalPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/roadmap",
+        "component": null,
+        "redirectTo": "/app/admin/roadmap"
+      },
+      {
+        "path": "/units",
+        "component": null,
+        "redirectTo": "/app/units"
+      },
+      {
+        "path": "/vendors",
+        "component": null,
+        "redirectTo": "/app/vendors"
+      },
+      {
+        "path": "/work-orders",
+        "component": null,
+        "redirectTo": "/app/work-orders"
+      }
+    ]
+  },
+  "pages": {
+    "totalLazyPages": 37,
+    "entries": [
+      {
+        "id": "AdminUsersPage",
+        "importPath": "@/pages/admin-users"
+      },
+      {
+        "id": "AiIngestionPage",
+        "importPath": "@/pages/ai-ingestion"
+      },
+      {
+        "id": "AssociationContextPage",
+        "importPath": "@/pages/association-context"
+      },
+      {
+        "id": "AssociationsPage",
+        "importPath": "@/pages/associations"
+      },
+      {
+        "id": "BoardPackagesPage",
+        "importPath": "@/pages/board-packages"
+      },
+      {
+        "id": "BoardPage",
+        "importPath": "@/pages/board"
+      },
+      {
+        "id": "CommunicationsPage",
+        "importPath": "@/pages/communications"
+      },
+      {
+        "id": "DashboardPage",
+        "importPath": "@/pages/dashboard"
+      },
+      {
+        "id": "DocumentsPage",
+        "importPath": "@/pages/documents"
+      },
+      {
+        "id": "ExecutivePage",
+        "importPath": "@/pages/executive"
+      },
+      {
+        "id": "FinancialAssessmentsPage",
+        "importPath": "@/pages/financial-assessments"
+      },
+      {
+        "id": "FinancialBudgetsPage",
+        "importPath": "@/pages/financial-budgets"
+      },
+      {
+        "id": "FinancialFeesPage",
+        "importPath": "@/pages/financial-fees"
+      },
+      {
+        "id": "FinancialFoundationPage",
+        "importPath": "@/pages/financial-foundation"
+      },
+      {
+        "id": "FinancialInvoicesPage",
+        "importPath": "@/pages/financial-invoices"
+      },
+      {
+        "id": "FinancialLateFeesPage",
+        "importPath": "@/pages/financial-late-fees"
+      },
+      {
+        "id": "FinancialLedgerPage",
+        "importPath": "@/pages/financial-ledger"
+      },
+      {
+        "id": "FinancialPaymentsPage",
+        "importPath": "@/pages/financial-payments"
+      },
+      {
+        "id": "FinancialUtilitiesPage",
+        "importPath": "@/pages/financial-utilities"
+      },
+      {
+        "id": "GovernanceCompliancePage",
+        "importPath": "@/pages/governance-compliance"
+      },
+      {
+        "id": "InspectionsPage",
+        "importPath": "@/pages/inspections"
+      },
+      {
+        "id": "LandingPage",
+        "importPath": "@/pages/landing"
+      },
+      {
+        "id": "MaintenanceSchedulesPage",
+        "importPath": "@/pages/maintenance-schedules"
+      },
+      {
+        "id": "MeetingsPage",
+        "importPath": "@/pages/meetings"
+      },
+      {
+        "id": "NotFound",
+        "importPath": "@/pages/not-found"
+      },
+      {
+        "id": "OccupancyPage",
+        "importPath": "@/pages/occupancy"
+      },
+      {
+        "id": "OnboardingInvitePage",
+        "importPath": "@/pages/onboarding-invite"
+      },
+      {
+        "id": "OperationsDashboardPage",
+        "importPath": "@/pages/operations-dashboard"
+      },
+      {
+        "id": "OwnerPortalPage",
+        "importPath": "@/pages/owner-portal"
+      },
+      {
+        "id": "OwnersPage",
+        "importPath": "@/pages/owners"
+      },
+      {
+        "id": "PersonsPage",
+        "importPath": "@/pages/persons"
+      },
+      {
+        "id": "PlatformControlsPage",
+        "importPath": "@/pages/platform-controls"
+      },
+      {
+        "id": "RoadmapPage",
+        "importPath": "@/pages/roadmap"
+      },
+      {
+        "id": "UnitsPage",
+        "importPath": "@/pages/units"
+      },
+      {
+        "id": "VendorsPage",
+        "importPath": "@/pages/vendors"
+      },
+      {
+        "id": "WorkOrdersPage",
+        "importPath": "@/pages/work-orders"
+      },
+      {
+        "id": "WorkspacePreviewPage",
+        "importPath": "@/pages/workspace-preview"
+      }
+    ]
+  },
+  "backendAnchors": {
+    "storage": "server/storage.ts",
+    "routes": "server/routes.ts",
+    "schemaEntities": [
+      {
+        "name": "associations",
+        "kind": "pgTable"
+      },
+      {
+        "name": "documents",
+        "kind": "pgTable"
+      },
+      {
+        "name": "vendors",
+        "kind": "pgTable"
+      },
+      {
+        "name": "maintenanceRequests",
+        "kind": "pgTable"
+      },
+      {
+        "name": "workOrders",
+        "kind": "pgTable"
+      },
+      {
+        "name": "inspectionRecords",
+        "kind": "pgTable"
+      },
+      {
+        "name": "roadmapProjectStatusEnum",
+        "kind": "pgEnum"
+      },
+      {
+        "name": "roadmapTaskStatusEnum",
+        "kind": "pgEnum"
+      },
+      {
+        "name": "roadmapEffortEnum",
+        "kind": "pgEnum"
+      },
+      {
+        "name": "roadmapPriorityEnum",
+        "kind": "pgEnum"
+      },
+      {
+        "name": "roadmapProjects",
+        "kind": "pgTable"
+      },
+      {
+        "name": "roadmapWorkstreams",
+        "kind": "pgTable"
+      },
+      {
+        "name": "roadmapTasks",
+        "kind": "pgTable"
+      },
+      {
+        "name": "executiveUpdateStatusEnum",
+        "kind": "pgEnum"
+      },
+      {
+        "name": "executiveSourceTypeEnum",
+        "kind": "pgEnum"
+      },
+      {
+        "name": "executiveEvidenceTypeEnum",
+        "kind": "pgEnum"
+      },
+      {
+        "name": "executiveUpdates",
+        "kind": "pgTable"
+      },
+      {
+        "name": "executiveEvidence",
+        "kind": "pgTable"
+      },
+      {
+        "name": "analysisVersions",
+        "kind": "pgTable"
+      },
+      {
+        "name": "analysisRuns",
+        "kind": "pgTable"
+      }
+    ],
+    "focusAreas": [
+      "Roadmap and executive modules live in shared/schema.ts, server/storage.ts, and server/routes.ts.",
+      "App shell and route registration live in client/src/App.tsx.",
+      "Operational UI surfaces are spread across client/src/pages/*.tsx with shared UI primitives in client/src/components/ui."
+    ]
+  },
+  "roadmapContext": [
+    {
+      "title": "Admin Roadmap Backbone - Agent Bootstrap and Continuous Improvement",
+      "status": "active",
+      "workstreamCount": 4,
+      "openTaskCount": 2
+    },
+    {
+      "title": "Platform-wide UI and UX Opportunity Analysis",
+      "status": "active",
+      "workstreamCount": 4,
+      "openTaskCount": 12
+    }
+  ],
+  "workingRules": {
+    "source": "AGENTS.md",
+    "sections": [
+      "Project Structure & Module Organization",
+      "Build, Test, and Development Commands",
+      "Coding Style & Naming Conventions",
+      "Testing Guidelines",
+      "Commit & Pull Request Guidelines",
+      "Configuration Tips"
+    ],
+    "highlights": [
+      "UI code lives in client/src and server entrypoints live in server/.",
+      "Use npm run dev, npm run build, npm run start, and npm run check as primary commands.",
+      "Prefer path aliases @/ and @shared/ and match surrounding TypeScript style.",
+      "Do not edit dist/ and do not commit secrets or local upload data."
+    ]
+  },
+  "refreshTriggers": [
+    "client/src/App.tsx route or lazy-page changes",
+    "shared/schema.ts changes to roadmap, analysis, executive, or primary domain tables",
+    "server/routes.ts or server/storage.ts structural changes",
+    "AGENTS.md workflow or verification rule changes",
+    "meaningful roadmap backbone updates"
+  ]
+}

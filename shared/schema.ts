@@ -141,6 +141,12 @@ export const adminUsers = pgTable("admin_users", {
   uniqueEmail: uniqueIndex("admin_users_email_uq").on(table.email),
 }));
 
+export const userSessions = pgTable("user_sessions", {
+  sid: varchar("sid").primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire").notNull(),
+});
+
 export const oauthProviderEnum = pgEnum("oauth_provider", ["google"]);
 export const authUsers = pgTable("auth_users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -370,6 +376,13 @@ export const paymentMethodConfigs = pgTable("payment_method_configs", {
   methodType: text("method_type").notNull().default("other"),
   displayName: text("display_name").notNull(),
   instructions: text("instructions").notNull(),
+  accountName: text("account_name"),
+  bankName: text("bank_name"),
+  routingNumber: text("routing_number"),
+  accountNumber: text("account_number"),
+  mailingAddress: text("mailing_address"),
+  paymentNotes: text("payment_notes"),
+  zelleHandle: text("zelle_handle"),
   supportEmail: text("support_email"),
   supportPhone: text("support_phone"),
   isActive: integer("is_active").notNull().default(1),
@@ -546,13 +559,29 @@ export const calendarEvents = pgTable("calendar_events", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const complianceTemplateScopeEnum = pgEnum("compliance_template_scope", ["ct-baseline", "association"]);
+export const complianceTemplateScopeEnum = pgEnum("compliance_template_scope", ["ct-baseline", "state-library", "association"]);
+export const regulatoryPublicationStatusEnum = pgEnum("regulatory_publication_status", ["draft", "review", "published", "archived"]);
 export const governanceComplianceTemplates = pgTable("governance_compliance_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").references(() => associations.id),
+  baseTemplateId: varchar("base_template_id").references((): any => governanceComplianceTemplates.id),
   scope: complianceTemplateScopeEnum("scope").notNull().default("ct-baseline"),
+  stateCode: text("state_code"),
   year: integer("year").notNull(),
+  versionNumber: integer("version_number").notNull().default(1),
   name: text("name").notNull(),
+  sourceAuthority: text("source_authority"),
+  sourceUrl: text("source_url"),
+  sourceDocumentTitle: text("source_document_title"),
+  sourceDocumentDate: timestamp("source_document_date"),
+  effectiveDate: timestamp("effective_date"),
+  lastSourceUpdatedAt: timestamp("last_source_updated_at"),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  nextReviewDueAt: timestamp("next_review_due_at"),
+  publicationStatus: regulatoryPublicationStatusEnum("publication_status").notNull().default("draft"),
+  publishedAt: timestamp("published_at"),
+  reviewNotes: text("review_notes"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -563,6 +592,9 @@ export const governanceTemplateItems = pgTable("governance_template_items", {
   templateId: varchar("template_id").notNull().references(() => governanceComplianceTemplates.id),
   title: text("title").notNull(),
   description: text("description"),
+  legalReference: text("legal_reference"),
+  sourceCitation: text("source_citation"),
+  sourceUrl: text("source_url"),
   dueMonth: integer("due_month").notNull(),
   dueDay: integer("due_day").notNull(),
   orderIndex: integer("order_index").notNull().default(0),
@@ -586,11 +618,28 @@ export const annualGovernanceTasks = pgTable("annual_governance_tasks", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const complianceAlertOverrideStatusEnum = pgEnum("compliance_alert_override_status", ["active", "suppressed", "resolved"]);
+export const complianceAlertOverrides = pgTable("compliance_alert_overrides", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  templateId: varchar("template_id").references(() => governanceComplianceTemplates.id),
+  templateItemId: varchar("template_item_id").notNull().references(() => governanceTemplateItems.id),
+  status: complianceAlertOverrideStatusEnum("status").notNull().default("active"),
+  suppressionReason: text("suppression_reason"),
+  suppressedUntil: timestamp("suppressed_until"),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const ingestionSourceTypeEnum = pgEnum("ingestion_source_type", ["file-upload", "pasted-text"]);
 export const ingestionJobStatusEnum = pgEnum("ingestion_job_status", ["queued", "processing", "completed", "failed"]);
 export const aiIngestionJobs = pgTable("ai_ingestion_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").references(() => associations.id),
+  sourceDocumentId: varchar("source_document_id").references(() => documents.id),
   sourceType: ingestionSourceTypeEnum("source_type").notNull(),
   sourceFilename: text("source_filename"),
   sourceText: text("source_text"),
@@ -616,6 +665,7 @@ export const aiExtractedRecords = pgTable("ai_extracted_records", {
   reviewStatus: extractionReviewStatusEnum("review_status").notNull().default("pending-review"),
   reviewedBy: text("reviewed_by"),
   reviewedAt: timestamp("reviewed_at"),
+  supersededAt: timestamp("superseded_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -650,6 +700,7 @@ export const clauseRecords = pgTable("clause_records", {
   reviewStatus: extractionReviewStatusEnum("review_status").notNull().default("pending-review"),
   reviewedBy: text("reviewed_by"),
   reviewedAt: timestamp("reviewed_at"),
+  supersededAt: timestamp("superseded_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -680,7 +731,10 @@ export const noticeTemplates = pgTable("notice_templates", {
   name: text("name").notNull(),
   channel: text("channel").notNull().default("email"),
   subjectTemplate: text("subject_template").notNull(),
+  headerTemplate: text("header_template"),
   bodyTemplate: text("body_template").notNull(),
+  footerTemplate: text("footer_template"),
+  signatureTemplate: text("signature_template"),
   isActive: integer("is_active").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -690,6 +744,7 @@ export const noticeSends = pgTable("notice_sends", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").references(() => associations.id),
   templateId: varchar("template_id").references(() => noticeTemplates.id),
+  campaignKey: text("campaign_key"),
   recipientEmail: text("recipient_email").notNull(),
   recipientPersonId: varchar("recipient_person_id").references(() => persons.id),
   subjectRendered: text("subject_rendered").notNull(),
@@ -697,6 +752,7 @@ export const noticeSends = pgTable("notice_sends", {
   status: text("status").notNull().default("queued"),
   provider: text("provider").notNull().default("internal-mock"),
   providerMessageId: text("provider_message_id"),
+  metadataJson: jsonb("metadata_json"),
   sentBy: text("sent_by"),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
 });
@@ -766,8 +822,8 @@ export const adminAssociationScopes = pgTable("admin_association_scopes", {
   uniqueAdminAssociationScope: uniqueIndex("admin_association_scopes_unique_uq").on(table.adminUserId, table.associationId),
 }));
 
-export const portalAccessRoleEnum = pgEnum("portal_access_role", ["owner", "tenant", "readonly"]);
-export const portalAccessStatusEnum = pgEnum("portal_access_status", ["invited", "active", "suspended"]);
+export const portalAccessRoleEnum = pgEnum("portal_access_role", ["owner", "tenant", "readonly", "board-member"]);
+export const portalAccessStatusEnum = pgEnum("portal_access_status", ["invited", "active", "suspended", "revoked", "expired"]);
 export const portalAccess = pgTable("portal_access", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -776,6 +832,12 @@ export const portalAccess = pgTable("portal_access", {
   email: text("email").notNull(),
   role: portalAccessRoleEnum("role").notNull().default("owner"),
   status: portalAccessStatusEnum("status").notNull().default("active"),
+  boardRoleId: varchar("board_role_id").references(() => boardRoles.id),
+  invitedBy: text("invited_by"),
+  invitedAt: timestamp("invited_at"),
+  acceptedAt: timestamp("accepted_at"),
+  suspendedAt: timestamp("suspended_at"),
+  revokedAt: timestamp("revoked_at"),
   lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -838,8 +900,11 @@ export const onboardingSubmissions = pgTable("onboarding_submissions", {
   emergencyContactName: text("emergency_contact_name"),
   emergencyContactPhone: text("emergency_contact_phone"),
   contactPreference: text("contact_preference").notNull().default("email"),
+  occupancyIntent: text("occupancy_intent"),
   startDate: timestamp("start_date").notNull(),
   ownershipPercentage: real("ownership_percentage"),
+  additionalOwnersJson: jsonb("additional_owners_json"),
+  tenantResidentsJson: jsonb("tenant_residents_json"),
   submittedAt: timestamp("submitted_at").defaultNow().notNull(),
   reviewedBy: text("reviewed_by"),
   reviewedAt: timestamp("reviewed_at"),
@@ -1197,10 +1262,11 @@ export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit
 export const insertGovernanceComplianceTemplateSchema = createInsertSchema(governanceComplianceTemplates).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertGovernanceTemplateItemSchema = createInsertSchema(governanceTemplateItems).omit({ id: true, createdAt: true });
 export const insertAnnualGovernanceTaskSchema = createInsertSchema(annualGovernanceTasks).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true });
+export const insertComplianceAlertOverrideSchema = createInsertSchema(complianceAlertOverrides).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAiIngestionJobSchema = createInsertSchema(aiIngestionJobs).omit({ id: true, createdAt: true, updatedAt: true, startedAt: true, completedAt: true, errorMessage: true, status: true });
-export const insertAiExtractedRecordSchema = createInsertSchema(aiExtractedRecords).omit({ id: true, createdAt: true, updatedAt: true, reviewedBy: true, reviewedAt: true, reviewStatus: true });
+export const insertAiExtractedRecordSchema = createInsertSchema(aiExtractedRecords).omit({ id: true, createdAt: true, updatedAt: true, reviewedBy: true, reviewedAt: true, reviewStatus: true, supersededAt: true });
 export const insertAiIngestionImportRunSchema = createInsertSchema(aiIngestionImportRuns).omit({ id: true, createdAt: true, updatedAt: true, rolledBackAt: true });
-export const insertClauseRecordSchema = createInsertSchema(clauseRecords).omit({ id: true, createdAt: true, updatedAt: true, reviewedBy: true, reviewedAt: true, reviewStatus: true });
+export const insertClauseRecordSchema = createInsertSchema(clauseRecords).omit({ id: true, createdAt: true, updatedAt: true, reviewedBy: true, reviewedAt: true, reviewStatus: true, supersededAt: true });
 export const insertClauseTagSchema = createInsertSchema(clauseTags).omit({ id: true, createdAt: true });
 export const insertSuggestedLinkSchema = createInsertSchema(suggestedLinks).omit({ id: true, createdAt: true, updatedAt: true, isApproved: true });
 export const insertNoticeTemplateSchema = createInsertSchema(noticeTemplates).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1385,6 +1451,8 @@ export type GovernanceTemplateItem = typeof governanceTemplateItems.$inferSelect
 export type InsertGovernanceTemplateItem = z.infer<typeof insertGovernanceTemplateItemSchema>;
 export type AnnualGovernanceTask = typeof annualGovernanceTasks.$inferSelect;
 export type InsertAnnualGovernanceTask = z.infer<typeof insertAnnualGovernanceTaskSchema>;
+export type ComplianceAlertOverride = typeof complianceAlertOverrides.$inferSelect;
+export type InsertComplianceAlertOverride = z.infer<typeof insertComplianceAlertOverrideSchema>;
 export type AiIngestionJob = typeof aiIngestionJobs.$inferSelect;
 export type InsertAiIngestionJob = z.infer<typeof insertAiIngestionJobSchema>;
 export type AiExtractedRecord = typeof aiExtractedRecords.$inferSelect;
@@ -1465,11 +1533,18 @@ export type ResidentialDatasetUnitOccupancy = {
   person: Person | null;
 };
 
+export type ResidentialDatasetUnitOccupancyStatus = "OWNER_OCCUPIED" | "RENTAL_OCCUPIED" | "VACANT" | "UNASSIGNED";
+
 export type ResidentialDatasetUnitDirectoryItem = {
   unit: Unit;
   association: Association | null;
   owners: ResidentialDatasetUnitOwner[];
   activeOccupancy: ResidentialDatasetUnitOccupancy | null;
+  occupancyStatus: ResidentialDatasetUnitOccupancyStatus;
+  ownerCount: number;
+  tenantCount: number;
+  occupantCount: number;
+  lastOccupancyUpdate: string | null;
 };
 
 export type ResidentialDatasetPersonDirectoryItem = {
@@ -1490,6 +1565,10 @@ export type ResidentialDatasetSummary = {
   activeOccupancies: number;
   activeTenancies: number;
   ownerOccupiedUnits: number;
+  rentalOccupiedUnits: number;
+  vacantUnits: number;
+  unassignedUnits: number;
+  occupancyRatePercent: number;
 };
 
 export type ResidentialDataset = {

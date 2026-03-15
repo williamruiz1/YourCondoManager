@@ -1,7 +1,10 @@
-import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { randomBytes } from "crypto";
+import { execFile } from "child_process";
 import { readFile } from "fs/promises";
 import path from "path";
+import { promisify } from "util";
+import { inflateRawSync } from "zlib";
 import { db } from "./db";
 import { sendPlatformEmail } from "./email-provider";
 import {
@@ -28,6 +31,7 @@ import {
   calendarEvents,
   clauseRecords,
   clauseTags,
+  complianceAlertOverrides,
   communicationHistory,
   contactUpdateRequests,
   inspectionRecords,
@@ -101,6 +105,7 @@ import {
   type CalendarEvent,
   type ClauseRecord,
   type ClauseTag,
+  type ComplianceAlertOverride,
   type CommunicationHistory,
   type ContactUpdateRequest,
   type InspectionFindingItem,
@@ -135,6 +140,7 @@ import {
   type InsertBudgetLine,
   type InsertBudgetVersion,
   type InsertCalendarEvent,
+  type InsertComplianceAlertOverride,
   type InsertClauseRecord,
   type InsertClauseTag,
   type InsertCommunicationHistory,
@@ -216,6 +222,8 @@ import {
   type PortalAccess,
   type Resolution,
   type ResidentialDataset,
+  type ResidentialDatasetUnitOccupancy,
+  type ResidentialDatasetUnitOwner,
   type SuggestedLink,
   type SpecialAssessment,
   type Unit,
@@ -229,8 +237,10 @@ import {
   utilityPayments,
   vendorInvoices,
 } from "@shared/schema";
+import { governanceStateTemplateLibrary } from "@shared/governance-state-template-library";
 
 type WorkState = "not-started" | "in-progress" | "complete";
+const execFileAsync = promisify(execFile);
 
 interface ProgressSummary {
   totalTasks: number;
@@ -280,7 +290,7 @@ export interface RoadmapResponse {
 type NotificationRecipient = {
   personId: string;
   email: string;
-  role: "owner" | "occupant";
+  role: "owner" | "tenant" | "board-member";
   unitId: string;
 };
 
@@ -325,6 +335,52 @@ function maskSecret(value: string): string {
 function normalizeCurrency(value: unknown): string {
   const raw = typeof value === "string" ? value.trim().toUpperCase() : "USD";
   return raw || "USD";
+}
+
+function maskAccountNumber(value?: string | null): string {
+  const digits = (value || "").replace(/\s+/g, "");
+  if (!digits) return "";
+  if (digits.length <= 4) return digits;
+  return `****${digits.slice(-4)}`;
+}
+
+function parseOptionalDate(value: string | Date | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
+function inferComplianceObligationType(text: string): string {
+  const normalized = text.toLowerCase();
+  if (normalized.includes("quorum") || normalized.includes("notice") || normalized.includes("meeting")) return "meeting-governance";
+  if (normalized.includes("budget") || normalized.includes("audit") || normalized.includes("assessment") || normalized.includes("reserve")) return "financial-governance";
+  if (normalized.includes("election") || normalized.includes("director") || normalized.includes("term") || normalized.includes("board member")) return "board-composition";
+  if (normalized.includes("record") || normalized.includes("minutes") || normalized.includes("document")) return "records-retention";
+  return "general-compliance";
+}
+
+function tokenizeComplianceText(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 4),
+  );
+}
+
+function countTokenOverlap(left: Set<string>, right: Set<string>): number {
+  let count = 0;
+  left.forEach((token) => {
+    if (right.has(token)) count += 1;
+  });
+  return count;
 }
 
 function normalizePayload(value: unknown): unknown {
@@ -689,6 +745,201 @@ function normalizeUploadedText(rawText: string, extension: string): string {
   }
 
   return rawText;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function stringField(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function stringListField(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim())
+    : [];
+}
+
+function textBlockField(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (!Array.isArray(value)) return null;
+  const joined = value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim())
+    .join("\n");
+  return joined.trim() || null;
+}
+
+function normalizeLooseDate(value: unknown): Date | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const next = new Date(value);
+  return Number.isNaN(next.getTime()) ? null : next;
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_match, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, dec) => String.fromCodePoint(parseInt(dec, 10)));
+}
+
+function xmlTextContent(xml: string): string {
+  return decodeXmlEntities(
+    xml
+      .replace(/<w:tab\/>/g, "\t")
+      .replace(/<w:br\/>/g, "\n")
+      .replace(/<\/w:p>/g, "\n")
+      .replace(/<\/(?:row|tr)>/g, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\r/g, ""),
+  )
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function extractZipEntries(buffer: Buffer): Map<string, Buffer> {
+  const entries = new Map<string, Buffer>();
+  const eocdSignature = 0x06054b50;
+  let eocdOffset = -1;
+  for (let offset = Math.max(0, buffer.length - 65557); offset <= buffer.length - 22; offset += 1) {
+    if (buffer.readUInt32LE(offset) === eocdSignature) {
+      eocdOffset = offset;
+    }
+  }
+  if (eocdOffset < 0) return entries;
+
+  const centralDirectorySize = buffer.readUInt32LE(eocdOffset + 12);
+  const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  const centralEnd = centralDirectoryOffset + centralDirectorySize;
+  let offset = centralDirectoryOffset;
+  while (offset + 46 <= centralEnd && offset + 46 <= buffer.length) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) break;
+    const compressionMethod = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const fileNameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42);
+    const fileName = buffer.slice(offset + 46, offset + 46 + fileNameLength).toString("utf8");
+
+    if (!fileName.endsWith("/")) {
+      if (buffer.readUInt32LE(localHeaderOffset) !== 0x04034b50) {
+        offset += 46 + fileNameLength + extraLength + commentLength;
+        continue;
+      }
+      const localFileNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+      const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+      const dataStart = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
+      const compressedData = buffer.slice(dataStart, dataStart + compressedSize);
+      const content = compressionMethod === 0
+        ? compressedData
+        : (compressionMethod === 8 ? inflateRawSync(compressedData) : null);
+      if (content) entries.set(fileName, content);
+    }
+
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+  return entries;
+}
+
+function extractDocxText(buffer: Buffer): string {
+  const entries = extractZipEntries(buffer);
+  const doc = entries.get("word/document.xml");
+  if (!doc) return "";
+  return xmlTextContent(doc.toString("utf8"));
+}
+
+function extractXlsxText(buffer: Buffer): string {
+  const entries = extractZipEntries(buffer);
+  const sharedStringsXml = entries.get("xl/sharedStrings.xml")?.toString("utf8") ?? "";
+  const sharedStrings = Array.from(sharedStringsXml.matchAll(/<si[\s\S]*?<\/si>/g)).map((match) => xmlTextContent(match[0]));
+
+  const workbookXml = entries.get("xl/workbook.xml")?.toString("utf8") ?? "";
+  const relsXml = entries.get("xl/_rels/workbook.xml.rels")?.toString("utf8") ?? "";
+  const relTargets = new Map<string, string>();
+  for (const match of Array.from(relsXml.matchAll(/<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g))) {
+    relTargets.set(match[1], match[2]);
+  }
+
+  const sheets = Array.from(workbookXml.matchAll(/<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g))
+    .map((match) => ({
+      name: decodeXmlEntities(match[1]),
+      target: relTargets.get(match[2]) || "",
+    }))
+    .filter((sheet) => sheet.target);
+
+  const lines: string[] = [];
+  for (const sheet of sheets) {
+    const normalizedTarget = sheet.target.startsWith("xl/") ? sheet.target : `xl/${sheet.target.replace(/^\/+/, "")}`;
+    const xml = entries.get(normalizedTarget)?.toString("utf8");
+    if (!xml) continue;
+
+    const rowValues: string[][] = [];
+    for (const rowMatch of Array.from(xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g))) {
+      const values: string[] = [];
+      for (const cellMatch of Array.from(rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g))) {
+        const attrs = cellMatch[1];
+        const body = cellMatch[2];
+        const typeMatch = attrs.match(/\bt="([^"]+)"/);
+        const type = typeMatch?.[1] ?? "";
+        let value = "";
+        if (type === "s") {
+          const index = Number((body.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? "").trim());
+          value = Number.isFinite(index) ? (sharedStrings[index] ?? "") : "";
+        } else if (type === "inlineStr") {
+          value = xmlTextContent(body.match(/<is>([\s\S]*?)<\/is>/)?.[1] ?? body);
+        } else {
+          value = decodeXmlEntities((body.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? "").trim());
+        }
+        values.push(value);
+      }
+      if (values.some((value) => value.trim().length > 0)) {
+        rowValues.push(values);
+      }
+    }
+
+    if (rowValues.length > 0) {
+      lines.push(`[Sheet] ${sheet.name}`);
+      lines.push(...rowValues.map((row) => row.join("\t").trimEnd()));
+      lines.push("");
+    }
+  }
+
+  return lines.join("\n").trim();
+}
+
+async function extractUploadedText(filePath: string, extension: string): Promise<string> {
+  if (DIRECT_TEXT_PARSEABLE_EXTENSIONS.has(extension)) {
+    const rawText = await readFile(filePath, "utf8");
+    return normalizeUploadedText(rawText, extension).trim();
+  }
+
+  if (extension === ".pdf") {
+    const { stdout } = await execFileAsync("pdftotext", ["-layout", "-enc", "UTF-8", filePath, "-"], {
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return stdout.trim();
+  }
+
+  if (extension === ".docx") {
+    return extractDocxText(await readFile(filePath));
+  }
+
+  if (extension === ".xlsx") {
+    return extractXlsxText(await readFile(filePath));
+  }
+
+  return "";
 }
 
 function classifyIngestionSource(job: AiIngestionJob, sourceText: string): IngestionClassification {
@@ -2498,6 +2749,20 @@ export interface IStorage {
   }>;
   getOnboardingInvites(associationId: string): Promise<Array<OnboardingInvite & { unitLabel?: string; associationName?: string }>>;
   createOnboardingInvite(data: InsertOnboardingInvite): Promise<OnboardingInvite & { inviteUrl: string }>;
+  getOrCreateUnitOnboardingLink(input: {
+    associationId: string;
+    unitId: string;
+    residentType: "owner" | "tenant";
+    createdBy?: string | null;
+    expiresAt?: Date | null;
+  }): Promise<OnboardingInvite & { inviteUrl: string; created: boolean }>;
+  regenerateUnitOnboardingLink(input: {
+    associationId: string;
+    unitId: string;
+    residentType: "owner" | "tenant";
+    createdBy?: string | null;
+    expiresAt?: Date | null;
+  }): Promise<OnboardingInvite & { inviteUrl: string }>;
   getOnboardingInviteByToken(token: string): Promise<(OnboardingInvite & { unitLabel?: string; associationName?: string }) | undefined>;
   sendOnboardingInvite(id: string, sentBy?: string | null): Promise<{ invite: OnboardingInvite; history: CommunicationHistory; delivery: { status: "sent" | "failed"; logId: string; provider: string; messageId: string | null; errorMessage?: string | null } }>;
   runOnboardingInviteReminderSweep(input: { associationId: string; sentBy?: string | null; olderThanHours?: number }): Promise<{ processed: number; sent: number; failed: number }>;
@@ -2528,13 +2793,27 @@ export interface IStorage {
     state: "not-started" | "in-progress" | "blocked" | "complete";
     blockers: string[];
     remediationActions: string[];
+    remediationItems: Array<{ label: string; href: string; summary: string }>;
     scorePercent: number;
+    components: {
+      unitsConfigured: { score: number; total: number; completed: number };
+      ownerDataCollected: { score: number; total: number; completed: number };
+      tenantDataCollected: { score: number; total: number; completed: number };
+      boardMembersConfigured: { score: number; total: number; completed: number };
+      paymentMethodsConfigured: { score: number; total: number; completed: number };
+      communicationTemplatesConfigured: { score: number; total: number; completed: number };
+    };
   }>;
   getAssociationOverview(associationId: string): Promise<{
     associationId: string;
     units: number;
     activeOwners: number;
     activeOccupants: number;
+    ownerOccupiedUnits: number;
+    rentalOccupiedUnits: number;
+    vacantUnits: number;
+    unassignedUnits: number;
+    occupancyRatePercent: number;
     maintenanceOpen: number;
     maintenanceOverdue: number;
     paymentMethodsActive: number;
@@ -2699,11 +2978,33 @@ export interface IStorage {
   updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
   getGovernanceComplianceTemplates(associationId?: string): Promise<GovernanceComplianceTemplate[]>;
   createGovernanceComplianceTemplate(data: InsertGovernanceComplianceTemplate): Promise<GovernanceComplianceTemplate>;
+  updateGovernanceComplianceTemplate(id: string, data: Partial<InsertGovernanceComplianceTemplate>): Promise<GovernanceComplianceTemplate | undefined>;
+  bootstrapGovernanceStateTemplateLibrary(states?: string[]): Promise<{ created: number; updated: number }>;
   getGovernanceTemplateItems(templateId: string): Promise<GovernanceTemplateItem[]>;
   createGovernanceTemplateItem(data: InsertGovernanceTemplateItem): Promise<GovernanceTemplateItem>;
   getAnnualGovernanceTasks(associationId?: string): Promise<AnnualGovernanceTask[]>;
   createAnnualGovernanceTask(data: InsertAnnualGovernanceTask): Promise<AnnualGovernanceTask>;
   updateAnnualGovernanceTask(id: string, data: Partial<InsertAnnualGovernanceTask>): Promise<AnnualGovernanceTask | undefined>;
+  getComplianceGapAlerts(associationId: string): Promise<Array<{
+    templateId: string;
+    templateItemId: string;
+    templateName: string;
+    templateItemTitle: string;
+    obligationType: string;
+    severity: "low" | "medium" | "high";
+    status: "active" | "suppressed" | "resolved";
+    sourceAuthority: string | null;
+    sourceUrl: string | null;
+    legalReference: string | null;
+    dueMonth: number;
+    dueDay: number;
+    matchedRuleCount: number;
+    matchedRuleIds: string[];
+    suppressionReason: string | null;
+    suppressedUntil: Date | null;
+    staleRegulatoryRecord: boolean;
+  }>>;
+  upsertComplianceAlertOverride(data: InsertComplianceAlertOverride): Promise<ComplianceAlertOverride>;
   generateAnnualGovernanceTasksFromTemplate(input: {
     associationId: string;
     templateId: string;
@@ -2724,7 +3025,31 @@ export interface IStorage {
   }>;
   createAiIngestionJob(data: InsertAiIngestionJob & { submittedBy?: string | null; sourceFileUrl?: string | null }): Promise<AiIngestionJob>;
   processAiIngestionJob(jobId: string): Promise<AiIngestionJob>;
-  getAiExtractedRecords(jobId?: string): Promise<AiExtractedRecord[]>;
+  getAiExtractedRecords(jobId?: string, options?: { includeSuperseded?: boolean }): Promise<AiExtractedRecord[]>;
+  getAiIngestionJobHistorySummary(jobId: string): Promise<{
+    activeRecordCount: number;
+    supersededRecordCount: number;
+    activeClauseCount: number;
+    supersededClauseCount: number;
+    lastSupersededAt: Date | null;
+  }>;
+  previewAiIngestionSupersededCleanup(retentionDays: number): Promise<{
+    retentionDays: number;
+    purgeableClauses: number;
+    purgeableExtractedRecords: number;
+    blockedExtractedRecords: number;
+    oldestEligibleSupersededAt: Date | null;
+    message: string;
+  }>;
+  executeAiIngestionSupersededCleanup(retentionDays: number): Promise<{
+    retentionDays: number;
+    deletedClauses: number;
+    deletedClauseTags: number;
+    deletedSuggestedLinks: number;
+    deletedExtractedRecords: number;
+    blockedExtractedRecords: number;
+    message: string;
+  }>;
   getAiExtractedRecordById(id: string): Promise<AiExtractedRecord | undefined>;
   createAiExtractedRecord(data: InsertAiExtractedRecord): Promise<AiExtractedRecord>;
   createAiIngestionImportRun(data: InsertAiIngestionImportRun): Promise<AiIngestionImportRun>;
@@ -2753,9 +3078,11 @@ export interface IStorage {
     message: string;
   }>;
   reviewAiExtractedRecord(id: string, payload: { reviewStatus: "approved" | "rejected"; payloadJson?: unknown; reviewedBy?: string | null }): Promise<AiExtractedRecord | undefined>;
-  getClauseRecords(filters?: { ingestionJobId?: string; associationId?: string; reviewStatus?: "pending-review" | "approved" | "rejected"; query?: string }): Promise<ClauseRecord[]>;
+  getClauseRecords(filters?: { ingestionJobId?: string; associationId?: string; reviewStatus?: "pending-review" | "approved" | "rejected"; query?: string; includeSuperseded?: boolean }): Promise<ClauseRecord[]>;
   createClauseRecord(data: InsertClauseRecord): Promise<ClauseRecord>;
   reviewClauseRecord(id: string, payload: { reviewStatus: "approved" | "rejected"; title?: string; clauseText?: string; reviewedBy?: string | null }): Promise<ClauseRecord | undefined>;
+  getComplianceRuleRecords(filters?: { associationId?: string; clauseRecordId?: string }): Promise<AiExtractedRecord[]>;
+  extractComplianceRulesFromClauses(options?: { associationId?: string; actorEmail?: string | null }): Promise<{ processed: number; created: number; recordIds: string[] }>;
   importApprovedAiExtractedRecord(
     id: string,
     actorEmail?: string,
@@ -2793,11 +3120,15 @@ export interface IStorage {
   sendNotice(payload: {
     associationId?: string | null;
     templateId?: string | null;
+    campaignKey?: string | null;
     recipientEmail: string;
     recipientPersonId?: string | null;
+    recipientUnitId?: string | null;
+    recipientRole?: "owner" | "tenant" | "board-member" | null;
     subject?: string | null;
     body?: string | null;
     variables?: Record<string, string>;
+    metadataJson?: Record<string, unknown> | null;
     requireApproval?: boolean | null;
     scheduledFor?: Date | string | null;
     bypassReadinessGate?: boolean | null;
@@ -2805,22 +3136,34 @@ export interface IStorage {
   }): Promise<{ send: NoticeSend; history: CommunicationHistory }>;
   resolveNotificationRecipients(payload: {
     associationId: string;
-    audience: "owners" | "occupants" | "all";
+    targetType: "all-owners" | "all-tenants" | "all-occupants" | "selected-units" | "individual-owner" | "individual-tenant" | "board-members";
+    selectedUnitIds?: string[];
+    selectedPersonId?: string | null;
+    selectedUnitAudience?: "owners" | "tenants" | "occupants" | "all";
+    messageClass?: "general" | "operational" | "maintenance" | "financial" | "governance";
     ccOwners?: boolean;
   }): Promise<Array<{
     personId: string;
     email: string;
-    role: "owner" | "occupant";
+    role: "owner" | "tenant" | "board-member";
     unitId: string;
   }>>;
   resolveNotificationRecipientPreview(payload: {
     associationId: string;
-    audience: "owners" | "occupants" | "all";
+    targetType: "all-owners" | "all-tenants" | "all-occupants" | "selected-units" | "individual-owner" | "individual-tenant" | "board-members";
+    selectedUnitIds?: string[];
+    selectedPersonId?: string | null;
+    selectedUnitAudience?: "owners" | "tenants" | "occupants" | "all";
+    messageClass?: "general" | "operational" | "maintenance" | "financial" | "governance";
     ccOwners?: boolean;
   }): Promise<NotificationRecipientResolution>;
   sendTargetedNotice(payload: {
     associationId: string;
-    audience: "owners" | "occupants" | "all";
+    targetType: "all-owners" | "all-tenants" | "all-occupants" | "selected-units" | "individual-owner" | "individual-tenant" | "board-members";
+    selectedUnitIds?: string[];
+    selectedPersonId?: string | null;
+    selectedUnitAudience?: "owners" | "tenants" | "occupants" | "all";
+    messageClass?: "general" | "operational" | "maintenance" | "financial" | "governance";
     ccOwners?: boolean;
     templateId?: string | null;
     subject?: string | null;
@@ -2853,10 +3196,11 @@ export interface IStorage {
     scorePercent: number;
     components: {
       unitsConfigured: { score: number; total: number; completed: number };
-      ownershipMapped: { score: number; total: number; completed: number };
-      occupancyMapped: { score: number; total: number; completed: number };
-      contactCoverage: { score: number; total: number; completed: number };
-      paymentConfig: { score: number; total: number; completed: number };
+      ownerDataCollected: { score: number; total: number; completed: number };
+      tenantDataCollected: { score: number; total: number; completed: number };
+      boardMembersConfigured: { score: number; total: number; completed: number };
+      paymentMethodsConfigured: { score: number; total: number; completed: number };
+      communicationTemplatesConfigured: { score: number; total: number; completed: number };
     };
   }>;
   getNoticeSends(associationId?: string, status?: string): Promise<NoticeSend[]>;
@@ -2877,10 +3221,23 @@ export interface IStorage {
   getAdminAssociationScopesByUserId(adminUserId: string): Promise<AdminAssociationScope[]>;
   upsertAdminAssociationScope(data: InsertAdminAssociationScope): Promise<AdminAssociationScope>;
   getPortalAccesses(associationId?: string): Promise<PortalAccess[]>;
-  createPortalAccess(data: InsertPortalAccess): Promise<PortalAccess>;
-  updatePortalAccess(id: string, data: Partial<InsertPortalAccess>): Promise<PortalAccess | undefined>;
+  createPortalAccess(data: InsertPortalAccess, actorEmail?: string | null): Promise<PortalAccess>;
+  updatePortalAccess(id: string, data: Partial<InsertPortalAccess>, actorEmail?: string | null): Promise<PortalAccess | undefined>;
   getPortalAccessById(id: string): Promise<PortalAccess | undefined>;
   getPortalAccessByAssociationEmail(associationId: string, email: string): Promise<PortalAccess | undefined>;
+  resolvePortalAccessContext(portalAccessId: string): Promise<{
+    access: PortalAccess;
+    boardRole: BoardRole | null;
+    hasBoardAccess: boolean;
+    effectiveRole: "owner" | "tenant" | "readonly" | "board-member" | "owner-board-member";
+  } | undefined>;
+  inviteBoardMemberAccess(input: {
+    associationId: string;
+    personId: string;
+    boardRoleId: string;
+    email?: string | null;
+    invitedBy?: string | null;
+  }): Promise<PortalAccess>;
   touchPortalAccessLogin(id: string): Promise<void>;
   getAssociationMemberships(associationId?: string): Promise<AssociationMembership[]>;
   upsertAssociationMembership(data: InsertAssociationMembership): Promise<AssociationMembership>;
@@ -3043,7 +3400,7 @@ export interface IStorage {
   createAnalysisRun(data: InsertAnalysisRun): Promise<AnalysisRun>;
   revertAnalysisVersion(resourceId: string, module: string, versionId: string): Promise<AnalysisVersion>;
 
-  getAdminAnalytics(days: number): Promise<{
+  getAdminAnalytics(days: number, associationId?: string): Promise<{
     analyzerMetrics: {
       totalRuns: number;
       successRate: number;
@@ -3055,10 +3412,58 @@ export interface IStorage {
       totalWorkstreams: number;
       totalTasks: number;
       taskStatusDistribution: { todo: number; inProgress: number; done: number };
-      completionRate: number;
-      taskThroughput: number;
-    };
-  }>;
+        completionRate: number;
+        taskThroughput: number;
+      };
+      collectionMetrics: {
+        associationId: string | null;
+        totalCharges: number;
+        totalPayments: number;
+        totalCredits: number;
+        openBalance: number;
+        collectionRate: number;
+        monthlyTrend: Array<{
+          period: string;
+          charges: number;
+          payments: number;
+          credits: number;
+          collectionRate: number;
+        }>;
+        agingBuckets: {
+          current: number;
+          thirtyDays: number;
+          sixtyDays: number;
+          ninetyPlus: number;
+        };
+        delinquencyMovement: Array<{
+          period: string;
+          delinquentAccounts: number;
+          totalBalance: number;
+        }>;
+      };
+      reserveProjection: {
+        associationId: string | null;
+        currentReserveBalance: number;
+        annualReserveContributions: number;
+        annualReserveExpenses: number;
+        annualSpecialAssessmentContribution: number;
+        forecastWindows: Array<{
+          months: number;
+          projectedEndingBalance: number;
+          projectedNetChange: number;
+        }>;
+      };
+      expenseCategoryTrend: {
+        associationId: string | null;
+        categories: Array<{
+          categoryId: string | null;
+          categoryName: string;
+          actualAmount: number;
+          plannedAmount: number;
+          varianceAmount: number;
+        }>;
+      };
+    }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3072,6 +3477,212 @@ export class DatabaseStorage implements IStorage {
 
   private normalizeName(value?: string | null): string {
     return (value || "").trim().toLowerCase();
+  }
+
+  private normalizeOnboardingContactPreference(value?: string | null): string {
+    const normalized = (value || "").trim().toLowerCase();
+    return normalized || "email";
+  }
+
+  private isDateRangeActive(startDate: Date, endDate?: Date | null, now = new Date()): boolean {
+    return startDate <= now && (!endDate || endDate >= now);
+  }
+
+  private deriveUnitOccupancySnapshot(input: {
+    ownerships: Ownership[];
+    occupancies: Occupancy[];
+    personById: Map<string, Person>;
+    now?: Date;
+  }): {
+    owners: ResidentialDatasetUnitOwner[];
+    activeOccupancy: ResidentialDatasetUnitOccupancy | null;
+    occupancyStatus: "OWNER_OCCUPIED" | "RENTAL_OCCUPIED" | "VACANT" | "UNASSIGNED";
+    ownerCount: number;
+    tenantCount: number;
+    occupantCount: number;
+    lastOccupancyUpdate: string | null;
+  } {
+    const now = input.now ?? new Date();
+    const activeOwnerships = input.ownerships.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now));
+    const activeOccupancies = input.occupancies.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now));
+    const activeTenantOccupancies = activeOccupancies.filter((row) => row.occupancyType === "TENANT");
+    const activeOwnerOccupancies = activeOccupancies.filter((row) => row.occupancyType === "OWNER_OCCUPIED");
+
+    let occupancyStatus: "OWNER_OCCUPIED" | "RENTAL_OCCUPIED" | "VACANT" | "UNASSIGNED" = "UNASSIGNED";
+    if (activeOwnerships.length > 0) {
+      if (activeTenantOccupancies.length > 0) occupancyStatus = "RENTAL_OCCUPIED";
+      else if (activeOwnerOccupancies.length > 0) occupancyStatus = "OWNER_OCCUPIED";
+      else occupancyStatus = "VACANT";
+    }
+
+    const activityDates = [
+      ...input.ownerships.flatMap((row) => [row.startDate, row.endDate].filter(Boolean) as Date[]),
+      ...input.occupancies.flatMap((row) => [row.startDate, row.endDate].filter(Boolean) as Date[]),
+    ];
+    const lastOccupancyUpdate = activityDates.length > 0
+      ? new Date(Math.max(...activityDates.map((value) => new Date(value).getTime()))).toISOString()
+      : null;
+
+    const activeOccupancyRow = occupancyStatus === "OWNER_OCCUPIED"
+      ? activeOwnerOccupancies[0] ?? null
+      : occupancyStatus === "RENTAL_OCCUPIED"
+        ? activeTenantOccupancies[0] ?? null
+        : null;
+
+    return {
+      owners: activeOwnerships.map((ownership) => ({
+        ownership,
+        person: input.personById.get(ownership.personId) ?? null,
+      })),
+      activeOccupancy: activeOccupancyRow
+        ? {
+          occupancy: activeOccupancyRow,
+          person: input.personById.get(activeOccupancyRow.personId) ?? null,
+        }
+        : null,
+      occupancyStatus,
+      ownerCount: activeOwnerships.length,
+      tenantCount: activeTenantOccupancies.length,
+      occupantCount: activeOccupancies.length,
+      lastOccupancyUpdate,
+    };
+  }
+
+  private normalizeOnboardingParticipant(
+    value: unknown,
+    options?: { requireName?: boolean; requireContact?: boolean },
+  ): {
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone: string | null;
+    mailingAddress?: string | null;
+    emergencyContactName?: string | null;
+    emergencyContactPhone?: string | null;
+    contactPreference?: string | null;
+    ownershipPercentage?: number | null;
+  } | null {
+    if (!value || typeof value !== "object") return null;
+    const row = value as Record<string, unknown>;
+    const firstName = typeof row.firstName === "string" ? row.firstName.trim() : "";
+    const lastName = typeof row.lastName === "string" ? row.lastName.trim() : "";
+    const email = typeof row.email === "string" ? row.email.trim() || null : null;
+    const phone = typeof row.phone === "string" ? row.phone.trim() || null : null;
+    if (options?.requireName !== false && (!firstName || !lastName)) return null;
+    if (options?.requireContact && !email && !phone) return null;
+    const ownershipPercentage = typeof row.ownershipPercentage === "number"
+      ? row.ownershipPercentage
+      : typeof row.ownershipPercentage === "string" && row.ownershipPercentage.trim()
+        ? Number(row.ownershipPercentage)
+        : null;
+    return {
+      firstName,
+      lastName,
+      email,
+      phone,
+      mailingAddress: typeof row.mailingAddress === "string" ? row.mailingAddress.trim() || null : null,
+      emergencyContactName: typeof row.emergencyContactName === "string" ? row.emergencyContactName.trim() || null : null,
+      emergencyContactPhone: typeof row.emergencyContactPhone === "string" ? row.emergencyContactPhone.trim() || null : null,
+      contactPreference: typeof row.contactPreference === "string" ? this.normalizeOnboardingContactPreference(row.contactPreference) : null,
+      ownershipPercentage: ownershipPercentage !== null && Number.isFinite(ownershipPercentage) ? ownershipPercentage : null,
+    };
+  }
+
+  private normalizeAdditionalOwners(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((row) => this.normalizeOnboardingParticipant(row, { requireName: true, requireContact: true }))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row))
+      .slice(0, 1);
+  }
+
+  private normalizeTenantResidents(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((row) => this.normalizeOnboardingParticipant(row, { requireName: true, requireContact: true }))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+  }
+
+  private async upsertOnboardingPerson(input: {
+    associationId: string;
+    person: {
+      firstName: string;
+      lastName: string;
+      email?: string | null;
+      phone?: string | null;
+      mailingAddress?: string | null;
+      emergencyContactName?: string | null;
+      emergencyContactPhone?: string | null;
+      contactPreference?: string | null;
+    };
+  }): Promise<Person> {
+    const match = await this.findMatchingOnboardingPerson({
+      associationId: input.associationId,
+      firstName: input.person.firstName,
+      lastName: input.person.lastName,
+      email: input.person.email ?? null,
+    });
+
+    let person: Person;
+    if (match.person) {
+      person = match.person;
+      const patch: Partial<InsertPerson> = {};
+      if (!person.email && input.person.email) patch.email = input.person.email;
+      if (!person.phone && input.person.phone) patch.phone = input.person.phone;
+      if (!person.mailingAddress && input.person.mailingAddress) patch.mailingAddress = input.person.mailingAddress;
+      if (!person.emergencyContactName && input.person.emergencyContactName) patch.emergencyContactName = input.person.emergencyContactName;
+      if (!person.emergencyContactPhone && input.person.emergencyContactPhone) patch.emergencyContactPhone = input.person.emergencyContactPhone;
+      if (Object.keys(patch).length > 0) {
+        person = (await this.updatePerson(person.id, patch, "system")) ?? person;
+      }
+      return person;
+    }
+
+    [person] = await db
+      .insert(persons)
+      .values({
+        firstName: input.person.firstName,
+        lastName: input.person.lastName,
+        email: input.person.email ?? null,
+        phone: input.person.phone ?? null,
+        mailingAddress: input.person.mailingAddress ?? null,
+        emergencyContactName: input.person.emergencyContactName ?? null,
+        emergencyContactPhone: input.person.emergencyContactPhone ?? null,
+        contactPreference: input.person.contactPreference ?? "email",
+      })
+      .returning();
+
+    return person;
+  }
+
+  private async ensureOnboardingPortalAccess(input: {
+    associationId: string;
+    personId: string;
+    unitId: string;
+    email?: string | null;
+    role: "owner" | "tenant";
+  }) {
+    const email = (input.email || "").trim();
+    if (!email) return;
+    const existingPortalAccess = await this.getPortalAccessByAssociationEmail(input.associationId, email);
+    if (!existingPortalAccess) {
+      await this.createPortalAccess({
+        associationId: input.associationId,
+        personId: input.personId,
+        unitId: input.unitId,
+        email,
+        role: input.role,
+        status: "active",
+      }, "system");
+      return;
+    }
+
+    await this.updatePortalAccess(existingPortalAccess.id, {
+      personId: input.personId,
+      unitId: input.unitId,
+      role: input.role,
+      status: "active",
+    }, "system");
   }
 
   private async findMatchingOnboardingPerson(input: {
@@ -3679,41 +4290,19 @@ export class DatabaseStorage implements IStorage {
     if (!unit || unit.associationId !== input.associationId) {
       throw new Error("Unit not found for association");
     }
-
-    const match = await this.findMatchingOnboardingPerson({
-      associationId: input.associationId,
-      firstName: input.person.firstName,
-      lastName: input.person.lastName,
-      email: input.person.email ?? null,
-    });
-
-    let person: Person;
-    if (match.person) {
-      person = match.person;
-      const patch: Partial<InsertPerson> = {};
-      if (!person.email && input.person.email) patch.email = input.person.email;
-      if (!person.phone && input.person.phone) patch.phone = input.person.phone;
-      if (!person.mailingAddress && input.person.mailingAddress) patch.mailingAddress = input.person.mailingAddress;
-      if (!person.emergencyContactName && input.person.emergencyContactName) patch.emergencyContactName = input.person.emergencyContactName;
-      if (!person.emergencyContactPhone && input.person.emergencyContactPhone) patch.emergencyContactPhone = input.person.emergencyContactPhone;
-      if (Object.keys(patch).length > 0) {
-        person = (await this.updatePerson(person.id, patch, "system")) ?? person;
-      }
-    } else {
-      [person] = await db
-        .insert(persons)
-        .values({
-          firstName: input.person.firstName,
-          lastName: input.person.lastName,
-          email: input.person.email ?? null,
-          phone: input.person.phone ?? null,
-          mailingAddress: input.person.mailingAddress ?? null,
-          emergencyContactName: input.person.emergencyContactName ?? null,
-          emergencyContactPhone: input.person.emergencyContactPhone ?? null,
-          contactPreference: input.person.contactPreference ?? "email",
-        })
-        .returning();
+    if (!(input.person.email || "").trim() && !(input.person.phone || "").trim()) {
+      throw new Error("Onboarding intake requires at least one contact method: email or phone");
     }
+    if (input.occupancyType === "OWNER_OCCUPIED") {
+      const ownershipPercentage = input.ownershipPercentage ?? 100;
+      if (!Number.isFinite(ownershipPercentage) || ownershipPercentage <= 0 || ownershipPercentage > 100) {
+        throw new Error("Owner onboarding requires an ownership percentage between 0 and 100");
+      }
+    }
+    const person = await this.upsertOnboardingPerson({
+      associationId: input.associationId,
+      person: input.person,
+    });
 
     const occupancy = await this.createOccupancy({
       unitId: input.unitId,
@@ -3792,6 +4381,100 @@ export class DatabaseStorage implements IStorage {
       ...invite,
       inviteUrl: `${appBaseUrl}/onboarding/${encodeURIComponent(invite.token)}`,
     };
+  }
+
+  async getOrCreateUnitOnboardingLink(input: {
+    associationId: string;
+    unitId: string;
+    residentType: "owner" | "tenant";
+    createdBy?: string | null;
+    expiresAt?: Date | null;
+  }): Promise<OnboardingInvite & { inviteUrl: string; created: boolean }> {
+    const [unit] = await db.select().from(units).where(eq(units.id, input.unitId));
+    if (!unit || unit.associationId !== input.associationId) {
+      throw new Error("Unit not found for association");
+    }
+
+    const invites = await db
+      .select()
+      .from(onboardingInvites)
+      .where(and(
+        eq(onboardingInvites.associationId, input.associationId),
+        eq(onboardingInvites.unitId, input.unitId),
+        eq(onboardingInvites.residentType, input.residentType),
+        eq(onboardingInvites.deliveryChannel, "unit-link"),
+      ))
+      .orderBy(desc(onboardingInvites.createdAt));
+
+    const activeInvite = invites.find((invite) => {
+      if (invite.status !== "active") return false;
+      if (invite.expiresAt && invite.expiresAt.getTime() < Date.now()) return false;
+      return true;
+    });
+
+    const appBaseUrl = (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+    if (activeInvite) {
+      return {
+        ...activeInvite,
+        inviteUrl: `${appBaseUrl}/onboarding/${encodeURIComponent(activeInvite.token)}`,
+        created: false,
+      };
+    }
+
+    const created = await this.createOnboardingInvite({
+      associationId: input.associationId,
+      unitId: input.unitId,
+      residentType: input.residentType,
+      email: null,
+      phone: null,
+      deliveryChannel: "unit-link",
+      expiresAt: input.expiresAt ?? null,
+      createdBy: input.createdBy ?? null,
+    });
+
+    return {
+      ...created,
+      created: true,
+    };
+  }
+
+  async regenerateUnitOnboardingLink(input: {
+    associationId: string;
+    unitId: string;
+    residentType: "owner" | "tenant";
+    createdBy?: string | null;
+    expiresAt?: Date | null;
+  }): Promise<OnboardingInvite & { inviteUrl: string }> {
+    const [unit] = await db.select().from(units).where(eq(units.id, input.unitId));
+    if (!unit || unit.associationId !== input.associationId) {
+      throw new Error("Unit not found for association");
+    }
+
+    await db
+      .update(onboardingInvites)
+      .set({
+        status: "revoked",
+        revokedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(onboardingInvites.associationId, input.associationId),
+        eq(onboardingInvites.unitId, input.unitId),
+        eq(onboardingInvites.residentType, input.residentType),
+        eq(onboardingInvites.deliveryChannel, "unit-link"),
+        eq(onboardingInvites.status, "active"),
+      ));
+
+    return this.createOnboardingInvite({
+      associationId: input.associationId,
+      unitId: input.unitId,
+      residentType: input.residentType,
+      email: null,
+      phone: null,
+      deliveryChannel: "unit-link",
+      expiresAt: input.expiresAt ?? null,
+      createdBy: input.createdBy ?? null,
+    });
   }
 
   async getOnboardingInviteByToken(token: string): Promise<(OnboardingInvite & { unitLabel?: string; associationName?: string }) | undefined> {
@@ -3962,7 +4645,21 @@ export class DatabaseStorage implements IStorage {
     emergencyContactPhone?: string | null;
     contactPreference?: string | null;
     startDate: Date;
+    occupancyIntent?: string | null;
     ownershipPercentage?: number | null;
+    additionalOwners?: Array<{
+      firstName: string;
+      lastName: string;
+      email?: string | null;
+      phone?: string | null;
+      ownershipPercentage?: number | null;
+    }> | null;
+    tenantResidents?: Array<{
+      firstName: string;
+      lastName: string;
+      email?: string | null;
+      phone?: string | null;
+    }> | null;
   }): Promise<OnboardingSubmission> {
     const invite = await this.getOnboardingInviteByToken(token);
     if (!invite) throw new Error("Onboarding invite not found");
@@ -3972,8 +4669,34 @@ export class DatabaseStorage implements IStorage {
     if (Number.isNaN(input.startDate.getTime())) {
       throw new Error("startDate must be valid");
     }
-    if (invite.residentType === "tenant" && !(input.email || "").trim() && !(input.phone || "").trim()) {
-      throw new Error("Tenant intake requires at least an email or phone number");
+    if (!(input.email || "").trim() && !(input.phone || "").trim()) {
+      throw new Error(`${invite.residentType === "owner" ? "Owner" : "Tenant"} intake requires at least an email or phone number`);
+    }
+    const occupancyIntent = invite.residentType === "owner"
+      ? ((input.occupancyIntent || "owner-occupied").trim().toLowerCase())
+      : "tenant";
+    if (invite.residentType === "owner" && !["owner-occupied", "rental", "vacant"].includes(occupancyIntent)) {
+      throw new Error("Owner intake occupancyIntent must be owner-occupied, rental, or vacant");
+    }
+    const additionalOwners = invite.residentType === "owner" ? this.normalizeAdditionalOwners(input.additionalOwners) : [];
+    const tenantResidents = invite.residentType === "owner" ? this.normalizeTenantResidents(input.tenantResidents) : [];
+    if (invite.residentType === "owner" && additionalOwners.length > 1) {
+      throw new Error("Owner intake supports at most one additional owner");
+    }
+    if (invite.residentType === "owner" && occupancyIntent === "owner-occupied" && tenantResidents.length > 0) {
+      throw new Error("Owner-occupied submissions cannot include tenant residents");
+    }
+    if (invite.residentType === "owner" && occupancyIntent === "vacant" && tenantResidents.length > 0) {
+      throw new Error("Vacant submissions cannot include tenant residents");
+    }
+    if (invite.residentType === "owner" && occupancyIntent === "rental" && tenantResidents.length === 0) {
+      throw new Error("Rental owner submissions must include at least one tenant resident");
+    }
+    if (invite.residentType === "owner") {
+      const ownershipPercentage = input.ownershipPercentage ?? 100;
+      if (!Number.isFinite(ownershipPercentage) || ownershipPercentage <= 0 || ownershipPercentage > 100) {
+        throw new Error("Owner intake requires an ownership percentage between 0 and 100");
+      }
     }
 
     const [submission] = await db
@@ -3993,8 +4716,11 @@ export class DatabaseStorage implements IStorage {
         emergencyContactName: input.emergencyContactName ?? null,
         emergencyContactPhone: input.emergencyContactPhone ?? null,
         contactPreference: input.contactPreference ?? "email",
+        occupancyIntent: invite.residentType === "owner" ? occupancyIntent : null,
         startDate: input.startDate,
         ownershipPercentage: invite.residentType === "owner" ? (input.ownershipPercentage ?? 100) : null,
+        additionalOwnersJson: invite.residentType === "owner" && additionalOwners.length > 0 ? additionalOwners : null,
+        tenantResidentsJson: invite.residentType === "owner" && tenantResidents.length > 0 ? tenantResidents : null,
         submittedAt: new Date(),
         updatedAt: new Date(),
       })
@@ -4037,6 +4763,20 @@ export class DatabaseStorage implements IStorage {
         lastName: submission.lastName,
         email: submission.email ?? inviteEmail ?? null,
       });
+      const submissionReviewNotes = [...match.reviewNotes];
+      const additionalOwners = this.normalizeAdditionalOwners(submission.additionalOwnersJson);
+      const tenantResidents = this.normalizeTenantResidents(submission.tenantResidentsJson);
+      if (submission.residentType === "owner") {
+        if (submission.occupancyIntent === "rental" || submission.occupancyIntent === "vacant" || submission.occupancyIntent === "owner-occupied") {
+          submissionReviewNotes.push(`Occupancy intent: ${submission.occupancyIntent}.`);
+        }
+        if (additionalOwners.length > 0) {
+          submissionReviewNotes.push(`Includes ${additionalOwners.length} additional owner record for approval.`);
+        }
+        if (tenantResidents.length > 0) {
+          submissionReviewNotes.push(`Includes ${tenantResidents.length} tenant resident record${tenantResidents.length === 1 ? "" : "s"} for approval.`);
+        }
+      }
       return {
         ...submission,
         unitLabel: unitNumber,
@@ -4044,7 +4784,7 @@ export class DatabaseStorage implements IStorage {
         inviteEmail,
         matchedPersonId: match.person?.id ?? null,
         matchBasis: match.matchBasis,
-        reviewNotes: match.reviewNotes,
+        reviewNotes: submissionReviewNotes,
       };
     }));
   }
@@ -4090,45 +4830,155 @@ export class DatabaseStorage implements IStorage {
       throw new Error(match.reviewNotes.join(" "));
     }
 
-    const result = await this.submitOnboardingIntake({
-      associationId: submission.associationId,
-      unitId: submission.unitId,
-      occupancyType: submission.residentType === "owner" ? "OWNER_OCCUPIED" : "TENANT",
-      person: {
-        firstName: submission.firstName,
-        lastName: submission.lastName,
+    let result: { person: Person; occupancy: Occupancy | null; ownership: Ownership | null };
+    if (submission.residentType === "tenant") {
+      result = await this.submitOnboardingIntake({
+        associationId: submission.associationId,
+        unitId: submission.unitId,
+        occupancyType: "TENANT",
+        person: {
+          firstName: submission.firstName,
+          lastName: submission.lastName,
+          email: submission.email ?? null,
+          phone: submission.phone ?? null,
+          mailingAddress: submission.mailingAddress ?? null,
+          emergencyContactName: submission.emergencyContactName ?? null,
+          emergencyContactPhone: submission.emergencyContactPhone ?? null,
+          contactPreference: submission.contactPreference ?? "email",
+        },
+        startDate: submission.startDate,
+        ownershipPercentage: null,
+      });
+
+      await this.upsertAssociationMembership({
+        associationId: submission.associationId,
+        personId: result.person.id,
+        unitId: submission.unitId,
+        membershipType: "tenant",
+        status: "active",
+        isPrimary: 1,
+      });
+      await this.ensureOnboardingPortalAccess({
+        associationId: submission.associationId,
+        personId: result.person.id,
+        unitId: submission.unitId,
         email: submission.email ?? null,
-        phone: submission.phone ?? null,
-        mailingAddress: submission.mailingAddress ?? null,
-        emergencyContactName: submission.emergencyContactName ?? null,
-        emergencyContactPhone: submission.emergencyContactPhone ?? null,
-        contactPreference: submission.contactPreference ?? "email",
-      },
-      startDate: submission.startDate,
-      ownershipPercentage: submission.ownershipPercentage ?? null,
-    });
+        role: "tenant",
+      });
+    } else {
+      const occupancyIntent = (submission.occupancyIntent || "owner-occupied").trim().toLowerCase();
+      const additionalOwners = this.normalizeAdditionalOwners(submission.additionalOwnersJson);
+      const tenantResidents = this.normalizeTenantResidents(submission.tenantResidentsJson);
 
-    await this.upsertAssociationMembership({
-      associationId: submission.associationId,
-      personId: result.person.id,
-      unitId: submission.unitId,
-      membershipType: submission.residentType,
-      status: "active",
-      isPrimary: 1,
-    });
-
-    if ((submission.email || "").trim()) {
-      const existingPortalAccess = await this.getPortalAccessByAssociationEmail(submission.associationId, submission.email || "");
-      if (!existingPortalAccess) {
-        await this.createPortalAccess({
-          associationId: submission.associationId,
-          personId: result.person.id,
+      const primaryOwner = await this.upsertOnboardingPerson({
+        associationId: submission.associationId,
+        person: {
+          firstName: submission.firstName,
+          lastName: submission.lastName,
+          email: submission.email ?? null,
+          phone: submission.phone ?? null,
+          mailingAddress: submission.mailingAddress ?? null,
+          emergencyContactName: submission.emergencyContactName ?? null,
+          emergencyContactPhone: submission.emergencyContactPhone ?? null,
+          contactPreference: submission.contactPreference ?? "email",
+        },
+      });
+      const primaryOwnership = await this.createOwnership({
+        unitId: submission.unitId,
+        personId: primaryOwner.id,
+        ownershipPercentage: submission.ownershipPercentage ?? 100,
+        startDate: submission.startDate,
+        endDate: null,
+      });
+      const primaryOccupancy = occupancyIntent === "owner-occupied"
+        ? await this.createOccupancy({
           unitId: submission.unitId,
-          email: submission.email || "",
-          role: submission.residentType,
+          personId: primaryOwner.id,
+          occupancyType: "OWNER_OCCUPIED",
+          startDate: submission.startDate,
+          endDate: null,
+        })
+        : null;
+
+      await this.upsertAssociationMembership({
+        associationId: submission.associationId,
+        personId: primaryOwner.id,
+        unitId: submission.unitId,
+        membershipType: "owner",
+        status: "active",
+        isPrimary: 1,
+      });
+      await this.ensureOnboardingPortalAccess({
+        associationId: submission.associationId,
+        personId: primaryOwner.id,
+        unitId: submission.unitId,
+        email: submission.email ?? null,
+        role: "owner",
+      });
+
+      for (const additionalOwner of additionalOwners) {
+        const ownerPerson = await this.upsertOnboardingPerson({
+          associationId: submission.associationId,
+          person: additionalOwner,
+        });
+        await this.createOwnership({
+          unitId: submission.unitId,
+          personId: ownerPerson.id,
+          ownershipPercentage: additionalOwner.ownershipPercentage ?? 50,
+          startDate: submission.startDate,
+          endDate: null,
+        });
+        await this.upsertAssociationMembership({
+          associationId: submission.associationId,
+          personId: ownerPerson.id,
+          unitId: submission.unitId,
+          membershipType: "owner",
           status: "active",
+          isPrimary: 0,
+        });
+        await this.ensureOnboardingPortalAccess({
+          associationId: submission.associationId,
+          personId: ownerPerson.id,
+          unitId: submission.unitId,
+          email: additionalOwner.email ?? null,
+          role: "owner",
         });
       }
+
+      for (const tenantResident of tenantResidents) {
+        const tenantPerson = await this.upsertOnboardingPerson({
+          associationId: submission.associationId,
+          person: tenantResident,
+        });
+        await this.createOccupancy({
+          unitId: submission.unitId,
+          personId: tenantPerson.id,
+          occupancyType: "TENANT",
+          startDate: submission.startDate,
+          endDate: null,
+        });
+        await this.upsertAssociationMembership({
+          associationId: submission.associationId,
+          personId: tenantPerson.id,
+          unitId: submission.unitId,
+          membershipType: "tenant",
+          status: "active",
+          isPrimary: 0,
+        });
+        await this.ensureOnboardingPortalAccess({
+          associationId: submission.associationId,
+          personId: tenantPerson.id,
+          unitId: submission.unitId,
+          email: tenantResident.email ?? null,
+          role: "tenant",
+        });
+      }
+
+      result = {
+        person: primaryOwner,
+        occupancy: primaryOccupancy,
+        ownership: primaryOwnership,
+      };
     }
 
     const [approved] = await db
@@ -4139,7 +4989,7 @@ export class DatabaseStorage implements IStorage {
         reviewedAt: new Date(),
         rejectionReason: null,
         createdPersonId: result.person.id,
-        createdOccupancyId: result.occupancy.id,
+        createdOccupancyId: result.occupancy?.id ?? null,
         createdOwnershipId: result.ownership?.id ?? null,
         updatedAt: new Date(),
       })
@@ -4168,48 +5018,48 @@ export class DatabaseStorage implements IStorage {
     const associationById = new Map(associationRows.map((row) => [row.id, row]));
     const personById = new Map(personRows.map((row) => [row.id, row]));
     const unitById = new Map(unitRows.map((row) => [row.id, row]));
+    const now = new Date();
 
-    const ownersByUnitId = new Map<string, ResidentialDataset["unitDirectory"][number]["owners"]>();
+    const ownershipsByUnitId = new Map<string, Ownership[]>();
     const activeOwnerPersonIds = new Set<string>();
     for (const ownership of ownershipRows) {
       if (!unitById.has(ownership.unitId)) continue;
-      const list = ownersByUnitId.get(ownership.unitId) ?? [];
-      list.push({
-        ownership,
-        person: personById.get(ownership.personId) ?? null,
-      });
-      ownersByUnitId.set(ownership.unitId, list);
+      const list = ownershipsByUnitId.get(ownership.unitId) ?? [];
+      list.push(ownership);
+      ownershipsByUnitId.set(ownership.unitId, list);
 
-      if (ownership.endDate == null) {
+      if (this.isDateRangeActive(ownership.startDate, ownership.endDate, now)) {
         activeOwnerPersonIds.add(ownership.personId);
       }
     }
 
-    const now = Date.now();
-    const activeOccupancyByUnitId = new Map<string, ResidentialDataset["unitDirectory"][number]["activeOccupancy"]>();
+    const occupanciesByUnitId = new Map<string, Occupancy[]>();
     for (const occupancy of occupancyRows) {
       if (!unitById.has(occupancy.unitId)) continue;
-      const endTime = occupancy.endDate ? new Date(occupancy.endDate).getTime() : null;
-      const isActive = endTime == null || endTime >= now;
-      if (!isActive) continue;
-
-      const current = activeOccupancyByUnitId.get(occupancy.unitId);
-      const candidateTime = new Date(occupancy.startDate).getTime();
-      const currentTime = current ? new Date(current.occupancy.startDate).getTime() : Number.NEGATIVE_INFINITY;
-      if (!current || candidateTime >= currentTime) {
-        activeOccupancyByUnitId.set(occupancy.unitId, {
-          occupancy,
-          person: personById.get(occupancy.personId) ?? null,
-        });
-      }
+      const list = occupanciesByUnitId.get(occupancy.unitId) ?? [];
+      list.push(occupancy);
+      occupanciesByUnitId.set(occupancy.unitId, list);
     }
 
-    const unitDirectory: ResidentialDataset["unitDirectory"] = unitRows.map((unit) => ({
-      unit,
-      association: associationById.get(unit.associationId) ?? null,
-      owners: ownersByUnitId.get(unit.id) ?? [],
-      activeOccupancy: activeOccupancyByUnitId.get(unit.id) ?? null,
-    }));
+    const unitDirectory: ResidentialDataset["unitDirectory"] = unitRows.map((unit) => {
+      const snapshot = this.deriveUnitOccupancySnapshot({
+        ownerships: ownershipsByUnitId.get(unit.id) ?? [],
+        occupancies: occupanciesByUnitId.get(unit.id) ?? [],
+        personById,
+        now,
+      });
+      return {
+        unit,
+        association: associationById.get(unit.associationId) ?? null,
+        owners: snapshot.owners,
+        activeOccupancy: snapshot.activeOccupancy,
+        occupancyStatus: snapshot.occupancyStatus,
+        ownerCount: snapshot.ownerCount,
+        tenantCount: snapshot.tenantCount,
+        occupantCount: snapshot.occupantCount,
+        lastOccupancyUpdate: snapshot.lastOccupancyUpdate,
+      };
+    });
 
     const ownedUnitsByPerson = new Map<string, Set<string>>();
     for (const ownership of ownershipRows) {
@@ -4222,8 +5072,7 @@ export class DatabaseStorage implements IStorage {
     const occupiedUnitsByPerson = new Map<string, Set<string>>();
     for (const occupancy of occupancyRows) {
       if (!unitById.has(occupancy.unitId)) continue;
-      const endTime = occupancy.endDate ? new Date(occupancy.endDate).getTime() : null;
-      const isActive = endTime == null || endTime >= now;
+      const isActive = this.isDateRangeActive(occupancy.startDate, occupancy.endDate, now);
       if (!isActive) continue;
       const set = occupiedUnitsByPerson.get(occupancy.personId) ?? new Set<string>();
       set.add(occupancy.unitId);
@@ -4249,9 +5098,12 @@ export class DatabaseStorage implements IStorage {
       };
     });
 
-    const activeOccupancies = Array.from(activeOccupancyByUnitId.values())
-      .map((row) => row?.occupancy)
-      .filter((row): row is Occupancy => Boolean(row));
+    const activeOccupancies = occupancyRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now));
+    const ownerOccupiedUnits = unitDirectory.filter((row) => row.occupancyStatus === "OWNER_OCCUPIED").length;
+    const rentalOccupiedUnits = unitDirectory.filter((row) => row.occupancyStatus === "RENTAL_OCCUPIED").length;
+    const vacantUnits = unitDirectory.filter((row) => row.occupancyStatus === "VACANT").length;
+    const unassignedUnits = unitDirectory.filter((row) => row.occupancyStatus === "UNASSIGNED").length;
+    const occupancyRatePercent = unitRows.length > 0 ? Math.round(((ownerOccupiedUnits + rentalOccupiedUnits) / unitRows.length) * 100) : 0;
 
     return {
       associations: associationRows,
@@ -4268,7 +5120,11 @@ export class DatabaseStorage implements IStorage {
         activeOwners: activeOwnerPersonIds.size,
         activeOccupancies: activeOccupancies.length,
         activeTenancies: activeOccupancies.filter((row) => row.occupancyType === "TENANT").length,
-        ownerOccupiedUnits: activeOccupancies.filter((row) => row.occupancyType === "OWNER_OCCUPIED").length,
+        ownerOccupiedUnits,
+        rentalOccupiedUnits,
+        vacantUnits,
+        unassignedUnits,
+        occupancyRatePercent,
       },
     };
   }
@@ -4278,18 +5134,59 @@ export class DatabaseStorage implements IStorage {
     state: "not-started" | "in-progress" | "blocked" | "complete";
     blockers: string[];
     remediationActions: string[];
+    remediationItems: Array<{ label: string; href: string; summary: string }>;
     scorePercent: number;
+    components: {
+      unitsConfigured: { score: number; total: number; completed: number };
+      ownerDataCollected: { score: number; total: number; completed: number };
+      tenantDataCollected: { score: number; total: number; completed: number };
+      boardMembersConfigured: { score: number; total: number; completed: number };
+      paymentMethodsConfigured: { score: number; total: number; completed: number };
+      communicationTemplatesConfigured: { score: number; total: number; completed: number };
+    };
   }> {
     const completeness = await this.getAssociationOnboardingCompleteness(associationId);
     const readiness = await this.getAssociationContactReadiness(associationId);
 
     const blockers = [...readiness.blockingReasons];
-    const remediationActions = blockers.map((reason) => {
-      if (reason.includes("No units")) return "Create units for the association.";
-      if (reason.includes("No active owners")) return "Map active owners to units.";
-      if (reason.includes("Contact coverage")) return "Collect missing owner/occupant email or phone details.";
-      return "Review and resolve onboarding blocker.";
-    });
+    const remediationItems: Array<{ label: string; href: string; summary: string }> = [];
+    const pushRemediation = (label: string, href: string, summary: string) => {
+      if (!remediationItems.some((item) => item.label === label && item.href === href)) {
+        remediationItems.push({ label, href, summary });
+      }
+    };
+
+    if (completeness.components.unitsConfigured.completed === 0) {
+      pushRemediation("Create Units", "/app/units", "No units are configured for this association.");
+    }
+    if (completeness.components.ownerDataCollected.total > completeness.components.ownerDataCollected.completed) {
+      pushRemediation(
+        "Send Owner Form Links",
+        "/app/association-context",
+        `${completeness.components.ownerDataCollected.total - completeness.components.ownerDataCollected.completed} units are missing owner information.`,
+      );
+    }
+    if (completeness.components.tenantDataCollected.total > completeness.components.tenantDataCollected.completed) {
+      pushRemediation(
+        "Collect Tenant Data",
+        "/app/association-context",
+        `${completeness.components.tenantDataCollected.total - completeness.components.tenantDataCollected.completed} units do not have tenant records yet.`,
+      );
+    }
+    if (completeness.components.boardMembersConfigured.completed === 0) {
+      pushRemediation("Configure Board Members", "/app/board", "No active board assignments are configured.");
+    }
+    if (completeness.components.paymentMethodsConfigured.completed === 0) {
+      pushRemediation("Configure Payments", "/app/financial-ledger", "No active payment methods are configured.");
+    }
+    if (completeness.components.communicationTemplatesConfigured.completed === 0) {
+      pushRemediation("Configure Communications", "/app/communications", "No communication templates are configured for the association.");
+    }
+    if (readiness.contactCoveragePercent < 70) {
+      pushRemediation("Resolve Missing Contact Data", "/app/association-context", `Contact coverage is ${readiness.contactCoveragePercent}%, below the 70% threshold.`);
+    }
+
+    const remediationActions = remediationItems.map((item) => `${item.label}: ${item.summary}`);
 
     let state: "not-started" | "in-progress" | "blocked" | "complete" = "in-progress";
     if (completeness.scorePercent === 0) state = "not-started";
@@ -4301,7 +5198,9 @@ export class DatabaseStorage implements IStorage {
       state,
       blockers,
       remediationActions,
+      remediationItems,
       scorePercent: completeness.scorePercent,
+      components: completeness.components,
     };
   }
 
@@ -4310,6 +5209,11 @@ export class DatabaseStorage implements IStorage {
     units: number;
     activeOwners: number;
     activeOccupants: number;
+    ownerOccupiedUnits: number;
+    rentalOccupiedUnits: number;
+    vacantUnits: number;
+    unassignedUnits: number;
+    occupancyRatePercent: number;
     maintenanceOpen: number;
     maintenanceOverdue: number;
     paymentMethodsActive: number;
@@ -4317,7 +5221,7 @@ export class DatabaseStorage implements IStorage {
     onboardingScorePercent: number;
     contactCoveragePercent: number;
   }> {
-    const [unitRows, ownershipRows, occupancyRows, maintenanceRows, paymentMethods, onboardingState, readiness] = await Promise.all([
+    const [unitRows, ownershipRows, occupancyRows, maintenanceRows, paymentMethods, onboardingState, readiness, residentialDataset] = await Promise.all([
       this.getUnits(associationId),
       this.getOwnerships(associationId),
       this.getOccupancies(associationId),
@@ -4325,11 +5229,12 @@ export class DatabaseStorage implements IStorage {
       this.getPaymentMethodConfigs(associationId),
       this.getAssociationOnboardingState(associationId),
       this.getAssociationContactReadiness(associationId),
+      this.getResidentialDataset(associationId),
     ]);
 
     const now = new Date();
-    const activeOwners = ownershipRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now)).length;
-    const activeOccupants = occupancyRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now)).length;
+    const activeOwners = ownershipRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now)).length;
+    const activeOccupants = occupancyRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now)).length;
     const maintenanceOpenRows = maintenanceRows.filter((row) => row.status !== "resolved" && row.status !== "closed" && row.status !== "rejected");
     const maintenanceOverdue = maintenanceOpenRows.filter((row) => row.responseDueAt && row.responseDueAt < now).length;
 
@@ -4338,6 +5243,11 @@ export class DatabaseStorage implements IStorage {
       units: unitRows.length,
       activeOwners,
       activeOccupants,
+      ownerOccupiedUnits: residentialDataset.summary.ownerOccupiedUnits,
+      rentalOccupiedUnits: residentialDataset.summary.rentalOccupiedUnits,
+      vacantUnits: residentialDataset.summary.vacantUnits,
+      unassignedUnits: residentialDataset.summary.unassignedUnits,
+      occupancyRatePercent: residentialDataset.summary.occupancyRatePercent,
       maintenanceOpen: maintenanceOpenRows.length,
       maintenanceOverdue,
       paymentMethodsActive: paymentMethods.filter((row) => row.isActive === 1).length,
@@ -5094,6 +6004,19 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  private renderStructuredPaymentMethodInstructions(method: PaymentMethodConfig): string {
+    const lines = [method.displayName];
+    if (method.bankName) lines.push(`Bank: ${method.bankName}`);
+    if (method.accountName) lines.push(`Account Name: ${method.accountName}`);
+    if (method.routingNumber) lines.push(`Routing Number: ${method.routingNumber}`);
+    if (method.accountNumber) lines.push(`Account Number: ${maskAccountNumber(method.accountNumber)}`);
+    if (method.zelleHandle) lines.push(`Zelle: ${method.zelleHandle}`);
+    if (method.mailingAddress) lines.push(`Mailing Address: ${method.mailingAddress}`);
+    if (method.paymentNotes) lines.push(`Notes: ${method.paymentNotes}`);
+    if (method.instructions?.trim()) lines.push(method.instructions.trim());
+    return lines.filter(Boolean).join("\n");
+  }
+
   async getPaymentGatewayConnections(associationId?: string): Promise<PaymentGatewayConnection[]> {
     if (!associationId) {
       return db.select().from(paymentGatewayConnections).orderBy(desc(paymentGatewayConnections.updatedAt));
@@ -5471,7 +6394,9 @@ export class DatabaseStorage implements IStorage {
     templateId?: string | null;
     subject?: string | null;
     body?: string | null;
-    audience?: "owners" | "occupants" | "all";
+    targetType?: "all-owners" | "individual-owner" | "selected-units";
+    selectedUnitIds?: string[];
+    selectedPersonId?: string | null;
     ccOwners?: boolean;
     requireApproval?: boolean | null;
     scheduledFor?: Date | string | null;
@@ -5491,21 +6416,29 @@ export class DatabaseStorage implements IStorage {
     }
 
     const methodLines = methods
-      .map((row, index) => `${index + 1}. ${row.displayName}: ${row.instructions}`)
+      .map((row, index) => `${index + 1}.\n${this.renderStructuredPaymentMethodInstructions(row)}`)
       .join("\n");
     const supportEmails = Array.from(new Set(methods.map((row) => row.supportEmail).filter((v): v is string => Boolean(v && v.trim()))));
     const supportPhones = Array.from(new Set(methods.map((row) => row.supportPhone).filter((v): v is string => Boolean(v && v.trim()))));
+    const mailingAddresses = Array.from(new Set(methods.map((row) => row.mailingAddress).filter((v): v is string => Boolean(v && v.trim()))));
+    const zelleHandles = Array.from(new Set(methods.map((row) => row.zelleHandle).filter((v): v is string => Boolean(v && v.trim()))));
 
     const variables: Record<string, string> = {
       payment_methods: methodLines,
       payment_support_email: supportEmails.join(", "),
       payment_support_phone: supportPhones.join(", "),
+      payment_mailing_address: mailingAddresses.join("\n"),
+      payment_zelle_handle: zelleHandles.join(", "),
       payment_method_count: String(methods.length),
     };
 
     const result = await this.sendTargetedNotice({
       associationId: payload.associationId,
-      audience: payload.audience ?? "owners",
+      targetType: payload.targetType ?? "all-owners",
+      selectedUnitIds: payload.selectedUnitIds,
+      selectedPersonId: payload.selectedPersonId ?? null,
+      selectedUnitAudience: payload.targetType === "selected-units" ? "owners" : undefined,
+      messageClass: "financial",
       ccOwners: payload.ccOwners ?? false,
       templateId: payload.templateId ?? null,
       subject: payload.subject ?? null,
@@ -5728,21 +6661,244 @@ export class DatabaseStorage implements IStorage {
 
   async getGovernanceComplianceTemplates(associationId?: string): Promise<GovernanceComplianceTemplate[]> {
     if (!associationId) {
-      return db.select().from(governanceComplianceTemplates).orderBy(desc(governanceComplianceTemplates.year), desc(governanceComplianceTemplates.createdAt));
+      return db
+        .select()
+        .from(governanceComplianceTemplates)
+        .orderBy(desc(governanceComplianceTemplates.year), desc(governanceComplianceTemplates.versionNumber), desc(governanceComplianceTemplates.createdAt));
     }
+
+    const [association] = await db.select().from(associations).where(eq(associations.id, associationId));
+    const normalizedState = association?.state?.trim().toUpperCase() || null;
+
+    const whereClause = normalizedState
+      ? or(
+          eq(governanceComplianceTemplates.associationId, associationId),
+          and(
+            isNull(governanceComplianceTemplates.associationId),
+            or(
+              and(
+                eq(governanceComplianceTemplates.scope, "state-library"),
+                eq(governanceComplianceTemplates.stateCode, normalizedState),
+              ),
+              and(
+                eq(governanceComplianceTemplates.scope, "ct-baseline"),
+                or(
+                  eq(governanceComplianceTemplates.stateCode, "CT"),
+                  isNull(governanceComplianceTemplates.stateCode),
+                ),
+              ),
+            ),
+          ),
+        )
+      : eq(governanceComplianceTemplates.associationId, associationId);
+
     return db
       .select()
       .from(governanceComplianceTemplates)
-      .where(eq(governanceComplianceTemplates.associationId, associationId))
-      .orderBy(desc(governanceComplianceTemplates.year), desc(governanceComplianceTemplates.createdAt));
+      .where(whereClause)
+      .orderBy(desc(governanceComplianceTemplates.year), desc(governanceComplianceTemplates.versionNumber), desc(governanceComplianceTemplates.createdAt));
   }
 
   async createGovernanceComplianceTemplate(data: InsertGovernanceComplianceTemplate): Promise<GovernanceComplianceTemplate> {
+    const now = new Date();
+    const publicationStatus = data.publicationStatus
+      || (data.scope === "association" ? "draft" : "review");
+    const publishedAt = publicationStatus === "published" ? (parseOptionalDate(data.publishedAt) || now) : null;
     const [result] = await db
       .insert(governanceComplianceTemplates)
-      .values({ ...data, updatedAt: new Date() })
+      .values({
+        ...data,
+        stateCode: data.stateCode?.trim().toUpperCase() || null,
+        sourceUrl: data.sourceUrl?.trim() || null,
+        sourceAuthority: data.sourceAuthority?.trim() || null,
+        sourceDocumentTitle: data.sourceDocumentTitle?.trim() || null,
+        sourceDocumentDate: parseOptionalDate(data.sourceDocumentDate),
+        effectiveDate: parseOptionalDate(data.effectiveDate),
+        lastSourceUpdatedAt: parseOptionalDate(data.lastSourceUpdatedAt),
+        lastVerifiedAt: parseOptionalDate(data.lastVerifiedAt),
+        lastSyncedAt: parseOptionalDate(data.lastSyncedAt),
+        nextReviewDueAt: parseOptionalDate(data.nextReviewDueAt),
+        publicationStatus,
+        publishedAt,
+        reviewNotes: data.reviewNotes?.trim() || null,
+        updatedAt: now,
+      })
       .returning();
     return result;
+  }
+
+  async updateGovernanceComplianceTemplate(id: string, data: Partial<InsertGovernanceComplianceTemplate>): Promise<GovernanceComplianceTemplate | undefined> {
+    const [existing] = await db.select().from(governanceComplianceTemplates).where(eq(governanceComplianceTemplates.id, id));
+    if (!existing) return undefined;
+
+    const nextPublicationStatus = data.publicationStatus ?? existing.publicationStatus;
+    const publishedAt =
+      nextPublicationStatus === "published"
+        ? (parseOptionalDate(data.publishedAt) || existing.publishedAt || new Date())
+        : nextPublicationStatus === "archived"
+          ? existing.publishedAt
+          : null;
+
+    const [result] = await db
+      .update(governanceComplianceTemplates)
+      .set({
+        ...data,
+        stateCode: data.stateCode === undefined ? undefined : (data.stateCode?.trim().toUpperCase() || null),
+        sourceUrl: data.sourceUrl === undefined ? undefined : (data.sourceUrl?.trim() || null),
+        sourceAuthority: data.sourceAuthority === undefined ? undefined : (data.sourceAuthority?.trim() || null),
+        sourceDocumentTitle: data.sourceDocumentTitle === undefined ? undefined : (data.sourceDocumentTitle?.trim() || null),
+        sourceDocumentDate: data.sourceDocumentDate === undefined ? undefined : parseOptionalDate(data.sourceDocumentDate),
+        effectiveDate: data.effectiveDate === undefined ? undefined : parseOptionalDate(data.effectiveDate),
+        lastSourceUpdatedAt: data.lastSourceUpdatedAt === undefined ? undefined : parseOptionalDate(data.lastSourceUpdatedAt),
+        lastVerifiedAt: data.lastVerifiedAt === undefined ? undefined : parseOptionalDate(data.lastVerifiedAt),
+        lastSyncedAt: data.lastSyncedAt === undefined ? undefined : parseOptionalDate(data.lastSyncedAt),
+        nextReviewDueAt: data.nextReviewDueAt === undefined ? undefined : parseOptionalDate(data.nextReviewDueAt),
+        publicationStatus: nextPublicationStatus,
+        publishedAt,
+        reviewNotes: data.reviewNotes === undefined ? undefined : (data.reviewNotes?.trim() || null),
+        updatedAt: new Date(),
+      })
+      .where(eq(governanceComplianceTemplates.id, id))
+      .returning();
+
+    return result;
+  }
+
+  async bootstrapGovernanceStateTemplateLibrary(states?: string[]): Promise<{ created: number; updated: number }> {
+    const requestedStates = new Set((states ?? []).map((value) => value.trim().toUpperCase()).filter(Boolean));
+    const seedTemplates = governanceStateTemplateLibrary.filter((template) => requestedStates.size === 0 || requestedStates.has(template.stateCode));
+    let created = 0;
+    let updated = 0;
+
+    for (const seed of seedTemplates) {
+      const legacyScope = seed.stateCode === "CT" ? "ct-baseline" : "state-library";
+      const [existing] = await db
+        .select()
+        .from(governanceComplianceTemplates)
+        .where(
+          and(
+            isNull(governanceComplianceTemplates.associationId),
+            isNull(governanceComplianceTemplates.baseTemplateId),
+            eq(governanceComplianceTemplates.versionNumber, seed.versionNumber),
+            seed.stateCode === "CT"
+              ? or(
+                  eq(governanceComplianceTemplates.stateCode, "CT"),
+                  isNull(governanceComplianceTemplates.stateCode),
+                )
+              : eq(governanceComplianceTemplates.stateCode, seed.stateCode),
+            or(
+              eq(governanceComplianceTemplates.scope, "state-library"),
+              eq(governanceComplianceTemplates.scope, legacyScope),
+            ),
+          ),
+        );
+
+      const template = existing
+        ? (
+            await db
+              .update(governanceComplianceTemplates)
+              .set({
+                name: seed.name,
+                scope: seed.stateCode === "CT" ? "ct-baseline" : "state-library",
+                stateCode: seed.stateCode,
+                sourceAuthority: seed.sourceAuthority,
+                sourceUrl: seed.sourceUrl,
+                sourceDocumentTitle: seed.sourceDocumentTitle,
+                sourceDocumentDate: parseOptionalDate(seed.sourceDocumentDate),
+                effectiveDate: parseOptionalDate(seed.effectiveDate),
+                lastSourceUpdatedAt: parseOptionalDate(seed.sourceDocumentDate),
+                lastVerifiedAt: new Date(),
+                lastSyncedAt: new Date(),
+                nextReviewDueAt: addDays(new Date(), seed.verificationCadenceDays),
+                publicationStatus: "published",
+                publishedAt: existing.publishedAt || new Date(),
+                reviewNotes: "Managed regulatory library record sourced from an authoritative jurisdiction reference.",
+                updatedAt: new Date(),
+              })
+              .where(eq(governanceComplianceTemplates.id, existing.id))
+              .returning()
+          )[0]
+        : (
+            await db
+              .insert(governanceComplianceTemplates)
+              .values({
+                associationId: null,
+                baseTemplateId: null,
+                scope: seed.stateCode === "CT" ? "ct-baseline" : "state-library",
+                stateCode: seed.stateCode,
+                year: new Date().getFullYear(),
+                versionNumber: seed.versionNumber,
+                name: seed.name,
+                sourceAuthority: seed.sourceAuthority,
+                sourceUrl: seed.sourceUrl,
+                sourceDocumentTitle: seed.sourceDocumentTitle,
+                sourceDocumentDate: parseOptionalDate(seed.sourceDocumentDate),
+                effectiveDate: parseOptionalDate(seed.effectiveDate),
+                lastSourceUpdatedAt: parseOptionalDate(seed.sourceDocumentDate),
+                lastVerifiedAt: new Date(),
+                lastSyncedAt: new Date(),
+                nextReviewDueAt: addDays(new Date(), seed.verificationCadenceDays),
+                publicationStatus: "published",
+                publishedAt: new Date(),
+                reviewNotes: "Managed regulatory library record sourced from an authoritative jurisdiction reference.",
+                createdBy: "system-state-library",
+                updatedAt: new Date(),
+              })
+              .returning()
+          )[0];
+
+      if (existing) updated += 1;
+      else created += 1;
+
+      const existingItems = await this.getGovernanceTemplateItems(template.id);
+      if (existingItems.length === 0) {
+        await db.insert(governanceTemplateItems).values(
+          seed.items.map((item) => ({
+            templateId: template.id,
+            title: item.title,
+            description: item.description,
+            legalReference: item.legalReference,
+            sourceCitation: item.sourceCitation,
+            sourceUrl: item.sourceUrl,
+            dueMonth: item.dueMonth,
+            dueDay: item.dueDay,
+            orderIndex: item.orderIndex,
+          })),
+        );
+      } else {
+        for (const item of seed.items) {
+          const existingItem = existingItems.find((candidate) => candidate.title === item.title);
+          if (existingItem) {
+            await db
+              .update(governanceTemplateItems)
+              .set({
+                description: item.description,
+                legalReference: item.legalReference,
+                sourceCitation: item.sourceCitation,
+                sourceUrl: item.sourceUrl,
+                dueMonth: item.dueMonth,
+                dueDay: item.dueDay,
+                orderIndex: item.orderIndex,
+              })
+              .where(eq(governanceTemplateItems.id, existingItem.id));
+          } else {
+            await db.insert(governanceTemplateItems).values({
+              templateId: template.id,
+              title: item.title,
+              description: item.description,
+              legalReference: item.legalReference,
+              sourceCitation: item.sourceCitation,
+              sourceUrl: item.sourceUrl,
+              dueMonth: item.dueMonth,
+              dueDay: item.dueDay,
+              orderIndex: item.orderIndex,
+            });
+          }
+        }
+      }
+    }
+
+    return { created, updated };
   }
 
   async getGovernanceTemplateItems(templateId: string): Promise<GovernanceTemplateItem[]> {
@@ -5796,13 +6952,211 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  async getComplianceGapAlerts(associationId: string): Promise<Array<{
+    templateId: string;
+    templateItemId: string;
+    templateName: string;
+    templateItemTitle: string;
+    obligationType: string;
+    severity: "low" | "medium" | "high";
+    status: "active" | "suppressed" | "resolved";
+    sourceAuthority: string | null;
+    sourceUrl: string | null;
+    legalReference: string | null;
+    dueMonth: number;
+    dueDay: number;
+    matchedRuleCount: number;
+    matchedRuleIds: string[];
+    suppressionReason: string | null;
+    suppressedUntil: Date | null;
+    staleRegulatoryRecord: boolean;
+  }>> {
+    const [association] = await db.select().from(associations).where(eq(associations.id, associationId));
+    if (!association) return [];
+
+    const normalizedState = association.state?.trim().toUpperCase() || null;
+    const templates = await this.getGovernanceComplianceTemplates(associationId);
+    const applicableTemplates = templates.filter((template) => {
+      if (template.publicationStatus !== "published") return false;
+      if (template.associationId === associationId) return true;
+      if (!template.associationId && template.scope === "ct-baseline") return normalizedState === "CT" || !normalizedState;
+      if (!template.associationId && template.scope === "state-library") return !normalizedState || template.stateCode === normalizedState;
+      return false;
+    });
+
+    const itemsByTemplate = new Map<string, GovernanceTemplateItem[]>();
+    for (const template of applicableTemplates) {
+      itemsByTemplate.set(template.id, await this.getGovernanceTemplateItems(template.id));
+    }
+
+    const rules = await this.getComplianceRuleRecords({ associationId });
+    const activeOverrides = await db
+      .select()
+      .from(complianceAlertOverrides)
+      .where(eq(complianceAlertOverrides.associationId, associationId));
+    const overrideByItemId = new Map<string, ComplianceAlertOverride>();
+    activeOverrides.forEach((override) => {
+      overrideByItemId.set(override.templateItemId, override);
+    });
+
+    const normalizedRules = rules.map((rule) => {
+      const payload = (rule.payloadJson && typeof rule.payloadJson === "object" ? rule.payloadJson : {}) as Record<string, unknown>;
+      const obligationType = typeof payload.obligationType === "string" ? payload.obligationType : "general-compliance";
+      const sourceText = [
+        typeof payload.sourceTitle === "string" ? payload.sourceTitle : "",
+        typeof payload.obligationText === "string" ? payload.obligationText : "",
+        typeof payload.sourceClauseText === "string" ? payload.sourceClauseText : "",
+      ].join(" ");
+      return {
+        id: rule.id,
+        obligationType,
+        tokens: tokenizeComplianceText(sourceText),
+      };
+    });
+
+    const alerts: Array<{
+      templateId: string;
+      templateItemId: string;
+      templateName: string;
+      templateItemTitle: string;
+      obligationType: string;
+      severity: "low" | "medium" | "high";
+      status: "active" | "suppressed" | "resolved";
+      sourceAuthority: string | null;
+      sourceUrl: string | null;
+      legalReference: string | null;
+      dueMonth: number;
+      dueDay: number;
+      matchedRuleCount: number;
+      matchedRuleIds: string[];
+      suppressionReason: string | null;
+      suppressedUntil: Date | null;
+      staleRegulatoryRecord: boolean;
+    }> = [];
+
+    for (const template of applicableTemplates) {
+      const items = itemsByTemplate.get(template.id) ?? [];
+      const staleRegulatoryRecord = Boolean(template.nextReviewDueAt && template.nextReviewDueAt < new Date());
+      for (const item of items) {
+        const sourceText = [item.title, item.description || "", item.legalReference || "", item.sourceCitation || ""].join(" ");
+        const obligationType = inferComplianceObligationType(sourceText);
+        const itemTokens = tokenizeComplianceText(sourceText);
+        const matchedRules = normalizedRules.filter((rule) => {
+          if (rule.obligationType === obligationType) return true;
+          return countTokenOverlap(itemTokens, rule.tokens) >= 2;
+        });
+        if (matchedRules.length > 0) continue;
+
+        const override = overrideByItemId.get(item.id);
+        const overrideActive = override && (!override.suppressedUntil || override.suppressedUntil >= new Date());
+        const status = overrideActive ? override.status : "active";
+        const severity: "low" | "medium" | "high" =
+          staleRegulatoryRecord || obligationType === "financial-governance" || obligationType === "board-composition"
+            ? "high"
+            : obligationType === "meeting-governance" || obligationType === "records-retention"
+              ? "medium"
+              : "low";
+
+        alerts.push({
+          templateId: template.id,
+          templateItemId: item.id,
+          templateName: template.name,
+          templateItemTitle: item.title,
+          obligationType,
+          severity,
+          status,
+          sourceAuthority: template.sourceAuthority,
+          sourceUrl: item.sourceUrl || template.sourceUrl,
+          legalReference: item.legalReference,
+          dueMonth: item.dueMonth,
+          dueDay: item.dueDay,
+          matchedRuleCount: 0,
+          matchedRuleIds: [],
+          suppressionReason: overrideActive ? override?.suppressionReason || null : null,
+          suppressedUntil: overrideActive ? override?.suppressedUntil || null : null,
+          staleRegulatoryRecord,
+        });
+      }
+    }
+
+    return alerts.sort((left, right) => {
+      const severityOrder = { high: 0, medium: 1, low: 2 };
+      return severityOrder[left.severity] - severityOrder[right.severity]
+        || left.dueMonth - right.dueMonth
+        || left.dueDay - right.dueDay
+        || left.templateItemTitle.localeCompare(right.templateItemTitle);
+    });
+  }
+
+  async upsertComplianceAlertOverride(data: InsertComplianceAlertOverride): Promise<ComplianceAlertOverride> {
+    const [existing] = await db
+      .select()
+      .from(complianceAlertOverrides)
+      .where(and(
+        eq(complianceAlertOverrides.associationId, data.associationId),
+        eq(complianceAlertOverrides.templateItemId, data.templateItemId),
+      ))
+      .limit(1);
+
+    if (existing) {
+      const [updated] = await db
+        .update(complianceAlertOverrides)
+        .set({
+          templateId: data.templateId ?? existing.templateId,
+          status: data.status ?? existing.status,
+          suppressionReason: data.suppressionReason ?? existing.suppressionReason,
+          suppressedUntil: data.suppressedUntil ?? existing.suppressedUntil,
+          notes: data.notes ?? existing.notes,
+          updatedBy: data.updatedBy ?? data.createdBy ?? existing.updatedBy,
+          updatedAt: new Date(),
+        })
+        .where(eq(complianceAlertOverrides.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(complianceAlertOverrides)
+      .values({
+        ...data,
+        updatedBy: data.updatedBy ?? data.createdBy ?? null,
+      })
+      .returning();
+    return created;
+  }
+
   async generateAnnualGovernanceTasksFromTemplate(input: {
     associationId: string;
     templateId: string;
     year: number;
     ownerPersonId?: string | null;
   }): Promise<{ created: number }> {
-    const items = await this.getGovernanceTemplateItems(input.templateId);
+    const [selectedTemplate] = await db.select().from(governanceComplianceTemplates).where(eq(governanceComplianceTemplates.id, input.templateId));
+    if (!selectedTemplate) {
+      throw new Error("Governance compliance template not found");
+    }
+
+    const templateIds = new Set<string>([selectedTemplate.id]);
+    if (selectedTemplate.baseTemplateId) {
+      templateIds.add(selectedTemplate.baseTemplateId);
+    }
+
+    const overlays = await db
+      .select()
+      .from(governanceComplianceTemplates)
+      .where(
+        and(
+          eq(governanceComplianceTemplates.associationId, input.associationId),
+          inArray(governanceComplianceTemplates.baseTemplateId, Array.from(templateIds)),
+        ),
+      );
+    for (const overlay of overlays) {
+      templateIds.add(overlay.id);
+      if (overlay.baseTemplateId) templateIds.add(overlay.baseTemplateId);
+    }
+
+    const itemRows = await Promise.all(Array.from(templateIds).map((templateId) => this.getGovernanceTemplateItems(templateId)));
+    const items = itemRows.flat().sort((a, b) => a.orderIndex - b.orderIndex);
     let created = 0;
     for (const item of items) {
       const dueDate = new Date(Date.UTC(input.year, Math.max(0, Math.min(11, item.dueMonth - 1)), Math.max(1, Math.min(31, item.dueDay))));
@@ -5859,6 +7213,10 @@ export class DatabaseStorage implements IStorage {
     previewRuns: number;
     appliedRuns: number;
     noopRuns: number;
+    supersededRecords: number;
+    supersededClauses: number;
+    jobsWithSupersededOutputs: number;
+    oldestSupersededAgeDays: number;
     failureRate: number;
     avgDurationMs: number;
     alerts: string[];
@@ -5869,7 +7227,7 @@ export class DatabaseStorage implements IStorage {
       .from(aiIngestionJobs)
       .where(gte(aiIngestionJobs.createdAt, since))
       .orderBy(desc(aiIngestionJobs.createdAt));
-    const [records, importRuns] = await Promise.all([
+    const [records, importRuns, clauses] = await Promise.all([
       db
         .select()
         .from(aiExtractedRecords)
@@ -5880,6 +7238,11 @@ export class DatabaseStorage implements IStorage {
         .from(aiIngestionImportRuns)
         .where(gte(aiIngestionImportRuns.createdAt, since))
         .orderBy(desc(aiIngestionImportRuns.createdAt)),
+      db
+        .select()
+        .from(clauseRecords)
+        .where(gte(clauseRecords.createdAt, since))
+        .orderBy(desc(clauseRecords.createdAt)),
     ]);
 
     const totalJobs = jobs.length;
@@ -5907,6 +7270,19 @@ export class DatabaseStorage implements IStorage {
     const previewRuns = importRuns.filter((run) => run.mode === "preview").length;
     const appliedRuns = importRuns.filter((run) => run.runStatus === "applied").length;
     const noopRuns = importRuns.filter((run) => run.runStatus === "noop" || run.runStatus === "preview-noop").length;
+    const supersededRecords = records.filter((record) => Boolean(record.supersededAt)).length;
+    const supersededClauses = clauses.filter((clause) => Boolean(clause.supersededAt)).length;
+    const jobsWithSupersededOutputs = new Set([
+      ...records.filter((record) => Boolean(record.supersededAt)).map((record) => record.jobId),
+      ...clauses.filter((clause) => Boolean(clause.supersededAt)).map((clause) => clause.ingestionJobId),
+    ]).size;
+    const oldestSupersededAt = [
+      ...records.map((record) => record.supersededAt).filter((value): value is Date => value instanceof Date),
+      ...clauses.map((clause) => clause.supersededAt).filter((value): value is Date => value instanceof Date),
+    ].sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+    const oldestSupersededAgeDays = oldestSupersededAt
+      ? Math.max(0, Math.floor((Date.now() - oldestSupersededAt.getTime()) / (24 * 60 * 60 * 1000)))
+      : 0;
     const failureRate = totalJobs === 0 ? 0 : Number((failedJobs / totalJobs).toFixed(3));
 
     const durations = jobs
@@ -5922,6 +7298,8 @@ export class DatabaseStorage implements IStorage {
     if (qualityWarningRecords >= 5) alerts.push(`Quality warnings are elevated: ${qualityWarningRecords} extracted records carry warnings.`);
     if (approvedRecords + rejectedRecords >= 5 && rejectedRecords > approvedRecords) alerts.push(`Review rejection rate is elevated: ${rejectedRecords} rejected vs ${approvedRecords} approved.`);
     if (previewRuns >= 5 && appliedRuns === 0) alerts.push("Previews are running but no imports are being applied.");
+    if (jobsWithSupersededOutputs >= 3) alerts.push(`Superseded ingestion history is accumulating across ${jobsWithSupersededOutputs} jobs.`);
+    if (oldestSupersededAgeDays >= 14) alerts.push(`Old superseded ingestion outputs are still retained after ${oldestSupersededAgeDays} days.`);
     if (alerts.length === 0) alerts.push("No active ingestion alerts.");
 
     return {
@@ -5939,6 +7317,10 @@ export class DatabaseStorage implements IStorage {
       previewRuns,
       appliedRuns,
       noopRuns,
+      supersededRecords,
+      supersededClauses,
+      jobsWithSupersededOutputs,
+      oldestSupersededAgeDays,
       failureRate,
       avgDurationMs,
       alerts,
@@ -5967,15 +7349,143 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getAiExtractedRecords(jobId?: string): Promise<AiExtractedRecord[]> {
-    if (!jobId) {
-      return db.select().from(aiExtractedRecords).orderBy(desc(aiExtractedRecords.createdAt));
+  async getAiExtractedRecords(jobId?: string, options?: { includeSuperseded?: boolean }): Promise<AiExtractedRecord[]> {
+    const includeSuperseded = options?.includeSuperseded === true;
+    const whereClause = jobId
+      ? and(
+          eq(aiExtractedRecords.jobId, jobId),
+          ...(includeSuperseded ? [] : [isNull(aiExtractedRecords.supersededAt)]),
+        )
+      : (includeSuperseded ? undefined : isNull(aiExtractedRecords.supersededAt));
+
+    const query = db.select().from(aiExtractedRecords);
+    return whereClause
+      ? query.where(whereClause).orderBy(desc(aiExtractedRecords.createdAt))
+      : query.orderBy(desc(aiExtractedRecords.createdAt));
+  }
+
+  async getAiIngestionJobHistorySummary(jobId: string): Promise<{
+    activeRecordCount: number;
+    supersededRecordCount: number;
+    activeClauseCount: number;
+    supersededClauseCount: number;
+    lastSupersededAt: Date | null;
+  }> {
+    const [records, clauses] = await Promise.all([
+      db.select({ supersededAt: aiExtractedRecords.supersededAt }).from(aiExtractedRecords).where(eq(aiExtractedRecords.jobId, jobId)),
+      db.select({ supersededAt: clauseRecords.supersededAt }).from(clauseRecords).where(eq(clauseRecords.ingestionJobId, jobId)),
+    ]);
+
+    const supersededTimestamps = [
+      ...records.map((row) => row.supersededAt).filter((value): value is Date => value instanceof Date),
+      ...clauses.map((row) => row.supersededAt).filter((value): value is Date => value instanceof Date),
+    ];
+
+    return {
+      activeRecordCount: records.filter((row) => !row.supersededAt).length,
+      supersededRecordCount: records.filter((row) => Boolean(row.supersededAt)).length,
+      activeClauseCount: clauses.filter((row) => !row.supersededAt).length,
+      supersededClauseCount: clauses.filter((row) => Boolean(row.supersededAt)).length,
+      lastSupersededAt: supersededTimestamps.sort((a, b) => b.getTime() - a.getTime())[0] ?? null,
+    };
+  }
+
+  async previewAiIngestionSupersededCleanup(retentionDays: number): Promise<{
+    retentionDays: number;
+    purgeableClauses: number;
+    purgeableExtractedRecords: number;
+    blockedExtractedRecords: number;
+    oldestEligibleSupersededAt: Date | null;
+    message: string;
+  }> {
+    const normalizedRetentionDays = Math.max(1, Math.min(365, Math.round(retentionDays)));
+    const cutoff = new Date(Date.now() - normalizedRetentionDays * 24 * 60 * 60 * 1000);
+    const [supersededRecords, supersededClauses, importRuns] = await Promise.all([
+      db.select().from(aiExtractedRecords).where(and(isNotNull(aiExtractedRecords.supersededAt), lte(aiExtractedRecords.supersededAt, cutoff))),
+      db.select().from(clauseRecords).where(and(isNotNull(clauseRecords.supersededAt), lte(clauseRecords.supersededAt, cutoff))),
+      db.select({ extractedRecordId: aiIngestionImportRuns.extractedRecordId }).from(aiIngestionImportRuns),
+    ]);
+
+    const referencedExtractedRecordIds = new Set(importRuns.map((run) => run.extractedRecordId));
+    const clauseReferencedExtractedRecordIds = new Set(
+      supersededClauses
+        .map((clause) => clause.extractedRecordId)
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    const purgeableExtractedRecords = supersededRecords.filter((record) => !referencedExtractedRecordIds.has(record.id) && !clauseReferencedExtractedRecordIds.has(record.id));
+    const oldestEligibleSupersededAt = [...supersededClauses, ...purgeableExtractedRecords]
+      .map((row) => row.supersededAt)
+      .filter((value): value is Date => value instanceof Date)
+      .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+
+    return {
+      retentionDays: normalizedRetentionDays,
+      purgeableClauses: supersededClauses.length,
+      purgeableExtractedRecords: purgeableExtractedRecords.length,
+      blockedExtractedRecords: supersededRecords.length - purgeableExtractedRecords.length,
+      oldestEligibleSupersededAt,
+      message: `Cleanup preview: ${supersededClauses.length} superseded clauses and ${purgeableExtractedRecords.length} superseded extracted records are purgeable after ${normalizedRetentionDays}d retention.`,
+    };
+  }
+
+  async executeAiIngestionSupersededCleanup(retentionDays: number): Promise<{
+    retentionDays: number;
+    deletedClauses: number;
+    deletedClauseTags: number;
+    deletedSuggestedLinks: number;
+    deletedExtractedRecords: number;
+    blockedExtractedRecords: number;
+    message: string;
+  }> {
+    const preview = await this.previewAiIngestionSupersededCleanup(retentionDays);
+    const normalizedRetentionDays = preview.retentionDays;
+    const cutoff = new Date(Date.now() - normalizedRetentionDays * 24 * 60 * 60 * 1000);
+    const purgeableClauses = await db
+      .select({ id: clauseRecords.id })
+      .from(clauseRecords)
+      .where(and(isNotNull(clauseRecords.supersededAt), lte(clauseRecords.supersededAt, cutoff)));
+    const purgeableClauseIds = purgeableClauses.map((row) => row.id);
+
+    let deletedClauseTags = 0;
+    let deletedSuggestedLinks = 0;
+    let deletedClauses = 0;
+    if (purgeableClauseIds.length > 0) {
+      deletedClauseTags = (await db.delete(clauseTags).where(inArray(clauseTags.clauseRecordId, purgeableClauseIds)).returning({ id: clauseTags.id })).length;
+      deletedSuggestedLinks = (await db.delete(suggestedLinks).where(inArray(suggestedLinks.clauseRecordId, purgeableClauseIds)).returning({ id: suggestedLinks.id })).length;
+      deletedClauses = (await db.delete(clauseRecords).where(inArray(clauseRecords.id, purgeableClauseIds)).returning({ id: clauseRecords.id })).length;
     }
-    return db
+
+    const supersededRecords = await db
       .select()
       .from(aiExtractedRecords)
-      .where(eq(aiExtractedRecords.jobId, jobId))
-      .orderBy(desc(aiExtractedRecords.createdAt));
+      .where(and(isNotNull(aiExtractedRecords.supersededAt), lte(aiExtractedRecords.supersededAt, cutoff)));
+    const [importRuns, remainingClauses] = await Promise.all([
+      db.select({ extractedRecordId: aiIngestionImportRuns.extractedRecordId }).from(aiIngestionImportRuns),
+      db.select({ extractedRecordId: clauseRecords.extractedRecordId }).from(clauseRecords).where(isNotNull(clauseRecords.extractedRecordId)),
+    ]);
+    const referencedExtractedRecordIds = new Set(importRuns.map((run) => run.extractedRecordId));
+    const clauseReferencedExtractedRecordIds = new Set(
+      remainingClauses
+        .map((clause) => clause.extractedRecordId)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const purgeableExtractedRecordIds = supersededRecords
+      .filter((record) => !referencedExtractedRecordIds.has(record.id) && !clauseReferencedExtractedRecordIds.has(record.id))
+      .map((record) => record.id);
+    const deletedExtractedRecords = purgeableExtractedRecordIds.length > 0
+      ? (await db.delete(aiExtractedRecords).where(inArray(aiExtractedRecords.id, purgeableExtractedRecordIds)).returning({ id: aiExtractedRecords.id })).length
+      : 0;
+
+    return {
+      retentionDays: normalizedRetentionDays,
+      deletedClauses,
+      deletedClauseTags,
+      deletedSuggestedLinks,
+      deletedExtractedRecords,
+      blockedExtractedRecords: preview.blockedExtractedRecords,
+      message: `Cleanup complete: deleted ${deletedClauses} superseded clauses and ${deletedExtractedRecords} superseded extracted records after ${normalizedRetentionDays}d retention.`,
+    };
   }
 
   async getAiExtractedRecordById(id: string): Promise<AiExtractedRecord | undefined> {
@@ -6127,13 +7637,10 @@ export class DatabaseStorage implements IStorage {
     if (job.sourceFileUrl) {
       const filename = job.sourceFileUrl.replace("/api/uploads/", "");
       const extension = path.extname(filename).toLowerCase();
-      if (DIRECT_TEXT_PARSEABLE_EXTENSIONS.has(extension)) {
-        try {
-          const rawText = await readFile(path.resolve("uploads", filename), "utf8");
-          fileText = normalizeUploadedText(rawText, extension).trim();
-        } catch {
-          fileText = "";
-        }
+      try {
+        fileText = await extractUploadedText(path.resolve("uploads", filename), extension);
+      } catch {
+        fileText = "";
       }
     }
 
@@ -6151,19 +7658,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async clearIngestionOutputs(jobId: string): Promise<void> {
-    const clauseRows = await db
-      .select({ id: clauseRecords.id })
-      .from(clauseRecords)
-      .where(eq(clauseRecords.ingestionJobId, jobId));
-    const clauseIds = clauseRows.map((row) => row.id);
+    const now = new Date();
+    await db
+      .update(clauseRecords)
+      .set({
+        supersededAt: now,
+        updatedAt: now,
+      })
+      .where(and(eq(clauseRecords.ingestionJobId, jobId), isNull(clauseRecords.supersededAt)));
 
-    if (clauseIds.length > 0) {
-      await db.delete(suggestedLinks).where(inArray(suggestedLinks.clauseRecordId, clauseIds));
-      await db.delete(clauseTags).where(inArray(clauseTags.clauseRecordId, clauseIds));
-    }
-
-    await db.delete(clauseRecords).where(eq(clauseRecords.ingestionJobId, jobId));
-    await db.delete(aiExtractedRecords).where(eq(aiExtractedRecords.jobId, jobId));
+    await db
+      .update(aiExtractedRecords)
+      .set({
+        supersededAt: now,
+        updatedAt: now,
+      })
+      .where(and(eq(aiExtractedRecords.jobId, jobId), isNull(aiExtractedRecords.supersededAt)));
   }
 
   private async getAssociationOwnerRosterCorrectionHints(associationId: string): Promise<AssociationOwnerRosterCorrectionHints> {
@@ -6504,7 +8014,7 @@ export class DatabaseStorage implements IStorage {
       await this.clearIngestionOutputs(job.id);
       const sourceText = await this.getAiIngestionSourceText(job);
       if (!sourceText.trim()) {
-        throw new Error("No parsable source text found. Provide pasted text or upload a txt/md/csv/tsv/json/log/html/xml/eml file.");
+        throw new Error("No parsable source text found. Provide pasted text or upload a pdf/docx/xlsx/txt/md/csv/tsv/json/log/html/xml/eml file.");
       }
       const classification = classifyIngestionSource(job, sourceText);
       const associationUnits = job.associationId ? await this.getUnits(job.associationId) : [];
@@ -6561,22 +8071,49 @@ export class DatabaseStorage implements IStorage {
         clauses: resolvedExtractionBase.clauses,
       };
 
+      const createdRecordsByType = new Map<AiIngestionExtractionRecord["recordType"], AiExtractedRecord[]>();
+      const createdExtractedRecords: AiExtractedRecord[] = [];
       for (const record of resolvedExtraction.records) {
-        await this.createAiExtractedRecord({
+        const created = await this.createAiExtractedRecord({
           jobId: job.id,
           associationId: job.associationId ?? null,
           recordType: record.recordType,
           payloadJson: record.payloadJson,
           confidenceScore: record.confidenceScore ?? null,
         });
+        createdExtractedRecords.push(created);
+        const bucket = createdRecordsByType.get(record.recordType) ?? [];
+        bucket.push(created);
+        createdRecordsByType.set(record.recordType, bucket);
       }
+
+      if (resolvedExtraction.clauses.length > 0 && createdExtractedRecords.length === 0) {
+        const created = await this.createAiExtractedRecord({
+          jobId: job.id,
+          associationId: job.associationId ?? null,
+          recordType: "document-metadata",
+          payloadJson: attachIngestionTrace(attachDestinationRouting("document-metadata", {
+            title: job.sourceFilename || "Clause Source Document",
+            tags: ["clause-source-trace"],
+            snippet: sourceText.slice(0, 400),
+          }), trace),
+          confidenceScore: null,
+        });
+        createdExtractedRecords.push(created);
+        createdRecordsByType.set("document-metadata", [created]);
+      }
+
+      const clauseTraceRecord = createdRecordsByType.get("document-metadata")?.[0]
+        ?? createdRecordsByType.get("meeting-notes")?.[0]
+        ?? createdExtractedRecords[0]
+        ?? null;
 
       for (const clauseInput of resolvedExtraction.clauses) {
         const clause = await this.createClauseRecord({
           ingestionJobId: job.id,
-          extractedRecordId: null,
+          extractedRecordId: clauseTraceRecord?.id ?? null,
           associationId: job.associationId ?? null,
-          sourceDocumentId: null,
+          sourceDocumentId: job.sourceDocumentId ?? null,
           title: clauseInput.title,
           clauseText: clauseInput.clauseText,
           confidenceScore: clauseInput.confidenceScore ?? null,
@@ -7331,6 +8868,265 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  private inferDocumentTypeFromMetadata(payloadJson: unknown, fallbackTitle?: string | null): string {
+    const payload = asRecord(payloadJson);
+    const explicit = stringField(payload.documentType) || stringField(payload.category);
+    if (explicit) return explicit;
+
+    const terms = [
+      fallbackTitle ?? "",
+      stringField(payload.title) ?? "",
+      stringField(payload.summary) ?? "",
+      stringField(payload.snippet) ?? "",
+      ...stringListField(payload.tags),
+    ].join(" ").toLowerCase();
+
+    if (/minutes|meeting|agenda|board packet/.test(terms)) return "Meeting Minutes";
+    if (/bylaw|rule|policy|covenant|compliance/.test(terms)) return "Bylaws";
+    if (/financial|budget|invoice|statement|reserve|audit/.test(terms)) return "Financial Report";
+    if (/insurance|certificate|coverage/.test(terms)) return "Insurance";
+    if (/legal|lawsuit|claim|contract/.test(terms)) return "Legal";
+    if (/maintenance|repair|inspection|vendor/.test(terms)) return "Maintenance";
+    return "Other";
+  }
+
+  private async importDocumentMetadataRecord(
+    record: AiExtractedRecord,
+    payloadJson: unknown,
+    actorEmail?: string,
+    mode: "preview" | "commit" = "commit",
+  ): Promise<AiIngestionImportSummary> {
+    const dryRun = mode === "preview";
+    const [job] = await db.select().from(aiIngestionJobs).where(eq(aiIngestionJobs.id, record.jobId));
+    if (!job || !record.associationId) {
+      return this.emptyImportSummary("documents", "Association and ingestion job are required for document metadata import.", dryRun);
+    }
+
+    const payload = asRecord(payloadJson);
+    const title = stringField(payload.title) || job.sourceFilename || "Imported Document";
+    const documentType = this.inferDocumentTypeFromMetadata(payloadJson, job.sourceFilename);
+    const snippet = stringField(payload.summary) || stringField(payload.snippet);
+    const tags = stringListField(payload.tags);
+    const details: AiIngestionImportSummary["details"] = [];
+
+    if (job.sourceDocumentId) {
+      const [existing] = await db.select().from(documents).where(eq(documents.id, job.sourceDocumentId));
+      if (!existing) {
+        return this.emptyImportSummary("documents", "Linked repository document was not found for metadata import.", dryRun);
+      }
+
+      const updates: Partial<InsertDocument> = {};
+      if (title.trim() !== existing.title) updates.title = title.trim();
+      if (documentType.trim() && documentType !== existing.documentType) updates.documentType = documentType;
+
+      if (Object.keys(updates).length === 0) {
+        return {
+          ...this.emptyImportSummary("documents", "Document metadata matches the linked repository document. No update needed.", dryRun),
+          details: [{
+            module: "documents",
+            action: "skip",
+            entityKey: existing.id,
+            reason: "Linked repository document already reflects the imported metadata.",
+            beforeJson: existing,
+            afterJson: {
+              ...existing,
+              inferredTags: tags,
+              snippet,
+            },
+          }],
+        };
+      }
+
+      const afterJson = {
+        ...existing,
+        ...updates,
+        inferredTags: tags,
+        snippet,
+      };
+      details.push({
+        module: "documents",
+        action: "update",
+        entityKey: existing.id,
+        reason: dryRun ? "Linked repository document would be updated from imported metadata." : "Linked repository document updated from imported metadata.",
+        beforeJson: existing,
+        afterJson,
+      });
+
+      if (!dryRun) {
+        await this.updateDocument(existing.id, updates, actorEmail || "system");
+      }
+
+      return {
+        ...this.emptyImportSummary("documents", dryRun ? "Preview complete: linked repository document would be updated." : "Document metadata import complete: linked repository document updated.", dryRun),
+        imported: true,
+        details,
+      };
+    }
+
+    if (!job.sourceFileUrl) {
+      return this.emptyImportSummary("documents", "No source file is attached to this ingestion job, so a repository document cannot be created.", dryRun);
+    }
+
+    const draftDocument: InsertDocument = {
+      associationId: record.associationId,
+      title,
+      fileUrl: job.sourceFileUrl,
+      documentType,
+      isPortalVisible: 0,
+      portalAudience: "owner",
+      uploadedBy: actorEmail || job.submittedBy || null,
+    };
+    details.push({
+      module: "documents",
+      action: "create",
+      entityKey: job.sourceFileUrl,
+      reason: dryRun ? "Repository document would be created from ingestion source metadata." : "Repository document created from ingestion source metadata.",
+      beforeJson: null,
+      afterJson: {
+        ...draftDocument,
+        inferredTags: tags,
+        snippet,
+      },
+    });
+
+    if (!dryRun) {
+      await this.createDocument(draftDocument, actorEmail || "system");
+    }
+
+    return {
+      ...this.emptyImportSummary("documents", dryRun ? "Preview complete: repository document would be created." : "Document metadata import complete: repository document created.", dryRun),
+      imported: true,
+      details,
+    };
+  }
+
+  private async importMeetingNotesRecord(
+    record: AiExtractedRecord,
+    payloadJson: unknown,
+    actorEmail?: string,
+    mode: "preview" | "commit" = "commit",
+  ): Promise<AiIngestionImportSummary> {
+    const dryRun = mode === "preview";
+    const [job] = await db.select().from(aiIngestionJobs).where(eq(aiIngestionJobs.id, record.jobId));
+    if (!job || !record.associationId) {
+      return this.emptyImportSummary("governance", "Association and ingestion job are required for meeting-note import.", dryRun);
+    }
+
+    const payload = asRecord(payloadJson);
+    const title = stringField(payload.title) || job.sourceFilename || "Imported Meeting Notes";
+    const meetingType = stringField(payload.meetingType) || stringField(payload.suggestedMeetingType) || "board";
+    const scheduledAt = normalizeLooseDate(payload.scheduledAt) || normalizeLooseDate(payload.meetingDate) || job.createdAt;
+    const location = stringField(payload.location);
+    const agenda = textBlockField(payload.agenda);
+    const summary = stringField(payload.summary) || stringField(payload.snippet);
+    const noteContent = textBlockField(payload.notes) || textBlockField(payload.minutes) || summary;
+    if (!noteContent) {
+      return this.emptyImportSummary("governance", "Meeting notes payload is missing importable note content.", dryRun);
+    }
+
+    const existingMeetings = await this.getGovernanceMeetings(record.associationId);
+    const normalizedTitle = title.trim().toLowerCase();
+    const sameDayMeeting = existingMeetings.find((meeting) => {
+      const meetingTitle = meeting.title.trim().toLowerCase();
+      return meetingTitle === normalizedTitle
+        && meeting.meetingType === meetingType
+        && meeting.scheduledAt.toDateString() === scheduledAt.toDateString();
+    });
+
+    let meetingId = sameDayMeeting?.id ?? "";
+    const details: AiIngestionImportSummary["details"] = [];
+
+    if (!sameDayMeeting) {
+      const draftMeeting: InsertGovernanceMeeting = {
+        associationId: record.associationId,
+        meetingType,
+        title,
+        scheduledAt,
+        location: location ?? null,
+        status: "completed",
+        agenda: agenda ?? null,
+        notes: noteContent,
+        summaryText: summary ?? null,
+        summaryStatus: "draft",
+      };
+      details.push({
+        module: "governance",
+        action: "create",
+        entityKey: title,
+        reason: dryRun ? "Governance meeting would be created from imported meeting notes." : "Governance meeting created from imported meeting notes.",
+        beforeJson: null,
+        afterJson: draftMeeting,
+      });
+      if (!dryRun) {
+        const createdMeeting = await this.createGovernanceMeeting(draftMeeting);
+        meetingId = createdMeeting.id;
+      }
+    } else {
+      meetingId = sameDayMeeting.id;
+      const updatePatch: Partial<InsertGovernanceMeeting> = {};
+      if (!sameDayMeeting.location && location) updatePatch.location = location;
+      if (!sameDayMeeting.agenda && agenda) updatePatch.agenda = agenda;
+      if (!sameDayMeeting.notes && noteContent) updatePatch.notes = noteContent;
+      if (!sameDayMeeting.summaryText && summary) updatePatch.summaryText = summary;
+      if (Object.keys(updatePatch).length > 0) {
+        details.push({
+          module: "governance",
+          action: "update",
+          entityKey: sameDayMeeting.id,
+          reason: dryRun ? "Matched governance meeting would be enriched with imported notes." : "Matched governance meeting enriched with imported notes.",
+          beforeJson: sameDayMeeting,
+          afterJson: { ...sameDayMeeting, ...updatePatch },
+        });
+        if (!dryRun) {
+          await this.updateGovernanceMeeting(sameDayMeeting.id, updatePatch);
+        }
+      }
+    }
+
+    const existingNotes = sameDayMeeting && !dryRun ? await this.getMeetingNotes(sameDayMeeting.id) : [];
+    const duplicateNote = existingNotes.find((note) => note.noteType === "ai-import" && note.content.trim() === noteContent.trim());
+    if (duplicateNote) {
+      details.push({
+        module: "governance",
+        action: "skip",
+        entityKey: duplicateNote.id,
+        reason: "Matching AI-import note already exists for the target meeting.",
+        beforeJson: duplicateNote,
+        afterJson: duplicateNote,
+      });
+      return {
+        ...this.emptyImportSummary("governance", "Matching meeting note already exists. No new note created.", dryRun),
+        imported: details.some((detail) => detail.action !== "skip"),
+        details,
+      };
+    }
+
+    const noteDraft: InsertMeetingNote = {
+      meetingId: meetingId || "preview-meeting",
+      noteType: "ai-import",
+      content: noteContent,
+      createdBy: actorEmail || job.submittedBy || "system",
+    };
+    details.push({
+      module: "governance",
+      action: "create",
+      entityKey: meetingId || title,
+      reason: dryRun ? "Meeting note would be created from imported notes payload." : "Meeting note created from imported notes payload.",
+      beforeJson: null,
+      afterJson: noteDraft,
+    });
+
+    if (!dryRun) {
+      await this.createMeetingNote(noteDraft);
+    }
+
+    return {
+      ...this.emptyImportSummary("governance", dryRun ? "Preview complete: governance meeting import planned." : "Meeting notes import complete.", dryRun),
+      imported: true,
+      details,
+    };
+  }
+
   async importApprovedAiExtractedRecord(
     id: string,
     actorEmail?: string,
@@ -7377,6 +9173,14 @@ export class DatabaseStorage implements IStorage {
       case "owner-ledger":
       case "bank-statement":
         summary = await this.importBankStatementRecord({ ...record, payloadJson: payload }, mode);
+        break;
+      case "governance":
+      case "meeting-notes":
+        summary = await this.importMeetingNotesRecord(record, payload, actorEmail, mode);
+        break;
+      case "metadata":
+      case "document-metadata":
+        summary = await this.importDocumentMetadataRecord(record, payload, actorEmail, mode);
         break;
       default:
         summary = this.emptyImportSummary(
@@ -7552,8 +9356,12 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getClauseRecords(filters?: { ingestionJobId?: string; associationId?: string; reviewStatus?: "pending-review" | "approved" | "rejected"; query?: string }): Promise<ClauseRecord[]> {
-    const clauses = await db.select().from(clauseRecords).orderBy(desc(clauseRecords.createdAt));
+  async getClauseRecords(filters?: { ingestionJobId?: string; associationId?: string; reviewStatus?: "pending-review" | "approved" | "rejected"; query?: string; includeSuperseded?: boolean }): Promise<ClauseRecord[]> {
+    const clauses = await db
+      .select()
+      .from(clauseRecords)
+      .where(filters?.includeSuperseded ? undefined : isNull(clauseRecords.supersededAt))
+      .orderBy(desc(clauseRecords.createdAt));
     return clauses.filter((row) => {
       if (filters?.ingestionJobId && row.ingestionJobId !== filters.ingestionJobId) return false;
       if (filters?.associationId && row.associationId !== filters.associationId) return false;
@@ -7588,6 +9396,88 @@ export class DatabaseStorage implements IStorage {
       .where(eq(clauseRecords.id, id))
       .returning();
     return result;
+  }
+
+  async getComplianceRuleRecords(filters?: { associationId?: string; clauseRecordId?: string }): Promise<AiExtractedRecord[]> {
+    const rows = await db.select().from(aiExtractedRecords).orderBy(desc(aiExtractedRecords.createdAt));
+    return rows.filter((row) => {
+      if (row.recordType !== "compliance-rule") return false;
+      if (filters?.associationId && row.associationId !== filters.associationId) return false;
+      if (filters?.clauseRecordId) {
+        const payload = row.payloadJson as Record<string, unknown> | null;
+        if (!payload || payload.clauseRecordId !== filters.clauseRecordId) return false;
+      }
+      return true;
+    });
+  }
+
+  async extractComplianceRulesFromClauses(options?: { associationId?: string; actorEmail?: string | null }): Promise<{ processed: number; created: number; recordIds: string[] }> {
+    const clauses = await this.getClauseRecords({
+      associationId: options?.associationId,
+      reviewStatus: "approved",
+    });
+    const existingRules = await this.getComplianceRuleRecords({ associationId: options?.associationId });
+    const existingByClauseId = new Set(
+      existingRules
+        .map((row) => {
+          const payload = row.payloadJson as Record<string, unknown> | null;
+          return typeof payload?.clauseRecordId === "string" ? payload.clauseRecordId : null;
+        })
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    const recordIds: string[] = [];
+    for (const clause of clauses) {
+      if (existingByClauseId.has(clause.id)) continue;
+      const text = `${clause.title}\n${clause.clauseText}`.toLowerCase();
+      const obligationType = text.includes("quorum") || text.includes("notice") || text.includes("meeting")
+        ? "meeting-governance"
+        : text.includes("budget") || text.includes("audit") || text.includes("assessment") || text.includes("reserve")
+          ? "financial-governance"
+          : text.includes("election") || text.includes("director") || text.includes("term")
+            ? "board-composition"
+            : text.includes("record") || text.includes("minutes") || text.includes("document")
+              ? "records-retention"
+              : "general-compliance";
+      const frequency = text.includes("annual") || text.includes("annually") || text.includes("each year")
+        ? "annual"
+        : text.includes("monthly")
+          ? "monthly"
+          : text.includes("quarter")
+            ? "quarterly"
+            : "event-driven";
+      const severity = text.includes("quorum") || text.includes("audit") || text.includes("budget") || text.includes("election")
+        ? "high"
+        : text.includes("notice") || text.includes("meeting")
+          ? "medium"
+          : "low";
+      const firstSentence = clause.clauseText.split(/(?<=[.!?])\s+/)[0] || clause.clauseText;
+
+      const created = await this.createAiExtractedRecord({
+        jobId: clause.ingestionJobId,
+        associationId: clause.associationId ?? null,
+        recordType: "compliance-rule",
+        payloadJson: {
+          clauseRecordId: clause.id,
+          sourceTitle: clause.title,
+          obligationType,
+          frequency,
+          severity,
+          obligationText: firstSentence.trim(),
+          sourceClauseText: clause.clauseText,
+          extractedAt: new Date().toISOString(),
+          extractedBy: options?.actorEmail || "system",
+        },
+        confidenceScore: clause.confidenceScore ?? 0.75,
+      });
+      recordIds.push(created.id);
+    }
+
+    return {
+      processed: clauses.length,
+      created: recordIds.length,
+      recordIds,
+    };
   }
 
   async getClauseTags(clauseRecordId: string): Promise<ClauseTag[]> {
@@ -7682,11 +9572,17 @@ export class DatabaseStorage implements IStorage {
     templateId?: string | null;
     subject?: string | null;
     body?: string | null;
+    recipientPersonId?: string | null;
+    recipientUnitId?: string | null;
+    recipientRole?: "owner" | "tenant" | "board-member" | null;
     variables?: Record<string, string>;
   }): Promise<{ associationId: string | null; subject: string; body: string }> {
     let associationId = payload.associationId ?? null;
     let subject = payload.subject || "";
+    let header = "";
     let body = payload.body || "";
+    let footer = "";
+    let signature = "";
 
     if (payload.templateId) {
       const [template] = await db.select().from(noticeTemplates).where(eq(noticeTemplates.id, payload.templateId));
@@ -7696,25 +9592,39 @@ export class DatabaseStorage implements IStorage {
       }
       associationId = associationId ?? template.associationId ?? null;
       subject = template.subjectTemplate;
+      header = template.headerTemplate ?? "";
       body = template.bodyTemplate;
+      footer = template.footerTemplate ?? "";
+      signature = template.signatureTemplate ?? "";
     }
 
-    const vars = payload.variables ?? {};
+    const vars = await this.buildCanonicalNoticeVariables({
+      associationId,
+      recipientPersonId: payload.recipientPersonId ?? null,
+      recipientUnitId: payload.recipientUnitId ?? null,
+      recipientRole: payload.recipientRole ?? null,
+      variables: payload.variables ?? {},
+    });
     for (const [key, value] of Object.entries(vars)) {
       const token = new RegExp(`{{\\s*${key}\\s*}}`, "g");
       subject = subject.replace(token, value);
+      header = header.replace(token, value);
       body = body.replace(token, value);
+      footer = footer.replace(token, value);
+      signature = signature.replace(token, value);
     }
 
     if (associationId) {
       const config = await this.getTenantConfig(associationId);
-      const footer = config?.defaultNoticeFooter?.trim();
-      if (footer && !body.includes(footer)) {
-        body = `${body}\n\n${footer}`.trim();
+      const configuredFooter = config?.defaultNoticeFooter?.trim();
+      if (!footer && configuredFooter) {
+        footer = configuredFooter;
       }
     }
 
-    return { associationId, subject, body };
+    const renderedBody = [header.trim(), body.trim(), footer.trim(), signature.trim()].filter(Boolean).join("\n\n").trim();
+
+    return { associationId, subject, body: renderedBody };
   }
 
   private async validateCommunicationReadiness(associationId: string, bypassReadinessGate?: boolean | null): Promise<void> {
@@ -7725,6 +9635,98 @@ export class DatabaseStorage implements IStorage {
         `Communication blocked by contact readiness gate: ${readiness.blockingReasons.join("; ")}`,
       );
     }
+  }
+
+  private async buildCanonicalNoticeVariables(input: {
+    associationId: string | null;
+    recipientPersonId?: string | null;
+    recipientUnitId?: string | null;
+    recipientRole?: "owner" | "tenant" | "board-member" | null;
+    variables?: Record<string, string>;
+  }): Promise<Record<string, string>> {
+    const appBaseUrl = (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+    const baseVariables: Record<string, string> = {
+      maintenance_request_link: `${appBaseUrl}/app/maintenance`,
+      owner_submission_link: "",
+      tenant_submission_link: "",
+      association_name: "",
+      association_address: "",
+      association_city: "",
+      association_state: "",
+      unit_number: "",
+      owner_name: "",
+      tenant_name: "",
+    };
+
+    let association: Association | null = null;
+    let person: Person | null = null;
+    let unit: Unit | null = null;
+
+    if (input.associationId) {
+      const [row] = await db.select().from(associations).where(eq(associations.id, input.associationId)).limit(1);
+      association = row ?? null;
+    }
+    if (input.recipientPersonId) {
+      const [row] = await db.select().from(persons).where(eq(persons.id, input.recipientPersonId)).limit(1);
+      person = row ?? null;
+    }
+    if (input.recipientUnitId) {
+      const [row] = await db.select().from(units).where(eq(units.id, input.recipientUnitId)).limit(1);
+      unit = row ?? null;
+    } else if (input.associationId && input.recipientPersonId) {
+      const now = new Date();
+      const [ownershipRow, occupancyRow] = await Promise.all([
+        db.select().from(ownerships).where(eq(ownerships.personId, input.recipientPersonId)),
+        db.select().from(occupancies).where(eq(occupancies.personId, input.recipientPersonId)),
+      ]);
+      const activeOwnership = ownershipRow.find((row) => this.isDateRangeActive(row.startDate, row.endDate, now));
+      const activeOccupancy = occupancyRow.find((row) => this.isDateRangeActive(row.startDate, row.endDate, now));
+      const unitId = activeOwnership?.unitId ?? activeOccupancy?.unitId ?? null;
+      if (unitId) {
+        const [row] = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
+        unit = row ?? null;
+      }
+    }
+
+    if (association) {
+      baseVariables.association_name = association.name;
+      baseVariables.association_address = association.address;
+      baseVariables.association_city = association.city;
+      baseVariables.association_state = association.state;
+    }
+    if (unit) {
+      baseVariables.unit_number = unit.unitNumber;
+      if (input.associationId) {
+        const ownerLink = await this.getOrCreateUnitOnboardingLink({
+          associationId: input.associationId,
+          unitId: unit.id,
+          residentType: "owner",
+        });
+        const tenantLink = await this.getOrCreateUnitOnboardingLink({
+          associationId: input.associationId,
+          unitId: unit.id,
+          residentType: "tenant",
+        });
+        baseVariables.owner_submission_link = ownerLink.inviteUrl;
+        baseVariables.tenant_submission_link = tenantLink.inviteUrl;
+      }
+    }
+    if (person) {
+      const fullName = `${person.firstName} ${person.lastName}`.trim();
+      if (input.recipientRole === "owner") {
+        baseVariables.owner_name = fullName;
+      } else if (input.recipientRole === "tenant") {
+        baseVariables.tenant_name = fullName;
+      } else {
+        baseVariables.owner_name = fullName;
+        baseVariables.tenant_name = fullName;
+      }
+    }
+
+    return {
+      ...baseVariables,
+      ...(input.variables ?? {}),
+    };
   }
 
   private async createCommunicationHistoryRecord(payload: InsertCommunicationHistory): Promise<CommunicationHistory> {
@@ -7744,6 +9746,7 @@ export class DatabaseStorage implements IStorage {
       metadata: {
         noticeSendId: send.id,
         recipientPersonId: send.recipientPersonId ?? null,
+        campaignKey: send.campaignKey ?? null,
       },
       enableTracking: true,
     });
@@ -7774,6 +9777,8 @@ export class DatabaseStorage implements IStorage {
         providerMessageId: updatedSend.providerMessageId,
         emailLogId: delivery.logId,
         errorMessage: delivery.errorMessage ?? null,
+        campaignKey: updatedSend.campaignKey ?? null,
+        sendMetadata: updatedSend.metadataJson ?? null,
       },
     });
 
@@ -7792,11 +9797,15 @@ export class DatabaseStorage implements IStorage {
   async sendNotice(payload: {
     associationId?: string | null;
     templateId?: string | null;
+    campaignKey?: string | null;
     recipientEmail: string;
     recipientPersonId?: string | null;
+    recipientUnitId?: string | null;
+    recipientRole?: "owner" | "tenant" | "board-member" | null;
     subject?: string | null;
     body?: string | null;
     variables?: Record<string, string>;
+    metadataJson?: Record<string, unknown> | null;
     requireApproval?: boolean | null;
     scheduledFor?: Date | string | null;
     bypassReadinessGate?: boolean | null;
@@ -7827,6 +9836,7 @@ export class DatabaseStorage implements IStorage {
       .values({
         associationId: rendered.associationId,
         templateId: payload.templateId ?? null,
+        campaignKey: payload.campaignKey ?? null,
         recipientEmail: payload.recipientEmail,
         recipientPersonId: payload.recipientPersonId ?? null,
         subjectRendered: rendered.subject,
@@ -7834,6 +9844,7 @@ export class DatabaseStorage implements IStorage {
         status,
         provider: status === "sent" ? "internal-queued" : "internal-queued",
         providerMessageId: null,
+        metadataJson: payload.metadataJson ?? null,
         sentBy: payload.sentBy ?? null,
         sentAt: hasValidSchedule ? scheduledForDate! : now,
       })
@@ -7856,6 +9867,8 @@ export class DatabaseStorage implements IStorage {
       metadataJson: {
         status,
         scheduledFor: send.sentAt.toISOString(),
+        campaignKey: send.campaignKey ?? null,
+        sendMetadata: send.metadataJson ?? null,
       },
     });
 
@@ -7875,12 +9888,20 @@ export class DatabaseStorage implements IStorage {
 
   private async resolveNotificationRecipientResolution(payload: {
     associationId: string;
-    audience: "owners" | "occupants" | "all";
+    targetType: "all-owners" | "all-tenants" | "all-occupants" | "selected-units" | "individual-owner" | "individual-tenant" | "board-members";
+    selectedUnitIds?: string[];
+    selectedPersonId?: string | null;
+    selectedUnitAudience?: "owners" | "tenants" | "occupants" | "all";
+    messageClass?: "general" | "operational" | "maintenance" | "financial" | "governance";
     ccOwners?: boolean;
   }): Promise<NotificationRecipientResolution> {
     const now = new Date();
     const unitRows = await db.select().from(units).where(eq(units.associationId, payload.associationId));
-    const unitIds = unitRows.map((row) => row.id);
+    const allUnitIds = unitRows.map((row) => row.id);
+    const selectedUnitIdSet = new Set((payload.selectedUnitIds ?? []).filter((unitId) => allUnitIds.includes(unitId)));
+    const unitIds = payload.targetType === "selected-units" && selectedUnitIdSet.size > 0
+      ? Array.from(selectedUnitIdSet)
+      : allUnitIds;
     if (unitIds.length === 0) {
       return {
         recipients: [],
@@ -7891,43 +9912,89 @@ export class DatabaseStorage implements IStorage {
       };
     }
 
-    const [ownershipRows, occupancyRows] = await Promise.all([
+    const [ownershipRows, occupancyRows, boardRoleRows] = await Promise.all([
       db.select().from(ownerships).where(inArray(ownerships.unitId, unitIds)),
       db.select().from(occupancies).where(inArray(occupancies.unitId, unitIds)),
+      db.select().from(boardRoles).where(eq(boardRoles.associationId, payload.associationId)),
     ]);
 
-    const activeOwners = ownershipRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now));
-    const activeOccupancies = occupancyRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now));
-
-    const includeOwners = payload.audience === "owners" || payload.audience === "all" || Boolean(payload.ccOwners);
-    const includeOccupants = payload.audience === "occupants" || payload.audience === "all";
+    const activeOwners = ownershipRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now));
+    const activeOccupancies = occupancyRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now));
+    const activeTenants = activeOccupancies.filter((row) => row.occupancyType === "TENANT");
+    const activeOwnerOccupants = activeOccupancies.filter((row) => row.occupancyType === "OWNER_OCCUPIED");
+    const activeBoardMembers = boardRoleRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now));
+    const selectedUnitAudience = payload.selectedUnitAudience ?? "all";
+    const messageClass = payload.messageClass ?? "general";
 
     const rawRecipients: Array<{
       personId: string;
-      role: "owner" | "occupant";
+      role: "owner" | "tenant" | "board-member";
       unitId: string;
     }> = [];
 
-    if (includeOwners) {
-      for (const row of activeOwners) {
-        rawRecipients.push({
-          personId: row.personId,
-          role: "owner",
-          unitId: row.unitId,
-        });
+    if (payload.targetType === "all-owners") {
+      for (const row of activeOwners) rawRecipients.push({ personId: row.personId, role: "owner", unitId: row.unitId });
+    } else if (payload.targetType === "all-tenants") {
+      for (const row of activeTenants) rawRecipients.push({ personId: row.personId, role: "tenant", unitId: row.unitId });
+    } else if (payload.targetType === "all-occupants") {
+      for (const row of activeOwnerOccupants) rawRecipients.push({ personId: row.personId, role: "owner", unitId: row.unitId });
+      for (const row of activeTenants) rawRecipients.push({ personId: row.personId, role: "tenant", unitId: row.unitId });
+    } else if (payload.targetType === "selected-units") {
+      if (selectedUnitIdSet.size === 0) {
+        return {
+          recipients: [],
+          candidateCount: 0,
+          missingEmailCount: 0,
+          duplicateEmailCount: 0,
+          skippedRecipients: 0,
+        };
       }
-    }
-    if (includeOccupants) {
-      for (const row of activeOccupancies) {
-        rawRecipients.push({
-          personId: row.personId,
-          role: "occupant",
-          unitId: row.unitId,
-        });
+      if (selectedUnitAudience === "owners" || selectedUnitAudience === "all") {
+        for (const row of activeOwners.filter((row) => selectedUnitIdSet.has(row.unitId))) {
+          rawRecipients.push({ personId: row.personId, role: "owner", unitId: row.unitId });
+        }
+      }
+      if (selectedUnitAudience === "tenants" || selectedUnitAudience === "all") {
+        for (const row of activeTenants.filter((row) => selectedUnitIdSet.has(row.unitId))) {
+          rawRecipients.push({ personId: row.personId, role: "tenant", unitId: row.unitId });
+        }
+      }
+      if (selectedUnitAudience === "occupants") {
+        for (const row of activeOwnerOccupants.filter((row) => selectedUnitIdSet.has(row.unitId))) {
+          rawRecipients.push({ personId: row.personId, role: "owner", unitId: row.unitId });
+        }
+        for (const row of activeTenants.filter((row) => selectedUnitIdSet.has(row.unitId))) {
+          rawRecipients.push({ personId: row.personId, role: "tenant", unitId: row.unitId });
+        }
+      }
+    } else if (payload.targetType === "individual-owner") {
+      for (const row of activeOwners.filter((row) => row.personId === payload.selectedPersonId)) {
+        rawRecipients.push({ personId: row.personId, role: "owner", unitId: row.unitId });
+      }
+    } else if (payload.targetType === "individual-tenant") {
+      for (const row of activeTenants.filter((row) => row.personId === payload.selectedPersonId)) {
+        rawRecipients.push({ personId: row.personId, role: "tenant", unitId: row.unitId });
+      }
+    } else if (payload.targetType === "board-members") {
+      for (const row of activeBoardMembers) {
+        rawRecipients.push({ personId: row.personId, role: "board-member", unitId: "" });
       }
     }
 
-    const personIds = Array.from(new Set(rawRecipients.map((row) => row.personId)));
+    if (payload.ccOwners && payload.targetType !== "all-owners" && payload.targetType !== "individual-owner") {
+      for (const row of activeOwners) {
+        rawRecipients.push({ personId: row.personId, role: "owner", unitId: row.unitId });
+      }
+    }
+
+    const routedRecipients = rawRecipients.filter((row) => {
+      if (messageClass === "financial" || messageClass === "governance") {
+        return row.role === "owner" || row.role === "board-member";
+      }
+      return true;
+    });
+
+    const personIds = Array.from(new Set(routedRecipients.map((row) => row.personId)));
     if (personIds.length === 0) {
       return {
         recipients: [],
@@ -7943,7 +10010,7 @@ export class DatabaseStorage implements IStorage {
     const deduped = new Map<string, NotificationRecipient>();
     let missingEmailCount = 0;
     let duplicateEmailCount = 0;
-    for (const row of rawRecipients) {
+    for (const row of routedRecipients) {
       const person = personById.get(row.personId);
       if (!person?.email?.trim()) {
         missingEmailCount += 1;
@@ -7965,7 +10032,8 @@ export class DatabaseStorage implements IStorage {
         continue;
       }
       duplicateEmailCount += 1;
-      if (existing.role === "occupant" && row.role === "owner") {
+      const rank = { "board-member": 3, owner: 2, tenant: 1 } as const;
+      if (rank[row.role] > rank[existing.role]) {
         deduped.set(key, {
           personId: row.personId,
           email: person.email,
@@ -7978,7 +10046,7 @@ export class DatabaseStorage implements IStorage {
     const recipients = Array.from(deduped.values()).sort((a, b) => a.email.localeCompare(b.email));
     return {
       recipients,
-      candidateCount: rawRecipients.length,
+      candidateCount: routedRecipients.length,
       missingEmailCount,
       duplicateEmailCount,
       skippedRecipients: missingEmailCount + duplicateEmailCount,
@@ -7987,7 +10055,11 @@ export class DatabaseStorage implements IStorage {
 
   async resolveNotificationRecipients(payload: {
     associationId: string;
-    audience: "owners" | "occupants" | "all";
+    targetType: "all-owners" | "all-tenants" | "all-occupants" | "selected-units" | "individual-owner" | "individual-tenant" | "board-members";
+    selectedUnitIds?: string[];
+    selectedPersonId?: string | null;
+    selectedUnitAudience?: "owners" | "tenants" | "occupants" | "all";
+    messageClass?: "general" | "operational" | "maintenance" | "financial" | "governance";
     ccOwners?: boolean;
   }): Promise<NotificationRecipient[]> {
     const result = await this.resolveNotificationRecipientResolution(payload);
@@ -7996,7 +10068,11 @@ export class DatabaseStorage implements IStorage {
 
   async resolveNotificationRecipientPreview(payload: {
     associationId: string;
-    audience: "owners" | "occupants" | "all";
+    targetType: "all-owners" | "all-tenants" | "all-occupants" | "selected-units" | "individual-owner" | "individual-tenant" | "board-members";
+    selectedUnitIds?: string[];
+    selectedPersonId?: string | null;
+    selectedUnitAudience?: "owners" | "tenants" | "occupants" | "all";
+    messageClass?: "general" | "operational" | "maintenance" | "financial" | "governance";
     ccOwners?: boolean;
   }): Promise<NotificationRecipientResolution> {
     return this.resolveNotificationRecipientResolution(payload);
@@ -8004,7 +10080,11 @@ export class DatabaseStorage implements IStorage {
 
   async sendTargetedNotice(payload: {
     associationId: string;
-    audience: "owners" | "occupants" | "all";
+    targetType: "all-owners" | "all-tenants" | "all-occupants" | "selected-units" | "individual-owner" | "individual-tenant" | "board-members";
+    selectedUnitIds?: string[];
+    selectedPersonId?: string | null;
+    selectedUnitAudience?: "owners" | "tenants" | "occupants" | "all";
+    messageClass?: "general" | "operational" | "maintenance" | "financial" | "governance";
     ccOwners?: boolean;
     templateId?: string | null;
     subject?: string | null;
@@ -8025,20 +10105,59 @@ export class DatabaseStorage implements IStorage {
     await this.validateCommunicationReadiness(payload.associationId, payload.bypassReadinessGate);
     const resolution = await this.resolveNotificationRecipientResolution({
       associationId: payload.associationId,
-      audience: payload.audience,
+      targetType: payload.targetType,
+      selectedUnitIds: payload.selectedUnitIds,
+      selectedPersonId: payload.selectedPersonId ?? null,
+      selectedUnitAudience: payload.selectedUnitAudience,
+      messageClass: payload.messageClass,
       ccOwners: payload.ccOwners,
     });
     const recipients = resolution.recipients;
+    const campaignKey = randomBytes(12).toString("base64url");
+    const campaignMetadata = {
+      campaignKey,
+      targetType: payload.targetType,
+      selectedUnitIds: payload.selectedUnitIds ?? [],
+      selectedPersonId: payload.selectedPersonId ?? null,
+      selectedUnitAudience: payload.selectedUnitAudience ?? null,
+      messageClass: payload.messageClass ?? "general",
+      ccOwners: payload.ccOwners ?? false,
+      recipientSet: recipients.map((recipient) => ({
+        personId: recipient.personId,
+        email: recipient.email,
+        role: recipient.role,
+        unitId: recipient.unitId,
+      })),
+      recipientSummary: {
+        recipientCount: recipients.length,
+        candidateCount: resolution.candidateCount,
+        missingEmailCount: resolution.missingEmailCount,
+        duplicateEmailCount: resolution.duplicateEmailCount,
+        skippedRecipients: resolution.skippedRecipients,
+      },
+    };
 
     const results = await mapInBatches(recipients, 10, async (recipient) => {
       return this.sendNotice({
         associationId: payload.associationId,
         templateId: payload.templateId ?? null,
+        campaignKey,
         recipientEmail: recipient.email,
         recipientPersonId: recipient.personId,
+        recipientUnitId: recipient.unitId || null,
+        recipientRole: recipient.role,
         subject: payload.subject ?? null,
         body: payload.body ?? null,
         variables: payload.variables,
+        metadataJson: {
+          ...campaignMetadata,
+          recipient: {
+            personId: recipient.personId,
+            email: recipient.email,
+            role: recipient.role,
+            unitId: recipient.unitId,
+          },
+        },
         requireApproval: payload.requireApproval ?? null,
         scheduledFor: payload.scheduledFor ?? null,
         bypassReadinessGate: true,
@@ -8046,6 +10165,23 @@ export class DatabaseStorage implements IStorage {
       });
     });
     const sendIds = results.map((result) => result.send.id);
+
+    await this.createCommunicationHistoryRecord({
+      associationId: payload.associationId,
+      channel: "email",
+      direction: "outbound",
+      subject: payload.subject ?? null,
+      bodySnippet: (payload.body ?? "").slice(0, 500),
+      recipientEmail: null,
+      recipientPersonId: null,
+      relatedType: "notice-recipient-set",
+      relatedId: campaignKey,
+      metadataJson: {
+        ...campaignMetadata,
+        sendIds,
+        templateId: payload.templateId ?? null,
+      },
+    });
 
     return {
       recipientCount: recipients.length,
@@ -8126,72 +10262,87 @@ export class DatabaseStorage implements IStorage {
     scorePercent: number;
     components: {
       unitsConfigured: { score: number; total: number; completed: number };
-      ownershipMapped: { score: number; total: number; completed: number };
-      occupancyMapped: { score: number; total: number; completed: number };
-      contactCoverage: { score: number; total: number; completed: number };
-      paymentConfig: { score: number; total: number; completed: number };
+      ownerDataCollected: { score: number; total: number; completed: number };
+      tenantDataCollected: { score: number; total: number; completed: number };
+      boardMembersConfigured: { score: number; total: number; completed: number };
+      paymentMethodsConfigured: { score: number; total: number; completed: number };
+      communicationTemplatesConfigured: { score: number; total: number; completed: number };
     };
   }> {
     const unitRows = await db.select().from(units).where(eq(units.associationId, associationId));
     const unitIds = unitRows.map((row) => row.id);
 
-    const [ownershipRows, occupancyRows, readiness, paymentMethods] = await Promise.all([
+    const [ownershipRows, occupancyRows, paymentMethods, boardRoleRows, templates] = await Promise.all([
       unitIds.length > 0 ? db.select().from(ownerships).where(inArray(ownerships.unitId, unitIds)) : Promise.resolve([]),
       unitIds.length > 0 ? db.select().from(occupancies).where(inArray(occupancies.unitId, unitIds)) : Promise.resolve([]),
-      this.getAssociationContactReadiness(associationId),
       this.getPaymentMethodConfigs(associationId),
+      this.getBoardRoles(associationId),
+      this.getNoticeTemplates(associationId),
     ]);
 
     const now = new Date();
     const activeOwnershipUnitIds = new Set(
-      ownershipRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now)).map((row) => row.unitId),
+      ownershipRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now)).map((row) => row.unitId),
     );
-    const activeOccupancyUnitIds = new Set(
-      occupancyRows.filter((row) => row.startDate <= now && (!row.endDate || row.endDate >= now)).map((row) => row.unitId),
+    const activeTenantUnitIds = new Set(
+      occupancyRows
+        .filter((row) => row.occupancyType === "TENANT" && this.isDateRangeActive(row.startDate, row.endDate, now))
+        .map((row) => row.unitId),
     );
+    const activeBoardRoles = boardRoleRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now));
+    const activePaymentMethods = paymentMethods.filter((row) => row.isActive === 1);
+    const scopedTemplates = templates.filter((row) => row.associationId === associationId || row.associationId === null);
 
     const unitsConfigured = {
       total: 1,
       completed: unitRows.length > 0 ? 1 : 0,
       score: unitRows.length > 0 ? 100 : 0,
     };
-    const ownershipMapped = {
+    const ownerDataCollected = {
       total: unitRows.length,
       completed: activeOwnershipUnitIds.size,
       score: unitRows.length > 0 ? Math.round((activeOwnershipUnitIds.size / unitRows.length) * 100) : 0,
     };
-    const occupancyMapped = {
+    const tenantDataCollected = {
       total: unitRows.length,
-      completed: activeOccupancyUnitIds.size,
-      score: unitRows.length > 0 ? Math.round((activeOccupancyUnitIds.size / unitRows.length) * 100) : 0,
+      completed: activeTenantUnitIds.size,
+      score: unitRows.length > 0 ? Math.round((activeTenantUnitIds.size / unitRows.length) * 100) : 0,
     };
-    const contactCoverage = {
-      total: 100,
-      completed: readiness.contactCoveragePercent,
-      score: readiness.contactCoveragePercent,
-    };
-    const paymentConfig = {
+    const boardMembersConfigured = {
       total: 1,
-      completed: paymentMethods.some((row) => row.isActive === 1) ? 1 : 0,
-      score: paymentMethods.some((row) => row.isActive === 1) ? 100 : 0,
+      completed: activeBoardRoles.length > 0 ? 1 : 0,
+      score: activeBoardRoles.length > 0 ? 100 : 0,
+    };
+    const paymentMethodsConfigured = {
+      total: 1,
+      completed: activePaymentMethods.length > 0 ? 1 : 0,
+      score: activePaymentMethods.length > 0 ? 100 : 0,
+    };
+    const communicationTemplatesConfigured = {
+      total: 1,
+      completed: scopedTemplates.length > 0 ? 1 : 0,
+      score: scopedTemplates.length > 0 ? 100 : 0,
     };
 
-    const weighted =
-      (unitsConfigured.score * 0.15) +
-      (ownershipMapped.score * 0.25) +
-      (occupancyMapped.score * 0.2) +
-      (contactCoverage.score * 0.25) +
-      (paymentConfig.score * 0.15);
+    const weighted = (
+      unitsConfigured.score +
+      ownerDataCollected.score +
+      tenantDataCollected.score +
+      boardMembersConfigured.score +
+      paymentMethodsConfigured.score +
+      communicationTemplatesConfigured.score
+    ) / 6;
 
     return {
       associationId,
       scorePercent: Math.round(weighted),
       components: {
         unitsConfigured,
-        ownershipMapped,
-        occupancyMapped,
-        contactCoverage,
-        paymentConfig,
+        ownerDataCollected,
+        tenantDataCollected,
+        boardMembersConfigured,
+        paymentMethodsConfigured,
+        communicationTemplatesConfigured,
       },
     };
   }
@@ -8367,20 +10518,69 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(portalAccess).where(eq(portalAccess.associationId, associationId)).orderBy(desc(portalAccess.createdAt));
   }
 
-  async createPortalAccess(data: InsertPortalAccess): Promise<PortalAccess> {
+  async createPortalAccess(data: InsertPortalAccess, actorEmail?: string | null): Promise<PortalAccess> {
+    const now = new Date();
+    const normalizedEmail = data.email.trim().toLowerCase();
+    const status = data.status ?? "active";
     const [result] = await db
       .insert(portalAccess)
-      .values({ ...data, updatedAt: new Date() })
+      .values({
+        ...data,
+        email: normalizedEmail,
+        status,
+        invitedAt: data.invitedAt ?? (status === "invited" ? now : data.invitedAt ?? null),
+        acceptedAt: data.acceptedAt ?? (status === "active" ? now : data.acceptedAt ?? null),
+        suspendedAt: data.suspendedAt ?? (status === "suspended" ? now : null),
+        revokedAt: data.revokedAt ?? (status === "revoked" ? now : null),
+        updatedAt: now,
+      })
       .returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "portal-access",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
     return result;
   }
 
-  async updatePortalAccess(id: string, data: Partial<InsertPortalAccess>): Promise<PortalAccess | undefined> {
+  async updatePortalAccess(id: string, data: Partial<InsertPortalAccess>, actorEmail?: string | null): Promise<PortalAccess | undefined> {
+    const [before] = await db.select().from(portalAccess).where(eq(portalAccess.id, id));
+    if (!before) return undefined;
+    const patch = { ...data } as Partial<InsertPortalAccess>;
+    if (typeof patch.email === "string") {
+      patch.email = patch.email.trim().toLowerCase();
+    }
+    const now = new Date();
+    const nextStatus = patch.status ?? before.status;
+    if (patch.status && patch.status !== before.status) {
+      if (nextStatus === "invited" && patch.invitedAt === undefined) patch.invitedAt = now;
+      if (nextStatus === "active") {
+        if (patch.acceptedAt === undefined) patch.acceptedAt = before.acceptedAt ?? now;
+        if (patch.suspendedAt === undefined) patch.suspendedAt = null;
+      }
+      if (nextStatus === "suspended" && patch.suspendedAt === undefined) patch.suspendedAt = now;
+      if (nextStatus === "revoked" && patch.revokedAt === undefined) patch.revokedAt = now;
+    }
     const [result] = await db
       .update(portalAccess)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...patch, updatedAt: now })
       .where(eq(portalAccess.id, id))
       .returning();
+    if (result) {
+      await this.recordAuditEvent({
+        actorEmail: actorEmail || "system",
+        action: "update",
+        entityType: "portal-access",
+        entityId: result.id,
+        associationId: result.associationId,
+        beforeJson: before,
+        afterJson: result,
+      });
+    }
     return result;
   }
 
@@ -8393,8 +10593,159 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .select()
       .from(portalAccess)
-      .where(and(eq(portalAccess.associationId, associationId), eq(portalAccess.email, email)));
+      .where(and(eq(portalAccess.associationId, associationId), eq(portalAccess.email, email.trim().toLowerCase())));
     return result;
+  }
+
+  async resolvePortalAccessContext(portalAccessId: string): Promise<{
+    access: PortalAccess;
+    boardRole: BoardRole | null;
+    hasBoardAccess: boolean;
+    effectiveRole: "owner" | "tenant" | "readonly" | "board-member" | "owner-board-member";
+  } | undefined> {
+    let access = await this.getPortalAccessById(portalAccessId);
+    if (!access || access.status !== "active") return undefined;
+
+    let boardRole: BoardRole | null = null;
+    if (access.boardRoleId) {
+      const now = new Date();
+      const [matchedRole] = await db
+        .select()
+        .from(boardRoles)
+        .where(
+          and(
+            eq(boardRoles.id, access.boardRoleId),
+            eq(boardRoles.associationId, access.associationId),
+            eq(boardRoles.personId, access.personId),
+            lte(boardRoles.startDate, now),
+            or(isNull(boardRoles.endDate), gte(boardRoles.endDate, now)),
+          ),
+        );
+      boardRole = matchedRole ?? null;
+    }
+
+    const [ownerMembership] = await db
+      .select()
+      .from(associationMemberships)
+      .where(
+        and(
+          eq(associationMemberships.associationId, access.associationId),
+          eq(associationMemberships.personId, access.personId),
+          eq(associationMemberships.membershipType, "owner"),
+          eq(associationMemberships.status, "active"),
+        ),
+      );
+    const hasOwnerAccess = Boolean(ownerMembership) || access.role === "owner";
+
+    if (access.boardRoleId && !boardRole) {
+      if (hasOwnerAccess) {
+        access = (await this.updatePortalAccess(access.id, {
+          role: "owner",
+          boardRoleId: null,
+        }, "system")) ?? access;
+      } else if (access.role === "board-member") {
+        await this.updatePortalAccess(access.id, {
+          status: "expired",
+        }, "system");
+        return undefined;
+      }
+    }
+
+    const hasBoardAccess = Boolean(boardRole);
+    const effectiveRole = hasBoardAccess
+      ? ((hasOwnerAccess || access.role === "owner") ? "owner-board-member" : "board-member")
+      : (hasOwnerAccess ? "owner" : access.role);
+
+    return {
+      access,
+      boardRole,
+      hasBoardAccess,
+      effectiveRole,
+    };
+  }
+
+  async inviteBoardMemberAccess(input: {
+    associationId: string;
+    personId: string;
+    boardRoleId: string;
+    email?: string | null;
+    invitedBy?: string | null;
+  }): Promise<PortalAccess> {
+    const [person] = await db.select().from(persons).where(eq(persons.id, input.personId));
+    if (!person) {
+      throw new Error("Person not found");
+    }
+
+    const [boardRole] = await db
+      .select()
+      .from(boardRoles)
+      .where(
+        and(
+          eq(boardRoles.id, input.boardRoleId),
+          eq(boardRoles.personId, input.personId),
+          eq(boardRoles.associationId, input.associationId),
+        ),
+      );
+    if (!boardRole) {
+      throw new Error("Board role not found for this person and association");
+    }
+
+    const normalizedEmail = (input.email || person.email || "").trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new Error("Board member invitation requires an email address");
+    }
+
+    const now = new Date();
+    const [ownerMembership] = await db
+      .select()
+      .from(associationMemberships)
+      .where(
+        and(
+          eq(associationMemberships.associationId, input.associationId),
+          eq(associationMemberships.personId, input.personId),
+          eq(associationMemberships.membershipType, "owner"),
+          eq(associationMemberships.status, "active"),
+        ),
+      );
+
+    const existing = await this.getPortalAccessByAssociationEmail(input.associationId, normalizedEmail);
+    const nextRole = ownerMembership || existing?.role === "owner" ? "owner" : "board-member";
+    const nextStatus = existing?.status === "active" ? "active" : "invited";
+
+    if (!existing) {
+      return this.createPortalAccess({
+        associationId: input.associationId,
+        personId: input.personId,
+        unitId: ownerMembership?.unitId ?? null,
+        email: normalizedEmail,
+        role: nextRole,
+        status: nextStatus,
+        boardRoleId: input.boardRoleId,
+        invitedBy: input.invitedBy ?? null,
+        invitedAt: now,
+        acceptedAt: nextStatus === "active" ? now : null,
+        suspendedAt: null,
+        revokedAt: null,
+      }, input.invitedBy ?? "system");
+    }
+
+    const updated = await this.updatePortalAccess(existing.id, {
+      personId: input.personId,
+      unitId: existing.unitId ?? ownerMembership?.unitId ?? null,
+      email: normalizedEmail,
+      role: nextRole,
+      status: nextStatus,
+      boardRoleId: input.boardRoleId,
+      invitedBy: input.invitedBy ?? existing.invitedBy ?? null,
+      invitedAt: now,
+      acceptedAt: nextStatus === "active" ? (existing.acceptedAt ?? now) : existing.acceptedAt ?? null,
+      suspendedAt: existing.suspendedAt ?? null,
+      revokedAt: existing.revokedAt ?? null,
+    }, input.invitedBy ?? "system");
+    if (!updated) {
+      throw new Error("Failed to update board member access");
+    }
+    return updated;
   }
 
   async touchPortalAccessLogin(id: string): Promise<void> {
@@ -9388,8 +11739,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPortalDocuments(portalAccessId: string): Promise<Document[]> {
-    const access = await this.getPortalAccessById(portalAccessId);
-    if (!access || access.status !== "active") return [];
+    const resolved = await this.resolvePortalAccessContext(portalAccessId);
+    if (!resolved) return [];
+    const { access, hasBoardAccess } = resolved;
+    if (hasBoardAccess) {
+      return db.select().from(documents).where(eq(documents.associationId, access.associationId));
+    }
+
     const base = await db
       .select()
       .from(documents)
@@ -9402,9 +11758,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPortalCommunicationHistory(portalAccessId: string): Promise<CommunicationHistory[]> {
-    const access = await this.getPortalAccessById(portalAccessId);
-    if (!access || access.status !== "active") return [];
+    const resolved = await this.resolvePortalAccessContext(portalAccessId);
+    if (!resolved) return [];
+    const { access, hasBoardAccess } = resolved;
     const all = await this.getCommunicationHistory(access.associationId);
+    if (hasBoardAccess) return all;
     return all.filter((row) => row.recipientEmail === access.email || row.recipientPersonId === access.personId);
   }
 
@@ -11038,15 +13396,24 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getAdminAnalytics(days: number) {
+  async getAdminAnalytics(days: number, associationId?: string) {
     const boundedDays = Math.max(1, Math.min(days || 30, 365));
     const since = new Date(Date.now() - boundedDays * 24 * 60 * 60 * 1000);
 
-    const [projects, workstreams, tasks, runs] = await Promise.all([
+    const [projects, workstreams, tasks, runs, ledgerEntries, budgetsList, allBudgetVersions, allBudgetLines, accounts, categories, assessments] = await Promise.all([
       db.select().from(roadmapProjects),
       db.select().from(roadmapWorkstreams),
       db.select().from(roadmapTasks),
       db.select().from(analysisRuns).where(gte(analysisRuns.createdAt, since)),
+      associationId
+        ? db.select().from(ownerLedgerEntries).where(and(eq(ownerLedgerEntries.associationId, associationId), gte(ownerLedgerEntries.postedAt, since)))
+        : db.select().from(ownerLedgerEntries).where(gte(ownerLedgerEntries.postedAt, since)),
+      associationId ? db.select().from(budgets).where(eq(budgets.associationId, associationId)) : db.select().from(budgets),
+      db.select().from(budgetVersions),
+      db.select().from(budgetLines),
+      associationId ? db.select().from(financialAccounts).where(eq(financialAccounts.associationId, associationId)) : db.select().from(financialAccounts),
+      associationId ? db.select().from(financialCategories).where(eq(financialCategories.associationId, associationId)) : db.select().from(financialCategories),
+      associationId ? db.select().from(specialAssessments).where(eq(specialAssessments.associationId, associationId)) : db.select().from(specialAssessments),
     ]);
 
     const totalRuns = runs.length;
@@ -11054,11 +13421,239 @@ export class DatabaseStorage implements IStorage {
     const durationTotal = runs.reduce((acc, run) => acc + run.durationMs, 0);
     const itemCountTotal = runs.reduce((acc, run) => acc + run.itemCount, 0);
 
-    const todo = tasks.filter((task) => task.status === "todo").length;
-    const inProgress = tasks.filter((task) => task.status === "in-progress").length;
-    const done = tasks.filter((task) => task.status === "done").length;
+    const activeProjects = projects.filter((project) => project.status !== "archived");
+    const archivedProjects = projects.filter((project) => project.status === "archived");
+    const activeProjectIds = new Set(activeProjects.map((project) => project.id));
+    const activeWorkstreams = workstreams.filter((workstream) => activeProjectIds.has(workstream.projectId));
+    const activeTasks = tasks.filter((task) => activeProjectIds.has(task.projectId));
 
-    const throughput = tasks.filter((task) => task.completedDate && task.completedDate >= since).length;
+    const taskCountByProject = tasks.reduce<Record<string, number>>((acc, task) => {
+      acc[task.projectId] = (acc[task.projectId] ?? 0) + 1;
+      return acc;
+    }, {});
+    const doneTaskCountByProject = tasks.reduce<Record<string, number>>((acc, task) => {
+      if (task.status === "done") {
+        acc[task.projectId] = (acc[task.projectId] ?? 0) + 1;
+      }
+      return acc;
+    }, {});
+    const archivedCompletedProjects = archivedProjects.filter((project) => {
+      const totalTaskCount = taskCountByProject[project.id] ?? 0;
+      return totalTaskCount > 0 && (doneTaskCountByProject[project.id] ?? 0) === totalTaskCount;
+    }).length;
+
+    const todo = activeTasks.filter((task) => task.status === "todo").length;
+    const inProgress = activeTasks.filter((task) => task.status === "in-progress").length;
+    const done = activeTasks.filter((task) => task.status === "done").length;
+
+    const throughput = activeTasks.filter((task) => task.completedDate && task.completedDate >= since).length;
+    const monthlyBuckets = new Map<string, { charges: number; payments: number; credits: number }>();
+    const charges = ledgerEntries.filter((entry) => entry.entryType === "charge" || entry.entryType === "assessment" || entry.entryType === "late-fee");
+    const payments = ledgerEntries.filter((entry) => entry.entryType === "payment");
+    const credits = ledgerEntries.filter((entry) => entry.entryType === "credit" || entry.entryType === "adjustment");
+
+    for (const entry of ledgerEntries) {
+      const postedAt = new Date(entry.postedAt);
+      const period = `${postedAt.getUTCFullYear()}-${String(postedAt.getUTCMonth() + 1).padStart(2, "0")}`;
+      const current = monthlyBuckets.get(period) ?? { charges: 0, payments: 0, credits: 0 };
+      if (entry.entryType === "payment") {
+        current.payments += Math.abs(entry.amount);
+      } else if (entry.entryType === "credit" || entry.entryType === "adjustment") {
+        current.credits += Math.abs(entry.amount);
+      } else if (entry.entryType === "charge" || entry.entryType === "assessment" || entry.entryType === "late-fee") {
+        current.charges += Math.abs(entry.amount);
+      }
+      monthlyBuckets.set(period, current);
+    }
+
+    const totalCharges = charges.reduce((acc, entry) => acc + Math.abs(entry.amount), 0);
+    const totalPayments = payments.reduce((acc, entry) => acc + Math.abs(entry.amount), 0);
+    const totalCredits = credits.reduce((acc, entry) => acc + Math.abs(entry.amount), 0);
+    const openBalance = Number((totalCharges - totalPayments - totalCredits).toFixed(2));
+    const collectionBase = totalCharges === 0 ? 0 : ((totalPayments + totalCredits) / totalCharges) * 100;
+    const monthlyTrend = Array.from(monthlyBuckets.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-6)
+      .map(([period, values]) => ({
+        period,
+        charges: Number(values.charges.toFixed(2)),
+        payments: Number(values.payments.toFixed(2)),
+        credits: Number(values.credits.toFixed(2)),
+        collectionRate: values.charges === 0 ? 0 : Number((((values.payments + values.credits) / values.charges) * 100).toFixed(2)),
+      }));
+    const accountBalances = new Map<string, number>();
+    const accountLatestChargeAt = new Map<string, Date | null>();
+
+    for (const entry of ledgerEntries) {
+      const key = `${entry.personId}:${entry.unitId}`;
+      accountBalances.set(key, (accountBalances.get(key) ?? 0) + entry.amount);
+      if (entry.entryType === "charge" || entry.entryType === "assessment" || entry.entryType === "late-fee") {
+        const postedAt = new Date(entry.postedAt);
+        const existing = accountLatestChargeAt.get(key);
+        if (!existing || postedAt > existing) {
+          accountLatestChargeAt.set(key, postedAt);
+        }
+      }
+    }
+
+    const agingBuckets = {
+      current: 0,
+      thirtyDays: 0,
+      sixtyDays: 0,
+      ninetyPlus: 0,
+    };
+    const delinquencyMovementMap = new Map<string, { delinquentAccounts: number; totalBalance: number }>();
+
+    for (const [key, balance] of Array.from(accountBalances.entries())) {
+      if (balance <= 0) continue;
+      const lastChargeAt = accountLatestChargeAt.get(key);
+      const ageDays = lastChargeAt ? Math.max(0, Math.floor((Date.now() - lastChargeAt.getTime()) / (24 * 60 * 60 * 1000))) : 0;
+      if (ageDays >= 90) agingBuckets.ninetyPlus += balance;
+      else if (ageDays >= 60) agingBuckets.sixtyDays += balance;
+      else if (ageDays >= 30) agingBuckets.thirtyDays += balance;
+      else agingBuckets.current += balance;
+
+      const period = lastChargeAt
+        ? `${lastChargeAt.getUTCFullYear()}-${String(lastChargeAt.getUTCMonth() + 1).padStart(2, "0")}`
+        : "current";
+      const current = delinquencyMovementMap.get(period) ?? { delinquentAccounts: 0, totalBalance: 0 };
+      current.delinquentAccounts += 1;
+      current.totalBalance += balance;
+      delinquencyMovementMap.set(period, current);
+    }
+
+    const delinquencyMovement = Array.from(delinquencyMovementMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-6)
+      .map(([period, value]) => ({
+        period,
+        delinquentAccounts: value.delinquentAccounts,
+        totalBalance: Number(value.totalBalance.toFixed(2)),
+      }));
+    const budgetIds = new Set(budgetsList.map((budget) => budget.id));
+    const scopedVersions = allBudgetVersions.filter((version) => budgetIds.has(version.budgetId));
+    const selectedVersions = new Map<string, typeof allBudgetVersions[number]>();
+    for (const version of scopedVersions) {
+      const existing = selectedVersions.get(version.budgetId);
+      if (!existing) {
+        selectedVersions.set(version.budgetId, version);
+        continue;
+      }
+      const existingScore = existing.status === "ratified" ? 10_000 + existing.versionNumber : existing.versionNumber;
+      const nextScore = version.status === "ratified" ? 10_000 + version.versionNumber : version.versionNumber;
+      if (nextScore > existingScore) {
+        selectedVersions.set(version.budgetId, version);
+      }
+    }
+    const selectedVersionIds = new Set(Array.from(selectedVersions.values()).map((version) => version.id));
+    const scopedLines = allBudgetLines.filter((line) => selectedVersionIds.has(line.budgetVersionId));
+    const accountById = new Map(accounts.map((account) => [account.id, account]));
+    const categoryById = new Map(categories.map((category) => [category.id, category]));
+    const isReserveLine = (line: typeof scopedLines[number]) => {
+      const account = line.accountId ? accountById.get(line.accountId) : null;
+      const category = line.categoryId ? categoryById.get(line.categoryId) : null;
+      const text = `${line.lineItemName} ${account?.name || ""} ${account?.accountType || ""} ${category?.name || ""} ${category?.categoryType || ""}`.toLowerCase();
+      return text.includes("reserve");
+    };
+    const reserveLines = scopedLines.filter(isReserveLine);
+    const annualReserveContributions = reserveLines
+      .filter((line) => {
+        const text = `${line.lineItemName} ${(line.accountId ? accountById.get(line.accountId)?.name : "") || ""} ${(line.categoryId ? categoryById.get(line.categoryId)?.name : "") || ""}`.toLowerCase();
+        return text.includes("contribution") || text.includes("funding") || text.includes("transfer") || text.includes("income") || text.includes("deposit");
+      })
+      .reduce((acc, line) => acc + Math.abs(line.plannedAmount), 0);
+    const annualReserveExpenses = reserveLines
+      .filter((line) => {
+        const text = `${line.lineItemName} ${(line.accountId ? accountById.get(line.accountId)?.name : "") || ""} ${(line.categoryId ? categoryById.get(line.categoryId)?.name : "") || ""}`.toLowerCase();
+        return text.includes("repair") || text.includes("replacement") || text.includes("project") || text.includes("roof") || text.includes("capital") || text.includes("expense");
+      })
+      .reduce((acc, line) => acc + Math.abs(line.plannedAmount), 0);
+    const fallbackReservePlanned = reserveLines.reduce((acc, line) => acc + Math.abs(line.plannedAmount), 0);
+    const normalizedAnnualReserveContributions = annualReserveContributions > 0 ? annualReserveContributions : Number((fallbackReservePlanned * 0.6).toFixed(2));
+    const normalizedAnnualReserveExpenses = annualReserveExpenses > 0 ? annualReserveExpenses : Number((fallbackReservePlanned * 0.4).toFixed(2));
+    const annualSpecialAssessmentContribution = assessments
+      .filter((assessment) => assessment.isActive === 1)
+      .reduce((acc, assessment) => {
+        const start = new Date(assessment.startDate);
+        const end = assessment.endDate ? new Date(assessment.endDate) : null;
+        const durationMonths = end
+          ? Math.max(1, (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + (end.getUTCMonth() - start.getUTCMonth()) + 1)
+          : Math.max(1, assessment.installmentCount || 1);
+        const annualized = (assessment.totalAmount / durationMonths) * 12;
+        return acc + annualized;
+      }, 0);
+    const currentReserveBalance = Number((normalizedAnnualReserveContributions + annualSpecialAssessmentContribution - normalizedAnnualReserveExpenses).toFixed(2));
+    const forecastWindows = [12, 24, 36].map((months) => {
+      const projectedNetChange = ((normalizedAnnualReserveContributions + annualSpecialAssessmentContribution - normalizedAnnualReserveExpenses) / 12) * months;
+      return {
+        months,
+        projectedNetChange: Number(projectedNetChange.toFixed(2)),
+        projectedEndingBalance: Number((currentReserveBalance + projectedNetChange).toFixed(2)),
+      };
+    });
+    const expenseCategoryMap = new Map<string, { categoryId: string | null; categoryName: string; actualAmount: number; plannedAmount: number }>();
+    const categoryNameFor = (categoryId: string | null) => {
+      if (!categoryId) return "Uncategorized";
+      return categoryById.get(categoryId)?.name || "Uncategorized";
+    };
+
+    for (const line of scopedLines) {
+      const key = line.categoryId ?? "uncategorized";
+      const current = expenseCategoryMap.get(key) ?? {
+        categoryId: line.categoryId ?? null,
+        categoryName: categoryNameFor(line.categoryId ?? null),
+        actualAmount: 0,
+        plannedAmount: 0,
+      };
+      current.plannedAmount += line.plannedAmount;
+      expenseCategoryMap.set(key, current);
+    }
+
+    const invoiceCategoryBuckets = new Map<string, number>();
+    for (const invoice of await this.getVendorInvoices(associationId)) {
+      if (new Date(invoice.invoiceDate) < since) continue;
+      const key = invoice.categoryId ?? "uncategorized";
+      invoiceCategoryBuckets.set(key, (invoiceCategoryBuckets.get(key) ?? 0) + invoice.amount);
+    }
+
+    const utilityCategoryBuckets = new Map<string, number>();
+    for (const utility of await this.getUtilityPayments(associationId)) {
+      if (new Date(utility.createdAt) < since) continue;
+      const key = utility.categoryId ?? "uncategorized";
+      utilityCategoryBuckets.set(key, (utilityCategoryBuckets.get(key) ?? 0) + utility.amount);
+    }
+
+    for (const [key, amount] of Array.from(invoiceCategoryBuckets.entries())) {
+      const current = expenseCategoryMap.get(key) ?? {
+        categoryId: key === "uncategorized" ? null : key,
+        categoryName: categoryNameFor(key === "uncategorized" ? null : key),
+        actualAmount: 0,
+        plannedAmount: 0,
+      };
+      current.actualAmount += amount;
+      expenseCategoryMap.set(key, current);
+    }
+
+    for (const [key, amount] of Array.from(utilityCategoryBuckets.entries())) {
+      const current = expenseCategoryMap.get(key) ?? {
+        categoryId: key === "uncategorized" ? null : key,
+        categoryName: categoryNameFor(key === "uncategorized" ? null : key),
+        actualAmount: 0,
+        plannedAmount: 0,
+      };
+      current.actualAmount += amount;
+      expenseCategoryMap.set(key, current);
+    }
+
+    const expenseCategoryTrend = Array.from(expenseCategoryMap.values())
+      .map((row) => ({
+        ...row,
+        actualAmount: Number(row.actualAmount.toFixed(2)),
+        plannedAmount: Number(row.plannedAmount.toFixed(2)),
+        varianceAmount: Number((row.plannedAmount - row.actualAmount).toFixed(2)),
+      }))
+      .sort((a, b) => Math.abs(b.actualAmount) - Math.abs(a.actualAmount))
+      .slice(0, 8);
 
     return {
       analyzerMetrics: {
@@ -11068,16 +13663,46 @@ export class DatabaseStorage implements IStorage {
         avgItemCount: totalRuns === 0 ? 0 : Math.round(itemCountTotal / totalRuns),
       },
       roadmapMetrics: {
-        totalProjects: projects.length,
-        totalWorkstreams: workstreams.length,
-        totalTasks: tasks.length,
+        totalProjects: activeProjects.length,
+        totalWorkstreams: activeWorkstreams.length,
+        totalTasks: activeTasks.length,
+        archivedProjects: archivedProjects.length,
+        archivedCompletedProjects,
         taskStatusDistribution: {
           todo,
           inProgress,
           done,
         },
-        completionRate: tasks.length === 0 ? 0 : Number(((done / tasks.length) * 100).toFixed(2)),
+        completionRate: activeTasks.length === 0 ? 0 : Number(((done / activeTasks.length) * 100).toFixed(2)),
         taskThroughput: throughput,
+      },
+      collectionMetrics: {
+        associationId: associationId ?? null,
+        totalCharges: Number(totalCharges.toFixed(2)),
+        totalPayments: Number(totalPayments.toFixed(2)),
+        totalCredits: Number(totalCredits.toFixed(2)),
+        openBalance,
+        collectionRate: Number(collectionBase.toFixed(2)),
+        monthlyTrend,
+        agingBuckets: {
+          current: Number(agingBuckets.current.toFixed(2)),
+          thirtyDays: Number(agingBuckets.thirtyDays.toFixed(2)),
+          sixtyDays: Number(agingBuckets.sixtyDays.toFixed(2)),
+          ninetyPlus: Number(agingBuckets.ninetyPlus.toFixed(2)),
+        },
+        delinquencyMovement,
+      },
+      reserveProjection: {
+        associationId: associationId ?? null,
+        currentReserveBalance,
+        annualReserveContributions: Number(normalizedAnnualReserveContributions.toFixed(2)),
+        annualReserveExpenses: Number(normalizedAnnualReserveExpenses.toFixed(2)),
+        annualSpecialAssessmentContribution: Number(annualSpecialAssessmentContribution.toFixed(2)),
+        forecastWindows,
+      },
+      expenseCategoryTrend: {
+        associationId: associationId ?? null,
+        categories: expenseCategoryTrend,
       },
     };
   }

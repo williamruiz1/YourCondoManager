@@ -41,6 +41,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarHeader,
+  SidebarRail,
 } from "@/components/ui/sidebar";
 import type { Document } from "@shared/schema";
 import { useActiveAssociation } from "@/hooks/use-active-association";
@@ -227,13 +228,13 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
   const remainingSections = visibleSections.filter((section) => section.label !== "Overview");
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Building2 className="h-4 w-4" />
           </div>
-          <div>
+          <div className="group-data-[collapsible=icon]:hidden">
             <h2 className="text-sm font-semibold tracking-tight" data-testid="text-app-title">
               CondoManager
             </h2>
@@ -256,6 +257,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
                       <SidebarMenuButton
                         asChild
                         isActive={moduleActive}
+                        tooltip={module.title}
                         className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
                       >
                         <Link href={module.url} data-testid={`link-nav-${module.title.toLowerCase().replace(/\s+/g, "-")}`}>
@@ -274,7 +276,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
         <SidebarGroup>
           <SidebarGroupLabel>In Context</SidebarGroupLabel>
           <SidebarGroupContent>
-            <div className="mx-2 mb-3 rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3">
+            <div className="mx-2 mb-3 rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3 group-data-[collapsible=icon]:hidden">
               {activeAssociationId ? (
                 <Link
                   href="/app/association-context"
@@ -293,7 +295,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
               <div className="mt-3 space-y-1">
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={location.startsWith("/app/documents")}>
+                    <SidebarMenuButton asChild isActive={location.startsWith("/app/documents")} tooltip="Documents">
                       <Link href="/app/documents">
                         <FileText className="h-4 w-4" />
                         <span>Documents</span>
@@ -322,6 +324,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
                       <SidebarMenuButton
                         asChild
                         isActive={moduleActive}
+                        tooltip={module.title}
                         className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
                       >
                         <Link href={module.url} data-testid={`link-nav-${module.title.toLowerCase().replace(/\s+/g, "-")}`}>
@@ -351,6 +354,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
           </SidebarGroup>
         ))}
       </SidebarContent>
+      <SidebarRail />
     </Sidebar>
   );
 }

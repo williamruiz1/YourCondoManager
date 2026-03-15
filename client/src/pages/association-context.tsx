@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Document, OnboardingInvite, OnboardingSubmission } from "@shared/schema";
+import type { Document, OnboardingInvite, OnboardingSubmission, ResidentialDatasetUnitDirectoryItem } from "@shared/schema";
 import { Link } from "wouter";
 import { Building2, DoorOpen, FileText, Home, Mail, Users } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -11,9 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -26,12 +28,21 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
 
 type AssociationOverview = {
   associationId: string;
   units: number;
   activeOwners: number;
   activeOccupants: number;
+  ownerOccupiedUnits: number;
+  rentalOccupiedUnits: number;
+  vacantUnits: number;
+  unassignedUnits: number;
+  occupancyRatePercent: number;
   maintenanceOpen: number;
   maintenanceOverdue: number;
   paymentMethodsActive: number;
@@ -39,6 +50,13 @@ type AssociationOverview = {
   onboardingScorePercent: number;
   contactCoveragePercent: number;
 };
+
+function formatOccupancyStatus(status: ResidentialDatasetUnitDirectoryItem["occupancyStatus"] | null | undefined) {
+  if (status === "OWNER_OCCUPIED") return "Owner Occupied";
+  if (status === "RENTAL_OCCUPIED") return "Rental Occupied";
+  if (status === "VACANT") return "Vacant";
+  return "Unassigned";
+}
 
 const profileFormSchema = z.object({
   name: z.string().min(1, "Association name is required"),
@@ -60,6 +78,22 @@ export default function AssociationContextPage() {
     phone: "",
     expiresAt: "",
   });
+  const [manualIntakeOpen, setManualIntakeOpen] = useState(false);
+  const [rejectionDrafts, setRejectionDrafts] = useState<Record<string, string>>({});
+  const [manualIntakeForm, setManualIntakeForm] = useState({
+    unitId: "",
+    occupancyType: "TENANT" as "OWNER_OCCUPIED" | "TENANT",
+    startDate: "",
+    ownershipPercentage: "100",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    mailingAddress: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    contactPreference: "email",
+  });
   const [reminderSweepHours, setReminderSweepHours] = useState("24");
   const { activeAssociationId, activeAssociation, activeAssociationName } = useActiveAssociation();
   const { data: residentialDataset, isLoading: residentialLoading } = useResidentialDataset();
@@ -77,7 +111,16 @@ export default function AssociationContextPage() {
     state: "not-started" | "in-progress" | "blocked" | "complete";
     blockers: string[];
     remediationActions: string[];
+    remediationItems: Array<{ label: string; href: string; summary: string }>;
     scorePercent: number;
+    components: {
+      unitsConfigured: { score: number; total: number; completed: number };
+      ownerDataCollected: { score: number; total: number; completed: number };
+      tenantDataCollected: { score: number; total: number; completed: number };
+      boardMembersConfigured: { score: number; total: number; completed: number };
+      paymentMethodsConfigured: { score: number; total: number; completed: number };
+      communicationTemplatesConfigured: { score: number; total: number; completed: number };
+    };
   }>({
     queryKey: [activeAssociationId ? `/api/onboarding/state?associationId=${activeAssociationId}` : "/api/onboarding/state"],
     enabled: Boolean(activeAssociationId),
@@ -142,32 +185,25 @@ export default function AssociationContextPage() {
   });
 
   const buildingGroups = useMemo(() => {
-    const units = residentialDataset?.units ?? [];
-    const occupancies = residentialDataset?.occupancies ?? [];
-    const ownerships = residentialDataset?.ownerships ?? [];
-    const activeOccupancyByUnit = new Map(
-      occupancies.map((occupancy) => [occupancy.unitId, occupancy]),
-    );
-    const ownershipCountByUnit = new Map<string, number>();
-    for (const ownership of ownerships) {
-      ownershipCountByUnit.set(ownership.unitId, (ownershipCountByUnit.get(ownership.unitId) ?? 0) + 1);
-    }
-
     const groups = new Map<string, Array<{
       id: string;
       unitNumber: string;
-      ownershipCount: number;
-      occupancyType: string | null;
+      ownerCount: number;
+      tenantCount: number;
+      occupancyStatus: ResidentialDatasetUnitDirectoryItem["occupancyStatus"];
+      lastOccupancyUpdate: string | null;
     }>>();
 
-    for (const unit of units) {
-      const buildingKey = unit.building?.trim() || "Unassigned Building";
+    for (const entry of residentialDataset?.unitDirectory ?? []) {
+      const buildingKey = entry.unit.building?.trim() || "Unassigned Building";
       const rows = groups.get(buildingKey) ?? [];
       rows.push({
-        id: unit.id,
-        unitNumber: unit.unitNumber,
-        ownershipCount: ownershipCountByUnit.get(unit.id) ?? 0,
-        occupancyType: activeOccupancyByUnit.get(unit.id)?.occupancyType ?? null,
+        id: entry.unit.id,
+        unitNumber: entry.unit.unitNumber,
+        ownerCount: entry.ownerCount,
+        tenantCount: entry.tenantCount,
+        occupancyStatus: entry.occupancyStatus,
+        lastOccupancyUpdate: entry.lastOccupancyUpdate,
       });
       groups.set(buildingKey, rows);
     }
@@ -217,34 +253,11 @@ export default function AssociationContextPage() {
   }, [onboardingInvites, onboardingSubmissions, residentialDataset]);
 
   const unitCoverageRows = useMemo(() => {
-    const ownerships = residentialDataset?.ownerships ?? [];
-    const occupancies = residentialDataset?.occupancies ?? [];
-    const units = residentialDataset?.units ?? [];
-    const activeOwnershipCountByUnit = new Map<string, number>();
-    const activeOccupancyCountByUnit = new Map<string, number>();
-    const now = Date.now();
-    for (const ownership of ownerships) {
-      const start = new Date(ownership.startDate).getTime();
-      const end = ownership.endDate ? new Date(ownership.endDate).getTime() : null;
-      if (start <= now && (end == null || end >= now)) {
-        activeOwnershipCountByUnit.set(ownership.unitId, (activeOwnershipCountByUnit.get(ownership.unitId) ?? 0) + 1);
-      }
-    }
-    for (const occupancy of occupancies) {
-      const start = new Date(occupancy.startDate).getTime();
-      const end = occupancy.endDate ? new Date(occupancy.endDate).getTime() : null;
-      if (start <= now && (end == null || end >= now)) {
-        activeOccupancyCountByUnit.set(occupancy.unitId, (activeOccupancyCountByUnit.get(occupancy.unitId) ?? 0) + 1);
-      }
-    }
-
-    return units
-      .map((unit) => {
-        const ownerCount = activeOwnershipCountByUnit.get(unit.id) ?? 0;
-        const occupantCount = activeOccupancyCountByUnit.get(unit.id) ?? 0;
-        const latestSubmission = latestSubmissionByUnit.get(unit.id);
-        const inviteCount = unitInviteCount.get(unit.id) ?? 0;
-        const coverageStatus = ownerCount > 0 || occupantCount > 0
+    return (residentialDataset?.unitDirectory ?? [])
+      .map((entry) => {
+        const latestSubmission = latestSubmissionByUnit.get(entry.unit.id);
+        const inviteCount = unitInviteCount.get(entry.unit.id) ?? 0;
+        const coverageStatus = entry.ownerCount > 0 || entry.occupantCount > 0
           ? "claimed"
           : latestSubmission?.status === "pending"
             ? "pending-review"
@@ -252,11 +265,14 @@ export default function AssociationContextPage() {
               ? "invited"
               : "unclaimed";
         return {
-          unitId: unit.id,
-          unitNumber: unit.unitNumber,
-          building: unit.building?.trim() || "Unassigned Building",
-          ownerCount,
-          occupantCount,
+          unitId: entry.unit.id,
+          unitNumber: entry.unit.unitNumber,
+          building: entry.unit.building?.trim() || "Unassigned Building",
+          ownerCount: entry.ownerCount,
+          occupantCount: entry.occupantCount,
+          tenantCount: entry.tenantCount,
+          occupancyStatus: entry.occupancyStatus,
+          lastOccupancyUpdate: entry.lastOccupancyUpdate,
           inviteCount,
           latestSubmission,
           coverageStatus,
@@ -267,6 +283,58 @@ export default function AssociationContextPage() {
         return left.unitNumber.localeCompare(right.unitNumber);
       });
   }, [residentialDataset, latestSubmissionByUnit, unitInviteCount]);
+
+  const onboardingRecommendedActions = useMemo(() => {
+    const actions: Array<{
+      title: string;
+      summary: string;
+      href: string;
+      cta: string;
+      tone: "default" | "warning" | "neutral";
+    }> = [];
+
+    if ((overview?.contactCoveragePercent ?? 0) < 70) {
+      actions.push({
+        title: "Close resident contact coverage gaps",
+        summary: `Coverage is at ${overview?.contactCoveragePercent ?? 0}%. Use invite links and manual intake to bring missing owners and tenants into scope.`,
+        href: "/app/communications",
+        cta: "Open communications",
+        tone: "warning",
+      });
+    }
+
+    if (onboardingMetrics.pending > 0) {
+      actions.push({
+        title: "Review pending resident submissions",
+        summary: `${onboardingMetrics.pending} intake submissions are waiting for review before records are fully usable.`,
+        href: "/app/association-context",
+        cta: "Review onboarding console",
+        tone: "default",
+      });
+    }
+
+    if ((overview?.paymentMethodsActive ?? 0) === 0) {
+      actions.push({
+        title: "Configure payment methods",
+        summary: "Residents do not yet have an active payment path. Turn this on before onboarding is considered complete.",
+        href: "/app/communications",
+        cta: "Review resident experience",
+        tone: "warning",
+      });
+    }
+
+    if (!actions.length) {
+      actions.push({
+        title: "Onboarding is stable",
+        summary: "Core setup is in place. Use this console to review unit coverage and keep intake clean as records change.",
+        href: "/app/association-context",
+        cta: "Stay in this workspace",
+        tone: "neutral",
+      });
+    }
+
+    return actions;
+  }, [onboardingMetrics.pending, overview?.contactCoveragePercent, overview?.paymentMethodsActive]);
 
   const createInviteMutation = useMutation({
     mutationFn: async () => {
@@ -333,9 +401,10 @@ export default function AssociationContextPage() {
   });
 
   const reviewSubmissionMutation = useMutation({
-    mutationFn: async (payload: { id: string; decision: "approved" | "rejected" }) => {
+    mutationFn: async (payload: { id: string; decision: "approved" | "rejected"; rejectionReason?: string }) => {
       const res = await apiRequest("PATCH", `/api/onboarding/submissions/${payload.id}/review`, {
         decision: payload.decision,
+        rejectionReason: payload.rejectionReason || null,
       });
       return res.json();
     },
@@ -345,32 +414,153 @@ export default function AssociationContextPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
       queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/associations/${activeAssociationId}/overview` : "/api/associations/none/overview"] });
       queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/onboarding/state?associationId=${activeAssociationId}` : "/api/onboarding/state"] });
+      setRejectionDrafts({});
       toast({ title: "Submission reviewed" });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
 
+  const unitLinkMutation = useMutation({
+    mutationFn: async (payload: { unitId: string; residentType: "owner" | "tenant"; regenerate?: boolean }) => {
+      if (!activeAssociationId) throw new Error("Association is required");
+      const endpoint = payload.regenerate ? "/api/onboarding/unit-links/regenerate" : "/api/onboarding/unit-links/ensure";
+      const res = await apiRequest("POST", endpoint, {
+        associationId: activeAssociationId,
+        unitId: payload.unitId,
+        residentType: payload.residentType,
+      });
+      return res.json() as Promise<OnboardingInvite & { inviteUrl: string; created?: boolean }>;
+    },
+    onSuccess: async (result, variables) => {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(result.inviteUrl);
+      }
+      queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/onboarding/invites?associationId=${activeAssociationId}` : "/api/onboarding/invites"] });
+      toast({
+        title: variables.regenerate ? "Unit link regenerated" : "Unit link ready",
+        description: `${variables.residentType === "owner" ? "Owner" : "Tenant"} link copied to clipboard when supported.`,
+      });
+    },
+    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+  });
+
+  const manualIntakeMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeAssociationId) throw new Error("Association is required");
+      if (!manualIntakeForm.unitId) throw new Error("Unit is required");
+      if (!manualIntakeForm.firstName.trim() || !manualIntakeForm.lastName.trim() || !manualIntakeForm.startDate) {
+        throw new Error("Name and start date are required");
+      }
+      const res = await apiRequest("POST", "/api/onboarding/intake", {
+        associationId: activeAssociationId,
+        unitId: manualIntakeForm.unitId,
+        occupancyType: manualIntakeForm.occupancyType,
+        startDate: new Date(manualIntakeForm.startDate).toISOString(),
+        ownershipPercentage: manualIntakeForm.occupancyType === "OWNER_OCCUPIED" ? Number(manualIntakeForm.ownershipPercentage || "100") : null,
+        person: {
+          firstName: manualIntakeForm.firstName.trim(),
+          lastName: manualIntakeForm.lastName.trim(),
+          email: manualIntakeForm.email.trim() || null,
+          phone: manualIntakeForm.phone.trim() || null,
+          mailingAddress: manualIntakeForm.mailingAddress.trim() || null,
+          emergencyContactName: manualIntakeForm.emergencyContactName.trim() || null,
+          emergencyContactPhone: manualIntakeForm.emergencyContactPhone.trim() || null,
+          contactPreference: manualIntakeForm.contactPreference || "email",
+        },
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/associations/${activeAssociationId}/overview` : "/api/associations/none/overview"] });
+      queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/onboarding/state?associationId=${activeAssociationId}` : "/api/onboarding/state"] });
+      queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/onboarding/submissions?associationId=${activeAssociationId}` : "/api/onboarding/submissions"] });
+      setManualIntakeOpen(false);
+      setManualIntakeForm({
+        unitId: "",
+        occupancyType: "TENANT",
+        startDate: "",
+        ownershipPercentage: "100",
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        mailingAddress: "",
+        emergencyContactName: "",
+        emergencyContactPhone: "",
+        contactPreference: "email",
+      });
+      toast({ title: "Manual onboarding intake created" });
+    },
+    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+  });
+
+  const openManualIntake = (payload: { unitId: string; ownerCount: number; occupantCount: number }) => {
+    setManualIntakeForm((prev) => ({
+      ...prev,
+      unitId: payload.unitId,
+      occupancyType: payload.ownerCount === 0 && payload.occupantCount === 0 ? "OWNER_OCCUPIED" : "TENANT",
+      startDate: prev.startDate,
+    }));
+    setManualIntakeOpen(true);
+  };
+
+  const updateRejectionDraft = (submissionId: string, value: string) => {
+    setRejectionDrafts((current) => ({
+      ...current,
+      [submissionId]: value,
+    }));
+  };
+
   if (!activeAssociationId) {
     return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
-            Select an association context from the header to open the in-context association workspace.
-          </CardContent>
-        </Card>
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Association Context"
+          summary="Move from portfolio oversight into a single association workspace with profile, documents, onboarding, and residential coverage in one place."
+          eyebrow="Context"
+          breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Association Context" }]}
+          shortcuts={[
+            { label: "Open Associations", href: "/app/associations" },
+            { label: "Open Documents", href: "/app/documents" },
+          ]}
+        />
+        <AssociationScopeBanner
+          activeAssociationId=""
+          activeAssociationName=""
+          explanation="Select an association to unlock the in-context workspace for profile edits, onboarding, documents, and residential operations."
+        />
       </div>
     );
   }
 
   return (
+    <>
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{activeAssociationName || "Association Context"}</h1>
-        <p className="text-muted-foreground">
-          In-context workspace for this association: overview, documents, and building hierarchy.
-        </p>
-      </div>
+      <WorkspacePageHeader
+        title={activeAssociationName || "Association Context"}
+        summary="In-context workspace for this association, with profile, residential coverage, onboarding, documents, and next-step actions in one view."
+        eyebrow="Context"
+        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Association Context" }]}
+        shortcuts={[
+          { label: "Open Documents", href: "/app/documents" },
+          { label: "Open Communications", href: "/app/communications" },
+          { label: "Open Units", href: "/app/units" },
+        ]}
+      />
 
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation="This page is the operating center for the selected association. Edits, onboarding actions, and linked records all follow this active scope."
+      />
+
+      <AsyncStateBoundary
+        isLoading={overviewLoading}
+        error={overview === undefined && !overviewLoading ? new Error("Association overview is unavailable.") : undefined}
+        emptyTitle="Association overview unavailable"
+        emptyMessage="Refresh the page or confirm the active association still exists."
+      >
       <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-4">
             <CardTitle>Association Profile</CardTitle>
@@ -536,7 +726,7 @@ export default function AssociationContextPage() {
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <CompactMetric label="Units" value={overview?.units ?? 0} icon={DoorOpen} />
                     <CompactMetric label="Owners" value={overview?.activeOwners ?? 0} icon={Users} />
-                    <CompactMetric label="Occupants" value={overview?.activeOccupants ?? 0} icon={Home} />
+                    <CompactMetric label="Occupancy Rate" value={overview?.occupancyRatePercent ?? 0} suffix="%" icon={Home} />
                     <CompactMetric label="Documents" value={documents.length} icon={FileText} />
                   </div>
                 </div>
@@ -544,6 +734,7 @@ export default function AssociationContextPage() {
             )}
           </CardContent>
         </Card>
+      </AsyncStateBoundary>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -576,9 +767,9 @@ export default function AssociationContextPage() {
                       <div key={unit.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-sm">
                         <span>Unit {unit.unitNumber}</span>
                         <div className="flex gap-2">
-                          <Badge variant="outline">{unit.ownershipCount} owners</Badge>
-                          <Badge variant={unit.occupancyType === "TENANT" ? "secondary" : "default"}>
-                            {unit.occupancyType === "OWNER_OCCUPIED" ? "Owner Occupied" : unit.occupancyType === "TENANT" ? "Tenant" : "No Occupancy"}
+                          <Badge variant="outline">{unit.ownerCount} owners</Badge>
+                          <Badge variant={unit.occupancyStatus === "RENTAL_OCCUPIED" ? "secondary" : unit.occupancyStatus === "UNASSIGNED" ? "outline" : "default"}>
+                            {formatOccupancyStatus(unit.occupancyStatus)}
                           </Badge>
                         </div>
                       </div>
@@ -633,7 +824,60 @@ export default function AssociationContextPage() {
                 Next actions: {onboardingState?.remediationActions.join(" · ")}
               </div>
             ) : null}
+            {onboardingState?.components ? (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <MiniProgressCard
+                  label="Units Created"
+                  value={onboardingState.components.unitsConfigured.score}
+                  detail={`${onboardingState.components.unitsConfigured.completed}/${onboardingState.components.unitsConfigured.total || 1}`}
+                />
+                <MiniProgressCard
+                  label="Owner Data"
+                  value={onboardingState.components.ownerDataCollected.score}
+                  detail={`${onboardingState.components.ownerDataCollected.completed}/${onboardingState.components.ownerDataCollected.total}`}
+                />
+                <MiniProgressCard
+                  label="Tenant Data"
+                  value={onboardingState.components.tenantDataCollected.score}
+                  detail={`${onboardingState.components.tenantDataCollected.completed}/${onboardingState.components.tenantDataCollected.total}`}
+                />
+                <MiniProgressCard
+                  label="Board Setup"
+                  value={onboardingState.components.boardMembersConfigured.score}
+                  detail={onboardingState.components.boardMembersConfigured.completed > 0 ? "Configured" : "Missing"}
+                />
+                <MiniProgressCard
+                  label="Payments"
+                  value={onboardingState.components.paymentMethodsConfigured.score}
+                  detail={onboardingState.components.paymentMethodsConfigured.completed > 0 ? "Configured" : "Missing"}
+                />
+                <MiniProgressCard
+                  label="Comms Templates"
+                  value={onboardingState.components.communicationTemplatesConfigured.score}
+                  detail={onboardingState.components.communicationTemplatesConfigured.completed > 0 ? "Configured" : "Missing"}
+                />
+              </div>
+            ) : null}
+            {(onboardingState?.remediationItems?.length ?? 0) > 0 ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {onboardingState?.remediationItems.map((item) => (
+                  <div key={`${item.href}:${item.label}`} className="rounded-lg border bg-background p-3">
+                    <div className="text-sm font-medium">{item.label}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{item.summary}</div>
+                    <Button asChild size="sm" variant="outline" className="mt-3">
+                      <Link href={item.href}>Open</Link>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
+
+          <RecommendedActionsPanel
+            title="Onboarding Next Actions"
+            description="Use the onboarding metrics and blockers above to decide the next resident-intake move."
+            actions={onboardingRecommendedActions}
+          />
 
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-xl border p-4 space-y-4">
@@ -655,11 +899,12 @@ export default function AssociationContextPage() {
                     <TableHead>Coverage</TableHead>
                     <TableHead>Invites</TableHead>
                     <TableHead>Submission</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {unitCoverageRows.slice(0, 25).map((row) => (
-                    <TableRow key={row.unitId}>
+                  <TableRow key={row.unitId}>
                       <TableCell>
                         <div className="font-medium">Unit {row.unitNumber}</div>
                         <div className="text-xs text-muted-foreground">{row.building}</div>
@@ -669,7 +914,8 @@ export default function AssociationContextPage() {
                           {row.coverageStatus.replace("-", " ")}
                         </Badge>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Owners {row.ownerCount} · Occupants {row.occupantCount}
+                          {formatOccupancyStatus(row.occupancyStatus)} · Owners {row.ownerCount} · Tenants {row.tenantCount}
+                          {row.lastOccupancyUpdate ? ` · Updated ${new Date(row.lastOccupancyUpdate).toLocaleDateString()}` : ""}
                         </div>
                       </TableCell>
                       <TableCell>{row.inviteCount}</TableCell>
@@ -681,10 +927,33 @@ export default function AssociationContextPage() {
                           </div>
                         ) : <span className="text-xs text-muted-foreground">No submission</span>}
                       </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" onClick={() => openManualIntake({ unitId: row.unitId, ownerCount: row.ownerCount, occupantCount: row.occupantCount })}>
+                            Manual Entry
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "owner" })}
+                            disabled={unitLinkMutation.isPending}
+                          >
+                            Owner Link
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "tenant" })}
+                            disabled={unitLinkMutation.isPending}
+                          >
+                            Tenant Link
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {unitCoverageRows.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className="text-muted-foreground">No units available for onboarding coverage.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-muted-foreground">No units available for onboarding coverage.</TableCell></TableRow>
                   ) : null}
                 </TableBody>
               </Table>
@@ -720,6 +989,38 @@ export default function AssociationContextPage() {
                 <Button onClick={() => createInviteMutation.mutate()} disabled={createInviteMutation.isPending}>
                   Create Onboarding Invite
                 </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner" })}
+                    disabled={unitLinkMutation.isPending || !inviteForm.unitId}
+                  >
+                    Copy Owner Link
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "tenant" })}
+                    disabled={unitLinkMutation.isPending || !inviteForm.unitId}
+                  >
+                    Copy Tenant Link
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner", regenerate: true })}
+                    disabled={unitLinkMutation.isPending || !inviteForm.unitId}
+                  >
+                    Regenerate Owner
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "tenant", regenerate: true })}
+                    disabled={unitLinkMutation.isPending || !inviteForm.unitId}
+                  >
+                    Regenerate Tenant
+                  </Button>
+                </div>
               </div>
               <div className="border-t pt-4 space-y-3">
                 <div className="text-sm font-semibold">Reminder Sweep</div>
@@ -790,24 +1091,47 @@ export default function AssociationContextPage() {
                         {submission.reviewNotes?.length ? (
                           <div className="mt-1 text-xs text-muted-foreground">{submission.reviewNotes.join(" ")}</div>
                         ) : null}
+                        {submission.rejectionReason ? (
+                          <div className="mt-1 text-xs text-destructive">Last rejection: {submission.rejectionReason}</div>
+                        ) : null}
                       </TableCell>
                       <TableCell><Badge variant={submission.status === "pending" ? "secondary" : "outline"}>{submission.status}</Badge></TableCell>
                       <TableCell className="space-x-2">
-                        <Button
-                          size="sm"
-                          onClick={() => reviewSubmissionMutation.mutate({ id: submission.id, decision: "approved" })}
-                          disabled={reviewSubmissionMutation.isPending || submission.status !== "pending"}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => reviewSubmissionMutation.mutate({ id: submission.id, decision: "rejected" })}
-                          disabled={reviewSubmissionMutation.isPending || submission.status !== "pending"}
-                        >
-                          Reject
-                        </Button>
+                        {submission.status === "pending" ? (
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => reviewSubmissionMutation.mutate({ id: submission.id, decision: "approved" })}
+                                disabled={reviewSubmissionMutation.isPending}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => reviewSubmissionMutation.mutate({
+                                  id: submission.id,
+                                  decision: "rejected",
+                                  rejectionReason: rejectionDrafts[submission.id] || "Please update the submission and try again.",
+                                })}
+                                disabled={reviewSubmissionMutation.isPending}
+                              >
+                                Request Changes
+                              </Button>
+                            </div>
+                            <Textarea
+                              rows={2}
+                              placeholder="Reason for rejection / requested changes"
+                              value={rejectionDrafts[submission.id] || ""}
+                              onChange={(event) => updateRejectionDraft(submission.id, event.target.value)}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {submission.reviewedBy ? `Reviewed by ${submission.reviewedBy}` : "Reviewed"}
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -847,6 +1171,58 @@ export default function AssociationContextPage() {
         </CardContent>
       </Card>
     </div>
+    <Dialog open={manualIntakeOpen} onOpenChange={setManualIntakeOpen}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Manual Resident Entry</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Select value={manualIntakeForm.unitId || "none"} onValueChange={(value) => setManualIntakeForm((prev) => ({ ...prev, unitId: value === "none" ? "" : value }))}>
+              <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">select unit</SelectItem>
+                {(residentialDataset?.units ?? []).map((unit) => (
+                  <SelectItem key={unit.id} value={unit.id}>Unit {unit.unitNumber}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={manualIntakeForm.occupancyType} onValueChange={(value) => setManualIntakeForm((prev) => ({ ...prev, occupancyType: value as "OWNER_OCCUPIED" | "TENANT" }))}>
+              <SelectTrigger><SelectValue placeholder="Resident type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="OWNER_OCCUPIED">Owner Occupied</SelectItem>
+                <SelectItem value="TENANT">Tenant</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input placeholder="First name" value={manualIntakeForm.firstName} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, firstName: event.target.value }))} />
+            <Input placeholder="Last name" value={manualIntakeForm.lastName} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, lastName: event.target.value }))} />
+            <Input placeholder="Email" value={manualIntakeForm.email} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, email: event.target.value }))} />
+            <Input placeholder="Phone" value={manualIntakeForm.phone} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, phone: event.target.value }))} />
+            <Input type="date" value={manualIntakeForm.startDate} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, startDate: event.target.value }))} />
+            {manualIntakeForm.occupancyType === "OWNER_OCCUPIED" ? (
+              <Input type="number" min="0" max="100" placeholder="Ownership %" value={manualIntakeForm.ownershipPercentage} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, ownershipPercentage: event.target.value }))} />
+            ) : null}
+          </div>
+          <Textarea placeholder="Mailing address" value={manualIntakeForm.mailingAddress} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, mailingAddress: event.target.value }))} />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Input placeholder="Emergency contact name" value={manualIntakeForm.emergencyContactName} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, emergencyContactName: event.target.value }))} />
+            <Input placeholder="Emergency contact phone" value={manualIntakeForm.emergencyContactPhone} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, emergencyContactPhone: event.target.value }))} />
+            <Select value={manualIntakeForm.contactPreference} onValueChange={(value) => setManualIntakeForm((prev) => ({ ...prev, contactPreference: value }))}>
+              <SelectTrigger><SelectValue placeholder="Contact preference" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="phone">Phone</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={() => manualIntakeMutation.mutate()} disabled={manualIntakeMutation.isPending}>
+            Create Resident
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -868,6 +1244,27 @@ function CompactMetric({
         <Icon className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="mt-2 text-xl font-semibold">{value}{suffix}</div>
+    </div>
+  );
+}
+
+function MiniProgressCard({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-background px-3 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="text-sm font-semibold">{value}%</div>
+      </div>
+      <Progress value={value} className="mt-3" />
+      <div className="mt-2 text-xs text-muted-foreground">{detail}</div>
     </div>
   );
 }

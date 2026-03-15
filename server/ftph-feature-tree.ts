@@ -190,6 +190,7 @@ async function parseAdditionalCondoManagerDocs(modules: MutableModule[]) {
     { path: "docs/projects/single-association-context.md", featureSetId: "90.3", fallbackTitle: "Single-Association Context Project" },
     { path: "docs/executive-slide-authoring-standard.md", featureSetId: "90.4", fallbackTitle: "Executive Slide Authoring Standard" },
     { path: "docs/roadmap/ftph-gap-analysis-2026-03-14.md", featureSetId: "90.5", fallbackTitle: "FTPH Platform Gap Analysis" },
+    { path: "docs/roadmap/ftph-detailed-spec-comparison-2026-03-15.md", featureSetId: "90.6", fallbackTitle: "FTPH Detailed Spec Comparison Addendum" },
   ];
 
   for (const doc of docsToParse) {

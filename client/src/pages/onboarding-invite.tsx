@@ -19,11 +19,20 @@ type PublicInvite = {
   email?: string | null;
   phone?: string | null;
   expiresAt?: string | null;
+  latestSubmissionStatus?: "pending" | "approved" | "rejected" | null;
+  latestSubmissionRejectionReason?: string | null;
 };
 
 export default function OnboardingInvitePage() {
   const [, params] = useRoute("/onboarding/:token");
   const token = params?.token || "";
+  const createEmptyResident = () => ({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    ownershipPercentage: "",
+  });
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -35,7 +44,11 @@ export default function OnboardingInvitePage() {
     contactPreference: "email",
     startDate: "",
     ownershipPercentage: "100",
+    occupancyIntent: "owner-occupied",
   });
+  const [includeSecondOwner, setIncludeSecondOwner] = useState(false);
+  const [secondOwner, setSecondOwner] = useState(createEmptyResident());
+  const [tenantResidents, setTenantResidents] = useState([createEmptyResident()]);
 
   const inviteQuery = useQuery<PublicInvite>({
     queryKey: [`/api/public/onboarding/invite/${token}`],
@@ -63,7 +76,27 @@ export default function OnboardingInvitePage() {
           emergencyContactPhone: form.emergencyContactPhone.trim() || null,
           contactPreference: form.contactPreference,
           startDate: new Date(form.startDate).toISOString(),
+          occupancyIntent: inviteQuery.data?.residentType === "owner" ? form.occupancyIntent : null,
           ownershipPercentage: inviteQuery.data?.residentType === "owner" ? Number(form.ownershipPercentage || "100") : null,
+          additionalOwners: inviteQuery.data?.residentType === "owner" && includeSecondOwner && secondOwner.firstName.trim() && secondOwner.lastName.trim() && (secondOwner.email.trim() || secondOwner.phone.trim())
+            ? [{
+              firstName: secondOwner.firstName.trim(),
+              lastName: secondOwner.lastName.trim(),
+              email: secondOwner.email.trim() || null,
+              phone: secondOwner.phone.trim() || null,
+              ownershipPercentage: secondOwner.ownershipPercentage.trim() ? Number(secondOwner.ownershipPercentage) : null,
+            }]
+            : [],
+          tenantResidents: inviteQuery.data?.residentType === "owner" && form.occupancyIntent === "rental"
+            ? tenantResidents
+              .filter((resident) => resident.firstName.trim() && resident.lastName.trim() && (resident.email.trim() || resident.phone.trim()))
+              .map((resident) => ({
+                firstName: resident.firstName.trim(),
+                lastName: resident.lastName.trim(),
+                email: resident.email.trim() || null,
+                phone: resident.phone.trim() || null,
+              }))
+            : [],
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -72,6 +105,10 @@ export default function OnboardingInvitePage() {
   });
 
   const invite = inviteQuery.data;
+  const validTenantCount = tenantResidents.filter((resident) =>
+    resident.firstName.trim() && resident.lastName.trim() && (resident.email.trim() || resident.phone.trim()),
+  ).length;
+  const ownerFormInvalid = invite?.residentType === "owner" && form.occupancyIntent === "rental" && validTenantCount === 0;
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -99,8 +136,15 @@ export default function OnboardingInvitePage() {
                 </div>
 
                 {invite.status !== "active" ? (
-                  <div className="text-sm text-muted-foreground">
-                    This invite is no longer accepting submissions.
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">
+                      This invite is no longer accepting submissions.
+                    </div>
+                    {invite.latestSubmissionStatus === "rejected" && invite.latestSubmissionRejectionReason ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                        Change requested: {invite.latestSubmissionRejectionReason}
+                      </div>
+                    ) : null}
                   </div>
                 ) : submitMutation.isSuccess ? (
                   <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
@@ -125,6 +169,97 @@ export default function OnboardingInvitePage() {
                         />
                       ) : null}
                     </div>
+                    {invite.residentType === "owner" ? (
+                      <div className="space-y-4 rounded-lg border bg-slate-50 p-4">
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium">Occupancy</div>
+                          <Select value={form.occupancyIntent} onValueChange={(value) => setForm((p) => ({ ...p, occupancyIntent: value }))}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select occupancy" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="owner-occupied">Owner occupied</SelectItem>
+                              <SelectItem value="rental">Rental occupied</SelectItem>
+                              <SelectItem value="vacant">Vacant</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="text-xs text-muted-foreground">
+                            Choose whether the owner lives in the unit, tenants occupy it, or it is currently vacant.
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium">Second owner</div>
+                              <div className="text-xs text-muted-foreground">Add a second owner if title is shared.</div>
+                            </div>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setIncludeSecondOwner((current) => !current)}>
+                              {includeSecondOwner ? "Remove second owner" : "Add second owner"}
+                            </Button>
+                          </div>
+                          {includeSecondOwner ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-md border bg-white p-3">
+                              <Input placeholder="Second owner first name" value={secondOwner.firstName} onChange={(e) => setSecondOwner((p) => ({ ...p, firstName: e.target.value }))} />
+                              <Input placeholder="Second owner last name" value={secondOwner.lastName} onChange={(e) => setSecondOwner((p) => ({ ...p, lastName: e.target.value }))} />
+                              <Input placeholder="Second owner email" value={secondOwner.email} onChange={(e) => setSecondOwner((p) => ({ ...p, email: e.target.value }))} />
+                              <Input placeholder="Second owner phone" value={secondOwner.phone} onChange={(e) => setSecondOwner((p) => ({ ...p, phone: e.target.value }))} />
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                placeholder="Second owner ownership %"
+                                value={secondOwner.ownershipPercentage}
+                                onChange={(e) => setSecondOwner((p) => ({ ...p, ownershipPercentage: e.target.value }))}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {form.occupancyIntent === "rental" ? (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-medium">Tenant residents</div>
+                                <div className="text-xs text-muted-foreground">Add each current tenant. Leave no partial rows.</div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setTenantResidents((rows) => [...rows, createEmptyResident()])}
+                              >
+                                Add Tenant
+                              </Button>
+                            </div>
+                            {tenantResidents.map((resident, index) => (
+                              <div key={index} className="space-y-3 rounded-md border bg-white p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-sm font-medium">Tenant {index + 1}</div>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setTenantResidents((rows) => rows.length === 1 ? [createEmptyResident()] : rows.filter((_, rowIndex) => rowIndex !== index))}
+                                  >
+                                    Remove Tenant
+                                  </Button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <Input placeholder="Tenant first name" value={resident.firstName} onChange={(e) => setTenantResidents((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, firstName: e.target.value } : row))} />
+                                  <Input placeholder="Tenant last name" value={resident.lastName} onChange={(e) => setTenantResidents((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, lastName: e.target.value } : row))} />
+                                  <Input placeholder="Tenant email" value={resident.email} onChange={(e) => setTenantResidents((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, email: e.target.value } : row))} />
+                                  <Input placeholder="Tenant phone" value={resident.phone} onChange={(e) => setTenantResidents((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, phone: e.target.value } : row))} />
+                                </div>
+                              </div>
+                            ))}
+                            <div className="text-xs text-muted-foreground">
+                              At least one complete tenant entry is required for a rental submission.
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <Textarea placeholder="Mailing address" value={form.mailingAddress} onChange={(e) => setForm((p) => ({ ...p, mailingAddress: e.target.value }))} />
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <Input placeholder="Emergency contact name" value={form.emergencyContactName} onChange={(e) => setForm((p) => ({ ...p, emergencyContactName: e.target.value }))} />
@@ -141,9 +276,12 @@ export default function OnboardingInvitePage() {
                     {submitMutation.isError ? (
                       <div className="text-sm text-destructive">{(submitMutation.error as Error).message}</div>
                     ) : null}
+                    {ownerFormInvalid ? (
+                      <div className="text-sm text-destructive">Add at least one complete tenant entry for a rental submission.</div>
+                    ) : null}
                     <Button
                       onClick={() => submitMutation.mutate()}
-                      disabled={submitMutation.isPending || !form.firstName.trim() || !form.lastName.trim() || !form.startDate}
+                      disabled={submitMutation.isPending || !form.firstName.trim() || !form.lastName.trim() || !form.startDate || ownerFormInvalid}
                     >
                       Submit Onboarding Form
                     </Button>

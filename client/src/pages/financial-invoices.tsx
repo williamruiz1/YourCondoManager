@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -15,6 +15,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { DataTableShell } from "@/components/data-table-shell";
 
 const invoiceSchema = z.object({
   associationId: z.string().min(1),
@@ -47,6 +51,12 @@ export default function FinancialInvoicesPage() {
   const [attachmentAssocId, setAttachmentAssocId] = useState<string>("");
   const [attachmentTitle, setAttachmentTitle] = useState("");
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState("all");
+  const [invoiceSortBy, setInvoiceSortBy] = useState("newest");
+  const [invoicePage, setInvoicePage] = useState(1);
+  const [attachmentSearch, setAttachmentSearch] = useState("");
+  const [attachmentPage, setAttachmentPage] = useState(1);
   const fileRef = useRef<HTMLInputElement>(null);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
 
@@ -145,104 +155,309 @@ export default function FinancialInvoicesPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const filteredInvoices = useMemo(() => {
+    const term = invoiceSearch.trim().toLowerCase();
+    const rows = [...(invoices ?? [])].filter((invoice) => {
+      if (invoiceStatusFilter !== "all" && invoice.status !== invoiceStatusFilter) {
+        return false;
+      }
+      if (!term) {
+        return true;
+      }
+      return [
+        invoice.vendorName,
+        invoice.invoiceNumber,
+        invoice.status,
+        invoice.notes,
+      ].some((value) => (value || "").toLowerCase().includes(term));
+    });
+
+    rows.sort((left, right) => {
+      if (invoiceSortBy === "oldest") {
+        return new Date(left.invoiceDate).getTime() - new Date(right.invoiceDate).getTime();
+      }
+      if (invoiceSortBy === "amount-desc") {
+        return Number(right.amount) - Number(left.amount);
+      }
+      if (invoiceSortBy === "amount-asc") {
+        return Number(left.amount) - Number(right.amount);
+      }
+      return new Date(right.invoiceDate).getTime() - new Date(left.invoiceDate).getTime();
+    });
+
+    return rows;
+  }, [invoiceSearch, invoiceSortBy, invoiceStatusFilter, invoices]);
+
+  const totalInvoicePages = Math.max(1, Math.ceil(filteredInvoices.length / 10));
+  const pagedInvoices = filteredInvoices.slice((invoicePage - 1) * 10, invoicePage * 10);
+
+  const filteredAttachments = useMemo(() => {
+    const term = attachmentSearch.trim().toLowerCase();
+    const invoiceMap = new Map((invoices ?? []).map((invoice) => [invoice.id, invoice]));
+
+    return (attachments ?? []).filter((attachment) => {
+      if (attachment.expenseType !== "invoice") {
+        return false;
+      }
+      if (!term) {
+        return true;
+      }
+      const invoice = invoiceMap.get(attachment.expenseId);
+      return [
+        attachment.title,
+        attachment.expenseId,
+        invoice?.vendorName,
+        invoice?.invoiceNumber,
+      ].some((value) => (value || "").toLowerCase().includes(term));
+    });
+  }, [attachmentSearch, attachments, invoices]);
+
+  const totalAttachmentPages = Math.max(1, Math.ceil(filteredAttachments.length / 8));
+  const pagedAttachments = filteredAttachments.slice((attachmentPage - 1) * 8, attachmentPage * 8);
+
+  useEffect(() => {
+    setInvoicePage(1);
+  }, [invoiceSearch, invoiceSortBy, invoiceStatusFilter]);
+
+  useEffect(() => {
+    if (invoicePage > totalInvoicePages) {
+      setInvoicePage(totalInvoicePages);
+    }
+  }, [invoicePage, totalInvoicePages]);
+
+  useEffect(() => {
+    setAttachmentPage(1);
+  }, [attachmentSearch]);
+
+  useEffect(() => {
+    if (attachmentPage > totalAttachmentPages) {
+      setAttachmentPage(totalAttachmentPages);
+    }
+  }, [attachmentPage, totalAttachmentPages]);
+
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Vendor Invoices</h1>
-          <p className="text-muted-foreground">Record invoices and attach supporting files for the current association context.</p>
-        </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Invoice</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Create Vendor Invoice</DialogTitle></DialogHeader>
-            <Form {...form}>
-              <form className="space-y-4" onSubmit={form.handleSubmit((v) => createInvoice.mutate(v))}>
-                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                  Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
-                </div>
-                <FormField
-                  control={form.control}
-                  name="vendorId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Vendor</FormLabel>
-                      <Select
-                        value={field.value || "none"}
-                        onValueChange={(value) => {
-                          const nextValue = value === "none" ? "" : value;
-                          const vendor = (vendors ?? []).find((item) => item.id === nextValue);
-                          field.onChange(nextValue);
-                          form.setValue("vendorName", vendor?.name || "", { shouldValidate: true });
-                        }}
-                      >
-                        <FormControl>
-                          <SelectTrigger><SelectValue placeholder="Select vendor" /></SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none">select vendor</SelectItem>
-                          {(vendors ?? []).map((vendor) => (
-                            <SelectItem key={vendor.id} value={vendor.id}>
-                              {vendor.name} · {vendor.trade}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <input type="hidden" {...form.register("vendorName")} />
-                <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                  Invoices are filed under the selected association’s vendor registry. Create the vendor in `/app/vendors` first if it does not exist yet.
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField control={form.control} name="invoiceNumber" render={({ field }) => (<FormItem><FormLabel>Invoice #</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField control={form.control} name="invoiceDate" render={({ field }) => (<FormItem><FormLabel>Invoice Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField control={form.control} name="accountId" render={({ field }) => (
-                    <FormItem><FormLabel>Account</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{accounts?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+      <WorkspacePageHeader
+        title="Vendor Invoices"
+        summary="Record invoices, classify spend, and keep supporting files attached without losing association context."
+        eyebrow="Finance"
+        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Vendor Invoices" }]}
+        shortcuts={[
+          { label: "Open Financial Ledger", href: "/app/financial-ledger" },
+          { label: "Open Vendors", href: "/app/vendors" },
+        ]}
+        actions={
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Invoice</Button></DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Create Vendor Invoice</DialogTitle></DialogHeader>
+              <Form {...form}>
+                <form className="space-y-4" onSubmit={form.handleSubmit((v) => createInvoice.mutate(v))}>
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                    Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="vendorId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Vendor</FormLabel>
+                        <Select
+                          value={field.value || "none"}
+                          onValueChange={(value) => {
+                            const nextValue = value === "none" ? "" : value;
+                            const vendor = (vendors ?? []).find((item) => item.id === nextValue);
+                            field.onChange(nextValue);
+                            form.setValue("vendorName", vendor?.name || "", { shouldValidate: true });
+                          }}
+                        >
+                          <FormControl>
+                            <SelectTrigger><SelectValue placeholder="Select vendor" /></SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">select vendor</SelectItem>
+                            {(vendors ?? []).map((vendor) => (
+                              <SelectItem key={vendor.id} value={vendor.id}>
+                                {vendor.name} · {vendor.trade}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <input type="hidden" {...form.register("vendorName")} />
+                  <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    Invoices are filed under the selected association's vendor registry. Create the vendor in `/app/vendors` first if it does not exist yet.
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField control={form.control} name="invoiceNumber" render={({ field }) => (<FormItem><FormLabel>Invoice #</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField control={form.control} name="invoiceDate" render={({ field }) => (<FormItem><FormLabel>Invoice Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField control={form.control} name="accountId" render={({ field }) => (
+                      <FormItem><FormLabel>Account</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{accounts?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="categoryId" render={({ field }) => (
+                      <FormItem><FormLabel>Category</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{categories?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                    )} />
+                  </div>
+                  <FormField control={form.control} name="status" render={({ field }) => (
+                    <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="draft">draft</SelectItem><SelectItem value="received">received</SelectItem><SelectItem value="approved">approved</SelectItem><SelectItem value="paid">paid</SelectItem><SelectItem value="void">void</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />
-                  <FormField control={form.control} name="categoryId" render={({ field }) => (
-                    <FormItem><FormLabel>Category</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{categories?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
-                  )} />
-                </div>
-                <FormField control={form.control} name="status" render={({ field }) => (
-                  <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="draft">draft</SelectItem><SelectItem value="received">received</SelectItem><SelectItem value="approved">approved</SelectItem><SelectItem value="paid">paid</SelectItem><SelectItem value="void">void</SelectItem></SelectContent></Select><FormMessage /></FormItem>
-                )} />
-                <Button className="w-full" type="submit" disabled={createInvoice.isPending}>Save</Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
+                  <Button className="w-full" type="submit" disabled={createInvoice.isPending}>Save</Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
-      <Card><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Vendor</TableHead><TableHead>#</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead></TableRow></TableHeader><TableBody>{(invoices ?? []).map((row) => (<TableRow key={row.id}><TableCell>{row.vendorName}</TableCell><TableCell>{row.invoiceNumber || "-"}</TableCell><TableCell>${row.amount.toFixed(2)}</TableCell><TableCell><Badge variant="secondary">{row.status}</Badge></TableCell><TableCell>{new Date(row.invoiceDate).toLocaleDateString()}</TableCell></TableRow>))}</TableBody></Table></CardContent></Card>
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation={
+          activeAssociationId
+            ? "New invoices and supporting files will be filed under the active association."
+            : "Select an association before creating invoices or uploading supporting files."
+        }
+      />
 
-      <Card>
-        <CardContent className="p-6 space-y-4">
-          <h2 className="text-lg font-semibold">Invoice Attachments</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <Select value={attachmentInvoiceId || "none"} onValueChange={(v) => { const id = v === "none" ? "" : v; setAttachmentInvoiceId(id); const inv = (invoices ?? []).find((i) => i.id === id); setAttachmentAssocId(inv?.associationId || ""); }}><SelectTrigger><SelectValue placeholder="Invoice" /></SelectTrigger><SelectContent><SelectItem value="none">select invoice</SelectItem>{(invoices ?? []).map((i) => <SelectItem key={i.id} value={i.id}>{i.vendorName} {i.invoiceNumber || i.id.slice(0, 6)}</SelectItem>)}</SelectContent></Select>
-            <Input placeholder="Attachment title" value={attachmentTitle} onChange={(e) => setAttachmentTitle(e.target.value)} />
-            <div className="border rounded-md p-2 text-sm cursor-pointer" onClick={() => fileRef.current?.click()}>{attachmentFile?.name || "Choose file"}<input ref={fileRef} type="file" className="hidden" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} /></div>
-            <Button onClick={() => uploadAttachment.mutate()} disabled={uploadAttachment.isPending}>Upload</Button>
-          </div>
+      <AsyncStateBoundary
+        isLoading={!invoices || !attachments}
+        isEmpty={!invoices?.length}
+        emptyTitle="No vendor invoices yet"
+        emptyMessage="Create the first invoice for the active association to start the payable record."
+      >
+        <DataTableShell
+          title="Invoice Register"
+          description="Search, filter, and sort invoices before drilling into attachments and accounting context."
+          searchValue={invoiceSearch}
+          onSearchChange={setInvoiceSearch}
+          searchPlaceholder="Search vendor, invoice number, notes, or status"
+          summary={`${filteredInvoices.length} invoices`}
+          page={invoicePage}
+          totalPages={totalInvoicePages}
+          onPageChange={setInvoicePage}
+          filterSlot={
+            <div className="flex items-center gap-3 flex-wrap">
+              <Select value={invoiceStatusFilter} onValueChange={setInvoiceStatusFilter}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="received">Received</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="void">Void</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={invoiceSortBy} onValueChange={setInvoiceSortBy}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest first</SelectItem>
+                  <SelectItem value="oldest">Oldest first</SelectItem>
+                  <SelectItem value="amount-desc">Amount high-low</SelectItem>
+                  <SelectItem value="amount-asc">Amount low-high</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+        >
           <Table>
-            <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Invoice</TableHead><TableHead>File</TableHead></TableRow></TableHeader>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Vendor</TableHead>
+                <TableHead>Invoice #</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Invoice Date</TableHead>
+                <TableHead>Due Date</TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
-              {(attachments ?? []).filter((a) => a.expenseType === "invoice").map((a) => (
-                <TableRow key={a.id}><TableCell>{a.title}</TableCell><TableCell>{a.expenseId}</TableCell><TableCell><a className="underline text-sm" href={a.fileUrl} target="_blank" rel="noreferrer">Open</a></TableCell></TableRow>
+              {pagedInvoices.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell className="font-medium">{row.vendorName}</TableCell>
+                  <TableCell>{row.invoiceNumber || "-"}</TableCell>
+                  <TableCell>${Number(row.amount).toFixed(2)}</TableCell>
+                  <TableCell><Badge variant="secondary">{row.status}</Badge></TableCell>
+                  <TableCell>{new Date(row.invoiceDate).toLocaleDateString()}</TableCell>
+                  <TableCell>{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "-"}</TableCell>
+                </TableRow>
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </DataTableShell>
+
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-end justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="text-lg font-semibold">Invoice Attachments</h2>
+                <p className="text-sm text-muted-foreground">Keep backup, scans, and approval support tied to the right invoice record.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <Select value={attachmentInvoiceId || "none"} onValueChange={(v) => { const id = v === "none" ? "" : v; setAttachmentInvoiceId(id); const inv = (invoices ?? []).find((i) => i.id === id); setAttachmentAssocId(inv?.associationId || ""); }}>
+                <SelectTrigger><SelectValue placeholder="Invoice" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">select invoice</SelectItem>
+                  {(invoices ?? []).map((i) => <SelectItem key={i.id} value={i.id}>{i.vendorName} {i.invoiceNumber || i.id.slice(0, 6)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Input placeholder="Attachment title" value={attachmentTitle} onChange={(e) => setAttachmentTitle(e.target.value)} />
+              <div className="border rounded-md p-2 text-sm cursor-pointer" onClick={() => fileRef.current?.click()}>
+                {attachmentFile?.name || "Choose file"}
+                <input ref={fileRef} type="file" className="hidden" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} />
+              </div>
+              <Button onClick={() => uploadAttachment.mutate()} disabled={uploadAttachment.isPending}>Upload</Button>
+            </div>
+
+            <DataTableShell
+              title="Attachment Library"
+              description="Search supporting files by invoice, vendor, or attachment title."
+              searchValue={attachmentSearch}
+              onSearchChange={setAttachmentSearch}
+              searchPlaceholder="Search title, invoice, or vendor"
+              summary={`${filteredAttachments.length} attachments`}
+              page={attachmentPage}
+              totalPages={totalAttachmentPages}
+              onPageChange={setAttachmentPage}
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Invoice</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>File</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagedAttachments.map((attachment) => {
+                    const invoice = (invoices ?? []).find((row) => row.id === attachment.expenseId);
+                    return (
+                      <TableRow key={attachment.id}>
+                        <TableCell>{attachment.title}</TableCell>
+                        <TableCell>{invoice?.invoiceNumber || attachment.expenseId}</TableCell>
+                        <TableCell>{invoice?.vendorName || "-"}</TableCell>
+                        <TableCell><a className="underline text-sm" href={attachment.fileUrl} target="_blank" rel="noreferrer">Open</a></TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </DataTableShell>
+          </CardContent>
+        </Card>
+      </AsyncStateBoundary>
     </div>
   );
 }

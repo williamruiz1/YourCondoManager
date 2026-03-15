@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { AiExtractedRecord, AiIngestionImportRun, AiIngestionJob, ClauseRecord, ClauseTag, SuggestedLink, Unit } from "@shared/schema";
+import type { AiExtractedRecord, AiIngestionImportRun, AiIngestionJob, ClauseRecord, ClauseTag, Document, SuggestedLink, Unit } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -495,10 +495,13 @@ export default function AiIngestionPage() {
   const [sourceText, setSourceText] = useState("");
   const [contextNotes, setContextNotes] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [sourceDocumentId, setSourceDocumentId] = useState("");
   const [rolloutMode, setRolloutMode] = useState<"disabled" | "canary" | "full">("full");
   const [rolloutCanaryPercent, setRolloutCanaryPercent] = useState("100");
   const [rolloutNotes, setRolloutNotes] = useState("");
+  const [cleanupRetentionDays, setCleanupRetentionDays] = useState("30");
   const [selectedJobId, setSelectedJobId] = useState("");
+  const [includeSupersededOutputs, setIncludeSupersededOutputs] = useState(false);
   const [selectedRecordId, setSelectedRecordId] = useState("");
   const [lastImportSummary, setLastImportSummary] = useState<ImportSummaryView | null>(null);
   const [recordPayloadOverrides, setRecordPayloadOverrides] = useState<Record<string, unknown>>({});
@@ -534,10 +537,29 @@ export default function AiIngestionPage() {
     previewRuns: number;
     appliedRuns: number;
     noopRuns: number;
+    supersededRecords: number;
+    supersededClauses: number;
+    jobsWithSupersededOutputs: number;
+    oldestSupersededAgeDays: number;
     failureRate: number;
     avgDurationMs: number;
     alerts: string[];
   }>({ queryKey: ["/api/ai/ingestion/monitoring"] });
+  const { data: cleanupPreview } = useQuery<{
+    retentionDays: number;
+    purgeableClauses: number;
+    purgeableExtractedRecords: number;
+    blockedExtractedRecords: number;
+    oldestEligibleSupersededAt: string | null;
+    message: string;
+  }>({
+    queryKey: ["/api/ai/ingestion/superseded-cleanup-preview", cleanupRetentionDays],
+    queryFn: async () => {
+      const retentionDays = Math.max(1, Math.min(365, Math.round(Number(cleanupRetentionDays) || 30)));
+      const res = await apiRequest("GET", `/api/ai/ingestion/superseded-cleanup-preview?retentionDays=${retentionDays}`);
+      return res.json();
+    },
+  });
   const { data: rolloutPolicy } = useQuery<{
     associationId: string;
     mode: "disabled" | "canary" | "full";
@@ -561,6 +583,31 @@ export default function AiIngestionPage() {
   });
 
   const { data: jobs } = useQuery<AiIngestionJob[]>({ queryKey: ["/api/ai/ingestion/jobs"] });
+  const { data: selectedJobHistory } = useQuery<{
+    activeRecordCount: number;
+    supersededRecordCount: number;
+    activeClauseCount: number;
+    supersededClauseCount: number;
+    lastSupersededAt: string | null;
+  }>({
+    queryKey: ["/api/ai/ingestion/jobs", selectedJobId || "none", "history-summary"],
+    queryFn: async () => {
+      if (!selectedJobId) return {
+        activeRecordCount: 0,
+        supersededRecordCount: 0,
+        activeClauseCount: 0,
+        supersededClauseCount: 0,
+        lastSupersededAt: null,
+      };
+      const res = await apiRequest("GET", `/api/ai/ingestion/jobs/${selectedJobId}/history-summary`);
+      return res.json();
+    },
+    enabled: Boolean(selectedJobId),
+  });
+  const { data: sourceDocuments = [] } = useQuery<Document[]>({
+    queryKey: ["/api/documents"],
+    enabled: Boolean(activeAssociationId),
+  });
   const { data: associationUnits } = useQuery<Unit[]>({
     queryKey: ["/api/units", activeAssociationId || "none"],
     enabled: Boolean(activeAssociationId),
@@ -571,10 +618,11 @@ export default function AiIngestionPage() {
     },
   });
   const { data: records } = useQuery<AiExtractedRecord[]>({
-    queryKey: ["/api/ai/ingestion/jobs", selectedJobId || "none", "records"],
+    queryKey: ["/api/ai/ingestion/jobs", selectedJobId || "none", "records", includeSupersededOutputs ? "with-superseded" : "active-only"],
     queryFn: async () => {
       if (!selectedJobId) return [];
-      const res = await apiRequest("GET", `/api/ai/ingestion/jobs/${selectedJobId}/records`);
+      const suffix = includeSupersededOutputs ? "?includeSuperseded=1" : "";
+      const res = await apiRequest("GET", `/api/ai/ingestion/jobs/${selectedJobId}/records${suffix}`);
       return res.json();
     },
     enabled: Boolean(selectedJobId),
@@ -606,8 +654,9 @@ export default function AiIngestionPage() {
     if (selectedJobId) params.set("ingestionJobId", selectedJobId);
     if (clauseReviewFilter !== "all") params.set("reviewStatus", clauseReviewFilter);
     if (clauseSearch.trim()) params.set("q", clauseSearch.trim());
+    if (includeSupersededOutputs) params.set("includeSuperseded", "1");
     return params.toString();
-  }, [clauseReviewFilter, clauseSearch, selectedJobId]);
+  }, [clauseReviewFilter, clauseSearch, includeSupersededOutputs, selectedJobId]);
   const { data: clauses } = useQuery<ClauseRecord[]>({
     queryKey: ["/api/ai/ingestion/clauses", clauseQueryString || "none"],
     queryFn: async () => {
@@ -619,6 +668,10 @@ export default function AiIngestionPage() {
   const selectedClause = useMemo(
     () => (clauses ?? []).find((clause) => clause.id === selectedClauseId) ?? null,
     [clauses, selectedClauseId],
+  );
+  const sourceDocumentById = useMemo(
+    () => new Map(sourceDocuments.map((document) => [document.id, document])),
+    [sourceDocuments],
   );
   const { data: clauseTags } = useQuery<ClauseTag[]>({
     queryKey: ["/api/ai/ingestion/clauses", selectedClauseId || "none", "tags"],
@@ -697,15 +750,27 @@ export default function AiIngestionPage() {
     setEditedClauseText(selectedClause.clauseText);
   }, [selectedClause?.id]);
 
+  useEffect(() => {
+    setIncludeSupersededOutputs(false);
+  }, [selectedJobId]);
+
+  useEffect(() => {
+    if (!sourceDocumentId) return;
+    if (!sourceDocumentById.has(sourceDocumentId)) {
+      setSourceDocumentId("");
+    }
+  }, [sourceDocumentId, sourceDocumentById]);
+
   const submitJob = useMutation({
     mutationFn: async () => {
-      if (!file && !sourceText.trim()) {
-        throw new Error("Upload a file or paste source text");
+      if (!file && !sourceText.trim() && !sourceDocumentId) {
+        throw new Error("Upload a file, paste source text, or select a repository document");
       }
       const fd = new FormData();
       if (activeAssociationId) fd.append("associationId", activeAssociationId);
       if (sourceText.trim()) fd.append("sourceText", sourceText.trim());
       if (contextNotes.trim()) fd.append("contextNotes", contextNotes.trim());
+      if (sourceDocumentId) fd.append("sourceDocumentId", sourceDocumentId);
       if (file) fd.append("file", file);
       const res = await fetch("/api/ai/ingestion/jobs", {
         method: "POST",
@@ -722,6 +787,7 @@ export default function AiIngestionPage() {
       setSourceText("");
       setContextNotes("");
       setFile(null);
+      setSourceDocumentId("");
       toast({ title: "Ingestion job created" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -744,6 +810,33 @@ export default function AiIngestionPage() {
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+  const runSupersededCleanup = useMutation({
+    mutationFn: async () => {
+      const retentionDays = Math.max(1, Math.min(365, Math.round(Number(cleanupRetentionDays) || 30)));
+      const res = await apiRequest("POST", "/api/ai/ingestion/superseded-cleanup", { retentionDays });
+      return res.json() as Promise<{
+        retentionDays: number;
+        deletedClauses: number;
+        deletedClauseTags: number;
+        deletedSuggestedLinks: number;
+        deletedExtractedRecords: number;
+        blockedExtractedRecords: number;
+        message: string;
+      }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/monitoring"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/superseded-cleanup-preview"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/jobs"] });
+      if (selectedJobId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/jobs", selectedJobId, "history-summary"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/jobs", selectedJobId, "records"] });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/clauses"] });
+      toast({ title: "Superseded cleanup complete", description: result.message });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   const processJob = useMutation({
     mutationFn: async (jobId: string) => {
@@ -753,6 +846,8 @@ export default function AiIngestionPage() {
     onSuccess: (_job, jobId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/jobs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/jobs", jobId, "records"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/jobs", jobId, "history-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/ingestion/clauses"] });
       setSelectedJobId(jobId);
       toast({ title: "Extraction completed" });
     },
@@ -1181,10 +1276,64 @@ export default function AiIngestionPage() {
               <div className="font-semibold">{monitoring?.qualityWarningRecords ?? 0}</div>
             </div>
           </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div className="border rounded-md p-3">
+              <div className="text-xs text-muted-foreground">Superseded Records</div>
+              <div className="font-semibold">{monitoring?.supersededRecords ?? 0}</div>
+            </div>
+            <div className="border rounded-md p-3">
+              <div className="text-xs text-muted-foreground">Superseded Clauses</div>
+              <div className="font-semibold">{monitoring?.supersededClauses ?? 0}</div>
+            </div>
+            <div className="border rounded-md p-3">
+              <div className="text-xs text-muted-foreground">Jobs With History</div>
+              <div className="font-semibold">{monitoring?.jobsWithSupersededOutputs ?? 0}</div>
+            </div>
+            <div className="border rounded-md p-3">
+              <div className="text-xs text-muted-foreground">Oldest Superseded Age</div>
+              <div className="font-semibold">{monitoring?.oldestSupersededAgeDays ?? 0}d</div>
+            </div>
+          </div>
           <div className="space-y-1">
             {(monitoring?.alerts ?? ["No active ingestion alerts."]).map((alert, index) => (
               <div key={`${alert}:${index}`} className="text-xs text-muted-foreground border rounded-md p-2">{alert}</div>
             ))}
+          </div>
+          <div className="border rounded-md p-3 space-y-2">
+            <div className="text-sm font-medium">Superseded Cleanup</div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+              <Input
+                value={cleanupRetentionDays}
+                onChange={(e) => setCleanupRetentionDays(e.target.value)}
+                placeholder="retention days"
+              />
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground md:col-span-2">
+                {cleanupPreview?.message || "Calculating purgeable superseded outputs..."}
+              </div>
+              <Button onClick={() => runSupersededCleanup.mutate()} disabled={runSupersededCleanup.isPending}>
+                Run Cleanup
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="border rounded-md p-3">
+                <div className="text-xs text-muted-foreground">Purgeable Clauses</div>
+                <div className="font-semibold">{cleanupPreview?.purgeableClauses ?? 0}</div>
+              </div>
+              <div className="border rounded-md p-3">
+                <div className="text-xs text-muted-foreground">Purgeable Records</div>
+                <div className="font-semibold">{cleanupPreview?.purgeableExtractedRecords ?? 0}</div>
+              </div>
+              <div className="border rounded-md p-3">
+                <div className="text-xs text-muted-foreground">Blocked Records</div>
+                <div className="font-semibold">{cleanupPreview?.blockedExtractedRecords ?? 0}</div>
+              </div>
+              <div className="border rounded-md p-3">
+                <div className="text-xs text-muted-foreground">Oldest Eligible</div>
+                <div className="font-semibold">
+                  {cleanupPreview?.oldestEligibleSupersededAt ? new Date(cleanupPreview.oldestEligibleSupersededAt).toLocaleDateString() : "-"}
+                </div>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1197,7 +1346,7 @@ export default function AiIngestionPage() {
               Choose the association, provide the source material, and add brief context so the engine can route the content into the right module.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-2">
               <div className="text-sm font-medium">Association</div>
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -1211,18 +1360,31 @@ export default function AiIngestionPage() {
                 {file?.name || "Choose source file"}
                 <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
               </div>
-              <div className="text-xs text-muted-foreground">Use this for exported lists, text files, CSVs, and other raw source documents.</div>
+              <div className="text-xs text-muted-foreground">Use this for PDFs, DOCX minutes, XLSX exports, text files, CSVs, and other raw source documents.</div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Repository Document</div>
+              <Select value={sourceDocumentId || "none"} onValueChange={(value) => setSourceDocumentId(value === "none" ? "" : value)}>
+                <SelectTrigger><SelectValue placeholder="Optional linked document" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No linked document</SelectItem>
+                  {sourceDocuments.map((document) => (
+                    <SelectItem key={document.id} value={document.id}>{document.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-muted-foreground">Select an existing repository document to keep clause extraction traceable to the source file.</div>
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium">Create Job</div>
               <Button onClick={() => submitJob.mutate()} disabled={submitJob.isPending} className="w-full">Submit Ingestion Job</Button>
-              <div className="text-xs text-muted-foreground">This stages the source so you can process and review extracted records.</div>
+              <div className="text-xs text-muted-foreground">This stages the source so you can process and review extracted records. A repository document can be used with or without a fresh upload.</div>
             </div>
           </div>
           <div className="space-y-2">
             <div className="text-sm font-medium">Pasted Source Text</div>
             <Textarea rows={6} placeholder="Paste owner rosters, invoices, bank exports, meeting notes, or other source text here..." value={sourceText} onChange={(e) => setSourceText(e.target.value)} />
-            <div className="text-xs text-muted-foreground">Use pasted text when you copied content out of a PDF, email, report, or spreadsheet.</div>
+            <div className="text-xs text-muted-foreground">Use pasted text when you need to supplement a difficult binary extraction or copied content from an email, report, or spreadsheet.</div>
           </div>
           <div className="space-y-2">
             <div className="text-sm font-medium">Content Context</div>
@@ -1286,7 +1448,14 @@ export default function AiIngestionPage() {
               {(jobs ?? []).map((job) => (
                 <TableRow key={job.id}>
                   <TableCell>{job.id.slice(0, 8)}</TableCell>
-                  <TableCell>{job.sourceFilename || (job.sourceText ? "Pasted text" : "-")}</TableCell>
+                  <TableCell>
+                    <div>{job.sourceFilename || (job.sourceText ? "Pasted text" : "-")}</div>
+                    {job.sourceDocumentId ? (
+                      <div className="text-xs text-muted-foreground">
+                        Document: {sourceDocumentById.get(job.sourceDocumentId)?.title || job.sourceDocumentId}
+                      </div>
+                    ) : null}
+                  </TableCell>
                   <TableCell><Badge variant="secondary">{job.status}</Badge></TableCell>
                   <TableCell>{new Date(job.createdAt).toLocaleString()}</TableCell>
                   <TableCell className="space-x-2">
@@ -1299,6 +1468,27 @@ export default function AiIngestionPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {selectedJobId ? (
+        <Card>
+          <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="text-sm font-medium">Job History</div>
+              <div className="text-xs text-muted-foreground">
+                Active records {selectedJobHistory?.activeRecordCount ?? 0} · superseded records {selectedJobHistory?.supersededRecordCount ?? 0} · active clauses {selectedJobHistory?.activeClauseCount ?? 0} · superseded clauses {selectedJobHistory?.supersededClauseCount ?? 0}
+              </div>
+              {selectedJobHistory?.lastSupersededAt ? (
+                <div className="text-xs text-muted-foreground">
+                  Last superseded output: {new Date(selectedJobHistory.lastSupersededAt).toLocaleString()}
+                </div>
+              ) : null}
+            </div>
+            <Button variant={includeSupersededOutputs ? "default" : "outline"} size="sm" onClick={() => setIncludeSupersededOutputs((current) => !current)}>
+              {includeSupersededOutputs ? "Hide Superseded Outputs" : "Show Superseded Outputs"}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardContent className="p-0">
@@ -1313,6 +1503,9 @@ export default function AiIngestionPage() {
                   <TableCell>
                     <div className="font-medium">{record.recordType}</div>
                     <div className="text-xs text-muted-foreground">{record.id.slice(0, 8)}</div>
+                    {record.supersededAt ? (
+                      <div className="text-xs text-amber-700">Superseded {new Date(record.supersededAt).toLocaleString()}</div>
+                    ) : null}
                     {trace ? (
                       <div className="text-xs text-muted-foreground">
                         {trace.provider === "openai" ? `AI${trace.model ? ` (${trace.model})` : ""}` : "Fallback parser"}
@@ -1843,8 +2036,11 @@ export default function AiIngestionPage() {
                   {(clauses ?? []).map((clause) => (
                     <TableRow key={clause.id} className="cursor-pointer" onClick={() => setSelectedClauseId(clause.id)}>
                       <TableCell>
-                        <div className="font-medium">{clause.title}</div>
-                        <div className="text-xs text-muted-foreground">job {clause.ingestionJobId.slice(0, 8)}</div>
+                    <div className="font-medium">{clause.title}</div>
+                    <div className="text-xs text-muted-foreground">job {clause.ingestionJobId.slice(0, 8)}</div>
+                    {clause.supersededAt ? (
+                      <div className="text-xs text-amber-700">Superseded {new Date(clause.supersededAt).toLocaleString()}</div>
+                    ) : null}
                       </TableCell>
                       <TableCell>{clause.confidenceScore != null ? `${Math.round(clause.confidenceScore * 100)}%` : "-"}</TableCell>
                       <TableCell>
@@ -1868,7 +2064,7 @@ export default function AiIngestionPage() {
                     <div className="text-xs text-muted-foreground space-y-1">
                       <div>Ingestion job: {selectedClause.ingestionJobId}</div>
                       <div>Extracted record: {selectedClause.extractedRecordId || "-"}</div>
-                      <div>Source document: {selectedClause.sourceDocumentId || "-"}</div>
+                      <div>Source document: {selectedClause.sourceDocumentId ? (sourceDocumentById.get(selectedClause.sourceDocumentId)?.title || selectedClause.sourceDocumentId) : "-"}</div>
                       <div>Captured: {new Date(selectedClause.createdAt).toLocaleString()}</div>
                     </div>
                   </div>

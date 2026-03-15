@@ -317,23 +317,25 @@ Phases 1–5 delivered the following completed capabilities:
 
 ---
 
-### Workstream 8.4 — State-Specific Regulatory Compliance Templates
+### Workstream 8.4 — Managed Regulatory Record System
 
-**Intent:** Expand the annual compliance checklist with state-specific templates for CT, FL, CA, and other active markets, pre-populated with statutory requirements.
+**Intent:** Maintain a living, jurisdiction-aware regulatory record base for CT, FL, CA, and other active markets, sourced from authoritative internet or source-document references, versioned over time, and monitored for freshness so platform compliance workflows are not powered by stale static templates.
 
 **Functional Units:**
-- 8.4.1 State Template Library [Data]
-  - Library of pre-built checklist templates keyed by state
-- 8.4.2 Association-Level Template Assignment [Logic]
-  - Assign one or more state templates to an association based on its registered state
-- 8.4.3 Template Versioning [Logic]
-  - Track template version history so checklist changes don't overwrite prior compliance records
-- 8.4.4 Custom Requirement Overlay [Logic]
-  - Allow association-level additions on top of the state template
+- 8.4.1 Regulatory Source Registry [Data]
+  - Store authoritative source metadata per jurisdiction record: source URL, source authority, jurisdiction, document title, effective date, last verified date, and last updated date
+- 8.4.2 Jurisdiction Record Sync and Review [Logic]
+  - Fetch or stage updated regulatory records from authoritative internet sources, route changes through review, and publish approved updates into the platform record set
+- 8.4.3 Regulatory Record Versioning and Effective Dating [Logic]
+  - Preserve prior record versions, effective windows, and superseded content so historical compliance periods remain reproducible
+- 8.4.4 Association Regulatory Applicability Overlay [Logic]
+  - Apply state and jurisdiction records to associations, then layer association-specific or bylaw-specific requirements without forking the core regulatory base
+- 8.4.5 Staleness Monitoring and Refresh Cadence [Logic]
+  - Flag records that have not been verified within policy windows and run periodic review/update sweeps
 
-**Dependencies:** Annual Compliance Checklist (Phase 3), Association Registry (Phase 1)
-**Risks:** Statutory content requires legal review to remain accurate; changes require versioned updates
-**Open Questions:** Should template content be managed by platform admins only, or community-editable?
+**Dependencies:** Annual Compliance Checklist (Phase 3), Association Registry (Phase 1), Document Repository (Phase 1), AI Ingestion (Phase 4)
+**Risks:** Statutory content requires legal review to remain accurate; source sites change format; automated refresh without review can propagate bad legal guidance
+**Open Questions:** Which jurisdictions should receive automatic source refresh first, and what verification SLA should govern published regulatory records?
 
 ---
 
@@ -354,6 +356,28 @@ Phases 1–5 delivered the following completed capabilities:
 **Dependencies:** 8.1, 8.2, Multi-Association Architecture (Phase 5)
 **Risks:** Data quality differences across associations affect comparability
 **Open Questions:** Should benchmarks be visible to individual association boards?
+
+---
+
+### Workstream 8.6 — Association-Scoped Board Member Workspace
+
+**Intent:** Allow invited board members to work directly inside a board-oriented association view with association-scoped edit rights, while ensuring owners who also serve on the board keep one combined identity.
+
+**Functional Units:**
+- 8.6.1 Board Member Invite and Activation [Security]
+  - Admin invites a person into board-member access for one association; access becomes active only after invite acceptance and active board service validation
+- 8.6.2 Effective Permission Resolution for Owner-Board Members [Logic]
+  - If the invited person is also an owner in that association, combine owner self-service permissions with board-member workspace permissions under one sign-in
+- 8.6.3 Association-Scoped Access Enforcement [Security]
+  - Permit view/edit access for the invited association only; block platform-global administration and access to other associations
+- 8.6.4 Board Member Workspace and Navigation [UX]
+  - Present a dedicated board-oriented landing view and navigation set without exposing platform-admin-only modules
+- 8.6.5 Board Access Audit and Revocation [Data]
+  - Record invite, accept, suspend, revoke, and write events and remove elevated access when service ends
+
+**Dependencies:** Board Member Registry (Phase 1), Role-Based Permissions (Phase 1), Single-Association Context, Auth/session foundations
+**Risks:** Permission leakage across associations or accidental promotion into global admin behavior
+**Open Questions:** Should financial editing rights ship as part of the first board-member bundle or be configurable by association policy?
 
 ---
 

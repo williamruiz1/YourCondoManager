@@ -1,0 +1,44 @@
+{
+  "generatedAt": "2026-03-15T14:30:47.884Z",
+  "resourceId": "admin-roadmap-backbone",
+  "module": "agent-bootstrap-backbone",
+  "artifactCoverage": {
+    "workspaceManifest": true,
+    "durableMemory": true,
+    "guardrailsDoc": true,
+    "metricsDoc": true,
+    "closeoutSnapshotCount": 1,
+    "metricsSnapshotCount": 1
+  },
+  "seedRoadmapCompletion": {
+    "totalTasks": 12,
+    "completedTasks": 12,
+    "remainingTasks": 0
+  },
+  "frictionCaptureRate": {
+    "totalFrictionObservations": 1,
+    "distinctCategories": 1,
+    "repeatableObservations": 1,
+    "precomputableObservations": 1
+  },
+  "frictionToBacklogConversion": {
+    "syncRunCount": 1,
+    "tasksCreatedFromFriction": 0,
+    "tasksUpdatedFromFriction": 0
+  },
+  "verificationReuse": {
+    "verificationRelatedFrictionObservations": 1,
+    "durableVerificationPathsCaptured": 4
+  },
+  "startupCostReductionProxy": {
+    "backboneArtifactRefreshes": 1,
+    "closeoutRecommendationsGenerated": 5,
+    "repeatableFrictionObserved": 1
+  },
+  "sourceArtifacts": {
+    "workspaceManifest": "docs/agent-bootstrap/workspace-manifest.json",
+    "durableMemory": "docs/agent-bootstrap/durable-memory.json",
+    "guardrails": "docs/projects/agent-bootstrap-self-amend-guardrails.md",
+    "metricsDefinition": "docs/projects/agent-bootstrap-success-metrics.md"
+  }
+}

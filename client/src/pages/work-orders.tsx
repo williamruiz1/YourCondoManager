@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { MaintenanceRequest, Unit, Vendor, VendorInvoice, WorkOrder } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -12,6 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { DataTableShell } from "@/components/data-table-shell";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 type WorkOrderStatus = "open" | "assigned" | "in-progress" | "pending-review" | "closed" | "cancelled";
 type WorkOrderPriority = "low" | "medium" | "high" | "urgent";
@@ -39,7 +44,11 @@ export default function WorkOrdersPage() {
   const [open, setOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [unitFilter, setUnitFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("updated");
+  const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<WorkOrder | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState("");
   const [form, setForm] = useState(emptyForm);
 
   const { data: workOrders = [] } = useQuery<WorkOrder[]>({
@@ -75,6 +84,7 @@ export default function WorkOrdersPage() {
     () => maintenanceRequests.filter((request) => !workOrders.some((order) => order.maintenanceRequestId === request.id)),
     [maintenanceRequests, workOrders],
   );
+  const selectedOrder = workOrders.find((order) => order.id === selectedOrderId) ?? null;
 
   const saveWorkOrder = useMutation({
     mutationFn: async () => {
@@ -171,103 +181,162 @@ export default function WorkOrdersPage() {
     if (form.vendorId && invoice.vendorId) return invoice.vendorId === form.vendorId;
     return true;
   });
+  const visibleWorkOrders = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const rows = [...workOrders].filter((order) =>
+      !term
+        || [
+          order.title,
+          order.description,
+          order.locationText,
+          order.category,
+          order.assignedTo,
+        ].some((value) => (value || "").toLowerCase().includes(term)),
+    );
+
+    rows.sort((left, right) => {
+      if (sortBy === "priority") {
+        const score = { urgent: 4, high: 3, medium: 2, low: 1 };
+        return score[right.priority] - score[left.priority];
+      }
+      if (sortBy === "status") {
+        return left.status.localeCompare(right.status);
+      }
+      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+    });
+    return rows;
+  }, [search, sortBy, workOrders]);
+  const totalPages = Math.max(1, Math.ceil(visibleWorkOrders.length / 10));
+  const pagedWorkOrders = visibleWorkOrders.slice((page - 1) * 10, page * 10);
+
+  useEffect(() => {
+    if (selectedOrderId && !workOrders.some((order) => order.id === selectedOrderId)) {
+      setSelectedOrderId("");
+    }
+  }, [selectedOrderId, workOrders]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, sortBy, statusFilter, unitFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Work Orders</h1>
-          <p className="text-muted-foreground">Operational execution layer for maintenance delivery, vendor assignment, and unit-level maintenance history.</p>
-        </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button disabled={!activeAssociationId} onClick={openCreate}>New Work Order</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader><DialogTitle>{editing ? "Edit Work Order" : "Create Work Order"}</DialogTitle></DialogHeader>
-            <div className="space-y-4">
-              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+      <WorkspacePageHeader
+        title="Work Orders"
+        summary="Track maintenance execution, vendor assignment, and cost linkage without leaving the operations workspace."
+        eyebrow="Operations"
+        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Work Orders" }]}
+        shortcuts={[
+          { label: "Open Vendors", href: "/app/vendors" },
+          { label: "Open Maintenance", href: "/app/maintenance" },
+        ]}
+        actions={
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button disabled={!activeAssociationId} onClick={openCreate}>New Work Order</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader><DialogTitle>{editing ? "Edit Work Order" : "Create Work Order"}</DialogTitle></DialogHeader>
+              <div className="space-y-4">
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                  Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Input placeholder="Title" value={form.title} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} />
+                  <Input placeholder="Location" value={form.locationText} onChange={(e) => setForm((current) => ({ ...current, locationText: e.target.value }))} />
+                  <Select value={form.unitId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value === "none" ? "" : value }))}>
+                    <SelectTrigger><SelectValue placeholder="Unit" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No unit</SelectItem>
+                      {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={form.vendorId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, vendorId: value === "none" ? "" : value }))}>
+                    <SelectTrigger><SelectValue placeholder="Vendor" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned vendor</SelectItem>
+                      {vendors.map((vendor) => <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={form.priority} onValueChange={(value: WorkOrderPriority) => setForm((current) => ({ ...current, priority: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">low</SelectItem>
+                      <SelectItem value="medium">medium</SelectItem>
+                      <SelectItem value="high">high</SelectItem>
+                      <SelectItem value="urgent">urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={form.status} onValueChange={(value: WorkOrderStatus) => setForm((current) => ({ ...current, status: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="open">open</SelectItem>
+                      <SelectItem value="assigned">assigned</SelectItem>
+                      <SelectItem value="in-progress">in-progress</SelectItem>
+                      <SelectItem value="pending-review">pending-review</SelectItem>
+                      <SelectItem value="closed">closed</SelectItem>
+                      <SelectItem value="cancelled">cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input placeholder="Assigned to" value={form.assignedTo} onChange={(e) => setForm((current) => ({ ...current, assignedTo: e.target.value }))} />
+                  <Input placeholder="Estimated cost" type="number" min="0" step="0.01" value={form.estimatedCost} onChange={(e) => setForm((current) => ({ ...current, estimatedCost: e.target.value }))} />
+                  <Select
+                    value={form.vendorInvoiceId || "none"}
+                    onValueChange={(value) => {
+                      const nextValue = value === "none" ? "" : value;
+                      const invoice = availableInvoices.find((item) => item.id === nextValue);
+                      setForm((current) => ({
+                        ...current,
+                        vendorInvoiceId: nextValue,
+                        actualCost: invoice ? String(invoice.amount) : current.actualCost,
+                      }));
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Linked invoice" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No linked invoice</SelectItem>
+                      {availableInvoices.map((invoice) => (
+                        <SelectItem key={invoice.id} value={invoice.id}>
+                          {invoice.vendorName} · {invoice.invoiceNumber || invoice.id.slice(0, 6)} · ${invoice.amount.toFixed(2)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder="Actual cost"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.actualCost}
+                    onChange={(e) => setForm((current) => ({ ...current, actualCost: e.target.value }))}
+                  />
+                </div>
+                <Textarea placeholder="Description" value={form.description} onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))} rows={4} />
+                <Textarea placeholder="Resolution notes" value={form.resolutionNotes} onChange={(e) => setForm((current) => ({ ...current, resolutionNotes: e.target.value }))} rows={3} />
+                <Button className="w-full" onClick={() => saveWorkOrder.mutate()} disabled={saveWorkOrder.isPending || !form.title.trim() || !form.description.trim()}>
+                  {editing ? "Save Changes" : "Create Work Order"}
+                </Button>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Input placeholder="Title" value={form.title} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} />
-                <Input placeholder="Location" value={form.locationText} onChange={(e) => setForm((current) => ({ ...current, locationText: e.target.value }))} />
-                <Select value={form.unitId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value === "none" ? "" : value }))}>
-                  <SelectTrigger><SelectValue placeholder="Unit" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No unit</SelectItem>
-                    {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Select value={form.vendorId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, vendorId: value === "none" ? "" : value }))}>
-                  <SelectTrigger><SelectValue placeholder="Vendor" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Unassigned vendor</SelectItem>
-                    {vendors.map((vendor) => <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Select value={form.priority} onValueChange={(value: WorkOrderPriority) => setForm((current) => ({ ...current, priority: value }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">low</SelectItem>
-                    <SelectItem value="medium">medium</SelectItem>
-                    <SelectItem value="high">high</SelectItem>
-                    <SelectItem value="urgent">urgent</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={form.status} onValueChange={(value: WorkOrderStatus) => setForm((current) => ({ ...current, status: value }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="open">open</SelectItem>
-                    <SelectItem value="assigned">assigned</SelectItem>
-                    <SelectItem value="in-progress">in-progress</SelectItem>
-                    <SelectItem value="pending-review">pending-review</SelectItem>
-                    <SelectItem value="closed">closed</SelectItem>
-                    <SelectItem value="cancelled">cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input placeholder="Assigned to" value={form.assignedTo} onChange={(e) => setForm((current) => ({ ...current, assignedTo: e.target.value }))} />
-                <Input placeholder="Estimated cost" type="number" min="0" step="0.01" value={form.estimatedCost} onChange={(e) => setForm((current) => ({ ...current, estimatedCost: e.target.value }))} />
-                <Select
-                  value={form.vendorInvoiceId || "none"}
-                  onValueChange={(value) => {
-                    const nextValue = value === "none" ? "" : value;
-                    const invoice = availableInvoices.find((item) => item.id === nextValue);
-                    setForm((current) => ({
-                      ...current,
-                      vendorInvoiceId: nextValue,
-                      actualCost: invoice ? String(invoice.amount) : current.actualCost,
-                    }));
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="Linked invoice" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No linked invoice</SelectItem>
-                    {availableInvoices.map((invoice) => (
-                      <SelectItem key={invoice.id} value={invoice.id}>
-                        {invoice.vendorName} · {invoice.invoiceNumber || invoice.id.slice(0, 6)} · ${invoice.amount.toFixed(2)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  placeholder="Actual cost"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.actualCost}
-                  onChange={(e) => setForm((current) => ({ ...current, actualCost: e.target.value }))}
-                />
-              </div>
-              <Textarea placeholder="Description" value={form.description} onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))} rows={4} />
-              <Textarea placeholder="Resolution notes" value={form.resolutionNotes} onChange={(e) => setForm((current) => ({ ...current, resolutionNotes: e.target.value }))} rows={3} />
-              <Button className="w-full" onClick={() => saveWorkOrder.mutate()} disabled={saveWorkOrder.isPending || !form.title.trim() || !form.description.trim()}>
-                {editing ? "Save Changes" : "Create Work Order"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation={
+          activeAssociationId
+            ? "Work orders, vendor assignments, and invoice links are scoped to the active association."
+            : "Select an association before creating or triaging work orders."
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Association Context</div><div className="mt-1 text-lg font-semibold">{activeAssociationName || "None selected"}</div></CardContent></Card>
@@ -275,30 +344,6 @@ export default function WorkOrdersPage() {
         <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Pending Review</div><div className="mt-1 text-lg font-semibold">{orderCounts.review}</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Closed</div><div className="mt-1 text-lg font-semibold">{orderCounts.closed}</div></CardContent></Card>
       </div>
-
-      <Card>
-        <CardContent className="p-4 flex gap-3 flex-wrap">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="open">open</SelectItem>
-              <SelectItem value="assigned">assigned</SelectItem>
-              <SelectItem value="in-progress">in-progress</SelectItem>
-              <SelectItem value="pending-review">pending-review</SelectItem>
-              <SelectItem value="closed">closed</SelectItem>
-              <SelectItem value="cancelled">cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={unitFilter} onValueChange={setUnitFilter}>
-            <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All units</SelectItem>
-              {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardContent className="p-6 space-y-4">
@@ -336,8 +381,54 @@ export default function WorkOrdersPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-0">
+      <AsyncStateBoundary
+        isLoading={!workOrders}
+        isEmpty={!workOrders.length}
+        emptyTitle="No work orders yet"
+        emptyMessage="Create the first work order or convert a maintenance request to start execution tracking."
+      >
+        <DataTableShell
+          title="Work Order Register"
+          description="Filter and sort active work orders, then open a detail panel without leaving the queue."
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search title, description, location, category, or assignee"
+          summary={`${visibleWorkOrders.length} work orders`}
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          filterSlot={
+            <div className="flex items-center gap-3 flex-wrap">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="open">open</SelectItem>
+                  <SelectItem value="assigned">assigned</SelectItem>
+                  <SelectItem value="in-progress">in-progress</SelectItem>
+                  <SelectItem value="pending-review">pending-review</SelectItem>
+                  <SelectItem value="closed">closed</SelectItem>
+                  <SelectItem value="cancelled">cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={unitFilter} onValueChange={setUnitFilter}>
+                <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All units</SelectItem>
+                  {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="updated">Recently updated</SelectItem>
+                  <SelectItem value="priority">Highest priority</SelectItem>
+                  <SelectItem value="status">Status A-Z</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+        >
           <Table>
             <TableHeader>
               <TableRow>
@@ -353,10 +444,12 @@ export default function WorkOrdersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {workOrders.map((order) => (
+              {pagedWorkOrders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell>
-                    <div className="font-medium">{order.title}</div>
+                    <button className="text-left" onClick={() => setSelectedOrderId(order.id)}>
+                      <div className="font-medium">{order.title}</div>
+                    </button>
                     <div className="text-xs text-muted-foreground">{order.locationText || order.category}</div>
                   </TableCell>
                   <TableCell>{units.find((unit) => unit.id === order.unitId)?.unitNumber || "-"}</TableCell>
@@ -373,17 +466,41 @@ export default function WorkOrdersPage() {
                   </TableCell>
                   <TableCell>{new Date(order.updatedAt).toLocaleString()}</TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="outline" onClick={() => openEdit(order)}>Edit</Button>
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setSelectedOrderId(order.id)}>View</Button>
+                      <Button size="sm" variant="outline" onClick={() => openEdit(order)}>Edit</Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
-              {workOrders.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="h-24 text-center text-muted-foreground">No work orders yet.</TableCell></TableRow>
-              ) : null}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </DataTableShell>
+      </AsyncStateBoundary>
+
+      <Sheet open={Boolean(selectedOrder)} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedOrderId(""); }}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{selectedOrder?.title || "Work Order Detail"}</SheetTitle>
+            <SheetDescription>
+              {selectedOrder ? "Review assignment, cost, and resolution context without losing your place in the queue." : "Select a work order from the table."}
+            </SheetDescription>
+          </SheetHeader>
+          {selectedOrder ? (
+            <div className="mt-6 space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Status</div><div className="mt-1"><Badge variant={selectedOrder.status === "closed" ? "default" : "secondary"}>{selectedOrder.status}</Badge></div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Priority</div><div className="mt-1 font-medium">{selectedOrder.priority}</div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Vendor</div><div className="mt-1 font-medium">{vendors.find((vendor) => vendor.id === selectedOrder.vendorId)?.name || "-"}</div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Unit</div><div className="mt-1 font-medium">{units.find((unit) => unit.id === selectedOrder.unitId)?.unitNumber || "-"}</div></CardContent></Card>
+              </div>
+              <Card><CardContent className="p-4 space-y-2"><div className="text-sm text-muted-foreground">Description</div><div className="text-sm">{selectedOrder.description}</div></CardContent></Card>
+              <Card><CardContent className="p-4 space-y-2"><div className="text-sm text-muted-foreground">Cost Tracking</div><div className="text-sm">Estimated: {selectedOrder.estimatedCost != null ? `$${selectedOrder.estimatedCost.toFixed(2)}` : "-"}</div><div className="text-sm">Actual: {selectedOrder.actualCost != null ? `$${selectedOrder.actualCost.toFixed(2)}` : "-"}</div><div className="text-sm">Linked invoice: {invoices.find((invoice) => invoice.id === selectedOrder.vendorInvoiceId)?.invoiceNumber || "-"}</div></CardContent></Card>
+              <Card><CardContent className="p-4 space-y-2"><div className="text-sm text-muted-foreground">Resolution Notes</div><div className="text-sm">{selectedOrder.resolutionNotes || "No resolution notes recorded yet."}</div></CardContent></Card>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

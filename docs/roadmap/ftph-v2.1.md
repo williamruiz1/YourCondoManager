@@ -1,8 +1,8 @@
 # Condo Property Manager - FTPH v2.1 Documentation
 
 ## Document Metadata
-- Document Version: 2.2
-- Generated On: 2026-03-06
+- Document Version: 2.3
+- Generated On: 2026-03-15
 - Status: Draft with implementation gap addendum
 - Output Type: Full FTPH Write-Up
 
@@ -54,6 +54,7 @@
   - authorization tightening
   - auth/session hardening
   - document-delivery/access hardening
+  - association-scoped invited board-member access for owners who also serve on the board
 - The original v2.1 draft correctly scoped several items out, but it did not distinguish between:
   - intentionally out-of-scope v2.1 items
   - future-phase capabilities already planned for phases 6-10
@@ -202,7 +203,7 @@
 - Open Questions:
   - Should non-owner board service ever be allowed by configuration?
   - Should interim appointments be tracked separately from elected terms?
-- Implementation Notes: Allow board service to reference the shared person model so role changes do not require duplicate profile creation.
+- Implementation Notes: Allow board service to reference the shared person model so role changes do not require duplicate profile creation. Board service alone records governance status; invited board-member workspace access and association-scoped edit authority are handled in Platform Services so board members can operate without becoming global admins.
 
 #### Functional Units
 - 2.1.1 Assign Board Member Role [Logic]
@@ -289,6 +290,11 @@
 - Description: Supports ingestion jobs, candidate metadata extraction, and human-reviewed parsing for documents such as bylaws, invoices, budgets, and minutes.
 - User Story: As a property administrator, I want AI-assisted document ingestion so manual data-entry effort can be reduced without sacrificing control.
 - Scope Boundary: Does not allow autonomous legal interpretation or automatic production updates without human approval.
+- Implementation Gap Note: The live platform has a real ingestion queue, review workspace, preview/commit import flow, fallback parsers, rollback, and clause review, but the feature set is still only partially complete:
+  - raw upload support now directly parses PDFs, DOCX files, and XLSX workbooks in addition to text-like formats, but broader binary-source coverage is still incomplete
+  - commit import now covers the current extracted record set, including governance meeting-note routing and document-metadata reconciliation into the repository
+  - clause outputs now carry both repository-document provenance and an extracted-record trace anchor from the same ingestion job
+  - reprocessing now preserves prior extraction artifacts for import-run integrity, the admin workspace surfaces active versus superseded outputs per job, rollout monitoring tracks superseded-output accumulation, and admins can preview/run retention-based cleanup for purgeable superseded artifacts
 - Feature Set-Level Functional Unit Summary: Provides intake, extraction, and structured storage of reviewable AI outputs so documents can become searchable and actionable.
 - Dependencies:
   - Document repository
@@ -296,15 +302,44 @@
 - Risks:
   - Incorrect extraction causing bad downstream associations
   - Overreliance on AI confidence without human review
+  - Superseded extraction history can accumulate without enough operator-facing lifecycle controls if cleanup and reporting are not added
 - Open Questions:
   - Should document-type-specific extraction templates be included in the first AI iteration?
   - Should parsed data save as draft records or only as extraction artifacts initially?
+  - Should binary-source text extraction for PDF and similar formats become a first-class part of ingestion rather than an operator pre-step?
+  - Should every extracted clause and parsed record retain a durable source-document and extracted-record link across reprocess cycles?
 - Implementation Notes: Build a review-first extraction pipeline where all AI outputs remain editable and traceable to the original source.
 
 #### Functional Units
 - 4.2.1 Upload Raw Document for Parsing [UX]
+  - Current state: Partial
+  - Delivered now:
+    - admins can stage ingestion jobs from uploaded PDFs, DOCX files, XLSX workbooks, text-like files, or pasted source text
+    - admins can also stage ingestion jobs from an existing repository document to retain source provenance without re-uploading the file
+    - rollout policy, job queueing, and process actions are implemented
+  - Remaining gaps:
+    - direct parsing is still limited to PDFs, DOCX files, XLSX workbooks, plus text-oriented upload formats
+    - other common binary documents may still require manual text extraction before ingestion
 - 4.2.2 Extract Document Metadata [Logic]
+  - Current state: Partial
+  - Delivered now:
+    - AI-first extraction with fallback heuristics exists
+    - classifier guidance, route hints, quality warnings, and reviewable extracted records are implemented
+    - bylaw-like text can produce clause candidates with tags and suggested links
+    - clause outputs inherit repository-document provenance when the source ingestion job is linked to a stored document
+    - clause outputs are also linked to a concrete extracted record from the same ingestion job for durable review traceability
+  - Remaining gaps:
+    - extraction coverage is stronger for owner/contact/invoice/bank flows than for general document classes such as budgets and minutes
 - 4.2.3 Store Parsed Data [Data]
+  - Current state: Partial
+  - Delivered now:
+    - extracted records, clause records, preview runs, commit runs, rollback metadata, and review decisions are persisted
+    - approved records can commit into owners, persons, invoices, owner-ledger workflows, governance meetings/notes, and document-repository records
+    - reprocessing preserves prior extracted-record history instead of deleting records that import runs still reference
+    - admins can inspect active versus superseded outputs for a selected ingestion job and optionally include superseded records/clauses in review
+    - rollout monitoring reports superseded record/clause accumulation, jobs carrying historical outputs, and oldest retained superseded age
+    - admins can preview and execute retention-based cleanup for purgeable superseded clauses and unreferenced extracted records
+  - Remaining gaps:
 
 ## 5. Meetings, Notes & Decision Records
 - Purpose: Track association meetings, preserve notes and minutes, and maintain a searchable record of decisions.
@@ -417,6 +452,69 @@
 - 8.1.2 Restrict Data Access [Security]
 - 8.1.3 Validate Permission Changes [Logic]
 
+### 8.2 Feature Set: Association-Scoped Board Member Access
+- Intent Summary: Allow invited board members to operate within one association with board-level view and edit access, including owners who also serve on the board.
+- Description: Defines the invitation, activation, permission scope, and workspace behavior for board members who need to access association records without receiving platform-wide administrator access.
+- User Story: As a property administrator, I want to invite a board member into an association-scoped board workspace so they can view and edit the association they serve.
+- Scope Boundary: Does not grant portfolio-wide access, platform-controls access, admin-user management, or permissions outside the invited association.
+- Feature Set-Level Functional Unit Summary: Provides invite-driven board access, scope-aware permission enforcement, and combined owner-plus-board access resolution so board members can operate securely inside their association.
+- Dependencies:
+  - Board member registry
+  - User account model
+  - Role-based permissions
+  - Audit logging framework
+- Risks:
+  - Over-granting board access beyond the intended association
+  - Confusion if owner access and board access are modeled as separate identities
+  - Permission regressions if board service end dates do not deactivate elevated access quickly
+- Open Questions:
+  - Should board-member edit access cover all association-scoped financial workflows from the first release or follow a configurable permission bundle?
+  - Should invited non-owner board members use the same workspace with the same scope rules?
+- Implementation Notes: Treat board-member access as a first-class association-scoped role. If a person is both owner and board member in the same association, resolve permissions as a union of owner self-service and invited board workspace rights under one identity.
+
+#### Functional Units
+- 8.2.1 Invite Board Member into Association Workspace [Security]
+  - User Story: As a property administrator, I want to invite a board member into the association workspace so that access is deliberate and auditable.
+  - Acceptance Criteria:
+    - Given an eligible person and association exist
+    - When the administrator sends a board-member invite
+    - Then the system creates an association-scoped pending access record linked to the person and board role
+
+- 8.2.2 Activate Board Member Access from Invite and Service State [Logic]
+  - User Story: As a platform administrator, I want board-member access to activate only when the right conditions are met so unauthorized access is not granted prematurely.
+  - Acceptance Criteria:
+    - Given a board-member invite exists
+    - When the invite is accepted and the related board role is active
+    - Then the system activates board-member access for that association only
+
+- 8.2.3 Enforce Association-Scoped Board Permissions [Security]
+  - User Story: As a platform administrator, I want board-member requests limited to the invited association so board access does not become global access.
+  - Acceptance Criteria:
+    - Given a board member is active for Association A
+    - When they request records for Association B
+    - Then the system denies the request
+
+- 8.2.4 Resolve Combined Owner and Board Member Access [Logic]
+  - User Story: As an owner who also serves on the board, I want one identity with the right combined permissions so I do not need separate accounts for self-service and board work.
+  - Acceptance Criteria:
+    - Given a person is both an owner and an invited active board member in the same association
+    - When they sign in
+    - Then the system grants owner self-service plus board-member workspace permissions under one identity
+
+- 8.2.5 Present Board Member Workspace [UX]
+  - User Story: As a board member, I want a clear association-scoped board view so I can work inside the association without seeing platform-admin controls.
+  - Acceptance Criteria:
+    - Given a board member is signed in
+    - When the workspace loads
+    - Then the system shows board-member navigation for the invited association and hides global admin-only controls
+
+- 8.2.6 Audit Board Member Access Lifecycle and Writes [Data]
+  - User Story: As a platform administrator, I want board-member access and record changes audit logged so elevated access remains traceable.
+  - Acceptance Criteria:
+    - Given a board-member invite, activation, revocation, or write action occurs
+    - When the event is persisted
+    - Then the system records the actor, association, action, and timestamp in the audit trail
+
 ## Assumptions
 - Rental tenant tracking is limited to contact information only.
 - Initial build does not integrate payment gateways.
@@ -439,6 +537,7 @@
   - inspection records
 - Parallel hardening gaps:
   - auth and authorization tightening
+  - invited board-member association access and scoped permission enforcement
   - trusted communications delivery
   - document access and delivery hardening
   - AI/document ingestion trust improvements

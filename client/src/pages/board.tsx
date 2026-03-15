@@ -9,6 +9,7 @@ import type { BoardRole, Person, Association } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -34,6 +35,8 @@ const formSchema = z.object({
   role: z.string().min(1, "Role is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().optional(),
+  inviteToWorkspace: z.boolean().default(false),
+  inviteEmail: z.string().optional(),
 });
 
 export default function BoardPage() {
@@ -47,7 +50,7 @@ export default function BoardPage() {
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { personId: "", associationId: "", role: "", startDate: "", endDate: "" },
+    defaultValues: { personId: "", associationId: "", role: "", startDate: "", endDate: "", inviteToWorkspace: false, inviteEmail: "" },
   });
 
   useEffect(() => {
@@ -55,20 +58,29 @@ export default function BoardPage() {
   }, [activeAssociationId, form]);
 
   const createMutation = useMutation({
-    mutationFn: (data: z.infer<typeof formSchema>) => {
+    mutationFn: async (data: z.infer<typeof formSchema>) => {
       const payload = {
         ...data,
         startDate: new Date(data.startDate).toISOString(),
         endDate: data.endDate ? new Date(data.endDate).toISOString() : null,
       };
-      return apiRequest("POST", "/api/board-roles", payload);
+      const createResponse = await apiRequest("POST", "/api/board-roles", payload);
+      const createdRole = await createResponse.json();
+      if (data.inviteToWorkspace) {
+        const inviteResponse = await apiRequest("POST", `/api/board-roles/${createdRole.id}/invite-access`, {
+          email: data.inviteEmail || undefined,
+        });
+        await inviteResponse.json();
+      }
+      return createdRole;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/board-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portal/access"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({ title: "Board role assigned successfully" });
       setOpen(false);
-      form.reset({ personId: "", associationId: activeAssociationId, role: "", startDate: "", endDate: "" });
+      form.reset({ personId: "", associationId: activeAssociationId, role: "", startDate: "", endDate: "", inviteToWorkspace: false, inviteEmail: "" });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
@@ -146,6 +158,24 @@ export default function BoardPage() {
                     </FormItem>
                   )} />
                 </div>
+                <FormField control={form.control} name="inviteToWorkspace" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-md border p-3">
+                    <div className="space-y-1">
+                      <FormLabel>Invite to board workspace</FormLabel>
+                      <div className="text-xs text-muted-foreground">Creates or updates association-scoped portal access for this board member.</div>
+                    </div>
+                    <FormControl><Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(Boolean(checked))} /></FormControl>
+                  </FormItem>
+                )} />
+                {form.watch("inviteToWorkspace") ? (
+                  <FormField control={form.control} name="inviteEmail" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Invite Email</FormLabel>
+                      <FormControl><Input data-testid="input-board-invite-email" type="email" placeholder="Uses person's email if blank" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                ) : null}
                 <Button type="submit" className="w-full" disabled={createMutation.isPending} data-testid="button-submit-board-role">
                   {createMutation.isPending ? "Saving..." : "Assign Role"}
                 </Button>

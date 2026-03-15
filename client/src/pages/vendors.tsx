@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -16,6 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { DataTableShell } from "@/components/data-table-shell";
+import { TaskFlowChecklist } from "@/components/task-flow-checklist";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 const vendorDocumentTypes = ["Insurance", "Contract", "W-9", "License", "Compliance", "Other"];
 
@@ -79,10 +85,14 @@ export default function VendorsPage() {
   const [open, setOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("name");
+  const [page, setPage] = useState(1);
   const [selectedVendorId, setSelectedVendorId] = useState<string>("");
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentType, setDocumentType] = useState("Insurance");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentUploadStage, setDocumentUploadStage] = useState<"select" | "details" | "uploading" | "complete">("select");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: vendors = [] } = useQuery<Vendor[]>({
@@ -182,6 +192,7 @@ export default function VendorsPage() {
       setDocumentTitle("");
       setDocumentType("Insurance");
       setDocumentFile(null);
+      setDocumentUploadStage("complete");
       toast({ title: "Vendor document uploaded" });
     },
     onError: (error: Error) => {
@@ -189,15 +200,33 @@ export default function VendorsPage() {
     },
   });
 
-  const visibleVendors = (() => {
+  const visibleVendors = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return vendors;
-    return vendors.filter((vendor) =>
-      [vendor.name, vendor.trade, vendor.serviceArea, vendor.primaryContactName, vendor.primaryEmail]
+    const rows = vendors.filter((vendor) => {
+      if (statusFilter !== "all" && vendor.status !== statusFilter) {
+        return false;
+      }
+      if (!term) return true;
+      return [vendor.name, vendor.trade, vendor.serviceArea, vendor.primaryContactName, vendor.primaryEmail]
         .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(term)),
-    );
-  })();
+        .some((value) => value!.toLowerCase().includes(term));
+    });
+
+    rows.sort((left, right) => {
+      if (sortBy === "recent-expiry") {
+        return new Date(left.insuranceExpiresAt || 0).getTime() - new Date(right.insuranceExpiresAt || 0).getTime();
+      }
+      if (sortBy === "trade") {
+        return left.trade.localeCompare(right.trade);
+      }
+      return left.name.localeCompare(right.name);
+    });
+
+    return rows;
+  }, [search, sortBy, statusFilter, vendors]);
+
+  const totalPages = Math.max(1, Math.ceil(visibleVendors.length / 10));
+  const pagedVendors = visibleVendors.slice((page - 1) * 10, page * 10);
 
   const activeCount = vendors.filter((vendor) => vendor.status === "active").length;
   const renewalCount = vendors.filter((vendor) => vendor.status === "pending-renewal").length;
@@ -213,35 +242,58 @@ export default function VendorsPage() {
     }
   }, [selectedVendorId, vendors, visibleVendors]);
 
+  useEffect(() => {
+    if (!documentFile) {
+      setDocumentUploadStage("select");
+      return;
+    }
+    setDocumentUploadStage(documentTitle.trim() ? "details" : "select");
+  }, [documentFile, documentTitle]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, sortBy, statusFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Vendor Registry</h1>
-          <p className="text-muted-foreground">Phase 7 foundation for vendor records, compliance visibility, and future work-order assignment.</p>
-        </div>
-        <Dialog
-          open={open}
-          onOpenChange={(nextOpen) => {
-            setOpen(nextOpen);
-            if (!nextOpen) {
-              setEditingVendor(null);
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button disabled={!activeAssociationId}>Add Vendor</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>{editingVendor ? "Edit Vendor" : "Create Vendor"}</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form className="space-y-4" onSubmit={form.handleSubmit((values) => upsertVendor.mutate(values))}>
-                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                  Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
+      <WorkspacePageHeader
+        title="Vendor Registry"
+        summary="Manage vendors, compliance exposure, and supporting documents in one operations surface."
+        eyebrow="Operations"
+        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Vendor Registry" }]}
+        shortcuts={[
+          { label: "Open Work Orders", href: "/app/work-orders" },
+          { label: "Open Vendor Invoices", href: "/app/financial-invoices" },
+        ]}
+        actions={
+          <Dialog
+            open={open}
+            onOpenChange={(nextOpen) => {
+              setOpen(nextOpen);
+              if (!nextOpen) {
+                setEditingVendor(null);
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button disabled={!activeAssociationId}>Add Vendor</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>{editingVendor ? "Edit Vendor" : "Create Vendor"}</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form className="space-y-4" onSubmit={form.handleSubmit((values) => upsertVendor.mutate(values))}>
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                    Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="name"
@@ -350,26 +402,37 @@ export default function VendorsPage() {
                       </FormItem>
                     )}
                   />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Notes</FormLabel>
-                      <FormControl><Textarea {...field} value={field.value || ""} rows={4} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button className="w-full" type="submit" disabled={upsertVendor.isPending}>
-                  {editingVendor ? "Save Changes" : "Create Vendor"}
-                </Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="notes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notes</FormLabel>
+                        <FormControl><Textarea {...field} value={field.value || ""} rows={4} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button className="w-full" type="submit" disabled={upsertVendor.isPending}>
+                    {editingVendor ? "Save Changes" : "Create Vendor"}
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation={
+          activeAssociationId
+            ? "Vendor records, compliance alerts, and uploaded documents are scoped to the active association."
+            : "Select an association before managing vendors or filing compliance documents."
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Association Context</div><div className="mt-1 text-lg font-semibold">{activeAssociationName || "None selected"}</div></CardContent></Card>
@@ -378,19 +441,44 @@ export default function VendorsPage() {
         <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Expired Insurance</div><div className="mt-1 text-lg font-semibold">{expiredCount}</div></CardContent></Card>
       </div>
 
-      <Card>
-        <CardContent className="p-4">
-          <Input
-            placeholder="Search vendors by name, trade, service area, or contact"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            disabled={!activeAssociationId}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-0">
+      <AsyncStateBoundary
+        isLoading={!vendors}
+        isEmpty={!vendors.length}
+        emptyTitle="No vendors yet"
+        emptyMessage={activeAssociationId ? "Add the first vendor to start compliance and assignment tracking." : "Select an association to manage vendors."}
+      >
+        <DataTableShell
+          title="Vendor Directory"
+          description="Search and filter the registry, then open a vendor detail panel without losing your place in the table."
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search vendors by name, trade, service area, or contact"
+          summary={`${visibleVendors.length} vendors`}
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          filterSlot={
+            <div className="flex items-center gap-3 flex-wrap">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="pending-renewal">Pending renewal</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name A-Z</SelectItem>
+                  <SelectItem value="trade">Trade A-Z</SelectItem>
+                  <SelectItem value="recent-expiry">Nearest expiry</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+        >
           <Table>
             <TableHeader>
               <TableRow>
@@ -403,13 +491,10 @@ export default function VendorsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleVendors.map((vendor) => (
+              {pagedVendors.map((vendor) => (
                 <TableRow key={vendor.id}>
                   <TableCell>
-                    <button
-                      className="text-left"
-                      onClick={() => setSelectedVendorId(vendor.id)}
-                    >
+                    <button className="text-left" onClick={() => setSelectedVendorId(vendor.id)}>
                       <div className="font-medium">{vendor.name}</div>
                     </button>
                     <div className="text-xs text-muted-foreground">{vendor.serviceArea || "Service area not set"}</div>
@@ -423,7 +508,7 @@ export default function VendorsPage() {
                   <TableCell><Badge variant={vendor.status === "active" ? "default" : "secondary"}>{vendor.status}</Badge></TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSelectedVendorId(vendor.id)}>Documents</Button>
+                      <Button variant="outline" size="sm" onClick={() => setSelectedVendorId(vendor.id)}>View</Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -438,17 +523,10 @@ export default function VendorsPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {visibleVendors.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    {activeAssociationId ? "No vendors in this association yet." : "Select an association to manage vendors."}
-                  </TableCell>
-                </TableRow>
-              ) : null}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </DataTableShell>
+      </AsyncStateBoundary>
 
       <Card>
         <CardContent className="p-6 space-y-4">
@@ -502,26 +580,56 @@ export default function VendorsPage() {
             {selectedVendor ? <Badge variant="outline">{vendorDocuments.length} filed</Badge> : null}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-4">
-            <Input
-              placeholder="Document title"
-              value={documentTitle}
-              onChange={(event) => setDocumentTitle(event.target.value)}
-              disabled={!selectedVendor}
-            />
-            <Select value={documentType} onValueChange={setDocumentType} disabled={!selectedVendor}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {vendorDocumentTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <div className="border rounded-md p-2 text-sm cursor-pointer" onClick={() => selectedVendor ? fileRef.current?.click() : null}>
-              {documentFile?.name || "Choose file"}
-              <input ref={fileRef} type="file" className="hidden" onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)} />
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-2">
+                <Input
+                  placeholder="Document title"
+                  value={documentTitle}
+                  onChange={(event) => setDocumentTitle(event.target.value)}
+                  disabled={!selectedVendor}
+                />
+                <Select value={documentType} onValueChange={setDocumentType} disabled={!selectedVendor}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {vendorDocumentTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                <div className="border rounded-md p-3 text-sm cursor-pointer" onClick={() => selectedVendor ? fileRef.current?.click() : null}>
+                  <div className="font-medium">{documentFile?.name || "Choose file"}</div>
+                  <div className="text-xs text-muted-foreground">{documentFile ? `${Math.max(1, Math.round(documentFile.size / 1024))} KB selected` : "Upload insurance certificates, contracts, W-9s, and licenses."}</div>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)}
+                  />
+                </div>
+                <Button
+                  onClick={() => {
+                    setDocumentUploadStage("uploading");
+                    uploadVendorDocument.mutate();
+                  }}
+                  disabled={uploadVendorDocument.isPending || !selectedVendor}
+                >
+                  {uploadVendorDocument.isPending ? "Uploading..." : "Upload"}
+                </Button>
+              </div>
             </div>
-            <Button onClick={() => uploadVendorDocument.mutate()} disabled={uploadVendorDocument.isPending || !selectedVendor}>
-              Upload
-            </Button>
+
+            <TaskFlowChecklist
+              title="Vendor Filing Workflow"
+              description="File compliance and contract documents against the selected vendor record."
+              activeLabel={uploadVendorDocument.isPending ? "Uploading" : documentUploadStage === "complete" ? "Uploaded" : undefined}
+              steps={[
+                { label: "Choose the vendor", detail: selectedVendor?.name || "Select a vendor from the registry first.", done: Boolean(selectedVendor) },
+                { label: "Choose the file", detail: documentFile?.name || "Pick the source file to attach to the vendor record.", done: Boolean(documentFile) },
+                { label: "Classify the filing", detail: documentTitle.trim() ? `${documentType} · ${documentTitle}` : "Set a title and type so the document can be found later.", done: Boolean(documentTitle.trim() && documentType) },
+                { label: "Upload into the vendor record", detail: uploadVendorDocument.isPending ? "Upload in progress." : "Submit when the filing package is ready.", done: documentUploadStage === "complete" },
+              ]}
+            />
           </div>
 
           <Table>
@@ -556,6 +664,49 @@ export default function VendorsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Sheet open={Boolean(selectedVendor)} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedVendorId(""); }}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{selectedVendor?.name || "Vendor Detail"}</SheetTitle>
+            <SheetDescription>
+              {selectedVendor ? `Review contact, compliance, and document context for ${selectedVendor.name}.` : "Select a vendor from the table."}
+            </SheetDescription>
+          </SheetHeader>
+          {selectedVendor ? (
+            <div className="mt-6 space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Trade</div><div className="mt-1 font-medium">{selectedVendor.trade}</div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Status</div><div className="mt-1"><Badge variant={selectedVendor.status === "active" ? "default" : "secondary"}>{selectedVendor.status}</Badge></div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Primary Contact</div><div className="mt-1 font-medium">{selectedVendor.primaryContactName || "-"}</div><div className="text-sm text-muted-foreground">{selectedVendor.primaryEmail || selectedVendor.primaryPhone || "-"}</div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Insurance Expires</div><div className="mt-1 font-medium">{selectedVendor.insuranceExpiresAt ? new Date(selectedVendor.insuranceExpiresAt).toLocaleDateString() : "-"}</div></CardContent></Card>
+              </div>
+              <Card>
+                <CardContent className="p-4 space-y-2">
+                  <div className="text-sm text-muted-foreground">Notes</div>
+                  <div className="text-sm">{selectedVendor.notes || "No internal notes recorded for this vendor."}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium">Filed Documents</div>
+                    <Badge variant="outline">{vendorDocuments.length}</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {vendorDocuments.length ? vendorDocuments.map((document) => (
+                      <div key={document.id} className="rounded-md border p-3">
+                        <div className="font-medium">{document.title}</div>
+                        <div className="text-xs text-muted-foreground">{document.documentType} · {new Date(document.createdAt).toLocaleDateString()}</div>
+                      </div>
+                    )) : <div className="text-sm text-muted-foreground">No vendor documents filed yet.</div>}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

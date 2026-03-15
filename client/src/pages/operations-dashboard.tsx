@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AuditLog } from "@shared/schema";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
 
 type OperationsDashboardData = {
   totals: {
@@ -63,13 +65,48 @@ export default function OperationsDashboardPage() {
     pendingRenewalVendors: 0,
     overdueInstances: 0,
   };
+  const recommendedActions = [
+    {
+      title: totals.openWorkOrders > 0 ? "Work the active maintenance queue" : "No active work-order pressure",
+      summary: totals.openWorkOrders > 0
+        ? `${totals.openWorkOrders} work orders still need action. Review assignments and move stalled orders forward.`
+        : "The work-order queue is clear right now. Use the board to review preventive maintenance and audit history.",
+      href: "/app/work-orders",
+      cta: "Open work orders",
+      tone: totals.openWorkOrders > 0 ? "warning" as const : "neutral" as const,
+    },
+    {
+      title: totals.pendingRenewalVendors > 0 ? "Resolve vendor renewal risk" : "Vendor compliance looks stable",
+      summary: totals.pendingRenewalVendors > 0
+        ? `${totals.pendingRenewalVendors} vendors are in renewal risk. Review insurance expirations and update records.`
+        : "Vendor registry health is stable. Use the registry to add missing contracts and compliance files.",
+      href: "/app/vendors",
+      cta: "Open vendor registry",
+      tone: totals.pendingRenewalVendors > 0 ? "warning" as const : "neutral" as const,
+    },
+    {
+      title: totals.dueMaintenance > 0 ? "Triage preventive maintenance due now" : "Preventive schedule is under control",
+      summary: totals.dueMaintenance > 0
+        ? `${totals.dueMaintenance} maintenance instances are due. Convert them into scheduled work before they slip overdue.`
+        : "No immediate maintenance due count is showing. Review schedules and recent inspections to stay ahead.",
+      href: "/app/maintenance-schedules",
+      cta: "Open maintenance schedules",
+      tone: totals.dueMaintenance > 0 ? "default" as const : "neutral" as const,
+    },
+  ];
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Operations Dashboard</h1>
-        <p className="text-muted-foreground">Monitor open work, due preventive maintenance, vendor status, and inspection follow-up from one operations view.</p>
-      </div>
+      <WorkspacePageHeader
+        title="Operations Dashboard"
+        summary="Monitor active work, preventive maintenance pressure, vendor risk, and inspection follow-up from one operations view."
+        eyebrow="Operations"
+        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Operations Dashboard" }]}
+        shortcuts={[
+          { label: "Open Work Orders", href: "/app/work-orders" },
+          { label: "Open Vendors", href: "/app/vendors" },
+        ]}
+      />
       <div className="flex gap-2 flex-wrap">
         <Button variant="outline" onClick={() => downloadReport("vendors")}>Export Vendor Report</Button>
         <Button variant="outline" onClick={() => downloadReport("work-orders")}>Export Work Orders</Button>
@@ -94,10 +131,19 @@ export default function OperationsDashboardPage() {
         ))}
       </div>
 
+      <RecommendedActionsPanel
+        title="Operations Next Actions"
+        description="These recommendations translate the dashboard counts into the next operational moves."
+        actions={recommendedActions}
+      />
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader><CardTitle className="text-base">Work Order Aging</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
+            <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
+              Use this breakdown to decide whether the team should dispatch, follow up, or close work.
+            </div>
             <div className="flex items-center justify-between"><span>Open / Assigned</span><Badge variant="outline">{data?.workOrderAging.open ?? 0}</Badge></div>
             <div className="flex items-center justify-between"><span>In Progress</span><Badge variant="outline">{data?.workOrderAging.inProgress ?? 0}</Badge></div>
             <div className="flex items-center justify-between"><span>Pending Review</span><Badge variant="outline">{data?.workOrderAging.pendingReview ?? 0}</Badge></div>
@@ -108,6 +154,9 @@ export default function OperationsDashboardPage() {
         <Card>
           <CardHeader><CardTitle className="text-base">Vendor Status</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
+            <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
+              Vendor status shows whether current compliance is strong enough to keep assigning operational work safely.
+            </div>
             <div className="flex items-center justify-between"><span>Active</span><Badge variant="outline">{data?.vendorStatus.active ?? 0}</Badge></div>
             <div className="flex items-center justify-between"><span>Inactive</span><Badge variant="outline">{data?.vendorStatus.inactive ?? 0}</Badge></div>
             <div className="flex items-center justify-between"><span>Pending Renewal</span><Badge variant="outline">{data?.vendorStatus.pendingRenewal ?? 0}</Badge></div>
@@ -117,6 +166,9 @@ export default function OperationsDashboardPage() {
         <Card>
           <CardHeader><CardTitle className="text-base">Recent Inspections</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
+            <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
+              Review recent inspections to decide whether findings should become work orders or preventive schedule changes.
+            </div>
             {(data?.recentInspections ?? []).slice(0, 5).map((record) => (
               <div key={record.id} className="rounded border p-2">
                 <div className="font-medium">{record.locationText}</div>

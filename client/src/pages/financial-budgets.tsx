@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -78,6 +79,20 @@ export default function FinancialBudgetsPage() {
       return res.json();
     },
     enabled: Boolean(assocId && versionId),
+  });
+  const analyticsQuery = useQuery<{
+    reserveProjection: {
+      currentReserveBalance: number;
+      annualReserveContributions: number;
+      annualReserveExpenses: number;
+      annualSpecialAssessmentContribution: number;
+      forecastWindows: Array<{ months: number; projectedEndingBalance: number; projectedNetChange: number }>;
+    };
+    expenseCategoryTrend: {
+      categories: Array<{ categoryId: string | null; categoryName: string; actualAmount: number; plannedAmount: number; varianceAmount: number }>;
+    };
+  }>({
+    queryKey: [assocId ? `/api/admin/analytics?days=30&associationId=${assocId}` : "/api/admin/analytics?days=30"],
   });
 
   const createBudget = useMutation({
@@ -207,6 +222,90 @@ export default function FinancialBudgetsPage() {
                 {(versionsQuery.data ?? []).map((v) => <SelectItem key={v.id} value={v.id}>v{v.versionNumber} - {v.status}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-[0.95fr,1.05fr]">
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">Reserve Fund Projection</h2>
+              <p className="text-sm text-muted-foreground">
+                Heuristic forecast using reserve-designated budget lines, active special assessments, and currently available financial planning records.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Current Reserve Baseline</div>
+                <div className="text-xl font-semibold">${(analyticsQuery.data?.reserveProjection.currentReserveBalance ?? 0).toFixed(2)}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Annual Contributions</div>
+                <div className="text-xl font-semibold">${(analyticsQuery.data?.reserveProjection.annualReserveContributions ?? 0).toFixed(2)}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Annual Reserve Expenses</div>
+                <div className="text-xl font-semibold">${(analyticsQuery.data?.reserveProjection.annualReserveExpenses ?? 0).toFixed(2)}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Annual Special Assessments</div>
+                <div className="text-xl font-semibold">${(analyticsQuery.data?.reserveProjection.annualSpecialAssessmentContribution ?? 0).toFixed(2)}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <h2 className="text-lg font-semibold">Projection Windows</h2>
+            <div className="mt-4 space-y-2">
+              {(analyticsQuery.data?.reserveProjection.forecastWindows ?? []).map((window) => (
+                <div key={window.months} className="grid grid-cols-[110px,1fr,1fr] gap-3 rounded-md border p-3 text-sm">
+                  <div className="font-medium">{window.months} months</div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Net Change</div>
+                    <div>${window.projectedNetChange.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Ending Balance</div>
+                    <div className="font-medium">${window.projectedEndingBalance.toFixed(2)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="p-6">
+          <h2 className="text-lg font-semibold">Expense Category Trend Visualization</h2>
+          <div className="mt-4 space-y-2">
+            {(analyticsQuery.data?.expenseCategoryTrend.categories ?? []).map((row) => (
+              <div key={row.categoryId ?? row.categoryName} className="grid grid-cols-[1.2fr,1fr,1fr,1fr] gap-3 rounded-md border p-3 text-sm">
+                <div className="font-medium">{row.categoryName}</div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Actual</div>
+                  <div>${row.actualAmount.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Planned</div>
+                  <div>${row.plannedAmount.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Variance</div>
+                  <div className={cn(row.varianceAmount < 0 ? "text-red-600" : "text-foreground")}>
+                    ${row.varianceAmount.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {(analyticsQuery.data?.expenseCategoryTrend.categories ?? []).length === 0 ? (
+              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                No category-linked expense activity found for the selected scope.
+              </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>

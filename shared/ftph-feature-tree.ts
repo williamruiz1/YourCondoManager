@@ -108,6 +108,13 @@ const googleOidcRule: FeatureTreeRoadmapRule = {
   whenComplete: "active",
 };
 
+const boardMemberAccessRule: FeatureTreeRoadmapRule = {
+  projectTitles: ["Active Project - Association-Scoped Board Member Access"],
+  whenMissing: "inactive",
+  whenInProgress: "partial",
+  whenComplete: "active",
+};
+
 export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
   {
     id: "1",
@@ -139,6 +146,31 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
           { id: "1.3.1", title: "Submit Tenant Information Form", type: "UX", defaultStatus: "active" },
           { id: "1.3.2", title: "Store Tenant Contact Record", type: "Data", defaultStatus: "active" },
           { id: "1.3.3", title: "Track Occupancy History", type: "Logic", defaultStatus: "active" },
+        ],
+      },
+      {
+        id: "1.4",
+        title: "Resident Intake and Secure Submission Links",
+        defaultStatus: "partial",
+        notes: "Unit-scoped owner and tenant links plus token regeneration are live through onboarding invites. Occupancy-conditional owner submissions and bundled multi-tenant capture are still being completed.",
+        functionalUnits: [
+          { id: "1.4.1", title: "Generate Owner Update Link", type: "Logic", defaultStatus: "active" },
+          { id: "1.4.2", title: "Generate Tenant Submission Link", type: "Logic", defaultStatus: "active" },
+          { id: "1.4.3", title: "Capture Occupancy-Conditional Owner Submission", type: "UX", defaultStatus: "partial" },
+          { id: "1.4.4", title: "Capture Multi-Tenant Submission", type: "UX", defaultStatus: "partial" },
+          { id: "1.4.5", title: "Expire and Regenerate Submission Tokens", type: "Security", defaultStatus: "active" },
+        ],
+      },
+      {
+        id: "1.5",
+        title: "Association Onboarding and Completeness Dashboard",
+        defaultStatus: "active",
+        notes: "Association overview now derives occupancy state and rates, computes explicit setup-domain completion metrics, and surfaces remediation actions for missing owner, tenant, board, payment, and communications configuration.",
+        functionalUnits: [
+          { id: "1.5.1", title: "Derive Unit Occupancy State", type: "Logic", defaultStatus: "active" },
+          { id: "1.5.2", title: "Compute Completion Metrics by Setup Domain", type: "Logic", defaultStatus: "active" },
+          { id: "1.5.3", title: "Display Association Overview Metrics", type: "UX", defaultStatus: "active" },
+          { id: "1.5.4", title: "Surface Actionable Remediation Tasks", type: "UX", defaultStatus: "active" },
         ],
       },
     ],
@@ -181,6 +213,17 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
           { id: "3.2.1", title: "Record Vendor Invoice", type: "Data", defaultStatus: "active" },
           { id: "3.2.2", title: "Track Utility Payments", type: "Data", defaultStatus: "active" },
           { id: "3.2.3", title: "Store Expense Attachments", type: "Data", defaultStatus: "active" },
+        ],
+      },
+      {
+        id: "3.3",
+        title: "Association Payment Instruction Registry",
+        defaultStatus: "active",
+        notes: "Payment methods now store structured bank transfer, bill-pay, mailed check, Zelle, and owner-support fields that feed payment setup notices.",
+        functionalUnits: [
+          { id: "3.3.1", title: "Store Structured Payment Method Details", type: "Data", defaultStatus: "active" },
+          { id: "3.3.2", title: "Generate Owner Payment Setup Instructions", type: "Logic", defaultStatus: "active" },
+          { id: "3.3.3", title: "Route Payment Setup Notices to Owners", type: "Integration", defaultStatus: "active" },
         ],
       },
       {
@@ -244,7 +287,7 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
   {
     id: "4",
     title: "Document & Record Management",
-    notes: "Document repository and AI ingestion are published; analytics and compliance intelligence extensions remain future-state.",
+    notes: "Document repository is published. AI ingestion is usable but still partial because broader binary-upload coverage beyond the currently supported formats remains incomplete.",
     featureSets: [
       {
         id: "4.1",
@@ -258,21 +301,23 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
       {
         id: "4.2",
         title: "AI Document Ingestion",
+        defaultStatus: "partial",
+        notes: "Review-first ingestion, preview/commit import, fallback parsing, rollback, and clause review are live. The branch remains partial because binary-source handling beyond PDFs, DOCX, and XLSX is still incomplete.",
         functionalUnits: [
-          { id: "4.2.1", title: "Upload Raw Document for Parsing", type: "UX", defaultStatus: "active" },
-          { id: "4.2.2", title: "Extract Document Metadata", type: "Logic", defaultStatus: "active" },
-          { id: "4.2.3", title: "Store Parsed Data", type: "Data", defaultStatus: "active" },
+          { id: "4.2.1", title: "Upload Raw Document for Parsing", type: "UX", defaultStatus: "partial" },
+          { id: "4.2.2", title: "Extract Document Metadata", type: "Logic", defaultStatus: "partial" },
+          { id: "4.2.3", title: "Store Parsed Data", type: "Data", defaultStatus: "partial" },
         ],
       },
       {
         id: "8.3",
         title: "AI Compliance Monitor",
-        defaultStatus: "inactive",
+        defaultStatus: "active",
         functionalUnits: [
-          { id: "8.3.1", title: "Compliance Rule Extraction from Bylaws", type: "Logic", defaultStatus: "inactive" },
-          { id: "8.3.2", title: "Compliance Gap Detector", type: "Logic", defaultStatus: "inactive" },
-          { id: "8.3.3", title: "Compliance Alert Dashboard", type: "UX", defaultStatus: "inactive" },
-          { id: "8.3.4", title: "Alert Suppression and Override", type: "Logic", defaultStatus: "inactive" },
+          { id: "8.3.1", title: "Compliance Rule Extraction from Bylaws", type: "Logic", defaultStatus: "active" },
+          { id: "8.3.2", title: "Compliance Gap Detector", type: "Logic", defaultStatus: "active" },
+          { id: "8.3.3", title: "Compliance Alert Dashboard", type: "UX", defaultStatus: "active" },
+          { id: "8.3.4", title: "Alert Suppression and Override", type: "Logic", defaultStatus: "active" },
         ],
       },
     ],
@@ -295,7 +340,7 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
   {
     id: "6",
     title: "Operational Tasks, Compliance & Calendar",
-    notes: "Core compliance tracking is published. Board reporting automation and state template expansion remain inactive future branches.",
+    notes: "Core compliance tracking is published. Regulatory-record maintenance for CT, FL, and CA is intended to become a managed, freshness-aware record system rather than a static template library, while board reporting automation remains a future branch.",
     featureSets: [
       {
         id: "6.1",
@@ -304,6 +349,16 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
           { id: "6.1.1", title: "Create Annual Governance Tasks", type: "Logic", defaultStatus: "active" },
           { id: "6.1.2", title: "Track Task Completion", type: "Data", defaultStatus: "active" },
           { id: "6.1.3", title: "Display Compliance Dashboard", type: "UX", defaultStatus: "active" },
+        ],
+      },
+      {
+        id: "6.2",
+        title: "Governance Reminder Automation",
+        defaultStatus: "inactive",
+        functionalUnits: [
+          { id: "6.2.1", title: "Configure Governance Reminder Rules", type: "Logic", defaultStatus: "inactive" },
+          { id: "6.2.2", title: "Trigger 30-14-7 Day Reminder Cadence", type: "Logic", defaultStatus: "inactive" },
+          { id: "6.2.3", title: "Route Reminders to Board Members and Administrators", type: "Integration", defaultStatus: "inactive" },
         ],
       },
       {
@@ -319,13 +374,15 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
       },
       {
         id: "8.4",
-        title: "State-Specific Regulatory Compliance Templates",
-        defaultStatus: "inactive",
+        title: "Managed Regulatory Record System",
+        defaultStatus: "active",
+        notes: "This branch is now backed by source metadata, review and publication state, item-level legal citations, and freshness dates in the core compliance records. Remaining backlog is automated internet refresh and deeper compliance intelligence on top of that base.",
         functionalUnits: [
-          { id: "8.4.1", title: "State Template Library", type: "Data", defaultStatus: "inactive" },
-          { id: "8.4.2", title: "Association-Level Template Assignment", type: "Logic", defaultStatus: "inactive" },
-          { id: "8.4.3", title: "Template Versioning", type: "Logic", defaultStatus: "inactive" },
-          { id: "8.4.4", title: "Custom Requirement Overlay", type: "Logic", defaultStatus: "inactive" },
+          { id: "8.4.1", title: "Regulatory Source Registry", type: "Data", defaultStatus: "active" },
+          { id: "8.4.2", title: "Jurisdiction Record Sync and Review", type: "Logic", defaultStatus: "active" },
+          { id: "8.4.3", title: "Regulatory Record Versioning and Effective Dating", type: "Logic", defaultStatus: "active" },
+          { id: "8.4.4", title: "Association Regulatory Applicability Overlay", type: "Logic", defaultStatus: "active" },
+          { id: "8.4.5", title: "Staleness Monitoring and Refresh Cadence", type: "Logic", defaultStatus: "active" },
         ],
       },
       {
@@ -357,6 +414,19 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
         ],
       },
       {
+        id: "7.2",
+        title: "Communication Targeting and Merge Engine",
+        defaultStatus: "active",
+        notes: "Targeting supports owners, tenants, occupants, selected units, individual owner or tenant recipients, and board members, with financial/governance routing restricted to owner or board audiences. Templates support header, body, footer, and signature blocks plus canonical association, unit, resident, intake-link, and structured payment variables. Targeted sends now persist campaign-level recipient-set audit metadata.",
+        functionalUnits: [
+          { id: "7.2.1", title: "Select Recipients by Role and Unit Scope", type: "Logic", defaultStatus: "active" },
+          { id: "7.2.2", title: "Compose Header Footer and Signature Blocks", type: "Logic", defaultStatus: "active" },
+          { id: "7.2.3", title: "Resolve Canonical Communication Variables", type: "Logic", defaultStatus: "active" },
+          { id: "7.2.4", title: "Enforce Owner and Tenant Routing Rules", type: "Logic", defaultStatus: "active" },
+          { id: "7.2.5", title: "Persist Recipient Set and Delivery Audit", type: "Data", defaultStatus: "active" },
+        ],
+      },
+      {
         id: "9.5",
         title: "Community Announcements and Bulletin Board",
         defaultStatus: "inactive",
@@ -383,6 +453,20 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
           { id: "8.1.1", title: "Assign User Role", type: "Security", defaultStatus: "active" },
           { id: "8.1.2", title: "Restrict Data Access", type: "Security", defaultStatus: "active", roadmapRule: permissionsHardeningRule },
           { id: "8.1.3", title: "Validate Permission Changes", type: "Logic", defaultStatus: "active", roadmapRule: permissionsHardeningRule },
+        ],
+      },
+      {
+        id: "8.2",
+        title: "Association-Scoped Board Member Access",
+        defaultStatus: "inactive",
+        roadmapRule: boardMemberAccessRule,
+        functionalUnits: [
+          { id: "8.2.1", title: "Invite Board Member into Association Workspace", type: "Security", defaultStatus: "inactive", roadmapRule: boardMemberAccessRule },
+          { id: "8.2.2", title: "Activate Board Member Access from Invite and Service State", type: "Logic", defaultStatus: "inactive", roadmapRule: boardMemberAccessRule },
+          { id: "8.2.3", title: "Enforce Association-Scoped Board Permissions", type: "Security", defaultStatus: "inactive", roadmapRule: boardMemberAccessRule },
+          { id: "8.2.4", title: "Resolve Combined Owner and Board Member Access", type: "Logic", defaultStatus: "inactive", roadmapRule: boardMemberAccessRule },
+          { id: "8.2.5", title: "Present Board Member Workspace", type: "UX", defaultStatus: "inactive", roadmapRule: boardMemberAccessRule },
+          { id: "8.2.6", title: "Audit Board Member Access Lifecycle and Writes", type: "Data", defaultStatus: "inactive", roadmapRule: boardMemberAccessRule },
         ],
       },
       {
@@ -438,6 +522,8 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
           { id: "7.3.2", title: "Request-to-Work-Order Conversion", type: "Logic", defaultStatus: "inactive", roadmapRule: propertyOperationsRule },
           { id: "7.3.3", title: "Request Status Notifications", type: "Integration", defaultStatus: "inactive", roadmapRule: propertyOperationsRule },
           { id: "7.3.4", title: "Request History per Submitter", type: "UX", defaultStatus: "inactive", roadmapRule: propertyOperationsRule },
+          { id: "7.3.5", title: "Accept Public Resident Maintenance Intake", type: "UX", defaultStatus: "inactive", roadmapRule: propertyOperationsRule },
+          { id: "7.3.6", title: "Map Resident Request Lifecycle to Admin Workflow States", type: "Logic", defaultStatus: "inactive", roadmapRule: propertyOperationsRule },
         ],
       },
       {
@@ -544,6 +630,16 @@ export const ftphFeatureTreeDefinition: FtphModuleDefinition[] = [
           { id: "9.4.2", title: "Owner Signature UI", type: "UX", defaultStatus: "inactive" },
           { id: "9.4.3", title: "Executed Document Storage", type: "Data", defaultStatus: "inactive" },
           { id: "9.4.4", title: "Signature Audit Trail", type: "Data", defaultStatus: "inactive" },
+        ],
+      },
+      {
+        id: "9.6",
+        title: "Resident Feedback and Satisfaction Signals",
+        defaultStatus: "inactive",
+        functionalUnits: [
+          { id: "9.6.1", title: "Submit Resident Feedback", type: "UX", defaultStatus: "inactive" },
+          { id: "9.6.2", title: "Aggregate Satisfaction Metrics", type: "Logic", defaultStatus: "inactive" },
+          { id: "9.6.3", title: "Cluster Improvement Themes", type: "Logic", defaultStatus: "inactive" },
         ],
       },
     ],

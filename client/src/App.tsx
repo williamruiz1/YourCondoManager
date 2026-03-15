@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { AssociationProvider, useAssociationContext } from "@/context/association-context";
+import { GlobalCommandPalette } from "@/components/global-command-palette";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const WorkspacePreviewPage = lazy(() => import("@/pages/workspace-preview"));
@@ -327,6 +328,7 @@ function HeaderActions({
 
   return (
     <div className="flex items-center justify-end gap-2">
+      <GlobalCommandPalette adminRole={adminRole} />
       <Select value={activeAssociationId} onValueChange={setActiveAssociationId}>
         <SelectTrigger className="h-8 w-64" data-testid="select-active-association">
           <SelectValue placeholder="Select association" />

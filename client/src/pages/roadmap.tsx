@@ -5,6 +5,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ftphFeatureTreeDefinition, type FeatureStatus, type FtphFeatureTreeResponse, type FtphFeatureSet, type FtphModule } from "@shared/ftph-feature-tree";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useActiveAssociation } from "@/hooks/use-active-association";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -248,6 +249,7 @@ type FeatureTreePreferenceState = {
 const ALL_FEATURE_STATUSES: FeatureStatus[] = ["active", "partial", "inactive"];
 
 export default function RoadmapPage() {
+  const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { toast } = useToast();
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
@@ -378,8 +380,20 @@ export default function RoadmapPage() {
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
 
-  const analyticsQuery = useQuery<{ analyzerMetrics: { totalRuns: number; successRate: number; avgDurationMs: number; avgItemCount: number }; roadmapMetrics: { totalProjects: number; totalWorkstreams: number; totalTasks: number; taskStatusDistribution: { todo: number; inProgress: number; done: number }; completionRate: number; taskThroughput: number } }>({
-    queryKey: ["/api/admin/analytics?days=30"],
+  const analyticsQuery = useQuery<{
+    analyzerMetrics: { totalRuns: number; successRate: number; avgDurationMs: number; avgItemCount: number };
+    roadmapMetrics: {
+      totalProjects: number;
+      totalWorkstreams: number;
+      totalTasks: number;
+      archivedProjects: number;
+      archivedCompletedProjects: number;
+      taskStatusDistribution: { todo: number; inProgress: number; done: number };
+      completionRate: number;
+      taskThroughput: number;
+    };
+  }>({
+    queryKey: [activeAssociationId ? `/api/admin/analytics?days=30&associationId=${activeAssociationId}` : "/api/admin/analytics?days=30"],
   });
 
   const dependencyWarning = (task: RoadmapTask, nextStatus: TaskStatus) => {
@@ -671,6 +685,11 @@ export default function RoadmapPage() {
                 <Badge variant="secondary">Workstreams: {analyticsQuery.data?.roadmapMetrics.totalWorkstreams ?? 0}</Badge>
                 <Badge variant="secondary">Tasks: {analyticsQuery.data?.roadmapMetrics.totalTasks ?? 0}</Badge>
                 <Badge variant="secondary">Completion: {analyticsQuery.data?.roadmapMetrics.completionRate ?? 0}%</Badge>
+                <Badge variant="outline">
+                  Archived: {(analyticsQuery.data?.roadmapMetrics.archivedProjects ?? 0)}
+                  {" / "}
+                  Completed: {(analyticsQuery.data?.roadmapMetrics.archivedCompletedProjects ?? 0)}
+                </Badge>
               </div>
             </CardContent>
           </Card>

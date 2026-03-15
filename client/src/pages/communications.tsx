@@ -25,12 +25,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { AsyncStateBoundary } from "@/components/async-state-boundary";
 
 export default function CommunicationsPage() {
   const { toast } = useToast();
   const [templateOpen, setTemplateOpen] = useState(false);
   const [recipientPreview, setRecipientPreview] = useState<{
-    recipients: Array<{ personId: string; email: string; role: "owner" | "occupant"; unitId: string }>;
+    recipients: Array<{ personId: string; email: string; role: "owner" | "tenant" | "board-member"; unitId: string }>;
     candidateCount: number;
     missingEmailCount: number;
     duplicateEmailCount: number;
@@ -42,7 +45,10 @@ export default function CommunicationsPage() {
     associationId: "",
     name: "",
     subjectTemplate: "",
+    headerTemplate: "",
     bodyTemplate: "",
+    footerTemplate: "",
+    signatureTemplate: "",
   });
 
   const [sendForm, setSendForm] = useState({
@@ -60,7 +66,11 @@ export default function CommunicationsPage() {
 
   const [targetedForm, setTargetedForm] = useState({
     associationId: "",
-    audience: "all" as "owners" | "occupants" | "all",
+    targetType: "all-occupants" as "all-owners" | "all-tenants" | "all-occupants" | "selected-units" | "individual-owner" | "individual-tenant" | "board-members",
+    selectedUnitAudience: "all" as "owners" | "tenants" | "occupants" | "all",
+    selectedUnitIds: [] as string[],
+    selectedPersonId: "",
+    messageClass: "general" as "general" | "operational" | "maintenance" | "financial" | "governance",
     ccOwners: false,
     templateId: "",
     subject: "",
@@ -75,6 +85,13 @@ export default function CommunicationsPage() {
     methodType: "other",
     displayName: "",
     instructions: "",
+    accountName: "",
+    bankName: "",
+    routingNumber: "",
+    accountNumber: "",
+    mailingAddress: "",
+    paymentNotes: "",
+    zelleHandle: "",
     supportEmail: "",
     supportPhone: "",
     displayOrder: 0,
@@ -82,7 +99,9 @@ export default function CommunicationsPage() {
   const [paymentInstructionForm, setPaymentInstructionForm] = useState({
     associationId: "",
     templateId: "",
-    audience: "owners" as "owners" | "occupants" | "all",
+    targetType: "all-owners" as "all-owners" | "individual-owner" | "selected-units",
+    selectedUnitIds: [] as string[],
+    selectedPersonId: "",
     ccOwners: false,
     subject: "",
     body: "",
@@ -148,12 +167,21 @@ export default function CommunicationsPage() {
   const { data: maintenanceRequests } = useQuery<MaintenanceRequest[]>({
     queryKey: [selectedAssociationId ? `/api/maintenance/requests?associationId=${selectedAssociationId}` : "/api/maintenance/requests"],
   });
-  const { data: paymentMethods } = useQuery<PaymentMethodConfig[]>({
+  const paymentMethodsQuery = useQuery<PaymentMethodConfig[]>({
     queryKey: [selectedAssociationId ? `/api/financial/payment-methods?associationId=${selectedAssociationId}` : "/api/financial/payment-methods"],
   });
+  const { data: paymentMethods } = paymentMethodsQuery;
   const associationNameById = useMemo(() => {
     return new Map((associations ?? []).map((association) => [association.id, association.name]));
   }, [associations]);
+  const toggleUnitSelection = (unitId: string, form: "targeted" | "payment") => {
+    const updater = (current: string[]) => current.includes(unitId) ? current.filter((value) => value !== unitId) : [...current, unitId];
+    if (form === "targeted") {
+      setTargetedForm((prev) => ({ ...prev, selectedUnitIds: updater(prev.selectedUnitIds) }));
+      return;
+    }
+    setPaymentInstructionForm((prev) => ({ ...prev, selectedUnitIds: updater(prev.selectedUnitIds) }));
+  };
 
   useEffect(() => {
     setTemplateForm((prev) => ({ ...prev, associationId: activeAssociationId }));
@@ -181,7 +209,10 @@ export default function CommunicationsPage() {
         name: templateForm.name,
         channel: "email",
         subjectTemplate: templateForm.subjectTemplate,
+        headerTemplate: templateForm.headerTemplate || null,
         bodyTemplate: templateForm.bodyTemplate,
+        footerTemplate: templateForm.footerTemplate || null,
+        signatureTemplate: templateForm.signatureTemplate || null,
         isActive: 1,
       });
       return res.json();
@@ -189,7 +220,7 @@ export default function CommunicationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/communications/templates"] });
       setTemplateOpen(false);
-      setTemplateForm({ associationId: "", name: "", subjectTemplate: "", bodyTemplate: "" });
+      setTemplateForm({ associationId: "", name: "", subjectTemplate: "", headerTemplate: "", bodyTemplate: "", footerTemplate: "", signatureTemplate: "" });
       toast({ title: "Template created" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -271,12 +302,20 @@ export default function CommunicationsPage() {
       if (!targetedForm.associationId) throw new Error("Association is required");
       const params = new URLSearchParams({
         associationId: targetedForm.associationId,
-        audience: targetedForm.audience,
+        targetType: targetedForm.targetType,
+        selectedUnitAudience: targetedForm.selectedUnitAudience,
+        messageClass: targetedForm.messageClass,
         ccOwners: targetedForm.ccOwners ? "1" : "0",
       });
+      if (targetedForm.selectedUnitIds.length > 0) {
+        params.set("selectedUnitIds", targetedForm.selectedUnitIds.join(","));
+      }
+      if (targetedForm.selectedPersonId) {
+        params.set("selectedPersonId", targetedForm.selectedPersonId);
+      }
       const res = await apiRequest("GET", `/api/communications/recipients/preview?${params.toString()}`);
       return res.json() as Promise<{
-        recipients: Array<{ personId: string; email: string; role: "owner" | "occupant"; unitId: string }>;
+        recipients: Array<{ personId: string; email: string; role: "owner" | "tenant" | "board-member"; unitId: string }>;
         candidateCount: number;
         missingEmailCount: number;
         duplicateEmailCount: number;
@@ -304,7 +343,11 @@ export default function CommunicationsPage() {
       }
       const res = await apiRequest("POST", "/api/communications/send-targeted", {
         associationId: targetedForm.associationId,
-        audience: targetedForm.audience,
+        targetType: targetedForm.targetType,
+        selectedUnitAudience: targetedForm.selectedUnitAudience,
+        selectedUnitIds: targetedForm.selectedUnitIds,
+        selectedPersonId: targetedForm.selectedPersonId || null,
+        messageClass: targetedForm.messageClass,
         ccOwners: targetedForm.ccOwners,
         templateId: targetedForm.templateId || null,
         subject: targetedForm.subject || null,
@@ -523,6 +566,13 @@ export default function CommunicationsPage() {
         methodType: paymentMethodForm.methodType,
         displayName: paymentMethodForm.displayName.trim(),
         instructions: paymentMethodForm.instructions.trim(),
+        accountName: paymentMethodForm.accountName.trim() || null,
+        bankName: paymentMethodForm.bankName.trim() || null,
+        routingNumber: paymentMethodForm.routingNumber.trim() || null,
+        accountNumber: paymentMethodForm.accountNumber.trim() || null,
+        mailingAddress: paymentMethodForm.mailingAddress.trim() || null,
+        paymentNotes: paymentMethodForm.paymentNotes.trim() || null,
+        zelleHandle: paymentMethodForm.zelleHandle.trim() || null,
         supportEmail: paymentMethodForm.supportEmail.trim() || null,
         supportPhone: paymentMethodForm.supportPhone.trim() || null,
         isActive: 1,
@@ -539,6 +589,13 @@ export default function CommunicationsPage() {
         methodType: "other",
         displayName: "",
         instructions: "",
+        accountName: "",
+        bankName: "",
+        routingNumber: "",
+        accountNumber: "",
+        mailingAddress: "",
+        paymentNotes: "",
+        zelleHandle: "",
         supportEmail: "",
         supportPhone: "",
         displayOrder: 0,
@@ -554,7 +611,9 @@ export default function CommunicationsPage() {
       const res = await apiRequest("POST", "/api/financial/payment-instructions/send", {
         associationId: paymentInstructionForm.associationId,
         templateId: paymentInstructionForm.templateId || null,
-        audience: paymentInstructionForm.audience,
+        targetType: paymentInstructionForm.targetType,
+        selectedUnitIds: paymentInstructionForm.selectedUnitIds,
+        selectedPersonId: paymentInstructionForm.selectedPersonId || null,
         ccOwners: paymentInstructionForm.ccOwners,
         subject: paymentInstructionForm.subject || null,
         body: paymentInstructionForm.body || null,
@@ -583,12 +642,16 @@ export default function CommunicationsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Communications</h1>
-          <p className="text-muted-foreground">Manage notice templates, send emails, and audit communication history.</p>
-        </div>
-        <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
+      <WorkspacePageHeader
+        title="Communications"
+        summary="Manage templates, sends, approvals, outreach readiness, and communication history inside the active association scope."
+        eyebrow="Communications"
+        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Communications" }]}
+        shortcuts={[
+          { label: "Open Association Context", href: "/app/association-context" },
+          { label: "Open Documents", href: "/app/documents" },
+        ]}
+        actions={<Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
           <DialogTrigger asChild><Button>New Template</Button></DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>Create Notice Template</DialogTitle></DialogHeader>
@@ -597,14 +660,35 @@ export default function CommunicationsPage() {
                 Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
               </div>
               <Input placeholder="Template name" value={templateForm.name} onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))} />
-              <Input placeholder="Subject template (e.g. Notice for {{unit}})" value={templateForm.subjectTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, subjectTemplate: e.target.value }))} />
+              <Input placeholder="Subject template (e.g. Update for {{unit_number}})" value={templateForm.subjectTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, subjectTemplate: e.target.value }))} />
+              <Textarea rows={3} placeholder="Header block (optional)" value={templateForm.headerTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, headerTemplate: e.target.value }))} />
               <Textarea rows={7} placeholder="Body template" value={templateForm.bodyTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, bodyTemplate: e.target.value }))} />
+              <Textarea rows={3} placeholder="Footer block (optional)" value={templateForm.footerTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, footerTemplate: e.target.value }))} />
+              <Textarea rows={2} placeholder="Signature block (optional)" value={templateForm.signatureTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, signatureTemplate: e.target.value }))} />
+              <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                Canonical variables: {`{{association_name}}`} {`{{association_address}}`} {`{{unit_number}}`} {`{{owner_name}}`} {`{{tenant_name}}`} {`{{maintenance_request_link}}`} {`{{owner_submission_link}}`} {`{{tenant_submission_link}}`}
+              </div>
               <Button className="w-full" onClick={() => createTemplate.mutate()} disabled={createTemplate.isPending}>Save Template</Button>
             </div>
           </DialogContent>
-        </Dialog>
-      </div>
+        </Dialog>}
+      />
 
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation={
+          activeAssociationId
+            ? "Templates, sends, payment instructions, onboarding reminders, and outreach readiness all follow the active association context."
+            : "Select an association before sending notices or reviewing communication readiness."
+        }
+      />
+
+      <AsyncStateBoundary
+        isLoading={paymentMethodsQuery.isLoading}
+        error={paymentMethodsQuery.error}
+        onRetry={() => paymentMethodsQuery.refetch()}
+      >
       <Card>
         <CardContent className="p-6 space-y-4">
           <h2 className="text-lg font-semibold">Payment Method Registry</h2>
@@ -612,12 +696,23 @@ export default function CommunicationsPage() {
             <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm flex items-center">
               Association Context: <span className="font-medium ml-1">{activeAssociationName || "None selected"}</span>
             </div>
-            <Input placeholder="Method type (ach/card/check/other)" value={paymentMethodForm.methodType} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, methodType: e.target.value }))} />
+            <Input placeholder="Method type (bank-transfer/bill-pay/check/zelle/other)" value={paymentMethodForm.methodType} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, methodType: e.target.value }))} />
             <Input placeholder="Display name" value={paymentMethodForm.displayName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, displayName: e.target.value }))} />
           </div>
-          <Textarea placeholder="Instructions for owners" rows={3} value={paymentMethodForm.instructions} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, instructions: e.target.value }))} />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Input placeholder="Account name" value={paymentMethodForm.accountName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, accountName: e.target.value }))} />
+            <Input placeholder="Bank name" value={paymentMethodForm.bankName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, bankName: e.target.value }))} />
+            <Input placeholder="Routing number" value={paymentMethodForm.routingNumber} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, routingNumber: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Input placeholder="Account number" value={paymentMethodForm.accountNumber} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, accountNumber: e.target.value }))} />
+            <Input placeholder="Zelle handle" value={paymentMethodForm.zelleHandle} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, zelleHandle: e.target.value }))} />
             <Input placeholder="Support email" value={paymentMethodForm.supportEmail} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, supportEmail: e.target.value }))} />
+          </div>
+          <Textarea placeholder="Mailing address" rows={2} value={paymentMethodForm.mailingAddress} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, mailingAddress: e.target.value }))} />
+          <Textarea placeholder="Payment notes for owners" rows={2} value={paymentMethodForm.paymentNotes} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, paymentNotes: e.target.value }))} />
+          <Textarea placeholder="Additional instructions for owners" rows={3} value={paymentMethodForm.instructions} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, instructions: e.target.value }))} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input placeholder="Support phone" value={paymentMethodForm.supportPhone} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, supportPhone: e.target.value }))} />
             <Input type="number" placeholder="Display order" value={String(paymentMethodForm.displayOrder)} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, displayOrder: Number(e.target.value) || 0 }))} />
           </div>
@@ -634,11 +729,13 @@ export default function CommunicationsPage() {
             </TableHeader>
             <TableBody>
               {(paymentMethods ?? []).slice(0, 30).map((row) => (
-                  <TableRow key={row.id}>
+                <TableRow key={row.id}>
                   <TableCell>{associationNameById.get(row.associationId) || row.associationId}</TableCell>
                   <TableCell>{row.methodType}</TableCell>
                   <TableCell>{row.displayName}</TableCell>
-                  <TableCell className="max-w-[480px] truncate">{row.instructions}</TableCell>
+                  <TableCell className="max-w-[480px] whitespace-pre-wrap text-xs">
+                    {[row.bankName, row.accountName, row.routingNumber ? `Routing ${row.routingNumber}` : null, row.accountNumber ? `Acct ****${row.accountNumber.slice(-4)}` : null, row.zelleHandle ? `Zelle ${row.zelleHandle}` : null, row.mailingAddress, row.paymentNotes, row.instructions].filter(Boolean).join("\n")}
+                  </TableCell>
                 </TableRow>
               ))}
               {(paymentMethods ?? []).length === 0 ? (
@@ -648,6 +745,7 @@ export default function CommunicationsPage() {
           </Table>
         </CardContent>
       </Card>
+      </AsyncStateBoundary>
 
       <Card>
         <CardContent className="p-6 space-y-4">
@@ -660,17 +758,46 @@ export default function CommunicationsPage() {
               <SelectTrigger><SelectValue placeholder="Template (optional)" /></SelectTrigger>
               <SelectContent><SelectItem value="none">no template</SelectItem>{templates?.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
             </Select>
-            <Select value={paymentInstructionForm.audience} onValueChange={(v) => setPaymentInstructionForm((p) => ({ ...p, audience: v as "owners" | "occupants" | "all" }))}>
-              <SelectTrigger><SelectValue placeholder="Audience" /></SelectTrigger>
+            <Select value={paymentInstructionForm.targetType} onValueChange={(v) => setPaymentInstructionForm((p) => ({ ...p, targetType: v as "all-owners" | "individual-owner" | "selected-units" }))}>
+              <SelectTrigger><SelectValue placeholder="Target" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="owners">owners</SelectItem>
-                <SelectItem value="occupants">occupants</SelectItem>
-                <SelectItem value="all">all</SelectItem>
+                <SelectItem value="all-owners">All owners</SelectItem>
+                <SelectItem value="individual-owner">Individual owner</SelectItem>
+                <SelectItem value="selected-units">Selected units</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {paymentInstructionForm.targetType === "individual-owner" ? (
+            <Select value={paymentInstructionForm.selectedPersonId || "none"} onValueChange={(v) => setPaymentInstructionForm((p) => ({ ...p, selectedPersonId: v === "none" ? "" : v }))}>
+              <SelectTrigger><SelectValue placeholder="Select owner person" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">select owner</SelectItem>
+                {(persons ?? []).map((person) => (
+                  <SelectItem key={person.id} value={person.id}>{person.firstName} {person.lastName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          {paymentInstructionForm.targetType === "selected-units" ? (
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">Select owner units</div>
+              <div className="flex flex-wrap gap-2">
+                {(units ?? []).slice(0, 24).map((unit) => (
+                  <Button
+                    key={unit.id}
+                    type="button"
+                    size="sm"
+                    variant={paymentInstructionForm.selectedUnitIds.includes(unit.id) ? "default" : "outline"}
+                    onClick={() => toggleUnitSelection(unit.id, "payment")}
+                  >
+                    Unit {unit.unitNumber}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <Input placeholder="Subject override (optional)" value={paymentInstructionForm.subject} onChange={(e) => setPaymentInstructionForm((p) => ({ ...p, subject: e.target.value }))} />
-          <Textarea rows={4} placeholder="Body override (optional). Use {{payment_methods}} token." value={paymentInstructionForm.body} onChange={(e) => setPaymentInstructionForm((p) => ({ ...p, body: e.target.value }))} />
+          <Textarea rows={4} placeholder="Body override (optional). Use {{payment_methods}}, {{payment_support_email}}, {{payment_support_phone}}, {{payment_mailing_address}}, or {{payment_zelle_handle}}." value={paymentInstructionForm.body} onChange={(e) => setPaymentInstructionForm((p) => ({ ...p, body: e.target.value }))} />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Input type="datetime-local" value={paymentInstructionForm.scheduledFor} onChange={(e) => setPaymentInstructionForm((p) => ({ ...p, scheduledFor: e.target.value }))} />
             <label className="flex items-center gap-2 text-sm">
@@ -942,16 +1069,80 @@ export default function CommunicationsPage() {
               Association Context: <span className="font-medium ml-1">{activeAssociationName || "None selected"}</span>
             </div>
             <Select
-              value={targetedForm.audience}
-              onValueChange={(v) => setTargetedForm((p) => ({ ...p, audience: v as "owners" | "occupants" | "all" }))}
+              value={targetedForm.targetType}
+              onValueChange={(v) => setTargetedForm((p) => ({ ...p, targetType: v as "all-owners" | "all-tenants" | "all-occupants" | "selected-units" | "individual-owner" | "individual-tenant" | "board-members" }))}
             >
-              <SelectTrigger><SelectValue placeholder="Audience" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Target type" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">all</SelectItem>
-                <SelectItem value="owners">owners</SelectItem>
-                <SelectItem value="occupants">occupants</SelectItem>
+                <SelectItem value="all-owners">All owners</SelectItem>
+                <SelectItem value="all-tenants">All tenants</SelectItem>
+                <SelectItem value="all-occupants">All occupants</SelectItem>
+                <SelectItem value="selected-units">Selected units</SelectItem>
+                <SelectItem value="individual-owner">Individual owner</SelectItem>
+                <SelectItem value="individual-tenant">Individual tenant</SelectItem>
+                <SelectItem value="board-members">Board members</SelectItem>
               </SelectContent>
             </Select>
+            <Select
+              value={targetedForm.messageClass}
+              onValueChange={(v) => setTargetedForm((p) => ({ ...p, messageClass: v as "general" | "operational" | "maintenance" | "financial" | "governance" }))}
+            >
+              <SelectTrigger><SelectValue placeholder="Message class" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="general">General</SelectItem>
+                <SelectItem value="operational">Operational</SelectItem>
+                <SelectItem value="maintenance">Maintenance</SelectItem>
+                <SelectItem value="financial">Financial</SelectItem>
+                <SelectItem value="governance">Governance</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(targetedForm.targetType === "individual-owner" || targetedForm.targetType === "individual-tenant") ? (
+            <Select value={targetedForm.selectedPersonId || "none"} onValueChange={(v) => setTargetedForm((p) => ({ ...p, selectedPersonId: v === "none" ? "" : v }))}>
+              <SelectTrigger><SelectValue placeholder="Select person" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">select person</SelectItem>
+                {(persons ?? []).map((person) => (
+                  <SelectItem key={person.id} value={person.id}>{person.firstName} {person.lastName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          {targetedForm.targetType === "selected-units" ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Select
+                value={targetedForm.selectedUnitAudience}
+                onValueChange={(v) => setTargetedForm((p) => ({ ...p, selectedUnitAudience: v as "owners" | "tenants" | "occupants" | "all" }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Selected unit audience" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Owners and tenants</SelectItem>
+                  <SelectItem value="owners">Owners only</SelectItem>
+                  <SelectItem value="tenants">Tenants only</SelectItem>
+                  <SelectItem value="occupants">Current occupants</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="text-sm text-muted-foreground flex items-center">
+                Selected units: {targetedForm.selectedUnitIds.length}
+              </div>
+            </div>
+          ) : null}
+          {targetedForm.targetType === "selected-units" ? (
+            <div className="flex flex-wrap gap-2">
+              {(units ?? []).slice(0, 24).map((unit) => (
+                <Button
+                  key={unit.id}
+                  type="button"
+                  size="sm"
+                  variant={targetedForm.selectedUnitIds.includes(unit.id) ? "default" : "outline"}
+                  onClick={() => toggleUnitSelection(unit.id, "targeted")}
+                >
+                  Unit {unit.unitNumber}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
             <Select
               value={targetedForm.templateId || "none"}
               onValueChange={(v) => {
@@ -1035,7 +1226,7 @@ export default function CommunicationsPage() {
               {!recipientPreview ? (
                 <TableRow><TableCell colSpan={3} className="text-muted-foreground">No preview run yet.</TableCell></TableRow>
               ) : recipientPreview.recipients.length === 0 ? (
-                <TableRow><TableCell colSpan={3} className="text-muted-foreground">No deliverable recipients matched the current audience.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={3} className="text-muted-foreground">No deliverable recipients matched the current targeting rules.</TableCell></TableRow>
               ) : null}
             </TableBody>
           </Table>

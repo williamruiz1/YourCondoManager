@@ -70,7 +70,7 @@ function verifyAuthRestoreToken(token: string): { userId: string } | null {
   }
 }
 
-function getGoogleOAuthConfig() {
+export function getGoogleOAuthConfig() {
   const clientID = (process.env.GOOGLE_CLIENT_ID || "").trim();
   const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
   const callbackURL = (process.env.GOOGLE_CALLBACK_URL || "").trim();
@@ -94,7 +94,7 @@ function requestOrigin(req: Request): string | null {
   return `${proto}://${host}`;
 }
 
-function resolveGoogleCallbackUrl(req: Request): string | null {
+export function resolveGoogleCallbackUrl(req: Request): string | null {
   const config = getGoogleOAuthConfig();
   const origin = requestOrigin(req);
   if (!origin) return config.callbackURL || null;
@@ -261,6 +261,26 @@ function ensureGoogleOAuthConfigured(req: Request, res: Response): boolean {
 
   res.status(503).send("Google OAuth is not configured");
   return false;
+}
+
+export function getGoogleOAuthStatus(req: Request) {
+  const config = getGoogleOAuthConfig();
+  const resolvedCallbackUrl = resolveGoogleCallbackUrl(req);
+  return {
+    enabled: config.enabled,
+    clientConfigured: Boolean(config.clientID && config.clientSecret),
+    callbackPath: config.callbackPath,
+    configuredCallbackUrl: config.callbackURL || null,
+    callbackUrlStrict: config.callbackUrlStrict,
+    requestOrigin: requestOrigin(req),
+    resolvedCallbackUrl,
+    callbackRoutes: [
+      "/auth/google/callback",
+      "/api/auth/google/callback",
+      "/callback/google",
+      "/api/callback/google",
+    ],
+  };
 }
 
 export function registerAuthRoutes(app: Express) {

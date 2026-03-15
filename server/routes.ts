@@ -4,8 +4,10 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
-import { registerAuthRoutes } from "./auth";
+import { db } from "./db";
+import { getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
+import { eq } from "drizzle-orm";
 import {
   getEmailLog,
   getEmailLogs,
@@ -62,6 +64,7 @@ import {
   insertOnboardingInviteSchema,
   insertTenantConfigSchema,
   insertContactUpdateRequestSchema,
+  insertComplianceAlertOverrideSchema,
   insertInspectionRecordSchema,
   insertMaintenanceScheduleTemplateSchema,
   insertMaintenanceRequestSchema,
@@ -75,6 +78,7 @@ import {
   insertVendorSchema,
   insertVendorInvoiceSchema,
   insertVoteRecordSchema,
+  documents,
 } from "@shared/schema";
 
 const uploadDir = path.resolve("uploads");
@@ -104,6 +108,13 @@ const TEXT_PARSEABLE_EXTENSIONS = new Set([
   ".htm",
   ".xml",
   ".eml",
+]);
+
+const DIRECT_INGEST_PARSEABLE_EXTENSIONS = new Set([
+  ...Array.from(TEXT_PARSEABLE_EXTENSIONS),
+  ".pdf",
+  ".docx",
+  ".xlsx",
 ]);
 
 const ADMIN_API_KEY = (process.env.ADMIN_API_KEY || "").trim();
@@ -246,7 +257,16 @@ type AdminRequest = Request & {
   adminRole?: AdminRole;
   adminScopedAssociationIds?: string[];
 };
-type PortalRequest = Request & { portalAccessId?: string; portalAssociationId?: string; portalPersonId?: string; portalEmail?: string };
+type PortalRequest = Request & {
+  portalAccessId?: string;
+  portalAssociationId?: string;
+  portalPersonId?: string;
+  portalEmail?: string;
+  portalRole?: string;
+  portalBoardRoleId?: string | null;
+  portalHasBoardAccess?: boolean;
+  portalEffectiveRole?: string;
+};
 type AiIngestionRolloutMode = "disabled" | "canary" | "full";
 
 function normalizeAiIngestionRolloutMode(value: unknown): AiIngestionRolloutMode {
@@ -406,15 +426,27 @@ function requireAdminRole(roles: AdminRole[]) {
 async function requirePortal(req: PortalRequest, res: Response, next: NextFunction) {
   const portalAccessId = req.header("x-portal-access-id") || "";
   if (!portalAccessId) return res.status(403).json({ message: "Portal access required" });
-  const access = await storage.getPortalAccessById(portalAccessId);
-  if (!access || access.status !== "active") {
+  const resolved = await storage.resolvePortalAccessContext(portalAccessId);
+  if (!resolved) {
     return res.status(403).json({ message: "Invalid or inactive portal access" });
   }
+  const { access, boardRole, hasBoardAccess, effectiveRole } = resolved;
   req.portalAccessId = access.id;
   req.portalAssociationId = access.associationId;
   req.portalPersonId = access.personId;
   req.portalEmail = access.email;
+  req.portalRole = access.role;
+  req.portalBoardRoleId = boardRole?.id ?? null;
+  req.portalHasBoardAccess = hasBoardAccess;
+  req.portalEffectiveRole = effectiveRole;
   await storage.touchPortalAccessLogin(access.id);
+  return next();
+}
+
+function requirePortalBoard(req: PortalRequest, res: Response, next: NextFunction) {
+  if (!req.portalHasBoardAccess || !req.portalAssociationId) {
+    return res.status(403).json({ message: "Board-member access required" });
+  }
   return next();
 }
 
@@ -883,6 +915,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const deleted = await storage.deleteBoardRole(getParam(req.params.id), req.adminUserEmail);
       if (!deleted) return res.status(404).json({ message: "Not found" });
       res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/board-roles/:id/invite-access", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      await assertResourceScope(req, "board-role", getParam(req.params.id));
+      const roleId = getParam(req.params.id);
+      const scopedRoles = await storage.getBoardRoles(getAssociationIdQuery(req));
+      const boardRole = scopedRoles.find((row) => row.id === roleId);
+      if (!boardRole) return res.status(404).json({ message: "Board role not found" });
+
+      const people = await storage.getPersons(boardRole.associationId);
+      const person = people.find((row) => row.id === boardRole.personId);
+      if (!person) return res.status(404).json({ message: "Board member person not found" });
+
+      const result = await storage.inviteBoardMemberAccess({
+        associationId: boardRole.associationId,
+        personId: boardRole.personId,
+        boardRoleId: boardRole.id,
+        email: typeof req.body?.email === "string" ? req.body.email : person.email,
+        invitedBy: req.adminUserEmail ?? null,
+      });
+      res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -1714,10 +1771,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req, associationId);
-      const audience = req.body?.audience;
+      const targetType = typeof req.body?.targetType === "string" ? req.body.targetType : "all-owners";
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
-      if (audience && audience !== "owners" && audience !== "occupants" && audience !== "all") {
-        return res.status(400).json({ message: "audience must be owners, occupants, or all" });
+      if (!["all-owners", "individual-owner", "selected-units"].includes(targetType)) {
+        return res.status(400).json({ message: "targetType must be all-owners, individual-owner, or selected-units" });
       }
       const scheduledForRaw = req.body.scheduledFor;
       const scheduledFor =
@@ -1732,7 +1789,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         templateId: req.body.templateId || null,
         subject: req.body.subject || null,
         body: req.body.body || null,
-        audience: audience || "owners",
+        targetType: targetType as any,
+        selectedUnitIds: Array.isArray(req.body.selectedUnitIds) ? req.body.selectedUnitIds.filter((value: unknown) => typeof value === "string") : [],
+        selectedPersonId: typeof req.body.selectedPersonId === "string" ? req.body.selectedPersonId : null,
         ccOwners: Boolean(req.body.ccOwners),
         requireApproval: Boolean(req.body.requireApproval),
         scheduledFor,
@@ -2016,6 +2075,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ...req.body,
         createdBy: req.body.createdBy || req.adminUserEmail || null,
       });
+      if ((parsed.scope === "state-library" || parsed.scope === "ct-baseline") && req.adminRole !== "platform-admin") {
+        throw new Error("Only platform admins can manage state library templates");
+      }
       if (!parsed.associationId && req.adminRole !== "platform-admin") {
         throw new Error("associationId is required for scoped admins");
       }
@@ -2023,6 +2085,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         assertAssociationScope(req, parsed.associationId);
       }
       const result = await storage.createGovernanceComplianceTemplate(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/governance/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      await assertResourceScope(req, "governance-template", getParam(req.params.id));
+      const parsed = insertGovernanceComplianceTemplateSchema.partial().parse(req.body);
+      if ((parsed.scope === "state-library" || parsed.scope === "ct-baseline") && req.adminRole !== "platform-admin") {
+        throw new Error("Only platform admins can manage state library templates");
+      }
+      if (parsed.associationId) {
+        assertAssociationScope(req, parsed.associationId);
+      }
+      const result = await storage.updateGovernanceComplianceTemplate(getParam(req.params.id), parsed);
+      if (!result) return res.status(404).json({ message: "Governance compliance template not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/governance/templates/bootstrap-state-library", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
+    try {
+      const states = Array.isArray(req.body?.states)
+        ? req.body.states.filter((value: unknown): value is string => typeof value === "string")
+        : undefined;
+      const result = await storage.bootstrapGovernanceStateTemplateLibrary(states);
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -2139,6 +2231,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/ai/ingestion/superseded-cleanup-preview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const retentionDaysRaw = typeof req.query.retentionDays === "string" ? Number(req.query.retentionDays) : undefined;
+      const retentionDays = Number.isFinite(retentionDaysRaw) ? Math.max(1, Math.min(365, Math.round(retentionDaysRaw!))) : 30;
+      const result = await storage.previewAiIngestionSupersededCleanup(retentionDays);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ai/ingestion/superseded-cleanup", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const retentionDaysRaw = typeof req.body?.retentionDays === "number"
+        ? req.body.retentionDays
+        : typeof req.body?.retentionDays === "string"
+          ? Number(req.body.retentionDays)
+          : undefined;
+      const retentionDays = Number.isFinite(retentionDaysRaw) ? Math.max(1, Math.min(365, Math.round(retentionDaysRaw!))) : 30;
+      const result = await storage.executeAiIngestionSupersededCleanup(retentionDays);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.get("/api/ai/ingestion/rollout-policy", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = typeof req.query.associationId === "string" ? req.query.associationId : "";
@@ -2194,24 +2312,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const sourceText = typeof req.body.sourceText === "string" ? req.body.sourceText.trim() : "";
       const contextNotes = typeof req.body.contextNotes === "string" ? req.body.contextNotes.trim() : "";
+      const sourceDocumentId = typeof req.body.sourceDocumentId === "string" && req.body.sourceDocumentId.trim() ? req.body.sourceDocumentId.trim() : null;
       const fileExt = req.file ? path.extname(req.file.originalname).toLowerCase() : "";
-      const fileIsTextParseable = req.file ? TEXT_PARSEABLE_EXTENSIONS.has(fileExt) : false;
+      const fileIsDirectlyParseable = req.file ? DIRECT_INGEST_PARSEABLE_EXTENSIONS.has(fileExt) : false;
+      const associationId = typeof req.body.associationId === "string" && req.body.associationId.trim() ? req.body.associationId.trim() : null;
+      let linkedDocument: { id: string; associationId: string; title: string; fileUrl: string } | null = null;
 
-      if (!req.file && !sourceText) {
-        return res.status(400).json({ message: "Upload a file or paste source text." });
+      if (sourceDocumentId) {
+        await assertResourceScope(req, "document", sourceDocumentId);
+        const [document] = await db
+          .select({
+            id: documents.id,
+            associationId: documents.associationId,
+            title: documents.title,
+            fileUrl: documents.fileUrl,
+          })
+          .from(documents)
+          .where(eq(documents.id, sourceDocumentId))
+          .limit(1);
+        if (!document) {
+          return res.status(404).json({ message: "Selected source document was not found." });
+        }
+        if (associationId && document.associationId !== associationId) {
+          return res.status(400).json({ message: "Selected source document does not belong to the chosen association." });
+        }
+        linkedDocument = document;
       }
 
-      if (req.file && !fileIsTextParseable && !sourceText) {
+      if (!req.file && !sourceText && !linkedDocument) {
+        return res.status(400).json({ message: "Upload a file, paste source text, or select a repository document." });
+      }
+
+      if (req.file && !fileIsDirectlyParseable && !sourceText) {
         return res.status(400).json({
-          message: `File type '${fileExt || "unknown"}' is not yet directly parseable. Paste extracted text in Source Text or upload a txt/md/csv/tsv/json/log/html/xml/eml file.`,
+          message: `File type '${fileExt || "unknown"}' is not yet directly parseable. Paste extracted text in Source Text or upload a pdf/docx/xlsx/txt/md/csv/tsv/json/log/html/xml/eml file.`,
         });
       }
 
-      const sourceType = req.file ? "file-upload" : "pasted-text";
+      const sourceType = req.file || linkedDocument ? "file-upload" : "pasted-text";
       const parsed = insertAiIngestionJobSchema.parse({
-        associationId: req.body.associationId || null,
+        associationId,
+        sourceDocumentId: linkedDocument?.id ?? null,
         sourceType,
-        sourceFilename: req.file?.originalname ?? null,
+        sourceFilename: req.file?.originalname ?? linkedDocument?.title ?? null,
         sourceText: sourceText || null,
         contextNotes: contextNotes || null,
       });
@@ -2244,7 +2387,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const result = await storage.createAiIngestionJob({
         ...parsed,
-        sourceFileUrl: req.file ? `/api/uploads/${req.file.filename}` : null,
+        sourceFileUrl: req.file ? `/api/uploads/${req.file.filename}` : linkedDocument?.fileUrl ?? null,
         submittedBy: req.adminUserEmail || null,
       });
       res.status(201).json(result);
@@ -2266,7 +2409,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/ai/ingestion/jobs/:id/records", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "ai-ingestion-job", getParam(req.params.id));
-      const result = await storage.getAiExtractedRecords(getParam(req.params.id));
+      const includeSuperseded = req.query.includeSuperseded === "1" || req.query.includeSuperseded === "true";
+      const result = await storage.getAiExtractedRecords(getParam(req.params.id), { includeSuperseded });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/ai/ingestion/jobs/:id/history-summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      await assertResourceScope(req as AdminRequest, "ai-ingestion-job", getParam(req.params.id));
+      const result = await storage.getAiIngestionJobHistorySummary(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -2397,15 +2551,79 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const associationId = getAssociationIdQuery(req);
       const reviewStatus = typeof req.query.reviewStatus === "string" ? req.query.reviewStatus : undefined;
       const query = typeof req.query.q === "string" ? req.query.q : undefined;
+      const includeSuperseded = req.query.includeSuperseded === "1" || req.query.includeSuperseded === "true";
       const result = await storage.getClauseRecords({
         ingestionJobId,
         associationId,
         reviewStatus: reviewStatus === "approved" || reviewStatus === "rejected" || reviewStatus === "pending-review" ? reviewStatus : undefined,
         query,
+        includeSuperseded,
       });
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/ai/ingestion/compliance-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (associationId) {
+        assertAssociationScope(req as AdminRequest, associationId);
+      }
+      const clauseRecordId = typeof req.query.clauseRecordId === "string" ? req.query.clauseRecordId : undefined;
+      const result = await storage.getComplianceRuleRecords({
+        associationId: associationId || undefined,
+        clauseRecordId,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ai/ingestion/compliance-rules/extract", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = typeof req.body?.associationId === "string" ? req.body.associationId : getAssociationIdQuery(req);
+      if (associationId) {
+        assertAssociationScope(req, associationId);
+      }
+      const result = await storage.extractComplianceRulesFromClauses({
+        associationId: associationId || undefined,
+        actorEmail: req.adminUserEmail || "admin",
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/governance/compliance-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) {
+        throw new Error("associationId is required");
+      }
+      assertAssociationScope(req, associationId);
+      const result = await storage.getComplianceGapAlerts(associationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/governance/compliance-alert-overrides", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const parsed = insertComplianceAlertOverrideSchema.parse({
+        ...req.body,
+        createdBy: req.body.createdBy || req.adminUserEmail || null,
+        updatedBy: req.body.updatedBy || req.adminUserEmail || null,
+      });
+      assertAssociationScope(req, parsed.associationId);
+      const result = await storage.upsertComplianceAlertOverride(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
     }
   });
 
@@ -2583,15 +2801,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/communications/recipients/preview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
-      const audience = typeof req.query.audience === "string" ? req.query.audience : "all";
+      const targetType = typeof req.query.targetType === "string" ? req.query.targetType : "all-occupants";
+      const selectedUnitAudience = typeof req.query.selectedUnitAudience === "string" ? req.query.selectedUnitAudience : "all";
+      const messageClass = typeof req.query.messageClass === "string" ? req.query.messageClass : "general";
+      const selectedPersonId = typeof req.query.selectedPersonId === "string" ? req.query.selectedPersonId : null;
+      const selectedUnitIds = typeof req.query.selectedUnitIds === "string"
+        ? req.query.selectedUnitIds.split(",").map((value) => value.trim()).filter(Boolean)
+        : [];
       const ccOwners = req.query.ccOwners === "1" || req.query.ccOwners === "true";
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
-      if (audience !== "owners" && audience !== "occupants" && audience !== "all") {
-        return res.status(400).json({ message: "audience must be owners, occupants, or all" });
+      if (!["all-owners", "all-tenants", "all-occupants", "selected-units", "individual-owner", "individual-tenant", "board-members"].includes(targetType)) {
+        return res.status(400).json({ message: "targetType is invalid" });
+      }
+      if (!["owners", "tenants", "occupants", "all"].includes(selectedUnitAudience)) {
+        return res.status(400).json({ message: "selectedUnitAudience is invalid" });
+      }
+      if (!["general", "operational", "maintenance", "financial", "governance"].includes(messageClass)) {
+        return res.status(400).json({ message: "messageClass is invalid" });
       }
       const result = await storage.resolveNotificationRecipientPreview({
         associationId,
-        audience,
+        targetType: targetType as any,
+        selectedUnitIds,
+        selectedPersonId,
+        selectedUnitAudience: selectedUnitAudience as any,
+        messageClass: messageClass as any,
         ccOwners,
       });
       res.json(result);
@@ -2604,10 +2838,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req, associationId);
-      const audience = req.body.audience;
+      const targetType = req.body.targetType;
+      const selectedUnitAudience = req.body.selectedUnitAudience;
+      const messageClass = req.body.messageClass;
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
-      if (audience !== "owners" && audience !== "occupants" && audience !== "all") {
-        return res.status(400).json({ message: "audience must be owners, occupants, or all" });
+      if (!["all-owners", "all-tenants", "all-occupants", "selected-units", "individual-owner", "individual-tenant", "board-members"].includes(targetType)) {
+        return res.status(400).json({ message: "targetType is invalid" });
+      }
+      if (selectedUnitAudience && !["owners", "tenants", "occupants", "all"].includes(selectedUnitAudience)) {
+        return res.status(400).json({ message: "selectedUnitAudience is invalid" });
+      }
+      if (messageClass && !["general", "operational", "maintenance", "financial", "governance"].includes(messageClass)) {
+        return res.status(400).json({ message: "messageClass is invalid" });
       }
       const scheduledForRaw = req.body.scheduledFor;
       const scheduledFor =
@@ -2619,7 +2861,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const result = await storage.sendTargetedNotice({
         associationId,
-        audience,
+        targetType,
+        selectedUnitIds: Array.isArray(req.body.selectedUnitIds) ? req.body.selectedUnitIds.filter((value: unknown) => typeof value === "string") : [],
+        selectedPersonId: typeof req.body.selectedPersonId === "string" ? req.body.selectedPersonId : null,
+        selectedUnitAudience: selectedUnitAudience || undefined,
+        messageClass: messageClass || undefined,
         ccOwners: Boolean(req.body.ccOwners),
         templateId: req.body.templateId || null,
         subject: req.body.subject || null,
@@ -2699,6 +2945,54 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req, parsed.associationId);
       const result = await storage.createOnboardingInvite(parsed);
       res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/unit-links/ensure", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.body.associationId);
+      const unitId = getParam(req.body.unitId);
+      const residentType = req.body.residentType;
+      assertAssociationScope(req, associationId);
+      if (!associationId || !unitId) return res.status(400).json({ message: "associationId and unitId are required" });
+      if (residentType !== "owner" && residentType !== "tenant") {
+        return res.status(400).json({ message: "residentType must be owner or tenant" });
+      }
+
+      const result = await storage.getOrCreateUnitOnboardingLink({
+        associationId,
+        unitId,
+        residentType,
+        createdBy: req.adminUserEmail || null,
+        expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/unit-links/regenerate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.body.associationId);
+      const unitId = getParam(req.body.unitId);
+      const residentType = req.body.residentType;
+      assertAssociationScope(req, associationId);
+      if (!associationId || !unitId) return res.status(400).json({ message: "associationId and unitId are required" });
+      if (residentType !== "owner" && residentType !== "tenant") {
+        return res.status(400).json({ message: "residentType must be owner or tenant" });
+      }
+
+      const result = await storage.regenerateUnitOnboardingLink({
+        associationId,
+        unitId,
+        residentType,
+        createdBy: req.adminUserEmail || null,
+        expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
+      });
+      res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -2808,6 +3102,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!token) return res.status(400).json({ message: "token is required" });
       const invite = await storage.getOnboardingInviteByToken(token);
       if (!invite) return res.status(404).json({ message: "Invite not found" });
+      const submissions = await storage.getOnboardingSubmissions(invite.associationId);
+      const latestSubmission = submissions.find((submission) => submission.inviteId === invite.id) || null;
       res.json({
         id: invite.id,
         associationId: invite.associationId,
@@ -2819,6 +3115,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         email: invite.email,
         phone: invite.phone,
         expiresAt: invite.expiresAt,
+        latestSubmissionStatus: latestSubmission?.status ?? null,
+        latestSubmissionRejectionReason: latestSubmission?.rejectionReason ?? null,
       });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -2845,7 +3143,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         emergencyContactPhone: typeof req.body?.emergencyContactPhone === "string" ? req.body.emergencyContactPhone.trim() || null : null,
         contactPreference: typeof req.body?.contactPreference === "string" ? req.body.contactPreference.trim() || "email" : "email",
         startDate,
+        occupancyIntent: typeof req.body?.occupancyIntent === "string" ? req.body.occupancyIntent.trim() || null : null,
         ownershipPercentage: typeof req.body?.ownershipPercentage === "number" ? req.body.ownershipPercentage : null,
+        additionalOwners: Array.isArray(req.body?.additionalOwners) ? req.body.additionalOwners : null,
+        tenantResidents: Array.isArray(req.body?.tenantResidents) ? req.body.tenantResidents : null,
       });
       res.status(201).json(result);
     } catch (error: any) {
@@ -3256,6 +3557,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/platform/auth/google-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      res.json(getGoogleOAuthStatus(req));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/platform/email/policy", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
     try {
       res.json(getEmailPolicy());
@@ -3374,7 +3683,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const parsed = insertPortalAccessSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
-      const result = await storage.createPortalAccess(parsed);
+      const result = await storage.createPortalAccess(parsed, (req as AdminRequest).adminUserEmail ?? "system");
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -3388,7 +3697,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
         assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
       }
-      const result = await storage.updatePortalAccess(getParam(req.params.id), parsed);
+      const result = await storage.updatePortalAccess(getParam(req.params.id), parsed, (req as AdminRequest).adminUserEmail ?? "system");
       if (!result) return res.status(404).json({ message: "Portal access not found" });
       res.json(result);
     } catch (error: any) {
@@ -3446,12 +3755,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/portal/session", async (req, res) => {
     try {
       const associationId = getParam(req.body?.associationId);
-      const email = getParam(req.body?.email);
+      const email = getParam(req.body?.email).trim().toLowerCase();
       if (!associationId || !email) return res.status(400).json({ message: "associationId and email are required" });
       const access = await storage.getPortalAccessByAssociationEmail(associationId, email);
-      if (!access || access.status !== "active") return res.status(404).json({ message: "No active portal access found" });
-      await storage.touchPortalAccessLogin(access.id);
-      res.json({ portalAccessId: access.id, associationId: access.associationId, role: access.role, email: access.email });
+      if (!access) return res.status(404).json({ message: "No portal access found" });
+
+      let sessionAccess = access;
+      if (access.status === "invited" && access.boardRoleId) {
+        const [boardRole] = access.boardRoleId
+          ? (await storage.getBoardRoles(access.associationId)).filter((row) => row.id === access.boardRoleId)
+          : [];
+        if (!boardRole) {
+          return res.status(403).json({ message: "Board invite is not linked to an active board role" });
+        }
+        sessionAccess = (await storage.updatePortalAccess(access.id, {
+          status: "active",
+          acceptedAt: access.acceptedAt ?? new Date(),
+        }, "system")) ?? access;
+      }
+
+      if (sessionAccess.status !== "active") return res.status(404).json({ message: "No active portal access found" });
+      await storage.touchPortalAccessLogin(sessionAccess.id);
+      res.json({ portalAccessId: sessionAccess.id, associationId: sessionAccess.associationId, role: sessionAccess.role, email: sessionAccess.email });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -3460,7 +3785,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/portal/me", requirePortal, async (req: PortalRequest, res) => {
     const access = await storage.getPortalAccessById(req.portalAccessId || "");
     if (!access) return res.status(404).json({ message: "Portal access not found" });
-    res.json(access);
+    res.json({
+      ...access,
+      hasBoardAccess: Boolean(req.portalHasBoardAccess),
+      effectiveRole: req.portalEffectiveRole || access.role,
+      boardRoleId: req.portalBoardRoleId ?? access.boardRoleId ?? null,
+    });
   });
 
   app.get("/api/portal/documents", requirePortal, async (req: PortalRequest, res) => {
@@ -3508,7 +3838,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/portal/maintenance-requests", requirePortal, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getMaintenanceRequests({
-        portalAccessId: req.portalAccessId,
+        portalAccessId: req.portalHasBoardAccess ? undefined : req.portalAccessId,
+        associationId: req.portalHasBoardAccess ? req.portalAssociationId : undefined,
       });
       res.json(result);
     } catch (error: any) {
@@ -3548,6 +3879,660 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         resolutionNotes: null,
       });
       const result = await storage.createMaintenanceRequest(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/overview", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getAssociationOverview(req.portalAssociationId || "");
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/dashboard", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const associationId = req.portalAssociationId || "";
+      const [
+        overview,
+        budgets,
+        ledgerEntries,
+        vendorInvoices,
+        utilityPayments,
+        governanceMeetings,
+        governanceTasks,
+        auditEntries,
+        documents,
+        maintenanceRequests,
+        noticeSends,
+        boardPackages,
+        boardRoles,
+      ] = await Promise.all([
+        storage.getAssociationOverview(associationId),
+        storage.getBudgets(associationId),
+        storage.getOwnerLedgerEntries(associationId),
+        storage.getVendorInvoices(associationId),
+        storage.getUtilityPayments(associationId),
+        storage.getGovernanceMeetings(associationId),
+        storage.getAnnualGovernanceTasks(associationId),
+        storage.getAuditLogs(associationId),
+        storage.getDocuments(associationId),
+        storage.getMaintenanceRequests({ associationId }),
+        storage.getNoticeSends(associationId),
+        storage.getBoardPackages(associationId),
+        storage.getBoardRoles(associationId),
+      ]);
+
+      const totalCharges = ledgerEntries
+        .filter((entry) => entry.entryType === "charge" || entry.entryType === "assessment" || entry.entryType === "late-fee")
+        .reduce((sum, entry) => sum + entry.amount, 0);
+      const totalPayments = ledgerEntries
+        .filter((entry) => entry.entryType === "payment" || entry.entryType === "credit")
+        .reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+      const openBalance = Math.max(0, totalCharges - totalPayments);
+      const totalInvoices = vendorInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
+      const totalUtilities = utilityPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      const openTasks = governanceTasks.filter((task) => task.status !== "done");
+      const upcomingMeetings = governanceMeetings
+        .filter((meeting) => new Date(meeting.scheduledAt) >= new Date())
+        .slice(0, 5);
+      const draftMeetings = governanceMeetings.filter((meeting) => meeting.summaryStatus === "draft");
+      const unpublishedDocuments = documents.filter((document) => document.isPortalVisible !== 1).slice(0, 10);
+      const recentActivity = auditEntries.slice(0, 20);
+      const recentMaintenanceRequests = maintenanceRequests.slice(0, 8);
+      const boardRole = boardRoles.find((role) => role.id === req.portalBoardRoleId) ?? null;
+      const meetingStateCounts = {
+        scheduled: governanceMeetings.filter((meeting) => meeting.status === "scheduled").length,
+        "in-progress": governanceMeetings.filter((meeting) => meeting.status === "in-progress").length,
+        completed: governanceMeetings.filter((meeting) => meeting.status === "completed").length,
+        cancelled: governanceMeetings.filter((meeting) => meeting.status === "cancelled").length,
+      };
+      const meetingSummaryCounts = {
+        draft: governanceMeetings.filter((meeting) => meeting.summaryStatus === "draft").length,
+        published: governanceMeetings.filter((meeting) => meeting.summaryStatus === "published").length,
+      };
+      const taskStateCounts = {
+        todo: governanceTasks.filter((task) => task.status === "todo").length,
+        "in-progress": governanceTasks.filter((task) => task.status === "in-progress").length,
+        done: governanceTasks.filter((task) => task.status === "done").length,
+      };
+      const maintenanceStateCounts = {
+        submitted: maintenanceRequests.filter((request) => request.status === "submitted").length,
+        triaged: maintenanceRequests.filter((request) => request.status === "triaged").length,
+        "in-progress": maintenanceRequests.filter((request) => request.status === "in-progress").length,
+        resolved: maintenanceRequests.filter((request) => request.status === "resolved").length,
+        closed: maintenanceRequests.filter((request) => request.status === "closed").length,
+        rejected: maintenanceRequests.filter((request) => request.status === "rejected").length,
+      };
+      const noticeStateCounts = noticeSends.reduce<Record<string, number>>((acc, send) => {
+        acc[send.status] = (acc[send.status] ?? 0) + 1;
+        return acc;
+      }, {});
+      const boardPackageStateCounts = {
+        draft: boardPackages.filter((item) => item.status === "draft").length,
+        approved: boardPackages.filter((item) => item.status === "approved").length,
+        distributed: boardPackages.filter((item) => item.status === "distributed").length,
+      };
+      const documentsPortalVisible = documents.filter((document) => document.isPortalVisible === 1).length;
+      const documentsInternalOnly = documents.length - documentsPortalVisible;
+      const urgentOpenMaintenanceCount = maintenanceRequests.filter(
+        (request) =>
+          (request.priority === "urgent" || request.priority === "high") &&
+          request.status !== "resolved" &&
+          request.status !== "closed" &&
+          request.status !== "rejected",
+      ).length;
+      const attentionItems = [
+        ...(overview.maintenanceOverdue > 0 ? [{
+          key: "maintenance-overdue",
+          label: "Overdue maintenance requires action",
+          detail: `${overview.maintenanceOverdue} maintenance items are overdue.`,
+          tone: "high",
+        }] : []),
+        ...(openTasks.filter((task) => task.dueDate && new Date(task.dueDate) < new Date()).length > 0 ? [{
+          key: "governance-overdue",
+          label: "Governance tasks are overdue",
+          detail: `${openTasks.filter((task) => task.dueDate && new Date(task.dueDate) < new Date()).length} governance tasks are past due.`,
+          tone: "high",
+        }] : []),
+        ...(upcomingMeetings.length > 0 ? [{
+          key: "upcoming-meetings",
+          label: "Meetings need preparation",
+          detail: `${upcomingMeetings.length} upcoming meetings are on the calendar.`,
+          tone: "medium",
+        }] : []),
+        ...(draftMeetings.length > 0 ? [{
+          key: "draft-meetings",
+          label: "Meeting summaries remain in draft",
+          detail: `${draftMeetings.length} meeting records have not been published.`,
+          tone: "medium",
+        }] : []),
+        ...(openBalance > 0 ? [{
+          key: "open-balance",
+          label: "Owner balance exposure is still open",
+          detail: `$${openBalance.toFixed(2)} remains outstanding on the owner ledger.`,
+          tone: "medium",
+        }] : []),
+        ...(unpublishedDocuments.length > 0 ? [{
+          key: "document-visibility",
+          label: "Documents may need board review or publication",
+          detail: `${unpublishedDocuments.length} documents are not portal-visible.`,
+          tone: "low",
+        }] : []),
+      ];
+
+      res.json({
+        attention: {
+          items: attentionItems,
+          maintenanceOverdue: overview.maintenanceOverdue,
+          overdueGovernanceTasks: openTasks.filter((task) => task.dueDate && new Date(task.dueDate) < new Date()).length,
+          upcomingMeetingCount: upcomingMeetings.length,
+          draftMeetingCount: draftMeetings.length,
+          unpublishedDocumentCount: unpublishedDocuments.length,
+        },
+        financial: {
+          budgetCount: budgets.length,
+          ledgerEntryCount: ledgerEntries.length,
+          totalCharges,
+          totalPayments,
+          openBalance: Number((totalCharges - totalPayments).toFixed(2)),
+          totalInvoices: Number(totalInvoices.toFixed(2)),
+          totalUtilities: Number(totalUtilities.toFixed(2)),
+          recentLedgerEntries: ledgerEntries.slice(0, 10),
+          recentInvoices: vendorInvoices.slice(0, 10),
+        },
+        governance: {
+          meetingCount: governanceMeetings.length,
+          upcomingMeetings: upcomingMeetings.map((meeting) => ({
+            id: meeting.id,
+            title: meeting.title,
+            scheduledAt: meeting.scheduledAt.toISOString(),
+            meetingType: meeting.meetingType,
+            status: meeting.status,
+            summaryStatus: meeting.summaryStatus,
+          })),
+          taskCount: governanceTasks.length,
+          openTaskCount: openTasks.length,
+          openTasks: openTasks.slice(0, 10).map((task) => ({
+            id: task.id,
+            title: task.title,
+            dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+            status: task.status,
+          })),
+        },
+        workflowStates: {
+          access: {
+            status: req.portalRole === "board-member" ? "active" : "owner-plus-board",
+            effectiveRole: req.portalEffectiveRole || req.portalRole || "board-member",
+            boardRole: boardRole?.role ?? null,
+            boardTerm: boardRole
+              ? {
+                  startDate: boardRole.startDate.toISOString(),
+                  endDate: boardRole.endDate ? boardRole.endDate.toISOString() : null,
+                  isActive: !boardRole.endDate || new Date(boardRole.endDate) >= new Date(),
+                }
+              : null,
+          },
+          governance: {
+            meetingsByStatus: meetingStateCounts,
+            summariesByStatus: meetingSummaryCounts,
+            tasksByStatus: taskStateCounts,
+          },
+          maintenance: {
+            requestsByStatus: maintenanceStateCounts,
+            urgentOpenCount: urgentOpenMaintenanceCount,
+            recent: recentMaintenanceRequests.map((request) => ({
+              id: request.id,
+              title: request.title,
+              priority: request.priority,
+              status: request.status,
+              responseDueAt: request.responseDueAt ? request.responseDueAt.toISOString() : null,
+              locationText: request.locationText,
+              createdAt: request.createdAt.toISOString(),
+            })),
+          },
+          communications: {
+            noticesByStatus: noticeStateCounts,
+            documentsPortalVisible,
+            documentsInternalOnly,
+            boardPackagesByStatus: boardPackageStateCounts,
+          },
+        },
+        activity: {
+          recent: recentActivity.map((entry) => ({
+            id: entry.id,
+            entityType: entry.entityType,
+            action: entry.action,
+            actorEmail: entry.actorEmail,
+            createdAt: entry.createdAt,
+          })),
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/association", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const associations = await storage.getAssociations();
+      const association = associations.find((row) => row.id === req.portalAssociationId);
+      if (!association) return res.status(404).json({ message: "Association not found" });
+      res.json(association);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/portal/board/association", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const payload = insertAssociationSchema.partial().parse({
+        name: req.body?.name,
+        associationType: req.body?.associationType,
+        dateFormed: req.body?.dateFormed,
+        ein: req.body?.ein,
+        address: req.body?.address,
+        city: req.body?.city,
+        state: req.body?.state,
+        country: req.body?.country,
+      });
+      const result = await storage.updateAssociation(
+        req.portalAssociationId || "",
+        payload,
+        `portal:${req.portalEmail || "unknown"}`,
+      );
+      if (!result) return res.status(404).json({ message: "Association not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/meetings", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getGovernanceMeetings(req.portalAssociationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/board/meetings", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const parsed = insertGovernanceMeetingSchema.parse({
+        associationId: req.portalAssociationId,
+        meetingType: req.body?.meetingType,
+        title: req.body?.title,
+        scheduledAt: req.body?.scheduledAt,
+        location: req.body?.location ?? null,
+        status: req.body?.status,
+        agenda: req.body?.agenda ?? null,
+        notes: req.body?.notes ?? null,
+        summaryText: req.body?.summaryText ?? null,
+        summaryStatus: req.body?.summaryStatus,
+      });
+      const result = await storage.createGovernanceMeeting(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/portal/board/meetings/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const meeting = (await storage.getGovernanceMeetings(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
+      if (!meeting) return res.status(404).json({ message: "Meeting not found in association" });
+      const parsed = insertGovernanceMeetingSchema.partial().parse({
+        meetingType: req.body?.meetingType,
+        title: req.body?.title,
+        scheduledAt: req.body?.scheduledAt,
+        location: req.body?.location,
+        status: req.body?.status,
+        agenda: req.body?.agenda,
+        notes: req.body?.notes,
+        summaryText: req.body?.summaryText,
+        summaryStatus: req.body?.summaryStatus,
+      });
+      const result = await storage.updateGovernanceMeeting(meeting.id, parsed);
+      if (!result) return res.status(404).json({ message: "Meeting not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/governance-tasks", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getAnnualGovernanceTasks(req.portalAssociationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/board/governance-tasks", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const parsed = insertAnnualGovernanceTaskSchema.parse({
+        associationId: req.portalAssociationId,
+        title: req.body?.title,
+        description: req.body?.description ?? null,
+        status: req.body?.status,
+        ownerPersonId: req.body?.ownerPersonId ?? null,
+        dueDate: req.body?.dueDate ?? null,
+        notes: req.body?.notes ?? null,
+      });
+      const result = await storage.createAnnualGovernanceTask(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/portal/board/governance-tasks/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const task = (await storage.getAnnualGovernanceTasks(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
+      if (!task) return res.status(404).json({ message: "Governance task not found in association" });
+      const parsed = insertAnnualGovernanceTaskSchema.partial().parse({
+        title: req.body?.title,
+        description: req.body?.description,
+        status: req.body?.status,
+        ownerPersonId: req.body?.ownerPersonId,
+        dueDate: req.body?.dueDate,
+        notes: req.body?.notes,
+      });
+      const result = await storage.updateAnnualGovernanceTask(task.id, parsed);
+      if (!result) return res.status(404).json({ message: "Governance task not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/documents", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getDocuments(req.portalAssociationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/board/documents", requirePortal, requirePortalBoard, upload.single("file"), async (req: PortalRequest, res) => {
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ message: "File is required" });
+      const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+      const documentType = typeof req.body?.documentType === "string" ? req.body.documentType.trim() : "";
+      if (!title || !documentType) {
+        return res.status(400).json({ message: "title and documentType are required" });
+      }
+      const result = await storage.createDocument({
+        associationId: req.portalAssociationId || "",
+        title,
+        documentType,
+        portalAudience: typeof req.body?.portalAudience === "string" ? req.body.portalAudience : "owner",
+        isPortalVisible: req.body?.isPortalVisible === "1" || req.body?.isPortalVisible === "true" ? 1 : 0,
+        uploadedBy: `portal:${req.portalEmail || "unknown"}`,
+        fileUrl: `/api/uploads/${file.filename}`,
+      }, `portal:${req.portalEmail || "unknown"}`);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/portal/board/documents/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const document = (await storage.getDocuments(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
+      if (!document) return res.status(404).json({ message: "Document not found in association" });
+      const payload = insertDocumentSchema.partial().parse({
+        title: req.body?.title,
+        documentType: req.body?.documentType,
+        portalAudience: req.body?.portalAudience,
+        isPortalVisible: req.body?.isPortalVisible,
+      });
+      const result = await storage.updateDocument(document.id, payload, `portal:${req.portalEmail || "unknown"}`);
+      if (!result) return res.status(404).json({ message: "Document not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/communications/sends", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const result = await storage.getNoticeSends(req.portalAssociationId, status);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/communications/history", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getCommunicationHistory(req.portalAssociationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/board/communications/send", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const recipientEmail = typeof req.body?.recipientEmail === "string" ? req.body.recipientEmail.trim() : "";
+      const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
+      const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+      if (!recipientEmail || !subject || !body) {
+        return res.status(400).json({ message: "recipientEmail, subject, and body are required" });
+      }
+      const result = await storage.sendNotice({
+        associationId: req.portalAssociationId,
+        recipientEmail,
+        subject,
+        body,
+        scheduledFor: typeof req.body?.scheduledFor === "string" ? req.body.scheduledFor : null,
+        requireApproval: req.body?.requireApproval === true || req.body?.requireApproval === "true",
+        sentBy: `portal:${req.portalEmail || "unknown"}`,
+      });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/portal/board/maintenance-requests/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const request = (await storage.getMaintenanceRequests({ associationId: req.portalAssociationId })).find((row) => row.id === getParam(req.params.id));
+      if (!request) return res.status(404).json({ message: "Maintenance request not found in association" });
+      const parsed = insertMaintenanceRequestSchema.partial().parse({
+        title: req.body?.title,
+        description: req.body?.description,
+        locationText: req.body?.locationText,
+        category: req.body?.category,
+        priority: req.body?.priority,
+        status: req.body?.status,
+        assignedTo: req.body?.assignedTo,
+        resolutionNotes: req.body?.resolutionNotes,
+      });
+      const result = await storage.updateMaintenanceRequest(request.id, parsed);
+      if (!result) return res.status(404).json({ message: "Maintenance request not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/vendor-invoices", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getVendorInvoices(req.portalAssociationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/board/vendor-invoices", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const parsed = insertVendorInvoiceSchema.parse({
+        associationId: req.portalAssociationId,
+        vendorId: req.body?.vendorId ?? null,
+        vendorName: req.body?.vendorName,
+        invoiceNumber: req.body?.invoiceNumber ?? null,
+        invoiceDate: req.body?.invoiceDate,
+        dueDate: req.body?.dueDate ?? null,
+        amount: req.body?.amount,
+        status: req.body?.status,
+        accountId: req.body?.accountId ?? null,
+        categoryId: req.body?.categoryId ?? null,
+        notes: req.body?.notes ?? null,
+      });
+      const result = await storage.createVendorInvoice(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/portal/board/vendor-invoices/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const invoice = (await storage.getVendorInvoices(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
+      if (!invoice) return res.status(404).json({ message: "Vendor invoice not found in association" });
+      const parsed = insertVendorInvoiceSchema.partial().parse({
+        vendorId: req.body?.vendorId,
+        vendorName: req.body?.vendorName,
+        invoiceNumber: req.body?.invoiceNumber,
+        invoiceDate: req.body?.invoiceDate,
+        dueDate: req.body?.dueDate,
+        amount: req.body?.amount,
+        status: req.body?.status,
+        accountId: req.body?.accountId,
+        categoryId: req.body?.categoryId,
+        notes: req.body?.notes,
+      });
+      const result = await storage.updateVendorInvoice(invoice.id, parsed);
+      if (!result) return res.status(404).json({ message: "Vendor invoice not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/owner-ledger/entries", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getOwnerLedgerEntries(req.portalAssociationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/owner-ledger/summary", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getOwnerLedgerSummary(req.portalAssociationId || "");
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/board/owner-ledger/entries", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const unit = (await storage.getUnits(req.portalAssociationId)).find((row) => row.id === req.body?.unitId);
+      if (!unit) return res.status(400).json({ message: "Unit not found in association" });
+      const person = (await storage.getPersons(req.portalAssociationId)).find((row) => row.id === req.body?.personId);
+      if (!person) return res.status(400).json({ message: "Person not found in association" });
+      const parsed = insertOwnerLedgerEntrySchema.parse({
+        associationId: req.portalAssociationId,
+        unitId: unit.id,
+        personId: person.id,
+        entryType: req.body?.entryType,
+        amount: req.body?.amount,
+        postedAt: req.body?.postedAt,
+        description: req.body?.description ?? null,
+        referenceType: req.body?.referenceType ?? null,
+        referenceId: req.body?.referenceId ?? null,
+      });
+      const result = await storage.createOwnerLedgerEntry(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/persons", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getPersons(req.portalAssociationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/portal/board/persons/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const people = await storage.getPersons(req.portalAssociationId);
+      const person = people.find((row) => row.id === getParam(req.params.id));
+      if (!person) return res.status(404).json({ message: "Person not found in association" });
+      const payload = insertPersonSchema.partial().parse(req.body);
+      const result = await storage.updatePerson(person.id, payload, `portal:${req.portalEmail || "unknown"}`);
+      if (!result) return res.status(404).json({ message: "Person not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/units", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getUnits(req.portalAssociationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/portal/board/units/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const unit = (await storage.getUnits(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
+      if (!unit) return res.status(404).json({ message: "Unit not found in association" });
+      const payload = insertUnitSchema.partial().parse({
+        buildingId: req.body?.buildingId,
+        unitNumber: req.body?.unitNumber,
+        building: req.body?.building,
+        squareFootage: req.body?.squareFootage,
+      });
+      const result = await storage.updateUnit(unit.id, payload, `portal:${req.portalEmail || "unknown"}`);
+      if (!result) return res.status(404).json({ message: "Unit not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/board/roles", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getBoardRoles(req.portalAssociationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/board/roles", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+    try {
+      const payload = insertBoardRoleSchema.parse({
+        personId: req.body?.personId,
+        associationId: req.portalAssociationId,
+        role: req.body?.role,
+        startDate: req.body?.startDate,
+        endDate: req.body?.endDate ?? null,
+      });
+      const result = await storage.createBoardRole(payload, `portal:${req.portalEmail || "unknown"}`);
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -3794,7 +4779,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/analytics", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       const days = Number(req.query.days ?? 30);
-      const result = await storage.getAdminAnalytics(days);
+      const associationId = getAssociationIdQuery(req);
+      if (associationId) {
+        assertAssociationScope(req as AdminRequest, associationId);
+      }
+      const result = await storage.getAdminAnalytics(days, associationId || undefined);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

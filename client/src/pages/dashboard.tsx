@@ -5,6 +5,11 @@ import { Building2, DoorOpen, Users, Home, UserCheck, FileText } from "lucide-re
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useAssociationContext } from "@/context/association-context";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
+import type { RecommendedAction } from "@/components/recommended-actions-panel";
 
 interface DashboardStats {
   totalAssociations: number;
@@ -110,17 +115,56 @@ export default function DashboardPage() {
       testId: "stat-documents",
     },
   ];
+  const portfolioActions: RecommendedAction[] = [
+    {
+      title: activeAssociationId ? "Continue work in the selected association" : "Set an active association context",
+      summary: activeAssociationId
+        ? "Move from portfolio oversight into the in-context operating workspace for the selected association."
+        : "Select a property so actions, forms, and filtered records stay scoped to the right association.",
+      href: activeAssociationId ? "/app/association-context" : "/app/associations",
+      cta: activeAssociationId ? "Open association workspace" : "Manage associations",
+      tone: "default" as const,
+    },
+    {
+      title: (stats?.totalDocuments ?? 0) === 0 ? "Start the document repository" : "Review document coverage",
+      summary: (stats?.totalDocuments ?? 0) === 0
+        ? "No documents are filed yet. Upload bylaws, policies, and meeting records so operations have a source of truth."
+        : "Use the repository to close gaps in policies, minutes, financial reports, and operating records.",
+      href: "/app/documents",
+      cta: "Open documents",
+      tone: (stats?.totalDocuments ?? 0) === 0 ? ("warning" as const) : ("neutral" as const),
+    },
+    {
+      title: "Review board and owner coverage",
+      summary: "Check whether board and resident records are complete before moving deeper into workflows.",
+      href: "/app/association-context",
+      cta: "Review coverage",
+      tone: "neutral" as const,
+    },
+  ];
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">
-          Dashboard
-        </h1>
-        <p className="text-muted-foreground">
-          Portfolio overview across all managed associations.
-        </p>
-      </div>
+      <WorkspacePageHeader
+        title="Dashboard"
+        summary="Portfolio overview across all managed associations, with direct access into the current in-context workspace."
+        eyebrow="Workspace"
+        breadcrumbs={[{ label: "Dashboard" }]}
+        shortcuts={[
+          { label: "Open Association Context", href: "/app/association-context" },
+          { label: "Review Documents", href: "/app/documents" },
+        ]}
+      />
+
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={associations?.find((association) => association.id === activeAssociationId)?.name ?? ""}
+        explanation={
+          activeAssociationId
+            ? "The selected association controls in-context pages, filtered records, and create actions across the admin workspace."
+            : "Select an association to move from portfolio oversight into a scoped operating workspace."
+        }
+      />
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => (
@@ -128,22 +172,26 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Associations</CardTitle>
-          <Button asChild size="sm" variant="outline">
-            <Link href="/app/associations">Manage Associations</Link>
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {associationsLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-full" />
-              <Skeleton className="h-5 w-4/5" />
-            </div>
-          ) : associations.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No associations yet.</p>
-          ) : (
+      <RecommendedActionsPanel
+        title="Portfolio Next Actions"
+        description="Use the portfolio metrics above to decide where to move next."
+        actions={portfolioActions}
+      />
+
+      <AsyncStateBoundary
+        isLoading={associationsLoading}
+        isEmpty={!associationsLoading && associations.length === 0}
+        emptyTitle="No associations yet"
+        emptyMessage="Create an association before using the portfolio workspace."
+      >
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Associations</CardTitle>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/app/associations">Manage Associations</Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-2">
               {associations.slice(0, 5).map((association) => (
                 <div key={association.id} className="flex items-center justify-between rounded-md border p-2">
@@ -164,9 +212,9 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </AsyncStateBoundary>
 
       {activeAssociationId ? (
         <Card>

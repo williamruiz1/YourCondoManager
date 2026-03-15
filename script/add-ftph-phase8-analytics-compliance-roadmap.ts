@@ -147,41 +147,50 @@ const workstreams: WorkstreamDef[] = [
     ],
   },
   {
-    title: "State-Specific Regulatory Compliance Templates",
-    description: "Expand compliance checklists into versioned state-aware operational templates.",
+    title: "Managed Regulatory Record System",
+    description: "Convert static state templates into a managed regulatory-record service with authoritative sourcing, freshness controls, and reviewed updates.",
     orderIndex: 4,
     tasks: [
       {
         key: "state-library",
-        title: "Create state template library for compliance obligations",
+        title: "Create regulatory source registry for compliance obligations",
         description:
-          "Build reusable checklist templates keyed by jurisdiction so associations can start from state-aware defaults.",
+          "Store jurisdiction records with authoritative source URLs, source authorities, effective dates, last verified dates, and last updated dates.",
         effort: "medium",
         priority: "medium",
       },
       {
         key: "template-assignment",
-        title: "Add association-level template assignment and composition",
+        title: "Add jurisdiction record sync and reviewed publication workflow",
         description:
-          "Assign one or more state templates to an association and compose them with its local operating context.",
+          "Fetch or stage updated regulatory records from internet sources, review the changes, and publish approved records into the platform baseline.",
         effort: "medium",
         priority: "medium",
         dependencyKeys: ["state-library"],
       },
       {
         key: "template-versioning",
-        title: "Add template versioning and historical preservation",
+        title: "Add regulatory record versioning and effective dating",
         description:
-          "Ensure evolving legal template content does not overwrite already-issued compliance records.",
+          "Ensure evolving legal content does not overwrite already-issued compliance records and remains reproducible by effective period.",
         effort: "medium",
         priority: "medium",
         dependencyKeys: ["template-assignment"],
       },
       {
         key: "custom-overlays",
-        title: "Support association-specific custom requirement overlays",
+        title: "Support association-specific applicability overlays",
         description:
-          "Allow local requirements to extend state templates without forking the core template model.",
+          "Allow local requirements to extend the managed regulatory base without forking source-backed jurisdiction records.",
+        effort: "medium",
+        priority: "low",
+        dependencyKeys: ["template-versioning"],
+      },
+      {
+        key: "staleness-monitoring",
+        title: "Add staleness monitoring and refresh cadence controls",
+        description:
+          "Flag records that have not been verified within policy windows and run periodic refresh review sweeps.",
         effort: "medium",
         priority: "low",
         dependencyKeys: ["template-versioning"],
