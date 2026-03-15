@@ -466,19 +466,62 @@ async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction
         return next();
       }
     }
-    return res.status(403).json({ message: "Admin access required" });
+    console.error("[auth][forbidden]", {
+      code: "ADMIN_SESSION_REQUIRED",
+      path: req.path,
+      method: req.method,
+      nodeEnv: process.env.NODE_ENV || null,
+      hasSessionAuth: Boolean(req.isAuthenticated?.()),
+      hasSessionUser: Boolean((req as Request & { user?: unknown }).user),
+      hasAdminUserEmailHeader: Boolean(adminUserEmail),
+    });
+    return res.status(403).json({
+      message: "Admin access required",
+      code: "ADMIN_SESSION_REQUIRED",
+      detail: "A valid authenticated admin session was not resolved for this request.",
+    });
   }
 
   const providedKey = req.header("x-admin-api-key");
   if (!providedKey || providedKey !== ADMIN_API_KEY) {
-    return res.status(403).json({ message: "Admin access required" });
+    console.error("[auth][forbidden]", {
+      code: "ADMIN_API_KEY_INVALID",
+      path: req.path,
+      method: req.method,
+      hasProvidedKey: Boolean(providedKey),
+      hasAdminUserEmailHeader: Boolean(adminUserEmail),
+    });
+    return res.status(403).json({
+      message: "Admin access required",
+      code: "ADMIN_API_KEY_INVALID",
+      detail: "Admin API key was missing or invalid.",
+    });
   }
   if (!adminUserEmail) {
-    return res.status(403).json({ message: "Admin access required" });
+    console.error("[auth][forbidden]", {
+      code: "ADMIN_EMAIL_HEADER_REQUIRED",
+      path: req.path,
+      method: req.method,
+    });
+    return res.status(403).json({
+      message: "Admin access required",
+      code: "ADMIN_EMAIL_HEADER_REQUIRED",
+      detail: "x-admin-user-email header is required when using ADMIN_API_KEY.",
+    });
   }
   const adminUser = await storage.getAdminUserByEmail(adminUserEmail);
   if (!adminUser || adminUser.isActive !== 1) {
-    return res.status(403).json({ message: "Inactive or unknown admin user" });
+    console.error("[auth][forbidden]", {
+      code: "ADMIN_USER_NOT_FOUND_OR_INACTIVE",
+      path: req.path,
+      method: req.method,
+      adminUserEmail,
+    });
+    return res.status(403).json({
+      message: "Inactive or unknown admin user",
+      code: "ADMIN_USER_NOT_FOUND_OR_INACTIVE",
+      detail: "No active admin user matched x-admin-user-email.",
+    });
   }
   await applyAdminContext(req, adminUser);
   req.adminUserEmail = adminUserEmail;
@@ -515,7 +558,22 @@ async function assertResourceScope(req: AdminRequest, resourceType: string, id: 
 function requireAdminRole(roles: AdminRole[]) {
   return (req: AdminRequest, res: Response, next: NextFunction) => {
     if (!req.adminRole || !roles.includes(req.adminRole)) {
-      return res.status(403).json({ message: "Insufficient admin role" });
+      console.error("[auth][forbidden]", {
+        code: "ADMIN_ROLE_FORBIDDEN",
+        path: req.path,
+        method: req.method,
+        currentRole: req.adminRole || null,
+        requiredRoles: roles,
+        adminUserId: req.adminUserId || null,
+        adminUserEmail: req.adminUserEmail || null,
+      });
+      return res.status(403).json({
+        message: "Insufficient admin role",
+        code: "ADMIN_ROLE_FORBIDDEN",
+        detail: "Authenticated admin role does not satisfy this endpoint.",
+        currentRole: req.adminRole || null,
+        requiredRoles: roles,
+      });
     }
     return next();
   };

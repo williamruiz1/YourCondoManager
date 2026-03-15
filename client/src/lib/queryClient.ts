@@ -57,7 +57,27 @@ function buildHeaders(url: string, hasBody: boolean) {
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let parsed: { code?: string; detail?: string; message?: string } | null = null;
+    try {
+      parsed = text ? JSON.parse(text) as { code?: string; detail?: string; message?: string } : null;
+    } catch {
+      parsed = null;
+    }
+
+    if (
+      typeof window !== "undefined"
+      && res.status === 403
+      && parsed?.code === "ADMIN_SESSION_REQUIRED"
+      && !window.location.pathname.startsWith("/api/")
+    ) {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      window.location.assign(`/api/auth/google?forceSelect=1&returnTo=${encodeURIComponent(returnTo)}`);
+    }
+
+    const message = parsed?.message || text;
+    const detail = parsed?.detail ? ` (${parsed.detail})` : "";
+    const code = parsed?.code ? ` [${parsed.code}]` : "";
+    throw new Error(`${res.status}: ${message}${code}${detail}`);
   }
 }
 
