@@ -483,9 +483,13 @@ function requirePortalBoard(req: PortalRequest, res: Response, next: NextFunctio
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   registerAuthRoutes(app);
 
-  app.get("/api/dashboard/stats", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
+  app.get("/api/dashboard/stats", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
-      const stats = await storage.getDashboardStats();
+      const scopedAssociationIds = req.adminRole === "platform-admin" ? undefined : (req.adminScopedAssociationIds ?? []);
+      const stats = await storage.getDashboardStats({
+        associationIds: scopedAssociationIds,
+        includeArchived: false,
+      });
       res.json(stats);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

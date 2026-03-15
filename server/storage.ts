@@ -3330,7 +3330,10 @@ export interface IStorage {
   upsertAuthExternalAccount(data: InsertAuthExternalAccount): Promise<AuthExternalAccount>;
   touchAuthUserLogin(userId: string): Promise<void>;
 
-  getDashboardStats(): Promise<{
+  getDashboardStats(options?: {
+    associationIds?: string[];
+    includeArchived?: boolean;
+  }): Promise<{
     totalAssociations: number;
     totalUnits: number;
     totalOwners: number;
@@ -12261,27 +12264,60 @@ export class DatabaseStorage implements IStorage {
       .where(eq(authUsers.id, userId));
   }
 
-  async getDashboardStats() {
-    const [allAssociations, allUnits, allOwnerships, allOccupancies, allBoardRoles, allDocuments] = await Promise.all([
-      db.select().from(associations),
-      db.select().from(units),
-      db.select().from(ownerships),
-      db.select().from(occupancies),
-      db.select().from(boardRoles),
-      db.select().from(documents),
+  async getDashboardStats(options?: {
+    associationIds?: string[];
+    includeArchived?: boolean;
+  }) {
+    const includeArchived = options?.includeArchived ?? false;
+    const scopedAssociationIds = Array.from(new Set((options?.associationIds ?? []).filter(Boolean)));
+
+    const associationWhere = scopedAssociationIds.length > 0
+      ? (includeArchived
+          ? inArray(associations.id, scopedAssociationIds)
+          : and(eq(associations.isArchived, 0), inArray(associations.id, scopedAssociationIds)))
+      : (includeArchived ? undefined : eq(associations.isArchived, 0));
+
+    const allAssociations = associationWhere
+      ? await db.select().from(associations).where(associationWhere)
+      : await db.select().from(associations);
+
+    const associationIds = allAssociations.map((association) => association.id);
+    if (associationIds.length === 0) {
+      return {
+        totalAssociations: 0,
+        totalUnits: 0,
+        totalOwners: 0,
+        totalTenants: 0,
+        totalBoardMembers: 0,
+        totalDocuments: 0,
+      };
+    }
+
+    const [scopedUnits, scopedBoardRoles, scopedDocuments] = await Promise.all([
+      db.select().from(units).where(inArray(units.associationId, associationIds)),
+      db.select().from(boardRoles).where(inArray(boardRoles.associationId, associationIds)),
+      db.select().from(documents).where(inArray(documents.associationId, associationIds)),
     ]);
 
-    const activeOwnerships = allOwnerships.filter((o) => !o.endDate);
-    const activeTenants = allOccupancies.filter((o) => o.occupancyType === "TENANT" && !o.endDate);
-    const activeBoardMembers = allBoardRoles.filter((b) => !b.endDate);
+    const unitIds = scopedUnits.map((unit) => unit.id);
+    const [allOwnerships, allOccupancies] = unitIds.length > 0
+      ? await Promise.all([
+        db.select().from(ownerships).where(inArray(ownerships.unitId, unitIds)),
+        db.select().from(occupancies).where(inArray(occupancies.unitId, unitIds)),
+      ])
+      : [[], []];
+
+    const activeOwnerships = allOwnerships.filter((ownership) => !ownership.endDate);
+    const activeTenants = allOccupancies.filter((occupancy) => occupancy.occupancyType === "TENANT" && !occupancy.endDate);
+    const activeBoardMembers = scopedBoardRoles.filter((role) => !role.endDate);
 
     return {
       totalAssociations: allAssociations.length,
-      totalUnits: allUnits.length,
+      totalUnits: scopedUnits.length,
       totalOwners: activeOwnerships.length,
       totalTenants: activeTenants.length,
       totalBoardMembers: activeBoardMembers.length,
-      totalDocuments: allDocuments.length,
+      totalDocuments: scopedDocuments.length,
     };
   }
 
