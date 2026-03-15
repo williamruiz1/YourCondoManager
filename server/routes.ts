@@ -318,11 +318,32 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
 async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
   const authUser = req.user as { id?: string; adminUserId?: string | null; email?: string | null } | undefined;
   if (req.isAuthenticated?.() && authUser) {
-    const adminUser = authUser.adminUserId
+    const adminById = authUser.adminUserId
       ? await storage.getAdminUserById(authUser.adminUserId)
-      : (authUser.email ? await storage.getAdminUserByEmail(authUser.email) : undefined);
-    if (adminUser && adminUser.isActive === 1) {
-      await applyAdminContext(req, adminUser);
+      : undefined;
+    const adminByEmail = authUser.email
+      ? await storage.getAdminUserByEmail(authUser.email.trim().toLowerCase())
+      : undefined;
+
+    let resolvedAdmin = adminById && adminById.isActive === 1 ? adminById : undefined;
+    if (!resolvedAdmin && adminByEmail && adminByEmail.isActive === 1) {
+      resolvedAdmin = adminByEmail;
+    }
+    if (adminById && adminByEmail && adminById.id !== adminByEmail.id && authUser.id) {
+      resolvedAdmin = adminByEmail.isActive === 1 ? adminByEmail : resolvedAdmin;
+      if (resolvedAdmin?.id === adminByEmail.id) {
+        await storage.updateAuthUser(authUser.id, { adminUserId: adminByEmail.id });
+        console.warn("[auth-admin-link][relinked]", {
+          authUserId: authUser.id,
+          authEmail: authUser.email || null,
+          fromAdminUserId: adminById.id,
+          toAdminUserId: adminByEmail.id,
+        });
+      }
+    }
+
+    if (resolvedAdmin && resolvedAdmin.isActive === 1) {
+      await applyAdminContext(req, resolvedAdmin);
       return true;
     }
   }
