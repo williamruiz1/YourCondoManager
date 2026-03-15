@@ -275,7 +275,37 @@ function normalizeAiIngestionRolloutMode(value: unknown): AiIngestionRolloutMode
 
 async function applyAdminContext(req: AdminRequest, adminUser: { id: string; email: string; role: string }) {
   if (adminUser.role !== "platform-admin") {
-    const scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
+    let scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
+    if (scopes.length === 0) {
+      const portalRows = await storage.getPortalAccessesByEmail(adminUser.email);
+      const activeAssociationIds = Array.from(new Set(
+        portalRows
+          .filter((row) => row.status === "active")
+          .map((row) => row.associationId),
+      ));
+      if (activeAssociationIds.length > 0) {
+        for (const associationId of activeAssociationIds) {
+          await storage.upsertAdminAssociationScope({
+            adminUserId: adminUser.id,
+            associationId,
+            scope: "read-write",
+          });
+        }
+        scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
+        console.warn("[admin-scope][auto-hydrate]", {
+          adminUserId: adminUser.id,
+          email: adminUser.email,
+          hydratedAssociationIds: activeAssociationIds,
+          resultingScopeCount: scopes.length,
+        });
+      } else {
+        console.error("[admin-scope][missing]", {
+          adminUserId: adminUser.id,
+          email: adminUser.email,
+          reason: "No admin scopes and no active portal_access rows by email.",
+        });
+      }
+    }
     req.adminScopedAssociationIds = scopes.map((scope) => scope.associationId);
   } else {
     req.adminScopedAssociationIds = [];
@@ -469,6 +499,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const scopedResult = adminReq.adminRole === "platform-admin"
         ? result
         : result.filter((association) => (adminReq.adminScopedAssociationIds ?? []).includes(association.id));
+      if (adminReq.adminRole !== "platform-admin" && scopedResult.length === 0 && result.length > 0) {
+        console.error("[associations][empty-scope-result]", {
+          adminUserId: adminReq.adminUserId || null,
+          adminUserEmail: adminReq.adminUserEmail || null,
+          adminRole: adminReq.adminRole || null,
+          scopedAssociationIds: adminReq.adminScopedAssociationIds ?? [],
+          totalAssociations: result.length,
+          isPublishedState,
+        });
+      }
       res.json(scopedResult);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

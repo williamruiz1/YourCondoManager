@@ -3221,6 +3221,7 @@ export interface IStorage {
   getAdminAssociationScopesByUserId(adminUserId: string): Promise<AdminAssociationScope[]>;
   upsertAdminAssociationScope(data: InsertAdminAssociationScope): Promise<AdminAssociationScope>;
   getPortalAccesses(associationId?: string): Promise<PortalAccess[]>;
+  getPortalAccessesByEmail(email: string): Promise<PortalAccess[]>;
   createPortalAccess(data: InsertPortalAccess, actorEmail?: string | null): Promise<PortalAccess>;
   updatePortalAccess(id: string, data: Partial<InsertPortalAccess>, actorEmail?: string | null): Promise<PortalAccess | undefined>;
   getPortalAccessById(id: string): Promise<PortalAccess | undefined>;
@@ -10516,6 +10517,16 @@ export class DatabaseStorage implements IStorage {
   async getPortalAccesses(associationId?: string): Promise<PortalAccess[]> {
     if (!associationId) return db.select().from(portalAccess).orderBy(desc(portalAccess.createdAt));
     return db.select().from(portalAccess).where(eq(portalAccess.associationId, associationId)).orderBy(desc(portalAccess.createdAt));
+  }
+
+  async getPortalAccessesByEmail(email: string): Promise<PortalAccess[]> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return [];
+    return db
+      .select()
+      .from(portalAccess)
+      .where(eq(portalAccess.email, normalizedEmail))
+      .orderBy(desc(portalAccess.createdAt));
   }
 
   async createPortalAccess(data: InsertPortalAccess, actorEmail?: string | null): Promise<PortalAccess> {
