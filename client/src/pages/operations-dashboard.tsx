@@ -32,16 +32,6 @@ export default function OperationsDashboardPage() {
   async function downloadReport(reportType: "vendors" | "work-orders" | "maintenance") {
     const res = await fetch(`/api/operations/reports/${reportType}`, {
       credentials: "include",
-      headers: (() => {
-        const apiKey = (window.localStorage.getItem("adminApiKey") || "").trim();
-        const adminUserEmail = (window.localStorage.getItem("adminUserEmail") || "").trim().toLowerCase();
-        const headers: Record<string, string> = {};
-        if (apiKey && adminUserEmail) {
-          headers["x-admin-api-key"] = apiKey;
-          headers["x-admin-user-email"] = adminUserEmail;
-        }
-        return headers;
-      })(),
     });
     if (!res.ok) {
       throw new Error((await res.text()) || res.statusText);

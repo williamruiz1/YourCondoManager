@@ -1,15 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-function getAdminApiKey() {
-  if (typeof window === "undefined") return "";
-  return (window.localStorage.getItem("adminApiKey") || "").trim();
-}
-
-function getAdminUserEmail() {
-  if (typeof window === "undefined") return "";
-  return (window.localStorage.getItem("adminUserEmail") || "").trim().toLowerCase();
-}
-
 function getActiveAssociationId() {
   if (typeof window === "undefined") return "";
   return window.localStorage.getItem("activeAssociationId") || "";
@@ -38,19 +28,9 @@ function maybeApplyAssociationScope(rawUrl: string, method: string): string {
   return `${rawUrl}${separator}associationId=${encodeURIComponent(associationId)}`;
 }
 
-function buildHeaders(url: string, hasBody: boolean) {
+function buildHeaders(hasBody: boolean) {
   const headers: Record<string, string> = {};
   if (hasBody) headers["Content-Type"] = "application/json";
-  if (url.startsWith("/api") && !url.startsWith("/api/uploads")) {
-    const adminApiKey = getAdminApiKey();
-    const adminUserEmail = getAdminUserEmail();
-    if (adminUserEmail) {
-      headers["x-admin-user-email"] = adminUserEmail;
-    }
-    if (adminApiKey && adminUserEmail) {
-      headers["x-admin-api-key"] = adminApiKey;
-    }
-  }
   return headers;
 }
 
@@ -89,7 +69,7 @@ export async function apiRequest(
   const scopedUrl = maybeApplyAssociationScope(url, method);
   const res = await fetch(scopedUrl, {
     method,
-    headers: buildHeaders(scopedUrl, Boolean(data)),
+    headers: buildHeaders(Boolean(data)),
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -107,7 +87,7 @@ export const getQueryFn: <T>(options: {
     const rawUrl = queryKey.join("/") as string;
     const url = maybeApplyAssociationScope(rawUrl, "GET");
     const res = await fetch(url, {
-      headers: buildHeaders(url, false),
+      headers: buildHeaders(false),
       credentials: "include",
     });
 

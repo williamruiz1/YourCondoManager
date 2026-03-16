@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type LandingPageProps = {
   hasWorkspaceAccess: boolean;
-  onOpenAdminAuth: () => void;
+  onStartGoogleSignIn: () => void;
 };
 
 const pillars = [
@@ -39,13 +39,13 @@ const highlights = [
     icon: BadgeCheck,
   },
   {
-    title: "Secure access",
-    summary: "Admin auth controls workspace entry, with role-based access scoped to associations and functions.",
+    title: "Modern access",
+    summary: "Google sign-in handles day-to-day entry, with role-based access scoped to associations and functions.",
     icon: LockKeyhole,
   },
 ];
 
-export default function LandingPage({ hasWorkspaceAccess, onOpenAdminAuth }: LandingPageProps) {
+export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }: LandingPageProps) {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(20,83,45,0.12),_transparent_28%),linear-gradient(180deg,_hsl(var(--background)),_hsl(var(--muted)))]">
       <section className="mx-auto flex w-full max-w-7xl flex-col gap-12 px-6 py-8 md:px-10 lg:px-12">
@@ -61,24 +61,19 @@ export default function LandingPage({ hasWorkspaceAccess, onOpenAdminAuth }: Lan
           </div>
           <div className="flex items-center gap-2">
             {hasWorkspaceAccess ? (
-              <>
-                <Button variant="outline" onClick={onOpenAdminAuth} data-testid="button-landing-admin-auth">
-                  Admin Auth
-                </Button>
-                <Button asChild data-testid="button-landing-open-workspace">
-                  <Link href="/app">
-                    Open Workspace
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </>
+              <Button asChild data-testid="button-landing-open-workspace">
+                <Link href="/app">
+                  Open Workspace
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
             ) : (
               <Button
                 variant="default"
-                onClick={onOpenAdminAuth}
-                data-testid="button-landing-admin-auth"
+                onClick={onStartGoogleSignIn}
+                data-testid="button-landing-google-signin"
               >
-                Sign In
+                Sign in with Google
               </Button>
             )}
           </div>

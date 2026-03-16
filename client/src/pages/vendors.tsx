@@ -68,16 +68,6 @@ function toPayload(values: VendorFormValues) {
   };
 }
 
-function getAdminHeaders() {
-  const apiKey = (window.localStorage.getItem("adminApiKey") || "").trim();
-  const adminUserEmail = (window.localStorage.getItem("adminUserEmail") || "").trim().toLowerCase();
-  const headers: Record<string, string> = {};
-  if (apiKey && adminUserEmail) {
-    headers["x-admin-api-key"] = apiKey;
-    headers["x-admin-user-email"] = adminUserEmail;
-  }
-  return headers;
-}
 
 export default function VendorsPage() {
   const { toast } = useToast();
@@ -179,7 +169,6 @@ export default function VendorsPage() {
       const res = await fetch(`/api/vendors/${selectedVendorId}/documents`, {
         method: "POST",
         body: formData,
-        headers: getAdminHeaders(),
         credentials: "include",
       });
       if (!res.ok) {

@@ -216,7 +216,7 @@ export default function BoardPackagesPage() {
         sectionKey: annotationSectionKey === "general" ? null : annotationSectionKey,
         text: annotationDraft.trim(),
         createdAt: new Date().toISOString(),
-        createdBy: window.localStorage.getItem("adminUserEmail") || "admin",
+        createdBy: "admin",
       },
     ];
     updatePackage.mutate({
@@ -234,7 +234,7 @@ export default function BoardPackagesPage() {
         ? {
             ...annotation,
             resolvedAt: new Date().toISOString(),
-            resolvedBy: window.localStorage.getItem("adminUserEmail") || "admin",
+            resolvedBy: "admin",
           }
         : annotation,
     );

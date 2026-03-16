@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type WorkspacePreviewPageProps = {
-  onOpenAdminAuth: () => void;
+  onStartGoogleSignIn: () => void;
 };
 
 const modulePreview = [
@@ -22,7 +22,7 @@ const workspaceSignals = [
 ];
 
 export default function WorkspacePreviewPage({
-  onOpenAdminAuth,
+  onStartGoogleSignIn,
 }: WorkspacePreviewPageProps) {
   return (
     <main className="min-h-screen bg-[linear-gradient(135deg,_rgba(20,83,45,0.08),_transparent_26%),linear-gradient(180deg,_hsl(var(--muted)),_hsl(var(--background)))]">
@@ -43,13 +43,13 @@ export default function WorkspacePreviewPage({
               <Badge className="w-fit rounded-full">Pre-logged-in</Badge>
               <CardTitle className="text-3xl leading-tight">See how the platform modernizes day-to-day property operations.</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Review the workspace structure, then configure admin auth to enter the live environment.
+                Review the workspace structure, then sign in with Google to enter the live environment.
               </p>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
-              <Button onClick={onOpenAdminAuth} data-testid="button-workspace-preview-admin-auth">
+              <Button onClick={onStartGoogleSignIn} data-testid="button-workspace-preview-google-signin">
                 <LockKeyhole className="mr-2 h-4 w-4" />
-                Configure Admin Auth
+                Sign in with Google
               </Button>
               <Button variant="ghost" asChild data-testid="button-workspace-preview-return-home">
                 <Link href="/">

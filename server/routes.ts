@@ -5,7 +5,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { db } from "./db";
-import { registerAuthRoutes } from "./auth";
+import { getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
 import { eq } from "drizzle-orm";
 import {
@@ -119,7 +119,6 @@ const DIRECT_INGEST_PARSEABLE_EXTENSIONS = new Set([
   ".xlsx",
 ]);
 
-const ADMIN_API_KEY = (process.env.ADMIN_API_KEY || "").trim();
 const isPublishedState = process.env.NODE_ENV === "production";
 
 function getParam(value: string | string[] | undefined): string {
@@ -339,6 +338,109 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
 }
 
 
+async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
+  async function resolveOrBootstrapAdminFromEmail(
+    email: string,
+    authUserId?: string,
+  ): Promise<Awaited<ReturnType<typeof storage.getAdminUserByEmail>>> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return undefined;
+    const existing = await storage.getAdminUserByEmail(normalizedEmail);
+    if (existing && existing.isActive === 1) return existing;
+
+    const portalRows = await storage.getPortalAccessesByEmail(normalizedEmail);
+    const activeAssociationIds = Array.from(new Set(
+      portalRows
+        .filter((row) => row.status === "active")
+        .map((row) => row.associationId),
+    ));
+    if (activeAssociationIds.length === 0) return undefined;
+
+    const createdOrUpdated = await storage.upsertAdminUser({
+      email: normalizedEmail,
+      role: "board-admin",
+      isActive: 1,
+    });
+    for (const associationId of activeAssociationIds) {
+      await storage.upsertAdminAssociationScope({
+        adminUserId: createdOrUpdated.id,
+        associationId,
+        scope: "read-write",
+      });
+    }
+    if (authUserId) {
+      await storage.updateAuthUser(authUserId, { adminUserId: createdOrUpdated.id });
+    }
+    console.warn("[auth-admin-link][portal-bootstrap]", {
+      authUserId: authUserId || null,
+      email: normalizedEmail,
+      adminUserId: createdOrUpdated.id,
+      hydratedAssociationIds: activeAssociationIds,
+    });
+    return createdOrUpdated;
+  }
+
+  const authUser = req.user as { id?: string; adminUserId?: string | null; email?: string | null } | undefined;
+  if (req.isAuthenticated?.() && authUser) {
+    const adminById = authUser.adminUserId
+      ? await storage.getAdminUserById(authUser.adminUserId)
+      : undefined;
+    const adminByEmail = authUser.email
+      ? await storage.getAdminUserByEmail(authUser.email.trim().toLowerCase())
+      : undefined;
+
+    let resolvedAdmin = adminById && adminById.isActive === 1 ? adminById : undefined;
+    if (!resolvedAdmin && adminByEmail && adminByEmail.isActive === 1) {
+      resolvedAdmin = adminByEmail;
+    }
+    if (adminById && adminByEmail && adminById.id !== adminByEmail.id && authUser.id) {
+      resolvedAdmin = adminByEmail.isActive === 1 ? adminByEmail : resolvedAdmin;
+      if (resolvedAdmin?.id === adminByEmail.id) {
+        await storage.updateAuthUser(authUser.id, { adminUserId: adminByEmail.id });
+        console.warn("[auth-admin-link][relinked]", {
+          authUserId: authUser.id,
+          authEmail: authUser.email || null,
+          fromAdminUserId: adminById.id,
+          toAdminUserId: adminByEmail.id,
+        });
+      }
+    }
+    if (!resolvedAdmin && authUser.email) {
+      resolvedAdmin = await resolveOrBootstrapAdminFromEmail(authUser.email, authUser.id);
+    }
+
+    if (resolvedAdmin && resolvedAdmin.isActive === 1) {
+      await applyAdminContext(req, resolvedAdmin);
+      return true;
+    }
+  }
+
+  const serializedAuthUserId = (req.session as { passport?: { user?: string } } | undefined)?.passport?.user;
+  if (!serializedAuthUserId) return false;
+  const sessionAuthUser = await storage.getAuthUserById(String(serializedAuthUserId));
+  if (!sessionAuthUser || sessionAuthUser.isActive !== 1) return false;
+
+  if (!req.user && req.login) {
+    await new Promise<void>((resolve, reject) => {
+      req.login!(sessionAuthUser as Express.User, (error) => {
+        if (error) return reject(error);
+        return resolve();
+      });
+    });
+  }
+
+  const adminUser = sessionAuthUser.adminUserId
+    ? await storage.getAdminUserById(sessionAuthUser.adminUserId)
+    : await storage.getAdminUserByEmail(sessionAuthUser.email);
+  const fallbackAdmin = (!adminUser || adminUser.isActive !== 1)
+    ? await resolveOrBootstrapAdminFromEmail(sessionAuthUser.email, sessionAuthUser.id)
+    : adminUser;
+  if (!fallbackAdmin || fallbackAdmin.isActive !== 1) return false;
+
+  await applyAdminContext(req, fallbackAdmin);
+  return true;
+}
+
 function normalizeAiIngestionCanaryPercent(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return 100;
@@ -372,75 +474,22 @@ function evaluateAiIngestionRollout(input: {
 }
 
 async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction) {
-  const adminUserEmail = (req.header("x-admin-user-email") || "").trim().toLowerCase();
-
-  if (!ADMIN_API_KEY) {
-    if (process.env.NODE_ENV !== "production" && adminUserEmail) {
-      const adminUser = await storage.getAdminUserByEmail(adminUserEmail);
-      if (adminUser && adminUser.isActive === 1) {
-        await applyAdminContext(req, adminUser);
-        req.adminUserEmail = adminUserEmail;
-        return next();
-      }
-    }
-    console.error("[auth][forbidden]", {
-      code: "ADMIN_SESSION_REQUIRED",
-      path: req.path,
-      method: req.method,
-      nodeEnv: process.env.NODE_ENV || null,
-      hasAdminUserEmailHeader: Boolean(adminUserEmail),
-    });
-    return res.status(403).json({
-      message: "Admin access required",
-      code: "ADMIN_SESSION_REQUIRED",
-      detail: "A valid authenticated admin session was not resolved for this request.",
-    });
+  if (await tryHydrateAdminFromSession(req)) {
+    return next();
   }
 
-  const providedKey = req.header("x-admin-api-key");
-  if (!providedKey || providedKey !== ADMIN_API_KEY) {
-    console.error("[auth][forbidden]", {
-      code: "ADMIN_API_KEY_INVALID",
-      path: req.path,
-      method: req.method,
-      hasProvidedKey: Boolean(providedKey),
-      hasAdminUserEmailHeader: Boolean(adminUserEmail),
-    });
-    return res.status(403).json({
-      message: "Admin access required",
-      code: "ADMIN_API_KEY_INVALID",
-      detail: "Admin API key was missing or invalid.",
-    });
-  }
-  if (!adminUserEmail) {
-    console.error("[auth][forbidden]", {
-      code: "ADMIN_EMAIL_HEADER_REQUIRED",
-      path: req.path,
-      method: req.method,
-    });
-    return res.status(403).json({
-      message: "Admin access required",
-      code: "ADMIN_EMAIL_HEADER_REQUIRED",
-      detail: "x-admin-user-email header is required when using ADMIN_API_KEY.",
-    });
-  }
-  const adminUser = await storage.getAdminUserByEmail(adminUserEmail);
-  if (!adminUser || adminUser.isActive !== 1) {
-    console.error("[auth][forbidden]", {
-      code: "ADMIN_USER_NOT_FOUND_OR_INACTIVE",
-      path: req.path,
-      method: req.method,
-      adminUserEmail,
-    });
-    return res.status(403).json({
-      message: "Inactive or unknown admin user",
-      code: "ADMIN_USER_NOT_FOUND_OR_INACTIVE",
-      detail: "No active admin user matched x-admin-user-email.",
-    });
-  }
-  await applyAdminContext(req, adminUser);
-  req.adminUserEmail = adminUserEmail;
-  return next();
+  console.error("[auth][forbidden]", {
+    code: "ADMIN_SESSION_REQUIRED",
+    path: req.path,
+    method: req.method,
+    hasSessionAuth: Boolean(req.isAuthenticated?.()),
+    hasSessionUser: Boolean((req as Request & { user?: unknown }).user),
+  });
+  return res.status(403).json({
+    message: "Admin access required",
+    code: "ADMIN_SESSION_REQUIRED",
+    detail: "A valid authenticated admin session was not resolved for this request.",
+  });
 }
 
 function assertAssociationScope(req: AdminRequest, associationId: string) {
@@ -659,8 +708,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
         requestAuthSignals: {
           hasSessionUser: Boolean((req as Request & { user?: unknown }).user),
-          headerAdminUserEmail: (req.header("x-admin-user-email") || "").trim().toLowerCase() || null,
-          hasAdminApiKeyHeader: Boolean((req.header("x-admin-api-key") || "").trim()),
         },
       });
     } catch (error: any) {
@@ -1254,14 +1301,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(404).json({ message: "File not found" });
       }
 
-      const providedAdminKey = req.header("x-admin-api-key");
-      if (providedAdminKey && ADMIN_API_KEY && providedAdminKey === ADMIN_API_KEY) {
-        const adminUserEmail = (req.header("x-admin-user-email") || "").trim().toLowerCase();
-        if (adminUserEmail) {
-          const adminUser = await storage.getAdminUserByEmail(adminUserEmail);
-          if (adminUser && adminUser.isActive === 1) {
-            return res.sendFile(filePath);
-          }
+      if (req.isAuthenticated?.() && req.user) {
+        const authUser = req.user as { adminUserId?: string | null; email?: string | null };
+        const adminUser = authUser.adminUserId
+          ? await storage.getAdminUserById(authUser.adminUserId)
+          : (authUser.email ? await storage.getAdminUserByEmail(authUser.email.trim().toLowerCase()) : undefined);
+        if (adminUser && adminUser.isActive === 1) {
+          return res.sendFile(filePath);
         }
       }
 
@@ -3777,6 +3823,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/platform/email/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
     try {
       res.json(getEmailProviderStatus());
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/platform/auth/google-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      res.json(getGoogleOAuthStatus(req));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

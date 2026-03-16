@@ -480,15 +480,6 @@ function getDestinationPlan(payloadJson: unknown): {
   };
 }
 
-function adminHeaders() {
-  const adminApiKey = (localStorage.getItem("adminApiKey") || "").trim();
-  const adminUserEmail = (localStorage.getItem("adminUserEmail") || "").trim().toLowerCase();
-  const headers: Record<string, string> = {};
-  if (!adminApiKey || !adminUserEmail) return headers;
-  headers["x-admin-api-key"] = adminApiKey;
-  headers["x-admin-user-email"] = adminUserEmail;
-  return headers;
-}
 
 export default function AiIngestionPage() {
   const { toast } = useToast();
@@ -774,7 +765,6 @@ export default function AiIngestionPage() {
       if (file) fd.append("file", file);
       const res = await fetch("/api/ai/ingestion/jobs", {
         method: "POST",
-        headers: adminHeaders(),
         body: fd,
         credentials: "include",
       });
