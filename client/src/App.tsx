@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { AssociationProvider, useAssociationContext } from "@/context/association-context";
 import { GlobalCommandPalette } from "@/components/global-command-palette";
+import { canAccessWipRoute } from "@/lib/wip-features";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const WorkspacePreviewPage = lazy(() => import("@/pages/workspace-preview"));
@@ -24,8 +25,6 @@ const AssociationsPage = lazy(() => import("@/pages/associations"));
 const AssociationContextPage = lazy(() => import("@/pages/association-context"));
 const UnitsPage = lazy(() => import("@/pages/units"));
 const PersonsPage = lazy(() => import("@/pages/persons"));
-const OwnersPage = lazy(() => import("@/pages/owners"));
-const OccupancyPage = lazy(() => import("@/pages/occupancy"));
 const BoardPage = lazy(() => import("@/pages/board"));
 const DocumentsPage = lazy(() => import("@/pages/documents"));
 const RoadmapPage = lazy(() => import("@/pages/roadmap"));
@@ -86,7 +85,7 @@ function RouteRedirect({ to }: { to: string }) {
   return <RouteFallback />;
 }
 
-function WorkspaceRouter() {
+function WorkspaceRouter({ adminRole }: { adminRole: AdminRole | null }) {
   return (
     <Suspense fallback={<RouteFallback />}>
       <Switch>
@@ -96,8 +95,12 @@ function WorkspaceRouter() {
         <Route path="/app/association-context" component={AssociationContextPage} />
         <Route path="/app/units" component={UnitsPage} />
         <Route path="/app/persons" component={PersonsPage} />
-        <Route path="/app/owners" component={OwnersPage} />
-        <Route path="/app/occupancy" component={OccupancyPage} />
+        <Route path="/app/owners">
+          <RouteRedirect to="/app/persons" />
+        </Route>
+        <Route path="/app/occupancy">
+          <RouteRedirect to="/app/units" />
+        </Route>
         <Route path="/app/board" component={BoardPage} />
         <Route path="/app/documents" component={DocumentsPage} />
         <Route path="/app/admin" component={RoadmapPage} />
@@ -120,7 +123,9 @@ function WorkspaceRouter() {
         <Route path="/app/governance/board-packages" component={BoardPackagesPage} />
         <Route path="/app/governance/meetings" component={MeetingsPage} />
         <Route path="/app/governance/compliance" component={GovernanceCompliancePage} />
-        <Route path="/app/ai/ingestion" component={AiIngestionPage} />
+        <Route path="/app/ai/ingestion">
+          {canAccessWipRoute("/app/ai/ingestion", adminRole) ? <AiIngestionPage /> : <NotFound />}
+        </Route>
         <Route path="/app/communications" component={CommunicationsPage} />
         <Route path="/app/platform/controls" component={PlatformControlsPage} />
         <Route component={NotFound} />
@@ -166,10 +171,10 @@ function PublicRouter({
           <RouteRedirect to="/app/persons" />
         </Route>
         <Route path="/owners">
-          <RouteRedirect to="/app/owners" />
+          <RouteRedirect to="/app/persons" />
         </Route>
         <Route path="/occupancy">
-          <RouteRedirect to="/app/occupancy" />
+          <RouteRedirect to="/app/units" />
         </Route>
         <Route path="/board">
           <RouteRedirect to="/app/board" />
@@ -399,7 +404,7 @@ function AdminPageTabs() {
   );
 }
 
-function MainContent() {
+function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
   const [location] = useLocation();
   const showAdminTabs =
     location === "/app/admin" ||
@@ -411,7 +416,7 @@ function MainContent() {
     <>
       {showAdminTabs ? <AdminPageTabs /> : null}
       <main className="flex-1 overflow-auto">
-        <WorkspaceRouter />
+        <WorkspaceRouter adminRole={adminRole} />
       </main>
     </>
   );
@@ -457,7 +462,7 @@ function WorkspaceShell({
                 onLogoutGoogleSession={onLogoutGoogleSession}
               />
             </header>
-            <MainContent />
+            <MainContent adminRole={adminRole} />
           </div>
         </div>
       </SidebarProvider>
@@ -558,11 +563,20 @@ function AuthAwareApp() {
       });
   }, [authSession, refetchAuthSession]);
 
+  function resolveGoogleReturnTo() {
+    if (typeof window === "undefined") return "/app";
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (window.location.pathname === "/" || !window.location.pathname.startsWith("/app")) {
+      return "/app";
+    }
+    return current;
+  }
+
   function startGoogleSignIn(forceSelect = true) {
     if (typeof window === "undefined") return;
-    const returnTo = `${window.location.pathname}${window.location.search}`;
+    const returnTo = resolveGoogleReturnTo();
     const url = `/api/auth/google?popup=1&returnTo=${encodeURIComponent(returnTo)}${forceSelect ? "&forceSelect=1" : ""}`;
-    const popup = window.open(url, "google-oauth-signin", "width=520,height=680,noopener,noreferrer");
+    const popup = window.open(url, "google-oauth-signin", "width=520,height=680");
 
     if (!popup) {
       window.location.assign(`/api/auth/google?returnTo=${encodeURIComponent(returnTo)}${forceSelect ? "&forceSelect=1" : ""}`);
@@ -624,12 +638,9 @@ function AuthAwareApp() {
       window.sessionStorage.removeItem("autoGoogleSignInAttempted");
       return;
     }
-    if (adminAuthConfigured) return;
-    const search = window.location.search || "";
-    if (search.includes("auth=failed")) return;
-    if (window.sessionStorage.getItem("autoGoogleSignInAttempted") === "1") return;
-    window.sessionStorage.setItem("autoGoogleSignInAttempted", "1");
-    startGoogleSignIn(true);
+    if (!adminAuthConfigured) {
+      window.sessionStorage.removeItem("autoGoogleSignInAttempted");
+    }
   }, [isWorkspaceRoute, hasWorkspaceAccess, adminAuthConfigured]);
 
   if (isWorkspaceRoute && (authSessionLoading || !sessionAdminReady)) {

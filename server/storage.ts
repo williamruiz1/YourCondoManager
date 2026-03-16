@@ -2763,7 +2763,15 @@ export interface IStorage {
     createdBy?: string | null;
     expiresAt?: Date | null;
   }): Promise<OnboardingInvite & { inviteUrl: string }>;
-  getOnboardingInviteByToken(token: string): Promise<(OnboardingInvite & { unitLabel?: string; associationName?: string }) | undefined>;
+  getOnboardingInviteByToken(token: string): Promise<(OnboardingInvite & {
+    unitLabel?: string;
+    unitBuilding?: string | null;
+    associationName?: string;
+    associationAddress?: string | null;
+    associationCity?: string | null;
+    associationState?: string | null;
+    associationCountry?: string | null;
+  }) | undefined>;
   sendOnboardingInvite(id: string, sentBy?: string | null): Promise<{ invite: OnboardingInvite; history: CommunicationHistory; delivery: { status: "sent" | "failed"; logId: string; provider: string; messageId: string | null; errorMessage?: string | null } }>;
   runOnboardingInviteReminderSweep(input: { associationId: string; sentBy?: string | null; olderThanHours?: number }): Promise<{ processed: number; sent: number; failed: number }>;
   createOnboardingSubmissionFromInvite(token: string, input: {
@@ -3082,7 +3090,7 @@ export interface IStorage {
   createClauseRecord(data: InsertClauseRecord): Promise<ClauseRecord>;
   reviewClauseRecord(id: string, payload: { reviewStatus: "approved" | "rejected"; title?: string; clauseText?: string; reviewedBy?: string | null }): Promise<ClauseRecord | undefined>;
   getComplianceRuleRecords(filters?: { associationId?: string; clauseRecordId?: string }): Promise<AiExtractedRecord[]>;
-  extractComplianceRulesFromClauses(options?: { associationId?: string; actorEmail?: string | null }): Promise<{ processed: number; created: number; recordIds: string[] }>;
+  extractComplianceRulesFromClauses(options?: { associationId?: string; actorEmail?: string | null }): Promise<{ processed: number; created: number; recordIds: string[]; source: "approved-clauses" | "template-fallback" }>;
   importApprovedAiExtractedRecord(
     id: string,
     actorEmail?: string,
@@ -3380,7 +3388,14 @@ export interface IStorage {
   distributeBoardPackage(
     id: string,
     payload?: { recipientEmails?: string[]; message?: string | null; actorEmail?: string | null },
-  ): Promise<{ boardPackage: BoardPackage; recipients: string[]; historyIds: string[] }>;
+  ): Promise<{
+    boardPackage: BoardPackage;
+    recipients: string[];
+    historyIds: string[];
+    sentCount: number;
+    failedCount: number;
+    failedRecipients: string[];
+  }>;
 
   getRoadmap(): Promise<RoadmapResponse>;
   createRoadmapProject(data: InsertRoadmapProject): Promise<RoadmapProject>;
@@ -4100,6 +4115,61 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(ownerships).where(inArray(ownerships.unitId, unitIds));
   }
 
+  private async syncUnitScopedAssociationMembership(
+    unitId: string,
+    personId: string,
+    membershipType: "owner" | "tenant",
+  ): Promise<void> {
+    const [unit] = await db
+      .select({ associationId: units.associationId })
+      .from(units)
+      .where(eq(units.id, unitId))
+      .limit(1);
+    if (!unit) return;
+
+    const hasActiveRelationship = membershipType === "owner"
+      ? Boolean((await db
+        .select({ id: ownerships.id })
+        .from(ownerships)
+        .where(and(
+          eq(ownerships.unitId, unitId),
+          eq(ownerships.personId, personId),
+          isNull(ownerships.endDate),
+        ))
+        .limit(1))[0])
+      : Boolean((await db
+        .select({ id: occupancies.id })
+        .from(occupancies)
+        .where(and(
+          eq(occupancies.unitId, unitId),
+          eq(occupancies.personId, personId),
+          isNull(occupancies.endDate),
+        ))
+        .limit(1))[0]);
+
+    if (hasActiveRelationship) {
+      await this.upsertAssociationMembership({
+        associationId: unit.associationId,
+        personId,
+        unitId,
+        membershipType,
+        status: "active",
+        isPrimary: 1,
+      });
+      return;
+    }
+
+    await db
+      .update(associationMemberships)
+      .set({ status: "inactive", updatedAt: new Date() })
+      .where(and(
+        eq(associationMemberships.associationId, unit.associationId),
+        eq(associationMemberships.personId, personId),
+        eq(associationMemberships.unitId, unitId),
+        eq(associationMemberships.membershipType, membershipType),
+      ));
+  }
+
   async createOwnership(data: InsertOwnership, actorEmail?: string): Promise<Ownership> {
     const activeOwnershipsForUnit = await db
       .select()
@@ -4120,6 +4190,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const [result] = await db.insert(ownerships).values(data).returning();
+    await this.syncUnitScopedAssociationMembership(result.unitId, result.personId, "owner");
     const [unitRow] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, result.unitId));
     await this.recordAuditEvent({
       actorEmail: actorEmail || "system",
@@ -4176,6 +4247,8 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ownerships.id, id))
       .returning();
     if (result) {
+      await this.syncUnitScopedAssociationMembership(before.unitId, before.personId, "owner");
+      await this.syncUnitScopedAssociationMembership(result.unitId, result.personId, "owner");
       await this.recordAuditEvent({
         actorEmail: actorEmail || "system",
         action: "update",
@@ -4195,6 +4268,7 @@ export class DatabaseStorage implements IStorage {
 
     const [deleted] = await db.delete(ownerships).where(eq(ownerships.id, id)).returning();
     if (!deleted) return false;
+    await this.syncUnitScopedAssociationMembership(before.unitId, before.personId, "owner");
     const [unitRow] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, before.unitId));
 
     await this.recordAuditEvent({
@@ -4232,10 +4306,20 @@ export class DatabaseStorage implements IStorage {
           .update(occupancies)
           .set({ endDate: data.startDate })
           .where(eq(occupancies.id, row.id));
+        await this.syncUnitScopedAssociationMembership(
+          row.unitId,
+          row.personId,
+          row.occupancyType === "TENANT" ? "tenant" : "owner",
+        );
       }
     }
 
     const [result] = await db.insert(occupancies).values(data).returning();
+    await this.syncUnitScopedAssociationMembership(
+      result.unitId,
+      result.personId,
+      result.occupancyType === "TENANT" ? "tenant" : "owner",
+    );
     const [unitRow] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, result.unitId));
     await this.recordAuditEvent({
       actorEmail: actorEmail || "system",
@@ -4255,6 +4339,11 @@ export class DatabaseStorage implements IStorage {
 
     const [deleted] = await db.delete(occupancies).where(eq(occupancies.id, id)).returning();
     if (!deleted) return false;
+    await this.syncUnitScopedAssociationMembership(
+      before.unitId,
+      before.personId,
+      before.occupancyType === "TENANT" ? "tenant" : "owner",
+    );
     const [unitRow] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, before.unitId));
 
     await this.recordAuditEvent({
@@ -4481,12 +4570,25 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getOnboardingInviteByToken(token: string): Promise<(OnboardingInvite & { unitLabel?: string; associationName?: string }) | undefined> {
+  async getOnboardingInviteByToken(token: string): Promise<(OnboardingInvite & {
+    unitLabel?: string;
+    unitBuilding?: string | null;
+    associationName?: string;
+    associationAddress?: string | null;
+    associationCity?: string | null;
+    associationState?: string | null;
+    associationCountry?: string | null;
+  }) | undefined> {
     const [row] = await db
       .select({
         invite: onboardingInvites,
         unitNumber: units.unitNumber,
+        unitBuilding: units.building,
         associationName: associations.name,
+        associationAddress: associations.address,
+        associationCity: associations.city,
+        associationState: associations.state,
+        associationCountry: associations.country,
       })
       .from(onboardingInvites)
       .innerJoin(units, eq(units.id, onboardingInvites.unitId))
@@ -4508,7 +4610,12 @@ export class DatabaseStorage implements IStorage {
     return {
       ...invite,
       unitLabel: row.unitNumber,
+      unitBuilding: row.unitBuilding,
       associationName: row.associationName,
+      associationAddress: row.associationAddress,
+      associationCity: row.associationCity,
+      associationState: row.associationState,
+      associationCountry: row.associationCountry,
     };
   }
 
@@ -5225,10 +5332,7 @@ export class DatabaseStorage implements IStorage {
     onboardingScorePercent: number;
     contactCoveragePercent: number;
   }> {
-    const [unitRows, ownershipRows, occupancyRows, maintenanceRows, paymentMethods, onboardingState, readiness, residentialDataset] = await Promise.all([
-      this.getUnits(associationId),
-      this.getOwnerships(associationId),
-      this.getOccupancies(associationId),
+    const [maintenanceRows, paymentMethods, onboardingState, readiness, residentialDataset] = await Promise.all([
       this.getMaintenanceRequests({ associationId }),
       this.getPaymentMethodConfigs(associationId),
       this.getAssociationOnboardingState(associationId),
@@ -5237,16 +5341,14 @@ export class DatabaseStorage implements IStorage {
     ]);
 
     const now = new Date();
-    const activeOwners = ownershipRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now)).length;
-    const activeOccupants = occupancyRows.filter((row) => this.isDateRangeActive(row.startDate, row.endDate, now)).length;
     const maintenanceOpenRows = maintenanceRows.filter((row) => row.status !== "resolved" && row.status !== "closed" && row.status !== "rejected");
     const maintenanceOverdue = maintenanceOpenRows.filter((row) => row.responseDueAt && row.responseDueAt < now).length;
 
     return {
       associationId,
-      units: unitRows.length,
-      activeOwners,
-      activeOccupants,
+      units: residentialDataset.summary.units,
+      activeOwners: residentialDataset.summary.activeOwners,
+      activeOccupants: residentialDataset.summary.activeOccupancies,
       ownerOccupiedUnits: residentialDataset.summary.ownerOccupiedUnits,
       rentalOccupiedUnits: residentialDataset.summary.rentalOccupiedUnits,
       vacantUnits: residentialDataset.summary.vacantUnits,
@@ -6620,7 +6722,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createVoteRecord(data: InsertVoteRecord): Promise<VoteRecord> {
-    const [result] = await db.insert(voteRecords).values(data).returning();
+    let result: VoteRecord;
+    if (data.voterPersonId) {
+      const [existingVote] = await db
+        .select()
+        .from(voteRecords)
+        .where(
+          and(
+            eq(voteRecords.resolutionId, data.resolutionId),
+            eq(voteRecords.voterPersonId, data.voterPersonId),
+          ),
+        );
+
+      if (existingVote) {
+        const [updated] = await db
+          .update(voteRecords)
+          .set({
+            voteChoice: data.voteChoice,
+            voteWeight: data.voteWeight,
+            createdAt: new Date(),
+          })
+          .where(eq(voteRecords.id, existingVote.id))
+          .returning();
+        result = updated;
+      } else {
+        const [created] = await db.insert(voteRecords).values(data).returning();
+        result = created;
+      }
+    } else {
+      const [created] = await db.insert(voteRecords).values(data).returning();
+      result = created;
+    }
+
     const votes = await this.getVoteRecords(result.resolutionId);
     const tallies = votes.reduce(
       (acc, vote) => {
@@ -6630,7 +6763,7 @@ export class DatabaseStorage implements IStorage {
       { yes: 0, no: 0, abstain: 0 },
     );
     const status: InsertResolution["status"] =
-      tallies.yes > tallies.no ? "approved" : tallies.no > 0 ? "rejected" : "open";
+      tallies.yes > tallies.no ? "approved" : tallies.no > tallies.yes ? "rejected" : "open";
     await this.updateResolution(result.resolutionId, { status });
     return result;
   }
@@ -9415,7 +9548,7 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async extractComplianceRulesFromClauses(options?: { associationId?: string; actorEmail?: string | null }): Promise<{ processed: number; created: number; recordIds: string[] }> {
+  async extractComplianceRulesFromClauses(options?: { associationId?: string; actorEmail?: string | null }): Promise<{ processed: number; created: number; recordIds: string[]; source: "approved-clauses" | "template-fallback" }> {
     const clauses = await this.getClauseRecords({
       associationId: options?.associationId,
       reviewStatus: "approved",
@@ -9429,8 +9562,54 @@ export class DatabaseStorage implements IStorage {
         })
         .filter((value): value is string => Boolean(value)),
     );
+    const existingByTemplateItemId = new Set(
+      existingRules
+        .map((row) => {
+          const payload = row.payloadJson as Record<string, unknown> | null;
+          return typeof payload?.templateItemId === "string" ? payload.templateItemId : null;
+        })
+        .filter((value): value is string => Boolean(value)),
+    );
 
     const recordIds: string[] = [];
+    if (clauses.length === 0 && options?.associationId) {
+      const templates = await this.getGovernanceComplianceTemplates(options.associationId);
+      const stateLibraryTemplate = templates.find((template) => !template.associationId && (template.scope === "state-library" || template.scope === "ct-baseline"));
+      if (stateLibraryTemplate) {
+        const templateItems = await this.getGovernanceTemplateItems(stateLibraryTemplate.id);
+        for (const item of templateItems) {
+          if (existingByTemplateItemId.has(item.id)) continue;
+          const month = Math.max(1, Math.min(12, item.dueMonth || 1));
+          const cadence = month >= 1 && month <= 12 ? "annual" : "event-driven";
+          const created = await this.createAiExtractedRecord({
+            jobId: stateLibraryTemplate.id,
+            associationId: options.associationId,
+            recordType: "compliance-rule",
+            payloadJson: {
+              templateItemId: item.id,
+              templateId: stateLibraryTemplate.id,
+              sourceTitle: item.title,
+              obligationType: "general-compliance",
+              frequency: cadence,
+              severity: "medium",
+              obligationText: item.description?.trim() || item.title,
+              sourceClauseText: item.legalReference || item.sourceCitation || item.description || item.title,
+              extractedAt: new Date().toISOString(),
+              extractedBy: options.actorEmail || "system",
+            },
+            confidenceScore: 0.7,
+          });
+          recordIds.push(created.id);
+        }
+        return {
+          processed: templateItems.length,
+          created: recordIds.length,
+          recordIds,
+          source: "template-fallback",
+        };
+      }
+    }
+
     for (const clause of clauses) {
       if (existingByClauseId.has(clause.id)) continue;
       const text = `${clause.title}\n${clause.clauseText}`.toLowerCase();
@@ -9481,6 +9660,7 @@ export class DatabaseStorage implements IStorage {
       processed: clauses.length,
       created: recordIds.length,
       recordIds,
+      source: "approved-clauses",
     };
   }
 
@@ -9583,6 +9763,7 @@ export class DatabaseStorage implements IStorage {
   }): Promise<{ associationId: string | null; subject: string; body: string }> {
     let associationId = payload.associationId ?? null;
     let subject = payload.subject || "";
+    let letterhead = "";
     let header = "";
     let body = payload.body || "";
     let footer = "";
@@ -9619,6 +9800,19 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (associationId) {
+      const associationLine = vars.association_name.trim();
+      const locationParts = [vars.association_address, vars.association_city, vars.association_state]
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const locationLine = locationParts.join(", ");
+      const generatedLine = `Notice generated ${new Date().toLocaleDateString("en-US")}`;
+      letterhead = ["Association Notice", associationLine, locationLine, generatedLine]
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+    }
+
+    if (associationId) {
       const config = await this.getTenantConfig(associationId);
       const configuredFooter = config?.defaultNoticeFooter?.trim();
       if (!footer && configuredFooter) {
@@ -9626,7 +9820,10 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    const renderedBody = [header.trim(), body.trim(), footer.trim(), signature.trim()].filter(Boolean).join("\n\n").trim();
+    const renderedBody = [letterhead, header.trim(), body.trim(), footer.trim(), signature.trim()]
+      .filter(Boolean)
+      .join("\n\n")
+      .trim();
 
     return { associationId, subject, body: renderedBody };
   }
@@ -12620,10 +12817,15 @@ export class DatabaseStorage implements IStorage {
     const sections = Array.isArray(template.sectionsJson)
       ? template.sectionsJson.filter((value): value is string => typeof value === "string")
       : [];
-    const operations = await this.getOperationsDashboard(template.associationId);
-    const meetings = await this.getGovernanceMeetings(template.associationId);
-    const budgets = await this.getBudgets(template.associationId);
-    const ledgerEntries = await this.getOwnerLedgerEntries(template.associationId);
+    const requiresFinancial = sections.includes("financial") || sections.includes("delinquency");
+    const requiresGovernance = sections.includes("governance");
+    const requiresOperations = sections.includes("maintenance") || sections.includes("delinquency");
+    const [operations, meetings, budgets, ledgerEntries] = await Promise.all([
+      requiresOperations ? this.getOperationsDashboard(template.associationId) : null,
+      requiresGovernance ? this.getGovernanceMeetings(template.associationId) : [],
+      requiresFinancial ? this.getBudgets(template.associationId) : [],
+      requiresFinancial ? this.getOwnerLedgerEntries(template.associationId) : [],
+    ]);
 
     const content = sections.map((sectionKey) => {
       if (sectionKey === "financial") {
@@ -12655,9 +12857,9 @@ export class DatabaseStorage implements IStorage {
           key: "maintenance",
           title: "Operations Summary",
           items: [
-            `Open work orders: ${operations.totals.openWorkOrders}`,
-            `Due maintenance instances: ${operations.totals.dueMaintenance}`,
-            `Open inspection findings: ${operations.totals.openFindings}`,
+            `Open work orders: ${operations?.totals.openWorkOrders ?? 0}`,
+            `Due maintenance instances: ${operations?.totals.dueMaintenance ?? 0}`,
+            `Open inspection findings: ${operations?.totals.openFindings ?? 0}`,
           ],
         };
       }
@@ -12669,7 +12871,7 @@ export class DatabaseStorage implements IStorage {
           items: [
             `Charge entries posted: ${unpaidCharges}`,
             `Payments posted: ${ledgerEntries.filter((entry) => entry.entryType === "payment").length}`,
-            `Pending renewal vendors: ${operations.totals.pendingRenewalVendors}`,
+            `Pending renewal vendors: ${operations?.totals.pendingRenewalVendors ?? 0}`,
           ],
         };
       }
@@ -12812,7 +13014,14 @@ export class DatabaseStorage implements IStorage {
   async distributeBoardPackage(
     id: string,
     payload?: { recipientEmails?: string[]; message?: string | null; actorEmail?: string | null },
-  ): Promise<{ boardPackage: BoardPackage; recipients: string[]; historyIds: string[] }> {
+  ): Promise<{
+    boardPackage: BoardPackage;
+    recipients: string[];
+    historyIds: string[];
+    sentCount: number;
+    failedCount: number;
+    failedRecipients: string[];
+  }> {
     const [boardPackage] = await db.select().from(boardPackages).where(eq(boardPackages.id, id));
     if (!boardPackage) throw new Error("Board package not found");
     if (boardPackage.status === "draft") {
@@ -12830,6 +13039,8 @@ export class DatabaseStorage implements IStorage {
     }
 
     const historyIds: string[] = [];
+    let sentCount = 0;
+    const failedRecipients: string[] = [];
     const textBody = this.renderBoardPackageText(boardPackage);
     const htmlBody = this.renderBoardPackageHtml(boardPackage, payload?.message ?? null);
     const actorEmail = payload?.actorEmail || "system";
@@ -12864,7 +13075,7 @@ export class DatabaseStorage implements IStorage {
         bodySnippet: textBody.slice(0, 500),
         recipientEmail,
         recipientPersonId: null,
-        relatedType: "board-package-distribution",
+        relatedType: delivery.status === "sent" ? "board-package-distribution" : "board-package-distribution-failed",
         relatedId: boardPackage.id,
         metadataJson: {
           emailLogId: delivery.logId,
@@ -12872,9 +13083,17 @@ export class DatabaseStorage implements IStorage {
           providerMessageId: delivery.messageId,
           distributedBy: actorEmail,
           message: payload?.message ?? null,
+          status: delivery.status,
+          errorMessage: delivery.errorMessage ?? null,
         },
       });
       historyIds.push(history.id);
+
+      if (delivery.status === "sent") {
+        sentCount += 1;
+      } else {
+        failedRecipients.push(recipientEmail);
+      }
 
       await this.upsertEmailThread({
         associationId: boardPackage.associationId,
@@ -12884,9 +13103,25 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const updated = await this.updateBoardPackage(boardPackage.id, { status: "distributed" }, actorEmail);
-    if (!updated) throw new Error("Board package not found after distribution");
-    return { boardPackage: updated, recipients, historyIds };
+    if (sentCount === 0) {
+      throw new Error("Board package delivery failed for all recipients.");
+    }
+
+    let boardPackageResult = boardPackage;
+    if (failedRecipients.length === 0) {
+      const updated = await this.updateBoardPackage(boardPackage.id, { status: "distributed" }, actorEmail);
+      if (!updated) throw new Error("Board package not found after distribution");
+      boardPackageResult = updated;
+    }
+
+    return {
+      boardPackage: boardPackageResult,
+      recipients,
+      historyIds,
+      sentCount,
+      failedCount: failedRecipients.length,
+      failedRecipients,
+    };
   }
 
   private async validateRoadmapDependencyIds(projectId: string, dependencyTaskIds: string[] = [], selfTaskId?: string): Promise<string[]> {

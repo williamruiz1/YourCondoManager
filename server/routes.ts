@@ -78,6 +78,8 @@ import {
   insertVendorSchema,
   insertVendorInvoiceSchema,
   insertVoteRecordSchema,
+  boardRoles,
+  resolutions,
   documents,
 } from "@shared/schema";
 
@@ -276,29 +278,32 @@ function normalizeAiIngestionRolloutMode(value: unknown): AiIngestionRolloutMode
 async function applyAdminContext(req: AdminRequest, adminUser: { id: string; email: string; role: string }) {
   if (adminUser.role !== "platform-admin") {
     let scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
-    if (scopes.length === 0) {
-      const portalRows = await storage.getPortalAccessesByEmail(adminUser.email);
-      const activeAssociationIds = Array.from(new Set(
-        portalRows
-          .filter((row) => row.status === "active")
-          .map((row) => row.associationId),
-      ));
-      if (activeAssociationIds.length > 0) {
-        for (const associationId of activeAssociationIds) {
-          await storage.upsertAdminAssociationScope({
-            adminUserId: adminUser.id,
-            associationId,
-            scope: "read-write",
-          });
-        }
-        scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
-        console.warn("[admin-scope][auto-hydrate]", {
+    const portalRows = await storage.getPortalAccessesByEmail(adminUser.email);
+    const activeAssociationIds = Array.from(new Set(
+      portalRows
+        .filter((row) => row.status === "active")
+        .map((row) => row.associationId),
+    ));
+    const scopedAssociationIds = new Set(scopes.map((scope) => scope.associationId));
+    const missingAssociationIds = activeAssociationIds.filter((associationId) => !scopedAssociationIds.has(associationId));
+
+    if (missingAssociationIds.length > 0) {
+      for (const associationId of missingAssociationIds) {
+        await storage.upsertAdminAssociationScope({
           adminUserId: adminUser.id,
-          email: adminUser.email,
-          hydratedAssociationIds: activeAssociationIds,
-          resultingScopeCount: scopes.length,
+          associationId,
+          scope: "read-write",
         });
-      } else {
+      }
+      scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
+      console.warn("[admin-scope][auto-hydrate]", {
+        adminUserId: adminUser.id,
+        email: adminUser.email,
+        hydratedAssociationIds: missingAssociationIds,
+        resultingScopeCount: scopes.length,
+      });
+    } else if (scopes.length === 0) {
+      if (activeAssociationIds.length === 0) {
         console.error("[admin-scope][missing]", {
           adminUserId: adminUser.id,
           email: adminUser.email,
@@ -682,6 +687,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/addresses/search", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const query = typeof req.query.query === "string" ? req.query.query.trim() : "";
+      if (query.length < 3) {
+        return res.status(400).json({ message: "query must be at least 3 characters" });
+      }
+
+      const url = new URL("https://nominatim.openstreetmap.org/search");
+      url.searchParams.set("q", query);
+      url.searchParams.set("format", "jsonv2");
+      url.searchParams.set("addressdetails", "1");
+      url.searchParams.set("namedetails", "1");
+      url.searchParams.set("limit", "8");
+      url.searchParams.set("countrycodes", "us");
+
+      const response = await fetch(url.toString(), {
+        headers: {
+          "User-Agent": "CondoManager/1.0 (address-search)",
+          "Accept-Language": "en-US,en",
+        },
+      });
+      if (!response.ok) {
+        return res.status(502).json({ message: "Address search failed" });
+      }
+
+      const payload = await response.json();
+      const rows = Array.isArray(payload) ? payload : [];
+      const results = rows.map(normalizeAssociationSearchResult);
+      res.json({ results });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/debug/admin-context", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: true });
@@ -970,7 +1009,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/ownerships", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
-      const parsed = insertOwnershipSchema.parse(req.body);
+      const parsed = insertOwnershipSchema.parse({
+        unitId: req.body?.unitId,
+        personId: req.body?.personId,
+        ownershipPercentage: req.body?.ownershipPercentage,
+        startDate: req.body?.startDate ? new Date(req.body.startDate) : req.body?.startDate,
+        endDate: req.body?.endDate ? new Date(req.body.endDate) : null,
+      });
       const result = await storage.createOwnership(parsed, req.adminUserEmail);
       res.status(201).json(result);
     } catch (error: any) {
@@ -980,7 +1025,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/ownerships/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
-      const parsed = insertOwnershipSchema.partial().parse(req.body);
+      const parsed = insertOwnershipSchema.partial().parse({
+        ...req.body,
+        startDate: req.body?.startDate ? new Date(req.body.startDate) : req.body?.startDate,
+        endDate: req.body?.endDate ? new Date(req.body.endDate) : req.body?.endDate,
+      });
       const result = await storage.updateOwnership(getParam(req.params.id), parsed, req.adminUserEmail);
       if (!result) return res.status(404).json({ message: "Not found" });
       res.json(result);
@@ -1069,7 +1118,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/occupancies", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
-      const parsed = insertOccupancySchema.parse(req.body);
+      const parsed = insertOccupancySchema.parse({
+        unitId: req.body?.unitId,
+        personId: req.body?.personId,
+        occupancyType: req.body?.occupancyType,
+        startDate: req.body?.startDate ? new Date(req.body.startDate) : req.body?.startDate,
+        endDate: req.body?.endDate ? new Date(req.body.endDate) : null,
+      });
       const result = await storage.createOccupancy(parsed, req.adminUserEmail);
       res.status(201).json(result);
     } catch (error: any) {
@@ -1107,7 +1162,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/board-roles", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
-      const parsed = insertBoardRoleSchema.parse(req.body);
+      const parsed = insertBoardRoleSchema.parse({
+        ...req.body,
+        startDate: req.body?.startDate ? new Date(req.body.startDate) : req.body?.startDate,
+        endDate: req.body?.endDate ? new Date(req.body.endDate) : null,
+      });
       assertAssociationScope(req, parsed.associationId);
       const result = await storage.createBoardRole(parsed, req.adminUserEmail);
       res.status(201).json(result);
@@ -2088,7 +2147,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/governance/meetings", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
-      const parsed = insertGovernanceMeetingSchema.parse(req.body);
+      const parsed = insertGovernanceMeetingSchema.parse({
+        ...req.body,
+        scheduledAt: req.body?.scheduledAt ? new Date(req.body.scheduledAt) : req.body?.scheduledAt,
+      });
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createGovernanceMeeting(parsed);
       res.status(201).json(result);
@@ -2100,7 +2162,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/governance/meetings/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "governance-meeting", getParam(req.params.id));
-      const parsed = insertGovernanceMeetingSchema.partial().parse(req.body);
+      const parsed = insertGovernanceMeetingSchema.partial().parse({
+        ...req.body,
+        scheduledAt: req.body?.scheduledAt ? new Date(req.body.scheduledAt) : req.body?.scheduledAt,
+      });
       if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
         assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
       }
@@ -2220,10 +2285,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/governance/resolutions/:id/votes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
-      await assertResourceScope(req as AdminRequest, "resolution", getParam(req.params.id));
+      const resolutionId = getParam(req.params.id);
+      await assertResourceScope(req as AdminRequest, "resolution", resolutionId);
+
+      const voterPersonId = typeof req.body?.voterPersonId === "string" ? req.body.voterPersonId.trim() : "";
+      if (!voterPersonId) {
+        return res.status(400).json({ message: "voterPersonId is required" });
+      }
+
+      const [resolutionRow] = await db
+        .select({ associationId: resolutions.associationId })
+        .from(resolutions)
+        .where(eq(resolutions.id, resolutionId));
+      if (!resolutionRow) {
+        return res.status(404).json({ message: "Resolution not found" });
+      }
+
+      const boardMembers = await db
+        .select({ personId: boardRoles.personId, endDate: boardRoles.endDate })
+        .from(boardRoles)
+        .where(eq(boardRoles.associationId, resolutionRow.associationId));
+      const now = Date.now();
+      const isActiveBoardMember = boardMembers.some((member) => {
+        if (member.personId !== voterPersonId) return false;
+        return !member.endDate || new Date(member.endDate).getTime() >= now;
+      });
+      if (!isActiveBoardMember) {
+        return res.status(400).json({ message: "Selected voter is not an active board member for this association" });
+      }
+
       const parsed = insertVoteRecordSchema.parse({
         ...req.body,
-        resolutionId: getParam(req.params.id),
+        voterPersonId,
+        resolutionId,
       });
       const result = await storage.createVoteRecord(parsed);
       res.status(201).json(result);
@@ -2363,7 +2457,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/governance/tasks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
-      const parsed = insertAnnualGovernanceTaskSchema.parse(req.body);
+      const parsed = insertAnnualGovernanceTaskSchema.parse({
+        ...req.body,
+        dueDate: req.body?.dueDate ? new Date(req.body.dueDate) : null,
+      });
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createAnnualGovernanceTask(parsed);
       res.status(201).json(result);
@@ -2375,7 +2472,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/governance/tasks/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "annual-governance-task", getParam(req.params.id));
-      const parsed = insertAnnualGovernanceTaskSchema.partial().parse(req.body);
+      const parsed = insertAnnualGovernanceTaskSchema.partial().parse({
+        ...req.body,
+        dueDate: req.body?.dueDate ? new Date(req.body.dueDate) : req.body?.dueDate,
+      });
       if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
         assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
       }
@@ -3315,8 +3415,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         id: invite.id,
         associationId: invite.associationId,
         associationName: invite.associationName,
+        associationAddress: invite.associationAddress,
+        associationCity: invite.associationCity,
+        associationState: invite.associationState,
+        associationCountry: invite.associationCountry,
         unitId: invite.unitId,
         unitLabel: invite.unitLabel,
+        unitBuilding: invite.unitBuilding,
         residentType: invite.residentType,
         status: invite.status,
         email: invite.email,
@@ -3363,8 +3468,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/associations/:id/overview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
-      assertAssociationScope(req as AdminRequest, getParam(req.params.id));
-      const result = await storage.getAssociationOverview(getParam(req.params.id));
+      const associationId = getParam(req.params.id);
+      const startedAt = Date.now();
+      assertAssociationScope(req as AdminRequest, associationId);
+      const result = await storage.getAssociationOverview(associationId);
+      res.setHeader("x-association-overview-duration-ms", String(Date.now() - startedAt));
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });

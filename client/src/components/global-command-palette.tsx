@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { Building2, CalendarDays, CircleDollarSign, FileText, FolderOpen, LayoutDashboard, MessageSquare, Search, Users } from "lucide-react";
+import { Building2, CalendarDays, CircleDollarSign, Contact, DoorOpen, FileText, FolderOpen, LayoutDashboard, MessageSquare, Search, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   CommandDialog,
@@ -13,6 +13,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { useAssociationContext } from "@/context/association-context";
+import { canAccessWipRoute } from "@/lib/wip-features";
 
 type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
 
@@ -29,12 +30,15 @@ const RECENT_ROUTE_STORAGE_KEY = "workspaceRecentRoutes";
 const navigationLinks: CommandLink[] = [
   { label: "Dashboard", href: "/app", keywords: "overview home portfolio", icon: LayoutDashboard },
   { label: "Association Context", href: "/app/association-context", keywords: "context association scope workspace", icon: Building2 },
+  { label: "Buildings & Units", href: "/app/units", keywords: "buildings units residences doors apartments", icon: DoorOpen },
+  { label: "People", href: "/app/persons", keywords: "people residents contacts roster owners tenants", icon: Contact },
+  { label: "Residential Coverage", href: "/app/association-context", keywords: "occupancy tenants residents unit coverage", icon: Building2 },
   { label: "Documents", href: "/app/documents", keywords: "files repository document metadata", icon: FileText },
-  { label: "Communications", href: "/app/communications", keywords: "notices templates email outreach", icon: MessageSquare },
   { label: "Owner Ledger", href: "/app/financial/ledger", keywords: "finance balances ledger charges payments", icon: CircleDollarSign },
   { label: "Board", href: "/app/board", keywords: "board members governance", icon: Users },
   { label: "Meetings", href: "/app/governance/meetings", keywords: "governance meetings calendar", icon: CalendarDays },
   { label: "Associations", href: "/app/associations", keywords: "association directory buildings", icon: FolderOpen },
+  { label: "Communications", href: "/app/communications", keywords: "communications notices templates email outreach", icon: MessageSquare },
 ];
 
 const createLinks: CommandLink[] = [
@@ -45,6 +49,7 @@ const createLinks: CommandLink[] = [
 ];
 
 function canAccess(item: CommandLink, role?: AdminRole | null) {
+  if (!canAccessWipRoute(item.href, role)) return false;
   if (!item.roles?.length) return true;
   if (!role) return true;
   return item.roles.includes(role);

@@ -17,6 +17,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 
+type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+
+type AuthSession = {
+  authenticated: boolean;
+  admin?: {
+    role: AdminRole;
+  } | null;
+};
+
 type ComplianceGapAlert = {
   templateId: string;
   templateItemId: string;
@@ -87,6 +96,15 @@ export default function GovernanceCompliancePage() {
   const [openTask, setOpenTask] = useState(false);
   const [openCalendar, setOpenCalendar] = useState(false);
 
+  const { data: authSession } = useQuery<AuthSession | null>({
+    queryKey: ["/api/auth/me", "session"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/me", { credentials: "include" });
+      if (res.status === 401) return null;
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
   const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
   const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
   const { data: templates } = useQuery<GovernanceComplianceTemplate[]>({
@@ -121,7 +139,7 @@ export default function GovernanceCompliancePage() {
     defaultValues: {
       associationId: "",
       baseTemplateId: "",
-      scope: "state-library",
+      scope: "association",
       stateCode: "CT",
       year: new Date().getFullYear(),
       versionNumber: 1,
@@ -157,6 +175,15 @@ export default function GovernanceCompliancePage() {
       templateForm.setValue("associationId", activeAssociationId, { shouldValidate: true });
     }
   }, [activeAssociationId, calendarForm, taskForm, templateForm]);
+
+  const adminRole = authSession?.admin?.role ?? null;
+  const canManageStateLibrary = adminRole === "platform-admin";
+
+  useEffect(() => {
+    if (canManageStateLibrary) return;
+    templateForm.setValue("scope", "association", { shouldValidate: true });
+    templateForm.setValue("associationId", activeAssociationId, { shouldValidate: true });
+  }, [activeAssociationId, canManageStateLibrary, templateForm]);
 
   const activeAssociationState = useMemo(() => {
     const state = associations?.find((association) => association.id === activeAssociationId)?.state ?? "";
@@ -314,14 +341,15 @@ export default function GovernanceCompliancePage() {
       const res = await apiRequest("POST", "/api/ai/ingestion/compliance-rules/extract", {
         associationId: associationFilter,
       });
-      return res.json() as Promise<{ created: number; processed: number }>;
+      return res.json() as Promise<{ created: number; processed: number; source?: "approved-clauses" | "template-fallback" }>;
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: [associationFilter ? `/api/ai/ingestion/compliance-rules?associationId=${associationFilter}` : "/api/ai/ingestion/compliance-rules"] });
       queryClient.invalidateQueries({
         predicate: (query) => typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/governance/compliance-alerts"),
       });
-      toast({ title: "Compliance rules extracted", description: `Created ${result.created} rule(s) from ${result.processed} clause(s).` });
+      const sourceLabel = result.source === "template-fallback" ? "template fallback" : "approved clause extraction";
+      toast({ title: "Compliance rules extracted", description: `Created ${result.created} rule(s) from ${result.processed} source record(s) via ${sourceLabel}.` });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -400,7 +428,12 @@ export default function GovernanceCompliancePage() {
           <Button variant="outline" disabled={!associationFilter} onClick={() => extractComplianceRules.mutate()}>
             Extract Compliance Rules
           </Button>
-          <Button variant="outline" onClick={() => bootstrapStateLibrary.mutate()} disabled={bootstrapStateLibrary.isPending}>
+          <Button
+            variant="outline"
+            onClick={() => bootstrapStateLibrary.mutate()}
+            disabled={bootstrapStateLibrary.isPending || !canManageStateLibrary}
+            title={canManageStateLibrary ? undefined : "Only platform admins can sync the shared regulatory library."}
+          >
             {bootstrapStateLibrary.isPending ? "Syncing Records..." : "Sync Regulatory Library"}
           </Button>
           <Dialog open={openTemplate} onOpenChange={setOpenTemplate}>
@@ -410,7 +443,26 @@ export default function GovernanceCompliancePage() {
               <Form {...templateForm}>
                 <form className="space-y-4" onSubmit={templateForm.handleSubmit((v) => createTemplate.mutate(v))}>
                   <FormField control={templateForm.control} name="scope" render={({ field }) => (
-                    <FormItem><FormLabel>Scope</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="state-library">state-library</SelectItem><SelectItem value="association">association overlay</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                    <FormItem>
+                      <FormLabel>Scope</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={!canManageStateLibrary}
+                      >
+                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                        <SelectContent>
+                          {canManageStateLibrary ? <SelectItem value="state-library">state-library</SelectItem> : null}
+                          <SelectItem value="association">association overlay</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {!canManageStateLibrary ? (
+                        <p className="text-sm text-muted-foreground">
+                          Scoped admins can create association overlays. Shared state library records remain platform-admin only.
+                        </p>
+                      ) : null}
+                      <FormMessage />
+                    </FormItem>
                   )} />
                   <FormField control={templateForm.control} name="stateCode" render={({ field }) => (
                     <FormItem><FormLabel>State Code</FormLabel><FormControl><Input {...field} maxLength={2} onChange={(e) => field.onChange(e.target.value.toUpperCase())} /></FormControl><FormMessage /></FormItem>
@@ -451,16 +503,45 @@ export default function GovernanceCompliancePage() {
               <DialogHeader><DialogTitle>Create Annual Governance Task</DialogTitle></DialogHeader>
               <Form {...taskForm}>
                 <form className="space-y-4" onSubmit={taskForm.handleSubmit((v) => createTask.mutate(v))}>
+                  <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                    Use a governance task for a recurring compliance obligation or board-controlled deliverable that someone must complete and track to closure.
+                  </div>
                   <FormField control={taskForm.control} name="associationId" render={({ field }) => (
                     <FormItem><FormLabel>Association</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{associations?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                   )} />
-                  <FormField control={taskForm.control} name="title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={taskForm.control} name="description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={taskForm.control} name="title" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <FormControl><Input {...field} placeholder="Example: File annual budget ratification notice" /></FormControl>
+                      <div className="text-xs text-muted-foreground">Name the obligation or deliverable in plain operating language.</div>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={taskForm.control} name="description" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl><Textarea {...field} placeholder="Include the trigger, expected output, and any review or filing notes." /></FormControl>
+                      <div className="text-xs text-muted-foreground">Good examples include filing steps, document requirements, or board review expectations.</div>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
                   <div className="grid grid-cols-2 gap-4">
                     <FormField control={taskForm.control} name="ownerPersonId" render={({ field }) => (
-                      <FormItem><FormLabel>Owner</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{persons?.map((p) => <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                      <FormItem>
+                        <FormLabel>Owner</FormLabel>
+                        <Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{persons?.map((p) => <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>)}</SelectContent></Select>
+                        <div className="text-xs text-muted-foreground">Assign the board member or operator responsible for moving the task forward.</div>
+                        <FormMessage />
+                      </FormItem>
                     )} />
-                    <FormField control={taskForm.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={taskForm.control} name="dueDate" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Due Date</FormLabel>
+                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <div className="text-xs text-muted-foreground">Set the filing, mailing, or board-review deadline the team should work toward.</div>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
                   </div>
                   <Button className="w-full" type="submit" disabled={createTask.isPending}>Save</Button>
                 </form>
@@ -663,6 +744,9 @@ export default function GovernanceCompliancePage() {
 
       <Card>
         <CardContent className="p-6 space-y-4">
+          <div className="rounded-md border bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
+            Workflow guide: use <span className="font-medium text-foreground">Generate Year Tasks</span> when the selected template already defines the annual obligations. Use <span className="font-medium text-foreground">New Governance Task</span> for one-off or missing tasks that still need tracking.
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm flex items-center">
               Association Context: <span className="font-medium ml-1">{activeAssociationName || "None selected"}</span>

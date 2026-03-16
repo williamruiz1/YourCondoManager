@@ -24,6 +24,8 @@ import { Plus, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
+import { useLocation } from "wouter";
+import { useActiveAssociation } from "@/hooks/use-active-association";
 
 const formSchema = z.object({
   unitId: z.string().min(1, "Unit is required"),
@@ -55,13 +57,65 @@ function toDateInput(value: string | Date | null | undefined): string {
   return date.toISOString().slice(0, 10);
 }
 
+function isCurrentOwnership(endDate: string | Date | null | undefined): boolean {
+  return !endDate;
+}
+
+function validateOwnershipTotals(
+  ownerships: Array<{ id: string; unitId: string; ownershipPercentage: number; endDate: string | Date | null }>,
+  units: Array<{ id: string; unitNumber: string; building: string | null }>,
+  pending: Array<{ ownershipId?: string; unitId: string; ownershipPercentage: number; endDate?: string | null }>,
+) {
+  const activeTotals = new Map<string, number>();
+
+  for (const ownership of ownerships) {
+    if (!isCurrentOwnership(ownership.endDate)) continue;
+    activeTotals.set(ownership.unitId, (activeTotals.get(ownership.unitId) ?? 0) + ownership.ownershipPercentage);
+  }
+
+  for (const row of pending) {
+    const nextPercentage = row.ownershipPercentage;
+    if (!Number.isFinite(nextPercentage) || nextPercentage < 0) {
+      return { valid: false, message: "Ownership percentage must be a valid number." };
+    }
+
+    const existing = row.ownershipId
+      ? ownerships.find((ownership) => ownership.id === row.ownershipId)
+      : undefined;
+    const existingUnitId = existing?.unitId;
+
+    if (existing && isCurrentOwnership(existing.endDate)) {
+      activeTotals.set(existing.unitId, (activeTotals.get(existing.unitId) ?? 0) - existing.ownershipPercentage);
+    }
+
+    if (!row.endDate) {
+      activeTotals.set(row.unitId, (activeTotals.get(row.unitId) ?? 0) + nextPercentage);
+    }
+
+    const affectedUnitId = row.endDate && existingUnitId ? existingUnitId : row.unitId;
+    const total = activeTotals.get(affectedUnitId) ?? 0;
+    if (total > 100.0001) {
+      const unit = units.find((entry) => entry.id === affectedUnitId);
+      const unitLabel = unit ? `Unit ${unit.unitNumber}${unit.building ? ` (${unit.building})` : ""}` : "Selected unit";
+      return {
+        valid: false,
+        message: `${unitLabel} would exceed 100% total ownership.`,
+      };
+    }
+  }
+
+  return { valid: true as const };
+}
+
 export default function OwnersPage() {
+  const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [isBulkEditing, setIsBulkEditing] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, OwnerDraft>>({});
   const { toast } = useToast();
+  const { activeAssociationId } = useActiveAssociation();
 
-  const { data: residentialDataset, isLoading } = useResidentialDataset();
+  const { data: residentialDataset, isLoading } = useResidentialDataset(activeAssociationId || undefined);
   const ownerships = residentialDataset?.ownerships ?? [];
   const persons = residentialDataset?.persons ?? [];
   const units = residentialDataset?.units ?? [];
@@ -126,7 +180,9 @@ export default function OwnersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({ title: "Ownership assigned successfully" });
       setOpen(false);
@@ -157,7 +213,9 @@ export default function OwnersPage() {
     onSuccess: (result: { updatedCount: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
       queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+      });
       toast({ title: "Owners updated", description: `${result.updatedCount} owner rows saved.` });
       setIsBulkEditing(false);
     },
@@ -165,6 +223,15 @@ export default function OwnersPage() {
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
+    const totalsCheck = validateOwnershipTotals(ownerships, units, [{
+      unitId: values.unitId,
+      ownershipPercentage: values.ownershipPercentage,
+      endDate: values.endDate || null,
+    }]);
+    if (!totalsCheck.valid) {
+      toast({ title: "Ownership total exceeded", description: totalsCheck.message, variant: "destructive" });
+      return;
+    }
     createMutation.mutate(values);
   }
 
@@ -203,6 +270,22 @@ export default function OwnersPage() {
       setIsBulkEditing(false);
       return;
     }
+
+    const totalsCheck = validateOwnershipTotals(
+      ownerships,
+      units,
+      changedDrafts.map((row) => ({
+        ownershipId: row.ownershipId,
+        unitId: ownerRows.find((entry) => entry.ownership.id === row.ownershipId)?.ownership.unitId || "",
+        ownershipPercentage: Number(row.ownershipPercentage),
+        endDate: row.endDate || null,
+      })),
+    );
+    if (!totalsCheck.valid) {
+      toast({ title: "Ownership total exceeded", description: totalsCheck.message, variant: "destructive" });
+      return;
+    }
+
     bulkUpdateMutation.mutate(changedDrafts);
   }
 
@@ -230,6 +313,10 @@ export default function OwnersPage() {
     }
     setDrafts(resetDrafts);
     setIsBulkEditing(false);
+  }
+
+  function openOwnerDetail(personId: string) {
+    navigate(`/app/persons?personId=${encodeURIComponent(personId)}`);
   }
 
   return (
@@ -354,13 +441,23 @@ export default function OwnersPage() {
                   <TableHead>Ownership</TableHead>
                   <TableHead>Start Date</TableHead>
                   <TableHead>End Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {ownerRows.map((row) => {
                   const draft = drafts[row.ownership.id];
+                  const personId = row.person?.id ?? "";
                   return (
-                    <TableRow key={row.ownership.id} data-testid={`row-ownership-${row.ownership.id}`}>
+                    <TableRow
+                      key={row.ownership.id}
+                      data-testid={`row-ownership-${row.ownership.id}`}
+                      className={!isBulkEditing && row.person ? "cursor-pointer" : ""}
+                      onClick={() => {
+                        if (isBulkEditing || !personId) return;
+                        openOwnerDetail(personId);
+                      }}
+                    >
                       <TableCell className="font-medium min-w-[200px]">
                         {isBulkEditing && draft ? (
                           <div className="grid grid-cols-2 gap-2">
@@ -447,6 +544,20 @@ export default function OwnersPage() {
                         ) : (
                           row.ownership.endDate ? <span className="text-muted-foreground">{toDateInput(row.ownership.endDate)}</span> : <Badge variant="outline">Current</Badge>
                         )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {personId ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openOwnerDetail(personId);
+                            }}
+                          >
+                            Open Detail
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   );

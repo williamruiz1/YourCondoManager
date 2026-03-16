@@ -5,7 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Unit, Association, Building, WorkOrder } from "@shared/schema";
+import type { Unit, Building, Person } from "@shared/schema";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,10 +16,7 @@ import {
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import { Plus, Building2, DoorOpen } from "lucide-react";
+import { Plus, Building2, DoorOpen, MessageSquare, Pencil, ChevronDown, ChevronRight, Link2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,6 +35,7 @@ const unitFormSchema = z.object({
   buildingId: z.string().optional().transform((value) => value?.trim() || ""),
   unitNumber: z.string().trim().min(1, "Unit number is required"),
   squareFootage: z.union([z.coerce.number().positive(), z.nan()]).optional(),
+  ownerPersonId: z.string().optional().transform((value) => value?.trim() || ""),
 });
 
 const buildingFormSchema = z.object({
@@ -52,18 +51,21 @@ export default function UnitsPage() {
   const [dialogMode, setDialogMode] = useState<"building" | "unit">("building");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLegacyBuilding, setEditingLegacyBuilding] = useState<string | null>(null);
+  const [collapsedBuildings, setCollapsedBuildings] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
-  const { data: residentialDataset } = useResidentialDataset();
+  const { data: residentialDataset } = useResidentialDataset(activeAssociationId || undefined);
 
   const { data: units, isLoading } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
-  const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
   const { data: buildings = [], isLoading: buildingsLoading } = useQuery<Building[]>({ queryKey: ["/api/buildings"] });
-  const { data: workOrders = [] } = useQuery<WorkOrder[]>({ queryKey: ["/api/work-orders"] });
+  const { data: availablePeople = [] } = useQuery<Person[]>({
+    queryKey: [activeAssociationId ? `/api/persons?associationId=${activeAssociationId}` : "/api/persons"],
+    enabled: Boolean(activeAssociationId),
+  });
 
   const unitForm = useForm<z.infer<typeof unitFormSchema>>({
     resolver: zodResolver(unitFormSchema),
-    defaultValues: { associationId: "", buildingId: "", unitNumber: "", squareFootage: undefined },
+    defaultValues: { associationId: "", buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" },
   });
 
   const buildingForm = useForm<z.infer<typeof buildingFormSchema>>({
@@ -94,11 +96,13 @@ export default function UnitsPage() {
     mutationFn: (data: UnitMutationPayload) => apiRequest("POST", "/api/units", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/units"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({ title: "Unit created successfully" });
       setOpen(false);
-      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
+      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" });
       buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
       setEditingLegacyBuilding(null);
     },
@@ -110,12 +114,14 @@ export default function UnitsPage() {
       apiRequest("PATCH", `/api/units/${data.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/units"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+      });
       toast({ title: "Unit updated successfully" });
       setOpen(false);
       setEditingId(null);
       setEditingLegacyBuilding(null);
-      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
+      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" });
       buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
@@ -138,7 +144,57 @@ export default function UnitsPage() {
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
 
+  const contactFormLinkMutation = useMutation({
+    mutationFn: async (payload: { unitId: string }) => {
+      if (!activeAssociationId) throw new Error("Select an association context first");
+      const response = await apiRequest("POST", "/api/onboarding/unit-links/ensure", {
+        associationId: activeAssociationId,
+        unitId: payload.unitId,
+        residentType: "owner",
+      });
+      const result = await response.json() as { inviteUrl: string };
+      return { ...result, ...payload };
+    },
+    onSuccess: async (result) => {
+      let shareableInviteUrl = result.inviteUrl;
+      try {
+        const parsed = new URL(result.inviteUrl, window.location.origin);
+        shareableInviteUrl = `${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`;
+      } catch {
+        shareableInviteUrl = result.inviteUrl;
+      }
+
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareableInviteUrl);
+      }
+      toast({ title: "Unit intake link copied" });
+    },
+    onError: (error: Error) => toast({ title: "Link action failed", description: error.message, variant: "destructive" }),
+  });
+
   const buildingById = useMemo(() => new Map(buildings.map((building) => [building.id, building])), [buildings]);
+  const activeOwnerByUnitId = useMemo(() => {
+    const now = Date.now();
+    const map = new Map<string, string>();
+    for (const ownership of residentialDataset?.ownerships ?? []) {
+      const startMs = ownership.startDate ? new Date(ownership.startDate).getTime() : Number.NaN;
+      const endMs = ownership.endDate ? new Date(ownership.endDate).getTime() : Number.NaN;
+      const isActiveStart = Number.isNaN(startMs) || startMs <= now;
+      const isActiveEnd = Number.isNaN(endMs) || endMs >= now;
+      if (!isActiveStart || !isActiveEnd) continue;
+      if (!map.has(ownership.unitId)) {
+        map.set(ownership.unitId, ownership.personId);
+      }
+    }
+    return map;
+  }, [residentialDataset?.ownerships]);
+  const sortedPeopleOptions = useMemo(() => {
+    return [...availablePeople].sort((left, right) => {
+      const leftName = `${left.firstName ?? ""} ${left.lastName ?? ""}`.trim();
+      const rightName = `${right.firstName ?? ""} ${right.lastName ?? ""}`.trim();
+      return leftName.localeCompare(rightName);
+    });
+  }, [availablePeople]);
 
   function openEdit(unit: Unit) {
     setDialogMode("unit");
@@ -149,9 +205,52 @@ export default function UnitsPage() {
       buildingId: unit.buildingId ?? "",
       unitNumber: unit.unitNumber,
       squareFootage: unit.squareFootage ?? undefined,
+      ownerPersonId: activeOwnerByUnitId.get(unit.id) ?? "",
     });
     buildingForm.reset({ associationId: unit.associationId, name: "", address: "", totalUnits: undefined, notes: "" });
     setOpen(true);
+  }
+
+  async function assignOwnerToUnit(unitId: string, ownerPersonId: string) {
+    const selectedOwnerId = ownerPersonId.trim();
+    if (!selectedOwnerId) return;
+
+    const currentOwnerships = (residentialDataset?.ownerships ?? []).filter((ownership) => ownership.unitId === unitId);
+    const now = Date.now();
+    const activeOwnerships = currentOwnerships.filter((ownership) => {
+      const startMs = ownership.startDate ? new Date(ownership.startDate).getTime() : Number.NaN;
+      const endMs = ownership.endDate ? new Date(ownership.endDate).getTime() : Number.NaN;
+      const isActiveStart = Number.isNaN(startMs) || startMs <= now;
+      const isActiveEnd = Number.isNaN(endMs) || endMs >= now;
+      return isActiveStart && isActiveEnd;
+    });
+
+    if (activeOwnerships.some((ownership) => ownership.personId === selectedOwnerId)) {
+      return;
+    }
+
+    const effectiveAt = new Date().toISOString();
+    for (const ownership of activeOwnerships) {
+      await apiRequest("PATCH", `/api/ownerships/${ownership.id}`, {
+        endDate: effectiveAt,
+      });
+    }
+
+    await apiRequest("POST", "/api/ownerships", {
+      unitId,
+      personId: selectedOwnerId,
+      ownershipPercentage: 100,
+      startDate: effectiveAt,
+    });
+
+    queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
+    queryClient.invalidateQueries({
+      predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+    });
+    queryClient.invalidateQueries({
+      queryKey: [activeAssociationId ? `/api/persons?associationId=${activeAssociationId}` : "/api/persons"],
+    });
+    toast({ title: "Unit owner assigned" });
   }
 
   function onSubmitUnit(values: z.infer<typeof unitFormSchema>) {
@@ -174,7 +273,19 @@ export default function UnitsPage() {
     };
 
     if (editingId) {
-      updateMutation.mutate({ ...payload, id: editingId });
+      updateMutation.mutate(
+        { ...payload, id: editingId },
+        {
+          onSuccess: async () => {
+            try {
+              await assignOwnerToUnit(editingId, values.ownerPersonId ?? "");
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Failed to assign owner";
+              toast({ title: "Owner assignment failed", description: message, variant: "destructive" });
+            }
+          },
+        },
+      );
       return;
     }
 
@@ -198,7 +309,7 @@ export default function UnitsPage() {
     setDialogMode("building");
     setEditingId(null);
     setEditingLegacyBuilding(null);
-    unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
+    unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" });
     buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
     setOpen(true);
   }
@@ -217,6 +328,7 @@ export default function UnitsPage() {
       buildingId: legacyBuildingName ? "" : selectedBuildingId,
       unitNumber: "",
       squareFootage: undefined,
+      ownerPersonId: "",
     });
     buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
     setOpen(true);
@@ -227,28 +339,43 @@ export default function UnitsPage() {
     if (!isOpen) {
       setEditingId(null);
       setEditingLegacyBuilding(null);
-      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
+      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" });
       buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
     }
   }
 
-  const getAssociationName = (id: string) => associations?.find((a) => a.id === id)?.name ?? "Unknown";
+  async function copyFieldValue(value: string, label: string) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error("Clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(trimmed);
+      toast({ title: `${label} copied` });
+    } catch {
+      toast({ title: "Copy failed", description: `Unable to copy ${label.toLowerCase()}.`, variant: "destructive" });
+    }
+  }
+
+  function toggleBuildingCollapse(groupKey: string) {
+    setCollapsedBuildings((current) => ({
+      ...current,
+      [groupKey]: !current[groupKey],
+    }));
+  }
 
   const buildingGroups = useMemo(() => {
     const ownerships = residentialDataset?.ownerships ?? [];
     const occupancies = residentialDataset?.occupancies ?? [];
+    const unitDirectoryByUnitId = new Map((residentialDataset?.unitDirectory ?? []).map((entry) => [entry.unit.id, entry]));
     const ownershipCountByUnit = new Map<string, number>();
     for (const ownership of ownerships) {
       ownershipCountByUnit.set(ownership.unitId, (ownershipCountByUnit.get(ownership.unitId) ?? 0) + 1);
     }
     const occupancyByUnit = new Map(occupancies.map((occupancy) => [occupancy.unitId, occupancy.occupancyType]));
-    const workOrdersByUnit = new Map<string, WorkOrder[]>();
-    for (const workOrder of workOrders) {
-      if (!workOrder.unitId) continue;
-      const current = workOrdersByUnit.get(workOrder.unitId) ?? [];
-      current.push(workOrder);
-      workOrdersByUnit.set(workOrder.unitId, current.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()));
-    }
     const groups = new Map<string, { buildingId: string | null; building: string; units: Unit[] }>();
     for (const building of buildings) {
       groups.set(building.id, {
@@ -273,25 +400,55 @@ export default function UnitsPage() {
 
     return Array.from(groups.values())
       .map((group) => ({
+        groupKey: group.buildingId ?? `legacy:${group.building}`,
         buildingId: group.buildingId,
         building: group.building,
         isLegacyGroup: !group.buildingId,
-        units: group.units.sort((left, right) => left.unitNumber.localeCompare(right.unitNumber)),
+        unitRows: group.units
+          .sort((left, right) => left.unitNumber.localeCompare(right.unitNumber))
+          .map((unit) => {
+            const unitDirectory = unitDirectoryByUnitId.get(unit.id);
+            const primaryOwner = unitDirectory?.owners.find((owner) => owner.person)?.person ?? null;
+            const ownerCount = ownershipCountByUnit.get(unit.id) ?? 0;
+            const additionalOwnerCount = Math.max(ownerCount - (primaryOwner ? 1 : 0), 0);
+            const ownerNameBase = primaryOwner
+              ? `${primaryOwner.firstName ?? ""} ${primaryOwner.lastName ?? ""}`.trim()
+              : ownerCount > 0
+                ? "Owner linked"
+                : "Unassigned";
+            const ownerName = additionalOwnerCount > 0 ? `${ownerNameBase} +${additionalOwnerCount}` : ownerNameBase;
+            const ownerEmail = primaryOwner?.email?.trim() ?? "";
+            const ownerPhone = primaryOwner?.phone?.trim() ?? "";
+            const occupancyType = occupancyByUnit.get(unit.id);
+            const occupancyLabel = occupancyType === "OWNER_OCCUPIED"
+              ? "Owner Occupied"
+              : occupancyType === "TENANT"
+                ? "Tenant"
+                : "Vacant";
+
+            return {
+              unit,
+              ownerCount,
+              ownerName,
+              ownerEmail,
+              ownerPhone,
+              ownerPersonId: primaryOwner?.id ?? null,
+              occupancyType,
+              occupancyLabel,
+            };
+          }),
         unitCount: group.units.length,
         occupiedCount: group.units.filter((unit) => occupancyByUnit.has(unit.id)).length,
         ownerLinkedCount: group.units.filter((unit) => (ownershipCountByUnit.get(unit.id) ?? 0) > 0).length,
-        occupancyByUnit,
-        ownershipCountByUnit,
-        workOrdersByUnit,
       }))
       .sort((left, right) => left.building.localeCompare(right.building));
-  }, [buildingById, buildings, residentialDataset, units, workOrders]);
+  }, [buildings, residentialDataset, units]);
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Units</h1>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Buildings &amp; Units</h1>
           <p className="text-muted-foreground">Start by adding buildings, then add units within each building.</p>
         </div>
         <div className="flex gap-2">
@@ -424,6 +581,33 @@ export default function UnitsPage() {
                       </FormItem>
                     )} />
                   </div>
+                  {editingId ? (
+                    <FormField control={unitForm.control} name="ownerPersonId" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Assigned Owner</FormLabel>
+                        <Select value={field.value || "none"} onValueChange={(value) => field.onChange(value === "none" ? "" : value)}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-unit-owner-person">
+                              <SelectValue placeholder="Select owner from People" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">No owner selected</SelectItem>
+                            {sortedPeopleOptions.map((person) => (
+                              <SelectItem key={person.id} value={person.id}>
+                                {`${person.firstName ?? ""} ${person.lastName ?? ""}`.trim()}
+                                {person.email ? ` · ${person.email}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="text-xs text-muted-foreground">
+                          Pulls from People records, including manually entered contacts.
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  ) : null}
                 </div>
 
                 <Button
@@ -444,23 +628,29 @@ export default function UnitsPage() {
       <Card>
         <CardContent className="p-0">
           {!!buildingGroups.length ? (
-            <div className="border-b p-6">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold">Building Hierarchy</h2>
-                <p className="text-sm text-muted-foreground">Define buildings first, then fill units with ownership and occupancy records.</p>
-              </div>
-              <div className="grid gap-4 lg:grid-cols-2">
+            <div className="p-6">
+              <div className="grid gap-4 grid-cols-1">
                 {buildingGroups.map((group) => (
-                  <div key={group.building} className="rounded-lg border p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
+                  <div key={group.groupKey} className="rounded-lg border bg-card">
+                    <div className="flex items-center justify-between border-b px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleBuildingCollapse(group.groupKey)}
+                        className="text-left"
+                        data-testid={`button-toggle-building-${group.groupKey}`}
+                      >
                         <div className="flex items-center gap-2">
+                          {collapsedBuildings[group.groupKey] ? (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          )}
                           <div className="font-medium">{group.building}</div>
                           {group.isLegacyGroup ? <Badge variant="outline">Legacy</Badge> : null}
                         </div>
-                        <div className="text-xs text-muted-foreground">{group.unitCount} total units</div>
-                      </div>
-                      <div className="flex gap-2 items-center">
+                        <div className="ml-6 text-xs text-muted-foreground">{group.unitCount} total units</div>
+                      </button>
+                      <div className="flex flex-wrap gap-2 items-center">
                         <Badge variant="outline">{group.ownerLinkedCount} owned</Badge>
                         <Badge variant="secondary">{group.occupiedCount} occupied</Badge>
                         <Button
@@ -475,85 +665,143 @@ export default function UnitsPage() {
                         </Button>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      {group.units.length === 0 ? (
+                    {collapsedBuildings[group.groupKey] ? null : (
+                    <div className="p-4">
+                      {group.unitRows.length === 0 ? (
                         <div className="rounded-md bg-muted/20 px-3 py-4 text-sm text-muted-foreground">
                           No units yet in this building.
                         </div>
                       ) : null}
-                      {group.units.map((unit) => (
-                        <div key={unit.id} className="rounded-md bg-muted/30 px-3 py-3 text-sm space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span>Unit {unit.unitNumber}</span>
-                            <div className="flex gap-2">
-                              <Badge variant="outline">{group.ownershipCountByUnit.get(unit.id) ?? 0} owners</Badge>
-                              <Badge variant="outline">{group.workOrdersByUnit.get(unit.id)?.length ?? 0} work orders</Badge>
-                              <Badge variant={group.occupancyByUnit.get(unit.id) === "TENANT" ? "secondary" : "default"}>
-                                {group.occupancyByUnit.get(unit.id) === "OWNER_OCCUPIED"
-                                  ? "Owner Occupied"
-                                  : group.occupancyByUnit.get(unit.id) === "TENANT"
-                                    ? "Tenant"
-                                    : "Vacant"}
-                              </Badge>
+                      {group.unitRows.length > 0 ? (
+                        <div className="hidden lg:grid grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] gap-3 rounded-t-md border bg-muted/10 px-3 py-2 text-xs font-medium text-muted-foreground">
+                          <div>Unit</div>
+                          <div>Owner Name</div>
+                          <div>Email</div>
+                          <div>Phone Number</div>
+                          <div>Actions</div>
+                        </div>
+                      ) : null}
+                      <div className="md:rounded-b-md md:border md:border-t-0 md:divide-y">
+                        {group.unitRows.map((row) => (
+                          <div key={row.unit.id} className="border mb-2 rounded-md p-3 text-sm md:mb-0 md:rounded-none md:border-0 md:p-3">
+                            <div className="grid gap-3 lg:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] lg:items-center">
+                              <div className="min-w-0 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <div className="font-medium">Unit {row.unit.unitNumber}</div>
+                                  <Badge variant={row.occupancyType === "TENANT" ? "secondary" : "default"}>
+                                    {row.occupancyLabel}
+                                  </Badge>
+                                </div>
+                              </div>
+
+                              <CopyableCell
+                                label="Owner name"
+                                value={row.ownerName === "Unassigned" ? "" : row.ownerName}
+                                fallback="Unassigned"
+                                onCopy={copyFieldValue}
+                              />
+                              <CopyableCell
+                                label="Owner email"
+                                value={row.ownerEmail}
+                                fallback="No email"
+                                onCopy={copyFieldValue}
+                              />
+                              <CopyableCell
+                                label="Owner phone"
+                                value={row.ownerPhone}
+                                fallback="No phone"
+                                onCopy={copyFieldValue}
+                              />
+
+                              <div className="min-w-0 flex flex-wrap items-center gap-1 lg:flex-nowrap lg:justify-end">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  title="Open Unit Intake Form"
+                                  aria-label="Open Unit Intake Form"
+                                  className="h-8 w-8 shrink-0 p-0"
+                                  data-testid={`button-contact-form-link-unit-${row.unit.id}`}
+                                  disabled={contactFormLinkMutation.isPending}
+                                  onClick={() => contactFormLinkMutation.mutate({ unitId: row.unit.id })}
+                                >
+                                  <Link2 className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  asChild
+                                  size="sm"
+                                  variant="outline"
+                                  title="Send Communication"
+                                  aria-label="Send Communication"
+                                  className="h-8 w-8 shrink-0 p-0"
+                                  data-testid={`button-send-communication-unit-${row.unit.id}`}
+                                >
+                                  <Link href={`/app/communications?targetType=selected-units&selectedUnitAudience=owners&unitId=${row.unit.id}${row.ownerPersonId ? `&personId=${row.ownerPersonId}` : ""}`}>
+                                    <MessageSquare className="h-4 w-4" />
+                                  </Link>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  title="Edit Unit"
+                                  aria-label="Edit Unit"
+                                  className="h-8 w-8 shrink-0 p-0"
+                                  onClick={() => openEdit(row.unit)}
+                                  data-testid={`button-edit-unit-${row.unit.id}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
                           </div>
-                          {(group.workOrdersByUnit.get(unit.id) ?? []).slice(0, 3).map((workOrder) => (
-                            <div key={workOrder.id} className="flex items-center justify-between rounded border bg-background px-3 py-2 text-xs">
-                              <div>
-                                <div className="font-medium">{workOrder.title}</div>
-                                <div className="text-muted-foreground">{new Date(workOrder.updatedAt).toLocaleString()}</div>
-                              </div>
-                              <div className="flex gap-2">
-                                <Badge variant="secondary">{workOrder.status}</Badge>
-                                <Badge variant="outline">{workOrder.priority}</Badge>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           ) : null}
 
-          {isLoading ? (
+          {isLoading || buildingsLoading ? (
             <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
-          ) : !units?.length ? (
+          ) : !buildingGroups.length ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <DoorOpen className="h-12 w-12 text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium" data-testid="text-empty-state">No units yet</h3>
               <p className="text-sm text-muted-foreground mt-1">Add buildings first, then add units.</p>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Unit</TableHead>
-                  <TableHead>Association</TableHead>
-                  <TableHead>Building</TableHead>
-                  <TableHead>Sq Ft</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {units.map((u) => (
-                  <TableRow key={u.id} data-testid={`row-unit-${u.id}`}>
-                    <TableCell className="font-medium">{u.unitNumber}</TableCell>
-                    <TableCell><Badge variant="secondary">{getAssociationName(u.associationId)}</Badge></TableCell>
-                    <TableCell className="text-muted-foreground">{(u.buildingId ? buildingById.get(u.buildingId)?.name : null) || u.building || "-"}</TableCell>
-                    <TableCell className="text-muted-foreground">{u.squareFootage ? `${u.squareFootage.toLocaleString()} ft` : "-"}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => openEdit(u)} data-testid={`button-edit-unit-${u.id}`}>Edit</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          ) : null}
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function CopyableCell({
+  label,
+  value,
+  fallback,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  fallback: string;
+  onCopy: (value: string, label: string) => Promise<void>;
+}) {
+  const hasValue = Boolean(value.trim());
+  return (
+    <button
+      type="button"
+      className={`min-w-0 w-full rounded-md border bg-background px-2 py-2 text-left lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 ${hasValue ? "cursor-copy" : "cursor-default"}`}
+      onClick={() => {
+        if (!hasValue) return;
+        void onCopy(value, label);
+      }}
+      data-testid={`field-copy-${label.toLowerCase().replace(/\s+/g, "-")}`}
+    >
+      <div className="truncate text-sm">{hasValue ? value : fallback}</div>
+    </button>
   );
 }

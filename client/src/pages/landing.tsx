@@ -65,11 +65,11 @@ export default function LandingPage({ hasWorkspaceAccess, onOpenAdminAuth, onSta
               Admin Auth
             </Button>
             <Button
-              variant={hasWorkspaceAccess ? "outline" : "default"}
+              variant="default"
               onClick={onStartGoogleSignIn}
               data-testid="button-landing-google-signin"
             >
-              {hasWorkspaceAccess ? "Refresh Google Session" : "Sign in with Google"}
+              Sign in with Google
             </Button>
             <Button asChild data-testid="button-landing-open-workspace">
               <Link href="/app">
@@ -128,11 +128,6 @@ export default function LandingPage({ hasWorkspaceAccess, onOpenAdminAuth, onSta
                   <p className="mt-2 text-sm text-muted-foreground">{item.summary}</p>
                 </div>
               ))}
-              <div className="rounded-2xl border border-dashed border-primary/35 bg-primary/5 p-4 text-sm text-muted-foreground">
-                Public landing at <code className="font-medium text-foreground">/</code>, workspace entry at{" "}
-                <code className="font-medium text-foreground">/app</code>, with a pre-auth workspace state before users enter
-                the operating system.
-              </div>
             </CardContent>
           </Card>
         </div>

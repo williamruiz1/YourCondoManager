@@ -397,20 +397,23 @@ export default function AssociationsPage() {
           <CardHeader>
             <CardTitle className="text-base">Association Overview</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-            <div><div className="text-muted-foreground">Units</div><div className="font-semibold">{selectedOverview.units}</div></div>
-            <div><div className="text-muted-foreground">Owners</div><div className="font-semibold">{selectedOverview.activeOwners}</div></div>
-            <div><div className="text-muted-foreground">Occupants</div><div className="font-semibold">{selectedOverview.activeOccupants}</div></div>
-            <div><div className="text-muted-foreground">Maint Open</div><div className="font-semibold">{selectedOverview.maintenanceOpen}</div></div>
-            <div><div className="text-muted-foreground">Maint Overdue</div><div className="font-semibold">{selectedOverview.maintenanceOverdue}</div></div>
-            <div><div className="text-muted-foreground">Payment Methods</div><div className="font-semibold">{selectedOverview.paymentMethodsActive}</div></div>
-            <div><div className="text-muted-foreground">Onboarding Score</div><div className="font-semibold">{selectedOverview.onboardingScorePercent}%</div></div>
-            <div><div className="text-muted-foreground">Contact Coverage</div><div className="font-semibold">{selectedOverview.contactCoveragePercent}%</div></div>
-            <div className="col-span-2">
-              <div className="text-muted-foreground">Onboarding State</div>
-              <Badge variant={selectedOverview.onboardingState === "complete" ? "default" : selectedOverview.onboardingState === "blocked" ? "destructive" : "secondary"}>
-                {selectedOverview.onboardingState}
-              </Badge>
+          <CardContent className="space-y-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Association Footprint</div><div className="font-semibold">{selectedOverview.units} units</div></div>
+              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Resident Coverage</div><div className="font-semibold">{selectedOverview.activeOwners + selectedOverview.activeOccupants} residents</div></div>
+              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Contact Readiness</div><div className="font-semibold">{selectedOverview.contactCoveragePercent}%</div></div>
+              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Onboarding Progress</div><div className="font-semibold">{selectedOverview.onboardingScorePercent}%</div></div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Maintenance Open</div><div className="font-semibold">{selectedOverview.maintenanceOpen}</div></div>
+              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Maintenance Overdue</div><div className="font-semibold">{selectedOverview.maintenanceOverdue}</div></div>
+              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Payment Methods Ready</div><div className="font-semibold">{selectedOverview.paymentMethodsActive}</div></div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <div className="text-muted-foreground">Onboarding State</div>
+                <Badge variant={selectedOverview.onboardingState === "complete" ? "default" : selectedOverview.onboardingState === "blocked" ? "destructive" : "secondary"}>
+                  {selectedOverview.onboardingState}
+                </Badge>
+              </div>
             </div>
           </CardContent>
         </Card>

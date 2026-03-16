@@ -38,7 +38,7 @@ export default function OccupancyPage() {
   const [open, setOpen] = useState(false);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const { toast } = useToast();
-  const { activeAssociationName } = useActiveAssociation();
+  const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [intakeForm, setIntakeForm] = useState({
     unitId: "",
     occupancyType: "TENANT" as "OWNER_OCCUPIED" | "TENANT",
@@ -54,7 +54,7 @@ export default function OccupancyPage() {
     contactPreference: "email",
   });
 
-  const { data: residentialDataset, isLoading } = useResidentialDataset();
+  const { data: residentialDataset, isLoading } = useResidentialDataset(activeAssociationId || undefined);
   const occupancies = residentialDataset?.occupancies ?? [];
   const persons = residentialDataset?.persons ?? [];
   const units = residentialDataset?.units ?? [];
@@ -83,7 +83,9 @@ export default function OccupancyPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({ title: "Occupancy recorded successfully" });
       setOpen(false);
@@ -125,7 +127,9 @@ export default function OccupancyPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
       queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+      });
       toast({ title: "Onboarding intake submitted" });
       setIntakeOpen(false);
       setIntakeForm({

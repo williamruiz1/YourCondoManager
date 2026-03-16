@@ -34,6 +34,13 @@ const workstreams: WorkstreamDef[] = [
         priority: "critical",
       },
       {
+        title: "Fix deployed admin association picker mismatches for scoped users",
+        description:
+          "A deployed admin can authenticate successfully and still fail to see an association they are directly scoped to in admin_association_scopes. Investigate the full deployed identity path across Google session restore, local admin header state, cached association queries, and environment/database alignment so scoped associations consistently appear in the workspace selector.",
+        effort: "large",
+        priority: "critical",
+      },
+      {
         title: "Replace email-only owner portal login with verifiable authentication",
         description:
           "Portal sessions can be started with only associationId and email, and the returned portal access identifier becomes the long-lived credential. Add a verifiable login or magic-link flow with revocable session tokens.",

@@ -16,6 +16,8 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   Form,
   FormControl,
@@ -79,6 +81,7 @@ export default function AssociationContextPage() {
     expiresAt: "",
   });
   const [manualIntakeOpen, setManualIntakeOpen] = useState(false);
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState("");
   const [rejectionDrafts, setRejectionDrafts] = useState<Record<string, string>>({});
   const [manualIntakeForm, setManualIntakeForm] = useState({
     unitId: "",
@@ -89,21 +92,22 @@ export default function AssociationContextPage() {
     lastName: "",
     email: "",
     phone: "",
-    mailingAddress: "",
-    emergencyContactName: "",
-    emergencyContactPhone: "",
+    mailingAddressLine1: "",
+    mailingCity: "",
+    mailingState: "",
+    mailingPostalCode: "",
     contactPreference: "email",
   });
   const [reminderSweepHours, setReminderSweepHours] = useState("24");
   const { activeAssociationId, activeAssociation, activeAssociationName } = useActiveAssociation();
-  const { data: residentialDataset, isLoading: residentialLoading } = useResidentialDataset();
+  const { data: residentialDataset } = useResidentialDataset(activeAssociationId || undefined);
   const { toast } = useToast();
   const { data: overview, isLoading: overviewLoading } = useQuery<AssociationOverview>({
     queryKey: [activeAssociationId ? `/api/associations/${activeAssociationId}/overview` : "/api/associations/none/overview"],
     enabled: Boolean(activeAssociationId),
   });
   const { data: documents = [], isLoading: documentsLoading } = useQuery<Document[]>({
-    queryKey: ["/api/documents"],
+    queryKey: [activeAssociationId ? `/api/documents?associationId=${activeAssociationId}` : "/api/documents"],
     enabled: Boolean(activeAssociationId),
   });
   const { data: onboardingState, isLoading: onboardingStateLoading } = useQuery<{
@@ -184,39 +188,6 @@ export default function AssociationContextPage() {
     },
   });
 
-  const buildingGroups = useMemo(() => {
-    const groups = new Map<string, Array<{
-      id: string;
-      unitNumber: string;
-      ownerCount: number;
-      tenantCount: number;
-      occupancyStatus: ResidentialDatasetUnitDirectoryItem["occupancyStatus"];
-      lastOccupancyUpdate: string | null;
-    }>>();
-
-    for (const entry of residentialDataset?.unitDirectory ?? []) {
-      const buildingKey = entry.unit.building?.trim() || "Unassigned Building";
-      const rows = groups.get(buildingKey) ?? [];
-      rows.push({
-        id: entry.unit.id,
-        unitNumber: entry.unit.unitNumber,
-        ownerCount: entry.ownerCount,
-        tenantCount: entry.tenantCount,
-        occupancyStatus: entry.occupancyStatus,
-        lastOccupancyUpdate: entry.lastOccupancyUpdate,
-      });
-      groups.set(buildingKey, rows);
-    }
-
-    return Array.from(groups.entries())
-      .map(([building, units]) => ({
-        building,
-        unitCount: units.length,
-        units: units.sort((left, right) => left.unitNumber.localeCompare(right.unitNumber)),
-      }))
-      .sort((left, right) => left.building.localeCompare(right.building));
-  }, [residentialDataset]);
-
   const unitInviteCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const invite of onboardingInvites) {
@@ -251,6 +222,11 @@ export default function AssociationContextPage() {
       rejected,
     };
   }, [onboardingInvites, onboardingSubmissions, residentialDataset]);
+
+  const selectedSubmission = useMemo(
+    () => onboardingSubmissions.find((submission) => submission.id === selectedSubmissionId) ?? null,
+    [onboardingSubmissions, selectedSubmissionId],
+  );
 
   const unitCoverageRows = useMemo(() => {
     return (residentialDataset?.unitDirectory ?? [])
@@ -411,7 +387,12 @@ export default function AssociationContextPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/onboarding/submissions?associationId=${activeAssociationId}` : "/api/onboarding/submissions"] });
       queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/onboarding/invites?associationId=${activeAssociationId}` : "/api/onboarding/invites"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+      });
       queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/associations/${activeAssociationId}/overview` : "/api/associations/none/overview"] });
       queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/onboarding/state?associationId=${activeAssociationId}` : "/api/onboarding/state"] });
       setRejectionDrafts({});
@@ -462,16 +443,22 @@ export default function AssociationContextPage() {
           lastName: manualIntakeForm.lastName.trim(),
           email: manualIntakeForm.email.trim() || null,
           phone: manualIntakeForm.phone.trim() || null,
-          mailingAddress: manualIntakeForm.mailingAddress.trim() || null,
-          emergencyContactName: manualIntakeForm.emergencyContactName.trim() || null,
-          emergencyContactPhone: manualIntakeForm.emergencyContactPhone.trim() || null,
+          mailingAddress: [
+            manualIntakeForm.mailingAddressLine1.trim(),
+            [manualIntakeForm.mailingCity.trim(), manualIntakeForm.mailingState.trim(), manualIntakeForm.mailingPostalCode.trim()].filter(Boolean).join(", "),
+          ].filter(Boolean).join(", ") || null,
           contactPreference: manualIntakeForm.contactPreference || "email",
         },
       });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+      });
       queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/associations/${activeAssociationId}/overview` : "/api/associations/none/overview"] });
       queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/onboarding/state?associationId=${activeAssociationId}` : "/api/onboarding/state"] });
       queryClient.invalidateQueries({ queryKey: [activeAssociationId ? `/api/onboarding/submissions?associationId=${activeAssociationId}` : "/api/onboarding/submissions"] });
@@ -485,9 +472,10 @@ export default function AssociationContextPage() {
         lastName: "",
         email: "",
         phone: "",
-        mailingAddress: "",
-        emergencyContactName: "",
-        emergencyContactPhone: "",
+        mailingAddressLine1: "",
+        mailingCity: "",
+        mailingState: "",
+        mailingPostalCode: "",
         contactPreference: "email",
       });
       toast({ title: "Manual onboarding intake created" });
@@ -510,6 +498,10 @@ export default function AssociationContextPage() {
       ...current,
       [submissionId]: value,
     }));
+  };
+
+  const openSubmissionReview = (submissionId: string) => {
+    setSelectedSubmissionId(submissionId);
   };
 
   if (!activeAssociationId) {
@@ -549,19 +541,21 @@ export default function AssociationContextPage() {
         ]}
       />
 
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation="This page is the operating center for the selected association. Edits, onboarding actions, and linked records all follow this active scope."
-      />
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+          <TabsTrigger value="records">Records</TabsTrigger>
+        </TabsList>
 
-      <AsyncStateBoundary
-        isLoading={overviewLoading}
-        error={overview === undefined && !overviewLoading ? new Error("Association overview is unavailable.") : undefined}
-        emptyTitle="Association overview unavailable"
-        emptyMessage="Refresh the page or confirm the active association still exists."
-      >
-      <Card>
+        <TabsContent value="overview">
+          <AsyncStateBoundary
+            isLoading={overviewLoading}
+            error={overview === undefined && !overviewLoading ? new Error("Association overview is unavailable.") : undefined}
+            emptyTitle="Association overview unavailable"
+            emptyMessage="Refresh the page or confirm the active association still exists."
+          >
+            <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-4">
             <CardTitle>Association Profile</CardTitle>
             <div className="flex gap-2">
@@ -733,56 +727,12 @@ export default function AssociationContextPage() {
               </>
             )}
           </CardContent>
-        </Card>
-      </AsyncStateBoundary>
+            </Card>
+          </AsyncStateBoundary>
+        </TabsContent>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Buildings and Units</CardTitle>
-          <Button asChild size="sm" variant="outline">
-            <Link href="/app/units">Manage Units</Link>
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {residentialLoading ? (
-            <div className="grid gap-3 md:grid-cols-2">
-              <Skeleton className="h-40 w-full" />
-              <Skeleton className="h-40 w-full" />
-            </div>
-          ) : buildingGroups.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No buildings or units are configured for this association.</div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {buildingGroups.map((group) => (
-                <div key={group.building} className="rounded-lg border p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{group.building}</div>
-                      <div className="text-xs text-muted-foreground">{group.unitCount} units</div>
-                    </div>
-                    <Badge variant="secondary">{group.unitCount}</Badge>
-                  </div>
-                  <div className="space-y-2">
-                    {group.units.map((unit) => (
-                      <div key={unit.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-sm">
-                        <span>Unit {unit.unitNumber}</span>
-                        <div className="flex gap-2">
-                          <Badge variant="outline">{unit.ownerCount} owners</Badge>
-                          <Badge variant={unit.occupancyStatus === "RENTAL_OCCUPIED" ? "secondary" : unit.occupancyStatus === "UNASSIGNED" ? "outline" : "default"}>
-                            {formatOccupancyStatus(unit.occupancyStatus)}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
+        <TabsContent value="onboarding">
+          <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle>Onboarding Console</CardTitle>
           <div className="flex gap-2 flex-wrap">
@@ -800,352 +750,387 @@ export default function AssociationContextPage() {
             <CompactMetric label="Approved Intake" value={onboardingMetrics.approved} icon={Home} />
           </div>
 
-          <div className="rounded-xl border bg-muted/10 p-4 space-y-3">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-sm font-semibold">Onboarding Progress</div>
-                <div className="text-xs text-muted-foreground">
-                  Track blockers, progress, and next actions for resident contact intake.
-                </div>
-              </div>
-              <div className="min-w-[220px]">
-                <div className="mb-2 text-xs text-muted-foreground">{onboardingState?.scorePercent ?? overview?.onboardingScorePercent ?? 0}% complete</div>
-                <Progress value={onboardingState?.scorePercent ?? overview?.onboardingScorePercent ?? 0} />
-              </div>
-            </div>
-            {onboardingStateLoading ? <Skeleton className="h-16 w-full" /> : null}
-            {(onboardingState?.blockers?.length ?? 0) > 0 ? (
-              <div className="text-sm text-destructive">
-                {onboardingState?.blockers.join(" ")}
-              </div>
-            ) : null}
-            {(onboardingState?.remediationActions?.length ?? 0) > 0 ? (
-              <div className="text-sm text-muted-foreground">
-                Next actions: {onboardingState?.remediationActions.join(" · ")}
-              </div>
-            ) : null}
-            {onboardingState?.components ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <MiniProgressCard
-                  label="Units Created"
-                  value={onboardingState.components.unitsConfigured.score}
-                  detail={`${onboardingState.components.unitsConfigured.completed}/${onboardingState.components.unitsConfigured.total || 1}`}
-                />
-                <MiniProgressCard
-                  label="Owner Data"
-                  value={onboardingState.components.ownerDataCollected.score}
-                  detail={`${onboardingState.components.ownerDataCollected.completed}/${onboardingState.components.ownerDataCollected.total}`}
-                />
-                <MiniProgressCard
-                  label="Tenant Data"
-                  value={onboardingState.components.tenantDataCollected.score}
-                  detail={`${onboardingState.components.tenantDataCollected.completed}/${onboardingState.components.tenantDataCollected.total}`}
-                />
-                <MiniProgressCard
-                  label="Board Setup"
-                  value={onboardingState.components.boardMembersConfigured.score}
-                  detail={onboardingState.components.boardMembersConfigured.completed > 0 ? "Configured" : "Missing"}
-                />
-                <MiniProgressCard
-                  label="Payments"
-                  value={onboardingState.components.paymentMethodsConfigured.score}
-                  detail={onboardingState.components.paymentMethodsConfigured.completed > 0 ? "Configured" : "Missing"}
-                />
-                <MiniProgressCard
-                  label="Comms Templates"
-                  value={onboardingState.components.communicationTemplatesConfigured.score}
-                  detail={onboardingState.components.communicationTemplatesConfigured.completed > 0 ? "Configured" : "Missing"}
-                />
-              </div>
-            ) : null}
-            {(onboardingState?.remediationItems?.length ?? 0) > 0 ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {onboardingState?.remediationItems.map((item) => (
-                  <div key={`${item.href}:${item.label}`} className="rounded-lg border bg-background p-3">
-                    <div className="text-sm font-medium">{item.label}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{item.summary}</div>
-                    <Button asChild size="sm" variant="outline" className="mt-3">
-                      <Link href={item.href}>Open</Link>
-                    </Button>
+          <Accordion type="multiple" defaultValue={[]} className="w-full space-y-3">
+            <AccordionItem value="progress-readiness" className="rounded-xl border bg-muted/10 px-4">
+              <AccordionTrigger className="text-sm font-semibold">Progress & Readiness</AccordionTrigger>
+              <AccordionContent className="space-y-3 pb-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="text-sm font-semibold">Onboarding Progress</div>
+                    <div className="text-xs text-muted-foreground">
+                      Track blockers, progress, and next actions for resident contact intake.
+                    </div>
                   </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <RecommendedActionsPanel
-            title="Onboarding Next Actions"
-            description="Use the onboarding metrics and blockers above to decide the next resident-intake move."
-            actions={onboardingRecommendedActions}
-          />
-
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-xl border p-4 space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="text-sm font-semibold">Unit Coverage</div>
-                  <div className="text-xs text-muted-foreground">
-                    Identify unclaimed units, invite status, and intake review status at the unit level.
+                  <div className="min-w-[220px]">
+                    <div className="mb-2 text-xs text-muted-foreground">{onboardingState?.scorePercent ?? overview?.onboardingScorePercent ?? 0}% complete</div>
+                    <Progress value={onboardingState?.scorePercent ?? overview?.onboardingScorePercent ?? 0} />
                   </div>
                 </div>
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/app/communications">Open Communications</Link>
-                </Button>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Coverage</TableHead>
-                    <TableHead>Invites</TableHead>
-                    <TableHead>Submission</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {unitCoverageRows.slice(0, 25).map((row) => (
-                  <TableRow key={row.unitId}>
-                      <TableCell>
-                        <div className="font-medium">Unit {row.unitNumber}</div>
-                        <div className="text-xs text-muted-foreground">{row.building}</div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={row.coverageStatus === "claimed" ? "default" : row.coverageStatus === "pending-review" ? "secondary" : "outline"}>
-                          {row.coverageStatus.replace("-", " ")}
-                        </Badge>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {formatOccupancyStatus(row.occupancyStatus)} · Owners {row.ownerCount} · Tenants {row.tenantCount}
-                          {row.lastOccupancyUpdate ? ` · Updated ${new Date(row.lastOccupancyUpdate).toLocaleDateString()}` : ""}
-                        </div>
-                      </TableCell>
-                      <TableCell>{row.inviteCount}</TableCell>
-                      <TableCell>
-                        {row.latestSubmission ? (
-                          <div className="text-xs">
-                            <div>{row.latestSubmission.firstName} {row.latestSubmission.lastName}</div>
-                            <div className="text-muted-foreground">{row.latestSubmission.status}</div>
-                          </div>
-                        ) : <span className="text-xs text-muted-foreground">No submission</span>}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          <Button size="sm" variant="outline" onClick={() => openManualIntake({ unitId: row.unitId, ownerCount: row.ownerCount, occupantCount: row.occupantCount })}>
-                            Manual Entry
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "owner" })}
-                            disabled={unitLinkMutation.isPending}
-                          >
-                            Owner Link
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "tenant" })}
-                            disabled={unitLinkMutation.isPending}
-                          >
-                            Tenant Link
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {unitCoverageRows.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-muted-foreground">No units available for onboarding coverage.</TableCell></TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </div>
-
-            <div className="rounded-xl border p-4 space-y-4">
-              <div>
-                <div className="text-sm font-semibold">Create Invite</div>
-                <div className="text-xs text-muted-foreground">
-                  Generate an owner or tenant intake link for a specific unit.
-                </div>
-              </div>
-              <div className="grid gap-3">
-                <Select value={inviteForm.unitId || "none"} onValueChange={(value) => setInviteForm((prev) => ({ ...prev, unitId: value === "none" ? "" : value }))}>
-                  <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">select unit</SelectItem>
-                    {(residentialDataset?.units ?? []).map((unit) => (
-                      <SelectItem key={unit.id} value={unit.id}>Unit {unit.unitNumber}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={inviteForm.residentType} onValueChange={(value) => setInviteForm((prev) => ({ ...prev, residentType: value as "owner" | "tenant" }))}>
-                  <SelectTrigger><SelectValue placeholder="Resident type" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="owner">Owner</SelectItem>
-                    <SelectItem value="tenant">Tenant</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input placeholder="Email (optional)" value={inviteForm.email} onChange={(event) => setInviteForm((prev) => ({ ...prev, email: event.target.value }))} />
-                <Input placeholder="Phone (optional)" value={inviteForm.phone} onChange={(event) => setInviteForm((prev) => ({ ...prev, phone: event.target.value }))} />
-                <Input type="datetime-local" value={inviteForm.expiresAt} onChange={(event) => setInviteForm((prev) => ({ ...prev, expiresAt: event.target.value }))} />
-                <Button onClick={() => createInviteMutation.mutate()} disabled={createInviteMutation.isPending}>
-                  Create Onboarding Invite
-                </Button>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner" })}
-                    disabled={unitLinkMutation.isPending || !inviteForm.unitId}
-                  >
-                    Copy Owner Link
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "tenant" })}
-                    disabled={unitLinkMutation.isPending || !inviteForm.unitId}
-                  >
-                    Copy Tenant Link
-                  </Button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner", regenerate: true })}
-                    disabled={unitLinkMutation.isPending || !inviteForm.unitId}
-                  >
-                    Regenerate Owner
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "tenant", regenerate: true })}
-                    disabled={unitLinkMutation.isPending || !inviteForm.unitId}
-                  >
-                    Regenerate Tenant
-                  </Button>
-                </div>
-              </div>
-              <div className="border-t pt-4 space-y-3">
-                <div className="text-sm font-semibold">Reminder Sweep</div>
-                <div className="flex gap-2">
-                  <Input type="number" min="0" value={reminderSweepHours} onChange={(event) => setReminderSweepHours(event.target.value)} />
-                  <Button variant="outline" onClick={() => reminderSweepMutation.mutate()} disabled={reminderSweepMutation.isPending}>
-                    Run Sweep
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-6 xl:grid-cols-2">
-            <div className="rounded-xl border p-4 space-y-4">
-              <div className="text-sm font-semibold">Recent Invites</div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Resident</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {onboardingInvites.slice(0, 12).map((invite) => (
-                    <TableRow key={invite.id}>
-                      <TableCell>Unit {invite.unitLabel || invite.unitId}</TableCell>
-                      <TableCell className="capitalize">{invite.residentType}</TableCell>
-                      <TableCell><Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge></TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => sendInviteMutation.mutate(invite.id)}
-                          disabled={sendInviteMutation.isPending || !invite.email}
-                        >
-                          {invite.lastSentAt ? "Resend" : "Send"}
+                {onboardingStateLoading ? <Skeleton className="h-16 w-full" /> : null}
+                {(onboardingState?.blockers?.length ?? 0) > 0 ? (
+                  <div className="text-sm text-destructive">
+                    {onboardingState?.blockers.join(" ")}
+                  </div>
+                ) : null}
+                {(onboardingState?.remediationActions?.length ?? 0) > 0 ? (
+                  <div className="text-sm text-muted-foreground">
+                    Next actions: {onboardingState?.remediationActions.join(" · ")}
+                  </div>
+                ) : null}
+                {onboardingState?.components ? (
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <MiniProgressCard
+                      label="Units Created"
+                      value={onboardingState.components.unitsConfigured.score}
+                      detail={`${onboardingState.components.unitsConfigured.completed}/${onboardingState.components.unitsConfigured.total || 1}`}
+                    />
+                    <MiniProgressCard
+                      label="Owner Data"
+                      value={onboardingState.components.ownerDataCollected.score}
+                      detail={`${onboardingState.components.ownerDataCollected.completed}/${onboardingState.components.ownerDataCollected.total}`}
+                    />
+                    <MiniProgressCard
+                      label="Tenant Data"
+                      value={onboardingState.components.tenantDataCollected.score}
+                      detail={`${onboardingState.components.tenantDataCollected.completed}/${onboardingState.components.tenantDataCollected.total}`}
+                    />
+                    <MiniProgressCard
+                      label="Board Setup"
+                      value={onboardingState.components.boardMembersConfigured.score}
+                      detail={onboardingState.components.boardMembersConfigured.completed > 0 ? "Configured" : "Missing"}
+                    />
+                    <MiniProgressCard
+                      label="Payments"
+                      value={onboardingState.components.paymentMethodsConfigured.score}
+                      detail={onboardingState.components.paymentMethodsConfigured.completed > 0 ? "Configured" : "Missing"}
+                    />
+                    <MiniProgressCard
+                      label="Comms Templates"
+                      value={onboardingState.components.communicationTemplatesConfigured.score}
+                      detail={onboardingState.components.communicationTemplatesConfigured.completed > 0 ? "Configured" : "Missing"}
+                    />
+                  </div>
+                ) : null}
+                {(onboardingState?.remediationItems?.length ?? 0) > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {onboardingState?.remediationItems.map((item) => (
+                      <div key={`${item.href}:${item.label}`} className="rounded-lg border bg-background p-3">
+                        <div className="text-sm font-medium">{item.label}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{item.summary}</div>
+                        <Button asChild size="sm" variant="outline" className="mt-3">
+                          <Link href={item.href}>Open</Link>
                         </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {onboardingInvites.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className="text-muted-foreground">No onboarding invites yet.</TableCell></TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <RecommendedActionsPanel
+                  title="Onboarding Next Actions"
+                  description="Use the onboarding metrics and blockers above to decide the next resident-intake move."
+                  actions={onboardingRecommendedActions}
+                />
+              </AccordionContent>
+            </AccordionItem>
 
-            <div className="rounded-xl border p-4 space-y-4">
-              <div className="text-sm font-semibold">Submission Review Queue</div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Person</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {onboardingSubmissions.slice(0, 12).map((submission) => (
-                    <TableRow key={submission.id}>
-                      <TableCell>Unit {submission.unitLabel || submission.unitId}</TableCell>
-                      <TableCell>
-                        <div>{submission.firstName} {submission.lastName}</div>
-                        {submission.reviewNotes?.length ? (
-                          <div className="mt-1 text-xs text-muted-foreground">{submission.reviewNotes.join(" ")}</div>
+            <AccordionItem value="coverage-tools" className="rounded-xl border px-4">
+              <AccordionTrigger className="text-sm font-semibold">Coverage & Invite Tools</AccordionTrigger>
+              <AccordionContent className="pb-4">
+                <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                  <div className="rounded-xl border p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="text-sm font-semibold">Unit Coverage</div>
+                        <div className="text-xs text-muted-foreground">
+                          Identify unclaimed units, invite status, and intake review status at the unit level.
+                        </div>
+                      </div>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href="/app/communications">Open Communications</Link>
+                      </Button>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Unit</TableHead>
+                          <TableHead>Coverage</TableHead>
+                          <TableHead>Invites</TableHead>
+                          <TableHead>Submission</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {unitCoverageRows.slice(0, 25).map((row) => (
+                        <TableRow key={row.unitId}>
+                            <TableCell>
+                              <div className="font-medium">Unit {row.unitNumber}</div>
+                              <div className="text-xs text-muted-foreground">{row.building}</div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={row.coverageStatus === "claimed" ? "default" : row.coverageStatus === "pending-review" ? "secondary" : "outline"}>
+                                {row.coverageStatus.replace("-", " ")}
+                              </Badge>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {formatOccupancyStatus(row.occupancyStatus)} · Owners {row.ownerCount} · Tenants {row.tenantCount}
+                                {row.lastOccupancyUpdate ? ` · Updated ${new Date(row.lastOccupancyUpdate).toLocaleDateString()}` : ""}
+                              </div>
+                            </TableCell>
+                            <TableCell>{row.inviteCount}</TableCell>
+                            <TableCell>
+                              {row.latestSubmission ? (
+                                <div className="text-xs">
+                                  <div>{row.latestSubmission.firstName} {row.latestSubmission.lastName}</div>
+                                  <div className="text-muted-foreground">{row.latestSubmission.status}</div>
+                                </div>
+                              ) : <span className="text-xs text-muted-foreground">No submission</span>}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-2">
+                                <Button size="sm" variant="outline" onClick={() => openManualIntake({ unitId: row.unitId, ownerCount: row.ownerCount, occupantCount: row.occupantCount })}>
+                                  Manual Entry
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "owner" })}
+                                  disabled={unitLinkMutation.isPending}
+                                >
+                                  Owner Link
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "tenant" })}
+                                  disabled={unitLinkMutation.isPending}
+                                >
+                                  Tenant Link
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {unitCoverageRows.length === 0 ? (
+                          <TableRow><TableCell colSpan={5} className="text-muted-foreground">No units available for onboarding coverage.</TableCell></TableRow>
                         ) : null}
-                        {submission.rejectionReason ? (
-                          <div className="mt-1 text-xs text-destructive">Last rejection: {submission.rejectionReason}</div>
-                        ) : null}
-                      </TableCell>
-                      <TableCell><Badge variant={submission.status === "pending" ? "secondary" : "outline"}>{submission.status}</Badge></TableCell>
-                      <TableCell className="space-x-2">
-                        {submission.status === "pending" ? (
-                          <div className="space-y-2">
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => reviewSubmissionMutation.mutate({ id: submission.id, decision: "approved" })}
-                                disabled={reviewSubmissionMutation.isPending}
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => reviewSubmissionMutation.mutate({
-                                  id: submission.id,
-                                  decision: "rejected",
-                                  rejectionReason: rejectionDrafts[submission.id] || "Please update the submission and try again.",
-                                })}
-                                disabled={reviewSubmissionMutation.isPending}
-                              >
-                                Request Changes
-                              </Button>
-                            </div>
-                            <Textarea
-                              rows={2}
-                              placeholder="Reason for rejection / requested changes"
-                              value={rejectionDrafts[submission.id] || ""}
-                              onChange={(event) => updateRejectionDraft(submission.id, event.target.value)}
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            {submission.reviewedBy ? `Reviewed by ${submission.reviewedBy}` : "Reviewed"}
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {onboardingSubmissions.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className="text-muted-foreground">No onboarding submissions yet.</TableCell></TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <div className="rounded-xl border p-4 space-y-4">
+                    <div>
+                      <div className="text-sm font-semibold">Create Invite</div>
+                      <div className="text-xs text-muted-foreground">
+                        Generate an owner or tenant intake link for a specific unit.
+                      </div>
+                    </div>
+                    <div className="grid gap-3">
+                      <Select value={inviteForm.unitId || "none"} onValueChange={(value) => setInviteForm((prev) => ({ ...prev, unitId: value === "none" ? "" : value }))}>
+                        <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">select unit</SelectItem>
+                          {(residentialDataset?.units ?? []).map((unit) => (
+                            <SelectItem key={unit.id} value={unit.id}>Unit {unit.unitNumber}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={inviteForm.residentType} onValueChange={(value) => setInviteForm((prev) => ({ ...prev, residentType: value as "owner" | "tenant" }))}>
+                        <SelectTrigger><SelectValue placeholder="Resident type" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="owner">Owner</SelectItem>
+                          <SelectItem value="tenant">Tenant</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input placeholder="Email (optional)" value={inviteForm.email} onChange={(event) => setInviteForm((prev) => ({ ...prev, email: event.target.value }))} />
+                      <Input placeholder="Phone (optional)" value={inviteForm.phone} onChange={(event) => setInviteForm((prev) => ({ ...prev, phone: event.target.value }))} />
+                      <Input type="datetime-local" value={inviteForm.expiresAt} onChange={(event) => setInviteForm((prev) => ({ ...prev, expiresAt: event.target.value }))} />
+                      <Button onClick={() => createInviteMutation.mutate()} disabled={createInviteMutation.isPending}>
+                        Create Onboarding Invite
+                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner" })}
+                          disabled={unitLinkMutation.isPending || !inviteForm.unitId}
+                        >
+                          Copy Owner Link
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "tenant" })}
+                          disabled={unitLinkMutation.isPending || !inviteForm.unitId}
+                        >
+                          Copy Tenant Link
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner", regenerate: true })}
+                          disabled={unitLinkMutation.isPending || !inviteForm.unitId}
+                        >
+                          Regenerate Owner
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "tenant", regenerate: true })}
+                          disabled={unitLinkMutation.isPending || !inviteForm.unitId}
+                        >
+                          Regenerate Tenant
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="border-t pt-4 space-y-3">
+                      <div className="text-sm font-semibold">Reminder Sweep</div>
+                      <div className="flex gap-2">
+                        <Input type="number" min="0" value={reminderSweepHours} onChange={(event) => setReminderSweepHours(event.target.value)} />
+                        <Button variant="outline" onClick={() => reminderSweepMutation.mutate()} disabled={reminderSweepMutation.isPending}>
+                          Run Sweep
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="invites" className="rounded-xl border px-4">
+              <AccordionTrigger className="text-sm font-semibold">Invites</AccordionTrigger>
+              <AccordionContent className="pb-4">
+                <div className="rounded-xl border p-4 space-y-4">
+                  <div className="text-sm font-semibold">Recent Invites</div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Unit</TableHead>
+                        <TableHead>Resident</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {onboardingInvites.slice(0, 12).map((invite) => (
+                        <TableRow key={invite.id}>
+                          <TableCell>Unit {invite.unitLabel || invite.unitId}</TableCell>
+                          <TableCell className="capitalize">{invite.residentType}</TableCell>
+                          <TableCell><Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge></TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => sendInviteMutation.mutate(invite.id)}
+                              disabled={sendInviteMutation.isPending || !invite.email}
+                            >
+                              {invite.lastSentAt ? "Resend" : "Send"}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {onboardingInvites.length === 0 ? (
+                        <TableRow><TableCell colSpan={4} className="text-muted-foreground">No onboarding invites yet.</TableCell></TableRow>
+                      ) : null}
+                    </TableBody>
+                  </Table>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="review-queue" className="rounded-xl border px-4">
+              <AccordionTrigger className="text-sm font-semibold">Review Queue</AccordionTrigger>
+              <AccordionContent className="pb-4">
+                <div className="rounded-xl border p-4 space-y-4">
+                  <div className="text-sm font-semibold">Submission Review Queue</div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Unit</TableHead>
+                        <TableHead>Person</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {onboardingSubmissions.slice(0, 12).map((submission) => (
+                        <TableRow key={submission.id}>
+                          <TableCell>Unit {submission.unitLabel || submission.unitId}</TableCell>
+                          <TableCell>
+                            <div>{submission.firstName} {submission.lastName}</div>
+                            {submission.reviewNotes?.length ? (
+                              <div className="mt-1 text-xs text-muted-foreground">{submission.reviewNotes.join(" ")}</div>
+                            ) : null}
+                            {submission.rejectionReason ? (
+                              <div className="mt-1 text-xs text-destructive">Last rejection: {submission.rejectionReason}</div>
+                            ) : null}
+                          </TableCell>
+                          <TableCell><Badge variant={submission.status === "pending" ? "secondary" : "outline"}>{submission.status}</Badge></TableCell>
+                          <TableCell className="space-x-2">
+                            {submission.status === "pending" ? (
+                              <div className="space-y-2">
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openSubmissionReview(submission.id)}
+                                  >
+                                    Open
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => reviewSubmissionMutation.mutate({ id: submission.id, decision: "approved" })}
+                                    disabled={reviewSubmissionMutation.isPending}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => reviewSubmissionMutation.mutate({
+                                      id: submission.id,
+                                      decision: "rejected",
+                                      rejectionReason: rejectionDrafts[submission.id] || "Please update the submission and try again.",
+                                    })}
+                                    disabled={reviewSubmissionMutation.isPending}
+                                  >
+                                    Request Changes
+                                  </Button>
+                                </div>
+                                <Textarea
+                                  rows={2}
+                                  placeholder="Reason for rejection / requested changes"
+                                  value={rejectionDrafts[submission.id] || ""}
+                                  onChange={(event) => updateRejectionDraft(submission.id, event.target.value)}
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex gap-2 items-center">
+                                <span className="text-xs text-muted-foreground">
+                                  {submission.reviewedBy ? `Reviewed by ${submission.reviewedBy}` : "Reviewed"}
+                                </span>
+                                <Button size="sm" variant="outline" onClick={() => openSubmissionReview(submission.id)}>
+                                  Open
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {onboardingSubmissions.length === 0 ? (
+                        <TableRow><TableCell colSpan={4} className="text-muted-foreground">No onboarding submissions yet.</TableCell></TableRow>
+                      ) : null}
+                    </TableBody>
+                  </Table>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </CardContent>
-      </Card>
+          </Card>
+        </TabsContent>
 
-      <Card>
+        <TabsContent value="records">
+          <Accordion type="multiple" defaultValue={[]} className="w-full">
+            <AccordionItem value="association-documents">
+              <AccordionTrigger>Association Documents</AccordionTrigger>
+              <AccordionContent>
+                <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Association Documents</CardTitle>
           <Button asChild size="sm" variant="outline">
@@ -1169,8 +1154,83 @@ export default function AssociationContextPage() {
             ))
           )}
         </CardContent>
-      </Card>
+                </Card>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </TabsContent>
+      </Tabs>
     </div>
+    <Dialog open={Boolean(selectedSubmission)} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedSubmissionId(""); }}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Submission Review</DialogTitle>
+        </DialogHeader>
+        {selectedSubmission ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-md border p-3 text-sm">
+                <div className="font-medium">Person</div>
+                <div className="mt-1">{selectedSubmission.firstName} {selectedSubmission.lastName}</div>
+                <div className="text-muted-foreground">{selectedSubmission.email || "No email provided"}</div>
+                <div className="text-muted-foreground">{selectedSubmission.phone || "No phone provided"}</div>
+              </div>
+              <div className="rounded-md border p-3 text-sm">
+                <div className="font-medium">Unit and Submission</div>
+                <div className="mt-1">Unit {selectedSubmission.unitLabel || selectedSubmission.unitId}</div>
+                <div className="text-muted-foreground capitalize">{selectedSubmission.residentType} · {selectedSubmission.status}</div>
+                <div className="text-muted-foreground">Submitted {new Date(selectedSubmission.submittedAt).toLocaleString()}</div>
+              </div>
+            </div>
+            <div className="rounded-md border p-3 text-sm space-y-1">
+              <div><span className="font-medium">Mailing Address:</span> {selectedSubmission.mailingAddress || "-"}</div>
+              <div><span className="font-medium">Start Date:</span> {new Date(selectedSubmission.startDate).toLocaleDateString()}</div>
+              <div><span className="font-medium">Ownership %:</span> {selectedSubmission.ownershipPercentage ?? "-"}</div>
+              <div><span className="font-medium">Contact Preference:</span> {selectedSubmission.contactPreference || "-"}</div>
+              {selectedSubmission.rejectionReason ? (
+                <div className="text-destructive"><span className="font-medium">Last Rejection:</span> {selectedSubmission.rejectionReason}</div>
+              ) : null}
+            </div>
+            {selectedSubmission.status === "pending" ? (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Review Actions</div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => {
+                      reviewSubmissionMutation.mutate({ id: selectedSubmission.id, decision: "approved" });
+                      setSelectedSubmissionId("");
+                    }}
+                    disabled={reviewSubmissionMutation.isPending}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      reviewSubmissionMutation.mutate({
+                        id: selectedSubmission.id,
+                        decision: "rejected",
+                        rejectionReason: rejectionDrafts[selectedSubmission.id] || "Please update the submission and try again.",
+                      });
+                      setSelectedSubmissionId("");
+                    }}
+                    disabled={reviewSubmissionMutation.isPending}
+                  >
+                    Request Changes
+                  </Button>
+                </div>
+                <Textarea
+                  rows={2}
+                  placeholder="Reason for rejection / requested changes"
+                  value={rejectionDrafts[selectedSubmission.id] || ""}
+                  onChange={(event) => updateRejectionDraft(selectedSubmission.id, event.target.value)}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
     <Dialog open={manualIntakeOpen} onOpenChange={setManualIntakeOpen}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -1203,10 +1263,13 @@ export default function AssociationContextPage() {
               <Input type="number" min="0" max="100" placeholder="Ownership %" value={manualIntakeForm.ownershipPercentage} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, ownershipPercentage: event.target.value }))} />
             ) : null}
           </div>
-          <Textarea placeholder="Mailing address" value={manualIntakeForm.mailingAddress} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, mailingAddress: event.target.value }))} />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input placeholder="Emergency contact name" value={manualIntakeForm.emergencyContactName} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, emergencyContactName: event.target.value }))} />
-            <Input placeholder="Emergency contact phone" value={manualIntakeForm.emergencyContactPhone} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, emergencyContactPhone: event.target.value }))} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Input placeholder="Mailing street address" value={manualIntakeForm.mailingAddressLine1} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, mailingAddressLine1: event.target.value }))} />
+            <Input placeholder="City" value={manualIntakeForm.mailingCity} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, mailingCity: event.target.value }))} />
+            <Input placeholder="State" value={manualIntakeForm.mailingState} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, mailingState: event.target.value }))} />
+            <Input placeholder="ZIP / Postal Code" value={manualIntakeForm.mailingPostalCode} onChange={(event) => setManualIntakeForm((prev) => ({ ...prev, mailingPostalCode: event.target.value }))} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Select value={manualIntakeForm.contactPreference} onValueChange={(value) => setManualIntakeForm((prev) => ({ ...prev, contactPreference: value }))}>
               <SelectTrigger><SelectValue placeholder="Contact preference" /></SelectTrigger>
               <SelectContent>

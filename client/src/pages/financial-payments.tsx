@@ -5,9 +5,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useActiveAssociation } from "@/hooks/use-active-association";
-import type { OwnerPaymentLink, PaymentGatewayConnection, Person, Unit } from "@shared/schema";
+import type { OwnerPaymentLink, PaymentGatewayConnection, PaymentMethodConfig, Person, Unit } from "@shared/schema";
 
 export default function FinancialPaymentsPage() {
   const { toast } = useToast();
@@ -50,6 +51,22 @@ export default function FinancialPaymentsPage() {
     outstandingBalance: number;
   } | null>(null);
   const [lastWebhookMessage, setLastWebhookMessage] = useState("");
+  const [paymentMethodForm, setPaymentMethodForm] = useState({
+    associationId: "",
+    methodType: "other",
+    displayName: "",
+    instructions: "",
+    accountName: "",
+    bankName: "",
+    routingNumber: "",
+    accountNumber: "",
+    mailingAddress: "",
+    paymentNotes: "",
+    zelleHandle: "",
+    supportEmail: "",
+    supportPhone: "",
+    displayOrder: 0,
+  });
 
   const selectedAssociationId = activeAssociationId;
 
@@ -58,14 +75,69 @@ export default function FinancialPaymentsPage() {
   const { data: gatewayConnections } = useQuery<PaymentGatewayConnection[]>({
     queryKey: [selectedAssociationId ? `/api/financial/payment-gateway/connections?associationId=${selectedAssociationId}` : "/api/financial/payment-gateway/connections"],
   });
+  const paymentMethodsQuery = useQuery<PaymentMethodConfig[]>({
+    queryKey: [selectedAssociationId ? `/api/financial/payment-methods?associationId=${selectedAssociationId}` : "/api/financial/payment-methods"],
+  });
+  const { data: paymentMethods = [] } = paymentMethodsQuery;
 
   useEffect(() => {
     setGatewayForm((prev) => ({ ...prev, associationId: activeAssociationId }));
     setPaymentLinkForm((prev) => ({ ...prev, associationId: activeAssociationId }));
     setWebhookTestForm((prev) => ({ ...prev, associationId: activeAssociationId }));
+    setPaymentMethodForm((prev) => ({ ...prev, associationId: activeAssociationId }));
     setLastGeneratedPaymentLink(null);
     setLastWebhookMessage("");
   }, [activeAssociationId]);
+
+  const createPaymentMethod = useMutation({
+    mutationFn: async () => {
+      if (!paymentMethodForm.associationId) throw new Error("Association is required");
+      if (!paymentMethodForm.displayName.trim() || !paymentMethodForm.instructions.trim()) {
+        throw new Error("Display name and instructions are required");
+      }
+      const res = await apiRequest("POST", "/api/financial/payment-methods", {
+        associationId: paymentMethodForm.associationId,
+        methodType: paymentMethodForm.methodType,
+        displayName: paymentMethodForm.displayName.trim(),
+        instructions: paymentMethodForm.instructions.trim(),
+        accountName: paymentMethodForm.accountName.trim() || null,
+        bankName: paymentMethodForm.bankName.trim() || null,
+        routingNumber: paymentMethodForm.routingNumber.trim() || null,
+        accountNumber: paymentMethodForm.accountNumber.trim() || null,
+        mailingAddress: paymentMethodForm.mailingAddress.trim() || null,
+        paymentNotes: paymentMethodForm.paymentNotes.trim() || null,
+        zelleHandle: paymentMethodForm.zelleHandle.trim() || null,
+        supportEmail: paymentMethodForm.supportEmail.trim() || null,
+        supportPhone: paymentMethodForm.supportPhone.trim() || null,
+        isActive: 1,
+        displayOrder: Number(paymentMethodForm.displayOrder) || 0,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [selectedAssociationId ? `/api/financial/payment-methods?associationId=${selectedAssociationId}` : "/api/financial/payment-methods"],
+      });
+      setPaymentMethodForm({
+        associationId: paymentMethodForm.associationId,
+        methodType: "other",
+        displayName: "",
+        instructions: "",
+        accountName: "",
+        bankName: "",
+        routingNumber: "",
+        accountNumber: "",
+        mailingAddress: "",
+        paymentNotes: "",
+        zelleHandle: "",
+        supportEmail: "",
+        supportPhone: "",
+        displayOrder: 0,
+      });
+      toast({ title: "Payment method saved" });
+    },
+    onError: (err: Error) => toast({ title: "Payment method save failed", description: err.message, variant: "destructive" }),
+  });
 
   const validateGateway = useMutation({
     mutationFn: async () => {
@@ -174,6 +246,44 @@ export default function FinancialPaymentsPage() {
         <CardContent className="p-6 space-y-5">
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
             Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+          </div>
+
+          <div className="space-y-3 border rounded-md p-4">
+            <div className="text-sm font-medium">0) Payment Method Registry</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input placeholder="Method type (bank-transfer/bill-pay/check/zelle/other)" value={paymentMethodForm.methodType} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, methodType: e.target.value }))} />
+              <Input placeholder="Display name" value={paymentMethodForm.displayName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, displayName: e.target.value }))} />
+              <Input placeholder="Support email" value={paymentMethodForm.supportEmail} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, supportEmail: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input placeholder="Account name" value={paymentMethodForm.accountName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, accountName: e.target.value }))} />
+              <Input placeholder="Bank name" value={paymentMethodForm.bankName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, bankName: e.target.value }))} />
+              <Input placeholder="Routing number" value={paymentMethodForm.routingNumber} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, routingNumber: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input placeholder="Account number" value={paymentMethodForm.accountNumber} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, accountNumber: e.target.value }))} />
+              <Input placeholder="Zelle handle" value={paymentMethodForm.zelleHandle} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, zelleHandle: e.target.value }))} />
+              <Input placeholder="Support phone" value={paymentMethodForm.supportPhone} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, supportPhone: e.target.value }))} />
+            </div>
+            <Textarea placeholder="Mailing address" rows={2} value={paymentMethodForm.mailingAddress} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, mailingAddress: e.target.value }))} />
+            <Textarea placeholder="Payment notes for owners" rows={2} value={paymentMethodForm.paymentNotes} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, paymentNotes: e.target.value }))} />
+            <Textarea placeholder="Additional instructions for owners" rows={3} value={paymentMethodForm.instructions} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, instructions: e.target.value }))} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Input type="number" placeholder="Display order" value={String(paymentMethodForm.displayOrder)} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, displayOrder: Number(e.target.value) || 0 }))} />
+              <div className="text-xs text-muted-foreground flex items-center">
+                Active methods in scope: {paymentMethods.filter((row) => row.isActive === 1).length}
+              </div>
+            </div>
+            <Button onClick={() => createPaymentMethod.mutate()} disabled={createPaymentMethod.isPending || !selectedAssociationId}>Save Payment Method</Button>
+            <div className="space-y-2">
+              {paymentMethods.slice(0, 8).map((row) => (
+                <div key={row.id} className="rounded border bg-muted/10 px-3 py-2 text-sm">
+                  <div className="font-medium">{row.displayName} <span className="text-muted-foreground">({row.methodType})</span></div>
+                  <div className="text-xs whitespace-pre-wrap text-muted-foreground">{[row.instructions, row.paymentNotes].filter(Boolean).join("\n")}</div>
+                </div>
+              ))}
+              {paymentMethods.length === 0 ? <div className="text-xs text-muted-foreground">No payment methods configured for this association.</div> : null}
+            </div>
           </div>
 
           <div className="space-y-3 border rounded-md p-4">

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type {
-  Association,
   CommunicationHistory,
   ContactUpdateRequest,
   MaintenanceRequest,
@@ -11,7 +11,6 @@ import type {
   NoticeTemplate,
   OnboardingInvite,
   OnboardingSubmission,
-  PaymentMethodConfig,
   Person,
   Unit,
 } from "@shared/schema";
@@ -27,10 +26,37 @@ import { Progress } from "@/components/ui/progress";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
-import { AsyncStateBoundary } from "@/components/async-state-boundary";
+
+const standardTemplateDefinitions = [
+  {
+    name: "Payment Instructions - Standard",
+    subjectTemplate: "Payment Instructions for {{association_name}}",
+    headerTemplate: "Association: {{association_name}}",
+    bodyTemplate: "Hello {{owner_name}},\n\nPlease use the approved payment methods below for your account.\n\n{{payment_methods}}\n\nIf you have questions, contact {{payment_support_email}} or {{payment_support_phone}}.\n\nThank you,\n{{association_name}}",
+    footerTemplate: "This notice applies to unit {{unit_number}}.",
+    signatureTemplate: "{{association_name}} Management",
+  },
+  {
+    name: "Board Meeting Notice - Standard",
+    subjectTemplate: "Board Meeting Notice - {{association_name}}",
+    headerTemplate: "Association: {{association_name}}",
+    bodyTemplate: "Hello,\n\nThis is notice of an upcoming board meeting for {{association_name}}.\n\nDate and agenda details will be posted in your resident portal.\n\nThank you,\n{{association_name}}",
+    footerTemplate: "Unit: {{unit_number}}",
+    signatureTemplate: "{{association_name}} Board",
+  },
+  {
+    name: "Maintenance Update - Standard",
+    subjectTemplate: "Maintenance Update for {{unit_number}}",
+    headerTemplate: "Association: {{association_name}}",
+    bodyTemplate: "Hello,\n\nWe are providing an update related to maintenance activity for unit {{unit_number}}.\n\nFor request details use: {{maintenance_request_link}}\n\nThank you,\n{{association_name}}",
+    footerTemplate: null,
+    signatureTemplate: "{{association_name}} Operations",
+  },
+];
 
 export default function CommunicationsPage() {
   const { toast } = useToast();
+  const [workspacePanel, setWorkspacePanel] = useState<"delivery" | "onboarding" | "operations">("delivery");
   const [templateOpen, setTemplateOpen] = useState(false);
   const [recipientPreview, setRecipientPreview] = useState<{
     recipients: Array<{ personId: string; email: string; role: "owner" | "tenant" | "board-member"; unitId: string }>;
@@ -80,22 +106,6 @@ export default function CommunicationsPage() {
     scheduledFor: "",
     bypassReadinessGate: false,
   });
-  const [paymentMethodForm, setPaymentMethodForm] = useState({
-    associationId: "",
-    methodType: "other",
-    displayName: "",
-    instructions: "",
-    accountName: "",
-    bankName: "",
-    routingNumber: "",
-    accountNumber: "",
-    mailingAddress: "",
-    paymentNotes: "",
-    zelleHandle: "",
-    supportEmail: "",
-    supportPhone: "",
-    displayOrder: 0,
-  });
   const [paymentInstructionForm, setPaymentInstructionForm] = useState({
     associationId: "",
     templateId: "",
@@ -118,7 +128,6 @@ export default function CommunicationsPage() {
   const [reminderSweepHours, setReminderSweepHours] = useState("24");
   const selectedAssociationId = activeAssociationId;
 
-  const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
   const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
   const { data: units } = useQuery<Unit[]>({
     queryKey: [selectedAssociationId ? `/api/units?associationId=${selectedAssociationId}` : "/api/units"],
@@ -167,13 +176,6 @@ export default function CommunicationsPage() {
   const { data: maintenanceRequests } = useQuery<MaintenanceRequest[]>({
     queryKey: [selectedAssociationId ? `/api/maintenance/requests?associationId=${selectedAssociationId}` : "/api/maintenance/requests"],
   });
-  const paymentMethodsQuery = useQuery<PaymentMethodConfig[]>({
-    queryKey: [selectedAssociationId ? `/api/financial/payment-methods?associationId=${selectedAssociationId}` : "/api/financial/payment-methods"],
-  });
-  const { data: paymentMethods } = paymentMethodsQuery;
-  const associationNameById = useMemo(() => {
-    return new Map((associations ?? []).map((association) => [association.id, association.name]));
-  }, [associations]);
   const toggleUnitSelection = (unitId: string, form: "targeted" | "payment") => {
     const updater = (current: string[]) => current.includes(unitId) ? current.filter((value) => value !== unitId) : [...current, unitId];
     if (form === "targeted") {
@@ -187,7 +189,6 @@ export default function CommunicationsPage() {
     setTemplateForm((prev) => ({ ...prev, associationId: activeAssociationId }));
     setSendForm((prev) => ({ ...prev, associationId: activeAssociationId }));
     setTargetedForm((prev) => ({ ...prev, associationId: activeAssociationId }));
-    setPaymentMethodForm((prev) => ({ ...prev, associationId: activeAssociationId }));
     setPaymentInstructionForm((prev) => ({ ...prev, associationId: activeAssociationId }));
     setOnboardingInviteForm({
       unitId: "",
@@ -222,6 +223,45 @@ export default function CommunicationsPage() {
       setTemplateOpen(false);
       setTemplateForm({ associationId: "", name: "", subjectTemplate: "", headerTemplate: "", bodyTemplate: "", footerTemplate: "", signatureTemplate: "" });
       toast({ title: "Template created" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const seedStandardTemplates = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssociationId) throw new Error("Association is required");
+      const existingTemplateNames = new Set(
+        (templates ?? [])
+          .filter((row) => row.associationId === selectedAssociationId)
+          .map((row) => row.name.trim().toLowerCase()),
+      );
+      const templatesToCreate = standardTemplateDefinitions.filter(
+        (row) => !existingTemplateNames.has(row.name.trim().toLowerCase()),
+      );
+      await Promise.all(
+        templatesToCreate.map((row) => apiRequest("POST", "/api/communications/templates", {
+          associationId: selectedAssociationId,
+          name: row.name,
+          channel: "email",
+          subjectTemplate: row.subjectTemplate,
+          headerTemplate: row.headerTemplate,
+          bodyTemplate: row.bodyTemplate,
+          footerTemplate: row.footerTemplate,
+          signatureTemplate: row.signatureTemplate,
+          isActive: 1,
+        })),
+      );
+      return {
+        created: templatesToCreate.length,
+        skipped: standardTemplateDefinitions.length - templatesToCreate.length,
+      };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/communications/templates"] });
+      toast({
+        title: "Standard templates synced",
+        description: `Created ${result.created}, skipped ${result.skipped} already present template(s).`,
+      });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -555,56 +595,6 @@ export default function CommunicationsPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const createPaymentMethod = useMutation({
-    mutationFn: async () => {
-      if (!paymentMethodForm.associationId) throw new Error("Association is required");
-      if (!paymentMethodForm.displayName.trim() || !paymentMethodForm.instructions.trim()) {
-        throw new Error("Display name and instructions are required");
-      }
-      const res = await apiRequest("POST", "/api/financial/payment-methods", {
-        associationId: paymentMethodForm.associationId,
-        methodType: paymentMethodForm.methodType,
-        displayName: paymentMethodForm.displayName.trim(),
-        instructions: paymentMethodForm.instructions.trim(),
-        accountName: paymentMethodForm.accountName.trim() || null,
-        bankName: paymentMethodForm.bankName.trim() || null,
-        routingNumber: paymentMethodForm.routingNumber.trim() || null,
-        accountNumber: paymentMethodForm.accountNumber.trim() || null,
-        mailingAddress: paymentMethodForm.mailingAddress.trim() || null,
-        paymentNotes: paymentMethodForm.paymentNotes.trim() || null,
-        zelleHandle: paymentMethodForm.zelleHandle.trim() || null,
-        supportEmail: paymentMethodForm.supportEmail.trim() || null,
-        supportPhone: paymentMethodForm.supportPhone.trim() || null,
-        isActive: 1,
-        displayOrder: Number(paymentMethodForm.displayOrder) || 0,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [selectedAssociationId ? `/api/financial/payment-methods?associationId=${selectedAssociationId}` : "/api/financial/payment-methods"],
-      });
-      setPaymentMethodForm({
-        associationId: paymentMethodForm.associationId,
-        methodType: "other",
-        displayName: "",
-        instructions: "",
-        accountName: "",
-        bankName: "",
-        routingNumber: "",
-        accountNumber: "",
-        mailingAddress: "",
-        paymentNotes: "",
-        zelleHandle: "",
-        supportEmail: "",
-        supportPhone: "",
-        displayOrder: 0,
-      });
-      toast({ title: "Payment method saved" });
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
   const sendPaymentInstructions = useMutation({
     mutationFn: async () => {
       if (!paymentInstructionForm.associationId) throw new Error("Association is required");
@@ -651,27 +641,38 @@ export default function CommunicationsPage() {
           { label: "Open Association Context", href: "/app/association-context" },
           { label: "Open Documents", href: "/app/documents" },
         ]}
-        actions={<Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
-          <DialogTrigger asChild><Button>New Template</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Create Notice Template</DialogTitle></DialogHeader>
-            <div className="space-y-3">
-              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
-              </div>
-              <Input placeholder="Template name" value={templateForm.name} onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))} />
-              <Input placeholder="Subject template (e.g. Update for {{unit_number}})" value={templateForm.subjectTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, subjectTemplate: e.target.value }))} />
-              <Textarea rows={3} placeholder="Header block (optional)" value={templateForm.headerTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, headerTemplate: e.target.value }))} />
-              <Textarea rows={7} placeholder="Body template" value={templateForm.bodyTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, bodyTemplate: e.target.value }))} />
-              <Textarea rows={3} placeholder="Footer block (optional)" value={templateForm.footerTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, footerTemplate: e.target.value }))} />
-              <Textarea rows={2} placeholder="Signature block (optional)" value={templateForm.signatureTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, signatureTemplate: e.target.value }))} />
-              <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-                Canonical variables: {`{{association_name}}`} {`{{association_address}}`} {`{{unit_number}}`} {`{{owner_name}}`} {`{{tenant_name}}`} {`{{maintenance_request_link}}`} {`{{owner_submission_link}}`} {`{{tenant_submission_link}}`}
-              </div>
-              <Button className="w-full" onClick={() => createTemplate.mutate()} disabled={createTemplate.isPending}>Save Template</Button>
-            </div>
-          </DialogContent>
-        </Dialog>}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => seedStandardTemplates.mutate()}
+              disabled={seedStandardTemplates.isPending || !selectedAssociationId}
+            >
+              Load Standard Templates
+            </Button>
+            <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
+              <DialogTrigger asChild><Button>New Template</Button></DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Create Notice Template</DialogTitle></DialogHeader>
+                <div className="space-y-3">
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                    Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+                  </div>
+                  <Input placeholder="Template name" value={templateForm.name} onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))} />
+                  <Input placeholder="Subject template (e.g. Update for {{unit_number}})" value={templateForm.subjectTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, subjectTemplate: e.target.value }))} />
+                  <Textarea rows={3} placeholder="Header block (optional)" value={templateForm.headerTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, headerTemplate: e.target.value }))} />
+                  <Textarea rows={7} placeholder="Body template" value={templateForm.bodyTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, bodyTemplate: e.target.value }))} />
+                  <Textarea rows={3} placeholder="Footer block (optional)" value={templateForm.footerTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, footerTemplate: e.target.value }))} />
+                  <Textarea rows={2} placeholder="Signature block (optional)" value={templateForm.signatureTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, signatureTemplate: e.target.value }))} />
+                  <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                    Canonical variables: {`{{association_name}}`} {`{{association_address}}`} {`{{unit_number}}`} {`{{owner_name}}`} {`{{tenant_name}}`} {`{{maintenance_request_link}}`} {`{{owner_submission_link}}`} {`{{tenant_submission_link}}`}
+                  </div>
+                  <Button className="w-full" onClick={() => createTemplate.mutate()} disabled={createTemplate.isPending}>Save Template</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        }
       />
 
       <AssociationScopeBanner
@@ -684,68 +685,29 @@ export default function CommunicationsPage() {
         }
       />
 
-      <AsyncStateBoundary
-        isLoading={paymentMethodsQuery.isLoading}
-        error={paymentMethodsQuery.error}
-        onRetry={() => paymentMethodsQuery.refetch()}
-      >
       <Card>
-        <CardContent className="p-6 space-y-4">
-          <h2 className="text-lg font-semibold">Payment Method Registry</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm flex items-center">
-              Association Context: <span className="font-medium ml-1">{activeAssociationName || "None selected"}</span>
-            </div>
-            <Input placeholder="Method type (bank-transfer/bill-pay/check/zelle/other)" value={paymentMethodForm.methodType} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, methodType: e.target.value }))} />
-            <Input placeholder="Display name" value={paymentMethodForm.displayName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, displayName: e.target.value }))} />
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant={workspacePanel === "delivery" ? "default" : "outline"} size="sm" onClick={() => setWorkspacePanel("delivery")}>Delivery Workspace</Button>
+            <Button variant={workspacePanel === "onboarding" ? "default" : "outline"} size="sm" onClick={() => setWorkspacePanel("onboarding")}>Onboarding Workspace</Button>
+            <Button variant={workspacePanel === "operations" ? "default" : "outline"} size="sm" onClick={() => setWorkspacePanel("operations")}>Operations Workspace</Button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input placeholder="Account name" value={paymentMethodForm.accountName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, accountName: e.target.value }))} />
-            <Input placeholder="Bank name" value={paymentMethodForm.bankName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, bankName: e.target.value }))} />
-            <Input placeholder="Routing number" value={paymentMethodForm.routingNumber} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, routingNumber: e.target.value }))} />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input placeholder="Account number" value={paymentMethodForm.accountNumber} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, accountNumber: e.target.value }))} />
-            <Input placeholder="Zelle handle" value={paymentMethodForm.zelleHandle} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, zelleHandle: e.target.value }))} />
-            <Input placeholder="Support email" value={paymentMethodForm.supportEmail} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, supportEmail: e.target.value }))} />
-          </div>
-          <Textarea placeholder="Mailing address" rows={2} value={paymentMethodForm.mailingAddress} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, mailingAddress: e.target.value }))} />
-          <Textarea placeholder="Payment notes for owners" rows={2} value={paymentMethodForm.paymentNotes} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, paymentNotes: e.target.value }))} />
-          <Textarea placeholder="Additional instructions for owners" rows={3} value={paymentMethodForm.instructions} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, instructions: e.target.value }))} />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Input placeholder="Support phone" value={paymentMethodForm.supportPhone} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, supportPhone: e.target.value }))} />
-            <Input type="number" placeholder="Display order" value={String(paymentMethodForm.displayOrder)} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, displayOrder: Number(e.target.value) || 0 }))} />
-          </div>
-          <Button onClick={() => createPaymentMethod.mutate()} disabled={createPaymentMethod.isPending}>Save Payment Method</Button>
-
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Association</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Display Name</TableHead>
-                <TableHead>Instructions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(paymentMethods ?? []).slice(0, 30).map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>{associationNameById.get(row.associationId) || row.associationId}</TableCell>
-                  <TableCell>{row.methodType}</TableCell>
-                  <TableCell>{row.displayName}</TableCell>
-                  <TableCell className="max-w-[480px] whitespace-pre-wrap text-xs">
-                    {[row.bankName, row.accountName, row.routingNumber ? `Routing ${row.routingNumber}` : null, row.accountNumber ? `Acct ****${row.accountNumber.slice(-4)}` : null, row.zelleHandle ? `Zelle ${row.zelleHandle}` : null, row.mailingAddress, row.paymentNotes, row.instructions].filter(Boolean).join("\n")}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(paymentMethods ?? []).length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="text-muted-foreground">No payment methods configured.</TableCell></TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
         </CardContent>
       </Card>
-      </AsyncStateBoundary>
+
+      {workspacePanel === "delivery" ? (
+        <>
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <h2 className="text-lg font-semibold">Payment Registry Ownership</h2>
+          <p className="text-sm text-muted-foreground">
+            Payment method registry configuration has moved to the Finance module to keep communications focused on outreach workflows.
+          </p>
+          <Button asChild variant="outline">
+            <Link href="/app/financial/payments">Open Finance Payments</Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-6 space-y-4">
@@ -814,6 +776,15 @@ export default function CommunicationsPage() {
           </Button>
         </CardContent>
       </Card>
+        </>
+      ) : null}
+
+      {workspacePanel === "onboarding" ? (
+        <>
+      <div className="rounded-md border bg-muted/20 px-4 py-3">
+        <div className="text-sm font-medium">Onboarding and Intake</div>
+        <div className="text-xs text-muted-foreground">Create invites, review submissions, and process resident contact updates.</div>
+      </div>
 
       <Card>
         <CardContent className="p-6 space-y-3">
@@ -931,14 +902,30 @@ export default function CommunicationsPage() {
                       </button>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => sendOnboardingInvite.mutate(invite.id)}
-                        disabled={sendOnboardingInvite.isPending || !invite.email}
-                      >
-                        {invite.lastSentAt ? "Resend" : "Send"}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => navigator?.clipboard?.writeText?.(inviteUrl)}
+                        >
+                          Copy Link
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(inviteUrl, "_blank", "noopener,noreferrer")}
+                        >
+                          Open Link
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => sendOnboardingInvite.mutate(invite.id)}
+                          disabled={sendOnboardingInvite.isPending || !invite.email}
+                        >
+                          {invite.lastSentAt ? "Resend" : "Send"}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -1007,6 +994,15 @@ export default function CommunicationsPage() {
           </Table>
         </CardContent>
       </Card>
+        </>
+      ) : null}
+
+      {workspacePanel === "delivery" ? (
+        <>
+      <div className="rounded-md border bg-muted/20 px-4 py-3">
+        <div className="text-sm font-medium">Notices and Targeted Outreach</div>
+        <div className="text-xs text-muted-foreground">Prepare one-off notices, run targeted sends, and manage approval queues.</div>
+      </div>
 
       <Card>
         <CardContent className="p-6 space-y-4">
@@ -1060,7 +1056,10 @@ export default function CommunicationsPage() {
           <Button onClick={() => sendNotice.mutate()} disabled={sendNotice.isPending}>Send Notice</Button>
         </CardContent>
       </Card>
+        </>
+      ) : null}
 
+      {workspacePanel === "operations" ? (
       <Card>
         <CardContent className="p-6 space-y-4">
           <h2 className="text-lg font-semibold">Targeted Delivery</h2>
@@ -1232,7 +1231,10 @@ export default function CommunicationsPage() {
           </Table>
         </CardContent>
       </Card>
+      ) : null}
 
+      {workspacePanel === "delivery" ? (
+        <>
       <Card>
         <CardContent className="p-6 space-y-4">
           <h2 className="text-lg font-semibold">Contact Update Review Queue</h2>
@@ -1410,6 +1412,8 @@ export default function CommunicationsPage() {
           </Table>
         </CardContent>
       </Card>
+        </>
+      ) : null}
     </div>
   );
 }

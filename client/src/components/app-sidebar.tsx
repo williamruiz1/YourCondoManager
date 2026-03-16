@@ -4,8 +4,6 @@ import {
   LayoutDashboard,
   Building2,
   DoorOpen,
-  Users,
-  Home,
   UserCheck,
   FileText,
   Contact,
@@ -45,6 +43,7 @@ import {
 } from "@/components/ui/sidebar";
 import type { Document } from "@shared/schema";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { canAccessWipRoute } from "@/lib/wip-features";
 
 type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
 
@@ -82,15 +81,13 @@ const navSections: NavSection[] = [
     label: "Residential",
     modules: [
       {
-        title: "Units",
+        title: "Buildings & Units",
         url: "/app/units",
         icon: DoorOpen,
         activePrefix: "/app/units",
         roles: ["platform-admin", "board-admin", "manager"],
         children: [
           { title: "People", url: "/app/persons", icon: Contact, roles: ["platform-admin", "board-admin", "manager"] },
-          { title: "Owners", url: "/app/owners", icon: Users, roles: ["platform-admin", "board-admin", "manager"] },
-          { title: "Occupancy", url: "/app/occupancy", icon: Home, roles: ["platform-admin", "board-admin", "manager"] },
         ],
       },
     ],
@@ -217,10 +214,10 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
     .map((section) => ({
       ...section,
       modules: section.modules
-        .filter((module) => canAccess(module, adminRole))
+        .filter((module) => canAccess(module, adminRole) && canAccessWipRoute(module.url, adminRole))
         .map((module) => ({
           ...module,
-          children: module.children?.filter((child) => canAccess(child, adminRole)),
+          children: module.children?.filter((child) => canAccess(child, adminRole) && canAccessWipRoute(child.url, adminRole)),
         })),
     }))
     .filter((section) => section.modules.length > 0);

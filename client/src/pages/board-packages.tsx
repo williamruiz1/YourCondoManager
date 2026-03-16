@@ -182,14 +182,27 @@ export default function BoardPackagesPage() {
         recipientEmails,
         message: message.trim() || null,
       });
-      return response.json() as Promise<{ recipients: string[] }>;
+      return response.json() as Promise<{
+        recipients: string[];
+        sentCount: number;
+        failedCount: number;
+        failedRecipients: string[];
+      }>;
     },
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: [packagesQueryKey] });
       await queryClient.invalidateQueries({ queryKey: ["/api/communications/history"] });
       setDistributionEmails("");
       setDistributionMessage("");
-      toast({ title: "Board package distributed", description: `Delivered to ${result.recipients.length} recipient(s).` });
+      if (result.failedCount > 0) {
+        toast({
+          title: "Board package partially delivered",
+          description: `Sent ${result.sentCount} of ${result.recipients.length}. Failed: ${result.failedRecipients.join(", ")}`,
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({ title: "Board package distributed", description: `Delivered to ${result.sentCount} recipient(s).` });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
@@ -288,7 +301,12 @@ export default function BoardPackagesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" disabled={!activeAssociationId} onClick={() => runScheduledGeneration.mutate()}>
+          <Button
+            variant="outline"
+            disabled={!activeAssociationId}
+            onClick={() => runScheduledGeneration.mutate()}
+            title="Checks auto-generate templates for the active association and creates any package due before upcoming meetings."
+          >
             Run Scheduled Sweep
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
@@ -319,6 +337,9 @@ export default function BoardPackagesPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                Example: a monthly board template can auto-generate 7 days before each board meeting and include financial, governance, and operations sections.
+              </div>
               <div className="grid gap-4 md:grid-cols-3">
                 <label className="flex items-center gap-2 rounded border px-3 py-2 text-sm">
                   <input
@@ -345,6 +366,12 @@ export default function BoardPackagesPage() {
                   value={templateForm.generateDaysBefore}
                   onChange={(event) => setTemplateForm((current) => ({ ...current, generateDaysBefore: event.target.value }))}
                 />
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Scheduled sweep behavior: this checks all auto-generate templates in the active association and creates any package that has reached its meeting lead-time window.
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Package generation now loads only the selected sections, reducing unnecessary cross-module dependencies during draft creation.
               </div>
               <div className="space-y-2">
                 <div className="text-sm font-medium">Included sections</div>
@@ -380,6 +407,31 @@ export default function BoardPackagesPage() {
           </Dialog>
         </div>
       </div>
+
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div>
+            <div className="text-sm font-semibold">How Board Packages Work</div>
+            <div className="text-sm text-muted-foreground">
+              Build this workflow in three steps: create a template, generate a draft package for a meeting period, then review and distribute the approved package.
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-md border bg-muted/20 p-3 text-sm">
+              <div className="font-medium">1. Create a template</div>
+              <div className="mt-1 text-muted-foreground">Choose the cadence, meeting type, lead time, and sections that should appear in each package.</div>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-sm">
+              <div className="font-medium">2. Generate a draft</div>
+              <div className="mt-1 text-muted-foreground">Generate manually for a named period, or run the scheduled sweep to create packages due for upcoming meetings.</div>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-sm">
+              <div className="font-medium">3. Review and distribute</div>
+              <div className="mt-1 text-muted-foreground">Add annotations, mark the package approved, then distribute it to board recipients with an optional message.</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">Templates</div><div className="text-2xl font-semibold">{templateCounts.templates}</div></CardContent></Card>

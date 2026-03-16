@@ -46,7 +46,7 @@ const resolutionSchema = z.object({
 });
 
 const voteSchema = z.object({
-  voterPersonId: z.string().optional(),
+  voterPersonId: z.string().min(1, "Voter is required"),
   voteChoice: z.enum(["yes", "no", "abstain"]),
   voteWeight: z.coerce.number().positive().default(1),
 });
@@ -59,10 +59,19 @@ export default function MeetingsPage() {
   const [selectedResolutionId, setSelectedResolutionId] = useState("");
   const [resolutionSearch, setResolutionSearch] = useState("");
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
+  const meetingsQueryKey = activeAssociationId
+    ? `/api/governance/meetings?associationId=${activeAssociationId}`
+    : "/api/governance/meetings";
+  const resolutionsQueryKey = activeAssociationId
+    ? `/api/governance/resolutions?associationId=${activeAssociationId}`
+    : "/api/governance/resolutions";
+  const personsQueryKey = activeAssociationId
+    ? `/api/persons?associationId=${activeAssociationId}`
+    : "/api/persons";
 
   const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
-  const { data: meetings } = useQuery<GovernanceMeeting[]>({ queryKey: ["/api/governance/meetings"] });
-  const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
+  const { data: meetings } = useQuery<GovernanceMeeting[]>({ queryKey: [meetingsQueryKey], enabled: Boolean(activeAssociationId) });
+  const { data: persons } = useQuery<Person[]>({ queryKey: [personsQueryKey], enabled: Boolean(activeAssociationId) });
   const { data: agendaItems } = useQuery<MeetingAgendaItem[]>({
     queryKey: ["/api/governance/meetings", selectedMeeting?.id || "none", "agenda-items"],
     queryFn: async () => {
@@ -81,7 +90,7 @@ export default function MeetingsPage() {
     },
     enabled: Boolean(selectedMeeting),
   });
-  const { data: resolutions } = useQuery<Resolution[]>({ queryKey: ["/api/governance/resolutions"] });
+  const { data: resolutions } = useQuery<Resolution[]>({ queryKey: [resolutionsQueryKey], enabled: Boolean(activeAssociationId) });
   const { data: votes } = useQuery<VoteRecord[]>({
     queryKey: ["/api/governance/resolutions", selectedResolutionId || "none", "votes"],
     queryFn: async () => {
@@ -125,6 +134,8 @@ export default function MeetingsPage() {
   useEffect(() => {
     form.setValue("associationId", activeAssociationId, { shouldValidate: true });
     resolutionForm.setValue("associationId", activeAssociationId, { shouldValidate: true });
+    setSelectedMeeting(null);
+    setSelectedResolutionId("");
   }, [activeAssociationId, form, resolutionForm]);
 
   const createMeeting = useMutation({
@@ -143,7 +154,9 @@ export default function MeetingsPage() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/governance/meetings"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/governance/meetings"),
+      });
       setOpen(false);
       form.reset({ associationId: activeAssociationId, meetingType: "board", title: "", scheduledAt: "", location: "", agenda: "", notes: "" });
       toast({ title: "Meeting scheduled" });
@@ -157,7 +170,9 @@ export default function MeetingsPage() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/governance/meetings"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/governance/meetings"),
+      });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -197,7 +212,9 @@ export default function MeetingsPage() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/governance/resolutions"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/governance/resolutions"),
+      });
       resolutionForm.reset({ associationId: activeAssociationId, meetingId: "", title: "", description: "" });
       toast({ title: "Resolution created" });
     },
@@ -214,16 +231,53 @@ export default function MeetingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/governance/resolutions", selectedResolutionId, "votes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/governance/resolutions"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/governance/resolutions"),
+      });
       voteForm.reset({ voterPersonId: "", voteChoice: "yes", voteWeight: 1 });
       toast({ title: "Vote recorded (starter workflow)" });
     },
   });
 
-  const budgetMeetings = useMemo(
-    () => (meetings ?? []).filter((m) => m.meetingType === "budget"),
-    [meetings],
-  );
+  const seedSampleData = useMutation({
+    mutationFn: async () => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const meetingRes = await apiRequest("POST", "/api/governance/meetings", {
+        associationId: activeAssociationId,
+        meetingType: "board",
+        title: "Sample Board Meeting",
+        scheduledAt: new Date().toISOString(),
+        location: "Conference Room A",
+        agenda: "Approve prior minutes, review budget variance, and discuss maintenance priorities.",
+        notes: "Sample meeting seeded for walkthrough.",
+        status: "scheduled",
+        summaryStatus: "draft",
+      });
+      const meeting = await meetingRes.json();
+      const resolutionRes = await apiRequest("POST", "/api/governance/resolutions", {
+        associationId: activeAssociationId,
+        meetingId: meeting.id,
+        title: "Sample Resolution: Approve Q2 Maintenance Plan",
+        description: "This sample resolution demonstrates vote capture and tally updates.",
+        status: "open",
+      });
+      const resolution = await resolutionRes.json();
+      return { meeting, resolution };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/governance/meetings"),
+      });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/governance/resolutions"),
+      });
+      setSelectedMeeting(result.meeting);
+      setSelectedResolutionId(result.resolution.id);
+      toast({ title: "Sample governance records created" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const filteredResolutions = useMemo(() => {
     const list = resolutions ?? [];
     if (!resolutionSearch.trim()) return list;
@@ -248,12 +302,6 @@ export default function MeetingsPage() {
     setNoteOpen(true);
   }
 
-  function createBudgetMeeting() {
-    form.setValue("meetingType", "budget");
-    form.setValue("title", "Annual Budget Meeting");
-    setOpen(true);
-  }
-
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -262,7 +310,15 @@ export default function MeetingsPage() {
           <p className="text-muted-foreground">Schedule meeting records, capture notes, and publish summaries in the current association context.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={createBudgetMeeting} disabled={!activeAssociationId}>New Budget Meeting</Button>
+          {(meetings?.length ?? 0) === 0 ? (
+            <Button
+              variant="outline"
+              disabled={!activeAssociationId || seedSampleData.isPending}
+              onClick={() => seedSampleData.mutate()}
+            >
+              {seedSampleData.isPending ? "Seeding..." : "Load Sample Data"}
+            </Button>
+          ) : null}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild><Button disabled={!activeAssociationId}>Schedule Meeting</Button></DialogTrigger>
             <DialogContent>
@@ -272,12 +328,24 @@ export default function MeetingsPage() {
                   <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                     Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <FormField control={form.control} name="meetingType" render={({ field }) => (
-                      <FormItem><FormLabel>Meeting Type</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="board">board</SelectItem><SelectItem value="annual">annual</SelectItem><SelectItem value="budget">budget</SelectItem><SelectItem value="special">special</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                      <FormItem>
+                        <FormLabel>Meeting Type</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                          <SelectContent>
+                            <SelectItem value="board">Board meeting</SelectItem>
+                            <SelectItem value="annual">Annual meeting</SelectItem>
+                            <SelectItem value="budget">Budget meeting</SelectItem>
+                            <SelectItem value="special">Special meeting</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
                     )} />
                     <FormField control={form.control} name="scheduledAt" render={({ field }) => (
-                      <FormItem><FormLabel>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Meeting Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
                   </div>
                   <FormField control={form.control} name="title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
@@ -292,17 +360,6 @@ export default function MeetingsPage() {
       </div>
 
       <Card>
-        <CardContent className="p-4">
-          <h2 className="text-sm font-medium mb-2">Budget Meeting Workflow</h2>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">Total budget meetings: {budgetMeetings.length}</Badge>
-            <Badge variant="outline">Published summaries: {budgetMeetings.filter((m) => m.summaryStatus === "published").length}</Badge>
-            <Badge variant="outline">Completed: {budgetMeetings.filter((m) => m.status === "completed").length}</Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
         <CardContent className="p-6 space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="space-y-3">
@@ -311,7 +368,10 @@ export default function MeetingsPage() {
                 <form className="grid grid-cols-1 md:grid-cols-4 gap-2" onSubmit={agendaForm.handleSubmit((v) => addAgendaItem.mutate(v))}>
                   <Input placeholder="Agenda title" value={agendaForm.watch("title")} onChange={(e) => agendaForm.setValue("title", e.target.value)} />
                   <Input placeholder="Description" value={agendaForm.watch("description") || ""} onChange={(e) => agendaForm.setValue("description", e.target.value)} />
-                  <Input type="number" placeholder="Order" value={agendaForm.watch("orderIndex")} onChange={(e) => agendaForm.setValue("orderIndex", Number(e.target.value))} />
+                  <div className="space-y-1">
+                    <Input type="number" placeholder="Agenda order" value={agendaForm.watch("orderIndex")} onChange={(e) => agendaForm.setValue("orderIndex", Number(e.target.value))} />
+                    <div className="text-xs text-muted-foreground">Use 0 for the first item, 1 for the second, and so on.</div>
+                  </div>
                   <Button type="submit" disabled={!selectedMeeting || addAgendaItem.isPending}>Add Agenda Item</Button>
                 </form>
               </Form>
@@ -388,7 +448,7 @@ export default function MeetingsPage() {
               onChange={(e) => setResolutionSearch(e.target.value)}
             />
           </div>
-          <p className="text-xs text-muted-foreground">Starter vote capture only; full procedure rules are intentionally out of scope.</p>
+          <p className="text-xs text-muted-foreground">Record votes against a selected resolution using a named board participant.</p>
 
           <Form {...resolutionForm}>
             <form className="grid grid-cols-1 md:grid-cols-4 gap-2" onSubmit={resolutionForm.handleSubmit((v) => addResolution.mutate(v))}>
@@ -425,10 +485,9 @@ export default function MeetingsPage() {
           </Table>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-              <Select value={voteForm.watch("voterPersonId") || "none"} onValueChange={(v) => voteForm.setValue("voterPersonId", v === "none" ? "" : v)}>
-                <SelectTrigger><SelectValue placeholder="Voter (optional)" /></SelectTrigger>
+              <Select value={voteForm.watch("voterPersonId")} onValueChange={(v) => voteForm.setValue("voterPersonId", v)}>
+                <SelectTrigger><SelectValue placeholder="Board voter" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">anonymous</SelectItem>
                   {(persons ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>)}
                 </SelectContent>
               </Select>
