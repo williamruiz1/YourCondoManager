@@ -479,7 +479,7 @@ function AuthAwareApp() {
   }, []);
 
   const adminAuthConfigured = adminApiKey.length > 0 && adminUserEmail.length > 0;
-  const { data: authSession, refetch: refetchAuthSession } = useQuery<AuthSession | null>({
+  const { data: authSession, refetch: refetchAuthSession, isLoading: authSessionLoading } = useQuery<AuthSession | null>({
     queryKey: ["/api/auth/me", "session"],
     queryFn: async () => {
       const res = await fetch("/api/auth/me", { credentials: "include" });
@@ -612,6 +612,10 @@ function AuthAwareApp() {
   const adminRole = authSession?.admin?.role ?? null;
   const hasWorkspaceAccess = adminAuthConfigured || Boolean(authSession?.authenticated && authSession.admin);
   const isWorkspaceRoute = location === "/app" || location.startsWith("/app/");
+  const resolvedSessionAdminEmail = authSession?.authenticated
+    ? (authSession.admin?.email || authSession.user?.email || "").trim().toLowerCase()
+    : "";
+  const sessionAdminReady = !resolvedSessionAdminEmail || resolvedSessionAdminEmail === adminUserEmail.trim().toLowerCase();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -627,6 +631,10 @@ function AuthAwareApp() {
     window.sessionStorage.setItem("autoGoogleSignInAttempted", "1");
     startGoogleSignIn(true);
   }, [isWorkspaceRoute, hasWorkspaceAccess, adminAuthConfigured]);
+
+  if (isWorkspaceRoute && (authSessionLoading || !sessionAdminReady)) {
+    return <RouteFallback />;
+  }
 
   return (
     <>
