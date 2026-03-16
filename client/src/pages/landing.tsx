@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 type LandingPageProps = {
   hasWorkspaceAccess: boolean;
   onOpenAdminAuth: () => void;
-  onStartGoogleSignIn: () => void;
 };
 
 const pillars = [
@@ -40,13 +39,13 @@ const highlights = [
     icon: BadgeCheck,
   },
   {
-    title: "Modern access",
-    summary: "Google sign-in handles day-to-day entry, with admin auth available for setup and operational recovery.",
+    title: "Secure access",
+    summary: "Admin auth controls workspace entry, with role-based access scoped to associations and functions.",
     icon: LockKeyhole,
   },
 ];
 
-export default function LandingPage({ hasWorkspaceAccess, onOpenAdminAuth, onStartGoogleSignIn }: LandingPageProps) {
+export default function LandingPage({ hasWorkspaceAccess, onOpenAdminAuth }: LandingPageProps) {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(20,83,45,0.12),_transparent_28%),linear-gradient(180deg,_hsl(var(--background)),_hsl(var(--muted)))]">
       <section className="mx-auto flex w-full max-w-7xl flex-col gap-12 px-6 py-8 md:px-10 lg:px-12">
@@ -76,10 +75,10 @@ export default function LandingPage({ hasWorkspaceAccess, onOpenAdminAuth, onSta
             ) : (
               <Button
                 variant="default"
-                onClick={onStartGoogleSignIn}
-                data-testid="button-landing-google-signin"
+                onClick={onOpenAdminAuth}
+                data-testid="button-landing-admin-auth"
               >
-                Sign in with Google
+                Sign In
               </Button>
             )}
           </div>

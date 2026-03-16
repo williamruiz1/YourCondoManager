@@ -3,7 +3,6 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
-import { initializeAuth } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
@@ -80,8 +79,6 @@ app.use(session({
     maxAge: sessionMaxAgeMs,
   },
 }));
-initializeAuth(app);
-
 type AutomationJobState = {
   isRunning: boolean;
   timer: NodeJS.Timeout | null;

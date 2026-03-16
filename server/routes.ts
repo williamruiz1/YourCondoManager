@@ -5,7 +5,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { db } from "./db";
-import { getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
+import { registerAuthRoutes } from "./auth";
 import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
 import { eq } from "drizzle-orm";
 import {
@@ -338,108 +338,6 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
   req.adminRole = normalizedRole;
 }
 
-async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
-  async function resolveOrBootstrapAdminFromEmail(
-    email: string,
-    authUserId?: string,
-  ): Promise<Awaited<ReturnType<typeof storage.getAdminUserByEmail>>> {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) return undefined;
-    const existing = await storage.getAdminUserByEmail(normalizedEmail);
-    if (existing && existing.isActive === 1) return existing;
-
-    const portalRows = await storage.getPortalAccessesByEmail(normalizedEmail);
-    const activeAssociationIds = Array.from(new Set(
-      portalRows
-        .filter((row) => row.status === "active")
-        .map((row) => row.associationId),
-    ));
-    if (activeAssociationIds.length === 0) return undefined;
-
-    const createdOrUpdated = await storage.upsertAdminUser({
-      email: normalizedEmail,
-      role: "board-admin",
-      isActive: 1,
-    });
-    for (const associationId of activeAssociationIds) {
-      await storage.upsertAdminAssociationScope({
-        adminUserId: createdOrUpdated.id,
-        associationId,
-        scope: "read-write",
-      });
-    }
-    if (authUserId) {
-      await storage.updateAuthUser(authUserId, { adminUserId: createdOrUpdated.id });
-    }
-    console.warn("[auth-admin-link][portal-bootstrap]", {
-      authUserId: authUserId || null,
-      email: normalizedEmail,
-      adminUserId: createdOrUpdated.id,
-      hydratedAssociationIds: activeAssociationIds,
-    });
-    return createdOrUpdated;
-  }
-
-  const authUser = req.user as { id?: string; adminUserId?: string | null; email?: string | null } | undefined;
-  if (req.isAuthenticated?.() && authUser) {
-    const adminById = authUser.adminUserId
-      ? await storage.getAdminUserById(authUser.adminUserId)
-      : undefined;
-    const adminByEmail = authUser.email
-      ? await storage.getAdminUserByEmail(authUser.email.trim().toLowerCase())
-      : undefined;
-
-    let resolvedAdmin = adminById && adminById.isActive === 1 ? adminById : undefined;
-    if (!resolvedAdmin && adminByEmail && adminByEmail.isActive === 1) {
-      resolvedAdmin = adminByEmail;
-    }
-    if (adminById && adminByEmail && adminById.id !== adminByEmail.id && authUser.id) {
-      resolvedAdmin = adminByEmail.isActive === 1 ? adminByEmail : resolvedAdmin;
-      if (resolvedAdmin?.id === adminByEmail.id) {
-        await storage.updateAuthUser(authUser.id, { adminUserId: adminByEmail.id });
-        console.warn("[auth-admin-link][relinked]", {
-          authUserId: authUser.id,
-          authEmail: authUser.email || null,
-          fromAdminUserId: adminById.id,
-          toAdminUserId: adminByEmail.id,
-        });
-      }
-    }
-    if (!resolvedAdmin && authUser.email) {
-      resolvedAdmin = await resolveOrBootstrapAdminFromEmail(authUser.email, authUser.id);
-    }
-
-    if (resolvedAdmin && resolvedAdmin.isActive === 1) {
-      await applyAdminContext(req, resolvedAdmin);
-      return true;
-    }
-  }
-
-  const serializedAuthUserId = (req.session as { passport?: { user?: string } } | undefined)?.passport?.user;
-  if (!serializedAuthUserId) return false;
-  const sessionAuthUser = await storage.getAuthUserById(String(serializedAuthUserId));
-  if (!sessionAuthUser || sessionAuthUser.isActive !== 1) return false;
-
-  if (!req.user && req.login) {
-    await new Promise<void>((resolve, reject) => {
-      req.login!(sessionAuthUser as Express.User, (error) => {
-        if (error) return reject(error);
-        return resolve();
-      });
-    });
-  }
-
-  const adminUser = sessionAuthUser.adminUserId
-    ? await storage.getAdminUserById(sessionAuthUser.adminUserId)
-    : await storage.getAdminUserByEmail(sessionAuthUser.email);
-  const fallbackAdmin = (!adminUser || adminUser.isActive !== 1)
-    ? await resolveOrBootstrapAdminFromEmail(sessionAuthUser.email, sessionAuthUser.id)
-    : adminUser;
-  if (!fallbackAdmin || fallbackAdmin.isActive !== 1) return false;
-
-  await applyAdminContext(req, fallbackAdmin);
-  return true;
-}
 
 function normalizeAiIngestionCanaryPercent(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -474,10 +372,6 @@ function evaluateAiIngestionRollout(input: {
 }
 
 async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction) {
-  if (await tryHydrateAdminFromSession(req)) {
-    return next();
-  }
-
   const adminUserEmail = (req.header("x-admin-user-email") || "").trim().toLowerCase();
 
   if (!ADMIN_API_KEY) {
@@ -494,8 +388,6 @@ async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction
       path: req.path,
       method: req.method,
       nodeEnv: process.env.NODE_ENV || null,
-      hasSessionAuth: Boolean(req.isAuthenticated?.()),
-      hasSessionUser: Boolean((req as Request & { user?: unknown }).user),
       hasAdminUserEmailHeader: Boolean(adminUserEmail),
     });
     return res.status(403).json({
@@ -3885,14 +3777,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/platform/email/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
     try {
       res.json(getEmailProviderStatus());
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/platform/auth/google-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
-    try {
-      res.json(getGoogleOAuthStatus(req));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

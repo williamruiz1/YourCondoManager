@@ -59,17 +59,6 @@ export default function PlatformControlsPage() {
     sender: string | null;
     trackingEnabled: boolean;
   }>({ queryKey: ["/api/platform/email/provider-status"] });
-  const { data: googleAuthStatus } = useQuery<{
-    enabled: boolean;
-    clientConfigured: boolean;
-    callbackPath: string;
-    configuredCallbackUrl: string | null;
-    callbackUrlStrict: boolean;
-    requestOrigin: string | null;
-    resolvedCallbackUrl: string | null;
-    callbackRoutes: string[];
-  }>({ queryKey: ["/api/platform/auth/google-status"] });
-
   const createEnvelope = useMutation({
     mutationFn: async () => {
       let parsed: unknown = {};
@@ -233,50 +222,6 @@ export default function PlatformControlsPage() {
         <h1 className="text-2xl font-bold tracking-tight">Platform Controls</h1>
         <p className="text-muted-foreground">Self-service permission envelopes and multi-association isolation scopes.</p>
       </div>
-
-      <Card>
-        <CardContent className="p-6 space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h2 className="text-lg font-semibold">Google OAuth Routing Status</h2>
-              <p className="text-sm text-muted-foreground">Validate hosted sign-in routing and callback resolution for the current environment.</p>
-            </div>
-            <Badge variant={googleAuthStatus?.enabled ? "default" : "outline"}>
-              {googleAuthStatus?.enabled ? "configured" : "not configured"}
-            </Badge>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded-lg border p-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Request origin</div>
-              <div className="mt-1 text-sm font-medium break-all">{googleAuthStatus?.requestOrigin || "Unavailable"}</div>
-            </div>
-            <div className="rounded-lg border p-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Resolved callback URL</div>
-              <div className="mt-1 text-sm font-medium break-all">{googleAuthStatus?.resolvedCallbackUrl || "Unavailable"}</div>
-            </div>
-            <div className="rounded-lg border p-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Configured callback URL</div>
-              <div className="mt-1 text-sm font-medium break-all">{googleAuthStatus?.configuredCallbackUrl || "Dynamic by request host"}</div>
-            </div>
-            <div className="rounded-lg border p-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Callback mode</div>
-              <div className="mt-1 text-sm font-medium">
-                {googleAuthStatus?.callbackUrlStrict ? "Pinned to configured URL" : `Host-aware via ${googleAuthStatus?.callbackPath || "/api/auth/google/callback"}`}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Accepted callback routes</div>
-            <div className="flex flex-wrap gap-2">
-              {(googleAuthStatus?.callbackRoutes ?? []).map((route) => (
-                <Badge key={route} variant="outline">{route}</Badge>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardContent className="p-6 space-y-4">

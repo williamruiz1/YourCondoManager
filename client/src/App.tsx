@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -54,18 +54,6 @@ const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
-
-type AuthSession = {
-  authenticated: boolean;
-  user?: {
-    email?: string | null;
-  };
-  admin?: {
-    id: string;
-    email: string;
-    role: AdminRole;
-  } | null;
-};
 
 function RouteFallback() {
   return (
@@ -137,11 +125,9 @@ function WorkspaceRouter({ adminRole }: { adminRole: AdminRole | null }) {
 function PublicRouter({
   hasWorkspaceAccess,
   onOpenAdminAuth,
-  onStartGoogleSignIn,
 }: {
   hasWorkspaceAccess: boolean;
   onOpenAdminAuth: () => void;
-  onStartGoogleSignIn: () => void;
 }) {
   return (
     <Suspense fallback={<RouteFallback />}>
@@ -150,7 +136,6 @@ function PublicRouter({
           <LandingPage
             hasWorkspaceAccess={hasWorkspaceAccess}
             onOpenAdminAuth={onOpenAdminAuth}
-            onStartGoogleSignIn={onStartGoogleSignIn}
           />
         </Route>
         <Route path="/portal" component={OwnerPortalPage} />
@@ -313,21 +298,15 @@ function AdminAuthDialog({
 }
 
 function HeaderActions({
-  authSession,
   adminAuthConfigured,
   adminUserEmail,
   adminRole,
   onOpenAdminAuth,
-  onStartGoogleSignIn,
-  onLogoutGoogleSession,
 }: {
-  authSession: AuthSession | null | undefined;
   adminAuthConfigured: boolean;
   adminUserEmail: string;
   adminRole: AdminRole | null;
   onOpenAdminAuth: () => void;
-  onStartGoogleSignIn: () => void;
-  onLogoutGoogleSession: () => Promise<void>;
 }) {
   const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
 
@@ -356,19 +335,6 @@ function HeaderActions({
       >
         {adminAuthConfigured ? "Admin Auth" : "Set Admin Auth"}
       </Button>
-      <Button
-        size="sm"
-        variant={authSession?.authenticated ? "outline" : "default"}
-        onClick={onStartGoogleSignIn}
-        data-testid="button-google-signin"
-      >
-        {authSession?.authenticated ? `Google: ${authSession.user?.email || "Signed in"}` : "Sign in with Google"}
-      </Button>
-      {authSession?.authenticated ? (
-        <Button size="sm" variant="outline" onClick={() => void onLogoutGoogleSession()} data-testid="button-google-signout">
-          Sign out
-        </Button>
-      ) : null}
       <Button asChild size="sm" data-testid="button-open-admin-roadmap-global">
         <Link href="/app/admin/roadmap">Admin Roadmap</Link>
       </Button>
@@ -423,21 +389,15 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
 }
 
 function WorkspaceShell({
-  authSession,
   adminAuthConfigured,
   adminUserEmail,
   adminRole,
   onOpenAdminAuth,
-  onStartGoogleSignIn,
-  onLogoutGoogleSession,
 }: {
-  authSession: AuthSession | null | undefined;
   adminAuthConfigured: boolean;
   adminUserEmail: string;
   adminRole: AdminRole | null;
   onOpenAdminAuth: () => void;
-  onStartGoogleSignIn: () => void;
-  onLogoutGoogleSession: () => Promise<void>;
 }) {
   const style = {
     "--sidebar-width": "16rem",
@@ -453,13 +413,10 @@ function WorkspaceShell({
             <header className="flex h-12 items-center justify-between gap-2 border-b p-2">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
               <HeaderActions
-                authSession={authSession}
                 adminAuthConfigured={adminAuthConfigured}
                 adminUserEmail={adminUserEmail}
                 adminRole={adminRole}
                 onOpenAdminAuth={onOpenAdminAuth}
-                onStartGoogleSignIn={onStartGoogleSignIn}
-                onLogoutGoogleSession={onLogoutGoogleSession}
               />
             </header>
             <MainContent adminRole={adminRole} />
@@ -475,7 +432,6 @@ function AuthAwareApp() {
   const [authOpen, setAuthOpen] = useState(false);
   const [adminApiKey, setAdminApiKey] = useState("");
   const [adminUserEmail, setAdminUserEmail] = useState("");
-  const authRestoreAttemptedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -484,112 +440,6 @@ function AuthAwareApp() {
   }, []);
 
   const adminAuthConfigured = adminApiKey.length > 0 && adminUserEmail.length > 0;
-  const { data: authSession, refetch: refetchAuthSession, isLoading: authSessionLoading } = useQuery<AuthSession | null>({
-    queryKey: ["/api/auth/me", "session"],
-    queryFn: async () => {
-      const res = await fetch("/api/auth/me", { credentials: "include" });
-      if (res.status === 401) return null;
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const resolvedAdminEmail = authSession?.authenticated
-      ? (authSession.admin?.email || authSession.user?.email || "").trim().toLowerCase()
-      : "";
-
-    if (!resolvedAdminEmail) return;
-    if (resolvedAdminEmail === adminUserEmail.trim().toLowerCase()) return;
-
-    setAdminUserEmail(resolvedAdminEmail);
-    window.localStorage.setItem("adminUserEmail", resolvedAdminEmail);
-    queryClient.invalidateQueries();
-  }, [authSession, adminUserEmail]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const authRestore = params.get("authRestore");
-    if (!authRestore) return;
-    window.localStorage.setItem("authRestorePayload", authRestore);
-    params.delete("authRestore");
-    const nextQuery = params.toString();
-    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
-    window.history.replaceState({}, "", nextUrl);
-  }, []);
-
-  useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      if (event.origin !== window.location.origin) return;
-      if (!event.data || typeof event.data !== "object") return;
-      const payload = event.data as { type?: string; authRestore?: string };
-      if (payload.type !== "google-oauth-success") return;
-      if (typeof payload.authRestore === "string" && payload.authRestore.trim()) {
-        window.localStorage.setItem("authRestorePayload", payload.authRestore.trim());
-      }
-      queryClient.invalidateQueries();
-      refetchAuthSession();
-      window.location.reload();
-    }
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [refetchAuthSession]);
-
-  useEffect(() => {
-    if (authSession?.authenticated) return;
-    if (authRestoreAttemptedRef.current) return;
-    const payload = (window.localStorage.getItem("authRestorePayload") || "").trim();
-    if (!payload) return;
-
-    authRestoreAttemptedRef.current = true;
-    fetch("/api/auth/session/restore", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ payload }),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          window.localStorage.removeItem("authRestorePayload");
-          return;
-        }
-        await refetchAuthSession();
-        queryClient.invalidateQueries();
-      })
-      .catch(() => {
-        window.localStorage.removeItem("authRestorePayload");
-      });
-  }, [authSession, refetchAuthSession]);
-
-  function resolveGoogleReturnTo() {
-    if (typeof window === "undefined") return "/app";
-    const current = `${window.location.pathname}${window.location.search}`;
-    if (window.location.pathname === "/" || !window.location.pathname.startsWith("/app")) {
-      return "/app";
-    }
-    return current;
-  }
-
-  function startGoogleSignIn(forceSelect = true) {
-    if (typeof window === "undefined") return;
-    const returnTo = resolveGoogleReturnTo();
-    const url = `/api/auth/google?popup=1&returnTo=${encodeURIComponent(returnTo)}${forceSelect ? "&forceSelect=1" : ""}`;
-    const popup = window.open(url, "google-oauth-signin", "width=520,height=680");
-
-    if (!popup) {
-      window.location.assign(`/api/auth/google?returnTo=${encodeURIComponent(returnTo)}${forceSelect ? "&forceSelect=1" : ""}`);
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      if (!popup.closed) return;
-      window.clearInterval(timer);
-      queryClient.invalidateQueries();
-      refetchAuthSession();
-    }, 400);
-  }
 
   function saveAdminAuth() {
     if (typeof window === "undefined") return;
@@ -609,43 +459,9 @@ function AuthAwareApp() {
     setAuthOpen(false);
   }
 
-  async function logoutGoogleSession() {
-    try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-    } finally {
-      window.localStorage.removeItem("authRestorePayload");
-      authRestoreAttemptedRef.current = false;
-      queryClient.invalidateQueries();
-      await refetchAuthSession();
-    }
-  }
-
-  const adminRole = authSession?.admin?.role ?? null;
-  const hasWorkspaceAccess = adminAuthConfigured || Boolean(authSession?.authenticated && authSession.admin);
+  const adminRole = null as AdminRole | null;
+  const hasWorkspaceAccess = adminAuthConfigured;
   const isWorkspaceRoute = location === "/app" || location.startsWith("/app/");
-  const resolvedSessionAdminEmail = authSession?.authenticated
-    ? (authSession.admin?.email || authSession.user?.email || "").trim().toLowerCase()
-    : "";
-  const sessionAdminReady = !resolvedSessionAdminEmail || resolvedSessionAdminEmail === adminUserEmail.trim().toLowerCase();
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!isWorkspaceRoute) return;
-    if (hasWorkspaceAccess) {
-      window.sessionStorage.removeItem("autoGoogleSignInAttempted");
-      return;
-    }
-    if (!adminAuthConfigured) {
-      window.sessionStorage.removeItem("autoGoogleSignInAttempted");
-    }
-  }, [isWorkspaceRoute, hasWorkspaceAccess, adminAuthConfigured]);
-
-  if (isWorkspaceRoute && (authSessionLoading || !sessionAdminReady)) {
-    return <RouteFallback />;
-  }
 
   return (
     <>
@@ -661,19 +477,15 @@ function AuthAwareApp() {
       {isWorkspaceRoute ? (
         hasWorkspaceAccess ? (
           <WorkspaceShell
-            authSession={authSession}
             adminAuthConfigured={adminAuthConfigured}
             adminUserEmail={adminUserEmail}
             adminRole={adminRole}
             onOpenAdminAuth={() => setAuthOpen(true)}
-            onStartGoogleSignIn={() => startGoogleSignIn(true)}
-            onLogoutGoogleSession={logoutGoogleSession}
           />
         ) : (
           <Suspense fallback={<RouteFallback />}>
             <WorkspacePreviewPage
               onOpenAdminAuth={() => setAuthOpen(true)}
-              onStartGoogleSignIn={() => startGoogleSignIn(true)}
             />
           </Suspense>
         )
@@ -681,7 +493,6 @@ function AuthAwareApp() {
         <PublicRouter
           hasWorkspaceAccess={hasWorkspaceAccess}
           onOpenAdminAuth={() => setAuthOpen(true)}
-          onStartGoogleSignIn={() => startGoogleSignIn(true)}
         />
       )}
     </>
