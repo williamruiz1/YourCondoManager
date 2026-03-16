@@ -16,7 +16,7 @@ import {
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
-import { Plus, Building2, DoorOpen, MessageSquare, Pencil, ChevronDown, ChevronRight, Link2 } from "lucide-react";
+import { Plus, Building2, DoorOpen, MessageSquare, Pencil, ChevronDown, ChevronRight, Link2, User } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -426,6 +426,17 @@ export default function UnitsPage() {
                 ? "Tenant"
                 : "Vacant";
 
+            const tenantPerson =
+              unitDirectory?.activeOccupancy?.occupancy.occupancyType === "TENANT"
+                ? (unitDirectory.activeOccupancy.person ?? null)
+                : null;
+            const tenantName = tenantPerson
+              ? `${tenantPerson.firstName ?? ""} ${tenantPerson.lastName ?? ""}`.trim()
+              : "";
+            const tenantEmail = tenantPerson?.email?.trim() ?? "";
+            const tenantPhone = tenantPerson?.phone?.trim() ?? "";
+            const tenantPersonId = tenantPerson?.id ?? null;
+
             return {
               unit,
               ownerCount,
@@ -435,6 +446,11 @@ export default function UnitsPage() {
               ownerPersonId: primaryOwner?.id ?? null,
               occupancyType,
               occupancyLabel,
+              tenantPerson,
+              tenantName,
+              tenantEmail,
+              tenantPhone,
+              tenantPersonId,
             };
           }),
         unitCount: group.units.length,
@@ -753,6 +769,49 @@ export default function UnitsPage() {
                                 </Button>
                               </div>
                             </div>
+
+                            {row.tenantPerson ? (
+                              <div className="mt-2 rounded-md border border-dashed bg-muted/20 px-3 py-2">
+                                <div className="grid gap-3 lg:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] lg:items-center">
+                                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    <User className="h-3 w-3 shrink-0" />
+                                    <span>Tenant</span>
+                                  </div>
+                                  <CopyableCell
+                                    label="Tenant name"
+                                    value={row.tenantName}
+                                    fallback="No name"
+                                    onCopy={copyFieldValue}
+                                  />
+                                  <CopyableCell
+                                    label="Tenant email"
+                                    value={row.tenantEmail}
+                                    fallback="No email"
+                                    onCopy={copyFieldValue}
+                                  />
+                                  <CopyableCell
+                                    label="Tenant phone"
+                                    value={row.tenantPhone}
+                                    fallback="No phone"
+                                    onCopy={copyFieldValue}
+                                  />
+                                  <div className="min-w-0 flex justify-end">
+                                    <Button
+                                      asChild
+                                      size="sm"
+                                      variant="ghost"
+                                      title="Message Tenant"
+                                      aria-label="Message Tenant"
+                                      className="h-8 w-8 shrink-0 p-0"
+                                    >
+                                      <Link href={`/app/communications?targetType=selected-units&selectedUnitAudience=tenants&unitId=${row.unit.id}${row.tenantPersonId ? `&personId=${row.tenantPersonId}` : ""}`}>
+                                        <MessageSquare className="h-4 w-4" />
+                                      </Link>
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         ))}
                       </div>

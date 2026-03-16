@@ -61,22 +61,27 @@ export default function LandingPage({ hasWorkspaceAccess, onOpenAdminAuth, onSta
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={onOpenAdminAuth} data-testid="button-landing-admin-auth">
-              Admin Auth
-            </Button>
-            <Button
-              variant="default"
-              onClick={onStartGoogleSignIn}
-              data-testid="button-landing-google-signin"
-            >
-              Sign in with Google
-            </Button>
-            <Button asChild data-testid="button-landing-open-workspace">
-              <Link href="/app">
-                Open Workspace
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
+            {hasWorkspaceAccess ? (
+              <>
+                <Button variant="outline" onClick={onOpenAdminAuth} data-testid="button-landing-admin-auth">
+                  Admin Auth
+                </Button>
+                <Button asChild data-testid="button-landing-open-workspace">
+                  <Link href="/app">
+                    Open Workspace
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="default"
+                onClick={onStartGoogleSignIn}
+                data-testid="button-landing-google-signin"
+              >
+                Sign in with Google
+              </Button>
+            )}
           </div>
         </div>
 

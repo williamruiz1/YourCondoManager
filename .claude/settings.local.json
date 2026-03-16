@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npm run check 2>&1 | tail -30)",
-      "Bash(npm run check 2>&1 | tail -20)"
+      "Bash(npm run check 2>&1 | tail -20)",
+      "Bash(npm run check 2>&1 | tail -10)",
+      "Bash(npm run db:push 2>&1 | tail -15)"
     ]
   }
 }

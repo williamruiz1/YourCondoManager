@@ -925,6 +925,8 @@ export const tenantConfigs = pgTable("tenant_configs", {
   ownerDocumentVisibility: text("owner_document_visibility").notNull().default("owner-safe"),
   gmailIntegrationStatus: text("gmail_integration_status").notNull().default("not-configured"),
   defaultNoticeFooter: text("default_notice_footer"),
+  managementType: text("management_type").notNull().default("self-managed"),
+  managementCompanyName: text("management_company_name"),
   aiIngestionRolloutMode: text("ai_ingestion_rollout_mode").notNull().default("full"),
   aiIngestionCanaryPercent: integer("ai_ingestion_canary_percent").notNull().default(100),
   aiIngestionRolloutNotes: text("ai_ingestion_rollout_notes"),

@@ -101,9 +101,7 @@ export default function OccupancyPage() {
       if (!intakeForm.firstName.trim() || !intakeForm.lastName.trim() || !intakeForm.startDate) {
         throw new Error("Name and start date are required");
       }
-      if (intakeForm.occupancyType === "TENANT" && !intakeForm.email.trim() && !intakeForm.phone.trim()) {
-        throw new Error("Tenant occupancy requires at least an email or phone number");
-      }
+
       const payload = {
         associationId: unit.associationId,
         unitId: intakeForm.unitId,

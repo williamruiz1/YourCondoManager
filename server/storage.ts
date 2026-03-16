@@ -9751,6 +9751,120 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  private static escapeHtmlEntities(value: string): string {
+    return value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  private static stripHtmlToText(html: string): string {
+    return html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/&mdash;/gi, "—")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  private static buildNoticeEmailHtml(params: {
+    associationName: string;
+    associationType: string | null;
+    associationAddress: string;
+    associationCity: string;
+    associationState: string;
+    noticeDate: string;
+    supportEmail: string | null;
+    unitLabel: string | null;
+    sections: string[];
+  }): string {
+    const esc = DatabaseStorage.escapeHtmlEntities;
+
+    const addressParts = [params.associationAddress, params.associationCity, params.associationState]
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const addressLine = esc(addressParts.join(", "));
+    const typeLabel = params.associationType ? ` &mdash; ${esc(params.associationType)}` : "";
+
+    const bodyHtmlSections = params.sections
+      .map((section) =>
+        section
+          .split(/\n{2,}/)
+          .map(
+            (para) =>
+              `<p style="margin:0 0 14px 0;color:#333333;font-size:15px;line-height:1.65;">${esc(para).replaceAll("\n", "<br/>")}</p>`,
+          )
+          .join(""),
+      )
+      .join('<hr style="border:none;border-top:1px solid #eeeeee;margin:20px 0;" />');
+
+    const supportLine = params.supportEmail
+      ? `<br/>Questions? Contact <a href="mailto:${esc(params.supportEmail)}" style="color:#1e3a5f;text-decoration:none;">${esc(params.supportEmail)}</a>.`
+      : "";
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>${esc(params.associationName)}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0f2f5;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f2f5;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.10);">
+        <tr>
+          <td style="background-color:#1e3a5f;padding:28px 36px;">
+            <div style="color:#ffffff;font-size:22px;font-weight:bold;letter-spacing:0.01em;margin-bottom:6px;">${esc(params.associationName)}</div>
+            <div style="color:#a8c4e0;font-size:13px;">${addressLine}${typeLabel}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color:#e8eef4;padding:10px 36px;border-bottom:2px solid #1e3a5f;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="color:#1e3a5f;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.08em;">
+                  Official Community Notice${params.unitLabel ? ` &nbsp;&middot;&nbsp; <span style="font-weight:normal;text-transform:none;">${esc(params.unitLabel)}</span>` : ""}
+                </td>
+                <td align="right" style="color:#666666;font-size:11px;">${esc(params.noticeDate)}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 36px;background-color:#ffffff;">
+            ${bodyHtmlSections}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 36px;background-color:#f8f9fa;border-top:1px solid #e0e0e0;">
+            <p style="margin:0;color:#888888;font-size:12px;line-height:1.6;">
+              This notice was sent by <strong>${esc(params.associationName)}</strong>.${supportLine}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 36px;background-color:#f0f2f5;border-top:1px solid #e8eaed;text-align:center;">
+            <p style="margin:0;color:#bbbbbb;font-size:11px;letter-spacing:0.02em;">Powered by <span style="color:#9aaabb;">Your Condo Manager</span></p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
+  }
+
   private async renderNoticeContent(payload: {
     associationId?: string | null;
     templateId?: string | null;
@@ -9760,7 +9874,7 @@ export class DatabaseStorage implements IStorage {
     recipientUnitId?: string | null;
     recipientRole?: "owner" | "tenant" | "board-member" | null;
     variables?: Record<string, string>;
-  }): Promise<{ associationId: string | null; subject: string; body: string }> {
+  }): Promise<{ associationId: string | null; subject: string; body: string; bodyHtml: string }> {
     let associationId = payload.associationId ?? null;
     let subject = payload.subject || "";
     let letterhead = "";
@@ -9812,11 +9926,25 @@ export class DatabaseStorage implements IStorage {
         .trim();
     }
 
+    let associationRecord: { name: string; associationType: string | null; address: string; city: string; state: string } | null = null;
+    let supportEmail: string | null = null;
+
     if (associationId) {
       const config = await this.getTenantConfig(associationId);
       const configuredFooter = config?.defaultNoticeFooter?.trim();
       if (!footer && configuredFooter) {
         footer = configuredFooter;
+      }
+      supportEmail = config?.supportEmail?.trim() || null;
+      const [assocRow] = await db.select().from(associations).where(eq(associations.id, associationId)).limit(1);
+      if (assocRow) {
+        associationRecord = {
+          name: assocRow.name,
+          associationType: assocRow.associationType ?? null,
+          address: assocRow.address,
+          city: assocRow.city,
+          state: assocRow.state,
+        };
       }
     }
 
@@ -9825,7 +9953,22 @@ export class DatabaseStorage implements IStorage {
       .join("\n\n")
       .trim();
 
-    return { associationId, subject, body: renderedBody };
+    const contentSections = [header.trim(), body.trim(), footer.trim(), signature.trim()].filter(Boolean);
+    const bodyHtml = associationRecord
+      ? DatabaseStorage.buildNoticeEmailHtml({
+          associationName: associationRecord.name,
+          associationType: associationRecord.associationType,
+          associationAddress: associationRecord.address,
+          associationCity: associationRecord.city,
+          associationState: associationRecord.state,
+          noticeDate: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+          supportEmail,
+          unitLabel: vars.unit_label || null,
+          sections: contentSections.length > 0 ? contentSections : [body.trim() || renderedBody],
+        })
+      : renderedBody;
+
+    return { associationId, subject, body: renderedBody, bodyHtml };
   }
 
   private async validateCommunicationReadiness(associationId: string, bypassReadinessGate?: boolean | null): Promise<void> {
@@ -9855,8 +9998,12 @@ export class DatabaseStorage implements IStorage {
       association_city: "",
       association_state: "",
       unit_number: "",
+      unit_building: "",
+      unit_label: "",
       owner_name: "",
       tenant_name: "",
+      recipient_name: "",
+      board_signature: "",
     };
 
     let association: Association | null = null;
@@ -9897,6 +10044,17 @@ export class DatabaseStorage implements IStorage {
     }
     if (unit) {
       baseVariables.unit_number = unit.unitNumber;
+
+      let buildingName = unit.building?.trim() ?? "";
+      if (!buildingName && unit.buildingId) {
+        const [buildingRow] = await db.select().from(buildings).where(eq(buildings.id, unit.buildingId)).limit(1);
+        buildingName = buildingRow?.name?.trim() ?? "";
+      }
+      baseVariables.unit_building = buildingName;
+      baseVariables.unit_label = buildingName
+        ? `${buildingName}, Unit ${unit.unitNumber}`
+        : `Unit ${unit.unitNumber}`;
+
       if (input.associationId) {
         const ownerLink = await this.getOrCreateUnitOnboardingLink({
           associationId: input.associationId,
@@ -9914,6 +10072,7 @@ export class DatabaseStorage implements IStorage {
     }
     if (person) {
       const fullName = `${person.firstName} ${person.lastName}`.trim();
+      baseVariables.recipient_name = fullName;
       if (input.recipientRole === "owner") {
         baseVariables.owner_name = fullName;
       } else if (input.recipientRole === "tenant") {
@@ -9921,6 +10080,48 @@ export class DatabaseStorage implements IStorage {
       } else {
         baseVariables.owner_name = fullName;
         baseVariables.tenant_name = fullName;
+      }
+    }
+
+    if (input.associationId) {
+      const config = await this.getTenantConfig(input.associationId);
+      const managementType = config?.managementType ?? "self-managed";
+      const managementCompanyName = config?.managementCompanyName?.trim() ?? "";
+
+      if (managementType === "property-managed" && managementCompanyName) {
+        baseVariables.board_signature = [
+          managementCompanyName,
+          association ? `On behalf of ${association.name}` : "",
+        ].filter(Boolean).join("\n");
+      } else {
+        const currentRoles = await db
+          .select({ role: boardRoles.role, personId: boardRoles.personId })
+          .from(boardRoles)
+          .where(and(eq(boardRoles.associationId, input.associationId), isNull(boardRoles.endDate)));
+        if (currentRoles.length > 0) {
+          const rolePersonIds = currentRoles.map((r) => r.personId);
+          const rolePersons = await db
+            .select({ id: persons.id, firstName: persons.firstName, lastName: persons.lastName })
+            .from(persons)
+            .where(inArray(persons.id, rolePersonIds));
+          const personNameById = new Map(rolePersons.map((p) => [p.id, `${p.firstName} ${p.lastName}`.trim()]));
+          const roleOrder = ["President", "Vice President", "Treasurer", "Secretary"];
+          const sortedRoles = [...currentRoles].sort((a, b) => {
+            const ai = roleOrder.indexOf(a.role);
+            const bi = roleOrder.indexOf(b.role);
+            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+          });
+          const lines = sortedRoles
+            .map((r) => {
+              const name = personNameById.get(r.personId);
+              return name ? `${name}, ${r.role}` : null;
+            })
+            .filter(Boolean) as string[];
+          const header = association ? `${association.name} Board` : "Association Board";
+          baseVariables.board_signature = [header, ...lines].join("\n");
+        } else {
+          baseVariables.board_signature = association ? `${association.name} Board` : "Association Board";
+        }
       }
     }
 
@@ -9937,12 +10138,15 @@ export class DatabaseStorage implements IStorage {
 
   private async deliverNoticeSend(send: NoticeSend, sentBy?: string | null): Promise<{ send: NoticeSend; history: CommunicationHistory }> {
     const now = new Date();
+    const isHtmlBody = send.bodyRendered.trimStart().startsWith("<");
+    const htmlBody = isHtmlBody ? send.bodyRendered : undefined;
+    const textBody = isHtmlBody ? DatabaseStorage.stripHtmlToText(send.bodyRendered) : send.bodyRendered;
     const delivery = await sendPlatformEmail({
       associationId: send.associationId ?? null,
       to: send.recipientEmail,
       subject: send.subjectRendered,
-      text: send.bodyRendered,
-      html: send.bodyRendered.includes("<") ? send.bodyRendered : undefined,
+      text: textBody,
+      html: htmlBody,
       templateKey: send.templateId ?? "notice-send",
       metadata: {
         noticeSendId: send.id,
@@ -10041,7 +10245,7 @@ export class DatabaseStorage implements IStorage {
         recipientEmail: payload.recipientEmail,
         recipientPersonId: payload.recipientPersonId ?? null,
         subjectRendered: rendered.subject,
-        bodyRendered: rendered.body,
+        bodyRendered: rendered.bodyHtml || rendered.body,
         status,
         provider: status === "sent" ? "internal-queued" : "internal-queued",
         providerMessageId: null,
