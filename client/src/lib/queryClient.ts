@@ -48,10 +48,9 @@ async function throwIfResNotOk(res: Response) {
       typeof window !== "undefined"
       && res.status === 403
       && parsed?.code === "ADMIN_SESSION_REQUIRED"
-      && !window.location.pathname.startsWith("/api/")
+      && window.location.pathname.startsWith("/app")
     ) {
-      const returnTo = `${window.location.pathname}${window.location.search}`;
-      window.location.assign(`/api/auth/google?forceSelect=1&returnTo=${encodeURIComponent(returnTo)}`);
+      window.location.assign("/");
     }
 
     const message = parsed?.message || text;

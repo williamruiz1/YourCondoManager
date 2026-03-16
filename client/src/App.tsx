@@ -493,8 +493,8 @@ function AuthAwareApp() {
     } finally {
       window.localStorage.removeItem("authRestorePayload");
       authRestoreAttemptedRef.current = false;
-      queryClient.invalidateQueries();
-      await refetchAuthSession();
+      queryClient.clear();
+      window.location.assign("/");
     }
   }
 
