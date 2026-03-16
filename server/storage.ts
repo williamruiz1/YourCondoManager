@@ -12512,9 +12512,11 @@ export class DatabaseStorage implements IStorage {
       return created;
     }
 
+    // When updating an existing user, preserve their current role to prevent accidental downgrades.
+    // Role changes must go through updateAdminUserRole which enforces audit logging.
     const [updated] = await db
       .update(adminUsers)
-      .set({ ...data, email: normalizedEmail, updatedAt: new Date() })
+      .set({ isActive: data.isActive, updatedAt: new Date() })
       .where(eq(adminUsers.id, existing.id))
       .returning();
     return updated;

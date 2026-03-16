@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, ilike } from "drizzle-orm";
 import {
   adminUsers, analysisRuns, analysisVersions, associations, boardRoles, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
 } from "@shared/schema";
@@ -980,6 +980,33 @@ export async function seedDatabase() {
       role: "platform-admin",
       isActive: 1,
     });
+  }
+
+  // Bootstrap platform admins from PLATFORM_ADMIN_EMAILS env var.
+  // On every server start, these emails are ensured to have platform-admin role and be active.
+  // This allows recovering from accidental role downgrades without manual DB access.
+  const platformAdminEmailsRaw = (process.env.PLATFORM_ADMIN_EMAILS || "").trim();
+  if (platformAdminEmailsRaw) {
+    const platformAdminEmails = platformAdminEmailsRaw
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    for (const email of platformAdminEmails) {
+      const [existing] = await db.select().from(adminUsers).where(ilike(adminUsers.email, email));
+      if (existing) {
+        if (existing.role !== "platform-admin" || existing.isActive !== 1) {
+          await db
+            .update(adminUsers)
+            .set({ role: "platform-admin", isActive: 1, updatedAt: new Date() })
+            .where(eq(adminUsers.id, existing.id));
+          console.log(`[bootstrap] Promoted ${email} to platform-admin`);
+        }
+      } else {
+        await db.insert(adminUsers).values({ email, role: "platform-admin", isActive: 1 });
+        console.log(`[bootstrap] Created platform-admin for ${email}`);
+      }
+    }
   }
 
   console.log("Database seeded successfully");
