@@ -2,12 +2,25 @@
 
 Date: 2026-03-15
 Project: `Platform-wide UI and UX Opportunity Analysis`
+Status: Archived on 2026-03-15 after the initial modernization wave was closed in the live roadmap
 
 ## Purpose
 
 Turn the current UI opportunity-analysis project into an execution-ready delivery plan that can drive the platform to completion.
 
 The platform already has broad feature coverage across association setup, residential records, governance, finance, operations, communications, documents, onboarding, roadmap administration, and the owner portal. The main remaining risk is not missing modules. It is uneven UX quality across those modules.
+
+## Revalidation Note
+
+This document reflects the pre-execution view of the project. As of 2026-03-16, the live roadmap project for this plan is archived and all tasks in that project are marked done.
+
+That archived status should be read as historical project bookkeeping, not proof that every page across the platform now shares the same UX maturity. The shared foundation work shipped, but several rollout and polish concerns described here still exist on pages that never adopted those shared patterns.
+
+Validated interpretation:
+
+- `Create a global command palette for navigation, recent records, and create actions` is complete and should remain closed.
+- Shell, association-context, async-state, document, and onboarding tasks landed as first-wave foundation work and should not be reopened wholesale.
+- Table, responsive, feedback, and analytics consistency gaps are still real at the platform level, but should be tracked in newer focused projects instead of by reopening this archived analysis project.
 
 ## Current Review Summary
 
@@ -226,40 +239,30 @@ Exit criteria:
 - long-running actions always expose progress or completion feedback
 - analytics modules explain what the operator should do next
 
-## Completion Sequence by Roadmap Task
+## Historical Task Outcome
 
-The current roadmap tasks should be executed in this order:
+The live roadmap project for this plan has already been closed.
 
-1. Add shell-level breadcrumbs, page summaries, and adjacent workflow shortcuts
-2. Redesign association context switching to be more explicit and less error-prone
-3. Create a global command palette for navigation, recent records, and create actions
-4. Standardize loading, error, and retry states for query-driven pages
-5. Add explicit progress and completion feedback for exports, uploads, and sync actions
-6. Standardize sortable, filterable, paginated tables across operations and finance
-7. Introduce drill-in side panels and row detail views to reduce context loss
-8. Improve responsive behavior for wide admin and operations views
-9. Turn dense CRUD forms into guided, task-oriented flows
-10. Upgrade document workflows with stronger metadata affordances and file handling
-11. Refine onboarding and review consoles around next-best-action workflows
-12. Pair analytics with explanations and recommended next actions
+Validated status on 2026-03-16:
 
-## Recommended First Execution Chunk
+1. `Create a global command palette for navigation, recent records, and create actions`
+   Complete and correctly closed.
+2. `Add shell-level breadcrumbs, page summaries, and adjacent workflow shortcuts`
+   Foundation delivered; any remaining work is rollout, not net-new design.
+3. `Redesign association context switching to be more explicit and less error-prone`
+   Foundation delivered; any remaining work is polish and edge-case cleanup.
+4. `Upgrade document workflows with stronger metadata affordances and file handling`
+   Core guided document workflow delivered; further metadata/entity-linking polish belongs in a newer project if needed.
+5. `Refine onboarding and review consoles around next-best-action workflows`
+   Core next-best-action treatment exists; higher-throughput review improvements belong in a newer project if needed.
+6. All other tasks listed in this document
+   Still conceptually relevant where pages have not adopted the shared patterns, but they should be reintroduced only as targeted follow-on work tied to current gaps.
 
-Start with a foundation chunk rather than jumping page by page.
+## Historical First Execution Chunk
 
-Chunk A:
+The original first chunk centered on `WorkspacePageHeader`, `AssociationScopeBanner`, and `AsyncStateBoundary`, applied first to dashboard, association context, documents, financial ledger, and communications.
 
-- build `WorkspacePageHeader`
-- build `AssociationScopeBanner`
-- build `AsyncStateBoundary`
-- wire them into:
-  - dashboard
-  - association context
-  - documents
-  - financial ledger
-  - communications
-
-This chunk creates the shared visual and behavioral language the rest of the project can reuse.
+That foundation is the clearest part of this plan that shipped and is the main reason this project should remain archived rather than be reopened as-is.
 
 ## Verification Standard
 

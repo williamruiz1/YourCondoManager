@@ -490,6 +490,21 @@ function AuthAwareApp() {
   });
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const resolvedAdminEmail = authSession?.authenticated
+      ? (authSession.admin?.email || authSession.user?.email || "").trim().toLowerCase()
+      : "";
+
+    if (!resolvedAdminEmail) return;
+    if (resolvedAdminEmail === adminUserEmail.trim().toLowerCase()) return;
+
+    setAdminUserEmail(resolvedAdminEmail);
+    window.localStorage.setItem("adminUserEmail", resolvedAdminEmail);
+    queryClient.invalidateQueries();
+  }, [authSession, adminUserEmail]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const authRestore = params.get("authRestore");
     if (!authRestore) return;

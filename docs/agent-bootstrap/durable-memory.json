@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-15T14:30:19.192Z",
+  "generatedAt": "2026-03-16T13:18:43.677Z",
   "purpose": "Durable working memory for stable repo facts and repeatable operating knowledge.",
   "sourceArtifacts": {
     "workspaceManifest": "docs/agent-bootstrap/workspace-manifest.json",
@@ -132,85 +132,13 @@
   "activeRoadmapContext": [
     {
       "title": "Admin Roadmap Backbone - Agent Bootstrap and Continuous Improvement",
-      "status": "active",
-      "openTasks": [
-        {
-          "title": "Define success metrics for reduced startup and rediscovery cost",
-          "priority": "medium",
-          "status": "todo"
-        },
-        {
-          "title": "Auto-create or update roadmap tasks from repeated friction patterns",
-          "priority": "high",
-          "status": "todo"
-        }
-      ]
+      "status": "archived",
+      "openTasks": []
     },
     {
       "title": "Platform-wide UI and UX Opportunity Analysis",
-      "status": "active",
-      "openTasks": [
-        {
-          "title": "Standardize sortable, filterable, paginated tables across operations and finance",
-          "priority": "critical",
-          "status": "todo"
-        },
-        {
-          "title": "Introduce drill-in side panels and row detail views to reduce context loss",
-          "priority": "high",
-          "status": "todo"
-        },
-        {
-          "title": "Improve responsive behavior for wide admin and operations views",
-          "priority": "high",
-          "status": "todo"
-        },
-        {
-          "title": "Turn dense CRUD forms into guided, task-oriented flows",
-          "priority": "high",
-          "status": "todo"
-        },
-        {
-          "title": "Add shell-level breadcrumbs, page summaries, and adjacent workflow shortcuts",
-          "priority": "high",
-          "status": "in-progress"
-        },
-        {
-          "title": "Redesign association context switching to be more explicit and less error-prone",
-          "priority": "critical",
-          "status": "in-progress"
-        },
-        {
-          "title": "Upgrade document workflows with stronger metadata affordances and file handling",
-          "priority": "high",
-          "status": "todo"
-        },
-        {
-          "title": "Refine onboarding and review consoles around next-best-action workflows",
-          "priority": "high",
-          "status": "todo"
-        },
-        {
-          "title": "Add explicit progress and completion feedback for exports, uploads, and sync actions",
-          "priority": "high",
-          "status": "todo"
-        },
-        {
-          "title": "Pair analytics with explanations and recommended next actions",
-          "priority": "medium",
-          "status": "todo"
-        },
-        {
-          "title": "Standardize loading, error, and retry states for query-driven pages",
-          "priority": "critical",
-          "status": "in-progress"
-        },
-        {
-          "title": "Create a global command palette for navigation, recent records, and create actions",
-          "priority": "high",
-          "status": "in-progress"
-        }
-      ]
+      "status": "archived",
+      "openTasks": []
     }
   ],
   "backboneHighlights": [
