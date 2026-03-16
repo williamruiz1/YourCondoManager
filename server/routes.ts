@@ -275,8 +275,26 @@ function normalizeAiIngestionRolloutMode(value: unknown): AiIngestionRolloutMode
   return value === "disabled" || value === "canary" || value === "full" ? value : "full";
 }
 
+function normalizeAdminRole(value: unknown): AdminRole {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "platform-admin" || normalized === "board-admin" || normalized === "manager" || normalized === "viewer") {
+    return normalized;
+  }
+  if (normalized === "admin" || normalized === "super-admin" || normalized === "superadmin" || normalized === "platform_admin") {
+    return "platform-admin";
+  }
+  if (normalized === "association-admin" || normalized === "board_admin" || normalized === "board-member" || normalized === "boardmember") {
+    return "board-admin";
+  }
+  if (normalized === "association-manager" || normalized === "operator") {
+    return "manager";
+  }
+  return "viewer";
+}
+
 async function applyAdminContext(req: AdminRequest, adminUser: { id: string; email: string; role: string }) {
-  if (adminUser.role !== "platform-admin") {
+  const normalizedRole = normalizeAdminRole(adminUser.role);
+  if (normalizedRole !== "platform-admin") {
     let scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
     const portalRows = await storage.getPortalAccessesByEmail(adminUser.email);
     const activeAssociationIds = Array.from(new Set(
@@ -317,7 +335,7 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
   }
   req.adminUserId = adminUser.id;
   req.adminUserEmail = adminUser.email;
-  req.adminRole = adminUser.role as AdminRole;
+  req.adminRole = normalizedRole;
 }
 
 async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
