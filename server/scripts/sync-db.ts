@@ -1,16 +1,19 @@
 /**
- * sync-db.ts — Copy dev database to production, bypassing Replit's broken pg_restore.
+ * sync-db.ts — Manually copy specific tables from dev to production.
+ *
+ * IMPORTANT: This is a manual, intentional tool — NOT run on deploy.
+ * Production is the source of truth for operational data.
+ * Use --tables to sync only specific dev-managed reference tables.
  *
  * Usage:
- *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts
- *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --dry-run
- *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --tables units,buildings
- *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --skip-tables audit_logs,email_logs
+ *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --tables notice_templates,feature_flags
+ *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --dry-run --tables notice_templates
+ *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --tables admin_roadmap_projects,admin_roadmap_workstreams,admin_roadmap_tasks
  *
  * Flags:
  *   --dry-run          Show what would be synced without writing anything
- *   --tables t1,t2     Sync only these tables (comma-separated)
- *   --skip-tables t1   Skip these tables in addition to defaults
+ *   --tables t1,t2     Sync only these tables (required for safety — see PROD_ONLY_TABLES)
+ *   --skip-tables t1   Skip additional tables beyond the protected defaults
  *   --force            Skip confirmation prompt
  *   --preserve-auth    Keep production auth_users / auth_external_accounts (don't overwrite)
  */
@@ -26,7 +29,42 @@ import * as readline from "readline";
 const DEV_URL = process.env.DEV_DATABASE_URL || process.env.DATABASE_URL;
 const PROD_URL = process.env.PRODUCTION_DATABASE_URL;
 
-/** Never synced — active sessions should not be wiped. */
+/**
+ * Tables that live in production only — real operational data that must never be
+ * overwritten by a dev sync. Attempting to sync these without --tables explicitly
+ * naming them will be blocked.
+ */
+const PROD_ONLY_TABLES = new Set([
+  // Residential & ownership
+  "persons", "units", "buildings", "ownerships", "occupancies",
+  "association_memberships", "board_roles",
+  // Portal & auth
+  "portal_access", "auth_users", "auth_external_accounts", "portal_login_tokens",
+  // Onboarding
+  "onboarding_invites", "onboarding_submissions",
+  // Communications & documents
+  "documents", "document_versions", "document_tags",
+  "email_logs", "email_threads", "email_events", "communication_history", "notice_sends",
+  // Financial & payments
+  "owner_ledger_entries", "payment_plans", "saved_payment_methods", "autopay_enrollments",
+  "autopay_runs", "payment_webhook_events", "payment_event_transitions",
+  "bank_statement_imports", "bank_statement_transactions", "reconciliation_periods",
+  "financial_alerts", "financial_approvals", "late_fee_events", "delinquency_escalations",
+  "collections_handoffs", "special_assessments", "recurring_charge_runs",
+  "owner_payment_links", "hoa_fee_schedules",
+  // Operations
+  "maintenance_requests", "work_orders", "inspection_records",
+  "vendor_invoices", "utility_payments", "resident_feedbacks",
+  "contact_update_requests", "unit_change_history",
+  // Governance
+  "governance_meetings", "meeting_agenda_items", "meeting_notes",
+  "board_packages", "resolutions", "vote_records", "annual_governance_tasks",
+  "compliance_alert_overrides",
+  // Audit
+  "audit_logs", "permission_change_logs",
+]);
+
+/** Never synced regardless — active sessions must not be wiped. */
 const ALWAYS_SKIP = new Set(["user_sessions"]);
 
 /** Batch size for INSERT ... VALUES (...), (...) */
@@ -278,7 +316,14 @@ async function main() {
     tables = tables.filter((t) => EXPLICIT_TABLES.has(t));
     log(`Tables:              ${tables.join(", ")}`);
   } else {
-    log(`Tables:              ${tables.length} (all except ${Array.from(ALWAYS_SKIP).concat(Array.from(EXTRA_SKIP)).join(", ")})`);
+    // No --tables flag: remove production-only tables from the sync set for safety.
+    const blocked = tables.filter((t) => PROD_ONLY_TABLES.has(t));
+    tables = tables.filter((t) => !PROD_ONLY_TABLES.has(t));
+    if (blocked.length > 0) {
+      log(`Protected (prod-only): ${blocked.join(", ")}`);
+      log(`  → To sync these, pass --tables explicitly. They hold live production data.`);
+    }
+    log(`Tables:              ${tables.length} (dev-managed; ${blocked.length} prod-only tables protected)`);
   }
 
   // Row counts preview
