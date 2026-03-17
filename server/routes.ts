@@ -9,7 +9,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
-import { and, eq, gte, ilike, inArray, isNotNull, isNull, notInArray, or } from "drizzle-orm";
+import { and, eq, gte, ilike, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import {
   getEmailLog,
   getEmailLogs,
@@ -649,6 +649,31 @@ function requirePortalBoard(req: PortalRequest, res: Response, next: NextFunctio
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   registerAuthRoutes(app);
+
+  // Health/diagnostics endpoint — shows DB state for deployment verification
+  app.get("/api/health", async (_req, res) => {
+    try {
+      const [assocResult, unitResult, buildingResult] = await Promise.all([
+        db.execute(sql`SELECT COUNT(*)::int AS count FROM associations`),
+        db.execute(sql`SELECT COUNT(*)::int AS count FROM units`),
+        db.execute(sql`SELECT COUNT(*)::int AS count FROM buildings`),
+      ]);
+      const dbHost = process.env.PGHOST ?? "unknown";
+      const dbName = process.env.PGDATABASE ?? "unknown";
+      res.json({
+        status: "ok",
+        env: process.env.NODE_ENV ?? "development",
+        db: { host: dbHost, name: dbName },
+        counts: {
+          associations: (assocResult.rows[0] as any).count,
+          units: (unitResult.rows[0] as any).count,
+          buildings: (buildingResult.rows[0] as any).count,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ status: "error", message: err.message });
+    }
+  });
 
   app.get("/api/dashboard/stats", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {

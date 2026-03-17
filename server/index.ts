@@ -171,6 +171,19 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
 
+  // Log DB state on startup for deployment verification
+  pool.query(`
+    SELECT
+      (SELECT COUNT(*)::int FROM associations) AS associations,
+      (SELECT COUNT(*)::int FROM units) AS units,
+      (SELECT COUNT(*)::int FROM buildings) AS buildings
+  `).then(({ rows }) => {
+    const { associations, units, buildings } = rows[0];
+    log(`db state :: associations=${associations} units=${units} buildings=${buildings} host=${process.env.PGHOST ?? "?"} db=${process.env.PGDATABASE ?? "?"}`, "startup");
+  }).catch((err) => {
+    log(`db state check failed: ${err.message}`, "startup");
+  });
+
   seedDatabase().catch((err) => {
     console.error("Seed failed:", err);
   });
