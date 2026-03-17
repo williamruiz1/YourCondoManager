@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Unit, Building, Person, Ownership } from "@shared/schema";
+import type { Unit, Building, Person, Ownership, Occupancy } from "@shared/schema";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,14 +69,23 @@ export default function UnitsPage() {
   const [pendingNewOwners, setPendingNewOwners] = useState<PendingOwnerEntry[]>([]);
   const [addOwnerPersonId, setAddOwnerPersonId] = useState("");
   const [addOwnerPercentage, setAddOwnerPercentage] = useState("100");
+  const [inlineNewPersonOpen, setInlineNewPersonOpen] = useState(false);
+  const [inlineFirstName, setInlineFirstName] = useState("");
+  const [inlineLastName, setInlineLastName] = useState("");
+  const [inlineEmail, setInlineEmail] = useState("");
+  const [inlinePhone, setInlinePhone] = useState("");
+  const [currentOccupancy, setCurrentOccupancy] = useState<{ occupancy: Occupancy; personName: string } | null>(null);
+  const [removeCurrentOccupancy, setRemoveCurrentOccupancy] = useState(false);
+  const [pendingNewOccupantId, setPendingNewOccupantId] = useState("");
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { data: residentialDataset } = useResidentialDataset(activeAssociationId || undefined);
 
   const { data: units, isLoading } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
   const { data: buildings = [], isLoading: buildingsLoading } = useQuery<Building[]>({ queryKey: ["/api/buildings"] });
-  const { data: availablePeople = [] } = useQuery<Person[]>({
-    queryKey: [activeAssociationId ? `/api/persons?associationId=${activeAssociationId}` : "/api/persons"],
+  const personsQueryKey = activeAssociationId ? `/api/persons?associationId=${activeAssociationId}` : "/api/persons";
+  const { data: availablePeople = [], refetch: refetchPeople } = useQuery<Person[]>({
+    queryKey: [personsQueryKey],
     enabled: Boolean(activeAssociationId),
   });
 
@@ -189,6 +198,38 @@ export default function UnitsPage() {
     onError: (error: Error) => toast({ title: "Link action failed", description: error.message, variant: "destructive" }),
   });
 
+  const createPersonInlineMutation = useMutation({
+    mutationFn: async (data: { firstName: string; lastName: string; email: string; phone: string }) => {
+      const res = await apiRequest("POST", "/api/persons", {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email || null,
+        phone: data.phone || null,
+        associationId: activeAssociationId || null,
+      });
+      return res.json() as Promise<{ id: string; firstName: string; lastName: string }>;
+    },
+    onSuccess: (person) => {
+      queryClient.invalidateQueries({ queryKey: [personsQueryKey] });
+      const pct = Math.max(1, Math.min(100, Number.parseInt(addOwnerPercentage) || 100));
+      setPendingNewOwners((prev) => [
+        ...prev,
+        {
+          personId: person.id,
+          personName: `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim(),
+          percentage: pct,
+        },
+      ]);
+      setInlineFirstName("");
+      setInlineLastName("");
+      setInlineEmail("");
+      setInlinePhone("");
+      setInlineNewPersonOpen(false);
+      setAddOwnerPercentage("100");
+    },
+    onError: (error: Error) => toast({ title: "Error creating person", description: error.message, variant: "destructive" }),
+  });
+
   async function handleUnitsImport(rows: Record<string, string>[]): Promise<ImportResult> {
     if (!activeAssociationId) throw new Error("Select an association context first");
     const buildingByName = new Map(buildings.map((b) => [b.name.toLowerCase().trim(), b.id]));
@@ -216,6 +257,7 @@ export default function UnitsPage() {
   }, [availablePeople]);
 
   function openEdit(unit: Unit) {
+    void refetchPeople();
     setDialogMode("unit");
     setEditingId(unit.id);
     setEditingLegacyBuilding(unit.building ?? null);
@@ -244,12 +286,38 @@ export default function UnitsPage() {
     setPendingNewOwners([]);
     setAddOwnerPersonId("");
     setAddOwnerPercentage("100");
+
+    const activeOcc = unitDir?.activeOccupancy ?? null;
+    setCurrentOccupancy(
+      activeOcc
+        ? {
+            occupancy: activeOcc.occupancy,
+            personName: activeOcc.person ? `${activeOcc.person.firstName ?? ""} ${activeOcc.person.lastName ?? ""}`.trim() : "Unknown",
+          }
+        : null,
+    );
+    setRemoveCurrentOccupancy(false);
+    setPendingNewOccupantId("");
     setOpen(true);
   }
 
   async function applyOwnershipChanges(unitId: string) {
     const effectiveAt = new Date().toISOString();
     let changed = false;
+
+    // If the user selected someone in the dropdown but didn't click "Add", include them automatically
+    const allPendingNewOwners = [...pendingNewOwners];
+    if (addOwnerPersonId) {
+      const person = sortedPeopleOptions.find((p) => p.id === addOwnerPersonId);
+      if (person && !allPendingNewOwners.some((e) => e.personId === addOwnerPersonId)) {
+        const pct = Math.max(1, Math.min(100, Number.parseInt(addOwnerPercentage) || 100));
+        allPendingNewOwners.push({
+          personId: addOwnerPersonId,
+          personName: `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim(),
+          percentage: pct,
+        });
+      }
+    }
 
     for (const entry of ownerEntries) {
       if (removedOwnershipIds.has(entry.ownership.id)) {
@@ -258,7 +326,7 @@ export default function UnitsPage() {
       }
     }
 
-    for (const entry of pendingNewOwners) {
+    for (const entry of allPendingNewOwners) {
       await apiRequest("POST", "/api/ownerships", {
         unitId,
         personId: entry.personId,
@@ -273,8 +341,40 @@ export default function UnitsPage() {
       queryClient.invalidateQueries({
         predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
       });
+      queryClient.invalidateQueries({ queryKey: [personsQueryKey] });
+    }
+  }
+
+  async function applyOccupancyChanges(unitId: string) {
+    const effectiveAt = new Date().toISOString();
+    let changed = false;
+
+    // End the current occupancy if the user removed it or is replacing it
+    const newOccupantId = pendingNewOccupantId || null;
+    if (currentOccupancy && (removeCurrentOccupancy || (newOccupantId && newOccupantId !== currentOccupancy.occupancy.personId))) {
+      await apiRequest("PATCH", `/api/occupancies/${currentOccupancy.occupancy.id}`, { endDate: effectiveAt });
+      changed = true;
+    }
+
+    // Create new occupancy if a new person was selected (and it's not already the current occupant)
+    if (newOccupantId && (!currentOccupancy || removeCurrentOccupancy || newOccupantId !== currentOccupancy.occupancy.personId)) {
+      // Determine occupancy type: if the new occupant is also an owner of this unit, mark as owner-occupied
+      const isOwnerOccupied =
+        ownerEntries.some((e) => !removedOwnershipIds.has(e.ownership.id) && e.ownership.personId === newOccupantId) ||
+        pendingNewOwners.some((e) => e.personId === newOccupantId);
+      await apiRequest("POST", "/api/occupancies", {
+        unitId,
+        personId: newOccupantId,
+        occupancyType: isOwnerOccupied ? "OWNER_OCCUPIED" : "TENANT",
+        startDate: effectiveAt,
+      });
+      changed = true;
+    }
+
+    if (changed) {
+      queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
       queryClient.invalidateQueries({
-        queryKey: [activeAssociationId ? `/api/persons?associationId=${activeAssociationId}` : "/api/persons"],
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
       });
     }
   }
@@ -304,10 +404,10 @@ export default function UnitsPage() {
         {
           onSuccess: async () => {
             try {
-              await applyOwnershipChanges(editingId);
+              await Promise.all([applyOwnershipChanges(editingId), applyOccupancyChanges(editingId)]);
             } catch (error) {
-              const message = error instanceof Error ? error.message : "Failed to update owners";
-              toast({ title: "Ownership update failed", description: message, variant: "destructive" });
+              const message = error instanceof Error ? error.message : "Failed to update unit";
+              toast({ title: "Update failed", description: message, variant: "destructive" });
             }
           },
         },
@@ -377,6 +477,14 @@ export default function UnitsPage() {
       setPendingNewOwners([]);
       setAddOwnerPersonId("");
       setAddOwnerPercentage("100");
+      setInlineNewPersonOpen(false);
+      setInlineFirstName("");
+      setInlineLastName("");
+      setInlineEmail("");
+      setInlinePhone("");
+      setCurrentOccupancy(null);
+      setRemoveCurrentOccupancy(false);
+      setPendingNewOccupantId("");
     }
   }
 
@@ -457,7 +565,7 @@ export default function UnitsPage() {
             const ownerPhone = primaryOwner?.phone?.trim() ?? "";
             const occupancyType = occupancyByUnit.get(unit.id);
             const occupancyLabel = occupancyType === "OWNER_OCCUPIED"
-              ? "Owner Occupied"
+              ? "Owner"
               : occupancyType === "TENANT"
                 ? "Tenant"
                 : "Vacant";
@@ -644,6 +752,7 @@ export default function UnitsPage() {
                     )} />
                   </div>
                   {editingId ? (
+                    <>
                     <div className="space-y-2">
                       <div className="text-sm font-medium flex items-center gap-2">
                         <UserPlus className="h-4 w-4" />
@@ -743,10 +852,133 @@ export default function UnitsPage() {
                           Add
                         </Button>
                       </div>
+                      {!inlineNewPersonOpen ? (
+                        <button
+                          type="button"
+                          className="text-xs text-primary underline-offset-2 hover:underline w-fit"
+                          onClick={() => setInlineNewPersonOpen(true)}
+                        >
+                          + New person not in list
+                        </button>
+                      ) : (
+                        <div className="rounded-md border border-dashed p-3 space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground">New person</div>
+                          <div className="flex gap-2">
+                            <Input
+                              className="h-7 text-xs"
+                              placeholder="First name"
+                              value={inlineFirstName}
+                              onChange={(e) => setInlineFirstName(e.target.value)}
+                            />
+                            <Input
+                              className="h-7 text-xs"
+                              placeholder="Last name"
+                              value={inlineLastName}
+                              onChange={(e) => setInlineLastName(e.target.value)}
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Input
+                              className="h-7 text-xs"
+                              placeholder="Email (optional)"
+                              value={inlineEmail}
+                              onChange={(e) => setInlineEmail(e.target.value)}
+                            />
+                            <Input
+                              className="h-7 text-xs"
+                              placeholder="Phone (optional)"
+                              value={inlinePhone}
+                              onChange={(e) => setInlinePhone(e.target.value)}
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-7 text-xs"
+                              disabled={!inlineFirstName.trim() || !inlineLastName.trim() || createPersonInlineMutation.isPending}
+                              onClick={() => createPersonInlineMutation.mutate({ firstName: inlineFirstName.trim(), lastName: inlineLastName.trim(), email: inlineEmail.trim(), phone: inlinePhone.trim() })}
+                            >
+                              Create & add
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs"
+                              onClick={() => { setInlineNewPersonOpen(false); setInlineFirstName(""); setInlineLastName(""); setInlineEmail(""); setInlinePhone(""); }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                       <div className="text-xs text-muted-foreground">
                         Ownership changes are saved when you click Update.
                       </div>
                     </div>
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Tenant / Occupant
+                      </div>
+
+                      {currentOccupancy && !removeCurrentOccupancy ? (
+                        <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                          <span>{currentOccupancy.personName}</span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => setRemoveCurrentOccupancy(true)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground rounded-md border border-dashed px-3 py-2">
+                          {removeCurrentOccupancy ? "Current tenant will be removed." : "No tenant assigned."}
+                        </div>
+                      )}
+
+                      {pendingNewOccupantId ? (
+                        <div className="flex items-center justify-between rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                          <span>{sortedPeopleOptions.find((p) => p.id === pendingNewOccupantId) ? `${sortedPeopleOptions.find((p) => p.id === pendingNewOccupantId)!.firstName ?? ""} ${sortedPeopleOptions.find((p) => p.id === pendingNewOccupantId)!.lastName ?? ""}`.trim() : "—"} <span className="text-xs">(pending)</span></span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => setPendingNewOccupantId("")}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Select value={pendingNewOccupantId} onValueChange={setPendingNewOccupantId}>
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue placeholder="Assign tenant…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sortedPeopleOptions
+                              .filter((p) => !currentOccupancy || removeCurrentOccupancy || p.id !== currentOccupancy.occupancy.personId)
+                              .map((person) => (
+                                <SelectItem key={person.id} value={person.id}>
+                                  {`${person.firstName ?? ""} ${person.lastName ?? ""}`.trim()}
+                                  {person.email ? ` · ${person.email}` : ""}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+
+                      <div className="text-xs text-muted-foreground">
+                        Occupancy changes are saved when you click Update.
+                      </div>
+                    </div>
+                    </>
                   ) : null}
                 </div>
 
@@ -813,8 +1045,9 @@ export default function UnitsPage() {
                         </div>
                       ) : null}
                       {group.unitRows.length > 0 ? (
-                        <div className="hidden lg:grid grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] gap-3 rounded-t-md border bg-muted/10 px-3 py-2 text-xs font-medium text-muted-foreground">
+                        <div className="hidden lg:grid grid-cols-[80px_110px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] gap-3 rounded-t-md border bg-muted/10 px-3 py-2 text-xs font-medium text-muted-foreground">
                           <div>Unit</div>
+                          <div>Occupancy</div>
                           <div>Owner Name</div>
                           <div>Email</div>
                           <div>Phone Number</div>
@@ -824,22 +1057,24 @@ export default function UnitsPage() {
                       <div className="md:rounded-b-md md:border md:border-t-0 md:divide-y">
                         {group.unitRows.map((row) => (
                           <div key={row.unit.id} className="border mb-2 rounded-md p-3 text-sm md:mb-0 md:rounded-none md:border-0 md:p-3">
-                            <div className="grid gap-3 lg:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] lg:items-center">
-                              <div className="min-w-0 space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <div className="font-medium">Unit {row.unit.unitNumber}</div>
-                                  <Badge variant={row.occupancyType === "TENANT" ? "secondary" : "default"}>
-                                    {row.occupancyLabel}
-                                  </Badge>
-                                </div>
+                            <div className="grid gap-3 lg:grid-cols-[80px_110px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] lg:items-center">
+                              <div className="font-medium">Unit {row.unit.unitNumber}</div>
+
+                              <div className="min-w-0">
+                                <Badge
+                                  variant={
+                                    row.occupancyType === "OWNER_OCCUPIED" ? "default"
+                                    : row.occupancyType === "TENANT" ? "secondary"
+                                    : "outline"
+                                  }
+                                >
+                                  {row.occupancyLabel}
+                                </Badge>
                               </div>
 
-                              <CopyableCell
-                                label="Owner name"
-                                value={row.ownerName === "Unassigned" ? "" : row.ownerName}
-                                fallback="Unassigned"
-                                onCopy={copyFieldValue}
-                              />
+                              <div className="min-w-0 w-full rounded-md border bg-background px-2 py-2 text-left lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
+                                <div className="truncate text-sm">{row.ownerName === "Unassigned" || !row.ownerName ? "Unassigned" : row.ownerName}</div>
+                              </div>
                               <CopyableCell
                                 label="Owner email"
                                 value={row.ownerEmail}
@@ -896,17 +1131,15 @@ export default function UnitsPage() {
 
                             {row.tenantPerson ? (
                               <div className="mt-2 rounded-md border border-dashed bg-muted/20 px-3 py-2">
-                                <div className="grid gap-3 lg:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] lg:items-center">
+                                <div className="grid gap-3 lg:grid-cols-[80px_110px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] lg:items-center">
                                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                     <User className="h-3 w-3 shrink-0" />
                                     <span>Tenant</span>
                                   </div>
-                                  <CopyableCell
-                                    label="Tenant name"
-                                    value={row.tenantName}
-                                    fallback="No name"
-                                    onCopy={copyFieldValue}
-                                  />
+                                  <div />
+                                  <div className="min-w-0 w-full rounded-md border bg-background px-2 py-2 text-left lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
+                                    <div className="truncate text-sm">{row.tenantName || "No name"}</div>
+                                  </div>
                                   <CopyableCell
                                     label="Tenant email"
                                     value={row.tenantEmail}

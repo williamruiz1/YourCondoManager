@@ -34,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Building2, MapPin, Search, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Plus, Building2, MapPin, Search, Archive, ArchiveRestore, Trash2, Pencil, Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAssociationContext } from "@/context/association-context";
@@ -456,7 +456,6 @@ export default function AssociationsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Location</TableHead>
-                  <TableHead>Country</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -468,7 +467,10 @@ export default function AssociationsPage() {
                         <Building2 className="h-4 w-4 text-muted-foreground" />
                         <div>
                           <div className="font-medium">{a.name}</div>
-                          {a.associationType ? <div className="text-xs text-muted-foreground">{a.associationType}</div> : null}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {a.associationType ? <div className="text-xs text-muted-foreground">{a.associationType}</div> : null}
+                            {a.ein ? <Badge variant="outline" className="text-xs">EIN {a.ein}</Badge> : null}
+                          </div>
                         </div>
                       </div>
                     </TableCell>
@@ -478,41 +480,39 @@ export default function AssociationsPage() {
                         <span className="text-sm">{a.address}, {a.city}, {a.state}</span>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">{a.country}</Badge>
-                        {a.ein ? <Badge variant="outline">EIN {a.ein}</Badge> : null}
-                      </div>
-                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button
-                          size="sm"
+                          size="icon"
                           variant={a.id === activeAssociationId ? "default" : "outline"}
+                          className="h-8 w-8"
                           onClick={() => setActiveAssociationId(a.id)}
                           data-testid={`button-set-association-context-${a.id}`}
+                          title={a.id === activeAssociationId ? "In Context" : "Use Context"}
                         >
-                          {a.id === activeAssociationId ? "In Context" : "Use Context"}
+                          <Check className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="outline"
-                          size="sm"
+                          size="icon"
+                          className="h-8 w-8"
                           onClick={() => archiveMutation.mutate({ id: a.id, isArchived: 1 })}
                           disabled={archiveMutation.isPending}
                           data-testid={`button-archive-association-${a.id}`}
+                          title="Archive"
                         >
-                          <Archive className="h-4 w-4 mr-1" />
-                          Archive
+                          <Archive className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => openEdit(a)} data-testid={`button-edit-association-${a.id}`}>
-                          Edit
+                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => openEdit(a)} data-testid={`button-edit-association-${a.id}`} title="Edit">
+                          <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="outline"
-                          size="sm"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
                           onClick={() => setDeleteTarget(a)}
                           data-testid={`button-delete-association-${a.id}`}
-                          className="text-destructive hover:text-destructive"
+                          title="Delete"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

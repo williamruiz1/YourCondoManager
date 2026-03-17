@@ -4033,13 +4033,22 @@ export class DatabaseStorage implements IStorage {
         .where(eq(ownerLedgerEntries.associationId, associationId)),
     ]);
 
-    const personIds = Array.from(
+    const linkedPersonIds = Array.from(
       new Set(
         [...ownerRows, ...occupancyRows, ...boardRows, ...ledgerRows]
           .map((row) => row.personId)
           .filter(Boolean),
       ),
     );
+
+    // Also include persons directly tagged with this association (e.g. added but not yet assigned to a unit)
+    const directRows = await db
+      .select({ id: persons.id })
+      .from(persons)
+      .where(eq(persons.associationId, associationId));
+    const directPersonIds = directRows.map((r) => r.id);
+
+    const personIds = Array.from(new Set([...linkedPersonIds, ...directPersonIds]));
 
     if (personIds.length === 0) return [];
     return db.select().from(persons).where(inArray(persons.id, personIds));

@@ -19,7 +19,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, Mail, Phone, Search, MapPin, Home, FileUp } from "lucide-react";
+import { Plus, Users, Mail, Phone, Search, MapPin, Home, FileUp, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocation } from "wouter";
@@ -67,6 +68,7 @@ export default function PersonsPage() {
   const [boardRoleEndDate, setBoardRoleEndDate] = useState<string>("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+  const [selectedOwnerUnitIds, setSelectedOwnerUnitIds] = useState<string[]>([]);
   const { activeAssociationId } = useActiveAssociation();
   const { toast } = useToast();
 
@@ -91,27 +93,23 @@ export default function PersonsPage() {
         email: data.email || null,
         phone: data.phone || null,
         mailingAddress: data.mailingAddress || null,
+        associationId: activeAssociationId || null,
       };
       const personResponse = await apiRequest("POST", "/api/persons", payload);
       const person = await personResponse.json() as Person;
 
-      if (data.residentRole !== "none" && data.unitId) {
-        const startDate = new Date().toISOString();
-        if (data.residentRole === "owner") {
-          await apiRequest("POST", "/api/ownerships", {
-            unitId: data.unitId,
-            personId: person.id,
-            ownershipPercentage: 100,
-            startDate,
-          });
-        } else {
-          await apiRequest("POST", "/api/occupancies", {
-            unitId: data.unitId,
-            personId: person.id,
-            occupancyType: "TENANT",
-            startDate,
-          });
-        }
+      const startDate = new Date().toISOString();
+      if (data.residentRole === "owner" && selectedOwnerUnitIds.length > 0) {
+        await Promise.all(selectedOwnerUnitIds.map((unitId) =>
+          apiRequest("POST", "/api/ownerships", { unitId, personId: person.id, ownershipPercentage: 100, startDate }),
+        ));
+      } else if (data.residentRole === "tenant" && data.unitId) {
+        await apiRequest("POST", "/api/occupancies", {
+          unitId: data.unitId,
+          personId: person.id,
+          occupancyType: "TENANT",
+          startDate,
+        });
       }
 
       return person;
@@ -126,6 +124,7 @@ export default function PersonsPage() {
       form.reset();
       setAddressQuery("");
       setAddressResults([]);
+      setSelectedOwnerUnitIds([]);
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
@@ -210,8 +209,12 @@ export default function PersonsPage() {
   }
 
   function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!editingId && values.residentRole !== "none" && !values.unitId) {
-      toast({ title: "Select a unit for owner/tenant role", variant: "destructive" });
+    if (!editingId && values.residentRole === "owner" && selectedOwnerUnitIds.length === 0) {
+      toast({ title: "Select at least one unit for the owner", variant: "destructive" });
+      return;
+    }
+    if (!editingId && values.residentRole === "tenant" && !values.unitId) {
+      toast({ title: "Select a unit for the tenant", variant: "destructive" });
       return;
     }
     if (editingId) {
@@ -433,7 +436,7 @@ export default function PersonsPage() {
                     <FormField control={form.control} name="residentRole" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Role</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange}>
+                        <Select value={field.value} onValueChange={(v) => { field.onChange(v); if (v !== "owner") setSelectedOwnerUnitIds([]); }}>
                           <FormControl>
                             <SelectTrigger data-testid="select-person-role">
                               <SelectValue placeholder="Select role" />
@@ -448,27 +451,65 @@ export default function PersonsPage() {
                         <FormMessage />
                       </FormItem>
                     )} />
-                    <FormField control={form.control} name="unitId" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Unit</FormLabel>
-                        <Select value={field.value || "none"} onValueChange={(value) => field.onChange(value === "none" ? "" : value)}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-person-unit">
-                              <SelectValue placeholder="Select unit" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="none">No unit</SelectItem>
-                            {units.map((unit) => (
-                              <SelectItem key={unit.id} value={unit.id}>
-                                Unit {unit.unitNumber}{unit.building ? ` · ${unit.building}` : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
+                    {form.watch("residentRole") === "owner" ? (
+                      <div className="space-y-1.5">
+                        <div className="text-sm font-medium">Units</div>
+                        {selectedOwnerUnitIds.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-1">
+                            {selectedOwnerUnitIds.map((id) => {
+                              const u = units.find((u) => u.id === id);
+                              if (!u) return null;
+                              return (
+                                <span key={id} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
+                                  {u.building ? `${u.building}-` : ""}Unit {u.unitNumber}
+                                  <button type="button" onClick={() => setSelectedOwnerUnitIds((prev) => prev.filter((x) => x !== id))}>
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <div className="rounded-md border max-h-36 overflow-y-auto divide-y">
+                          {units.map((unit) => (
+                            <label key={unit.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50">
+                              <Checkbox
+                                checked={selectedOwnerUnitIds.includes(unit.id)}
+                                onCheckedChange={(checked) =>
+                                  setSelectedOwnerUnitIds((prev) =>
+                                    checked ? [...prev, unit.id] : prev.filter((x) => x !== unit.id),
+                                  )
+                                }
+                              />
+                              Unit {unit.unitNumber}{unit.building ? ` · ${unit.building}` : ""}
+                            </label>
+                          ))}
+                          {units.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">No units available</div>}
+                        </div>
+                      </div>
+                    ) : (
+                      <FormField control={form.control} name="unitId" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Unit</FormLabel>
+                          <Select value={field.value || "none"} onValueChange={(value) => field.onChange(value === "none" ? "" : value)}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-person-unit">
+                                <SelectValue placeholder="Select unit" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">No unit</SelectItem>
+                              {units.map((unit) => (
+                                <SelectItem key={unit.id} value={unit.id}>
+                                  Unit {unit.unitNumber}{unit.building ? ` · ${unit.building}` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    )}
                   </div>
                 ) : null}
                 <FormField control={form.control} name="mailingAddress" render={({ field }) => (
