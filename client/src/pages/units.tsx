@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Unit, Building, Person } from "@shared/schema";
+import type { Unit, Building, Person, Ownership } from "@shared/schema";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,7 +16,7 @@ import {
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
-import { Plus, Building2, DoorOpen, MessageSquare, Pencil, ChevronDown, ChevronRight, Link2, User } from "lucide-react";
+import { Plus, Building2, DoorOpen, MessageSquare, Pencil, ChevronDown, ChevronRight, Link2, User, X, UserPlus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,8 +35,18 @@ const unitFormSchema = z.object({
   buildingId: z.string().optional().transform((value) => value?.trim() || ""),
   unitNumber: z.string().trim().min(1, "Unit number is required"),
   squareFootage: z.union([z.coerce.number().positive(), z.nan()]).optional(),
-  ownerPersonId: z.string().optional().transform((value) => value?.trim() || ""),
 });
+
+type OwnerEntry = {
+  ownership: Ownership;
+  personName: string;
+};
+
+type PendingOwnerEntry = {
+  personId: string;
+  personName: string;
+  percentage: number;
+};
 
 const buildingFormSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -52,6 +62,11 @@ export default function UnitsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLegacyBuilding, setEditingLegacyBuilding] = useState<string | null>(null);
   const [collapsedBuildings, setCollapsedBuildings] = useState<Record<string, boolean>>({});
+  const [ownerEntries, setOwnerEntries] = useState<OwnerEntry[]>([]);
+  const [removedOwnershipIds, setRemovedOwnershipIds] = useState<Set<string>>(new Set());
+  const [pendingNewOwners, setPendingNewOwners] = useState<PendingOwnerEntry[]>([]);
+  const [addOwnerPersonId, setAddOwnerPersonId] = useState("");
+  const [addOwnerPercentage, setAddOwnerPercentage] = useState("100");
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { data: residentialDataset } = useResidentialDataset(activeAssociationId || undefined);
@@ -65,7 +80,7 @@ export default function UnitsPage() {
 
   const unitForm = useForm<z.infer<typeof unitFormSchema>>({
     resolver: zodResolver(unitFormSchema),
-    defaultValues: { associationId: "", buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" },
+    defaultValues: { associationId: "", buildingId: "", unitNumber: "", squareFootage: undefined },
   });
 
   const buildingForm = useForm<z.infer<typeof buildingFormSchema>>({
@@ -102,7 +117,7 @@ export default function UnitsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({ title: "Unit created successfully" });
       setOpen(false);
-      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" });
+      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
       buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
       setEditingLegacyBuilding(null);
     },
@@ -121,7 +136,7 @@ export default function UnitsPage() {
       setOpen(false);
       setEditingId(null);
       setEditingLegacyBuilding(null);
-      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" });
+      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
       buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
@@ -173,21 +188,6 @@ export default function UnitsPage() {
   });
 
   const buildingById = useMemo(() => new Map(buildings.map((building) => [building.id, building])), [buildings]);
-  const activeOwnerByUnitId = useMemo(() => {
-    const now = Date.now();
-    const map = new Map<string, string>();
-    for (const ownership of residentialDataset?.ownerships ?? []) {
-      const startMs = ownership.startDate ? new Date(ownership.startDate).getTime() : Number.NaN;
-      const endMs = ownership.endDate ? new Date(ownership.endDate).getTime() : Number.NaN;
-      const isActiveStart = Number.isNaN(startMs) || startMs <= now;
-      const isActiveEnd = Number.isNaN(endMs) || endMs >= now;
-      if (!isActiveStart || !isActiveEnd) continue;
-      if (!map.has(ownership.unitId)) {
-        map.set(ownership.unitId, ownership.personId);
-      }
-    }
-    return map;
-  }, [residentialDataset?.ownerships]);
   const sortedPeopleOptions = useMemo(() => {
     return [...availablePeople].sort((left, right) => {
       const leftName = `${left.firstName ?? ""} ${left.lastName ?? ""}`.trim();
@@ -205,52 +205,59 @@ export default function UnitsPage() {
       buildingId: unit.buildingId ?? "",
       unitNumber: unit.unitNumber,
       squareFootage: unit.squareFootage ?? undefined,
-      ownerPersonId: activeOwnerByUnitId.get(unit.id) ?? "",
     });
     buildingForm.reset({ associationId: unit.associationId, name: "", address: "", totalUnits: undefined, notes: "" });
+
+    const now = Date.now();
+    const unitDir = residentialDataset?.unitDirectory.find((d) => d.unit.id === unit.id);
+    const activeOwners: OwnerEntry[] = (unitDir?.owners ?? [])
+      .filter((o) => {
+        const startMs = o.ownership.startDate ? new Date(o.ownership.startDate).getTime() : Number.NaN;
+        const endMs = o.ownership.endDate ? new Date(o.ownership.endDate).getTime() : Number.NaN;
+        return (Number.isNaN(startMs) || startMs <= now) && (Number.isNaN(endMs) || endMs >= now);
+      })
+      .map((o) => ({
+        ownership: o.ownership,
+        personName: o.person ? `${o.person.firstName ?? ""} ${o.person.lastName ?? ""}`.trim() : "Unknown",
+      }));
+    setOwnerEntries(activeOwners);
+    setRemovedOwnershipIds(new Set());
+    setPendingNewOwners([]);
+    setAddOwnerPersonId("");
+    setAddOwnerPercentage("100");
     setOpen(true);
   }
 
-  async function assignOwnerToUnit(unitId: string, ownerPersonId: string) {
-    const selectedOwnerId = ownerPersonId.trim();
-    if (!selectedOwnerId) return;
+  async function applyOwnershipChanges(unitId: string) {
+    const effectiveAt = new Date().toISOString();
+    let changed = false;
 
-    const currentOwnerships = (residentialDataset?.ownerships ?? []).filter((ownership) => ownership.unitId === unitId);
-    const now = Date.now();
-    const activeOwnerships = currentOwnerships.filter((ownership) => {
-      const startMs = ownership.startDate ? new Date(ownership.startDate).getTime() : Number.NaN;
-      const endMs = ownership.endDate ? new Date(ownership.endDate).getTime() : Number.NaN;
-      const isActiveStart = Number.isNaN(startMs) || startMs <= now;
-      const isActiveEnd = Number.isNaN(endMs) || endMs >= now;
-      return isActiveStart && isActiveEnd;
-    });
-
-    if (activeOwnerships.some((ownership) => ownership.personId === selectedOwnerId)) {
-      return;
+    for (const entry of ownerEntries) {
+      if (removedOwnershipIds.has(entry.ownership.id)) {
+        await apiRequest("PATCH", `/api/ownerships/${entry.ownership.id}`, { endDate: effectiveAt });
+        changed = true;
+      }
     }
 
-    const effectiveAt = new Date().toISOString();
-    for (const ownership of activeOwnerships) {
-      await apiRequest("PATCH", `/api/ownerships/${ownership.id}`, {
-        endDate: effectiveAt,
+    for (const entry of pendingNewOwners) {
+      await apiRequest("POST", "/api/ownerships", {
+        unitId,
+        personId: entry.personId,
+        ownershipPercentage: entry.percentage,
+        startDate: effectiveAt,
+      });
+      changed = true;
+    }
+
+    if (changed) {
+      queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
+      queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: [activeAssociationId ? `/api/persons?associationId=${activeAssociationId}` : "/api/persons"],
       });
     }
-
-    await apiRequest("POST", "/api/ownerships", {
-      unitId,
-      personId: selectedOwnerId,
-      ownershipPercentage: 100,
-      startDate: effectiveAt,
-    });
-
-    queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
-    queryClient.invalidateQueries({
-      predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
-    });
-    queryClient.invalidateQueries({
-      queryKey: [activeAssociationId ? `/api/persons?associationId=${activeAssociationId}` : "/api/persons"],
-    });
-    toast({ title: "Unit owner assigned" });
   }
 
   function onSubmitUnit(values: z.infer<typeof unitFormSchema>) {
@@ -278,10 +285,10 @@ export default function UnitsPage() {
         {
           onSuccess: async () => {
             try {
-              await assignOwnerToUnit(editingId, values.ownerPersonId ?? "");
+              await applyOwnershipChanges(editingId);
             } catch (error) {
-              const message = error instanceof Error ? error.message : "Failed to assign owner";
-              toast({ title: "Owner assignment failed", description: message, variant: "destructive" });
+              const message = error instanceof Error ? error.message : "Failed to update owners";
+              toast({ title: "Ownership update failed", description: message, variant: "destructive" });
             }
           },
         },
@@ -309,8 +316,11 @@ export default function UnitsPage() {
     setDialogMode("building");
     setEditingId(null);
     setEditingLegacyBuilding(null);
-    unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" });
+    unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
     buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
+    setOwnerEntries([]);
+    setRemovedOwnershipIds(new Set());
+    setPendingNewOwners([]);
     setOpen(true);
   }
 
@@ -328,9 +338,11 @@ export default function UnitsPage() {
       buildingId: legacyBuildingName ? "" : selectedBuildingId,
       unitNumber: "",
       squareFootage: undefined,
-      ownerPersonId: "",
     });
     buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
+    setOwnerEntries([]);
+    setRemovedOwnershipIds(new Set());
+    setPendingNewOwners([]);
     setOpen(true);
   }
 
@@ -339,8 +351,13 @@ export default function UnitsPage() {
     if (!isOpen) {
       setEditingId(null);
       setEditingLegacyBuilding(null);
-      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined, ownerPersonId: "" });
+      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
       buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
+      setOwnerEntries([]);
+      setRemovedOwnershipIds(new Set());
+      setPendingNewOwners([]);
+      setAddOwnerPersonId("");
+      setAddOwnerPercentage("100");
     }
   }
 
@@ -598,31 +615,109 @@ export default function UnitsPage() {
                     )} />
                   </div>
                   {editingId ? (
-                    <FormField control={unitForm.control} name="ownerPersonId" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Assigned Owner</FormLabel>
-                        <Select value={field.value || "none"} onValueChange={(value) => field.onChange(value === "none" ? "" : value)}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-unit-owner-person">
-                              <SelectValue placeholder="Select owner from People" />
-                            </SelectTrigger>
-                          </FormControl>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium flex items-center gap-2">
+                        <UserPlus className="h-4 w-4" />
+                        Owners
+                      </div>
+
+                      {ownerEntries.filter((e) => !removedOwnershipIds.has(e.ownership.id)).length === 0 && pendingNewOwners.length === 0 ? (
+                        <div className="text-sm text-muted-foreground rounded-md border border-dashed px-3 py-2">
+                          No owners assigned to this unit.
+                        </div>
+                      ) : null}
+
+                      {ownerEntries
+                        .filter((e) => !removedOwnershipIds.has(e.ownership.id))
+                        .map((entry) => (
+                          <div key={entry.ownership.id} className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                            <span>{entry.personName} · {entry.ownership.ownershipPercentage}%</span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => setRemovedOwnershipIds((prev) => new Set(Array.from(prev).concat(entry.ownership.id)))}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+
+                      {pendingNewOwners.map((entry, idx) => (
+                        <div key={idx} className="flex items-center justify-between rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                          <span>{entry.personName} · {entry.percentage}% <span className="text-xs">(pending)</span></span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => setPendingNewOwners((prev) => prev.filter((_, i) => i !== idx))}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+
+                      <div className="flex gap-2 pt-1">
+                        <Select value={addOwnerPersonId} onValueChange={setAddOwnerPersonId}>
+                          <SelectTrigger className="flex-1 h-8 text-sm" data-testid="select-add-owner-person">
+                            <SelectValue placeholder="Add owner…" />
+                          </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none">No owner selected</SelectItem>
-                            {sortedPeopleOptions.map((person) => (
-                              <SelectItem key={person.id} value={person.id}>
-                                {`${person.firstName ?? ""} ${person.lastName ?? ""}`.trim()}
-                                {person.email ? ` · ${person.email}` : ""}
-                              </SelectItem>
-                            ))}
+                            {sortedPeopleOptions
+                              .filter((p) =>
+                                !ownerEntries.some((e) => !removedOwnershipIds.has(e.ownership.id) && e.ownership.personId === p.id)
+                                && !pendingNewOwners.some((e) => e.personId === p.id),
+                              )
+                              .map((person) => (
+                                <SelectItem key={person.id} value={person.id}>
+                                  {`${person.firstName ?? ""} ${person.lastName ?? ""}`.trim()}
+                                  {person.email ? ` · ${person.email}` : ""}
+                                </SelectItem>
+                              ))}
                           </SelectContent>
                         </Select>
-                        <div className="text-xs text-muted-foreground">
-                          Pulls from People records, including manually entered contacts.
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
+                        <Input
+                          type="number"
+                          min="1"
+                          max="100"
+                          className="w-16 h-8 text-sm"
+                          placeholder="%"
+                          value={addOwnerPercentage}
+                          onChange={(e) => setAddOwnerPercentage(e.target.value)}
+                          data-testid="input-add-owner-percentage"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                          disabled={!addOwnerPersonId}
+                          data-testid="button-add-owner"
+                          onClick={() => {
+                            const person = sortedPeopleOptions.find((p) => p.id === addOwnerPersonId);
+                            if (!person) return;
+                            const pct = Math.max(1, Math.min(100, Number.parseInt(addOwnerPercentage) || 100));
+                            setPendingNewOwners((prev) => [
+                              ...prev,
+                              {
+                                personId: addOwnerPersonId,
+                                personName: `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim(),
+                                percentage: pct,
+                              },
+                            ]);
+                            setAddOwnerPersonId("");
+                            setAddOwnerPercentage("100");
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Ownership changes are saved when you click Update.
+                      </div>
+                    </div>
                   ) : null}
                 </div>
 

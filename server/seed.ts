@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, ilike } from "drizzle-orm";
+import { and, eq, ilike } from "drizzle-orm";
 import {
   adminUsers, analysisRuns, analysisVersions, associations, boardRoles, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
 } from "@shared/schema";
@@ -973,18 +973,20 @@ export async function seedDatabase() {
     }
   }
 
-  const existingAdminUsers = await db.select().from(adminUsers);
-  if (existingAdminUsers.length === 0) {
-    await db.insert(adminUsers).values({
-      email: "admin@local",
-      role: "platform-admin",
-      isActive: 1,
-    });
-  }
-
   // Bootstrap platform admins from PLATFORM_ADMIN_EMAILS env var.
-  // On every server start, these emails are ensured to have platform-admin role and be active.
-  // This allows recovering from accidental role downgrades without manual DB access.
+  //
+  // HOW IT WORKS:
+  //   Set PLATFORM_ADMIN_EMAILS=you@example.com (comma-separated for multiple)
+  //   in your deployment environment. On every server start, each listed email
+  //   is ensured to be an active platform-admin in the database.
+  //
+  // WHEN TO USE:
+  //   - First deployment: no platform-admin exists yet in the production DB
+  //   - Recovery: you've been locked out and need to restore platform-admin access
+  //   - Accidental role downgrade: someone demoted the last platform-admin
+  //
+  // It is safe to leave this env var set permanently — it only promotes listed
+  // emails, never downgrades or affects other users.
   const platformAdminEmailsRaw = (process.env.PLATFORM_ADMIN_EMAILS || "").trim();
   if (platformAdminEmailsRaw) {
     const platformAdminEmails = platformAdminEmailsRaw
@@ -1001,12 +1003,30 @@ export async function seedDatabase() {
             .set({ role: "platform-admin", isActive: 1, updatedAt: new Date() })
             .where(eq(adminUsers.id, existing.id));
           console.log(`[bootstrap] Promoted ${email} to platform-admin`);
+        } else {
+          console.log(`[bootstrap] Confirmed platform-admin: ${email}`);
         }
       } else {
         await db.insert(adminUsers).values({ email, role: "platform-admin", isActive: 1 });
         console.log(`[bootstrap] Created platform-admin for ${email}`);
       }
     }
+  }
+
+  // Warn if no active platform-admin exists after seeding — this means no one
+  // can manage users or grant permissions. Fix by setting PLATFORM_ADMIN_EMAILS.
+  const activePlatformAdmins = await db
+    .select()
+    .from(adminUsers)
+    .where(and(eq(adminUsers.role, "platform-admin"), eq(adminUsers.isActive, 1)));
+
+  if (activePlatformAdmins.length === 0) {
+    console.warn(
+      "[bootstrap] WARNING: No active platform-admin exists in the database.\n" +
+        "  No one can manage users or grant permissions until one is created.\n" +
+        "  Fix: set the PLATFORM_ADMIN_EMAILS environment variable to your email\n" +
+        "  and restart the server."
+    );
   }
 
   console.log("Database seeded successfully");

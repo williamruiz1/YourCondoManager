@@ -493,7 +493,21 @@ async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction
 }
 
 function assertAssociationScope(req: AdminRequest, associationId: string) {
-  if (!isPublishedState) return;
+  if (!isPublishedState) {
+    // Dev parity warning: log when a scoped operation would be blocked in production
+    if (req.adminRole && req.adminRole !== "platform-admin") {
+      const scopedIds = req.adminScopedAssociationIds ?? [];
+      if (associationId && scopedIds.length > 0 && !scopedIds.includes(associationId)) {
+        console.warn("[scope][dev-parity] This request would be BLOCKED in production.", {
+          role: req.adminRole,
+          requestedAssociationId: associationId,
+          scopedAssociationIds: scopedIds,
+          path: req.path,
+        });
+      }
+    }
+    return;
+  }
   if (req.adminRole === "platform-admin") return;
   const scopedAssociationIds = req.adminScopedAssociationIds ?? [];
   if (!associationId) {
@@ -4810,6 +4824,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Public endpoint — no auth required.
+  // Returns whether at least one active platform-admin exists.
+  // Use this in deployment health checks or post-deploy validation.
+  // If hasAdmin is false, set PLATFORM_ADMIN_EMAILS env var and restart.
+  app.get("/api/system/bootstrap-status", async (_req, res) => {
+    try {
+      const allAdmins = await storage.getAdminUsers();
+      const activePlatformAdmins = allAdmins.filter(
+        (u) => u.role === "platform-admin" && u.isActive === 1
+      );
+      res.json({
+        hasAdmin: activePlatformAdmins.length > 0,
+        adminCount: activePlatformAdmins.length,
+        message:
+          activePlatformAdmins.length > 0
+            ? "Platform is configured correctly."
+            : "No active platform-admin found. Set PLATFORM_ADMIN_EMAILS env var and restart the server.",
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/admin/users", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
     try {
       const result = await storage.getAdminUsers();
@@ -4824,6 +4861,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertAdminUserSchema.parse(req.body);
       const result = await storage.upsertAdminUser(parsed);
       res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/active", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
+    try {
+      const isActive = req.body?.isActive;
+      if (typeof isActive !== "boolean") {
+        return res.status(400).json({ message: "isActive must be a boolean" });
+      }
+      if (req.adminUserId === getParam(req.params.id)) {
+        return res.status(400).json({ message: "Cannot change your own active status" });
+      }
+      const result = await storage.setAdminUserActive(
+        getParam(req.params.id),
+        isActive,
+        req.adminUserEmail || "system",
+      );
+      if (!result) return res.status(404).json({ message: "Admin user not found" });
+      res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }

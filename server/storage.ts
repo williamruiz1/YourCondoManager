@@ -3328,6 +3328,7 @@ export interface IStorage {
   getAdminUserByEmail(email: string): Promise<AdminUser | undefined>;
   upsertAdminUser(data: InsertAdminUser): Promise<AdminUser>;
   updateAdminUserRole(id: string, role: NonNullable<InsertAdminUser["role"]>, changedBy: string, reason?: string): Promise<AdminUser | undefined>;
+  setAdminUserActive(id: string, isActive: boolean, changedBy: string): Promise<AdminUser | undefined>;
   getAuthUserById(id: string): Promise<AuthUser | undefined>;
   getAuthUserByEmail(email: string): Promise<AuthUser | undefined>;
   createAuthUser(data: InsertAuthUser): Promise<AuthUser>;
@@ -12559,6 +12560,38 @@ export class DatabaseStorage implements IStorage {
       associationId: null,
       beforeJson: { role: existing.role },
       afterJson: { role: updated.role, reason: reason.trim() },
+    });
+
+    return updated;
+  }
+
+  async setAdminUserActive(id: string, isActive: boolean, changedBy: string): Promise<AdminUser | undefined> {
+    const [existing] = await db.select().from(adminUsers).where(eq(adminUsers.id, id));
+    if (!existing) return undefined;
+
+    // Prevent deactivating the last active platform-admin
+    if (!isActive && existing.role === "platform-admin" && existing.isActive === 1) {
+      const activeAdmins = await db.select().from(adminUsers).where(eq(adminUsers.isActive, 1));
+      const remainingPlatformAdmins = activeAdmins.filter((u) => u.role === "platform-admin" && u.id !== id);
+      if (remainingPlatformAdmins.length === 0) {
+        throw new Error("Cannot deactivate the last active platform-admin");
+      }
+    }
+
+    const [updated] = await db
+      .update(adminUsers)
+      .set({ isActive: isActive ? 1 : 0, updatedAt: new Date() })
+      .where(eq(adminUsers.id, id))
+      .returning();
+
+    await this.recordAuditEvent({
+      actorEmail: changedBy,
+      action: "update",
+      entityType: "admin-user-active",
+      entityId: id,
+      associationId: null,
+      beforeJson: { isActive: existing.isActive },
+      afterJson: { isActive: updated.isActive },
     });
 
     return updated;
