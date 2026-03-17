@@ -357,21 +357,19 @@ export default function InspectionsPage() {
                               <span className="text-muted-foreground">{finding.status}</span>
                               {finding.linkedWorkOrderId ? (
                                 <Link href="/app/work-orders">
-                                  <Button size="sm" variant="secondary" className="gap-1">
-                                    <ExternalLink className="h-3 w-3" />
-                                    View Work Order
+                                  <Button size="icon" variant="secondary" title="View Work Order">
+                                    <ExternalLink className="h-4 w-4" />
                                   </Button>
                                 </Link>
                               ) : (
                                 <Button
-                                  size="sm"
+                                  size="icon"
                                   variant="outline"
+                                  title="Create Work Order"
                                   disabled={convertFinding.isPending}
                                   onClick={() => convertFinding.mutate({ inspectionId: record.id, findingIndex: index })}
-                                  className="gap-1"
                                 >
-                                  <Wrench className="h-3 w-3" />
-                                  {convertFinding.isPending ? "Creating…" : "Create Work Order"}
+                                  <Wrench className="h-4 w-4" />
                                 </Button>
                               )}
                             </div>

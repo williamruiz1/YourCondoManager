@@ -525,18 +525,18 @@ export default function DocumentsPage() {
                     <TableCell className="text-right space-x-2">
                       <Button
                         variant="outline"
-                        size="sm"
+                        size="icon"
+                        title="Manage"
                         onClick={() => {
                           setSelectedDocument(d);
                           setMetaOpen(true);
                         }}
                       >
-                        <Tags className="h-3 w-3 mr-1" />
-                        Manage
+                        <Tags className="h-4 w-4" />
                       </Button>
-                      <Button variant="outline" size="sm" asChild data-testid={`button-download-document-${d.id}`}>
+                      <Button variant="outline" size="icon" title="Download" asChild data-testid={`button-download-document-${d.id}`}>
                         <a href={d.fileUrl} target="_blank" rel="noopener noreferrer">
-                          <Download className="h-3 w-3 mr-1" />Download
+                          <Download className="h-4 w-4" />
                         </a>
                       </Button>
                     </TableCell>
