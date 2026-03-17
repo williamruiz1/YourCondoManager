@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { and, eq, ilike, sql } from "drizzle-orm";
 import {
-  adminUsers, analysisRuns, analysisVersions, associations, boardRoles, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
+  adminUsers, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
 } from "@shared/schema";
 import { log } from "./logger";
 
@@ -12,7 +12,7 @@ const KNOWN_ASSOCIATIONS: (typeof associations.$inferInsert)[] = [
   { id: "f627dc9b-cde0-44c0-a23a-405487cb0add", name: "Pacific Heights Condos", address: "789 Bay Street", city: "San Francisco", state: "CA", country: "USA" },
   { id: "7a1f216a-8ac9-4fe9-a8d2-b62b01565a42", name: "Lakewood Residences", address: "450 Lakeview Blvd", city: "Chicago", state: "IL", country: "USA" },
   { id: "1c63e35c-2ac3-4b0a-b2ab-61f873d0d938", name: "Test Towers", address: "100 Test Ave", city: "Austin", state: "TX", country: "USA" },
-  { id: "f301d073-ed84-4d73-84ce-3ef28af66f7a", name: "Cherry Hill Court Condominiums", associationType: "", dateFormed: "1990-07-16", ein: "", address: "1405 Quinnipiac Ave.", city: "New Haven", state: "CT", country: "USA" },
+  { id: "f301d073-ed84-4d73-84ce-3ef28af66f7a", name: "Cherry Hill Court Condominiums", associationType: "HOA", dateFormed: "1990-07-16", ein: "06-1513429", address: "1405 Quinnipiac Ave.", city: "New Haven", state: "CT", country: "USA" },
   { id: "628b7d4b-b052-44a5-9bcc-69784581450c", name: "Cherry Hill Court", associationType: "condo", address: "101 Cherry Hill Court", city: "Cherry Hill", state: "NJ", country: "USA" },
   { id: "7c164b67-9e3b-456a-bb49-dd698b0822c4", name: "Verification HOA 1773579706183", associationType: "condo", address: "1 Verification Way", city: "New Haven", state: "CT", country: "USA" },
   { id: "5d4488b7-c229-4412-8762-d822e4f150f3", name: "QA Communications Foundation 364067", address: "100 Verification Way", city: "New Haven", state: "CT", country: "USA" },
@@ -133,6 +133,55 @@ export async function seedDatabase() {
       { personId: personRows[6].id, associationId: pacific.id!, role: "Board Member", startDate: new Date("2024-01-15") },
     ]);
   }
+
+  // Seed Cherry Hill Court Condominiums buildings — idempotent by fixed UUID
+  const CHERRY_HILL_CONDO_ID = "f301d073-ed84-4d73-84ce-3ef28af66f7a";
+  const CHERRY_HILL_BUILDINGS = [
+    { id: "b11ea5a8-d907-4063-a0ed-640874159f61", associationId: CHERRY_HILL_CONDO_ID, name: "1415", address: "Quinnipiac Ave., New Haven, CT 06513", totalUnits: 1 },
+    { id: "f249583c-5d75-4865-a6ca-d01f0b4dd3a6", associationId: CHERRY_HILL_CONDO_ID, name: "1417", address: "Quinnipiac Ave., New Haven, CT 06513", totalUnits: 7 },
+    { id: "8a0fafb2-cc66-400f-a3dc-74617e39eefc", associationId: CHERRY_HILL_CONDO_ID, name: "1419", address: "Quinnipiac Ave., New Haven, CT 06513", totalUnits: 1 },
+    { id: "e4f64f48-6136-457c-af87-20223cfc81ef", associationId: CHERRY_HILL_CONDO_ID, name: "1421", address: "1421 Quinnipiac Ave.", totalUnits: 4, notes: "Backfilled from legacy unit building labels." },
+  ] as const;
+  for (const b of CHERRY_HILL_BUILDINGS) {
+    await db.insert(buildings).values(b).onConflictDoNothing();
+  }
+
+  // Seed Cherry Hill Court Condominiums units — idempotent by fixed UUID
+  const CHERRY_HILL_UNITS = [
+    { id: "7adb3521-845b-41de-8054-3281ddfc0f3c", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "A", building: "1415", buildingId: "b11ea5a8-d907-4063-a0ed-640874159f61" },
+    { id: "909ed4e8-fb53-49f8-aecf-5b56c10e1e30", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "B", building: "1415", buildingId: "b11ea5a8-d907-4063-a0ed-640874159f61" },
+    { id: "341b2050-28cf-4d3d-bc44-ef5a0f6584d9", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "C", building: "1415", buildingId: "b11ea5a8-d907-4063-a0ed-640874159f61" },
+    { id: "34575428-ea77-4013-bd0f-593e0c7dbbbb", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "A", building: "1417", buildingId: "f249583c-5d75-4865-a6ca-d01f0b4dd3a6" },
+    { id: "b1f60b15-3cec-4cca-8c1c-0a0ba7bf4d7f", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "B", building: "1417", buildingId: "f249583c-5d75-4865-a6ca-d01f0b4dd3a6" },
+    { id: "a5b46109-1514-4207-9ed3-2b587ead617f", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "C", building: "1417", buildingId: "f249583c-5d75-4865-a6ca-d01f0b4dd3a6" },
+    { id: "978bacef-824f-471e-80ea-891a8eaa01f8", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "D", building: "1417", buildingId: "f249583c-5d75-4865-a6ca-d01f0b4dd3a6" },
+    { id: "3b5e2a2f-81cc-4199-9333-858c8f0fca9c", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "E", building: "1417", buildingId: "f249583c-5d75-4865-a6ca-d01f0b4dd3a6" },
+    { id: "8b029a2d-c7e4-4cb1-ad82-9f9829877208", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "F", building: "1417", buildingId: "f249583c-5d75-4865-a6ca-d01f0b4dd3a6" },
+    { id: "91e77ac7-b0dc-4bab-a169-f167b20e5cce", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "G", building: "1417", buildingId: "f249583c-5d75-4865-a6ca-d01f0b4dd3a6" },
+    { id: "a882cbbb-1061-4764-8b2b-d9398e2ccedb", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "1419", building: "1419", buildingId: "8a0fafb2-cc66-400f-a3dc-74617e39eefc" },
+    { id: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "A", building: "1421", buildingId: "e4f64f48-6136-457c-af87-20223cfc81ef", squareFootage: 1500 },
+    { id: "96696dfe-9feb-439a-ba29-88b79c5a74fd", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "B", building: "1421", buildingId: "e4f64f48-6136-457c-af87-20223cfc81ef", squareFootage: 1200 },
+    { id: "16795e0e-2a66-4a5a-9977-0d93e7790c6e", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "C", building: "1421", buildingId: "e4f64f48-6136-457c-af87-20223cfc81ef", squareFootage: 1200 },
+    { id: "f5d74705-ef3d-439d-bf89-a2c1c2a17f34", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "D", building: "1421", buildingId: "e4f64f48-6136-457c-af87-20223cfc81ef" },
+    { id: "3d308aff-6712-4628-b812-e247c38ab92b", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "E", building: "1421", buildingId: "e4f64f48-6136-457c-af87-20223cfc81ef" },
+    { id: "968ed680-252a-4be9-ae77-9312e8a5a150", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "F", building: "1421", buildingId: "e4f64f48-6136-457c-af87-20223cfc81ef" },
+    { id: "a1a7aef1-3b07-414c-ae6a-3093cf5105cd", associationId: CHERRY_HILL_CONDO_ID, unitNumber: "G", building: "1421", buildingId: "e4f64f48-6136-457c-af87-20223cfc81ef" },
+  ] as const;
+  for (const u of CHERRY_HILL_UNITS) {
+    await db.insert(units).values(u).onConflictDoNothing();
+  }
+  log(`[seed] cherry hill court condominiums buildings=${CHERRY_HILL_BUILDINGS.length} units=${CHERRY_HILL_UNITS.length} (idempotent)`, "seed");
+
+  // Seed known admin users with fixed UUIDs — idempotent, ensures production always has correct accounts
+  // regardless of whether Replit's DB copy mechanism works.
+  const KNOWN_ADMIN_USERS = [
+    { id: "ae7a1d67-d01a-4041-ac39-68e1519ee77d", email: "chcmgmt18@gmail.com", role: "platform-admin" as const, isActive: 1 },
+    { id: "b4d20095-aa16-42fa-97b3-99b688a6a323", email: "yourcondomanagement@gmail.com", role: "platform-admin" as const, isActive: 1 },
+  ];
+  for (const adminUser of KNOWN_ADMIN_USERS) {
+    await db.insert(adminUsers).values(adminUser).onConflictDoNothing();
+  }
+  log(`[seed] admin users seeded :: count=${KNOWN_ADMIN_USERS.length} (idempotent)`, "seed");
 
   const existingRoadmapProjects = await db.select().from(roadmapProjects);
   if (existingRoadmapProjects.length === 0) {
