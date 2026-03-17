@@ -231,6 +231,7 @@ function configurePassport() {
               firstName: names.firstName ?? linkedUser.firstName,
               lastName: names.lastName ?? linkedUser.lastName,
               avatarUrl: avatarUrl ?? linkedUser.avatarUrl,
+              isActive: 1,
             }) ?? linkedUser;
           }
 
