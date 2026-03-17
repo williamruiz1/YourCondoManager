@@ -171,10 +171,12 @@ export default function CommunicationsPage() {
     enabled: Boolean(selectedAssociationId),
   });
   const { data: contactUpdates } = useQuery<ContactUpdateRequest[]>({
-    queryKey: [selectedAssociationId ? `/api/portal/contact-updates/admin?associationId=${selectedAssociationId}` : "/api/portal/contact-updates/admin"],
+    queryKey: [`/api/portal/contact-updates/admin?associationId=${selectedAssociationId}`],
+    enabled: Boolean(selectedAssociationId),
   });
   const { data: maintenanceRequests } = useQuery<MaintenanceRequest[]>({
-    queryKey: [selectedAssociationId ? `/api/maintenance/requests?associationId=${selectedAssociationId}` : "/api/maintenance/requests"],
+    queryKey: [`/api/maintenance/requests?associationId=${selectedAssociationId}`],
+    enabled: Boolean(selectedAssociationId),
   });
   const toggleUnitSelection = (unitId: string, form: "targeted" | "payment") => {
     const updater = (current: string[]) => current.includes(unitId) ? current.filter((value) => value !== unitId) : [...current, unitId];
@@ -426,7 +428,7 @@ export default function CommunicationsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: [selectedAssociationId ? `/api/portal/contact-updates/admin?associationId=${selectedAssociationId}` : "/api/portal/contact-updates/admin"],
+        queryKey: [`/api/portal/contact-updates/admin?associationId=${selectedAssociationId}`],
       });
       queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
       queryClient.invalidateQueries({ queryKey: [`/api/communications/readiness?associationId=${selectedAssociationId}`] });
@@ -567,7 +569,7 @@ export default function CommunicationsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: [selectedAssociationId ? `/api/maintenance/requests?associationId=${selectedAssociationId}` : "/api/maintenance/requests"],
+        queryKey: [`/api/maintenance/requests?associationId=${selectedAssociationId}`],
       });
       queryClient.invalidateQueries({ queryKey: ["/api/communications/history"] });
       toast({ title: "Maintenance request updated" });
@@ -584,7 +586,7 @@ export default function CommunicationsPage() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({
-        queryKey: [selectedAssociationId ? `/api/maintenance/requests?associationId=${selectedAssociationId}` : "/api/maintenance/requests"],
+        queryKey: [`/api/maintenance/requests?associationId=${selectedAssociationId}`],
       });
       queryClient.invalidateQueries({ queryKey: ["/api/communications/history"] });
       toast({
