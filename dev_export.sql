@@ -2121,6 +2121,20 @@ CREATE TABLE public.work_orders (
 
 
 --
+-- Clean existing data and disable FK enforcement for idempotent restore
+--
+
+SET session_replication_role = 'replica';
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+    EXECUTE format('DELETE FROM public.%I', r.tablename);
+  END LOOP;
+END $$;
+
+--
 -- Data for Name: admin_analysis_runs; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -4148,6 +4162,12 @@ COPY public.work_orders (id, association_id, maintenance_request_id, unit_id, ve
 ALTER TABLE ONLY public.admin_analysis_runs
     ADD CONSTRAINT admin_analysis_runs_pkey PRIMARY KEY (id);
 
+
+--
+-- Re-enable FK enforcement before constraint validation
+--
+
+SET session_replication_role = 'DEFAULT';
 
 --
 -- Name: admin_analysis_versions admin_analysis_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
