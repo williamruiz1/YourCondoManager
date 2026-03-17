@@ -15,6 +15,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -32,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Building2, MapPin, Search, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Building2, MapPin, Search, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAssociationContext } from "@/context/association-context";
@@ -68,6 +70,7 @@ export default function AssociationsPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showArchivedSection, setShowArchivedSection] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Association | null>(null);
   const [directoryQuery, setDirectoryQuery] = useState("");
   const [directoryResults, setDirectoryResults] = useState<AssociationSearchResult[]>([]);
   const { toast } = useToast();
@@ -187,6 +190,19 @@ export default function AssociationsPage() {
     },
     onSettled: () => {
       invalidateAssociationQueries();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/associations/${id}`),
+    onSuccess: () => {
+      invalidateAssociationQueries();
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Association deleted" });
+      setDeleteTarget(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -491,6 +507,15 @@ export default function AssociationsPage() {
                         <Button variant="outline" size="sm" onClick={() => openEdit(a)} data-testid={`button-edit-association-${a.id}`}>
                           Edit
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDeleteTarget(a)}
+                          data-testid={`button-delete-association-${a.id}`}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -548,16 +573,27 @@ export default function AssociationsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => archiveMutation.mutate({ id: a.id, isArchived: 0 })}
-                        disabled={archiveMutation.isPending}
-                        data-testid={`button-restore-association-${a.id}`}
-                      >
-                        <ArchiveRestore className="h-4 w-4 mr-1" />
-                        Restore
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => archiveMutation.mutate({ id: a.id, isArchived: 0 })}
+                          disabled={archiveMutation.isPending}
+                          data-testid={`button-restore-association-${a.id}`}
+                        >
+                          <ArchiveRestore className="h-4 w-4 mr-1" />
+                          Restore
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDeleteTarget(a)}
+                          data-testid={`button-delete-association-${a.id}`}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -566,6 +602,26 @@ export default function AssociationsPage() {
           )}
         </CardContent>
       </Card>
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(isOpen) => { if (!isOpen) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Association</DialogTitle>
+            <DialogDescription>
+              Permanently delete <span className="font-medium">{deleteTarget?.name}</span>? This cannot be undone and will fail if the association has linked records (units, documents, etc.).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
