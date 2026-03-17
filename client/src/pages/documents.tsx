@@ -39,8 +39,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, FileText, Upload, Download, Tags, History, AlertTriangle } from "lucide-react";
+import { Plus, FileText, Upload, Download, Tags, History, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
@@ -232,6 +233,18 @@ export default function DocumentsPage() {
       setVersionFile(null);
       setVersionStage("complete");
       toast({ title: "Version uploaded" });
+    },
+    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+  });
+
+  const togglePortalVisibility = useMutation({
+    mutationFn: async ({ id, isPortalVisible }: { id: string; isPortalVisible: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/documents/${id}`, { isPortalVisible: isPortalVisible ? 1 : 0 });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
@@ -468,6 +481,7 @@ export default function DocumentsPage() {
                   <TableHead>Type</TableHead>
                   <TableHead>Uploaded By</TableHead>
                   <TableHead>Date</TableHead>
+                  <TableHead>Owner Portal</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -490,6 +504,24 @@ export default function DocumentsPage() {
                     <TableCell><Badge variant="secondary">{d.documentType}</Badge></TableCell>
                     <TableCell className="text-muted-foreground">{d.uploadedBy || "-"}</TableCell>
                     <TableCell className="text-muted-foreground">{new Date(d.createdAt).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={Boolean(d.isPortalVisible)}
+                          onCheckedChange={(checked) => togglePortalVisibility.mutate({ id: d.id, isPortalVisible: checked })}
+                          aria-label="Toggle owner portal visibility"
+                        />
+                        {d.isPortalVisible ? (
+                          <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                            <Eye className="h-3 w-3" />Visible
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <EyeOff className="h-3 w-3" />Hidden
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button
                         variant="outline"

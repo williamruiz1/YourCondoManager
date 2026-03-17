@@ -7320,6 +7320,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const active = accesses.filter((a) => a.status === "active" || a.status === "invited");
       const allAssocs = await storage.getAssociations();
       const assocMap = new Map(allAssocs.map((a) => [a.id, a]));
+      // Fetch unit info for all accesses that have a unitId
+      const unitIds = active.map((a) => a.unitId).filter(Boolean) as string[];
+      const unitMap = new Map<string, { unitNumber: string | null; building: string | null }>();
+      if (unitIds.length > 0) {
+        const unitRows = await db.select().from(units).where(inArray(units.id, unitIds));
+        for (const u of unitRows) unitMap.set(u.id, { unitNumber: u.unitNumber, building: u.building });
+      }
       res.json(active.map((a) => ({
         portalAccessId: a.id,
         associationId: a.associationId,
@@ -7327,7 +7334,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         associationCity: assocMap.get(a.associationId)?.city ?? null,
         role: a.role,
         email: a.email,
+        unitId: a.unitId ?? null,
+        unitNumber: a.unitId ? (unitMap.get(a.unitId)?.unitNumber ?? null) : null,
+        building: a.unitId ? (unitMap.get(a.unitId)?.building ?? null) : null,
       })));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/units-balance", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAssociationId || !req.portalPersonId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      // Find all active portal_access records for this person in this association
+      const email = req.portalEmail || "";
+      const accesses = await storage.getPortalAccessesByEmail(email);
+      const myAccesses = accesses.filter(
+        (a) => a.associationId === req.portalAssociationId && (a.status === "active" || a.status === "invited") && a.unitId
+      );
+      const unitIds = myAccesses.map((a) => a.unitId).filter(Boolean) as string[];
+      if (unitIds.length === 0) return res.json([]);
+      const [allEntries, unitRows] = await Promise.all([
+        storage.getOwnerLedgerEntries(req.portalAssociationId),
+        db.select().from(units).where(inArray(units.id, unitIds)),
+      ]);
+      const unitMap = new Map(unitRows.map((u) => [u.id, u]));
+      const result = unitIds.map((unitId) => {
+        const entries = allEntries.filter((e) => e.personId === req.portalPersonId && e.unitId === unitId);
+        const balance = entries.reduce((sum, e) => sum + e.amount, 0);
+        const unit = unitMap.get(unitId);
+        return {
+          unitId,
+          unitNumber: unit?.unitNumber ?? null,
+          building: unit?.building ?? null,
+          portalAccessId: myAccesses.find((a) => a.unitId === unitId)?.id ?? null,
+          balance,
+        };
+      });
+      res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

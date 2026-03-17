@@ -119,6 +119,11 @@ function sumStateCounts(counts: Record<string, number>) {
   return Object.values(counts).reduce((sum, count) => sum + count, 0);
 }
 
+function stripHtml(html: string | null | undefined): string {
+  if (!html) return "";
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function portalHeaders(portalAccessId: string) {
   return {
     "x-portal-access-id": portalAccessId,
@@ -132,6 +137,17 @@ type AssociationChoice = {
   associationCity: string | null;
   role: string;
   email: string;
+  unitId: string | null;
+  unitNumber: string | null;
+  building: string | null;
+};
+
+type UnitBalance = {
+  unitId: string;
+  unitNumber: string | null;
+  building: string | null;
+  portalAccessId: string | null;
+  balance: number;
 };
 
 export default function OwnerPortalPage() {
@@ -322,6 +338,16 @@ export default function OwnerPortalPage() {
     queryFn: async () => {
       const res = await fetch("/api/portal/association", { headers: portalHeaders(portalAccessId) });
       if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  const { data: unitsBalance = [] } = useQuery<UnitBalance[]>({
+    queryKey: ["/api/portal/units-balance", portalAccessId || "none"],
+    enabled: Boolean(portalAccessId),
+    queryFn: async () => {
+      const res = await fetch("/api/portal/units-balance", { headers: portalHeaders(portalAccessId) });
+      if (!res.ok) return [];
       return res.json();
     },
   });
@@ -1210,21 +1236,37 @@ export default function OwnerPortalPage() {
                 <>
                   <p className="text-sm text-muted-foreground">Signed in as: <strong>{email}</strong></p>
                   <div className="space-y-2">
-                    {associationChoices.map((choice) => (
-                      <Button
-                        key={choice.portalAccessId}
-                        variant="outline"
-                        className="w-full justify-start h-auto py-3 px-4"
-                        onClick={() => verifyLogin.mutate(choice.associationId)}
-                        disabled={verifyLogin.isPending}
-                      >
-                        <div className="text-left">
-                          <div className="font-medium">{choice.associationName}</div>
-                          {choice.associationCity && <div className="text-xs text-muted-foreground">{choice.associationCity}</div>}
-                          <div className="text-xs text-muted-foreground capitalize">{choice.role}</div>
-                        </div>
-                      </Button>
-                    ))}
+                    {(() => {
+                      // Count how many choices share the same associationId to detect multi-unit owners
+                      const assocCounts = associationChoices.reduce<Record<string, number>>((acc, c) => {
+                        acc[c.associationId] = (acc[c.associationId] ?? 0) + 1;
+                        return acc;
+                      }, {});
+                      return associationChoices.map((choice) => {
+                        const hasMultipleUnits = assocCounts[choice.associationId] > 1;
+                        const unitLabel = choice.unitNumber
+                          ? [choice.building ? `Bldg ${choice.building}` : null, `Unit ${choice.unitNumber}`].filter(Boolean).join(" · ")
+                          : null;
+                        return (
+                          <Button
+                            key={choice.portalAccessId}
+                            variant="outline"
+                            className="w-full justify-start h-auto py-3 px-4"
+                            onClick={() => verifyLogin.mutate(choice.associationId)}
+                            disabled={verifyLogin.isPending}
+                          >
+                            <div className="text-left">
+                              <div className="font-medium">{choice.associationName}</div>
+                              {choice.associationCity && <div className="text-xs text-muted-foreground">{choice.associationCity}</div>}
+                              {hasMultipleUnits && unitLabel && (
+                                <div className="text-xs font-medium text-primary mt-0.5">{unitLabel}</div>
+                              )}
+                              <div className="text-xs text-muted-foreground capitalize">{choice.role}</div>
+                            </div>
+                          </Button>
+                        );
+                      });
+                    })()}
                   </div>
                   <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); setAssociationChoices([]); }}>
                     Use a different email
@@ -1273,6 +1315,12 @@ export default function OwnerPortalPage() {
     ? [me.building ? `Bldg ${me.building}` : null, `Unit ${me.unitNumber}`].filter(Boolean).join(" · ")
     : null;
 
+  // Units owned by this person in the current association (for the unit switcher)
+  const siblingUnits = (myAssociations ?? []).filter(
+    (a) => a.associationId === currentAssociation?.associationId && a.unitId
+  );
+  const hasMultipleUnits = siblingUnits.length > 1;
+
   const ownerTabs = [
     { id: "overview" as const, label: "Overview" },
     { id: "financials" as const, label: "Financials" },
@@ -1300,7 +1348,35 @@ export default function OwnerPortalPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {myAssociations && myAssociations.length > 1 && (
+            {/* Unit switcher — shown when owner has multiple units in the same association */}
+            {hasMultipleUnits && (
+              <Select
+                value={portalAccessId}
+                onValueChange={(val) => {
+                  setPortalAccessId(val);
+                  window.localStorage.setItem("portalAccessId", val);
+                  setActiveTab("overview");
+                }}
+              >
+                <SelectTrigger className="w-36 h-8 text-xs">
+                  <SelectValue placeholder="Switch unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {siblingUnits.map((a) => {
+                    const label = a.unitNumber
+                      ? [a.building ? `Bldg ${a.building}` : null, `Unit ${a.unitNumber}`].filter(Boolean).join(" · ")
+                      : "No unit";
+                    return (
+                      <SelectItem key={a.portalAccessId} value={a.portalAccessId}>
+                        {label}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            )}
+            {/* Association switcher — shown only when owner has access to multiple distinct associations */}
+            {myAssociations && new Set(myAssociations.map((a) => a.associationId)).size > 1 && (
               <Select
                 value={portalAccessId}
                 onValueChange={(val) => {
@@ -1496,28 +1572,77 @@ export default function OwnerPortalPage() {
           {/* Balance summary */}
           <Card>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Amount Due</div>
-                  {financialDashboard ? (
-                    <div className={`text-3xl font-bold mt-1 ${financialDashboard.balance > 0 ? "text-red-600" : "text-green-600"}`}>
-                      {financialDashboard.balance > 0
-                        ? `$${financialDashboard.balance.toFixed(2)}`
-                        : financialDashboard.balance < 0
-                        ? `Credit $${Math.abs(financialDashboard.balance).toFixed(2)}`
-                        : "$0.00"}
+              {hasMultipleUnits && unitsBalance.length > 0 ? (
+                // Multi-unit: show combined total + per-unit breakdown
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">Total Amount Due — All Units</div>
+                      {(() => {
+                        const total = unitsBalance.reduce((sum, u) => sum + u.balance, 0);
+                        return (
+                          <div className={`text-3xl font-bold mt-1 ${total > 0 ? "text-red-600" : "text-green-600"}`}>
+                            {total > 0 ? `$${total.toFixed(2)}` : total < 0 ? `Credit $${Math.abs(total).toFixed(2)}` : "$0.00"}
+                          </div>
+                        );
+                      })()}
                     </div>
-                  ) : (
-                    <div className="text-3xl font-bold mt-1 text-muted-foreground">—</div>
-                  )}
-                  {financialDashboard?.nextDueDate && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Next charge due {new Date(financialDashboard.nextDueDate).toLocaleDateString()}
-                    </div>
-                  )}
+                    <Button size="sm" onClick={() => setActiveTab("financials")}>View Financials</Button>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {unitsBalance.map((u) => {
+                      const label = u.unitNumber
+                        ? [u.building ? `Bldg ${u.building}` : null, `Unit ${u.unitNumber}`].filter(Boolean).join(" · ")
+                        : "Unit";
+                      const isCurrent = u.portalAccessId === portalAccessId;
+                      return (
+                        <button
+                          key={u.unitId}
+                          className={`rounded-md border p-3 text-left transition-colors hover:bg-muted/30 ${isCurrent ? "border-primary/40 bg-primary/5" : ""}`}
+                          onClick={() => {
+                            if (u.portalAccessId && u.portalAccessId !== portalAccessId) {
+                              setPortalAccessId(u.portalAccessId);
+                              window.localStorage.setItem("portalAccessId", u.portalAccessId);
+                            }
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-medium">{label}</div>
+                            {isCurrent && <span className="text-xs text-primary font-medium">Viewing</span>}
+                          </div>
+                          <div className={`text-lg font-semibold mt-0.5 ${u.balance > 0 ? "text-red-600" : "text-green-600"}`}>
+                            {u.balance > 0 ? `$${u.balance.toFixed(2)}` : u.balance < 0 ? `Credit $${Math.abs(u.balance).toFixed(2)}` : "$0.00"}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <Button size="sm" onClick={() => setActiveTab("financials")}>View Financials</Button>
-              </div>
+              ) : (
+                // Single unit: original compact layout
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Amount Due</div>
+                    {financialDashboard ? (
+                      <div className={`text-3xl font-bold mt-1 ${financialDashboard.balance > 0 ? "text-red-600" : "text-green-600"}`}>
+                        {financialDashboard.balance > 0
+                          ? `$${financialDashboard.balance.toFixed(2)}`
+                          : financialDashboard.balance < 0
+                          ? `Credit $${Math.abs(financialDashboard.balance).toFixed(2)}`
+                          : "$0.00"}
+                      </div>
+                    ) : (
+                      <div className="text-3xl font-bold mt-1 text-muted-foreground">—</div>
+                    )}
+                    {financialDashboard?.nextDueDate && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Next charge due {new Date(financialDashboard.nextDueDate).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                  <Button size="sm" onClick={() => setActiveTab("financials")}>View Financials</Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -1542,11 +1667,27 @@ export default function OwnerPortalPage() {
                             <div className="text-sm font-medium">{notice.subject || "—"}</div>
                             <span className="text-xs text-muted-foreground shrink-0">{isExpanded ? "▲" : "▼"}</span>
                           </div>
-                          {!isExpanded && <div className="text-xs text-muted-foreground mt-0.5 truncate">{notice.bodySnippet || ""}</div>}
+                          {!isExpanded && <div className="text-xs text-muted-foreground mt-0.5 truncate">{stripHtml(notice.bodySnippet)}</div>}
                         </button>
-                        {isExpanded && (
-                          <div className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{notice.bodySnippet || "No message body available."}</div>
-                        )}
+                        {isExpanded && (() => {
+                          const isHtml = (notice.bodySnippet || "").trimStart().startsWith("<");
+                          return isHtml ? (
+                            <iframe
+                              srcDoc={notice.bodySnippet ?? ""}
+                              className="w-full border-0 mt-1"
+                              style={{ minHeight: "320px" }}
+                              onLoad={(e) => {
+                                const iframe = e.currentTarget;
+                                const body = iframe.contentDocument?.body;
+                                if (body) iframe.style.height = `${body.scrollHeight + 32}px`;
+                              }}
+                              sandbox="allow-same-origin"
+                              title={notice.subject ?? "Notice"}
+                            />
+                          ) : (
+                            <div className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{notice.bodySnippet || "No message body available."}</div>
+                          );
+                        })()}
                         <div className="text-xs text-muted-foreground mt-1">{new Date(notice.createdAt).toLocaleDateString()}</div>
                       </div>
                     );
@@ -2511,6 +2652,8 @@ export default function OwnerPortalPage() {
               const isPaymentNotice = (notice.relatedType || "").includes("payment") || (notice.subject || "").toLowerCase().includes("payment") || (notice.subject || "").toLowerCase().includes("due") || (notice.subject || "").toLowerCase().includes("balance");
               const isRecent = (Date.now() - new Date(notice.createdAt).getTime()) < 7 * 24 * 60 * 60 * 1000;
               const isExpanded = expandedNoticeId === notice.id;
+              const snippet = stripHtml(notice.bodySnippet);
+              const isHtml = (notice.bodySnippet || "").trimStart().startsWith("<");
               return (
                 <div key={notice.id} className="rounded-md border overflow-hidden">
                   <button
@@ -2524,8 +2667,8 @@ export default function OwnerPortalPage() {
                           {isRecent && <Badge variant="default" className="text-xs">New</Badge>}
                           {isPaymentNotice && <Badge variant="secondary" className="text-xs">Payment</Badge>}
                         </div>
-                        {!isExpanded && notice.bodySnippet && (
-                          <div className="text-xs text-muted-foreground mt-0.5 truncate">{notice.bodySnippet}</div>
+                        {!isExpanded && snippet && (
+                          <div className="text-xs text-muted-foreground mt-0.5 truncate">{snippet}</div>
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -2535,8 +2678,25 @@ export default function OwnerPortalPage() {
                     </div>
                   </button>
                   {isExpanded && (
-                    <div className="px-4 py-3 border-t bg-muted/10 text-sm whitespace-pre-wrap">
-                      {notice.bodySnippet || "No message body available."}
+                    <div className="border-t">
+                      {isHtml ? (
+                        <iframe
+                          srcDoc={notice.bodySnippet ?? ""}
+                          className="w-full border-0"
+                          style={{ minHeight: "400px" }}
+                          onLoad={(e) => {
+                            const iframe = e.currentTarget;
+                            const body = iframe.contentDocument?.body;
+                            if (body) iframe.style.height = `${body.scrollHeight + 32}px`;
+                          }}
+                          sandbox="allow-same-origin"
+                          title={notice.subject ?? "Notice"}
+                        />
+                      ) : (
+                        <div className="px-4 py-3 bg-muted/10 text-sm whitespace-pre-wrap">
+                          {notice.bodySnippet || "No message body available."}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
