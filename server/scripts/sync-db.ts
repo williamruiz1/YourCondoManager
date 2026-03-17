@@ -20,7 +20,10 @@ import * as readline from "readline";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const DEV_URL = process.env.DATABASE_URL;
+// DEV_DATABASE_URL explicitly identifies the source (dev) DB.
+// Falls back to DATABASE_URL only when PRODUCTION_DATABASE_URL is also set
+// (i.e. someone is running the script manually with DATABASE_URL pointing to dev).
+const DEV_URL = process.env.DEV_DATABASE_URL || process.env.DATABASE_URL;
 const PROD_URL = process.env.PRODUCTION_DATABASE_URL;
 
 /** Never synced — active sessions should not be wiped. */
@@ -153,9 +156,8 @@ async function syncTable(
     return { devRows: devRows.length, deleted: prodCount, inserted: devRows.length, skipped: false };
   }
 
-  // Delete all production rows (FK enforcement is already disabled at this point)
-  const deleteRes = await prodClient.query(`DELETE FROM public."${table}"`);
-  const deleted = deleteRes.rowCount ?? 0;
+  // Deletes are handled in bulk before this function is called (reverse FK order)
+  const deleted = 0;
 
   if (devRows.length === 0) {
     return { devRows: 0, deleted, inserted: 0, skipped: false };
@@ -166,20 +168,56 @@ async function syncTable(
   const colList = columns.map((c) => `"${c}"`).join(", ");
   let inserted = 0;
 
+  // Determine which columns are JSON/JSONB by OID (114 = json, 3802 = jsonb).
+  // These must be serialized to a string even when pg returns them as JS arrays.
+  const JSON_OIDS = new Set([114, 3802]);
+  const jsonColIdxs = new Set<number>(
+    devResult.fields
+      .map((f, i) => (JSON_OIDS.has(f.dataTypeID) ? i : -1))
+      .filter((i) => i !== -1),
+  );
+
   for (let i = 0; i < devRows.length; i += BATCH_SIZE) {
     const batch = devRows.slice(i, i + BATCH_SIZE);
     const values: unknown[] = [];
     const placeholders = batch.map((row, rowIdx) => {
       const rowPlaceholders = columns.map((col, colIdx) => {
-        values.push(row[col] ?? null);
+        let val = row[col] ?? null;
+        if (val !== null && !(val instanceof Date)) {
+          if (jsonColIdxs.has(colIdx)) {
+            // JSON/JSONB column — always serialize to string (even if value is an array)
+            if (typeof val !== "string") val = JSON.stringify(val);
+          } else if (typeof val === "object" && !Array.isArray(val)) {
+            // Non-json object column (shouldn't normally occur, but guard it)
+            val = JSON.stringify(val);
+          }
+          // Arrays and scalars pass through unchanged
+        }
+        values.push(val);
         return `$${rowIdx * columns.length + colIdx + 1}`;
       });
       return `(${rowPlaceholders.join(", ")})`;
     });
-    await prodClient.query(
-      `INSERT INTO public."${table}" (${colList}) VALUES ${placeholders.join(", ")}`,
-      values,
-    );
+    try {
+      await prodClient.query(
+        `INSERT INTO public."${table}" (${colList}) VALUES ${placeholders.join(", ")}`,
+        values,
+      );
+    } catch (insertErr: unknown) {
+      // Dump the problematic row/values for diagnosis
+      err(`Insert failed on table "${table}" at batch offset ${i}`);
+      err(`Columns: ${columns.join(", ")}`);
+      for (let vi = 0; vi < values.length; vi++) {
+        const col = columns[vi % columns.length];
+        const v = values[vi];
+        if (v !== null && typeof v === "string" && (v.startsWith("{") || v.startsWith("["))) {
+          err(`  $${vi + 1} [${col}] = ${v.slice(0, 120)}`);
+        } else if (v !== null && typeof v === "object") {
+          err(`  $${vi + 1} [${col}] TYPE=${typeof v} constructor=${(v as object).constructor?.name} val=${JSON.stringify(v).slice(0, 120)}`);
+        }
+      }
+      throw insertErr;
+    }
     inserted += batch.length;
   }
 
@@ -288,11 +326,18 @@ async function main() {
 
   if (!DRY_RUN) {
     await prodClient.query("BEGIN");
-    // Disable FK enforcement for the duration of the sync
-    await prodClient.query("SET LOCAL session_replication_role = 'replica'");
   }
 
   try {
+    // Delete in REVERSE dependency order (children before parents) to satisfy FK constraints
+    if (!DRY_RUN) {
+      const reversedTables = [...orderedTables].reverse();
+      for (const table of reversedTables) {
+        await prodClient.query(`DELETE FROM public."${table}"`);
+      }
+    }
+
+    // Insert in FORWARD dependency order (parents before children)
     for (const table of orderedTables) {
       const result = await syncTable(devClient, prodClient, table, {
         dryRun: DRY_RUN,
