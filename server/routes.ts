@@ -6994,7 +6994,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Check whether this email has any active portal access across any association
       const accesses = await storage.getPortalAccessesByEmail(email);
-      const activeAccesses = accesses.filter((a) => a.status === "active" || a.status === "invited");
+      const activeAccesses = accesses.filter((a) => {
+        if (a.status !== "active" && a.status !== "invited") return false;
+        if (a.role !== "board-member" && !a.unitId) return false;
+        return true;
+      });
 
       // Auto-provision portal access if the email matches a known owner/person with no existing access
       if (activeAccesses.length === 0) {
@@ -7073,20 +7077,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         try {
           await sendPlatformEmail({
             to: email,
-            subject: "Your owner portal login code",
-            html: `
-<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-  <div style="margin-bottom:24px">
-    <div style="font-size:18px;font-weight:600;color:#111827">Owner Portal</div>
-  </div>
-  <p style="color:#374151;margin:0 0 16px">Use the code below to sign in to your owner portal. This code expires in <strong>15 minutes</strong>.</p>
-  <div style="background:#f3f4f6;border-radius:8px;padding:24px;text-align:center;margin:24px 0">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:8px">Your login code</div>
-    <div style="font-size:36px;font-weight:700;letter-spacing:0.25em;color:#111827;font-family:monospace">${otp}</div>
-  </div>
-  <p style="font-size:13px;color:#6b7280;margin:0">If you did not request this code, you can safely ignore this email. Do not share this code with anyone.</p>
-</div>`,
-            text: `Your owner portal login code is: ${otp}\n\nThis code expires in 15 minutes.\n\nIf you did not request this code, you can safely ignore this email.`,
+            subject: "Your Owner Portal Login Code — Your Condo Management",
+            html: `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;padding:40px 16px">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+
+        <!-- Header -->
+        <tr><td style="background-color:#1e293b;border-radius:12px 12px 0 0;padding:28px 32px">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td>
+                <div style="display:inline-block;background-color:#6366f1;color:#ffffff;font-size:13px;font-weight:700;letter-spacing:0.05em;padding:6px 12px;border-radius:6px">YCM</div>
+              </td>
+            </tr>
+            <tr><td style="padding-top:14px">
+              <div style="font-size:20px;font-weight:600;color:#ffffff">Your Condo Management</div>
+              <div style="font-size:13px;color:#94a3b8;margin-top:2px">Owner Portal</div>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <!-- Body -->
+        <tr><td style="background-color:#ffffff;padding:32px">
+          <p style="margin:0 0 8px;font-size:22px;font-weight:600;color:#0f172a">Your login code</p>
+          <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.6">
+            Use the code below to sign in to your owner portal.<br>
+            This code expires in <strong style="color:#0f172a">15 minutes</strong>.
+          </p>
+
+          <!-- Code block -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px">
+            <tr><td style="background-color:#f1f5f9;border:2px dashed #cbd5e1;border-radius:10px;padding:28px;text-align:center">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#64748b;margin-bottom:10px;font-weight:600">One-time code</div>
+              <div style="font-size:42px;font-weight:700;letter-spacing:0.3em;color:#1e293b;font-family:'Courier New',Courier,monospace">${otp}</div>
+            </td></tr>
+          </table>
+
+          <p style="margin:0 0 16px;font-size:14px;color:#475569;line-height:1.6">
+            Enter this code on the login screen to access your account. For security, do not share this code with anyone — Your Condo Management will never ask for it.
+          </p>
+
+          <table cellpadding="0" cellspacing="0" style="margin-bottom:8px">
+            <tr><td style="background-color:#fef3c7;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;padding:10px 14px">
+              <span style="font-size:13px;color:#92400e">If you did not request this code, you can safely ignore this email.</span>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="background-color:#f1f5f9;border-radius:0 0 12px 12px;padding:20px 32px">
+          <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">
+            &copy; ${new Date().getFullYear()} Your Condo Management &nbsp;&middot;&nbsp; Owner Portal &nbsp;&middot;&nbsp; This is an automated message, please do not reply.
+          </p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+            text: `Your Condo Management — Owner Portal\n\nYour login code is: ${otp}\n\nThis code expires in 15 minutes. Enter it on the login screen to access your account.\n\nDo not share this code with anyone. If you did not request it, you can safely ignore this email.\n\n© ${new Date().getFullYear()} Your Condo Management`,
           });
         } catch (emailErr: any) {
           console.error("[portal-otp][email-send-failed]", { email, error: emailErr.message });
@@ -7139,7 +7193,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Resolve all active portal accesses for this email
       const allAccesses = await storage.getPortalAccessesByEmail(email);
-      const activeAccesses = allAccesses.filter((a) => a.status === "active" || a.status === "invited");
+      const activeAccesses = allAccesses.filter((a) => {
+        if (a.status !== "active" && a.status !== "invited") return false;
+        // Non-board accounts must have a unit linked — no unit means nothing useful to show
+        if (a.role !== "board-member" && !a.unitId) return false;
+        return true;
+      });
       if (activeAccesses.length === 0) return res.status(404).json({ message: "No active portal access found" });
 
       // If owner has multiple associations and hasn't chosen yet, return the list
@@ -7231,6 +7290,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       unitNumber,
       building,
     });
+  });
+
+  // Returns public-facing details for the portal user's association
+  app.get("/api/portal/association", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const assocs = await storage.getAssociations();
+      const assoc = assocs.find((a) => a.id === req.portalAssociationId);
+      if (!assoc) return res.status(404).json({ message: "Association not found" });
+      res.json({
+        id: assoc.id,
+        name: assoc.name,
+        associationType: assoc.associationType ?? null,
+        address: assoc.address ?? null,
+        city: assoc.city ?? null,
+        state: assoc.state ?? null,
+        country: assoc.country ?? null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
   });
 
   // Returns all associations the signed-in owner's email has portal access to (for switcher)

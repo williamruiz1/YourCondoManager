@@ -137,9 +137,13 @@ type AssociationChoice = {
 export default function OwnerPortalPage() {
   const [email, setEmail] = useState("");
   const [portalAccessId, setPortalAccessId] = useState(() => window.localStorage.getItem("portalAccessId") || "");
-  const [onboardingDismissed, setOnboardingDismissed] = useState(
-    () => window.localStorage.getItem(`portal-onboarding-dismissed-${window.localStorage.getItem("portalAccessId") || ""}`) === "1"
-  );
+  // "permanent" = localStorage, "session" = sessionStorage (remind later), false = show
+  const [onboardingDismissed, setOnboardingDismissed] = useState<boolean>(() => {
+    const key = `portal-onboarding-dismissed-${window.localStorage.getItem("portalAccessId") || ""}`;
+    if (window.localStorage.getItem(key) === "permanent") return true;
+    if (window.sessionStorage.getItem(key) === "session") return true;
+    return false;
+  });
   const [requestedPhone, setRequestedPhone] = useState("");
   const [requestedMailingAddress, setRequestedMailingAddress] = useState("");
   const [requestedEmergencyContactName, setRequestedEmergencyContactName] = useState("");
@@ -183,6 +187,9 @@ export default function OwnerPortalPage() {
   const [otpSimulated, setOtpSimulated] = useState<string | null>(null);
   const [associationChoices, setAssociationChoices] = useState<AssociationChoice[]>([]);
   const [activeTab, setActiveTab] = useState<"overview" | "financials" | "unit" | "maintenance" | "documents" | "notices" | "board">("overview");
+  const [expandedNoticeId, setExpandedNoticeId] = useState<string | null>(null);
+  const [maintenanceSuccess, setMaintenanceSuccess] = useState(false);
+  const [contactUpdateSuccess, setContactUpdateSuccess] = useState(false);
 
   const requestLogin = useMutation({
     mutationFn: async () => {
@@ -300,6 +307,25 @@ export default function OwnerPortalPage() {
     paymentPlan: { id: string; totalAmount: number; amountPaid: number; installmentAmount: number; installmentFrequency: string; nextDueDate: string | null; status: string } | null;
     recentEntries: OwnerLedgerEntry[];
   };
+  type PortalAssociation = {
+    id: string;
+    name: string;
+    associationType: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    country: string | null;
+  };
+  const { data: portalAssociation } = useQuery<PortalAssociation>({
+    queryKey: ["/api/portal/association", portalAccessId || "none"],
+    enabled: Boolean(portalAccessId),
+    queryFn: async () => {
+      const res = await fetch("/api/portal/association", { headers: portalHeaders(portalAccessId) });
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
   const { data: financialDashboard, refetch: refetchFinancialDashboard } = useQuery<FinancialDashboard>({
     queryKey: ["/api/portal/financial-dashboard", portalAccessId || "none"],
     enabled: Boolean(portalAccessId),
@@ -605,6 +631,8 @@ export default function OwnerPortalPage() {
       setRequestedEmergencyContactName("");
       setRequestedEmergencyContactPhone("");
       setRequestedContactPreference("");
+      setContactUpdateSuccess(true);
+      setTimeout(() => setContactUpdateSuccess(false), 5000);
       await refetchRequests();
     },
   });
@@ -649,6 +677,8 @@ export default function OwnerPortalPage() {
       setMaintenanceCategory("general");
       setMaintenancePriority("medium");
       setMaintenanceFiles([]);
+      setMaintenanceSuccess(true);
+      setTimeout(() => setMaintenanceSuccess(false), 5000);
       await refetchMaintenanceRequests();
     },
   });
@@ -1166,9 +1196,14 @@ export default function OwnerPortalPage() {
                   <Button onClick={() => verifyLogin.mutate(undefined)} disabled={verifyLogin.isPending || otp.length < 6} className="w-full">
                     {verifyLogin.isPending ? "Verifying…" : "Verify & Sign In"}
                   </Button>
-                  <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); }}>
-                    Use a different email
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" className="flex-1 text-xs" onClick={() => { setOtp(""); setOtpSimulated(null); requestLogin.mutate(); }} disabled={requestLogin.isPending}>
+                      {requestLogin.isPending ? "Sending…" : "Resend code"}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="flex-1 text-xs" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); }}>
+                      Use a different email
+                    </Button>
+                  </div>
                 </>
               )}
               {otpStep === "pick" && (
@@ -1202,6 +1237,30 @@ export default function OwnerPortalPage() {
           <p className="text-center text-xs text-muted-foreground">
             Need help? Contact your association management office.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Block non-board accounts with no unit — portal has nothing useful to show them
+  if (me && !me.hasBoardAccess && !me.unitId) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-md space-y-4 text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-sm font-bold mb-2">YCM</div>
+          <h1 className="text-xl font-semibold">No Unit Linked to Your Account</h1>
+          <p className="text-muted-foreground text-sm">
+            Your account is not associated with any unit. Please contact your association management office to have your unit linked before accessing the portal.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.localStorage.removeItem("portalAccessId");
+              setPortalAccessId("");
+            }}
+          >
+            Sign Out
+          </Button>
         </div>
       </div>
     );
@@ -1296,74 +1355,207 @@ export default function OwnerPortalPage() {
         </div>
       </div>
 
-      <div className="p-6 space-y-6 max-w-5xl mx-auto">
+      <div className="p-6 md:p-8 space-y-8 max-w-5xl mx-auto">
 
-      {(activeTab === "overview") && !onboardingDismissed && !me?.hasBoardAccess && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="p-5 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-xs uppercase tracking-wide text-primary font-semibold">Welcome to Your Portal</div>
-                <div className="mt-1 font-medium">Here are a few things to get started</div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs shrink-0"
-                onClick={() => {
-                  window.localStorage.setItem(`portal-onboarding-dismissed-${portalAccessId}`, "1");
-                  setOnboardingDismissed(true);
-                }}
-              >
-                Dismiss
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {[
-                {
-                  done: true,
-                  label: "Access your owner portal",
-                  detail: "You're in! Your portal is ready.",
-                },
-                {
-                  done: Boolean(portalLedger),
-                  label: "Review your balance",
-                  detail: portalLedger
-                    ? `Outstanding balance: $${portalLedger.balance.toFixed(2)}`
-                    : "Review any outstanding charges or payments.",
-                },
-                {
-                  done: Boolean(documents?.length),
-                  label: "Browse community documents",
-                  detail: documents?.length
-                    ? `${documents.length} document(s) available`
-                    : "Community CC&Rs, bylaws, and notices are shared here.",
-                },
-                {
-                  done: Boolean(requests?.length),
-                  label: "Verify your contact information",
-                  detail: "Review and update your phone, mailing address, or emergency contact.",
-                },
-                {
-                  done: false,
-                  label: "Submit a maintenance request if needed",
-                  detail: "Use the maintenance section below to report any issues in your unit or common areas.",
-                },
-              ].map((step, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.done ? "bg-green-500 text-white" : "bg-muted border text-muted-foreground"}`}>
-                    {step.done ? "✓" : i + 1}
+      {/* Overview Tab: association hero + onboarding + balance + notices */}
+      {activeTab === "overview" && (
+        <>
+          {/* Association hero */}
+          <div className="rounded-xl bg-gradient-to-br from-slate-800 to-slate-700 text-white p-6 md:p-8 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Your Association</div>
+                <h2 className="text-2xl md:text-3xl font-bold leading-tight">
+                  {portalAssociation?.name ?? associationName}
+                </h2>
+                {portalAssociation && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-300 pt-1">
+                    {portalAssociation.associationType && (
+                      <span className="capitalize">{portalAssociation.associationType.replace(/-/g, " ")}</span>
+                    )}
+                    {portalAssociation.address && (
+                      <span>
+                        {[portalAssociation.address, portalAssociation.city, portalAssociation.state]
+                          .filter(Boolean).join(", ")}
+                      </span>
+                    )}
                   </div>
+                )}
+              </div>
+              {unitLabel && (
+                <div className="bg-white/10 rounded-lg px-4 py-3 text-sm shrink-0">
+                  <div className="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Your Unit</div>
+                  <div className="font-semibold text-white">{unitLabel}</div>
+                  <div className="text-slate-300 text-xs capitalize mt-0.5">{me?.effectiveRole}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Onboarding checklist */}
+          {!onboardingDismissed && !me?.hasBoardAccess && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="p-6 space-y-5">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className={`text-sm font-medium ${step.done ? "line-through text-muted-foreground" : ""}`}>{step.label}</div>
-                    <div className="text-xs text-muted-foreground">{step.detail}</div>
+                    <div className="text-xs uppercase tracking-widest text-primary font-semibold mb-1">Getting Started</div>
+                    <div className="font-semibold text-base">Welcome to your owner portal</div>
+                    <div className="text-sm text-muted-foreground mt-0.5">Complete these steps to get fully set up.</div>
+                  </div>
+                  <div className="flex flex-col gap-1.5 shrink-0 items-end">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-7 px-2"
+                      onClick={() => {
+                        const key = `portal-onboarding-dismissed-${portalAccessId}`;
+                        window.sessionStorage.setItem(key, "session");
+                        setOnboardingDismissed(true);
+                      }}
+                    >
+                      Remind me later
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-7 px-2 text-muted-foreground"
+                      onClick={() => {
+                        const key = `portal-onboarding-dismissed-${portalAccessId}`;
+                        window.localStorage.setItem(key, "permanent");
+                        setOnboardingDismissed(true);
+                      }}
+                    >
+                      Dismiss permanently
+                    </Button>
                   </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <div className="space-y-3">
+                  {[
+                    {
+                      done: true,
+                      label: "Access your owner portal",
+                      detail: "You're in — your portal is ready.",
+                      tab: null,
+                    },
+                    {
+                      done: (financialDashboard?.balance ?? 0) === 0,
+                      label: "Review your balance",
+                      detail: financialDashboard
+                        ? (financialDashboard.balance > 0
+                            ? `You have $${financialDashboard.balance.toFixed(2)} outstanding.`
+                            : "Your account is current — no balance due.")
+                        : "Check any outstanding charges or payments.",
+                      tab: "financials" as const,
+                    },
+                    {
+                      done: Boolean(documents?.length),
+                      label: "Browse community documents",
+                      detail: documents?.length
+                        ? `${documents.length} document${documents.length > 1 ? "s" : ""} available`
+                        : "CC&Rs, bylaws, and community notices are shared here.",
+                      tab: "documents" as const,
+                    },
+                    {
+                      done: Boolean(requests?.length),
+                      label: "Verify your contact information",
+                      detail: "Confirm your phone, mailing address, and emergency contact are current.",
+                      tab: "unit" as const,
+                    },
+                    {
+                      done: Boolean(maintenanceRequests?.length),
+                      label: "Submit a maintenance request if needed",
+                      detail: "Report any issues in your unit or common areas.",
+                      tab: "maintenance" as const,
+                    },
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-start gap-3">
+                      <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.done ? "bg-green-500 text-white" : "bg-white border-2 border-primary/30 text-primary"}`}>
+                        {step.done ? "✓" : i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-sm font-medium ${step.done ? "line-through text-muted-foreground" : ""}`}>{step.label}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{step.detail}</div>
+                      </div>
+                      {!step.done && step.tab && (
+                        <button
+                          className="text-xs text-primary hover:underline shrink-0 mt-0.5"
+                          onClick={() => setActiveTab(step.tab!)}
+                        >
+                          Go →
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Balance summary */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground">Amount Due</div>
+                  {financialDashboard ? (
+                    <div className={`text-3xl font-bold mt-1 ${financialDashboard.balance > 0 ? "text-red-600" : "text-green-600"}`}>
+                      {financialDashboard.balance > 0
+                        ? `$${financialDashboard.balance.toFixed(2)}`
+                        : financialDashboard.balance < 0
+                        ? `Credit $${Math.abs(financialDashboard.balance).toFixed(2)}`
+                        : "$0.00"}
+                    </div>
+                  ) : (
+                    <div className="text-3xl font-bold mt-1 text-muted-foreground">—</div>
+                  )}
+                  {financialDashboard?.nextDueDate && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Next charge due {new Date(financialDashboard.nextDueDate).toLocaleDateString()}
+                    </div>
+                  )}
+                </div>
+                <Button size="sm" onClick={() => setActiveTab("financials")}>View Financials</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Recent notices */}
+          {(notices ?? []).length > 0 && (
+            <Card>
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold">Recent Notices</h2>
+                  <button className="text-xs text-primary hover:underline" onClick={() => setActiveTab("notices")}>View all</button>
+                </div>
+                <div className="divide-y">
+                  {(notices ?? []).slice(0, 3).map((notice) => {
+                    const isExpanded = expandedNoticeId === notice.id;
+                    return (
+                      <div key={notice.id} className="py-3 first:pt-0 last:pb-0">
+                        <button
+                          className="w-full text-left"
+                          onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-sm font-medium">{notice.subject || "—"}</div>
+                            <span className="text-xs text-muted-foreground shrink-0">{isExpanded ? "▲" : "▼"}</span>
+                          </div>
+                          {!isExpanded && <div className="text-xs text-muted-foreground mt-0.5 truncate">{notice.bodySnippet || ""}</div>}
+                        </button>
+                        {isExpanded && (
+                          <div className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{notice.bodySnippet || "No message body available."}</div>
+                        )}
+                        <div className="text-xs text-muted-foreground mt-1">{new Date(notice.createdAt).toLocaleDateString()}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
       {me?.hasBoardAccess && activeTab === "board" ? (
@@ -2268,55 +2460,6 @@ export default function OwnerPortalPage() {
         </>
       ) : null}
 
-      {/* Overview Tab: balance summary + recent notices */}
-      {activeTab === "overview" && (
-        <>
-          {/* Balance summary card */}
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Amount Due</div>
-                  <div className={`text-3xl font-bold mt-0.5 ${(financialDashboard?.balance ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>
-                    {(financialDashboard?.balance ?? 0) > 0
-                      ? `$${(financialDashboard?.balance ?? 0).toFixed(2)}`
-                      : (financialDashboard?.balance ?? 0) < 0
-                      ? `Credit $${Math.abs(financialDashboard?.balance ?? 0).toFixed(2)}`
-                      : "$0.00"}
-                  </div>
-                  {financialDashboard?.nextDueDate && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Next charge due {new Date(financialDashboard.nextDueDate).toLocaleDateString()}
-                    </div>
-                  )}
-                </div>
-                <Button size="sm" onClick={() => setActiveTab("financials")}>View Financials</Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Recent notices */}
-          {(notices ?? []).length > 0 && (
-            <Card>
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold">Recent Notices</h2>
-                  <button className="text-xs text-primary hover:underline" onClick={() => setActiveTab("notices")}>View all</button>
-                </div>
-                <div className="divide-y">
-                  {(notices ?? []).slice(0, 3).map((notice) => (
-                    <div key={notice.id} className="py-2.5 first:pt-0 last:pb-0">
-                      <div className="text-sm font-medium">{notice.subject || "—"}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{notice.bodySnippet || ""}</div>
-                      <div className="text-xs text-muted-foreground mt-1">{new Date(notice.createdAt).toLocaleDateString()}</div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
 
       {/* Documents Tab */}
       {activeTab === "documents" && (
@@ -2363,38 +2506,45 @@ export default function OwnerPortalPage() {
             <h2 className="text-lg font-semibold">Notices</h2>
             <p className="text-sm text-muted-foreground">Informational notices sent to your unit from management. These are one-way communications — no reply is needed.</p>
           </div>
-          <div className="rounded-md border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Subject</TableHead>
-                <TableHead>Message</TableHead>
-                <TableHead>Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(notices ?? []).filter((n) => !(n.relatedType || "").startsWith("maintenance") && !(n.relatedType || "").startsWith("work-order")).map((notice) => {
-                const isPaymentNotice = (notice.relatedType || "").includes("payment") || (notice.subject || "").toLowerCase().includes("payment") || (notice.subject || "").toLowerCase().includes("due") || (notice.subject || "").toLowerCase().includes("balance");
-                const isRecent = (Date.now() - new Date(notice.createdAt).getTime()) < 7 * 24 * 60 * 60 * 1000;
-                return (
-                  <TableRow key={notice.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {notice.subject || "-"}
-                        {isRecent && <Badge variant="default" className="text-xs">New</Badge>}
-                        {isPaymentNotice && <Badge variant="secondary" className="text-xs">Payment</Badge>}
+          <div className="space-y-2">
+            {(notices ?? []).filter((n) => !(n.relatedType || "").startsWith("maintenance") && !(n.relatedType || "").startsWith("work-order")).map((notice) => {
+              const isPaymentNotice = (notice.relatedType || "").includes("payment") || (notice.subject || "").toLowerCase().includes("payment") || (notice.subject || "").toLowerCase().includes("due") || (notice.subject || "").toLowerCase().includes("balance");
+              const isRecent = (Date.now() - new Date(notice.createdAt).getTime()) < 7 * 24 * 60 * 60 * 1000;
+              const isExpanded = expandedNoticeId === notice.id;
+              return (
+                <div key={notice.id} className="rounded-md border overflow-hidden">
+                  <button
+                    className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors"
+                    onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm">{notice.subject || "—"}</span>
+                          {isRecent && <Badge variant="default" className="text-xs">New</Badge>}
+                          {isPaymentNotice && <Badge variant="secondary" className="text-xs">Payment</Badge>}
+                        </div>
+                        {!isExpanded && notice.bodySnippet && (
+                          <div className="text-xs text-muted-foreground mt-0.5 truncate">{notice.bodySnippet}</div>
+                        )}
                       </div>
-                    </TableCell>
-                    <TableCell className="max-w-[360px] text-sm text-muted-foreground">{notice.bodySnippet || "-"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{new Date(notice.createdAt).toLocaleDateString()}</TableCell>
-                  </TableRow>
-                );
-              })}
-              {(notices ?? []).filter((n) => !(n.relatedType || "").startsWith("maintenance") && !(n.relatedType || "").startsWith("work-order")).length === 0 && (
-                <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-4">No notices yet.</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground">{new Date(notice.createdAt).toLocaleDateString()}</span>
+                        <span className="text-xs text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>
+                      </div>
+                    </div>
+                  </button>
+                  {isExpanded && (
+                    <div className="px-4 py-3 border-t bg-muted/10 text-sm whitespace-pre-wrap">
+                      {notice.bodySnippet || "No message body available."}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {(notices ?? []).filter((n) => !(n.relatedType || "").startsWith("maintenance") && !(n.relatedType || "").startsWith("work-order")).length === 0 && (
+              <div className="rounded-md border py-8 text-center text-sm text-muted-foreground">No notices yet.</div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -2426,7 +2576,15 @@ export default function OwnerPortalPage() {
             <Textarea placeholder="New mailing address" value={requestedMailingAddress} onChange={(e) => setRequestedMailingAddress(e.target.value)} />
             <Input placeholder="Emergency contact name" value={requestedEmergencyContactName} onChange={(e) => setRequestedEmergencyContactName(e.target.value)} />
             <Input placeholder="Emergency contact phone" value={requestedEmergencyContactPhone} onChange={(e) => setRequestedEmergencyContactPhone(e.target.value)} />
-            <Input placeholder="Contact preference (email/phone/sms)" value={requestedContactPreference} onChange={(e) => setRequestedContactPreference(e.target.value)} />
+            <Select value={requestedContactPreference || "none"} onValueChange={(v) => setRequestedContactPreference(v === "none" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="Contact preference" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No preference</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="phone">Phone</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <Button
             onClick={() => submitContactUpdate.mutate()}
@@ -2441,8 +2599,16 @@ export default function OwnerPortalPage() {
               )
             }
           >
-            Submit Update Request
+            {submitContactUpdate.isPending ? "Submitting…" : "Submit Update Request"}
           </Button>
+          {contactUpdateSuccess && (
+            <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              Your update request has been submitted and is pending review by management.
+            </div>
+          )}
+          {submitContactUpdate.isError && (
+            <p className="text-sm text-destructive">{(submitContactUpdate.error as Error).message}</p>
+          )}
           </div>
 
           <div>
@@ -2459,7 +2625,23 @@ export default function OwnerPortalPage() {
               {(requests ?? []).map((request) => (
                 <TableRow key={request.id}>
                   <TableCell className="max-w-[460px]">
-                    <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(request.requestJson, null, 2)}</pre>
+                    <div className="text-sm space-y-0.5">
+                      {Object.entries(request.requestJson as Record<string, string>).map(([key, val]) => {
+                        const labels: Record<string, string> = {
+                          phone: "Phone",
+                          mailingAddress: "Mailing address",
+                          emergencyContactName: "Emergency contact name",
+                          emergencyContactPhone: "Emergency contact phone",
+                          contactPreference: "Contact preference",
+                        };
+                        return (
+                          <div key={key}>
+                            <span className="text-muted-foreground">{labels[key] ?? key}:</span>{" "}
+                            <span className="font-medium">{String(val)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={request.reviewStatus === "approved" ? "default" : request.reviewStatus === "rejected" ? "destructive" : "outline"}>
@@ -2483,7 +2665,7 @@ export default function OwnerPortalPage() {
         <CardContent className="p-6 space-y-3">
           <h2 className="text-lg font-semibold">Submit Maintenance Request</h2>
           <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-            SLA policy: `urgent` requests target response within 4 hours and escalate faster if overdue. `high` targets 12 hours, `medium` 48 hours, `low` 120 hours.
+            Response targets: <strong>urgent</strong> — 4 hours, <strong>high</strong> — 12 hours, <strong>medium</strong> — 48 hours, <strong>low</strong> — 120 hours. Overdue requests escalate automatically.
           </div>
           <Input placeholder="Issue title" value={maintenanceTitle} onChange={(e) => setMaintenanceTitle(e.target.value)} />
           <Textarea placeholder="Describe the issue" value={maintenanceDescription} onChange={(e) => setMaintenanceDescription(e.target.value)} />
@@ -2519,8 +2701,16 @@ export default function OwnerPortalPage() {
             onClick={() => submitMaintenanceRequest.mutate()}
             disabled={submitMaintenanceRequest.isPending || !maintenanceTitle.trim() || !maintenanceDescription.trim()}
           >
-            Submit Maintenance Request
+            {submitMaintenanceRequest.isPending ? "Submitting…" : "Submit Maintenance Request"}
           </Button>
+          {submitMaintenanceRequest.isError && (
+            <p className="text-sm text-destructive">{(submitMaintenanceRequest.error as Error).message}</p>
+          )}
+          {maintenanceSuccess && (
+            <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              Your maintenance request was submitted successfully. We'll notify you when there's an update.
+            </div>
+          )}
 
           <div className="space-y-3">
             {(maintenanceRequests ?? []).map((request) => (
@@ -2531,9 +2721,8 @@ export default function OwnerPortalPage() {
                     <div className="text-xs text-muted-foreground">{request.locationText || "Location not specified"} · {request.category}</div>
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    <Badge variant="secondary">{request.status}</Badge>
+                    <Badge variant={getStatusBadgeVariant(request.status)}>{formatStatusLabel(request.status)}</Badge>
                     <Badge variant={request.priority === "urgent" ? "destructive" : "outline"}>{request.priority}</Badge>
-                    <Badge variant="outline">Escalation {request.escalationStage}</Badge>
                   </div>
                 </div>
                 <div className="text-sm text-muted-foreground">{request.description}</div>
@@ -2666,21 +2855,17 @@ export default function OwnerPortalPage() {
 
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium">Transaction History</div>
-            <Button size="sm" onClick={() => { setPaymentFormOpen(!paymentFormOpen); setPaymentReceipt(null); }}>
-              {paymentFormOpen ? "Cancel" : "Make a Payment"}
-            </Button>
           </div>
 
-          {paymentFormOpen ? (
+          {false ? (
             <div className="rounded-md border p-4 space-y-3 bg-muted/30">
               <div className="text-sm font-semibold">Submit Payment</div>
-              {/* Quick-pay buttons */}
               {(financialDashboard?.balance ?? 0) > 0 && (
                 <div className="flex flex-wrap gap-2 pb-1">
                   <span className="text-xs text-muted-foreground self-center">Quick pay:</span>
                   {[
                     { label: "Pay Balance Due", amount: (financialDashboard?.balance ?? 0) },
-                    ...(financialDashboard?.paymentPlan ? [{ label: "Pay Installment", amount: financialDashboard.paymentPlan.installmentAmount }] : []),
+                    ...(financialDashboard?.paymentPlan ? [{ label: "Pay Installment", amount: financialDashboard?.paymentPlan?.installmentAmount ?? 0 }] : []),
                   ].map(q => (
                     <Button
                       key={q.label}
@@ -2745,156 +2930,33 @@ export default function OwnerPortalPage() {
         </CardContent>
       </Card>
 
-      {/* Saved Payment Methods */}
-      <Card>
+      {/* Online Payments — Coming Soon */}
+      <Card className="opacity-75">
         <CardContent className="p-6 space-y-4">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Payment Methods</h2>
-              <p className="text-sm text-muted-foreground">Manage your saved payment methods and set a default.</p>
-            </div>
-            <Button size="sm" variant="outline" onClick={() => setAddMethodOpen(!addMethodOpen)}>
-              {addMethodOpen ? "Cancel" : "+ Add Method"}
-            </Button>
-          </div>
-
-          {addMethodOpen && (
-            <div className="rounded-md border p-4 space-y-3 bg-muted/30">
-              <div className="text-sm font-semibold">Add Payment Method</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Type</label>
-                  <select className="w-full h-9 border rounded-md px-2 text-sm" value={methodForm.methodType} onChange={e => setMethodForm(f => ({ ...f, methodType: e.target.value }))}>
-                    <option value="ach">ACH / Bank Account</option>
-                    <option value="card">Debit/Credit Card</option>
-                    <option value="check">Check</option>
-                    <option value="zelle">Zelle</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Display Name</label>
-                  <Input placeholder="Chase checking ••••1234" value={methodForm.displayName} onChange={e => setMethodForm(f => ({ ...f, displayName: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Last 4 digits (optional)</label>
-                  <Input placeholder="1234" maxLength={4} value={methodForm.last4} onChange={e => setMethodForm(f => ({ ...f, last4: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Bank Name (optional)</label>
-                  <Input placeholder="Chase" value={methodForm.bankName} onChange={e => setMethodForm(f => ({ ...f, bankName: e.target.value }))} />
-                </div>
-              </div>
               <div className="flex items-center gap-2">
-                <input type="checkbox" id="default-method" checked={methodForm.isDefault} onChange={e => setMethodForm(f => ({ ...f, isDefault: e.target.checked }))} />
-                <label htmlFor="default-method" className="text-sm">Set as default payment method</label>
+                <h2 className="text-lg font-semibold">Online Payments</h2>
+                <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setAddMethodOpen(false)}>Cancel</Button>
-                <Button size="sm" onClick={() => addMethod.mutate()} disabled={!methodForm.displayName || addMethod.isPending}>Save</Button>
-              </div>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Online payment processing, saved payment methods, and autopay enrollment will be available here once activated.
+              </p>
             </div>
-          )}
-
-          {savedMethods.length > 0 ? (
-            <div className="space-y-2">
-              {savedMethods.map((m: any) => (
-                <div key={m.id} className="flex items-center justify-between rounded-md border p-3">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{m.displayName}</span>
-                      {m.isDefault ? <Badge variant="default" className="text-xs">Default</Badge> : null}
-                    </div>
-                    <div className="text-xs text-muted-foreground capitalize">{m.methodType}{m.bankName ? ` · ${m.bankName}` : ""}{m.last4 ? ` ••••${m.last4}` : ""}</div>
-                  </div>
-                  <div className="flex gap-1">
-                    {!m.isDefault && (
-                      <Button size="sm" variant="ghost" onClick={() => setDefaultMethod.mutate(m.id)}>Set Default</Button>
-                    )}
-                    <Button size="sm" variant="ghost" onClick={() => removeMethod.mutate(m.id)}>Remove</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            !addMethodOpen && <div className="text-sm text-muted-foreground py-2">No payment methods saved yet.</div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Autopay Enrollment */}
-      <Card>
-        <CardContent className="p-6 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">Autopay</h2>
-              <p className="text-sm text-muted-foreground">Automatically pay your dues on a recurring schedule.</p>
-            </div>
-            {autopayEnrollments.filter((e: any) => e.status === "active").length === 0 && (
-              <Button size="sm" onClick={() => setAutopayFormOpen(!autopayFormOpen)}>
-                {autopayFormOpen ? "Cancel" : "Enroll in Autopay"}
-              </Button>
-            )}
           </div>
-
-          {autopayFormOpen && (
-            <div className="rounded-md border p-4 space-y-3 bg-muted/30">
-              <div className="text-sm font-semibold">Set Up Autopay</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Amount ($)</label>
-                  <Input type="number" min="0.01" step="0.01" placeholder="0.00" value={autopayForm.amount} onChange={e => setAutopayForm(f => ({ ...f, amount: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Frequency</label>
-                  <select className="w-full h-9 border rounded-md px-2 text-sm" value={autopayForm.frequency} onChange={e => setAutopayForm(f => ({ ...f, frequency: e.target.value }))}>
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="annual">Annual</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Day of Month (1–28)</label>
-                  <Input type="number" min="1" max="28" value={autopayForm.dayOfMonth} onChange={e => setAutopayForm(f => ({ ...f, dayOfMonth: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Description</label>
-                  <Input placeholder="Autopay HOA dues" value={autopayForm.description} onChange={e => setAutopayForm(f => ({ ...f, description: e.target.value }))} />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setAutopayFormOpen(false)}>Cancel</Button>
-                <Button size="sm" onClick={() => enrollAutopay.mutate()} disabled={!autopayForm.amount || parseFloat(autopayForm.amount) <= 0 || enrollAutopay.isPending}>
-                  {enrollAutopay.isPending ? "Enrolling…" : "Enroll"}
-                </Button>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-lg border border-dashed p-4 space-y-1 bg-muted/20">
+              <div className="text-sm font-medium text-muted-foreground">Payment Methods</div>
+              <div className="text-xs text-muted-foreground">Save ACH, card, or other payment methods for easy payments.</div>
             </div>
-          )}
-
-          {autopayEnrollments.length > 0 ? (
-            <div className="space-y-2">
-              {autopayEnrollments.map((e: any) => (
-                <div key={e.id} className="flex items-center justify-between rounded-md border p-3">
-                  <div className="space-y-0.5">
-                    <div className="text-sm font-medium">{e.description} — ${e.amount.toFixed(2)} / {e.frequency}</div>
-                    <div className="text-xs text-muted-foreground">
-                      Day {e.dayOfMonth} of each period · Status: <span className={e.status === "active" ? "text-green-600" : "text-muted-foreground"}>{e.status}</span>
-                      {e.nextPaymentDate ? ` · Next: ${new Date(e.nextPaymentDate).toLocaleDateString()}` : ""}
-                    </div>
-                  </div>
-                  {e.status === "active" && (
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => cancelAutopay.mutate(e.id)}>Cancel</Button>
-                    </div>
-                  )}
-                </div>
-              ))}
+            <div className="rounded-lg border border-dashed p-4 space-y-1 bg-muted/20">
+              <div className="text-sm font-medium text-muted-foreground">Autopay</div>
+              <div className="text-xs text-muted-foreground">Automatically pay your dues on a recurring schedule.</div>
             </div>
-          ) : (
-            !autopayFormOpen && (
-              <div className="text-sm text-muted-foreground py-2">No autopay enrollment. Click "Enroll in Autopay" to set up automatic payments.</div>
-            )
-          )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            To make a payment in the meantime, please contact your association management office directly.
+          </p>
         </CardContent>
       </Card>
       </>
