@@ -293,6 +293,13 @@ function normalizeAdminRole(value: unknown): AdminRole {
 
 async function applyAdminContext(req: AdminRequest, adminUser: { id: string; email: string; role: string }) {
   const normalizedRole = normalizeAdminRole(adminUser.role);
+  console.log("[applyAdminContext]", {
+    adminUserId: adminUser.id,
+    email: adminUser.email,
+    rawRole: adminUser.role,
+    normalizedRole,
+    isPublishedState,
+  });
   if (normalizedRole !== "platform-admin") {
     let scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
     const portalRows = await storage.getPortalAccessesByEmail(adminUser.email);
@@ -329,8 +336,14 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
       }
     }
     req.adminScopedAssociationIds = scopes.map((scope) => scope.associationId);
+    console.log("[applyAdminContext][scoped]", {
+      email: adminUser.email,
+      scopeCount: req.adminScopedAssociationIds.length,
+      scopedAssociationIds: req.adminScopedAssociationIds,
+    });
   } else {
     req.adminScopedAssociationIds = [];
+    console.log("[applyAdminContext][platform-admin] full access granted", { email: adminUser.email });
   }
   req.adminUserId = adminUser.id;
   req.adminUserEmail = adminUser.email;
@@ -389,6 +402,14 @@ async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
       ? await storage.getAdminUserByEmail(authUser.email.trim().toLowerCase())
       : undefined;
 
+    console.log("[tryHydrateAdminFromSession][passport-path]", {
+      authUserId: authUser.id || null,
+      authEmail: authUser.email || null,
+      sessionAdminUserId: authUser.adminUserId || null,
+      adminById: adminById ? { id: adminById.id, role: adminById.role, isActive: adminById.isActive } : null,
+      adminByEmail: adminByEmail ? { id: adminByEmail.id, role: adminByEmail.role, isActive: adminByEmail.isActive } : null,
+    });
+
     let resolvedAdmin = adminById && adminById.isActive === 1 ? adminById : undefined;
     if (!resolvedAdmin && adminByEmail && adminByEmail.isActive === 1) {
       resolvedAdmin = adminByEmail;
@@ -406,19 +427,28 @@ async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
       }
     }
     if (!resolvedAdmin && authUser.email) {
+      console.warn("[tryHydrateAdminFromSession][no-admin-found-trying-bootstrap]", { email: authUser.email });
       resolvedAdmin = await resolveOrBootstrapAdminFromEmail(authUser.email, authUser.id);
     }
 
     if (resolvedAdmin && resolvedAdmin.isActive === 1) {
+      console.log("[tryHydrateAdminFromSession][resolved]", { email: authUser.email, role: resolvedAdmin.role, adminUserId: resolvedAdmin.id });
       await applyAdminContext(req, resolvedAdmin);
       return true;
     }
+    console.error("[tryHydrateAdminFromSession][passport-path-failed]", { authEmail: authUser.email || null, resolvedAdmin: resolvedAdmin ?? null });
   }
 
   const serializedAuthUserId = (req.session as { passport?: { user?: string } } | undefined)?.passport?.user;
-  if (!serializedAuthUserId) return false;
+  if (!serializedAuthUserId) {
+    console.log("[tryHydrateAdminFromSession][no-session]", { path: req.path });
+    return false;
+  }
   const sessionAuthUser = await storage.getAuthUserById(String(serializedAuthUserId));
-  if (!sessionAuthUser || sessionAuthUser.isActive !== 1) return false;
+  if (!sessionAuthUser || sessionAuthUser.isActive !== 1) {
+    console.error("[tryHydrateAdminFromSession][session-user-not-found-or-inactive]", { serializedAuthUserId });
+    return false;
+  }
 
   if (!req.user && req.login) {
     await new Promise<void>((resolve, reject) => {
@@ -429,13 +459,22 @@ async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
     });
   }
 
+  console.log("[tryHydrateAdminFromSession][session-fallback-path]", {
+    sessionAuthUserId: sessionAuthUser.id,
+    sessionEmail: sessionAuthUser.email,
+    sessionAdminUserId: sessionAuthUser.adminUserId || null,
+  });
+
   const adminUser = sessionAuthUser.adminUserId
     ? await storage.getAdminUserById(sessionAuthUser.adminUserId)
     : await storage.getAdminUserByEmail(sessionAuthUser.email);
   const fallbackAdmin = (!adminUser || adminUser.isActive !== 1)
     ? await resolveOrBootstrapAdminFromEmail(sessionAuthUser.email, sessionAuthUser.id)
     : adminUser;
-  if (!fallbackAdmin || fallbackAdmin.isActive !== 1) return false;
+  if (!fallbackAdmin || fallbackAdmin.isActive !== 1) {
+    console.error("[tryHydrateAdminFromSession][fallback-failed]", { sessionEmail: sessionAuthUser.email, adminUser: adminUser ?? null });
+    return false;
+  }
 
   await applyAdminContext(req, fallbackAdmin);
   return true;
@@ -607,6 +646,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const scopedResult = adminReq.adminRole === "platform-admin"
         ? result
         : result.filter((association) => (adminReq.adminScopedAssociationIds ?? []).includes(association.id));
+      console.log("[GET /api/associations]", {
+        adminUserId: adminReq.adminUserId || null,
+        adminUserEmail: adminReq.adminUserEmail || null,
+        adminRole: adminReq.adminRole || null,
+        isPublishedState,
+        totalInDb: result.length,
+        returnedToClient: scopedResult.length,
+        scopedAssociationIds: adminReq.adminRole !== "platform-admin" ? (adminReq.adminScopedAssociationIds ?? []) : "n/a (platform-admin)",
+      });
       if (adminReq.adminRole !== "platform-admin" && scopedResult.length === 0 && result.length > 0) {
         console.error("[associations][empty-scope-result]", {
           adminUserId: adminReq.adminUserId || null,
