@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { MaintenanceScheduleInstance, MaintenanceScheduleTemplate, Unit, Vendor } from "@shared/schema";
+import type { AssociationAsset, MaintenanceScheduleInstance, MaintenanceScheduleTemplate, Unit, Vendor } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +43,11 @@ export default function MaintenanceSchedulesPage() {
   const [editing, setEditing] = useState<MaintenanceScheduleTemplate | null>(null);
   const [form, setForm] = useState(emptyForm);
 
+  const [assetOpen, setAssetOpen] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<AssociationAsset | null>(null);
+  const emptyAssetForm = { name: "", assetType: "", manufacturer: "", model: "", serialNumber: "", location: "", installDate: "", warrantyExpiresAt: "", lastServicedAt: "", nextServiceDueAt: "", estimatedLifespanYears: "", replacementCostEstimate: "", condition: "unknown" as const, notes: "", vendorId: "", unitId: "" };
+  const [assetForm, setAssetForm] = useState(emptyAssetForm);
+
   const { data: scheduleData } = useQuery<ScheduleResponse>({
     queryKey: ["/api/maintenance/schedules"],
     enabled: Boolean(activeAssociationId),
@@ -58,6 +63,64 @@ export default function MaintenanceSchedulesPage() {
 
   const templates = scheduleData?.templates ?? [];
   const instances = scheduleData?.instances ?? [];
+
+  const { data: assets = [] } = useQuery<AssociationAsset[]>({
+    queryKey: ["/api/assets", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) return [];
+      const res = await apiRequest("GET", `/api/assets?associationId=${activeAssociationId}`);
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+
+  const saveAsset = useMutation({
+    mutationFn: async () => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const payload: Record<string, unknown> = {
+        associationId: activeAssociationId,
+        name: assetForm.name,
+        assetType: assetForm.assetType,
+        manufacturer: assetForm.manufacturer || null,
+        model: assetForm.model || null,
+        serialNumber: assetForm.serialNumber || null,
+        location: assetForm.location || null,
+        condition: assetForm.condition,
+        notes: assetForm.notes || null,
+        vendorId: assetForm.vendorId || null,
+        unitId: assetForm.unitId || null,
+        installDate: assetForm.installDate ? new Date(assetForm.installDate).toISOString() : null,
+        warrantyExpiresAt: assetForm.warrantyExpiresAt ? new Date(assetForm.warrantyExpiresAt).toISOString() : null,
+        lastServicedAt: assetForm.lastServicedAt ? new Date(assetForm.lastServicedAt).toISOString() : null,
+        nextServiceDueAt: assetForm.nextServiceDueAt ? new Date(assetForm.nextServiceDueAt).toISOString() : null,
+        estimatedLifespanYears: assetForm.estimatedLifespanYears ? Number(assetForm.estimatedLifespanYears) : null,
+        replacementCostEstimate: assetForm.replacementCostEstimate ? Number(assetForm.replacementCostEstimate) : null,
+      };
+      const res = editingAsset
+        ? await apiRequest("PATCH", `/api/assets/${editingAsset.id}`, payload)
+        : await apiRequest("POST", "/api/assets", payload);
+      return res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/assets", activeAssociationId] });
+      setAssetOpen(false);
+      setEditingAsset(null);
+      setAssetForm(emptyAssetForm);
+      toast({ title: editingAsset ? "Asset updated" : "Asset registered" });
+    },
+    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+  });
+
+  const deleteAsset = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/assets/${id}`);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/assets", activeAssociationId] });
+      toast({ title: "Asset removed" });
+    },
+    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+  });
 
   const saveTemplate = useMutation({
     mutationFn: async () => {
@@ -311,6 +374,137 @@ export default function MaintenanceSchedulesPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Asset Registry */}
+      <Dialog open={assetOpen} onOpenChange={setAssetOpen}>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+              <div>
+                <h2 className="text-sm font-semibold">Asset Registry</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Track physical assets, service history, and replacement planning.</p>
+              </div>
+              <DialogTrigger asChild>
+                <Button size="sm" disabled={!activeAssociationId} onClick={() => { setEditingAsset(null); setAssetForm(emptyAssetForm); }}>Register Asset</Button>
+              </DialogTrigger>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Asset</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Condition</TableHead>
+                  <TableHead>Last Serviced</TableHead>
+                  <TableHead>Next Due</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {assets.map((asset) => (
+                  <TableRow key={asset.id}>
+                    <TableCell>
+                      <div className="font-medium">{asset.name}</div>
+                      <div className="text-xs text-muted-foreground">{asset.assetType}{asset.manufacturer ? ` · ${asset.manufacturer}` : ""}{asset.model ? ` ${asset.model}` : ""}</div>
+                    </TableCell>
+                    <TableCell>{asset.location || "-"}</TableCell>
+                    <TableCell>
+                      <Badge variant={asset.condition === "poor" ? "destructive" : asset.condition === "fair" ? "secondary" : "outline"}>{asset.condition}</Badge>
+                    </TableCell>
+                    <TableCell>{asset.lastServicedAt ? new Date(asset.lastServicedAt).toLocaleDateString() : "-"}</TableCell>
+                    <TableCell>
+                      {asset.nextServiceDueAt ? (
+                        <span className={new Date(asset.nextServiceDueAt) < new Date() ? "text-destructive font-medium" : ""}>{new Date(asset.nextServiceDueAt).toLocaleDateString()}</span>
+                      ) : "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setEditingAsset(asset);
+                          setAssetForm({
+                            name: asset.name,
+                            assetType: asset.assetType,
+                            manufacturer: asset.manufacturer || "",
+                            model: asset.model || "",
+                            serialNumber: asset.serialNumber || "",
+                            location: asset.location || "",
+                            installDate: asset.installDate ? new Date(asset.installDate).toISOString().slice(0, 10) : "",
+                            warrantyExpiresAt: asset.warrantyExpiresAt ? new Date(asset.warrantyExpiresAt).toISOString().slice(0, 10) : "",
+                            lastServicedAt: asset.lastServicedAt ? new Date(asset.lastServicedAt).toISOString().slice(0, 10) : "",
+                            nextServiceDueAt: asset.nextServiceDueAt ? new Date(asset.nextServiceDueAt).toISOString().slice(0, 10) : "",
+                            estimatedLifespanYears: asset.estimatedLifespanYears ? String(asset.estimatedLifespanYears) : "",
+                            replacementCostEstimate: asset.replacementCostEstimate ? String(asset.replacementCostEstimate) : "",
+                            condition: (asset.condition as typeof emptyAssetForm.condition) || "unknown",
+                            notes: asset.notes || "",
+                            vendorId: asset.vendorId || "",
+                            unitId: asset.unitId || "",
+                          });
+                          setAssetOpen(true);
+                        }}>Edit</Button>
+                        <Button size="sm" variant="outline" onClick={() => deleteAsset.mutate(asset.id)} disabled={deleteAsset.isPending}>Remove</Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {assets.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">No assets registered yet.</TableCell></TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>{editingAsset ? "Edit Asset" : "Register Asset"}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input placeholder="Asset name *" value={assetForm.name} onChange={(e) => setAssetForm((f) => ({ ...f, name: e.target.value }))} />
+              <Input placeholder="Asset type (HVAC, elevator, roof...)" value={assetForm.assetType} onChange={(e) => setAssetForm((f) => ({ ...f, assetType: e.target.value }))} />
+              <Input placeholder="Manufacturer" value={assetForm.manufacturer} onChange={(e) => setAssetForm((f) => ({ ...f, manufacturer: e.target.value }))} />
+              <Input placeholder="Model" value={assetForm.model} onChange={(e) => setAssetForm((f) => ({ ...f, model: e.target.value }))} />
+              <Input placeholder="Serial number" value={assetForm.serialNumber} onChange={(e) => setAssetForm((f) => ({ ...f, serialNumber: e.target.value }))} />
+              <Input placeholder="Location" value={assetForm.location} onChange={(e) => setAssetForm((f) => ({ ...f, location: e.target.value }))} />
+              <Select value={assetForm.condition} onValueChange={(v) => setAssetForm((f) => ({ ...f, condition: v as typeof emptyAssetForm.condition }))}>
+                <SelectTrigger><SelectValue placeholder="Condition" /></SelectTrigger>
+                <SelectContent>
+                  {["excellent", "good", "fair", "poor", "unknown"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={assetForm.vendorId || "none"} onValueChange={(v) => setAssetForm((f) => ({ ...f, vendorId: v === "none" ? "" : v }))}>
+                <SelectTrigger><SelectValue placeholder="Assigned vendor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No vendor</SelectItem>
+                  {vendors.map((v) => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Install date</label>
+                <Input type="date" value={assetForm.installDate} onChange={(e) => setAssetForm((f) => ({ ...f, installDate: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Warranty expires</label>
+                <Input type="date" value={assetForm.warrantyExpiresAt} onChange={(e) => setAssetForm((f) => ({ ...f, warrantyExpiresAt: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Last serviced</label>
+                <Input type="date" value={assetForm.lastServicedAt} onChange={(e) => setAssetForm((f) => ({ ...f, lastServicedAt: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Next service due</label>
+                <Input type="date" value={assetForm.nextServiceDueAt} onChange={(e) => setAssetForm((f) => ({ ...f, nextServiceDueAt: e.target.value }))} />
+              </div>
+              <Input type="number" placeholder="Est. lifespan (years)" value={assetForm.estimatedLifespanYears} onChange={(e) => setAssetForm((f) => ({ ...f, estimatedLifespanYears: e.target.value }))} />
+              <Input type="number" placeholder="Replacement cost estimate ($)" value={assetForm.replacementCostEstimate} onChange={(e) => setAssetForm((f) => ({ ...f, replacementCostEstimate: e.target.value }))} />
+            </div>
+            <Textarea placeholder="Notes" value={assetForm.notes} onChange={(e) => setAssetForm((f) => ({ ...f, notes: e.target.value }))} />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAssetOpen(false)}>Cancel</Button>
+              <Button onClick={() => saveAsset.mutate()} disabled={!assetForm.name.trim() || !assetForm.assetType.trim() || saveAsset.isPending}>
+                {editingAsset ? "Save Changes" : "Register Asset"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

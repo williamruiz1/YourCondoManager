@@ -16,7 +16,8 @@ import type {
   TenantConfig,
   Unit,
 } from "@shared/schema";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,6 +33,31 @@ export default function PlatformControlsPage() {
   const [emailTestForm, setEmailTestForm] = useState({ associationId: "", to: "", subject: "Platform Email Integration Test", body: "This is a test email from the platform." });
   const [portalAccessForm, setPortalAccessForm] = useState({ associationId: "", personId: "", unitId: "", email: "", role: "owner", status: "active" });
   const [membershipForm, setMembershipForm] = useState({ associationId: "", personId: "", unitId: "", membershipType: "owner", status: "active", isPrimary: 1 });
+
+  const [qaPreviewDone, setQaPreviewDone] = useState(false);
+  const [qaPurgeConfirm, setQaPurgeConfirm] = useState(false);
+
+  const { data: qaPreview, refetch: refetchQaPreview } = useQuery<{ count: number; associations: { id: string; name: string }[] }>({
+    queryKey: ["/api/admin/qa-seed/preview"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/qa-seed/preview");
+      return res.json();
+    },
+    enabled: qaPreviewDone,
+  });
+
+  const purgeMutation = useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const res = await apiRequest("POST", "/api/admin/qa-seed/purge", { confirm: !dryRun, dryRun });
+      return res.json() as Promise<{ identified: number; associationIds?: string[]; associations?: { id: string; name: string }[]; wouldDelete?: number; message?: string }>;
+    },
+    onSuccess: async (data) => {
+      toast({ title: data.message || `Identified ${data.identified ?? data.wouldDelete} QA associations`, description: "Review the list and delete individually if needed." });
+      await refetchQaPreview();
+      setQaPurgeConfirm(false);
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
   const { data: adminUsers } = useQuery<AdminUser[]>({ queryKey: ["/api/admin/users"] });
@@ -514,6 +540,66 @@ export default function PlatformControlsPage() {
               ))}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      {/* QA Seed Data Management */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-500" /> QA / UAT Seed Data Management
+          </CardTitle>
+          <CardDescription>Identify and remove QA validation associations after UAT sign-off. This action is irreversible.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setQaPreviewDone(true); void refetchQaPreview(); }}
+            >
+              Preview QA Associations
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => purgeMutation.mutate(true)}
+              disabled={purgeMutation.isPending}
+            >
+              Dry Run
+            </Button>
+            {!qaPurgeConfirm ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setQaPurgeConfirm(true)}
+                disabled={purgeMutation.isPending}
+              >
+                Purge QA Data…
+              </Button>
+            ) : (
+              <>
+                <Button size="sm" variant="destructive" onClick={() => purgeMutation.mutate(false)} disabled={purgeMutation.isPending}>
+                  Confirm Purge
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setQaPurgeConfirm(false)}>Cancel</Button>
+              </>
+            )}
+          </div>
+
+          {qaPreview && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-amber-700">{qaPreview.count} QA associations identified:</div>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {qaPreview.associations.map(a => (
+                  <div key={a.id} className="text-xs font-mono bg-muted/30 rounded px-2 py-1 flex justify-between">
+                    <span>{a.name}</span>
+                    <span className="text-muted-foreground">{a.id.slice(0, 8)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

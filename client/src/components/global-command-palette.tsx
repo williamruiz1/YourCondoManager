@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Building2, CalendarDays, CircleDollarSign, Contact, DoorOpen, FileText, FolderOpen, LayoutDashboard, MessageSquare, Search, Users } from "lucide-react";
+import { Building2, CalendarDays, CircleDollarSign, Contact, DoorOpen, FileText, FolderOpen, LayoutDashboard, MessageSquare, Search, Users, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/queryClient";
 import {
   CommandDialog,
   CommandEmpty,
@@ -55,8 +56,21 @@ function canAccess(item: CommandLink, role?: AdminRole | null) {
   return item.roles.includes(role);
 }
 
+type SearchResult = { type: string; id: string; label: string; href: string };
+
+const SEARCH_ICON: Record<string, typeof Search> = {
+  person: Contact,
+  unit: DoorOpen,
+  vendor: Users,
+  "work-order": Wrench,
+  document: FileText,
+};
+
 export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | null }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, navigate] = useLocation();
   const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
 
@@ -79,6 +93,25 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
     const next = [location, ...current.filter((entry) => entry !== location)].slice(0, 6);
     window.localStorage.setItem(RECENT_ROUTE_STORAGE_KEY, JSON.stringify(next));
   }, [location]);
+
+  useEffect(() => {
+    if (!open) { setQuery(""); setSearchResults([]); return; }
+  }, [open]);
+
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (query.length < 2) { setSearchResults([]); return; }
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await apiRequest("GET", `/api/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json() as { results: SearchResult[] };
+        setSearchResults(data.results ?? []);
+      } catch {
+        setSearchResults([]);
+      }
+    }, 250);
+    return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
+  }, [query]);
 
   const recentLinks = useMemo(() => {
     const raw = window.localStorage.getItem(RECENT_ROUTE_STORAGE_KEY);
@@ -111,9 +144,29 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
       </Button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder="Search pages, actions, and associations..." />
+        <CommandInput
+          placeholder="Search records, pages, and associations…"
+          value={query}
+          onValueChange={setQuery}
+        />
         <CommandList>
-          <CommandEmpty>No matching routes or actions.</CommandEmpty>
+          <CommandEmpty>{query.length >= 2 ? "No results found." : "Type to search records or navigate."}</CommandEmpty>
+
+          {searchResults.length > 0 && (
+            <CommandGroup heading="Records">
+              {searchResults.map((result) => {
+                const Icon = SEARCH_ICON[result.type] ?? Search;
+                return (
+                  <CommandItem key={`${result.type}-${result.id}`} onSelect={() => openRoute(result.href)} value={result.label}>
+                    <Icon />
+                    <span className="truncate">{result.label}</span>
+                    <CommandShortcut className="capitalize">{result.type.replace("-", " ")}</CommandShortcut>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          )}
+          {searchResults.length > 0 && <CommandSeparator />}
 
           {recentLinks.length ? (
             <CommandGroup heading="Recent">

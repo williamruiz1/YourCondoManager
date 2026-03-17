@@ -459,6 +459,19 @@ export const paymentWebhookEvents = pgTable("payment_webhook_events", {
   uniqueProviderEventByAssociation: uniqueIndex("payment_webhook_events_assoc_provider_event_uq").on(table.associationId, table.provider, table.providerEventId),
 }));
 
+// Payment event state transitions — audit trail for webhook state machine
+export const paymentEventTransitions = pgTable("payment_event_transitions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  webhookEventId: varchar("webhook_event_id").notNull().references(() => paymentWebhookEvents.id),
+  fromStatus: text("from_status").notNull(),
+  toStatus: text("to_status").notNull(),
+  reason: text("reason"),
+  transitionedAt: timestamp("transitioned_at").defaultNow().notNull(),
+  transitionedBy: text("transitioned_by").notNull().default("system"),
+});
+export type PaymentEventTransition = typeof paymentEventTransitions.$inferSelect;
+export const insertPaymentEventTransitionSchema = createInsertSchema(paymentEventTransitions);
+
 export const expenseAttachmentTypeEnum = pgEnum("expense_attachment_type", ["invoice", "utility-payment"]);
 export const expenseAttachments = pgTable("expense_attachments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -485,6 +498,71 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   referenceId: text("reference_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const paymentPlanStatusEnum = pgEnum("payment_plan_status", ["active", "completed", "defaulted", "cancelled"]);
+export const paymentPlans = pgTable("payment_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  totalAmount: real("total_amount").notNull(),
+  amountPaid: real("amount_paid").notNull().default(0),
+  installmentAmount: real("installment_amount").notNull(),
+  installmentFrequency: text("installment_frequency").notNull().default("monthly"),
+  startDate: timestamp("start_date").notNull(),
+  nextDueDate: timestamp("next_due_date"),
+  endDate: timestamp("end_date"),
+  status: paymentPlanStatusEnum("status").notNull().default("active"),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PaymentPlan = typeof paymentPlans.$inferSelect;
+export type InsertPaymentPlan = typeof paymentPlans.$inferInsert;
+
+// Recurring charge schedules — define auto-charge rules per association
+export const recurringChargeFrequencyEnum = pgEnum("recurring_charge_frequency", ["monthly", "quarterly", "annual"]);
+export const recurringChargeScheduleStatusEnum = pgEnum("recurring_charge_schedule_status", ["active", "paused", "archived"]);
+export const recurringChargeSchedules = pgTable("recurring_charge_schedules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").references(() => units.id), // null = all units
+  chargeDescription: text("charge_description").notNull(),
+  entryType: ownerLedgerEntryTypeEnum("entry_type").notNull().default("charge"),
+  amount: real("amount").notNull(),
+  frequency: recurringChargeFrequencyEnum("frequency").notNull().default("monthly"),
+  dayOfMonth: integer("day_of_month").notNull().default(1), // 1-28
+  nextRunDate: timestamp("next_run_date"),
+  status: recurringChargeScheduleStatusEnum("status").notNull().default("active"),
+  maxRetries: integer("max_retries").notNull().default(3),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type RecurringChargeSchedule = typeof recurringChargeSchedules.$inferSelect;
+export type InsertRecurringChargeSchedule = typeof recurringChargeSchedules.$inferInsert;
+export const insertRecurringChargeScheduleSchema = createInsertSchema(recurringChargeSchedules);
+
+// Recurring charge runs — execution history with retry tracking
+export const recurringChargeRunStatusEnum = pgEnum("recurring_charge_run_status", ["pending", "success", "failed", "skipped", "retrying"]);
+export const recurringChargeRuns = pgTable("recurring_charge_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scheduleId: varchar("schedule_id").notNull().references(() => recurringChargeSchedules.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  amount: real("amount").notNull(),
+  status: recurringChargeRunStatusEnum("status").notNull().default("pending"),
+  ledgerEntryId: varchar("ledger_entry_id").references(() => ownerLedgerEntries.id),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
+  nextRetryAt: timestamp("next_retry_at"),
+  ranAt: timestamp("ran_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type RecurringChargeRun = typeof recurringChargeRuns.$inferSelect;
+export type InsertRecurringChargeRun = typeof recurringChargeRuns.$inferInsert;
+export const insertRecurringChargeRunSchema = createInsertSchema(recurringChargeRuns);
 
 export const meetingStatusEnum = pgEnum("meeting_status", ["scheduled", "in-progress", "completed", "cancelled"]);
 export const meetingSummaryStatusEnum = pgEnum("meeting_summary_status", ["draft", "published"]);
@@ -614,6 +692,7 @@ export const annualGovernanceTasks = pgTable("annual_governance_tasks", {
   dueDate: timestamp("due_date"),
   completedAt: timestamp("completed_at"),
   notes: text("notes"),
+  evidenceUrlsJson: jsonb("evidence_urls_json").notNull().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -755,6 +834,13 @@ export const noticeSends = pgTable("notice_sends", {
   metadataJson: jsonb("metadata_json"),
   sentBy: text("sent_by"),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
+  deliveredAt: timestamp("delivered_at"),
+  openedAt: timestamp("opened_at"),
+  bouncedAt: timestamp("bounced_at"),
+  bounceType: text("bounce_type"),
+  bounceReason: text("bounce_reason"),
+  retryCount: integer("retry_count").notNull().default(0),
+  lastRetryAt: timestamp("last_retry_at"),
 });
 
 export const communicationHistory = pgTable("communication_history", {
@@ -936,6 +1022,40 @@ export const tenantConfigs = pgTable("tenant_configs", {
   uniqueTenantConfigAssociation: uniqueIndex("tenant_configs_association_uq").on(table.associationId),
 }));
 
+// ── Feature flags + staged rollout controls ──────────────────────────────
+export const featureFlagRolloutStatusEnum = pgEnum("feature_flag_rollout_status", ["global_off", "staged", "global_on"]);
+export const featureFlags = pgTable("feature_flags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: text("key").notNull().unique(), // e.g. "online_payments", "autopay_enrollment"
+  name: text("name").notNull(),
+  description: text("description"),
+  defaultEnabled: integer("default_enabled").notNull().default(0),
+  rolloutStatus: featureFlagRolloutStatusEnum("rollout_status").notNull().default("staged"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FeatureFlag = typeof featureFlags.$inferSelect;
+export type InsertFeatureFlag = typeof featureFlags.$inferInsert;
+export const insertFeatureFlagSchema = createInsertSchema(featureFlags);
+
+export const associationFeatureFlags = pgTable("association_feature_flags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  flagId: varchar("flag_id").notNull().references(() => featureFlags.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  enabled: integer("enabled").notNull().default(0),
+  rolloutPercent: integer("rollout_percent").notNull().default(100), // 0-100
+  notes: text("notes"),
+  updatedBy: text("updated_by"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAssocFlag: uniqueIndex("association_feature_flags_uq").on(table.flagId, table.associationId),
+}));
+export type AssociationFeatureFlag = typeof associationFeatureFlags.$inferSelect;
+export type InsertAssociationFeatureFlag = typeof associationFeatureFlags.$inferInsert;
+export const insertAssociationFeatureFlagSchema = createInsertSchema(associationFeatureFlags);
+
 export const emailThreads = pgTable("email_threads", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -1018,6 +1138,7 @@ export const workOrders = pgTable("work_orders", {
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   resolutionNotes: text("resolution_notes"),
+  photosJson: jsonb("photos_json").notNull().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
@@ -1084,6 +1205,70 @@ export const maintenanceScheduleInstances = pgTable("maintenance_schedule_instan
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const assetConditionEnum = pgEnum("asset_condition", ["excellent", "good", "fair", "poor", "unknown"]);
+export const associationAssets = pgTable("association_assets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  vendorId: varchar("vendor_id").references(() => vendors.id),
+  name: text("name").notNull(),
+  assetType: text("asset_type").notNull(),
+  manufacturer: text("manufacturer"),
+  model: text("model"),
+  serialNumber: text("serial_number"),
+  location: text("location"),
+  installDate: timestamp("install_date"),
+  warrantyExpiresAt: timestamp("warranty_expires_at"),
+  lastServicedAt: timestamp("last_serviced_at"),
+  nextServiceDueAt: timestamp("next_service_due_at"),
+  estimatedLifespanYears: integer("estimated_lifespan_years"),
+  replacementCostEstimate: real("replacement_cost_estimate"),
+  condition: assetConditionEnum("condition").notNull().default("unknown"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const communityAnnouncementPriorityEnum = pgEnum("community_announcement_priority", ["normal", "important", "urgent"]);
+export const communityAnnouncements = pgTable("community_announcements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  priority: communityAnnouncementPriorityEnum("priority").notNull().default("normal"),
+  authorName: text("author_name"),
+  publishedAt: timestamp("published_at"),
+  expiresAt: timestamp("expires_at"),
+  isPinned: integer("is_pinned").notNull().default(0),
+  isPublished: integer("is_published").notNull().default(0),
+  targetAudience: text("target_audience").notNull().default("all"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type CommunityAnnouncement = typeof communityAnnouncements.$inferSelect;
+export type InsertCommunityAnnouncement = typeof communityAnnouncements.$inferInsert;
+
+export const residentFeedbackCategoryEnum = pgEnum("resident_feedback_category", ["maintenance", "management", "amenities", "communication", "neighbor", "financial", "general"]);
+export const residentFeedbacks = pgTable("resident_feedbacks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  category: residentFeedbackCategoryEnum("category").notNull().default("general"),
+  satisfactionScore: integer("satisfaction_score"),
+  subject: text("subject"),
+  feedbackText: text("feedback_text"),
+  isAnonymous: integer("is_anonymous").notNull().default(0),
+  adminNotes: text("admin_notes"),
+  status: text("status").notNull().default("open"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ResidentFeedback = typeof residentFeedbacks.$inferSelect;
+export type InsertResidentFeedback = typeof residentFeedbacks.$inferInsert;
+
 export const boardPackageStatusEnum = pgEnum("board_package_status", ["draft", "approved", "distributed"]);
 export const boardPackageTemplates = pgTable("board_package_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1119,6 +1304,143 @@ export const boardPackages = pgTable("board_packages", {
 });
 
 export const roadmapProjectStatusEnum = pgEnum("roadmap_project_status", ["active", "complete", "archived"]);
+export const paymentReminderRules = pgTable("payment_reminder_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  name: text("name").notNull(),
+  templateId: varchar("template_id").references(() => noticeTemplates.id),
+  daysRelativeToDue: integer("days_relative_to_due").notNull().default(0),
+  triggerOn: text("trigger_on").notNull().default("overdue"),
+  minBalanceThreshold: real("min_balance_threshold").notNull().default(0),
+  isActive: integer("is_active").notNull().default(1),
+  lastRunAt: timestamp("last_run_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PaymentReminderRule = typeof paymentReminderRules.$inferSelect;
+export type InsertPaymentReminderRule = typeof paymentReminderRules.$inferInsert;
+
+// Webhook signing secrets — per-association HMAC keys for payment webhook verification
+export const webhookSigningSecrets = pgTable("webhook_signing_secrets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  secretHash: text("secret_hash").notNull(), // bcrypt/sha256 hash of actual secret — never store plaintext
+  secretHint: text("secret_hint"), // last 4 chars of secret for display
+  provider: text("provider").notNull().default("generic"), // "stripe", "square", "generic"
+  isActive: integer("is_active").notNull().default(1),
+  rotatedAt: timestamp("rotated_at"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAssocProvider: uniqueIndex("webhook_signing_secrets_assoc_provider_uq").on(table.associationId, table.provider),
+}));
+export type WebhookSigningSecret = typeof webhookSigningSecrets.$inferSelect;
+export type InsertWebhookSigningSecret = typeof webhookSigningSecrets.$inferInsert;
+export const insertWebhookSigningSecretSchema = createInsertSchema(webhookSigningSecrets);
+
+// Owner saved payment methods — per-owner payment method preferences (no sensitive data stored)
+export const savedPaymentMethodTypeEnum = pgEnum("saved_payment_method_type", ["ach", "card", "check", "zelle", "other"]);
+export const savedPaymentMethods = pgTable("saved_payment_methods", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  methodType: savedPaymentMethodTypeEnum("method_type").notNull().default("ach"),
+  displayName: text("display_name").notNull(), // e.g., "Chase checking ••••1234"
+  last4: text("last4"), // last 4 digits of account/card (display only)
+  bankName: text("bank_name"),
+  externalTokenRef: text("external_token_ref"), // reference to payment processor token (no raw account data)
+  isDefault: integer("is_default").notNull().default(0),
+  isActive: integer("is_active").notNull().default(1),
+  addedAt: timestamp("added_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type SavedPaymentMethod = typeof savedPaymentMethods.$inferSelect;
+export type InsertSavedPaymentMethod = typeof savedPaymentMethods.$inferInsert;
+export const insertSavedPaymentMethodSchema = createInsertSchema(savedPaymentMethods);
+
+// Autopay enrollment — owners opting in to automatic recurring payments
+export const autopayFrequencyEnum = pgEnum("autopay_frequency", ["monthly", "quarterly", "annual"]);
+export const autopayEnrollmentStatusEnum = pgEnum("autopay_enrollment_status", ["active", "paused", "cancelled"]);
+export const autopayEnrollments = pgTable("autopay_enrollments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  amount: real("amount").notNull(),
+  frequency: autopayFrequencyEnum("frequency").notNull().default("monthly"),
+  dayOfMonth: integer("day_of_month").notNull().default(1),
+  status: autopayEnrollmentStatusEnum("status").notNull().default("active"),
+  nextPaymentDate: timestamp("next_payment_date"),
+  description: text("description").notNull().default("Autopay HOA dues"),
+  enrolledBy: text("enrolled_by"),
+  enrolledAt: timestamp("enrolled_at").defaultNow().notNull(),
+  cancelledBy: text("cancelled_by"),
+  cancelledAt: timestamp("cancelled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type AutopayEnrollment = typeof autopayEnrollments.$inferSelect;
+export type InsertAutopayEnrollment = typeof autopayEnrollments.$inferInsert;
+export const insertAutopayEnrollmentSchema = createInsertSchema(autopayEnrollments);
+
+// Autopay run history
+export const autopayRunStatusEnum = pgEnum("autopay_run_status", ["success", "failed", "skipped"]);
+export const autopayRuns = pgTable("autopay_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  enrollmentId: varchar("enrollment_id").notNull().references(() => autopayEnrollments.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  amount: real("amount").notNull(),
+  status: autopayRunStatusEnum("status").notNull().default("success"),
+  ledgerEntryId: varchar("ledger_entry_id").references(() => ownerLedgerEntries.id),
+  errorMessage: text("error_message"),
+  ranAt: timestamp("ran_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type AutopayRun = typeof autopayRuns.$inferSelect;
+export type InsertAutopayRun = typeof autopayRuns.$inferInsert;
+export const insertAutopayRunSchema = createInsertSchema(autopayRuns);
+
+// Partial-payment rules — per-association rules controlling minimum payment amounts and receipt behavior
+export const partialPaymentRules = pgTable("partial_payment_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  allowPartialPayments: integer("allow_partial_payments").notNull().default(1), // 0=no, 1=yes
+  minimumPaymentAmount: real("minimum_payment_amount"), // null = no minimum
+  minimumPaymentPercent: real("minimum_payment_percent"), // % of balance due, null = no minimum
+  requirePaymentConfirmation: integer("require_payment_confirmation").notNull().default(1),
+  sendReceiptEmail: integer("send_receipt_email").notNull().default(1),
+  receiptEmailTemplate: text("receipt_email_template"), // template text for receipt
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAssocPartialRule: uniqueIndex("partial_payment_rules_assoc_uq").on(table.associationId),
+}));
+export type PartialPaymentRule = typeof partialPaymentRules.$inferSelect;
+export type InsertPartialPaymentRule = typeof partialPaymentRules.$inferInsert;
+export const insertPartialPaymentRuleSchema = createInsertSchema(partialPaymentRules);
+
+export const financialApprovalStatusEnum = pgEnum("financial_approval_status", ["pending", "approved", "rejected", "cancelled"]);
+export const financialApprovals = pgTable("financial_approvals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  requestedBy: text("requested_by").notNull(),
+  approverId: varchar("approver_id").references(() => adminUsers.id),
+  status: financialApprovalStatusEnum("status").notNull().default("pending"),
+  changeType: text("change_type").notNull(),
+  changeDescription: text("change_description").notNull(),
+  changeAmount: real("change_amount"),
+  changePayloadJson: jsonb("change_payload_json"),
+  requiredApprovers: integer("required_approvers").notNull().default(2),
+  approvedBy: text("approved_by"),
+  resolvedAt: timestamp("resolved_at"),
+  resolverNotes: text("resolver_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FinancialApproval = typeof financialApprovals.$inferSelect;
+export type InsertFinancialApproval = typeof financialApprovals.$inferInsert;
+
 export const roadmapTaskStatusEnum = pgEnum("roadmap_task_status", ["todo", "in-progress", "done"]);
 export const roadmapEffortEnum = pgEnum("roadmap_effort", ["small", "medium", "large"]);
 export const roadmapPriorityEnum = pgEnum("roadmap_priority", ["low", "medium", "high", "critical"]);
@@ -1223,6 +1545,23 @@ export const analysisRuns = pgTable("admin_analysis_runs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const insurancePolicyTypeEnum = pgEnum("insurance_policy_type", ["master", "d-and-o", "fidelity-bond", "umbrella", "liability", "flood", "earthquake", "other"]);
+
+export const associationInsurancePolicies = pgTable("association_insurance_policies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  policyType: insurancePolicyTypeEnum("policy_type").notNull(),
+  carrier: text("carrier").notNull(),
+  policyNumber: text("policy_number"),
+  effectiveDate: timestamp("effective_date"),
+  expirationDate: timestamp("expiration_date"),
+  premiumAmount: real("premium_amount"),
+  coverageAmount: real("coverage_amount"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const insertAssociationSchema = createInsertSchema(associations).omit({ id: true, createdAt: true });
 export const insertBuildingSchema = createInsertSchema(buildings).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUnitSchema = createInsertSchema(units).omit({ id: true, createdAt: true });
@@ -1255,6 +1594,7 @@ export const insertOwnerPaymentLinkSchema = createInsertSchema(ownerPaymentLinks
 export const insertPaymentWebhookEventSchema = createInsertSchema(paymentWebhookEvents).omit({ id: true, createdAt: true, updatedAt: true, processedAt: true, ownerLedgerEntryId: true });
 export const insertExpenseAttachmentSchema = createInsertSchema(expenseAttachments).omit({ id: true, createdAt: true });
 export const insertOwnerLedgerEntrySchema = createInsertSchema(ownerLedgerEntries).omit({ id: true, createdAt: true });
+export const insertPaymentPlanSchema = createInsertSchema(paymentPlans).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertGovernanceMeetingSchema = createInsertSchema(governanceMeetings).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMeetingAgendaItemSchema = createInsertSchema(meetingAgendaItems).omit({ id: true, createdAt: true });
 export const insertMeetingNoteSchema = createInsertSchema(meetingNotes).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1349,6 +1689,14 @@ export const insertMaintenanceScheduleInstanceSchema = createInsertSchema(mainte
   createdAt: true,
   updatedAt: true,
 });
+export const insertAssociationAssetSchema = createInsertSchema(associationAssets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type AssociationAsset = typeof associationAssets.$inferSelect;
+export type InsertAssociationAsset = typeof associationAssets.$inferInsert;
+
 export const insertBoardPackageTemplateSchema = createInsertSchema(boardPackageTemplates).omit({
   id: true,
   createdAt: true,
@@ -1359,6 +1707,10 @@ export const insertBoardPackageSchema = createInsertSchema(boardPackages).omit({
   createdAt: true,
   updatedAt: true,
 });
+export const insertCommunityAnnouncementSchema = createInsertSchema(communityAnnouncements).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertResidentFeedbackSchema = createInsertSchema(residentFeedbacks).omit({ id: true, createdAt: true, updatedAt: true, resolvedAt: true });
+export const insertPaymentReminderRuleSchema = createInsertSchema(paymentReminderRules).omit({ id: true, createdAt: true, updatedAt: true, lastRunAt: true });
+export const insertFinancialApprovalSchema = createInsertSchema(financialApprovals).omit({ id: true, createdAt: true, updatedAt: true, resolvedAt: true });
 export const insertRoadmapProjectSchema = createInsertSchema(roadmapProjects).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertRoadmapWorkstreamSchema = createInsertSchema(roadmapWorkstreams).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertRoadmapTaskSchema = createInsertSchema(roadmapTasks).omit({ id: true, createdAt: true, updatedAt: true, completedDate: true }).extend({
@@ -1368,6 +1720,7 @@ export const insertExecutiveUpdateSchema = createInsertSchema(executiveUpdates).
 export const insertExecutiveEvidenceSchema = createInsertSchema(executiveEvidence).omit({ id: true, createdAt: true });
 export const insertAnalysisVersionSchema = createInsertSchema(analysisVersions).omit({ id: true, createdAt: true });
 export const insertAnalysisRunSchema = createInsertSchema(analysisRuns).omit({ id: true, createdAt: true });
+export const insertAssociationInsurancePolicySchema = createInsertSchema(associationInsurancePolicies).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type Association = typeof associations.$inferSelect;
 export type InsertAssociation = z.infer<typeof insertAssociationSchema>;
@@ -1524,6 +1877,72 @@ export type AnalysisVersion = typeof analysisVersions.$inferSelect;
 export type InsertAnalysisVersion = z.infer<typeof insertAnalysisVersionSchema>;
 export type AnalysisRun = typeof analysisRuns.$inferSelect;
 export type InsertAnalysisRun = z.infer<typeof insertAnalysisRunSchema>;
+export type AssociationInsurancePolicy = typeof associationInsurancePolicies.$inferSelect;
+export type InsertAssociationInsurancePolicy = z.infer<typeof insertAssociationInsurancePolicySchema>;
+
+// Delinquency thresholds and escalation tracking
+export const delinquencyEscalationStatusEnum = pgEnum("delinquency_escalation_status", ["active", "resolved", "referred", "on_payment_plan"]);
+
+export const delinquencyThresholds = pgTable("delinquency_thresholds", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  stage: integer("stage").notNull(),
+  stageName: text("stage_name").notNull(),
+  minimumBalance: real("minimum_balance").notNull().default(0),
+  minimumDaysOverdue: integer("minimum_days_overdue").notNull().default(30),
+  actionType: text("action_type").notNull().default("notice"),
+  noticeTemplateId: varchar("notice_template_id").references(() => noticeTemplates.id),
+  lateFeePct: real("late_fee_pct"),
+  lateFeeFlat: real("late_fee_flat"),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertDelinquencyThresholdSchema = createInsertSchema(delinquencyThresholds).omit({ id: true, createdAt: true });
+export type DelinquencyThreshold = typeof delinquencyThresholds.$inferSelect;
+export type InsertDelinquencyThreshold = z.infer<typeof insertDelinquencyThresholdSchema>;
+
+export const delinquencyEscalations = pgTable("delinquency_escalations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  currentStage: integer("current_stage").notNull().default(1),
+  balance: real("balance").notNull(),
+  daysPastDue: integer("days_past_due").notNull().default(0),
+  status: delinquencyEscalationStatusEnum("status").notNull().default("active"),
+  lastNoticeAt: timestamp("last_notice_at"),
+  nextActionAt: timestamp("next_action_at"),
+  resolvedAt: timestamp("resolved_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertDelinquencyEscalationSchema = createInsertSchema(delinquencyEscalations).omit({ id: true, createdAt: true, updatedAt: true });
+export type DelinquencyEscalation = typeof delinquencyEscalations.$inferSelect;
+export type InsertDelinquencyEscalation = z.infer<typeof insertDelinquencyEscalationSchema>;
+
+// Governance reminder cadence rules
+export const governanceReminderTriggerEnum = pgEnum("governance_reminder_trigger", ["before_meeting", "after_meeting", "task_due", "board_term_expiry"]);
+export const governanceReminderRecipientEnum = pgEnum("governance_reminder_recipient", ["all_owners", "board_members", "managers", "meeting_attendees"]);
+
+export const governanceReminderRules = pgTable("governance_reminder_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  name: text("name").notNull(),
+  trigger: governanceReminderTriggerEnum("trigger").notNull(),
+  daysOffset: integer("days_offset").notNull().default(3),
+  recipientType: governanceReminderRecipientEnum("recipient_type").notNull().default("all_owners"),
+  subjectTemplate: text("subject_template").notNull(),
+  bodyTemplate: text("body_template").notNull(),
+  meetingTypes: text("meeting_types"),
+  isActive: integer("is_active").notNull().default(1),
+  lastRunAt: timestamp("last_run_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertGovernanceReminderRuleSchema = createInsertSchema(governanceReminderRules).omit({ id: true, createdAt: true, updatedAt: true });
+export type GovernanceReminderRule = typeof governanceReminderRules.$inferSelect;
+export type InsertGovernanceReminderRule = z.infer<typeof insertGovernanceReminderRuleSchema>;
 
 export type ResidentialDatasetUnitOwner = {
   ownership: Ownership;
@@ -1583,3 +2002,131 @@ export type ResidentialDataset = {
   personDirectory: ResidentialDatasetPersonDirectoryItem[];
   summary: ResidentialDatasetSummary;
 };
+
+// Bank statement reconciliation
+export const reconciliationMatchStatusEnum = pgEnum("reconciliation_match_status", ["unmatched", "auto_matched", "manual_matched", "disputed", "excluded"]);
+
+export const bankStatementImports = pgTable("bank_statement_imports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  filename: text("filename").notNull(),
+  importedBy: text("imported_by"),
+  statementDate: timestamp("statement_date"),
+  openingBalance: real("opening_balance"),
+  closingBalance: real("closing_balance"),
+  transactionCount: integer("transaction_count").notNull().default(0),
+  status: text("status").notNull().default("pending"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertBankStatementImportSchema = createInsertSchema(bankStatementImports).omit({ id: true, createdAt: true });
+export type BankStatementImport = typeof bankStatementImports.$inferSelect;
+export type InsertBankStatementImport = z.infer<typeof insertBankStatementImportSchema>;
+
+export const bankStatementTransactions = pgTable("bank_statement_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  importId: varchar("import_id").notNull().references(() => bankStatementImports.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  transactionDate: timestamp("transaction_date").notNull(),
+  description: text("description").notNull(),
+  amount: real("amount").notNull(),
+  bankReference: text("bank_reference"),
+  checkNumber: text("check_number"),
+  matchStatus: reconciliationMatchStatusEnum("match_status").notNull().default("unmatched"),
+  matchedLedgerEntryId: varchar("matched_ledger_entry_id").references(() => ownerLedgerEntries.id),
+  matchedBy: text("matched_by"),
+  matchedAt: timestamp("matched_at"),
+  matchNotes: text("match_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertBankStatementTransactionSchema = createInsertSchema(bankStatementTransactions).omit({ id: true, createdAt: true });
+export type BankStatementTransaction = typeof bankStatementTransactions.$inferSelect;
+export type InsertBankStatementTransaction = z.infer<typeof insertBankStatementTransactionSchema>;
+
+// Financial system alerts
+export const financialAlertSeverityEnum = pgEnum("financial_alert_severity", ["info", "warning", "critical"]);
+export const financialAlertTypeEnum = pgEnum("financial_alert_type", ["large_payment", "duplicate_payment", "negative_adjustment", "overdue_assessment", "reconciliation_gap", "budget_overage", "delinquency_spike", "expired_insurance_doc", "audit_anomaly"]);
+
+export const financialAlerts = pgTable("financial_alerts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  alertType: financialAlertTypeEnum("alert_type").notNull(),
+  severity: financialAlertSeverityEnum("severity").notNull().default("warning"),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  amount: real("amount"),
+  isRead: integer("is_read").notNull().default(0),
+  isDismissed: integer("is_dismissed").notNull().default(0),
+  dismissedBy: text("dismissed_by"),
+  dismissedAt: timestamp("dismissed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertFinancialAlertSchema = createInsertSchema(financialAlerts).omit({ id: true, createdAt: true });
+export type FinancialAlert = typeof financialAlerts.$inferSelect;
+export type InsertFinancialAlert = z.infer<typeof insertFinancialAlertSchema>;
+
+// Reconciliation period close controls
+export const reconciliationPeriodStatusEnum = pgEnum("reconciliation_period_status", ["open", "closed", "locked"]);
+
+export const reconciliationPeriods = pgTable("reconciliation_periods", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  periodLabel: text("period_label").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  status: reconciliationPeriodStatusEnum("status").notNull().default("open"),
+  importId: varchar("import_id").references(() => bankStatementImports.id),
+  closedBy: text("closed_by"),
+  closedAt: timestamp("closed_at"),
+  lockedBy: text("locked_by"),
+  lockedAt: timestamp("locked_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertReconciliationPeriodSchema = createInsertSchema(reconciliationPeriods).omit({ id: true, createdAt: true, updatedAt: true });
+export type ReconciliationPeriod = typeof reconciliationPeriods.$inferSelect;
+export type InsertReconciliationPeriod = z.infer<typeof insertReconciliationPeriodSchema>;
+
+// Collections handoff records
+export const collectionsHandoffStatusEnum = pgEnum("collections_handoff_status", ["referred", "active", "settled", "withdrawn", "judgment"]);
+
+export const collectionsHandoffs = pgTable("collections_handoffs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  referralDate: timestamp("referral_date").notNull(),
+  referralAmount: real("referral_amount").notNull(),
+  currentBalance: real("current_balance").notNull(),
+  daysPastDue: integer("days_past_due").notNull().default(0),
+  status: collectionsHandoffStatusEnum("status").notNull().default("referred"),
+  agencyName: text("agency_name"),
+  agencyContactName: text("agency_contact_name"),
+  agencyEmail: text("agency_email"),
+  agencyPhone: text("agency_phone"),
+  agencyCaseNumber: text("agency_case_number"),
+  settlementAmount: real("settlement_amount"),
+  settlementDate: timestamp("settlement_date"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertCollectionsHandoffSchema = createInsertSchema(collectionsHandoffs).omit({ id: true, createdAt: true, updatedAt: true });
+export type CollectionsHandoff = typeof collectionsHandoffs.$inferSelect;
+export type InsertCollectionsHandoff = z.infer<typeof insertCollectionsHandoffSchema>;
+
+// Portal login OTP tokens for verifiable authentication
+export const portalLoginTokens = pgTable("portal_login_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  email: text("email").notNull(),
+  otpHash: text("otp_hash").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type PortalLoginToken = typeof portalLoginTokens.$inferSelect;

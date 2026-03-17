@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Link } from "wouter";
+import { Wrench, ExternalLink } from "lucide-react";
 
 type FindingSeverity = "low" | "medium" | "high" | "critical";
 type FindingStatus = "open" | "monitoring" | "resolved";
@@ -354,10 +356,22 @@ export default function InspectionsPage() {
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-muted-foreground">{finding.status}</span>
                               {finding.linkedWorkOrderId ? (
-                                <Badge variant="secondary">linked</Badge>
+                                <Link href="/app/work-orders">
+                                  <Button size="sm" variant="secondary" className="gap-1">
+                                    <ExternalLink className="h-3 w-3" />
+                                    View Work Order
+                                  </Button>
+                                </Link>
                               ) : (
-                                <Button size="sm" variant="outline" onClick={() => convertFinding.mutate({ inspectionId: record.id, findingIndex: index })}>
-                                  Convert
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={convertFinding.isPending}
+                                  onClick={() => convertFinding.mutate({ inspectionId: record.id, findingIndex: index })}
+                                  className="gap-1"
+                                >
+                                  <Wrench className="h-3 w-3" />
+                                  {convertFinding.isPending ? "Creating…" : "Create Work Order"}
                                 </Button>
                               )}
                             </div>

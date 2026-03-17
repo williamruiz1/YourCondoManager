@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { MaintenanceRequest, Unit, Vendor, VendorInvoice, WorkOrder } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -17,9 +17,13 @@ import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { DataTableShell } from "@/components/data-table-shell";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { AlertTriangle, Camera, ChevronDown, ChevronUp, Clock, Minus, Upload, X } from "lucide-react";
+import { DateRangePresets, type DateRange } from "@/components/date-range-presets";
+import { Label } from "@/components/ui/label";
 
 type WorkOrderStatus = "open" | "assigned" | "in-progress" | "pending-review" | "closed" | "cancelled";
 type WorkOrderPriority = "low" | "medium" | "high" | "urgent";
+type WorkOrderPhoto = { url: string; label: string; type: string; uploadedAt: string };
 
 const emptyForm = {
   title: "",
@@ -43,6 +47,7 @@ export default function WorkOrdersPage() {
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [open, setOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<DateRange>({ from: null, to: null });
   const [unitFilter, setUnitFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("updated");
@@ -50,6 +55,9 @@ export default function WorkOrdersPage() {
   const [editing, setEditing] = useState<WorkOrder | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [form, setForm] = useState(emptyForm);
+  const [photoLabel, setPhotoLabel] = useState("");
+  const [photoType, setPhotoType] = useState("before");
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const { data: workOrders = [] } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders", statusFilter, unitFilter],
@@ -83,6 +91,10 @@ export default function WorkOrdersPage() {
   const convertibleRequests = useMemo(
     () => maintenanceRequests.filter((request) => !workOrders.some((order) => order.maintenanceRequestId === request.id)),
     [maintenanceRequests, workOrders],
+  );
+  const requestById = useMemo(
+    () => new Map(maintenanceRequests.map((r) => [r.id, r])),
+    [maintenanceRequests],
   );
   const selectedOrder = workOrders.find((order) => order.id === selectedOrderId) ?? null;
 
@@ -145,6 +157,34 @@ export default function WorkOrdersPage() {
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
 
+  const uploadPhoto = useMutation({
+    mutationFn: async ({ file, label, type }: { file: File; label: string; type: string }) => {
+      if (!selectedOrderId) throw new Error("No work order selected");
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("label", label);
+      fd.append("type", type);
+      const res = await fetch(`/api/work-orders/${selectedOrderId}/photos`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Upload failed" }));
+        throw new Error(err.message);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      setPhotoLabel("");
+      setPhotoType("before");
+      if (photoInputRef.current) photoInputRef.current.value = "";
+      toast({ title: "Photo uploaded" });
+    },
+    onError: (error: Error) => toast({ title: "Upload failed", description: error.message, variant: "destructive" }),
+  });
+
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
@@ -183,16 +223,12 @@ export default function WorkOrdersPage() {
   });
   const visibleWorkOrders = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const rows = [...workOrders].filter((order) =>
-      !term
-        || [
-          order.title,
-          order.description,
-          order.locationText,
-          order.category,
-          order.assignedTo,
-        ].some((value) => (value || "").toLowerCase().includes(term)),
-    );
+    const rows = [...workOrders].filter((order) => {
+      if (term && ![order.title, order.description, order.locationText, order.category, order.assignedTo].some((v) => (v || "").toLowerCase().includes(term))) return false;
+      if (dateRange.from && new Date(order.updatedAt) < dateRange.from) return false;
+      if (dateRange.to && new Date(order.updatedAt) > dateRange.to) return false;
+      return true;
+    });
 
     rows.sort((left, right) => {
       if (sortBy === "priority") {
@@ -217,7 +253,7 @@ export default function WorkOrdersPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, sortBy, statusFilter, unitFilter]);
+  }, [search, sortBy, statusFilter, unitFilter, dateRange]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -365,7 +401,13 @@ export default function WorkOrdersPage() {
               {convertibleRequests.slice(0, 25).map((request) => (
                 <TableRow key={request.id}>
                   <TableCell>{request.title}</TableCell>
-                  <TableCell>{request.priority}</TableCell>
+                  <TableCell>
+                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${request.priority === "urgent" ? "text-red-600" : request.priority === "high" ? "text-orange-600" : "text-slate-700"}`} aria-label={`Priority: ${request.priority}`}>
+                      {request.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
+                      {request.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
+                      {request.priority}
+                    </span>
+                  </TableCell>
                   <TableCell><Badge variant="secondary">{request.status}</Badge></TableCell>
                   <TableCell>{units.find((unit) => unit.id === request.unitId)?.unitNumber || "-"}</TableCell>
                   <TableCell className="text-right">
@@ -385,7 +427,7 @@ export default function WorkOrdersPage() {
         isLoading={!workOrders}
         isEmpty={!workOrders.length}
         emptyTitle="No work orders yet"
-        emptyMessage="Create the first work order or convert a maintenance request to start execution tracking."
+        emptyMessage="Work orders track repair and maintenance jobs from assignment to close. Create one directly or convert an existing maintenance request above. Assign a vendor, set priority, and track costs all in one place."
       >
         <DataTableShell
           title="Work Order Register"
@@ -398,34 +440,37 @@ export default function WorkOrdersPage() {
           totalPages={totalPages}
           onPageChange={setPage}
           filterSlot={
-            <div className="flex items-center gap-3 flex-wrap">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="open">open</SelectItem>
-                  <SelectItem value="assigned">assigned</SelectItem>
-                  <SelectItem value="in-progress">in-progress</SelectItem>
-                  <SelectItem value="pending-review">pending-review</SelectItem>
-                  <SelectItem value="closed">closed</SelectItem>
-                  <SelectItem value="cancelled">cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={unitFilter} onValueChange={setUnitFilter}>
-                <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All units</SelectItem>
-                  {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="updated">Recently updated</SelectItem>
-                  <SelectItem value="priority">Highest priority</SelectItem>
-                  <SelectItem value="status">Status A-Z</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="open">open</SelectItem>
+                    <SelectItem value="assigned">assigned</SelectItem>
+                    <SelectItem value="in-progress">in-progress</SelectItem>
+                    <SelectItem value="pending-review">pending-review</SelectItem>
+                    <SelectItem value="closed">closed</SelectItem>
+                    <SelectItem value="cancelled">cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={unitFilter} onValueChange={setUnitFilter}>
+                  <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All units</SelectItem>
+                    {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="updated">Recently updated</SelectItem>
+                    <SelectItem value="priority">Highest priority</SelectItem>
+                    <SelectItem value="status">Status A-Z</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <DateRangePresets value={dateRange} onChange={(r) => { setDateRange(r); setPage(1); }} />
             </div>
           }
         >
@@ -438,6 +483,7 @@ export default function WorkOrdersPage() {
                 <TableHead>Invoice</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Priority</TableHead>
+                <TableHead>SLA</TableHead>
                 <TableHead>Cost</TableHead>
                 <TableHead>Updated</TableHead>
                 <TableHead className="text-right">Action</TableHead>
@@ -456,7 +502,30 @@ export default function WorkOrdersPage() {
                   <TableCell>{vendors.find((vendor) => vendor.id === order.vendorId)?.name || "-"}</TableCell>
                   <TableCell>{invoices.find((invoice) => invoice.id === order.vendorInvoiceId)?.invoiceNumber || (order.vendorInvoiceId ? "linked" : "-")}</TableCell>
                   <TableCell><Badge variant={order.status === "closed" ? "default" : "secondary"}>{order.status}</Badge></TableCell>
-                  <TableCell>{order.priority}</TableCell>
+                  <TableCell>
+                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${order.priority === "urgent" ? "text-red-600" : order.priority === "high" ? "text-orange-600" : order.priority === "low" ? "text-slate-500" : "text-slate-700"}`} aria-label={`Priority: ${order.priority}`}>
+                      {order.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
+                      {order.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
+                      {order.priority === "medium" && <Minus className="h-3 w-3" aria-hidden="true" />}
+                      {order.priority === "low" && <ChevronDown className="h-3 w-3" aria-hidden="true" />}
+                      {order.priority}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const linkedReq = order.maintenanceRequestId ? requestById.get(order.maintenanceRequestId) : null;
+                      const dueAt = linkedReq?.responseDueAt ? new Date(linkedReq.responseDueAt) : null;
+                      if (!dueAt) return <span className="text-xs text-muted-foreground">—</span>;
+                      const isActive = order.status !== "closed" && order.status !== "cancelled";
+                      const isOverdue = isActive && dueAt < new Date();
+                      return (
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium ${isOverdue ? "text-red-600" : "text-muted-foreground"}`} aria-label={isOverdue ? "SLA overdue" : "SLA on track"}>
+                          <Clock className="h-3 w-3" aria-hidden="true" />
+                          {isOverdue ? "Overdue" : dueAt.toLocaleDateString()}
+                        </span>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell>
                     {order.actualCost != null
                       ? `$${order.actualCost.toFixed(2)} actual`
@@ -497,6 +566,109 @@ export default function WorkOrdersPage() {
               <Card><CardContent className="p-4 space-y-2"><div className="text-sm text-muted-foreground">Description</div><div className="text-sm">{selectedOrder.description}</div></CardContent></Card>
               <Card><CardContent className="p-4 space-y-2"><div className="text-sm text-muted-foreground">Cost Tracking</div><div className="text-sm">Estimated: {selectedOrder.estimatedCost != null ? `$${selectedOrder.estimatedCost.toFixed(2)}` : "-"}</div><div className="text-sm">Actual: {selectedOrder.actualCost != null ? `$${selectedOrder.actualCost.toFixed(2)}` : "-"}</div><div className="text-sm">Linked invoice: {invoices.find((invoice) => invoice.id === selectedOrder.vendorInvoiceId)?.invoiceNumber || "-"}</div></CardContent></Card>
               <Card><CardContent className="p-4 space-y-2"><div className="text-sm text-muted-foreground">Resolution Notes</div><div className="text-sm">{selectedOrder.resolutionNotes || "No resolution notes recorded yet."}</div></CardContent></Card>
+
+              <Card>
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Camera className="h-4 w-4 text-muted-foreground" />
+                    <div className="text-sm font-medium">Before / After Documentation</div>
+                  </div>
+
+                  {(() => {
+                    const photos = Array.isArray((selectedOrder as any).photosJson) ? ((selectedOrder as any).photosJson as WorkOrderPhoto[]) : [];
+                    const beforePhotos = photos.filter((p) => p.type === "before");
+                    const afterPhotos = photos.filter((p) => p.type === "after");
+                    const generalPhotos = photos.filter((p) => p.type !== "before" && p.type !== "after");
+                    return (
+                      <div className="space-y-3">
+                        {photos.length === 0 && (
+                          <div className="text-sm text-muted-foreground text-center py-4 border rounded-md border-dashed">No photos uploaded yet</div>
+                        )}
+                        {beforePhotos.length > 0 && (
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Before</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {beforePhotos.map((photo, i) => (
+                                <div key={i} className="relative rounded overflow-hidden border bg-muted">
+                                  <img src={photo.url} alt={photo.label || "Before"} className="w-full h-28 object-cover" />
+                                  {photo.label && <div className="text-xs px-2 py-1 truncate">{photo.label}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {afterPhotos.length > 0 && (
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">After</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {afterPhotos.map((photo, i) => (
+                                <div key={i} className="relative rounded overflow-hidden border bg-muted">
+                                  <img src={photo.url} alt={photo.label || "After"} className="w-full h-28 object-cover" />
+                                  {photo.label && <div className="text-xs px-2 py-1 truncate">{photo.label}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {generalPhotos.length > 0 && (
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">General</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {generalPhotos.map((photo, i) => (
+                                <div key={i} className="relative rounded overflow-hidden border bg-muted">
+                                  <img src={photo.url} alt={photo.label || "Photo"} className="w-full h-28 object-cover" />
+                                  {photo.label && <div className="text-xs px-2 py-1 truncate">{photo.label}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  <div className="space-y-2 border-t pt-3">
+                    <div className="text-xs font-medium text-muted-foreground">Upload photo</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Type</Label>
+                        <Select value={photoType} onValueChange={setPhotoType}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="before">Before</SelectItem>
+                            <SelectItem value="after">After</SelectItem>
+                            <SelectItem value="general">General</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Label (optional)</Label>
+                        <Input className="h-8 text-xs" placeholder="e.g. front door" value={photoLabel} onChange={(e) => setPhotoLabel(e.target.value)} />
+                      </div>
+                    </div>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadPhoto.mutate({ file, label: photoLabel, type: photoType });
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full gap-2"
+                      disabled={uploadPhoto.isPending}
+                      onClick={() => photoInputRef.current?.click()}
+                    >
+                      <Upload className="h-3 w-3" />
+                      {uploadPhoto.isPending ? "Uploading…" : "Choose & Upload"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           ) : null}
         </SheetContent>

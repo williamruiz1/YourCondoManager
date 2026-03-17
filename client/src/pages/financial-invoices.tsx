@@ -19,6 +19,9 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { DataTableShell } from "@/components/data-table-shell";
+import { AlertTriangle, Ban, CheckCircle2, Clock, DollarSign, FileText } from "lucide-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ExportCsvButton } from "@/components/export-csv-button";
 
 const invoiceSchema = z.object({
   associationId: z.string().min(1),
@@ -144,6 +147,37 @@ export default function FinancialInvoicesPage() {
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  const updateStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/financial/invoices/${id}`, { status });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/invoices"] });
+      toast({ title: "Invoice status updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const apStats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const all = (invoices ?? []).filter((inv) => !activeAssociationId || inv.associationId === activeAssociationId);
+    const pending = all.filter((inv) => inv.status === "received" || inv.status === "draft");
+    const approved = all.filter((inv) => inv.status === "approved");
+    const overdue = all.filter((inv) =>
+      (inv.status === "received" || inv.status === "approved" || inv.status === "draft") &&
+      inv.dueDate && new Date(inv.dueDate) < today,
+    );
+    return {
+      pendingCount: pending.length,
+      pendingAmount: pending.reduce((s, i) => s + Number(i.amount), 0),
+      approvedAmount: approved.reduce((s, i) => s + Number(i.amount), 0),
+      overdueCount: overdue.length,
+      overdueAmount: overdue.reduce((s, i) => s + Number(i.amount), 0),
+    };
+  }, [invoices, activeAssociationId]);
 
   const filteredInvoices = useMemo(() => {
     const term = invoiceSearch.trim().toLowerCase();
@@ -318,6 +352,32 @@ export default function FinancialInvoicesPage() {
         }
       />
 
+      {apStats.overdueCount > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span><strong>{apStats.overdueCount} invoice{apStats.overdueCount !== 1 ? "s" : ""}</strong> past due — ${apStats.overdueAmount.toFixed(2)} outstanding</span>
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="rounded-lg border p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Clock className="h-4 w-4" /> Pending Approval</div>
+          <div className="text-2xl font-bold">${apStats.pendingAmount.toFixed(2)}</div>
+          <div className="text-xs text-muted-foreground">{apStats.pendingCount} invoice{apStats.pendingCount !== 1 ? "s" : ""}</div>
+        </div>
+        <div className="rounded-lg border p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><CheckCircle2 className="h-4 w-4" /> Approved</div>
+          <div className="text-2xl font-bold">${apStats.approvedAmount.toFixed(2)}</div>
+        </div>
+        <div className="rounded-lg border p-4">
+          <div className={`flex items-center gap-2 text-sm mb-1 ${apStats.overdueCount > 0 ? "text-red-600" : "text-muted-foreground"}`}>
+            <AlertTriangle className="h-4 w-4" /> Overdue
+          </div>
+          <div className={`text-2xl font-bold ${apStats.overdueCount > 0 ? "text-red-600" : ""}`}>${apStats.overdueAmount.toFixed(2)}</div>
+          <div className="text-xs text-muted-foreground">{apStats.overdueCount} past due date</div>
+        </div>
+      </div>
+
       <AsyncStateBoundary
         isLoading={!invoices || !attachments}
         isEmpty={!invoices?.length}
@@ -336,6 +396,11 @@ export default function FinancialInvoicesPage() {
           onPageChange={setInvoicePage}
           filterSlot={
             <div className="flex items-center gap-3 flex-wrap">
+              <ExportCsvButton
+                headers={["Vendor", "Invoice #", "Amount", "Status", "Invoice Date", "Due Date"]}
+                rows={filteredInvoices.map((inv) => [inv.vendorName, inv.invoiceNumber || "", Number(inv.amount).toFixed(2), inv.status, new Date(inv.invoiceDate).toLocaleDateString(), inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : ""])}
+                filename={`invoices-${activeAssociationName || "all"}`}
+              />
               <Select value={invoiceStatusFilter} onValueChange={setInvoiceStatusFilter}>
                 <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -368,19 +433,63 @@ export default function FinancialInvoicesPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Invoice Date</TableHead>
                 <TableHead>Due Date</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pagedInvoices.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium">{row.vendorName}</TableCell>
-                  <TableCell>{row.invoiceNumber || "-"}</TableCell>
-                  <TableCell>${Number(row.amount).toFixed(2)}</TableCell>
-                  <TableCell><Badge variant="secondary">{row.status}</Badge></TableCell>
-                  <TableCell>{new Date(row.invoiceDate).toLocaleDateString()}</TableCell>
-                  <TableCell>{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "-"}</TableCell>
-                </TableRow>
-              ))}
+              {pagedInvoices.map((row) => {
+                const today = new Date(); today.setHours(0,0,0,0);
+                const isOverdue = row.dueDate && new Date(row.dueDate) < today && row.status !== "paid" && row.status !== "void";
+                return (
+                  <TableRow key={row.id} className={isOverdue ? "bg-red-50/50" : ""}>
+                    <TableCell className="font-medium">{row.vendorName}</TableCell>
+                    <TableCell>{row.invoiceNumber || "-"}</TableCell>
+                    <TableCell>${Number(row.amount).toFixed(2)}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1 flex-wrap">
+                        <Badge variant={row.status === "paid" ? "default" : row.status === "void" ? "destructive" : "secondary"} className="gap-1">
+                          {row.status === "paid" && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
+                          {row.status === "approved" && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
+                          {(row.status === "received" || row.status === "draft") && <FileText className="h-3 w-3" aria-hidden="true" />}
+                          {row.status === "void" && <Ban className="h-3 w-3" aria-hidden="true" />}
+                          {row.status}
+                        </Badge>
+                        {isOverdue && <Badge variant="destructive">Overdue</Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell>{new Date(row.invoiceDate).toLocaleDateString()}</TableCell>
+                    <TableCell>{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "-"}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {(row.status === "received" || row.status === "draft") && (
+                          <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ id: row.id, status: "approved" })}>
+                            Approve
+                          </Button>
+                        )}
+                        {row.status === "approved" && (
+                          <ConfirmDialog
+                            trigger={<Button size="sm">Mark Paid</Button>}
+                            title="Mark invoice as paid?"
+                            description={`This will mark ${row.vendorName} invoice ${row.invoiceNumber || row.id.slice(0,8)} ($${Number(row.amount).toFixed(2)}) as paid. This is a financial record update.`}
+                            confirmLabel="Mark Paid"
+                            onConfirm={() => updateStatus.mutate({ id: row.id, status: "paid" })}
+                          />
+                        )}
+                        {row.status !== "paid" && row.status !== "void" && (
+                          <ConfirmDialog
+                            trigger={<Button size="sm" variant="ghost" className="text-muted-foreground">Void</Button>}
+                            title="Void this invoice?"
+                            description={`Voiding ${row.vendorName} invoice ${row.invoiceNumber || row.id.slice(0,8)} will mark it as cancelled. This cannot be undone.`}
+                            confirmLabel="Void Invoice"
+                            destructive
+                            onConfirm={() => updateStatus.mutate({ id: row.id, status: "void" })}
+                          />
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </DataTableShell>

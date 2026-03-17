@@ -127,6 +127,9 @@ export default function OwnerPortalPage() {
   const [associationId, setAssociationId] = useState("");
   const [email, setEmail] = useState("");
   const [portalAccessId, setPortalAccessId] = useState(() => window.localStorage.getItem("portalAccessId") || "");
+  const [onboardingDismissed, setOnboardingDismissed] = useState(
+    () => window.localStorage.getItem(`portal-onboarding-dismissed-${window.localStorage.getItem("portalAccessId") || ""}`) === "1"
+  );
   const [requestedPhone, setRequestedPhone] = useState("");
   const [requestedMailingAddress, setRequestedMailingAddress] = useState("");
   const [requestedEmergencyContactName, setRequestedEmergencyContactName] = useState("");
@@ -160,13 +163,37 @@ export default function OwnerPortalPage() {
   const [vendorInvoiceDraft, setVendorInvoiceDraft] = useState({ vendorName: "", invoiceNumber: "", invoiceDate: "", dueDate: "", amount: "", status: "received", notes: "" });
   const [newVendorInvoiceDraft, setNewVendorInvoiceDraft] = useState({ vendorName: "", invoiceNumber: "", invoiceDate: "", dueDate: "", amount: "", status: "received", notes: "" });
   const [ledgerEntryDraft, setLedgerEntryDraft] = useState({ personId: "", unitId: "", entryType: "charge", amount: "", postedAt: "", description: "" });
+  const [paymentFormOpen, setPaymentFormOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentDescription, setPaymentDescription] = useState("HOA dues payment");
+  const [paymentReceipt, setPaymentReceipt] = useState<{ amount: number; description: string; date: string; confirmationNumber?: string } | null>(null);
 
-  const login = useMutation({
+  const [otpStep, setOtpStep] = useState<"email" | "otp">("email");
+  const [otp, setOtp] = useState("");
+  const [otpSimulated, setOtpSimulated] = useState<string | null>(null);
+
+  const requestLogin = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/portal/session", {
+      const res = await fetch("/api/portal/request-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ associationId, email }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<{ message: string; simulatedOtp?: string; simulationMode?: boolean }>;
+    },
+    onSuccess: (result) => {
+      setOtpStep("otp");
+      setOtpSimulated(result.simulatedOtp ?? null);
+    },
+  });
+
+  const verifyLogin = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/portal/verify-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ associationId, email, otp }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json() as Promise<{ portalAccessId: string }>;
@@ -225,6 +252,168 @@ export default function OwnerPortalPage() {
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
+  });
+
+  const { data: portalLedger, refetch: refetchPortalLedger } = useQuery<{ entries: OwnerLedgerEntry[]; balance: number }>({
+    queryKey: ["/api/portal/ledger", portalAccessId || "none"],
+    enabled: Boolean(portalAccessId),
+    queryFn: async () => {
+      const res = await fetch("/api/portal/ledger", { headers: portalHeaders(portalAccessId) });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+
+  type FinancialDashboard = {
+    balance: number;
+    totalCharged: number;
+    totalPaid: number;
+    feeSchedules: Array<{ id: string; name: string; amount: number; frequency: string }>;
+    nextDueDate: string | null;
+    paymentPlan: { id: string; totalAmount: number; amountPaid: number; installmentAmount: number; installmentFrequency: string; nextDueDate: string | null; status: string } | null;
+    recentEntries: OwnerLedgerEntry[];
+  };
+  const { data: financialDashboard, refetch: refetchFinancialDashboard } = useQuery<FinancialDashboard>({
+    queryKey: ["/api/portal/financial-dashboard", portalAccessId || "none"],
+    enabled: Boolean(portalAccessId),
+    queryFn: async () => {
+      const res = await fetch("/api/portal/financial-dashboard", { headers: portalHeaders(portalAccessId) });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+
+  const submitPayment = useMutation({
+    mutationFn: async () => {
+      const amt = parseFloat(paymentAmount);
+      if (!amt || amt <= 0) throw new Error("Enter a valid amount");
+      const myUnit = (me as any)?.unitId || "";
+      const res = await fetch("/api/portal/payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
+        body: JSON.stringify({ amount: amt, description: paymentDescription || "HOA dues payment", unitId: myUnit }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const amt = parseFloat(paymentAmount);
+      const confirmation = data?.receipt?.confirmationNumber ?? null;
+      setPaymentReceipt({
+        amount: amt,
+        description: paymentDescription || "HOA dues payment",
+        date: new Date().toLocaleString(),
+        ...(confirmation ? { confirmationNumber: confirmation } : {}),
+      });
+      setPaymentFormOpen(false);
+      setPaymentAmount("");
+      void refetchPortalLedger();
+      void refetchFinancialDashboard();
+    },
+  });
+
+  // Saved payment methods
+  const [addMethodOpen, setAddMethodOpen] = useState(false);
+  const [methodForm, setMethodForm] = useState({ methodType: "ach", displayName: "", last4: "", bankName: "", isDefault: false });
+  const { data: savedMethods = [], refetch: refetchMethods } = useQuery<any[]>({
+    queryKey: ["/api/portal/payment-methods", portalAccessId || "none"],
+    queryFn: async () => {
+      if (!portalAccessId) return [];
+      const res = await fetch("/api/portal/payment-methods", { headers: portalHeaders(portalAccessId) });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: Boolean(portalAccessId),
+  });
+  const addMethod = useMutation({
+    mutationFn: async () => {
+      if (!methodForm.displayName) throw new Error("Display name required");
+      const res = await fetch("/api/portal/payment-methods", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
+        body: JSON.stringify({
+          methodType: methodForm.methodType,
+          displayName: methodForm.displayName,
+          last4: methodForm.last4 || null,
+          bankName: methodForm.bankName || null,
+          isDefault: methodForm.isDefault ? 1 : 0,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => { setAddMethodOpen(false); setMethodForm({ methodType: "ach", displayName: "", last4: "", bankName: "", isDefault: false }); void refetchMethods(); },
+    onError: (e: Error) => alert(e.message),
+  });
+  const setDefaultMethod = useMutation({
+    mutationFn: async (methodId: string) => {
+      const res = await fetch(`/api/portal/payment-methods/${methodId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
+        body: JSON.stringify({ isDefault: 1 }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => void refetchMethods(),
+  });
+  const removeMethod = useMutation({
+    mutationFn: async (methodId: string) => {
+      const res = await fetch(`/api/portal/payment-methods/${methodId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
+        body: JSON.stringify({ isActive: 0 }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => void refetchMethods(),
+  });
+
+  // Autopay
+  const [autopayFormOpen, setAutopayFormOpen] = useState(false);
+  const [autopayForm, setAutopayForm] = useState({ amount: "", frequency: "monthly", dayOfMonth: "1", description: "Autopay HOA dues" });
+  const { data: autopayEnrollments = [], refetch: refetchAutopay } = useQuery<any[]>({
+    queryKey: ["/api/portal/autopay", portalAccessId || "none"],
+    queryFn: async () => {
+      if (!portalAccessId) return [];
+      const res = await fetch("/api/portal/autopay", { headers: portalHeaders(portalAccessId) });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: Boolean(portalAccessId),
+  });
+  const enrollAutopay = useMutation({
+    mutationFn: async () => {
+      const myUnit = (me as any)?.unitId || "";
+      const res = await fetch("/api/portal/autopay/enroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
+        body: JSON.stringify({
+          amount: parseFloat(autopayForm.amount),
+          frequency: autopayForm.frequency,
+          dayOfMonth: parseInt(autopayForm.dayOfMonth, 10),
+          description: autopayForm.description,
+          unitId: myUnit,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => { setAutopayFormOpen(false); void refetchAutopay(); },
+    onError: (e: Error) => alert(e.message),
+  });
+  const cancelAutopay = useMutation({
+    mutationFn: async (enrollmentId: string) => {
+      const res = await fetch(`/api/portal/autopay/${enrollmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => void refetchAutopay(),
   });
 
   const { data: boardOverview } = useQuery<AssociationOverview>({
@@ -901,12 +1090,40 @@ export default function OwnerPortalPage() {
     return (
       <div className="p-6 max-w-xl mx-auto space-y-4">
         <h1 className="text-2xl font-bold tracking-tight">Owner Portal</h1>
-        <p className="text-muted-foreground">Sign in with association and email to access your documents and notices.</p>
+        <p className="text-muted-foreground">
+          {otpStep === "email"
+            ? "Enter your association ID and email to receive a one-time login code."
+            : "Check your email for a 6-digit login code. It expires in 15 minutes."}
+        </p>
         <Card>
           <CardContent className="p-6 space-y-3">
-            <Input placeholder="Association ID" value={associationId} onChange={(e) => setAssociationId(e.target.value)} />
-            <Input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Button onClick={() => login.mutate()} disabled={login.isPending || !associationId || !email}>Start Portal Session</Button>
+            {otpStep === "email" ? (
+              <>
+                <Input placeholder="Association ID" value={associationId} onChange={(e) => setAssociationId(e.target.value)} />
+                <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                {requestLogin.isError && <p className="text-sm text-destructive">{(requestLogin.error as Error).message}</p>}
+                <Button onClick={() => requestLogin.mutate()} disabled={requestLogin.isPending || !associationId || !email} className="w-full">
+                  {requestLogin.isPending ? "Sending code…" : "Send Login Code"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">Signed in as: <strong>{email}</strong></p>
+                {otpSimulated && (
+                  <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                    <strong>Simulation mode:</strong> No email provider configured. Your code is: <strong className="font-mono text-lg">{otpSimulated}</strong>
+                  </div>
+                )}
+                <Input placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} maxLength={6} className="font-mono text-center text-lg tracking-widest" />
+                {verifyLogin.isError && <p className="text-sm text-destructive">{(verifyLogin.error as Error).message}</p>}
+                <Button onClick={() => verifyLogin.mutate()} disabled={verifyLogin.isPending || otp.length < 6} className="w-full">
+                  {verifyLogin.isPending ? "Verifying…" : "Verify & Sign In"}
+                </Button>
+                <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); }}>
+                  Use a different email
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -930,6 +1147,74 @@ export default function OwnerPortalPage() {
           Sign Out
         </Button>
       </div>
+
+      {!onboardingDismissed && !me?.hasBoardAccess && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-primary font-semibold">Welcome to Your Portal</div>
+                <div className="mt-1 font-medium">Here are a few things to get started as a new resident</div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-xs shrink-0"
+                onClick={() => {
+                  window.localStorage.setItem(`portal-onboarding-dismissed-${portalAccessId}`, "1");
+                  setOnboardingDismissed(true);
+                }}
+              >
+                Dismiss
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {[
+                {
+                  done: true,
+                  label: "Access your owner portal",
+                  detail: "You're in! Your portal is ready.",
+                },
+                {
+                  done: Boolean(portalLedger),
+                  label: "Check your account balance",
+                  detail: portalLedger
+                    ? `Current balance: $${portalLedger.balance.toFixed(2)}`
+                    : "Review any outstanding charges or payments.",
+                },
+                {
+                  done: Boolean(documents?.length),
+                  label: "Browse community documents",
+                  detail: documents?.length
+                    ? `${documents.length} document(s) available`
+                    : "Community CC&Rs, bylaws, and notices are shared here.",
+                },
+                {
+                  done: Boolean(requests?.length),
+                  label: "Verify your contact information",
+                  detail: "Review and update your phone, mailing address, or emergency contact.",
+                },
+                {
+                  done: false,
+                  label: "Submit a maintenance request if needed",
+                  detail: "Use the maintenance section below to report any issues in your unit or common areas.",
+                },
+              ].map((step, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.done ? "bg-green-500 text-white" : "bg-muted border text-muted-foreground"}`}>
+                    {step.done ? "✓" : i + 1}
+                  </div>
+                  <div>
+                    <div className={`text-sm font-medium ${step.done ? "line-through text-muted-foreground" : ""}`}>{step.label}</div>
+                    <div className="text-xs text-muted-foreground">{step.detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {me?.hasBoardAccess ? (
         <>
@@ -1866,16 +2151,44 @@ export default function OwnerPortalPage() {
                 <TableHead>Subject</TableHead>
                 <TableHead>Snippet</TableHead>
                 <TableHead>Sent</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(notices ?? []).map((notice) => (
-                <TableRow key={notice.id}>
-                  <TableCell>{notice.subject || "-"}</TableCell>
-                  <TableCell className="max-w-[420px]">{notice.bodySnippet || "-"}</TableCell>
-                  <TableCell>{new Date(notice.createdAt).toLocaleString()}</TableCell>
-                </TableRow>
-              ))}
+              {(notices ?? []).map((notice) => {
+                const isPaymentNotice = (notice.relatedType || "").includes("payment") || (notice.subject || "").toLowerCase().includes("payment") || (notice.subject || "").toLowerCase().includes("due") || (notice.subject || "").toLowerCase().includes("balance");
+                return (
+                  <TableRow key={notice.id}>
+                    <TableCell>
+                      {notice.subject || "-"}
+                      {isPaymentNotice && (
+                        <Badge variant="secondary" className="ml-2 text-xs">Payment Notice</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-[360px] text-sm text-muted-foreground">{notice.bodySnippet || "-"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{new Date(notice.createdAt).toLocaleString()}</TableCell>
+                    <TableCell className="text-right">
+                      {isPaymentNotice && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setPaymentFormOpen(true);
+                            setPaymentReceipt(null);
+                            // Scroll to financial section
+                            document.getElementById("financial-dashboard")?.scrollIntoView({ behavior: "smooth" });
+                          }}
+                        >
+                          Pay Now
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {(notices ?? []).length === 0 && (
+                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-4">No notices yet.</TableCell></TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -2034,6 +2347,313 @@ export default function OwnerPortalPage() {
               ) : null}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      <Card id="financial-dashboard">
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold">Financial Dashboard</h2>
+              <p className="text-sm text-muted-foreground">Your account balance, upcoming charges, and payment history.</p>
+            </div>
+            <div className={`text-xl font-bold ${(financialDashboard?.balance ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>
+              {(financialDashboard?.balance ?? 0) > 0 ? "Balance Due" : "Credit"}: ${Math.abs(financialDashboard?.balance ?? 0).toFixed(2)}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border p-3 text-center">
+              <div className="text-xs text-muted-foreground">Total Charged</div>
+              <div className="text-lg font-semibold text-red-600">${(financialDashboard?.totalCharged ?? 0).toFixed(2)}</div>
+            </div>
+            <div className="rounded-md border p-3 text-center">
+              <div className="text-xs text-muted-foreground">Total Paid</div>
+              <div className="text-lg font-semibold text-green-600">${(financialDashboard?.totalPaid ?? 0).toFixed(2)}</div>
+            </div>
+            <div className="rounded-md border p-3 text-center">
+              <div className="text-xs text-muted-foreground">Transactions</div>
+              <div className="text-lg font-semibold">{(portalLedger?.entries ?? []).length}</div>
+            </div>
+            <div className="rounded-md border p-3 text-center">
+              <div className="text-xs text-muted-foreground">Next Charge Due</div>
+              <div className="text-sm font-semibold">{financialDashboard?.nextDueDate ? new Date(financialDashboard.nextDueDate).toLocaleDateString() : "—"}</div>
+            </div>
+          </div>
+
+          {(financialDashboard?.feeSchedules ?? []).length > 0 ? (
+            <div className="space-y-1">
+              <div className="text-sm font-medium">Recurring Charges</div>
+              <div className="flex flex-wrap gap-2">
+                {(financialDashboard?.feeSchedules ?? []).map((s) => (
+                  <div key={s.id} className="rounded-md border px-3 py-1 text-sm">
+                    <span className="font-medium">{s.name}</span>: ${s.amount.toFixed(2)} / {s.frequency}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {financialDashboard?.paymentPlan ? (
+            <div className="rounded-md border bg-blue-50 p-3 space-y-1">
+              <div className="text-sm font-semibold">Active Payment Plan</div>
+              <div className="text-sm text-muted-foreground">
+                Total: ${financialDashboard.paymentPlan.totalAmount.toFixed(2)} | Paid: ${financialDashboard.paymentPlan.amountPaid.toFixed(2)} |
+                Installment: ${financialDashboard.paymentPlan.installmentAmount.toFixed(2)} {financialDashboard.paymentPlan.installmentFrequency}
+                {financialDashboard.paymentPlan.nextDueDate ? ` | Next due: ${new Date(financialDashboard.paymentPlan.nextDueDate).toLocaleDateString()}` : ""}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Payment receipt confirmation */}
+          {paymentReceipt && (
+            <div className="rounded-md border border-green-200 bg-green-50 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-green-700">Payment Recorded</div>
+                <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setPaymentReceipt(null)}>Dismiss</button>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div><span className="font-medium">Amount:</span> ${paymentReceipt.amount.toFixed(2)}</div>
+                <div><span className="font-medium">Description:</span> {paymentReceipt.description}</div>
+                <div><span className="font-medium">Date:</span> {paymentReceipt.date}</div>
+                {paymentReceipt.confirmationNumber && (
+                  <div><span className="font-medium">Confirmation #:</span> {paymentReceipt.confirmationNumber}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">Transaction History</div>
+            <Button size="sm" onClick={() => { setPaymentFormOpen(!paymentFormOpen); setPaymentReceipt(null); }}>
+              {paymentFormOpen ? "Cancel" : "Make a Payment"}
+            </Button>
+          </div>
+
+          {paymentFormOpen ? (
+            <div className="rounded-md border p-4 space-y-3 bg-muted/30">
+              <div className="text-sm font-semibold">Submit Payment</div>
+              {/* Quick-pay buttons */}
+              {(financialDashboard?.balance ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-2 pb-1">
+                  <span className="text-xs text-muted-foreground self-center">Quick pay:</span>
+                  {[
+                    { label: "Pay Balance Due", amount: (financialDashboard?.balance ?? 0) },
+                    ...(financialDashboard?.paymentPlan ? [{ label: "Pay Installment", amount: financialDashboard.paymentPlan.installmentAmount }] : []),
+                  ].map(q => (
+                    <Button
+                      key={q.label}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPaymentAmount(q.amount.toFixed(2))}
+                    >
+                      {q.label} (${q.amount.toFixed(2)})
+                    </Button>
+                  ))}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Amount ($)</label>
+                  <Input type="number" min="0.01" step="0.01" placeholder="0.00" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Description</label>
+                  <Input placeholder="HOA dues payment" value={paymentDescription} onChange={(e) => setPaymentDescription(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPaymentFormOpen(false)}>Cancel</Button>
+                <Button size="sm" onClick={() => submitPayment.mutate()} disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || submitPayment.isPending}>
+                  {submitPayment.isPending ? "Processing..." : "Submit Payment"}
+                </Button>
+              </div>
+              {submitPayment.isError ? <p className="text-xs text-red-600">{(submitPayment.error as Error)?.message}</p> : null}
+            </div>
+          ) : null}
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(portalLedger?.entries ?? []).map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell className="text-muted-foreground text-sm">{new Date(entry.postedAt).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <Badge variant={entry.entryType === "payment" || entry.entryType === "credit" ? "default" : entry.entryType === "late-fee" ? "destructive" : "outline"}>
+                      {entry.entryType}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">{entry.description || "-"}</TableCell>
+                  <TableCell className={`text-right font-mono text-sm ${entry.amount > 0 ? "text-red-600" : "text-green-600"}`}>
+                    {entry.amount > 0 ? "+" : ""}{entry.amount.toFixed(2)}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {(portalLedger?.entries ?? []).length === 0 ? (
+                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">No ledger entries found for your account.</TableCell></TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Saved Payment Methods */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Payment Methods</h2>
+              <p className="text-sm text-muted-foreground">Manage your saved payment methods and set a default.</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setAddMethodOpen(!addMethodOpen)}>
+              {addMethodOpen ? "Cancel" : "+ Add Method"}
+            </Button>
+          </div>
+
+          {addMethodOpen && (
+            <div className="rounded-md border p-4 space-y-3 bg-muted/30">
+              <div className="text-sm font-semibold">Add Payment Method</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Type</label>
+                  <select className="w-full h-9 border rounded-md px-2 text-sm" value={methodForm.methodType} onChange={e => setMethodForm(f => ({ ...f, methodType: e.target.value }))}>
+                    <option value="ach">ACH / Bank Account</option>
+                    <option value="card">Debit/Credit Card</option>
+                    <option value="check">Check</option>
+                    <option value="zelle">Zelle</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Display Name</label>
+                  <Input placeholder="Chase checking ••••1234" value={methodForm.displayName} onChange={e => setMethodForm(f => ({ ...f, displayName: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Last 4 digits (optional)</label>
+                  <Input placeholder="1234" maxLength={4} value={methodForm.last4} onChange={e => setMethodForm(f => ({ ...f, last4: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Bank Name (optional)</label>
+                  <Input placeholder="Chase" value={methodForm.bankName} onChange={e => setMethodForm(f => ({ ...f, bankName: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="default-method" checked={methodForm.isDefault} onChange={e => setMethodForm(f => ({ ...f, isDefault: e.target.checked }))} />
+                <label htmlFor="default-method" className="text-sm">Set as default payment method</label>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setAddMethodOpen(false)}>Cancel</Button>
+                <Button size="sm" onClick={() => addMethod.mutate()} disabled={!methodForm.displayName || addMethod.isPending}>Save</Button>
+              </div>
+            </div>
+          )}
+
+          {savedMethods.length > 0 ? (
+            <div className="space-y-2">
+              {savedMethods.map((m: any) => (
+                <div key={m.id} className="flex items-center justify-between rounded-md border p-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{m.displayName}</span>
+                      {m.isDefault ? <Badge variant="default" className="text-xs">Default</Badge> : null}
+                    </div>
+                    <div className="text-xs text-muted-foreground capitalize">{m.methodType}{m.bankName ? ` · ${m.bankName}` : ""}{m.last4 ? ` ••••${m.last4}` : ""}</div>
+                  </div>
+                  <div className="flex gap-1">
+                    {!m.isDefault && (
+                      <Button size="sm" variant="ghost" onClick={() => setDefaultMethod.mutate(m.id)}>Set Default</Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => removeMethod.mutate(m.id)}>Remove</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            !addMethodOpen && <div className="text-sm text-muted-foreground py-2">No payment methods saved yet.</div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Autopay Enrollment */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Autopay</h2>
+              <p className="text-sm text-muted-foreground">Automatically pay your dues on a recurring schedule.</p>
+            </div>
+            {autopayEnrollments.filter((e: any) => e.status === "active").length === 0 && (
+              <Button size="sm" onClick={() => setAutopayFormOpen(!autopayFormOpen)}>
+                {autopayFormOpen ? "Cancel" : "Enroll in Autopay"}
+              </Button>
+            )}
+          </div>
+
+          {autopayFormOpen && (
+            <div className="rounded-md border p-4 space-y-3 bg-muted/30">
+              <div className="text-sm font-semibold">Set Up Autopay</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Amount ($)</label>
+                  <Input type="number" min="0.01" step="0.01" placeholder="0.00" value={autopayForm.amount} onChange={e => setAutopayForm(f => ({ ...f, amount: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Frequency</label>
+                  <select className="w-full h-9 border rounded-md px-2 text-sm" value={autopayForm.frequency} onChange={e => setAutopayForm(f => ({ ...f, frequency: e.target.value }))}>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="annual">Annual</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Day of Month (1–28)</label>
+                  <Input type="number" min="1" max="28" value={autopayForm.dayOfMonth} onChange={e => setAutopayForm(f => ({ ...f, dayOfMonth: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Description</label>
+                  <Input placeholder="Autopay HOA dues" value={autopayForm.description} onChange={e => setAutopayForm(f => ({ ...f, description: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setAutopayFormOpen(false)}>Cancel</Button>
+                <Button size="sm" onClick={() => enrollAutopay.mutate()} disabled={!autopayForm.amount || parseFloat(autopayForm.amount) <= 0 || enrollAutopay.isPending}>
+                  {enrollAutopay.isPending ? "Enrolling…" : "Enroll"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {autopayEnrollments.length > 0 ? (
+            <div className="space-y-2">
+              {autopayEnrollments.map((e: any) => (
+                <div key={e.id} className="flex items-center justify-between rounded-md border p-3">
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-medium">{e.description} — ${e.amount.toFixed(2)} / {e.frequency}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Day {e.dayOfMonth} of each period · Status: <span className={e.status === "active" ? "text-green-600" : "text-muted-foreground"}>{e.status}</span>
+                      {e.nextPaymentDate ? ` · Next: ${new Date(e.nextPaymentDate).toLocaleDateString()}` : ""}
+                    </div>
+                  </div>
+                  {e.status === "active" && (
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => cancelAutopay.mutate(e.id)}>Cancel</Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            !autopayFormOpen && (
+              <div className="text-sm text-muted-foreground py-2">No autopay enrollment. Click "Enroll in Autopay" to set up automatic payments.</div>
+            )
+          )}
         </CardContent>
       </Card>
     </div>

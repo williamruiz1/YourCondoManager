@@ -1,15 +1,33 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, DoorOpen, Users, Home, UserCheck, FileText } from "lucide-react";
+import {
+  Building2,
+  DoorOpen,
+  Users,
+  Home,
+  UserCheck,
+  FileText,
+  AlertTriangle,
+  Clock,
+  ShieldAlert,
+  BadgeDollarSign,
+  Plus,
+  Wrench,
+  CalendarPlus,
+  UserPlus,
+  BookOpen,
+  Sparkles,
+} from "lucide-react";
+import { SetupWizard } from "@/components/setup-wizard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useAssociationContext } from "@/context/association-context";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
-import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
-import type { RecommendedAction } from "@/components/recommended-actions-panel";
 
 interface DashboardStats {
   totalAssociations: number;
@@ -25,6 +43,29 @@ interface AssociationSummary {
   name: string;
   city: string;
   state: string;
+}
+
+interface DashboardAlerts {
+  workOrders: {
+    urgent: number;
+    stalledOpen: number;
+    totalOpen: number;
+    items: Array<{ id: string; title: string; priority: string; status: string; associationId: string }>;
+  };
+  complianceTasks: {
+    overdue: number;
+    dueSoon: number;
+    items: Array<{ id: string; title: string; dueDate: string | null; associationId: string }>;
+  };
+  vendorInsurance: {
+    expired: number;
+    dueSoon: number;
+    items: Array<{ vendorId: string; vendorName: string; daysUntilExpiry: number; severity: string }>;
+  };
+  delinquentAccounts: {
+    count: number;
+  };
+  orphanWarnings?: Array<{ type: string; message: string; count: number }>;
 }
 
 function StatCard({
@@ -62,13 +103,285 @@ function StatCard({
   );
 }
 
+function AlertRow({
+  icon: Icon,
+  iconClass,
+  label,
+  count,
+  sublabel,
+  href,
+}: {
+  icon: typeof AlertTriangle;
+  iconClass: string;
+  label: string;
+  count: number;
+  sublabel: string;
+  href: string;
+}) {
+  if (count === 0) return null;
+  return (
+    <div className="flex items-center justify-between rounded-lg border bg-background p-3">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${iconClass}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div>
+          <div className="text-sm font-medium">{label}</div>
+          <div className="text-xs text-muted-foreground">{sublabel}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Badge variant="destructive">{count}</Badge>
+        <Button asChild size="sm" variant="outline">
+          <Link href={href}>Review</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+
+function QuickActions({
+  activeAssociationId,
+  onNewAssociation,
+  adminRole,
+}: {
+  activeAssociationId: string | null;
+  onNewAssociation: () => void;
+  adminRole: AdminRole | null;
+}) {
+  const isViewer = adminRole === "viewer";
+  const actions = [
+    {
+      label: "New Work Order",
+      icon: Wrench,
+      href: "/app/work-orders",
+      disabled: !activeAssociationId || isViewer,
+      title: isViewer ? "Read-only access" : (activeAssociationId ? undefined : "Select an association first"),
+    },
+    {
+      label: "Schedule Meeting",
+      icon: CalendarPlus,
+      href: "/app/governance/meetings",
+      disabled: !activeAssociationId || isViewer,
+      title: isViewer ? "Read-only access" : (activeAssociationId ? undefined : "Select an association first"),
+    },
+    {
+      label: "Invite Board Member",
+      icon: UserPlus,
+      href: "/app/board",
+      disabled: !activeAssociationId || isViewer,
+      title: isViewer ? "Read-only access" : (activeAssociationId ? undefined : "Select an association first"),
+    },
+    {
+      label: "Post Ledger Entry",
+      icon: BookOpen,
+      href: "/app/financial/ledger",
+      disabled: !activeAssociationId || isViewer,
+      title: isViewer ? "Read-only access" : (activeAssociationId ? undefined : "Select an association first"),
+    },
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Plus className="h-4 w-4" />
+          Quick Actions
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {actions.map((action) => (
+            <Button
+              key={action.label}
+              asChild={!action.disabled}
+              variant="outline"
+              className="h-auto flex-col gap-1.5 py-3 text-xs"
+              disabled={action.disabled}
+              title={action.title}
+            >
+              {action.disabled ? (
+                <span>
+                  <action.icon className="h-4 w-4" />
+                  {action.label}
+                </span>
+              ) : (
+                <Link href={action.href}>
+                  <action.icon className="h-4 w-4" />
+                  {action.label}
+                </Link>
+              )}
+            </Button>
+          ))}
+          <Button
+            variant="outline"
+            className="h-auto flex-col gap-1.5 py-3 text-xs"
+            onClick={onNewAssociation}
+          >
+            <Building2 className="h-4 w-4" />
+            New Association
+          </Button>
+        </div>
+        {!activeAssociationId && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Select an association above to enable quick actions.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AlertsPanel({
+  alerts,
+  loading,
+  activeAssociationId,
+}: {
+  alerts: DashboardAlerts | undefined;
+  loading: boolean;
+  activeAssociationId: string | null;
+}) {
+  const totalAlerts =
+    (alerts?.workOrders.urgent ?? 0) +
+    (alerts?.workOrders.stalledOpen ?? 0) +
+    (alerts?.complianceTasks.overdue ?? 0) +
+    (alerts?.complianceTasks.dueSoon ?? 0) +
+    (alerts?.vendorInsurance.expired ?? 0) +
+    (alerts?.vendorInsurance.dueSoon ?? 0) +
+    (alerts?.delinquentAccounts.count ?? 0) +
+    (alerts?.orphanWarnings ?? []).reduce((sum, w) => sum + w.count, 0);
+
+  return (
+    <div className="rounded-xl border bg-muted/10 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold">Attention Required</div>
+          <div className="text-xs text-muted-foreground">
+            {activeAssociationId
+              ? "Live alerts scoped to the selected association."
+              : "Portfolio-wide alerts across all associations."}
+          </div>
+        </div>
+        {!loading && totalAlerts > 0 && (
+          <Badge variant="destructive" className="text-sm px-2">
+            {totalAlerts}
+          </Badge>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
+        </div>
+      ) : totalAlerts === 0 ? (
+        <div className="rounded-lg border bg-background p-4 text-center">
+          <div className="text-sm font-medium text-green-700 dark:text-green-400">All clear</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            No urgent work orders, overdue compliance tasks, or insurance alerts.
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <AlertRow
+            icon={AlertTriangle}
+            iconClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+            label="Urgent work orders"
+            count={alerts?.workOrders.urgent ?? 0}
+            sublabel="Open work orders marked urgent — need immediate attention"
+            href="/app/work-orders"
+          />
+          <AlertRow
+            icon={Clock}
+            iconClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+            label="Stalled open work orders"
+            count={alerts?.workOrders.stalledOpen ?? 0}
+            sublabel="Work orders open for more than 7 days with no status update"
+            href="/app/work-orders"
+          />
+          <AlertRow
+            icon={AlertTriangle}
+            iconClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+            label="Overdue compliance tasks"
+            count={alerts?.complianceTasks.overdue ?? 0}
+            sublabel="Governance tasks past their due date"
+            href="/app/governance/compliance"
+          />
+          <AlertRow
+            icon={Clock}
+            iconClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400"
+            label="Compliance tasks due in 14 days"
+            count={alerts?.complianceTasks.dueSoon ?? 0}
+            sublabel="Upcoming governance deadlines requiring action"
+            href="/app/governance/compliance"
+          />
+          <AlertRow
+            icon={ShieldAlert}
+            iconClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+            label="Vendors with expired insurance"
+            count={alerts?.vendorInsurance.expired ?? 0}
+            sublabel="Do not assign work orders until coverage is renewed"
+            href="/app/vendors"
+          />
+          <AlertRow
+            icon={ShieldAlert}
+            iconClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+            label="Vendor insurance expiring soon"
+            count={alerts?.vendorInsurance.dueSoon ?? 0}
+            sublabel="Insurance expiring within 30 days — request renewal certificates"
+            href="/app/vendors"
+          />
+          {activeAssociationId && (
+            <AlertRow
+              icon={BadgeDollarSign}
+              iconClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400"
+              label="Delinquent accounts"
+              count={alerts?.delinquentAccounts.count ?? 0}
+              sublabel="Owner accounts with outstanding balances"
+              href="/app/financial/ledger"
+            />
+          )}
+          {(alerts?.orphanWarnings ?? []).map((warning) => (
+            <AlertRow
+              key={warning.type}
+              icon={AlertTriangle}
+              iconClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+              label="Data integrity warning"
+              count={warning.count}
+              sublabel={warning.message}
+              href="/app/persons"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type AuthSession = { authenticated: boolean; admin?: { role: AdminRole } | null };
+
 export default function DashboardPage() {
+  const [wizardOpen, setWizardOpen] = useState(false);
   const { activeAssociationId, setActiveAssociationId } = useAssociationContext();
+  const { data: authSession } = useQuery<AuthSession>({ queryKey: ["/api/auth/session"] });
+  const adminRole: AdminRole | null = authSession?.admin?.role ?? null;
+
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
   });
+
   const { data: associations = [], isLoading: associationsLoading } = useQuery<AssociationSummary[]>({
     queryKey: ["/api/associations"],
+  });
+
+  const alertsQueryKey = activeAssociationId
+    ? [`/api/dashboard/alerts?associationId=${activeAssociationId}`]
+    : ["/api/dashboard/alerts"];
+
+  const { data: alerts, isLoading: alertsLoading } = useQuery<DashboardAlerts>({
+    queryKey: alertsQueryKey,
   });
 
   const cards = [
@@ -115,36 +428,17 @@ export default function DashboardPage() {
       testId: "stat-documents",
     },
   ];
-  const portfolioActions: RecommendedAction[] = [
-    {
-      title: activeAssociationId ? "Continue work in the selected association" : "Set an active association context",
-      summary: activeAssociationId
-        ? "Move from portfolio oversight into the in-context operating workspace for the selected association."
-        : "Select a property so actions, forms, and filtered records stay scoped to the right association.",
-      href: activeAssociationId ? "/app/association-context" : "/app/associations",
-      cta: activeAssociationId ? "Open association workspace" : "Manage associations",
-      tone: "default" as const,
-    },
-    {
-      title: (stats?.totalDocuments ?? 0) === 0 ? "Start the document repository" : "Review document coverage",
-      summary: (stats?.totalDocuments ?? 0) === 0
-        ? "No documents are filed yet. Upload bylaws, policies, and meeting records so operations have a source of truth."
-        : "Use the repository to close gaps in policies, minutes, financial reports, and operating records.",
-      href: "/app/documents",
-      cta: "Open documents",
-      tone: (stats?.totalDocuments ?? 0) === 0 ? ("warning" as const) : ("neutral" as const),
-    },
-    {
-      title: "Review board and owner coverage",
-      summary: "Check whether board and resident records are complete before moving deeper into workflows.",
-      href: "/app/association-context",
-      cta: "Review coverage",
-      tone: "neutral" as const,
-    },
-  ];
+
+  const noAssociations = !isLoading && (stats?.totalAssociations ?? 0) === 0;
 
   return (
     <div className="p-6 space-y-6">
+      <SetupWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        onAssociationCreated={(id) => setActiveAssociationId(id)}
+      />
+
       <WorkspacePageHeader
         title="Dashboard"
         summary="Portfolio overview across all managed associations, with direct access into the current in-context workspace."
@@ -156,9 +450,35 @@ export default function DashboardPage() {
         ]}
       />
 
+      {noAssociations && (
+        <div className="rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 p-6">
+          <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
+              <Sparkles className="h-6 w-6 text-primary" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold">Welcome — let's get your first association set up</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                The setup wizard walks you through creating your association, adding units, configuring your HOA fee, and adding a board member — all in about 5 minutes.
+              </p>
+            </div>
+            <Button onClick={() => setWizardOpen(true)} className="shrink-0">
+              <Sparkles className="mr-2 h-4 w-4" />
+              Start Setup
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {adminRole === "viewer" && (
+        <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          You have <span className="font-medium text-foreground">viewer</span> access — create and edit actions are disabled. Contact your administrator to request elevated permissions.
+        </div>
+      )}
+
       <AssociationScopeBanner
         activeAssociationId={activeAssociationId}
-        activeAssociationName={associations?.find((association) => association.id === activeAssociationId)?.name ?? ""}
+        activeAssociationName={associations?.find((a) => a.id === activeAssociationId)?.name ?? ""}
         explanation={
           activeAssociationId
             ? "The selected association controls in-context pages, filtered records, and create actions across the admin workspace."
@@ -172,10 +492,12 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <RecommendedActionsPanel
-        title="Portfolio Next Actions"
-        description="Use the portfolio metrics above to decide where to move next."
-        actions={portfolioActions}
+      <QuickActions activeAssociationId={activeAssociationId} onNewAssociation={() => setWizardOpen(true)} adminRole={adminRole} />
+
+      <AlertsPanel
+        alerts={alerts}
+        loading={alertsLoading}
+        activeAssociationId={activeAssociationId}
       />
 
       <AsyncStateBoundary
@@ -225,7 +547,7 @@ export default function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Portfolio stays here on the dashboard. Use the in-context view for the selected association’s overview,
+            Portfolio stays here on the dashboard. Use the in-context view for the selected association's overview,
             documents, buildings, units, ownership, and occupancy workflow.
           </CardContent>
         </Card>

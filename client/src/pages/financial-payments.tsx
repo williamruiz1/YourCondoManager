@@ -2,58 +2,54 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { useAssociationContext } from "@/context/association-context";
 import type { OwnerPaymentLink, PaymentGatewayConnection, PaymentMethodConfig, Person, Unit } from "@shared/schema";
+import {
+  CreditCard,
+  Zap,
+  Link2,
+  Webhook,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
+  Info,
+  Shield,
+} from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export default function FinancialPaymentsPage() {
+// ── Payment Methods Tab ───────────────────────────────────────────────────────
+
+const METHOD_TYPE_OPTIONS = [
+  { value: "bank-transfer", label: "Bank Transfer (ACH/Wire)" },
+  { value: "bill-pay", label: "Online Bill Pay" },
+  { value: "check", label: "Check / Money Order" },
+  { value: "zelle", label: "Zelle" },
+  { value: "other", label: "Other" },
+];
+
+function PaymentMethodsTab({
+  associationId,
+  paymentMethods,
+  onSaved,
+}: {
+  associationId: string | null;
+  paymentMethods: PaymentMethodConfig[];
+  onSaved: () => void;
+}) {
   const { toast } = useToast();
-  const { activeAssociationId, activeAssociationName } = useActiveAssociation();
-  const [gatewayForm, setGatewayForm] = useState({
-    associationId: "",
-    provider: "stripe" as "stripe" | "other",
-    providerAccountId: "",
-    publishableKey: "",
-    secretKey: "",
-    webhookSecret: "",
-    isActive: true,
-  });
-  const [paymentLinkForm, setPaymentLinkForm] = useState({
-    associationId: "",
-    unitId: "",
-    personId: "",
-    amount: "",
-    currency: "USD",
-    allowPartial: false,
-    memo: "",
-    expiresAt: "",
-  });
-  const [webhookTestForm, setWebhookTestForm] = useState({
-    associationId: "",
-    provider: "stripe" as "stripe" | "other",
-    providerEventId: "",
-    eventType: "payment_intent.succeeded",
-    status: "succeeded" as "succeeded" | "failed" | "pending",
-    amount: "",
-    currency: "USD",
-    personId: "",
-    unitId: "",
-    paymentLinkToken: "",
-    gatewayReference: "",
-  });
-  const [lastGeneratedPaymentLink, setLastGeneratedPaymentLink] = useState<{
-    link: OwnerPaymentLink;
-    paymentUrl: string;
-    outstandingBalance: number;
-  } | null>(null);
-  const [lastWebhookMessage, setLastWebhookMessage] = useState("");
-  const [paymentMethodForm, setPaymentMethodForm] = useState({
-    associationId: "",
-    methodType: "other",
+  const [form, setForm] = useState({
+    methodType: "bank-transfer",
     displayName: "",
     instructions: "",
     accountName: "",
@@ -68,59 +64,34 @@ export default function FinancialPaymentsPage() {
     displayOrder: 0,
   });
 
-  const selectedAssociationId = activeAssociationId;
-
-  const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
-  const { data: units } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
-  const { data: gatewayConnections } = useQuery<PaymentGatewayConnection[]>({
-    queryKey: [selectedAssociationId ? `/api/financial/payment-gateway/connections?associationId=${selectedAssociationId}` : "/api/financial/payment-gateway/connections"],
-  });
-  const paymentMethodsQuery = useQuery<PaymentMethodConfig[]>({
-    queryKey: [selectedAssociationId ? `/api/financial/payment-methods?associationId=${selectedAssociationId}` : "/api/financial/payment-methods"],
-  });
-  const { data: paymentMethods = [] } = paymentMethodsQuery;
-
-  useEffect(() => {
-    setGatewayForm((prev) => ({ ...prev, associationId: activeAssociationId }));
-    setPaymentLinkForm((prev) => ({ ...prev, associationId: activeAssociationId }));
-    setWebhookTestForm((prev) => ({ ...prev, associationId: activeAssociationId }));
-    setPaymentMethodForm((prev) => ({ ...prev, associationId: activeAssociationId }));
-    setLastGeneratedPaymentLink(null);
-    setLastWebhookMessage("");
-  }, [activeAssociationId]);
-
-  const createPaymentMethod = useMutation({
+  const createMutation = useMutation({
     mutationFn: async () => {
-      if (!paymentMethodForm.associationId) throw new Error("Association is required");
-      if (!paymentMethodForm.displayName.trim() || !paymentMethodForm.instructions.trim()) {
+      if (!associationId) throw new Error("Select an association first");
+      if (!form.displayName.trim() || !form.instructions.trim()) {
         throw new Error("Display name and instructions are required");
       }
       const res = await apiRequest("POST", "/api/financial/payment-methods", {
-        associationId: paymentMethodForm.associationId,
-        methodType: paymentMethodForm.methodType,
-        displayName: paymentMethodForm.displayName.trim(),
-        instructions: paymentMethodForm.instructions.trim(),
-        accountName: paymentMethodForm.accountName.trim() || null,
-        bankName: paymentMethodForm.bankName.trim() || null,
-        routingNumber: paymentMethodForm.routingNumber.trim() || null,
-        accountNumber: paymentMethodForm.accountNumber.trim() || null,
-        mailingAddress: paymentMethodForm.mailingAddress.trim() || null,
-        paymentNotes: paymentMethodForm.paymentNotes.trim() || null,
-        zelleHandle: paymentMethodForm.zelleHandle.trim() || null,
-        supportEmail: paymentMethodForm.supportEmail.trim() || null,
-        supportPhone: paymentMethodForm.supportPhone.trim() || null,
+        associationId,
+        methodType: form.methodType,
+        displayName: form.displayName.trim(),
+        instructions: form.instructions.trim(),
+        accountName: form.accountName.trim() || null,
+        bankName: form.bankName.trim() || null,
+        routingNumber: form.routingNumber.trim() || null,
+        accountNumber: form.accountNumber.trim() || null,
+        mailingAddress: form.mailingAddress.trim() || null,
+        paymentNotes: form.paymentNotes.trim() || null,
+        zelleHandle: form.zelleHandle.trim() || null,
+        supportEmail: form.supportEmail.trim() || null,
+        supportPhone: form.supportPhone.trim() || null,
         isActive: 1,
-        displayOrder: Number(paymentMethodForm.displayOrder) || 0,
+        displayOrder: Number(form.displayOrder) || 0,
       });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [selectedAssociationId ? `/api/financial/payment-methods?associationId=${selectedAssociationId}` : "/api/financial/payment-methods"],
-      });
-      setPaymentMethodForm({
-        associationId: paymentMethodForm.associationId,
-        methodType: "other",
+      setForm({
+        methodType: "bank-transfer",
         displayName: "",
         instructions: "",
         accountName: "",
@@ -134,101 +105,565 @@ export default function FinancialPaymentsPage() {
         supportPhone: "",
         displayOrder: 0,
       });
+      onSaved();
       toast({ title: "Payment method saved" });
     },
-    onError: (err: Error) => toast({ title: "Payment method save failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Save failed", description: err.message, variant: "destructive" }),
   });
 
-  const validateGateway = useMutation({
+  const showBankFields = form.methodType === "bank-transfer";
+  const showZelleFields = form.methodType === "zelle";
+  const showMailingFields = form.methodType === "check";
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-muted/20 p-4 flex gap-3">
+        <Info className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Payment methods tell owners <strong>how to pay</strong> their HOA dues. These appear in payment
+          notices and in the owner portal. Add one method per payment channel (e.g., one for bank transfer,
+          one for Zelle). A Stripe gateway connection is only required if you want owners to pay online
+          via credit/debit card — configure that in the Gateway tab.
+        </p>
+      </div>
+
+      {/* Existing methods */}
+      {paymentMethods.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Configured methods ({paymentMethods.length})</p>
+          {paymentMethods.map((m) => (
+            <div key={m.id} className="flex items-start gap-3 rounded-lg border p-3">
+              <Badge variant="secondary" className="mt-0.5 shrink-0">{m.methodType}</Badge>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{m.displayName}</p>
+                <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{m.instructions}</p>
+              </div>
+              <Badge variant={m.isActive === 1 ? "default" : "secondary"} className="shrink-0">
+                {m.isActive === 1 ? "Active" : "Inactive"}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Add payment method</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <Select value={form.methodType} onValueChange={(v) => setForm((p) => ({ ...p, methodType: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {METHOD_TYPE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Display name <span className="text-muted-foreground font-normal text-xs">(shown to owners)</span></Label>
+              <Input
+                placeholder="e.g. Direct Bank Transfer"
+                value={form.displayName}
+                onChange={(e) => setForm((p) => ({ ...p, displayName: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {showBankFields && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label>Account name</Label>
+                <Input placeholder="Maple Heights HOA" value={form.accountName} onChange={(e) => setForm((p) => ({ ...p, accountName: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Bank name</Label>
+                <Input placeholder="First National Bank" value={form.bankName} onChange={(e) => setForm((p) => ({ ...p, bankName: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Routing number</Label>
+                <Input placeholder="021000021" value={form.routingNumber} onChange={(e) => setForm((p) => ({ ...p, routingNumber: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Account number</Label>
+                <Input placeholder="••••••1234" value={form.accountNumber} onChange={(e) => setForm((p) => ({ ...p, accountNumber: e.target.value }))} />
+              </div>
+            </div>
+          )}
+
+          {showZelleFields && (
+            <div className="space-y-1.5">
+              <Label>Zelle handle <span className="text-muted-foreground font-normal text-xs">(email or phone registered with Zelle)</span></Label>
+              <Input placeholder="treasurer@maplehoa.org" value={form.zelleHandle} onChange={(e) => setForm((p) => ({ ...p, zelleHandle: e.target.value }))} />
+            </div>
+          )}
+
+          {showMailingFields && (
+            <div className="space-y-1.5">
+              <Label>Mailing address for checks</Label>
+              <Textarea
+                placeholder="Maple Heights HOA&#10;P.O. Box 1234&#10;Springfield, IL 62701"
+                rows={3}
+                value={form.mailingAddress}
+                onChange={(e) => setForm((p) => ({ ...p, mailingAddress: e.target.value }))}
+              />
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label>Instructions for owners <span className="text-destructive">*</span></Label>
+            <Textarea
+              placeholder="Please include your unit number and the payment period in the memo line."
+              rows={3}
+              value={form.instructions}
+              onChange={(e) => setForm((p) => ({ ...p, instructions: e.target.value }))}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Support email <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Input placeholder="payments@maplehoa.org" value={form.supportEmail} onChange={(e) => setForm((p) => ({ ...p, supportEmail: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Support phone <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Input placeholder="(555) 555-1234" value={form.supportPhone} onChange={(e) => setForm((p) => ({ ...p, supportPhone: e.target.value }))} />
+            </div>
+          </div>
+
+          <Button
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !associationId}
+          >
+            {createMutation.isPending ? "Saving…" : "Save Payment Method"}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Gateway Tab ───────────────────────────────────────────────────────────────
+
+function GatewayTab({
+  associationId,
+  gatewayConnections,
+  onSaved,
+}: {
+  associationId: string | null;
+  gatewayConnections: PaymentGatewayConnection[];
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    provider: "stripe" as "stripe" | "other",
+    providerAccountId: "",
+    publishableKey: "",
+    secretKey: "",
+    webhookSecret: "",
+    isActive: true,
+  });
+
+  const validateMutation = useMutation({
     mutationFn: async () => {
-      if (!gatewayForm.associationId) throw new Error("Association is required");
+      if (!associationId) throw new Error("Select an association first");
       const res = await apiRequest("POST", "/api/financial/payment-gateway/validate", {
-        associationId: gatewayForm.associationId,
-        provider: gatewayForm.provider,
-        providerAccountId: gatewayForm.providerAccountId.trim() || null,
-        publishableKey: gatewayForm.publishableKey.trim() || null,
-        secretKey: gatewayForm.secretKey.trim() || null,
-        webhookSecret: gatewayForm.webhookSecret.trim() || null,
-        isActive: gatewayForm.isActive,
+        associationId,
+        provider: form.provider,
+        providerAccountId: form.providerAccountId.trim() || null,
+        publishableKey: form.publishableKey.trim() || null,
+        secretKey: form.secretKey.trim() || null,
+        webhookSecret: form.webhookSecret.trim() || null,
+        isActive: form.isActive,
       });
       return res.json() as Promise<{ validated: boolean; checks: string[] }>;
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({
-        queryKey: [selectedAssociationId ? `/api/financial/payment-gateway/connections?associationId=${selectedAssociationId}` : "/api/financial/payment-gateway/connections"],
-      });
-      setGatewayForm((prev) => ({ ...prev, secretKey: "", webhookSecret: "" }));
-      toast({ title: "Gateway validated", description: result.checks.join(" ") });
+      setForm((p) => ({ ...p, secretKey: "", webhookSecret: "" }));
+      onSaved();
+      toast({ title: "Gateway connected", description: result.checks.join(" ") });
     },
-    onError: (err: Error) => toast({ title: "Gateway validation failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Connection failed", description: err.message, variant: "destructive" }),
   });
 
-  const generatePaymentLink = useMutation({
+  const activeConnections = gatewayConnections.filter((c) => c.isActive === 1);
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-muted/20 p-4 flex gap-3">
+        <Info className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+        <div className="text-sm text-muted-foreground space-y-2">
+          <p>
+            A gateway connection is <strong>optional</strong> and only required if you want owners to pay
+            online via credit or debit card. Most self-managed associations use bank transfer or Zelle instead —
+            configure those in the Payment Methods tab.
+          </p>
+          <p>
+            To connect Stripe: log in to your Stripe Dashboard, go to{" "}
+            <strong>Developers → API keys</strong>, and copy your publishable and secret keys.
+            The webhook secret is found under <strong>Developers → Webhooks</strong> after creating an endpoint.
+          </p>
+        </div>
+      </div>
+
+      {activeConnections.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Active connections ({activeConnections.length})</p>
+          {activeConnections.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 rounded-lg border p-3">
+              <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium capitalize">{c.provider}</p>
+                {c.providerAccountId && (
+                  <p className="text-xs text-muted-foreground">Account: {c.providerAccountId}</p>
+                )}
+              </div>
+              <Badge variant="default">Active</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Connect a payment gateway</CardTitle>
+          <CardDescription>Keys are stored encrypted and the secret key is never displayed again after saving.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Gateway provider</Label>
+            <Select
+              value={form.provider}
+              onValueChange={(v) => setForm((p) => ({ ...p, provider: v as "stripe" | "other" }))}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="stripe">Stripe</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>
+              Publishable key{" "}
+              <span className="text-muted-foreground font-normal text-xs">(starts with pk_)</span>
+            </Label>
+            <Input
+              placeholder="pk_live_..."
+              value={form.publishableKey}
+              onChange={(e) => setForm((p) => ({ ...p, publishableKey: e.target.value }))}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>
+              Secret key{" "}
+              <span className="text-muted-foreground font-normal text-xs">(starts with sk_ — never share this)</span>
+            </Label>
+            <Input
+              type="password"
+              placeholder="sk_live_..."
+              value={form.secretKey}
+              onChange={(e) => setForm((p) => ({ ...p, secretKey: e.target.value }))}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>
+              Webhook signing secret{" "}
+              <span className="text-muted-foreground font-normal text-xs">(starts with whsec_)</span>
+            </Label>
+            <Input
+              type="password"
+              placeholder="whsec_..."
+              value={form.webhookSecret}
+              onChange={(e) => setForm((p) => ({ ...p, webhookSecret: e.target.value }))}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              id="gateway-active"
+              type="checkbox"
+              checked={form.isActive}
+              onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))}
+            />
+            <Label htmlFor="gateway-active" className="font-normal cursor-pointer">Enable this connection immediately</Label>
+          </div>
+
+          <Button
+            onClick={() => validateMutation.mutate()}
+            disabled={validateMutation.isPending || !associationId}
+          >
+            {validateMutation.isPending ? "Validating…" : "Validate & Save Connection"}
+          </Button>
+          {validateMutation.isError && (
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              Check that your API keys are correct and the Stripe account is active.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Payment Links Tab ─────────────────────────────────────────────────────────
+
+function PaymentLinksTab({
+  associationId,
+  persons,
+  units,
+}: {
+  associationId: string | null;
+  persons: Person[];
+  units: Unit[];
+}) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    unitId: "",
+    personId: "",
+    amount: "",
+    currency: "USD",
+    allowPartial: false,
+    memo: "",
+    expiresAt: "",
+  });
+  const [lastLink, setLastLink] = useState<{
+    link: OwnerPaymentLink;
+    paymentUrl: string;
+    outstandingBalance: number;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const filteredUnits = units.filter(
+    (u) => !associationId || u.associationId === associationId,
+  );
+
+  const generateMutation = useMutation({
     mutationFn: async () => {
-      if (!paymentLinkForm.associationId || !paymentLinkForm.unitId || !paymentLinkForm.personId) {
-        throw new Error("Association, unit, and person are required");
+      if (!associationId || !form.unitId || !form.personId) {
+        throw new Error("Select an association, unit, and person");
       }
-      const amountRaw = paymentLinkForm.amount.trim();
-      const amount = amountRaw ? Number(amountRaw) : null;
-      if (amountRaw && (amount == null || !Number.isFinite(amount) || amount <= 0)) {
-        throw new Error("Amount must be a positive number");
+      const amount = form.amount.trim() ? Number(form.amount) : null;
+      if (form.amount.trim() && (!Number.isFinite(amount) || (amount as number) <= 0)) {
+        throw new Error("Amount must be a positive number, or leave blank to use the outstanding balance");
       }
       const res = await apiRequest("POST", "/api/financial/owner-payment-links", {
-        associationId: paymentLinkForm.associationId,
-        unitId: paymentLinkForm.unitId,
-        personId: paymentLinkForm.personId,
+        associationId,
+        unitId: form.unitId,
+        personId: form.personId,
         amount,
-        currency: paymentLinkForm.currency || "USD",
-        allowPartial: paymentLinkForm.allowPartial,
-        memo: paymentLinkForm.memo.trim() || null,
-        expiresAt: paymentLinkForm.expiresAt || null,
+        currency: form.currency || "USD",
+        allowPartial: form.allowPartial,
+        memo: form.memo.trim() || null,
+        expiresAt: form.expiresAt || null,
       });
       return res.json() as Promise<{ link: OwnerPaymentLink; paymentUrl: string; outstandingBalance: number }>;
     },
     onSuccess: (result) => {
-      setLastGeneratedPaymentLink(result);
-      setWebhookTestForm((prev) => ({
-        ...prev,
-        paymentLinkToken: result.link.token,
-        amount: String(result.link.amount),
-        unitId: result.link.unitId,
-        personId: result.link.personId,
-      }));
-      toast({ title: "Payment link generated", description: `Outstanding ${result.outstandingBalance.toFixed(2)}.` });
+      setLastLink(result);
+      toast({ title: "Payment link generated" });
     },
-    onError: (err: Error) => toast({ title: "Payment link error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const sendWebhookTest = useMutation({
+  const handleCopy = async () => {
+    if (!lastLink) return;
+    await navigator.clipboard.writeText(lastLink.paymentUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-muted/20 p-4 flex gap-3">
+        <Info className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Generate a unique payment link for a specific owner. Copy the link and paste it into a payment
+          notice or email. The owner visits the link to see their balance and pay. Links require a gateway
+          connection for online card payments — for manual payment methods, this link shows instructions
+          instead.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Generate a payment link</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Unit</Label>
+              <Select value={form.unitId || "_"} onValueChange={(v) => setForm((p) => ({ ...p, unitId: v === "_" ? "" : v }))}>
+                <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Select unit</SelectItem>
+                  {filteredUnits.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.unitNumber}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Owner</Label>
+              <Select value={form.personId || "_"} onValueChange={(v) => setForm((p) => ({ ...p, personId: v === "_" ? "" : v }))}>
+                <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Select owner</SelectItem>
+                  {persons.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>
+                Amount{" "}
+                <span className="text-muted-foreground font-normal text-xs">(blank = full outstanding balance)</span>
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                step={0.01}
+                placeholder="350.00"
+                value={form.amount}
+                onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Expiry <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Input
+                type="datetime-local"
+                value={form.expiresAt}
+                onChange={(e) => setForm((p) => ({ ...p, expiresAt: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Memo <span className="text-muted-foreground font-normal text-xs">(optional — appears on the payment page)</span></Label>
+            <Input
+              placeholder="January 2026 HOA dues"
+              value={form.memo}
+              onChange={(e) => setForm((p) => ({ ...p, memo: e.target.value }))}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              id="allow-partial"
+              type="checkbox"
+              checked={form.allowPartial}
+              onChange={(e) => setForm((p) => ({ ...p, allowPartial: e.target.checked }))}
+            />
+            <Label htmlFor="allow-partial" className="font-normal cursor-pointer">
+              Allow partial payments
+            </Label>
+          </div>
+
+          <Button
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending || !associationId}
+          >
+            {generateMutation.isPending ? "Generating…" : "Generate Payment Link"}
+          </Button>
+
+          {lastLink && (
+            <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+              <p className="text-sm font-medium">Link generated</p>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Outstanding balance</p>
+                <p className="text-sm font-semibold">${lastLink.outstandingBalance.toFixed(2)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Payment URL — share this with the owner</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded bg-muted px-2 py-1 text-xs break-all">
+                    {lastLink.paymentUrl}
+                  </code>
+                  <Button size="sm" variant="outline" onClick={handleCopy}>
+                    <Copy className="h-3.5 w-3.5 mr-1" />
+                    {copied ? "Copied!" : "Copy"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Webhook Monitor Tab ───────────────────────────────────────────────────────
+
+function WebhookMonitorTab({
+  associationId,
+  persons,
+  units,
+}: {
+  associationId: string | null;
+  persons: Person[];
+  units: Unit[];
+}) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    provider: "stripe" as "stripe" | "other",
+    providerEventId: "",
+    eventType: "payment_intent.succeeded",
+    status: "succeeded" as "succeeded" | "failed" | "pending",
+    amount: "",
+    currency: "USD",
+    personId: "",
+    unitId: "",
+    paymentLinkToken: "",
+    gatewayReference: "",
+  });
+  const [lastMessage, setLastMessage] = useState("");
+
+  const filteredUnits = units.filter(
+    (u) => !associationId || u.associationId === associationId,
+  );
+
+  const testMutation = useMutation({
     mutationFn: async () => {
-      if (!webhookTestForm.associationId || !webhookTestForm.providerEventId.trim()) {
-        throw new Error("Association and provider event id are required");
+      if (!associationId || !form.providerEventId.trim()) {
+        throw new Error("Association and provider event ID are required");
       }
-      const amountRaw = webhookTestForm.amount.trim();
-      const amount = amountRaw ? Number(amountRaw) : null;
-      if (amountRaw && (amount == null || !Number.isFinite(amount))) {
-        throw new Error("Webhook amount must be numeric");
+      const amount = form.amount.trim() ? Number(form.amount) : null;
+      if (form.amount.trim() && !Number.isFinite(amount)) {
+        throw new Error("Amount must be numeric");
       }
       const res = await apiRequest("POST", "/api/webhooks/payments", {
-        associationId: webhookTestForm.associationId,
-        provider: webhookTestForm.provider,
-        providerEventId: webhookTestForm.providerEventId.trim(),
-        eventType: webhookTestForm.eventType.trim() || null,
-        status: webhookTestForm.status,
+        associationId,
+        provider: form.provider,
+        providerEventId: form.providerEventId.trim(),
+        eventType: form.eventType.trim() || null,
+        status: form.status,
         amount,
-        currency: webhookTestForm.currency || "USD",
-        personId: webhookTestForm.personId.trim() || null,
-        unitId: webhookTestForm.unitId.trim() || null,
-        paymentLinkToken: webhookTestForm.paymentLinkToken.trim() || null,
-        gatewayReference: webhookTestForm.gatewayReference.trim() || null,
+        currency: form.currency || "USD",
+        personId: form.personId.trim() || null,
+        unitId: form.unitId.trim() || null,
+        paymentLinkToken: form.paymentLinkToken.trim() || null,
+        gatewayReference: form.gatewayReference.trim() || null,
       });
       return res.json() as Promise<{ message: string; duplicate: boolean }>;
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/financial/owner-ledger/entries"] });
-      setLastWebhookMessage(result.message);
+      setLastMessage(result.message);
       toast({
-        title: result.duplicate ? "Webhook replay detected" : "Webhook processed",
+        title: result.duplicate ? "Duplicate webhook replayed" : "Webhook processed",
         description: result.message,
       });
     },
@@ -236,158 +671,575 @@ export default function FinancialPaymentsPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Payments</h1>
-        <p className="text-muted-foreground">Gateway setup, owner payment links, and webhook reconciliation.</p>
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 p-4 flex gap-3">
+        <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <p className="text-sm text-amber-800 dark:text-amber-300">
+          This tab is for <strong>developer testing only</strong>. In production, payment webhooks are
+          delivered automatically by your gateway (e.g., Stripe) and do not need to be triggered here.
+          Use this to simulate a payment event and verify that ledger entries are created correctly.
+        </p>
       </div>
 
       <Card>
-        <CardContent className="p-6 space-y-5">
-          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-            Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
-          </div>
-
-          <div className="space-y-3 border rounded-md p-4">
-            <div className="text-sm font-medium">0) Payment Method Registry</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input placeholder="Method type (bank-transfer/bill-pay/check/zelle/other)" value={paymentMethodForm.methodType} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, methodType: e.target.value }))} />
-              <Input placeholder="Display name" value={paymentMethodForm.displayName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, displayName: e.target.value }))} />
-              <Input placeholder="Support email" value={paymentMethodForm.supportEmail} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, supportEmail: e.target.value }))} />
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Simulate inbound payment webhook</CardTitle>
+          <CardDescription>Creates a ledger entry as if a real payment was received.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label>Provider event ID <span className="text-muted-foreground font-normal text-xs">(any unique string for test)</span></Label>
+              <Input
+                placeholder="evt_test_12345"
+                value={form.providerEventId}
+                onChange={(e) => setForm((p) => ({ ...p, providerEventId: e.target.value }))}
+              />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input placeholder="Account name" value={paymentMethodForm.accountName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, accountName: e.target.value }))} />
-              <Input placeholder="Bank name" value={paymentMethodForm.bankName} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, bankName: e.target.value }))} />
-              <Input placeholder="Routing number" value={paymentMethodForm.routingNumber} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, routingNumber: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input placeholder="Account number" value={paymentMethodForm.accountNumber} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, accountNumber: e.target.value }))} />
-              <Input placeholder="Zelle handle" value={paymentMethodForm.zelleHandle} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, zelleHandle: e.target.value }))} />
-              <Input placeholder="Support phone" value={paymentMethodForm.supportPhone} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, supportPhone: e.target.value }))} />
-            </div>
-            <Textarea placeholder="Mailing address" rows={2} value={paymentMethodForm.mailingAddress} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, mailingAddress: e.target.value }))} />
-            <Textarea placeholder="Payment notes for owners" rows={2} value={paymentMethodForm.paymentNotes} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, paymentNotes: e.target.value }))} />
-            <Textarea placeholder="Additional instructions for owners" rows={3} value={paymentMethodForm.instructions} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, instructions: e.target.value }))} />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Input type="number" placeholder="Display order" value={String(paymentMethodForm.displayOrder)} onChange={(e) => setPaymentMethodForm((p) => ({ ...p, displayOrder: Number(e.target.value) || 0 }))} />
-              <div className="text-xs text-muted-foreground flex items-center">
-                Active methods in scope: {paymentMethods.filter((row) => row.isActive === 1).length}
-              </div>
-            </div>
-            <Button onClick={() => createPaymentMethod.mutate()} disabled={createPaymentMethod.isPending || !selectedAssociationId}>Save Payment Method</Button>
-            <div className="space-y-2">
-              {paymentMethods.slice(0, 8).map((row) => (
-                <div key={row.id} className="rounded border bg-muted/10 px-3 py-2 text-sm">
-                  <div className="font-medium">{row.displayName} <span className="text-muted-foreground">({row.methodType})</span></div>
-                  <div className="text-xs whitespace-pre-wrap text-muted-foreground">{[row.instructions, row.paymentNotes].filter(Boolean).join("\n")}</div>
-                </div>
-              ))}
-              {paymentMethods.length === 0 ? <div className="text-xs text-muted-foreground">No payment methods configured for this association.</div> : null}
-            </div>
-          </div>
-
-          <div className="space-y-3 border rounded-md p-4">
-            <div className="text-sm font-medium">1) Validate Gateway Connection</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Select value={gatewayForm.provider} onValueChange={(value) => setGatewayForm((p) => ({ ...p, provider: value as "stripe" | "other" }))}>
-                <SelectTrigger><SelectValue placeholder="Provider" /></SelectTrigger>
+            <div className="space-y-1.5">
+              <Label>Provider</Label>
+              <Select value={form.provider} onValueChange={(v) => setForm((p) => ({ ...p, provider: v as "stripe" | "other" }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="stripe">stripe</SelectItem>
-                  <SelectItem value="other">other</SelectItem>
+                  <SelectItem value="stripe">Stripe</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
-              <Input placeholder="Provider account id (optional)" value={gatewayForm.providerAccountId} onChange={(e) => setGatewayForm((p) => ({ ...p, providerAccountId: e.target.value }))} />
-              <Input placeholder="Publishable key" value={gatewayForm.publishableKey} onChange={(e) => setGatewayForm((p) => ({ ...p, publishableKey: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input placeholder="Secret key" value={gatewayForm.secretKey} onChange={(e) => setGatewayForm((p) => ({ ...p, secretKey: e.target.value }))} />
-              <Input placeholder="Webhook secret" value={gatewayForm.webhookSecret} onChange={(e) => setGatewayForm((p) => ({ ...p, webhookSecret: e.target.value }))} />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={gatewayForm.isActive} onChange={(e) => setGatewayForm((p) => ({ ...p, isActive: e.target.checked }))} />
-                Connection active
-              </label>
-            </div>
-            <Button onClick={() => validateGateway.mutate()} disabled={validateGateway.isPending}>Validate and Save Gateway</Button>
-            <div className="text-xs text-muted-foreground">
-              Active connections: {(gatewayConnections ?? []).filter((row) => row.isActive === 1).length}
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v as typeof form.status }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="succeeded">Succeeded</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
-          <div className="space-y-3 border rounded-md p-4">
-            <div className="text-sm font-medium">2) Generate Owner Payment Link</div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <Select value={paymentLinkForm.unitId || "none"} onValueChange={(value) => setPaymentLinkForm((p) => ({ ...p, unitId: value === "none" ? "" : value }))}>
-                <SelectTrigger><SelectValue placeholder="Unit" /></SelectTrigger>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label>Amount</Label>
+              <Input placeholder="350.00" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Unit</Label>
+              <Select value={form.unitId || "_"} onValueChange={(v) => setForm((p) => ({ ...p, unitId: v === "_" ? "" : v }))}>
+                <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">select unit</SelectItem>
-                  {(units ?? []).filter((u) => !selectedAssociationId || u.associationId === selectedAssociationId).map((unit) => (
-                    <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>
+                  <SelectItem value="_">None</SelectItem>
+                  {filteredUnits.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.unitNumber}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={paymentLinkForm.personId || "none"} onValueChange={(value) => setPaymentLinkForm((p) => ({ ...p, personId: value === "none" ? "" : value }))}>
-                <SelectTrigger><SelectValue placeholder="Person" /></SelectTrigger>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Owner</Label>
+              <Select value={form.personId || "_"} onValueChange={(v) => setForm((p) => ({ ...p, personId: v === "_" ? "" : v }))}>
+                <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">select person</SelectItem>
-                  {(persons ?? []).map((person) => (
-                    <SelectItem key={person.id} value={person.id}>{person.firstName} {person.lastName}</SelectItem>
+                  <SelectItem value="_">None</SelectItem>
+                  {persons.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Input placeholder="Amount (blank = outstanding)" value={paymentLinkForm.amount} onChange={(e) => setPaymentLinkForm((p) => ({ ...p, amount: e.target.value }))} />
-              <Input type="datetime-local" value={paymentLinkForm.expiresAt} onChange={(e) => setPaymentLinkForm((p) => ({ ...p, expiresAt: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input placeholder="Currency" value={paymentLinkForm.currency} onChange={(e) => setPaymentLinkForm((p) => ({ ...p, currency: e.target.value }))} />
-              <Input placeholder="Memo (optional)" value={paymentLinkForm.memo} onChange={(e) => setPaymentLinkForm((p) => ({ ...p, memo: e.target.value }))} />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={paymentLinkForm.allowPartial} onChange={(e) => setPaymentLinkForm((p) => ({ ...p, allowPartial: e.target.checked }))} />
-                Allow partial payments
-              </label>
-            </div>
-            <Button onClick={() => generatePaymentLink.mutate()} disabled={generatePaymentLink.isPending}>Generate Payment Link</Button>
-            {lastGeneratedPaymentLink ? (
-              <div className="rounded border bg-muted/20 p-3 text-sm space-y-1">
-                <div>Link URL: <span className="font-mono break-all">{lastGeneratedPaymentLink.paymentUrl}</span></div>
-                <div>Token: <span className="font-mono break-all">{lastGeneratedPaymentLink.link.token}</span></div>
-                <div>Amount: {lastGeneratedPaymentLink.link.amount} {lastGeneratedPaymentLink.link.currency}</div>
-              </div>
-            ) : null}
           </div>
 
-          <div className="space-y-3 border rounded-md p-4">
-            <div className="text-sm font-medium">3) Test Inbound Payment Webhook</div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <Input placeholder="Provider event id" value={webhookTestForm.providerEventId} onChange={(e) => setWebhookTestForm((p) => ({ ...p, providerEventId: e.target.value }))} />
-              <Select value={webhookTestForm.provider} onValueChange={(value) => setWebhookTestForm((p) => ({ ...p, provider: value as "stripe" | "other" }))}>
-                <SelectTrigger><SelectValue placeholder="Provider" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="stripe">stripe</SelectItem>
-                  <SelectItem value="other">other</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={webhookTestForm.status} onValueChange={(value) => setWebhookTestForm((p) => ({ ...p, status: value as "succeeded" | "failed" | "pending" }))}>
-                <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="succeeded">succeeded</SelectItem>
-                  <SelectItem value="failed">failed</SelectItem>
-                  <SelectItem value="pending">pending</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input placeholder="Amount" value={webhookTestForm.amount} onChange={(e) => setWebhookTestForm((p) => ({ ...p, amount: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <Input placeholder="Event type" value={webhookTestForm.eventType} onChange={(e) => setWebhookTestForm((p) => ({ ...p, eventType: e.target.value }))} />
-              <Input placeholder="Person id" value={webhookTestForm.personId} onChange={(e) => setWebhookTestForm((p) => ({ ...p, personId: e.target.value }))} />
-              <Input placeholder="Unit id" value={webhookTestForm.unitId} onChange={(e) => setWebhookTestForm((p) => ({ ...p, unitId: e.target.value }))} />
-              <Input placeholder="Payment link token" value={webhookTestForm.paymentLinkToken} onChange={(e) => setWebhookTestForm((p) => ({ ...p, paymentLinkToken: e.target.value }))} />
-            </div>
-            <Input placeholder="Gateway reference (optional)" value={webhookTestForm.gatewayReference} onChange={(e) => setWebhookTestForm((p) => ({ ...p, gatewayReference: e.target.value }))} />
-            <Button onClick={() => sendWebhookTest.mutate()} disabled={sendWebhookTest.isPending}>Send Test Webhook</Button>
-            {lastWebhookMessage ? <div className="text-sm text-muted-foreground">{lastWebhookMessage}</div> : null}
+          <div className="space-y-1.5">
+            <Label>Payment link token <span className="text-muted-foreground font-normal text-xs">(from Payment Links tab)</span></Label>
+            <Input
+              placeholder="Paste token from a generated payment link"
+              value={form.paymentLinkToken}
+              onChange={(e) => setForm((p) => ({ ...p, paymentLinkToken: e.target.value }))}
+            />
           </div>
+
+          <Button
+            onClick={() => testMutation.mutate()}
+            disabled={testMutation.isPending || !associationId}
+            variant="secondary"
+          >
+            {testMutation.isPending ? "Sending…" : "Send Test Webhook"}
+          </Button>
+
+          {lastMessage && (
+            <div className="rounded-lg border bg-muted/20 px-3 py-2 text-sm">
+              <strong>Result:</strong> {lastMessage}
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      <WebhookSecurityCard associationId={associationId} />
+      <PaymentEventStateCard associationId={associationId} />
+    </div>
+  );
+}
+
+// ── Webhook Security Card ─────────────────────────────────────────────────────
+function WebhookSecurityCard({ associationId }: { associationId: string | null }) {
+  const { toast } = useToast();
+  const [secretInput, setSecretInput] = useState("");
+  const [provider, setProvider] = useState("generic");
+
+  const { data: secrets = [], refetch } = useQuery<any[]>({
+    queryKey: ["/api/admin/webhook-secrets", associationId],
+    queryFn: async () => {
+      if (!associationId) return [];
+      const res = await apiRequest("GET", `/api/admin/webhook-secrets?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const createSecret = useMutation({
+    mutationFn: async () => {
+      if (!associationId || !secretInput) throw new Error("Secret is required");
+      if (secretInput.length < 16) throw new Error("Secret must be at least 16 characters");
+      const res = await apiRequest("POST", "/api/admin/webhook-secrets", {
+        associationId,
+        plainSecret: secretInput,
+        provider,
+      });
+      return res.json();
+    },
+    onSuccess: async () => {
+      setSecretInput("");
+      await refetch();
+      toast({ title: "Webhook signing secret saved" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Shield className="h-4 w-4 text-green-600" /> Webhook Signing Secrets
+        </CardTitle>
+        <CardDescription>Store HMAC-SHA256 signing keys. Incoming webhook requests include an <code>x-webhook-hmac-sha256</code> header to authenticate payloads.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {secrets.length > 0 && (
+          <div className="space-y-2">
+            {secrets.map((s: any) => (
+              <div key={s.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
+                <span className="font-mono">{s.secretHint}</span>
+                <div className="flex gap-2 items-center">
+                  <Badge variant="outline">{s.provider}</Badge>
+                  <Badge variant={s.isActive ? "default" : "secondary"}>{s.isActive ? "Active" : "Rotated"}</Badge>
+                  {s.rotatedAt && <span className="text-xs text-muted-foreground">Rotated {new Date(s.rotatedAt).toLocaleDateString()}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <Input
+              type="password"
+              placeholder="New signing secret (min 16 chars)"
+              value={secretInput}
+              onChange={e => setSecretInput(e.target.value)}
+            />
+          </div>
+          <Select value={provider} onValueChange={setProvider}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="generic">Generic</SelectItem>
+              <SelectItem value="stripe">Stripe</SelectItem>
+              <SelectItem value="square">Square</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => createSecret.mutate()}
+          disabled={!associationId || !secretInput || createSecret.isPending}
+        >
+          {createSecret.isPending ? "Saving…" : "Save Secret"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Payment Event State Card ──────────────────────────────────────────────────
+function PaymentEventStateCard({ associationId }: { associationId: string | null }) {
+  const { toast } = useToast();
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [newStatus, setNewStatus] = useState<"received" | "processed" | "ignored" | "failed">("processed");
+  const [reason, setReason] = useState("");
+
+  const { data: events = [], refetch: refetchEvents } = useQuery<any[]>({
+    queryKey: ["/api/admin/payment-events", associationId],
+    queryFn: async () => {
+      if (!associationId) return [];
+      const res = await apiRequest("GET", `/api/admin/payment-events?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const { data: transitions = [] } = useQuery<any[]>({
+    queryKey: ["/api/admin/payment-events/transitions", selectedEventId],
+    queryFn: async () => {
+      if (!selectedEventId) return [];
+      const res = await apiRequest("GET", `/api/admin/payment-events/${selectedEventId}/transitions`);
+      return res.json();
+    },
+    enabled: Boolean(selectedEventId),
+  });
+
+  const forceTransition = useMutation({
+    mutationFn: async () => {
+      if (!selectedEventId) throw new Error("Select an event");
+      const res = await apiRequest("PATCH", `/api/admin/payment-events/${selectedEventId}/status`, { status: newStatus, reason });
+      return res.json();
+    },
+    onSuccess: async () => {
+      await refetchEvents();
+      setReason("");
+      toast({ title: "Status updated" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  if (events.length === 0) return null;
+
+  const statusColors: Record<string, string> = {
+    received: "secondary",
+    processed: "default",
+    ignored: "outline",
+    failed: "destructive",
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Payment Event States</CardTitle>
+        <CardDescription>Review and force-transition webhook payment event states. Select an event to view its state history.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Event ID</TableHead>
+              <TableHead>Provider</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Received</TableHead>
+              <TableHead className="text-right">Select</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {events.slice(0, 20).map((e: any) => (
+              <TableRow key={e.id} className={selectedEventId === e.id ? "bg-muted/30" : ""}>
+                <TableCell className="font-mono text-xs">{e.providerEventId?.slice(0, 20)}</TableCell>
+                <TableCell className="text-xs capitalize">{e.provider}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{e.eventType ?? "—"}</TableCell>
+                <TableCell className="text-sm">{e.amount != null ? `$${e.amount.toFixed(2)}` : "—"}</TableCell>
+                <TableCell><Badge variant={(statusColors[e.status] ?? "outline") as any}>{e.status}</Badge></TableCell>
+                <TableCell className="text-xs text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</TableCell>
+                <TableCell className="text-right">
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedEventId(prev => prev === e.id ? null : e.id)}>
+                    {selectedEventId === e.id ? "Deselect" : "Select"}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+
+        {selectedEventId && (
+          <div className="rounded-md border p-3 space-y-3 bg-muted/20">
+            <div className="text-sm font-medium">Force Status Transition</div>
+            {transitions.length > 0 && (
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div className="font-medium text-foreground mb-1">State History:</div>
+                {transitions.map((t: any, i: number) => (
+                  <div key={i}>{t.fromStatus} → {t.toStatus} · {t.reason} · {new Date(t.transitionedAt).toLocaleString()}</div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Select value={newStatus} onValueChange={v => setNewStatus(v as typeof newStatus)}>
+                <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="received">received</SelectItem>
+                  <SelectItem value="processed">processed</SelectItem>
+                  <SelectItem value="ignored">ignored</SelectItem>
+                  <SelectItem value="failed">failed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input placeholder="Reason" value={reason} onChange={e => setReason(e.target.value)} className="flex-1" />
+              <Button size="sm" onClick={() => forceTransition.mutate()} disabled={forceTransition.isPending}>Apply</Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Payment Activity Tab ──────────────────────────────────────────────────────
+
+type PaymentActivityStats = { totalPayments: number; totalCredits: number; totalAdjustments: number; last30DaysCount: number; last30DaysTotal: number };
+type ActivityEntry = { id: string; entryType: string; amount: number; postedAt: string; description: string | null; unitId: string; personId: string };
+
+function PaymentActivityTab({ associationId }: { associationId: string | null }) {
+  const { data, isLoading } = useQuery<{ entries: ActivityEntry[]; stats: PaymentActivityStats }>({
+    queryKey: ["/api/financial/payment-activity", associationId],
+    queryFn: async () => {
+      if (!associationId) return { entries: [], stats: { totalPayments: 0, totalCredits: 0, totalAdjustments: 0, last30DaysCount: 0, last30DaysTotal: 0 } };
+      const res = await apiRequest("GET", `/api/financial/payment-activity?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const entries = data?.entries ?? [];
+  const stats = data?.stats;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader><CardTitle className="text-base">Payment Activity Summary</CardTitle></CardHeader>
+        <CardContent>
+          {stats && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {[
+                { label: "Total Payments", value: `$${stats.totalPayments.toFixed(2)}` },
+                { label: "Total Credits", value: `$${stats.totalCredits.toFixed(2)}` },
+                { label: "Net Adjustments", value: `$${stats.totalAdjustments.toFixed(2)}` },
+                { label: "Last 30 Days Count", value: stats.last30DaysCount },
+                { label: "Last 30 Days Total", value: `$${stats.last30DaysTotal.toFixed(2)}` },
+              ].map((s) => (
+                <div key={s.label} className="text-center">
+                  <div className="text-2xl font-bold">{s.value}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Payment & Credit Entries</CardTitle><CardDescription>{entries.length} entries (payments, credits, adjustments)</CardDescription></CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+          ) : entries.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-4 text-center">No payment activity found for this association.</div>
+          ) : (
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Type", "Amount", "Unit", "Person", "Description"].map(h => <th key={h} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
+                <tbody>
+                  {entries.slice().reverse().map((e) => (
+                    <tr key={e.id} className="border-b last:border-0">
+                      <td className="py-1.5 pr-4 text-muted-foreground">{new Date(e.postedAt).toLocaleDateString()}</td>
+                      <td className="py-1.5 pr-4"><Badge variant={e.entryType === "payment" ? "default" : "secondary"} className="text-xs">{e.entryType}</Badge></td>
+                      <td className={`py-1.5 pr-4 font-medium ${e.amount < 0 ? "text-green-600" : "text-red-500"}`}>{e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}</td>
+                      <td className="py-1.5 pr-4 font-mono text-xs">{e.unitId.slice(0, 8)}</td>
+                      <td className="py-1.5 pr-4 font-mono text-xs">{e.personId.slice(0, 8)}</td>
+                      <td className="py-1.5 text-muted-foreground truncate max-w-xs">{e.description ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Exceptions Review Tab ─────────────────────────────────────────────────────
+
+type PaymentException = { id: string; entryId: string; type: string; description: string; amount: number; unitId: string; personId: string; postedAt: string };
+
+function ExceptionsTab({ associationId }: { associationId: string | null }) {
+  const { data: exceptions = [], isLoading } = useQuery<PaymentException[]>({
+    queryKey: ["/api/financial/payment-exceptions", associationId],
+    queryFn: async () => {
+      if (!associationId) return [];
+      const res = await apiRequest("GET", `/api/financial/payment-exceptions?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const exceptionTypeLabel: Record<string, string> = {
+    large_payment: "Large Payment",
+    negative_adjustment: "Negative Adjustment",
+    duplicate_payment: "Duplicate Payment",
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-amber-500" /> Exception Review
+        </CardTitle>
+        <CardDescription>Flagged transactions: large amounts, negative adjustments, and possible duplicates.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : exceptions.length === 0 ? (
+          <div className="flex items-center gap-2 text-sm text-green-600 py-4">
+            <CheckCircle2 className="h-4 w-4" /> No exceptions found. All payment activity looks clean.
+          </div>
+        ) : (
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Exception Type", "Amount", "Unit", "Person", "Description"].map(h => <th key={h} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
+              <tbody>
+                {exceptions.map((ex) => (
+                  <tr key={ex.id} className="border-b last:border-0">
+                    <td className="py-1.5 pr-4 text-muted-foreground">{new Date(ex.postedAt).toLocaleDateString()}</td>
+                    <td className="py-1.5 pr-4">
+                      <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>
+                    </td>
+                    <td className="py-1.5 pr-4 font-medium text-red-500">${Math.abs(ex.amount).toFixed(2)}</td>
+                    <td className="py-1.5 pr-4 font-mono text-xs">{ex.unitId.slice(0, 8)}</td>
+                    <td className="py-1.5 pr-4 font-mono text-xs">{ex.personId.slice(0, 8)}</td>
+                    <td className="py-1.5 text-muted-foreground">{ex.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function FinancialPaymentsPage() {
+  const { activeAssociationId, activeAssociationName } = useActiveAssociation();
+  const { setActiveAssociationId } = useAssociationContext();
+  const { data: associations = [] } = useQuery({ queryKey: ["/api/associations"] });
+
+  const selectedAssociationId = activeAssociationId;
+
+  const { data: persons = [] } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
+  const { data: units = [] } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
+
+  const { data: gatewayConnections = [], refetch: refetchGateway } = useQuery<PaymentGatewayConnection[]>({
+    queryKey: [selectedAssociationId
+      ? `/api/financial/payment-gateway/connections?associationId=${selectedAssociationId}`
+      : "/api/financial/payment-gateway/connections"],
+  });
+
+  const { data: paymentMethods = [], refetch: refetchMethods } = useQuery<PaymentMethodConfig[]>({
+    queryKey: [selectedAssociationId
+      ? `/api/financial/payment-methods?associationId=${selectedAssociationId}`
+      : "/api/financial/payment-methods"],
+  });
+
+  return (
+    <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Payments"
+        summary="Configure how owners pay their dues — add payment methods, optionally connect a card gateway, and generate owner payment links."
+        eyebrow="Finance"
+        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Payments" }]}
+      />
+
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation="Payment methods and gateway connections are scoped to the selected association. Select one to manage its payment setup."
+      />
+
+      <Tabs defaultValue="methods">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="methods" className="gap-1.5">
+            <CreditCard className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Methods</span>
+            {paymentMethods.length > 0 && (
+              <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">{paymentMethods.length}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="gateway" className="gap-1.5">
+            <Zap className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Gateway</span>
+            {gatewayConnections.filter((c) => c.isActive === 1).length > 0 && (
+              <Badge variant="default" className="ml-1 h-4 px-1 text-xs">
+                <CheckCircle2 className="h-2.5 w-2.5" />
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="links" className="gap-1.5">
+            <Link2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Links</span>
+          </TabsTrigger>
+          <TabsTrigger value="webhooks" className="gap-1.5">
+            <Webhook className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Webhooks</span>
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="gap-1.5">
+            <Info className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Activity</span>
+          </TabsTrigger>
+          <TabsTrigger value="exceptions" className="gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Exceptions</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="methods" className="mt-4">
+          <PaymentMethodsTab
+            associationId={selectedAssociationId}
+            paymentMethods={paymentMethods}
+            onSaved={() => refetchMethods()}
+          />
+        </TabsContent>
+
+        <TabsContent value="gateway" className="mt-4">
+          <GatewayTab
+            associationId={selectedAssociationId}
+            gatewayConnections={gatewayConnections}
+            onSaved={() => refetchGateway()}
+          />
+        </TabsContent>
+
+        <TabsContent value="links" className="mt-4">
+          <PaymentLinksTab
+            associationId={selectedAssociationId}
+            persons={persons}
+            units={units}
+          />
+        </TabsContent>
+
+        <TabsContent value="webhooks" className="mt-4">
+          <WebhookMonitorTab
+            associationId={selectedAssociationId}
+            persons={persons}
+            units={units}
+          />
+        </TabsContent>
+
+        <TabsContent value="activity" className="mt-4">
+          <PaymentActivityTab associationId={selectedAssociationId} />
+        </TabsContent>
+
+        <TabsContent value="exceptions" className="mt-4">
+          <ExceptionsTab associationId={selectedAssociationId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -19,7 +19,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, Mail, Phone, Search, MapPin, Home } from "lucide-react";
+import { Plus, Users, Mail, Phone, Search, MapPin, Home, FileUp } from "lucide-react";
+import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocation } from "wouter";
 import {
@@ -54,6 +55,7 @@ type RoleFilter = "all" | "owner" | "tenant" | "board";
 export default function PersonsPage() {
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addressQuery, setAddressQuery] = useState("");
   const [addressResults, setAddressResults] = useState<AddressSearchResult[]>([]);
@@ -358,6 +360,20 @@ export default function PersonsPage() {
     { value: "board", label: "Board", count: roleCounts.board },
   ];
 
+  async function handlePersonsImport(rows: Record<string, string>[]): Promise<ImportResult> {
+    const mapped = rows.map((row) => ({
+      firstName: row.firstName ?? "",
+      lastName: row.lastName ?? "",
+      email: row.email || null,
+      phone: row.phone || null,
+      mailingAddress: row.mailingAddress || null,
+    }));
+    const res = await apiRequest("POST", "/api/persons/import", { rows: mapped });
+    const data = await res.json() as ImportResult;
+    queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
+    return data;
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -365,6 +381,15 @@ export default function PersonsPage() {
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">People</h1>
           <p className="text-muted-foreground">Owners, tenants, and board members across your associations.</p>
         </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setImportOpen(true)}
+            data-testid="button-import-persons"
+          >
+            <FileUp className="h-4 w-4 mr-2" />
+            Import CSV
+          </Button>
         <Dialog open={open} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-person"><Plus className="h-4 w-4 mr-2" />Add Person</Button>
@@ -529,6 +554,7 @@ export default function PersonsPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Search and role filter */}
@@ -570,7 +596,7 @@ export default function PersonsPage() {
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium" data-testid="text-empty-state">No people yet</h3>
-              <p className="text-sm text-muted-foreground mt-1">Add people to assign them as owners, tenants, or board members.</p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm">People are the owners, tenants, and board members in your community. Click "Add Person" to create the first profile — then link them to units via the Ownership section.</p>
             </div>
           ) : filteredPersons.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -701,6 +727,25 @@ export default function PersonsPage() {
           )}
         </CardContent>
       </Card>
+
+      <CsvImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import People from CSV"
+        description="Upload a CSV file to bulk-create people. Each row creates a new person record. Existing people are not deduplicated automatically — review before importing."
+        columns={[
+          { key: "firstName", label: "First Name", required: true },
+          { key: "lastName", label: "Last Name", required: true },
+          { key: "email", label: "Email" },
+          { key: "phone", label: "Phone" },
+          { key: "mailingAddress", label: "Mailing Address" },
+        ]}
+        sampleRows={[
+          ["Jane", "Smith", "jane@example.com", "555-0101", "123 Oak St"],
+          ["Bob", "Jones", "bob@example.com", "", ""],
+        ]}
+        onImport={handlePersonsImport}
+      />
     </div>
   );
 }

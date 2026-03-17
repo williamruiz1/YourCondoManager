@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -16,6 +16,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { Paperclip, Upload, Download, ClipboardCheck } from "lucide-react";
+
+function downloadCsv(rows: string[][], filename: string) {
+  const csv = rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
 
@@ -92,9 +104,21 @@ export default function GovernanceCompliancePage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [associationFilter, setAssociationFilter] = useState(activeAssociationId);
+
+  // Sync local filter when context resolves a stale localStorage association ID
+  useEffect(() => {
+    if (activeAssociationId && activeAssociationId !== associationFilter) {
+      setAssociationFilter(activeAssociationId);
+    }
+  }, [activeAssociationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [openTemplate, setOpenTemplate] = useState(false);
   const [openTask, setOpenTask] = useState(false);
   const [openCalendar, setOpenCalendar] = useState(false);
+  const [alertStatusFilter, setAlertStatusFilter] = useState<"all" | "active" | "suppressed" | "resolved">("active");
+  const [suppressDialogAlert, setSuppressDialogAlert] = useState<ComplianceGapAlert | null>(null);
+  const [suppressReason, setSuppressReason] = useState("");
+  const [suppressDays, setSuppressDays] = useState("90");
 
   const { data: authSession } = useQuery<AuthSession | null>({
     queryKey: ["/api/auth/me", "session"],
@@ -121,6 +145,11 @@ export default function GovernanceCompliancePage() {
   });
   const { data: complianceAlerts = [] } = useQuery<ComplianceGapAlert[]>({
     queryKey: [associationFilter ? `/api/governance/compliance-alerts?associationId=${associationFilter}` : "/api/governance/compliance-alerts"],
+    enabled: Boolean(associationFilter),
+  });
+  type PlatformGap = { category: string; title: string; description: string; severity: "low" | "medium" | "high"; recordType: string; recordCount: number };
+  const { data: platformGaps = [] } = useQuery<PlatformGap[]>({
+    queryKey: [associationFilter ? `/api/governance/platform-gaps?associationId=${associationFilter}` : "/api/governance/platform-gaps"],
     enabled: Boolean(associationFilter),
   });
   const { data: templateItems } = useQuery<GovernanceTemplateItem[]>({
@@ -250,6 +279,42 @@ export default function GovernanceCompliancePage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const [versionHistoryTemplateId, setVersionHistoryTemplateId] = useState<string | null>(null);
+  const { data: versionHistory = [] } = useQuery<GovernanceComplianceTemplate[]>({
+    queryKey: ["/api/governance/templates/versions", versionHistoryTemplateId],
+    queryFn: async () => {
+      if (!versionHistoryTemplateId) return [];
+      const res = await apiRequest("GET", `/api/governance/templates/${versionHistoryTemplateId}/versions`);
+      return res.json();
+    },
+    enabled: Boolean(versionHistoryTemplateId),
+  });
+
+  const assignTemplate = useMutation({
+    mutationFn: async (templateId: string) => {
+      if (!activeAssociationId) throw new Error("No association selected");
+      const res = await apiRequest("POST", `/api/governance/templates/${templateId}/assign`, { associationId: activeAssociationId });
+      return res.json() as Promise<{ assigned: GovernanceComplianceTemplate; alreadyExists: boolean }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/governance/templates"] });
+      toast({ title: result.alreadyExists ? "Template already assigned" : "Template assigned to association" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const createNewVersion = useMutation({
+    mutationFn: async (templateId: string) => {
+      const res = await apiRequest("POST", `/api/governance/templates/${templateId}/new-version`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/governance/templates"] });
+      toast({ title: "New template version created (draft)" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const createTemplateItem = useMutation({
     mutationFn: async (v: z.infer<typeof itemSchema>) => {
       if (!selectedTemplateId) throw new Error("Select a template first");
@@ -313,6 +378,29 @@ export default function GovernanceCompliancePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/governance/tasks"] });
     },
   });
+  const evidenceInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const uploadEvidence = useMutation({
+    mutationFn: async ({ taskId, file }: { taskId: string; file: File }) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/governance/tasks/${taskId}/evidence`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Upload failed" }));
+        throw new Error(err.message);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/governance/tasks"] });
+      toast({ title: "Evidence uploaded" });
+    },
+    onError: (error: Error) => toast({ title: "Upload failed", description: error.message, variant: "destructive" }),
+  });
+
   const createCalendarEvent = useMutation({
     mutationFn: async (v: z.infer<typeof calendarSchema>) => {
       const res = await apiRequest("POST", "/api/governance/calendar/events", {
@@ -419,6 +507,66 @@ export default function GovernanceCompliancePage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Suppression dialog */}
+      <Dialog open={Boolean(suppressDialogAlert)} onOpenChange={(open) => { if (!open) setSuppressDialogAlert(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Suppress Compliance Alert</DialogTitle>
+          </DialogHeader>
+          {suppressDialogAlert && (
+            <div className="space-y-4">
+              <div className="text-sm font-medium">{suppressDialogAlert.templateItemTitle}</div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Suppression Reason <span className="text-destructive">*</span></label>
+                <Textarea
+                  placeholder="Explain why this alert is being suppressed..."
+                  value={suppressReason}
+                  onChange={(e) => setSuppressReason(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Suppress Duration</label>
+                <Select value={suppressDays} onValueChange={setSuppressDays}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30 days</SelectItem>
+                    <SelectItem value="60">60 days</SelectItem>
+                    <SelectItem value="90">90 days</SelectItem>
+                    <SelectItem value="180">180 days</SelectItem>
+                    <SelectItem value="365">1 year</SelectItem>
+                    <SelectItem value="0">Indefinitely</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setSuppressDialogAlert(null)}>Cancel</Button>
+                <Button
+                  disabled={!suppressReason.trim() || updateComplianceAlert.isPending}
+                  onClick={() => {
+                    if (!associationFilter || !suppressDialogAlert) return;
+                    const until = Number(suppressDays) > 0
+                      ? new Date(Date.now() + 1000 * 60 * 60 * 24 * Number(suppressDays)).toISOString()
+                      : null;
+                    updateComplianceAlert.mutate({
+                      associationId: associationFilter,
+                      templateId: suppressDialogAlert.templateId,
+                      templateItemId: suppressDialogAlert.templateItemId,
+                      status: "suppressed",
+                      suppressionReason: suppressReason.trim(),
+                      suppressedUntil: until,
+                    });
+                    setSuppressDialogAlert(null);
+                  }}
+                >
+                  Confirm Suppression
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Governance & Compliance</h1>
@@ -570,6 +718,93 @@ export default function GovernanceCompliancePage() {
         </div>
       </div>
 
+      {/* State Template Library Card */}
+      {stateLibraryTemplates.length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="font-medium text-sm">State Compliance Template Library</div>
+                <div className="text-xs text-muted-foreground">{stateLibraryTemplates.length} state templates · organized by jurisdiction</div>
+              </div>
+              <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => {
+                const rows: string[][] = [
+                  ["State", "Template Name", "Scope", "Version", "Status", "Source Authority", "Items Count", "Last Verified"],
+                  ...stateLibraryTemplates.map((t) => [
+                    t.stateCode ?? "All States",
+                    t.name,
+                    t.scope,
+                    String(t.versionNumber),
+                    t.publicationStatus,
+                    t.sourceAuthority ?? "—",
+                    "—",
+                    t.lastVerifiedAt ? new Date(t.lastVerifiedAt).toLocaleDateString() : "—",
+                  ]),
+                ];
+                downloadCsv(rows, `state-template-library-${new Date().toISOString().slice(0, 10)}.csv`);
+              }}>
+                <Download className="h-3.5 w-3.5" /> Export Library
+              </Button>
+            </div>
+
+            {/* Group by state */}
+            {Array.from(new Set(stateLibraryTemplates.map(t => t.stateCode ?? "All States"))).sort().map(state => {
+              const stateTemplates = stateLibraryTemplates.filter(t => (t.stateCode ?? "All States") === state);
+              return (
+                <div key={state} className="space-y-1">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{state}</div>
+                  <div className="space-y-1.5">
+                    {stateTemplates.map(t => (
+                      <div key={t.id} className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${t.publicationStatus === "published" ? "bg-green-50 dark:bg-green-950/20 border-green-300" : t.publicationStatus === "review" ? "bg-amber-50 dark:bg-amber-950/20 border-amber-300" : "bg-muted"}`}>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium">{t.name}</span>
+                          <span className="text-xs text-muted-foreground ml-1.5">v{t.versionNumber}</span>
+                          {t.publicationStatus !== "published" && <span className="ml-1 text-xs text-amber-600">({t.publicationStatus})</span>}
+                          {t.nextReviewDueAt && new Date(t.nextReviewDueAt) < now && <span className="ml-1 text-xs text-red-600">⚠ stale</span>}
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          {activeAssociationId && t.publicationStatus === "published" && (
+                            <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => assignTemplate.mutate(t.id)} disabled={assignTemplate.isPending}>
+                              Assign
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setVersionHistoryTemplateId(versionHistoryTemplateId === t.id ? null : t.id)}>
+                            History
+                          </Button>
+                          {canManageStateLibrary && (
+                            <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => createNewVersion.mutate(t.id)} disabled={createNewVersion.isPending}>
+                              +Version
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Version history panel */}
+            {versionHistoryTemplateId && versionHistory.length > 0 && (
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <div className="text-xs font-medium">Version History — {versionHistory[0]?.name}</div>
+                <div className="space-y-1">
+                  {versionHistory.map(v => (
+                    <div key={v.id} className="flex items-center gap-3 text-xs">
+                      <Badge variant={v.publicationStatus === "published" ? "default" : "secondary"} className="text-xs">v{v.versionNumber}</Badge>
+                      <span className="text-muted-foreground">{v.publicationStatus}</span>
+                      {v.scope === "association" && <span className="text-blue-600">association overlay</span>}
+                      {v.createdAt && <span className="text-muted-foreground">{new Date(v.createdAt).toLocaleDateString()}</span>}
+                      {v.createdBy && <span className="text-muted-foreground">by {v.createdBy}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -649,8 +884,39 @@ export default function GovernanceCompliancePage() {
             </div>
             <Badge variant={activeComplianceAlerts.length > 0 ? "destructive" : "secondary"}>{activeComplianceAlerts.length} active alerts</Badge>
           </div>
+          {/* KPI summary */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              { label: "High Severity", count: complianceAlerts.filter(a => a.severity === "high" && a.status === "active").length, variant: "bg-red-50 text-red-800 border-red-200 dark:bg-red-900/20 dark:text-red-300" },
+              { label: "Medium Severity", count: complianceAlerts.filter(a => a.severity === "medium" && a.status === "active").length, variant: "bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300" },
+              { label: "Suppressed", count: suppressedComplianceAlerts.length, variant: "bg-muted text-muted-foreground border" },
+              { label: "With Source Evidence", count: complianceAlerts.filter(a => a.sourceUrl || a.legalReference || a.matchedRuleCount > 0).length, variant: "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300" },
+            ].map(kpi => (
+              <div key={kpi.label} className={`rounded-md border p-3 text-center ${kpi.variant}`}>
+                <div className="text-xl font-bold">{kpi.count}</div>
+                <div className="text-xs mt-0.5">{kpi.label}</div>
+              </div>
+            ))}
+          </div>
+          {/* Status filter buttons */}
+          <div className="flex gap-2 flex-wrap">
+            {(["active", "suppressed", "resolved", "all"] as const).map((status) => {
+              const counts = { active: activeComplianceAlerts.length, suppressed: suppressedComplianceAlerts.length, resolved: resolvedComplianceAlerts.length, all: complianceAlerts.length };
+              return (
+                <Button
+                  key={status}
+                  size="sm"
+                  variant={alertStatusFilter === status ? "default" : "outline"}
+                  className="h-7 text-xs"
+                  onClick={() => setAlertStatusFilter(status)}
+                >
+                  {status.charAt(0).toUpperCase() + status.slice(1)} ({counts[status]})
+                </Button>
+              );
+            })}
+          </div>
           <div className="space-y-2">
-            {complianceAlerts.map((alert) => (
+            {complianceAlerts.filter(a => alertStatusFilter === "all" || a.status === alertStatusFilter).map((alert) => (
               <div key={alert.templateItemId} className="rounded-md border p-4 space-y-3">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div>
@@ -675,35 +941,53 @@ export default function GovernanceCompliancePage() {
                   <div className="text-xs text-muted-foreground">Override reason: {alert.suppressionReason}</div>
                 ) : null}
                 <div className="flex gap-2 flex-wrap">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={updateComplianceAlert.isPending || !associationFilter}
-                    onClick={() => associationFilter && updateComplianceAlert.mutate({
-                      associationId: associationFilter,
-                      templateId: alert.templateId,
-                      templateItemId: alert.templateItemId,
-                      status: "suppressed",
-                      suppressionReason: "Reviewed by board or manager; handled outside current bylaw extraction scope.",
-                      suppressedUntil: new Date(Date.now() + 1000 * 60 * 60 * 24 * 90).toISOString(),
-                    })}
-                  >
-                    Suppress 90 Days
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={updateComplianceAlert.isPending || !associationFilter}
-                    onClick={() => associationFilter && updateComplianceAlert.mutate({
-                      associationId: associationFilter,
-                      templateId: alert.templateId,
-                      templateItemId: alert.templateItemId,
-                      status: "resolved",
-                      notes: "Resolved after confirming bylaw or operational coverage.",
-                    })}
-                  >
-                    Mark Resolved
-                  </Button>
+                  {alert.status === "active" && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={updateComplianceAlert.isPending || !associationFilter}
+                        onClick={() => {
+                          setSuppressDialogAlert(alert);
+                          setSuppressReason("");
+                          setSuppressDays("90");
+                        }}
+                      >
+                        Suppress
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={updateComplianceAlert.isPending || !associationFilter}
+                        onClick={() => associationFilter && updateComplianceAlert.mutate({
+                          associationId: associationFilter,
+                          templateId: alert.templateId,
+                          templateItemId: alert.templateItemId,
+                          status: "resolved",
+                          notes: "Resolved after confirming bylaw or operational coverage.",
+                        })}
+                      >
+                        Mark Resolved
+                      </Button>
+                    </>
+                  )}
+                  {(alert.status === "suppressed" || alert.status === "resolved") && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={updateComplianceAlert.isPending || !associationFilter}
+                      onClick={() => associationFilter && updateComplianceAlert.mutate({
+                        associationId: associationFilter,
+                        templateId: alert.templateId,
+                        templateItemId: alert.templateItemId,
+                        status: "active",
+                        suppressionReason: null,
+                        suppressedUntil: null,
+                      })}
+                    >
+                      Reactivate
+                    </Button>
+                  )}
                   {alert.sourceUrl ? (
                     <a className="text-xs underline underline-offset-4 inline-flex items-center px-3" href={alert.sourceUrl} target="_blank" rel="noreferrer">
                       Open source
@@ -712,12 +996,48 @@ export default function GovernanceCompliancePage() {
                 </div>
               </div>
             ))}
-            {complianceAlerts.length === 0 ? (
+            {complianceAlerts.filter(a => alertStatusFilter === "all" || a.status === alertStatusFilter).length === 0 ? (
               <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                No current compliance gaps detected for the selected association.
+                No compliance alerts match the selected filter.
               </div>
             ) : null}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-6 space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-sm font-medium">Platform Records Gap Analysis</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Cross-reference insurance, meetings, board composition, maintenance, and documents against compliance requirements.</p>
+            </div>
+            {platformGaps.length > 0 && (
+              <Badge variant={platformGaps.some(g => g.severity === "high") ? "destructive" : "secondary"}>
+                {platformGaps.length} gap{platformGaps.length !== 1 ? "s" : ""} found
+              </Badge>
+            )}
+          </div>
+          {!associationFilter ? (
+            <div className="text-sm text-muted-foreground border border-dashed rounded-md p-4">Select an association to run platform gap analysis.</div>
+          ) : platformGaps.length === 0 ? (
+            <div className="text-sm text-muted-foreground border border-dashed rounded-md p-4">No platform record gaps detected. All key compliance indicators are covered.</div>
+          ) : (
+            <div className="space-y-2">
+              {platformGaps.map((gap, idx) => (
+                <div key={idx} className="rounded-md border p-3 space-y-1">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">{gap.category}</Badge>
+                      <span className="text-sm font-medium">{gap.title}</span>
+                    </div>
+                    <Badge variant={gap.severity === "high" ? "destructive" : gap.severity === "medium" ? "secondary" : "outline"}>{gap.severity}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{gap.description}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -852,23 +1172,140 @@ export default function GovernanceCompliancePage() {
             </div>
           </div>
 
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h3 className="text-sm font-medium mb-2">Compliance Task Table</h3>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => {
+                const now = new Date();
+                const rows: string[][] = [
+                  ["Task", "Due Date", "Status", "Days Until Due", "Legal Reference", "Notes"],
+                  ...filteredTasks.map((t) => {
+                    const dueDate = t.dueDate ? new Date(t.dueDate) : null;
+                    const daysUntil = dueDate ? Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                    return [
+                      t.title,
+                      dueDate ? dueDate.toLocaleDateString() : "—",
+                      t.status,
+                      daysUntil !== null ? String(daysUntil) : "—",
+                      (t as any).legalReference ?? "—",
+                      (t as any).notes ?? "—",
+                    ];
+                  }),
+                ];
+                downloadCsv(rows, `compliance-tasks-${new Date().toISOString().slice(0, 10)}.csv`);
+              }}>
+                <Download className="h-3.5 w-3.5" /> Export CSV
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => {
+                const now = new Date();
+                const overdueTasks = filteredTasks.filter((t) => t.dueDate && new Date(t.dueDate) < now && t.status !== "done");
+                const upcomingTasks = filteredTasks.filter((t) => {
+                  if (t.status === "done" || !t.dueDate) return false;
+                  const d = new Date(t.dueDate);
+                  const days = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                  return days >= 0 && days <= 30;
+                });
+                const rows: string[][] = [
+                  ["REGULATORY FILING REVIEW REPORT"],
+                  [`Generated: ${now.toLocaleString()}`],
+                  [],
+                  ["OVERDUE FILINGS"],
+                  ["Task", "Due Date", "Status"],
+                  ...overdueTasks.map((t) => [t.title, t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—", t.status]),
+                  [],
+                  ["DUE IN NEXT 30 DAYS"],
+                  ["Task", "Due Date", "Status"],
+                  ...upcomingTasks.map((t) => [t.title, t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—", t.status]),
+                  [],
+                  ["SUMMARY"],
+                  ["Total Tasks", String(filteredTasks.length)],
+                  ["Overdue", String(overdueTasks.length)],
+                  ["Due in 30 Days", String(upcomingTasks.length)],
+                  ["Completed", String(filteredTasks.filter((t) => t.status === "done").length)],
+                ];
+                downloadCsv(rows, `regulatory-filing-review-${now.toISOString().slice(0, 10)}.csv`);
+              }}>
+                <ClipboardCheck className="h-3.5 w-3.5" /> Filing Review Report
+              </Button>
+            </div>
+          </div>
           <div>
             <h3 className="text-sm font-medium mb-2">Compliance Task Table</h3>
             <Table>
-              <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Due</TableHead><TableHead>Status</TableHead><TableHead>Evidence</TableHead></TableRow></TableHeader>
               <TableBody>
-                {filteredTasks.map((t) => (
-                  <TableRow key={t.id}>
+                {filteredTasks
+                  .slice()
+                  .sort((a, b) => {
+                    // Overdue first, then by due date, then no due date last
+                    const now = new Date();
+                    const aDate = a.dueDate ? new Date(a.dueDate) : null;
+                    const bDate = b.dueDate ? new Date(b.dueDate) : null;
+                    if (!aDate && !bDate) return 0;
+                    if (!aDate) return 1;
+                    if (!bDate) return -1;
+                    return aDate.getTime() - bDate.getTime();
+                  })
+                  .map((t) => {
+                  const now = new Date();
+                  const dueDate = t.dueDate ? new Date(t.dueDate) : null;
+                  const daysUntil = dueDate ? Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                  const isOverdue = dueDate && dueDate < now && t.status !== "done";
+                  const isDueSoon = daysUntil !== null && daysUntil >= 0 && daysUntil <= 14 && t.status !== "done";
+                  return (
+                  <TableRow key={t.id} className={isOverdue ? "bg-red-50/50" : isDueSoon ? "bg-amber-50/50" : ""}>
                     <TableCell>{t.title}</TableCell>
-                    <TableCell>{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "-"}</TableCell>
+                    <TableCell>
+                      <div className="space-y-0.5">
+                        <div className={isOverdue ? "text-red-600 font-medium" : isDueSoon ? "text-amber-700 font-medium" : ""}>
+                          {dueDate ? dueDate.toLocaleDateString() : "-"}
+                        </div>
+                        {isOverdue && daysUntil !== null && (
+                          <Badge variant="destructive" className="text-xs">{Math.abs(daysUntil)}d overdue</Badge>
+                        )}
+                        {isDueSoon && (
+                          <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Due in {daysUntil}d</Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Select value={t.status} onValueChange={(status) => updateTask.mutate({ id: t.id, status: status as "todo" | "in-progress" | "done" })}>
                         <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="todo">todo</SelectItem><SelectItem value="in-progress">in-progress</SelectItem><SelectItem value="done">done</SelectItem></SelectContent>
                       </Select>
                     </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {Array.isArray((t as any).evidenceUrlsJson) && ((t as any).evidenceUrlsJson as string[]).map((url: string, i: number) => (
+                          <a key={i} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                            <Paperclip className="h-3 w-3" />{i + 1}
+                          </a>
+                        ))}
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                          className="hidden"
+                          ref={(el) => { evidenceInputRefs.current[t.id] = el; }}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) uploadEvidence.mutate({ taskId: t.id, file });
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-xs gap-1"
+                          onClick={() => evidenceInputRefs.current[t.id]?.click()}
+                          disabled={uploadEvidence.isPending}
+                        >
+                          <Upload className="h-3 w-3" />
+                          {uploadEvidence.isPending ? "…" : "Upload"}
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
-                ))}
+                );
+                })}
               </TableBody>
             </Table>
           </div>

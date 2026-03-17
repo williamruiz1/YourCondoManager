@@ -36,9 +36,13 @@ const FinancialUtilitiesPage = lazy(() => import("@/pages/financial-utilities"))
 const FinancialLedgerPage = lazy(() => import("@/pages/financial-ledger"));
 const FinancialBudgetsPage = lazy(() => import("@/pages/financial-budgets"));
 const FinancialPaymentsPage = lazy(() => import("@/pages/financial-payments"));
+const FinancialReportsPage = lazy(() => import("@/pages/financial-reports"));
+const FinancialReconciliationPage = lazy(() => import("@/pages/financial-reconciliation"));
+const FinancialRecurringChargesPage = lazy(() => import("@/pages/financial-recurring-charges"));
 const VendorsPage = lazy(() => import("@/pages/vendors"));
 const WorkOrdersPage = lazy(() => import("@/pages/work-orders"));
 const MaintenanceSchedulesPage = lazy(() => import("@/pages/maintenance-schedules"));
+const ResidentFeedbackPage = lazy(() => import("@/pages/resident-feedback"));
 const InspectionsPage = lazy(() => import("@/pages/inspections"));
 const BoardPackagesPage = lazy(() => import("@/pages/board-packages"));
 const MeetingsPage = lazy(() => import("@/pages/meetings"));
@@ -46,8 +50,12 @@ const GovernanceCompliancePage = lazy(() => import("@/pages/governance-complianc
 const AiIngestionPage = lazy(() => import("@/pages/ai-ingestion"));
 const CommunicationsPage = lazy(() => import("@/pages/communications"));
 const PlatformControlsPage = lazy(() => import("@/pages/platform-controls"));
+const FeatureFlagsPage = lazy(() => import("@/pages/feature-flags"));
 const OwnerPortalPage = lazy(() => import("@/pages/owner-portal"));
 const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
+const InsurancePage = lazy(() => import("@/pages/insurance"));
+const PortfolioPage = lazy(() => import("@/pages/portfolio"));
+const AnnouncementsPage = lazy(() => import("@/pages/announcements"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
@@ -103,6 +111,7 @@ function WorkspaceRouter({ adminRole }: { adminRole: AdminRole | null }) {
         <Route path="/app/admin" component={RoadmapPage} />
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
+        <Route path="/app/admin/feature-flags" component={FeatureFlagsPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
         <Route path="/app/financial/fees" component={FinancialFeesPage} />
         <Route path="/app/financial/assessments" component={FinancialAssessmentsPage} />
@@ -113,9 +122,13 @@ function WorkspaceRouter({ adminRole }: { adminRole: AdminRole | null }) {
         <Route path="/app/financial/ledger" component={FinancialLedgerPage} />
         <Route path="/app/financial/budgets" component={FinancialBudgetsPage} />
         <Route path="/app/financial/payments" component={FinancialPaymentsPage} />
+        <Route path="/app/financial/reports" component={FinancialReportsPage} />
+        <Route path="/app/financial/reconciliation" component={FinancialReconciliationPage} />
+        <Route path="/app/financial/recurring-charges" component={FinancialRecurringChargesPage} />
         <Route path="/app/vendors" component={VendorsPage} />
         <Route path="/app/work-orders" component={WorkOrdersPage} />
         <Route path="/app/maintenance-schedules" component={MaintenanceSchedulesPage} />
+        <Route path="/app/resident-feedback" component={ResidentFeedbackPage} />
         <Route path="/app/inspections" component={InspectionsPage} />
         <Route path="/app/governance/board-packages" component={BoardPackagesPage} />
         <Route path="/app/governance/meetings" component={MeetingsPage} />
@@ -124,7 +137,12 @@ function WorkspaceRouter({ adminRole }: { adminRole: AdminRole | null }) {
           {canAccessWipRoute("/app/ai/ingestion", adminRole) ? <AiIngestionPage /> : <NotFound />}
         </Route>
         <Route path="/app/communications" component={CommunicationsPage} />
-        <Route path="/app/platform/controls" component={PlatformControlsPage} />
+        <Route path="/app/platform/controls">
+          {adminRole === "platform-admin" ? <PlatformControlsPage /> : <NotFound />}
+        </Route>
+        <Route path="/app/insurance" component={InsurancePage} />
+        <Route path="/app/portfolio" component={PortfolioPage} />
+        <Route path="/app/announcements" component={AnnouncementsPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

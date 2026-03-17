@@ -3,21 +3,27 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import type { Association, OwnerLedgerEntry, Person, Unit } from "@shared/schema";
+import type { Association, AuditLog, FinancialAlert, OwnerLedgerEntry, Person, Unit } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { FileUp, Send, AlertTriangle, RefreshCw, X } from "lucide-react";
+import { ExportCsvButton } from "@/components/export-csv-button";
+import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
+import { DateRangePresets, type DateRange } from "@/components/date-range-presets";
 
 const entrySchema = z.object({
   associationId: z.string().min(1),
@@ -29,9 +35,111 @@ const entrySchema = z.object({
   description: z.string().optional(),
 });
 
+function SendNoticeDialog({
+  associationId,
+  personId,
+  unitId,
+  balance,
+  ownerName,
+  unitNumber,
+}: {
+  associationId: string;
+  personId: string;
+  unitId: string;
+  balance: number;
+  ownerName: string;
+  unitNumber: string;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState(
+    `Payment Reminder — Unit ${unitNumber}`,
+  );
+  const [body, setBody] = useState(
+    `Dear ${ownerName},\n\nOur records show an outstanding balance of $${balance.toFixed(2)} on your account for Unit ${unitNumber}.\n\nPlease remit payment at your earliest convenience. If you believe this is an error or would like to discuss a payment arrangement, please contact us directly.\n\nThank you,\nYour HOA Management Team`,
+  );
+
+  // Refresh subject/body when the trigger values change (e.g., different row opened)
+  useEffect(() => {
+    if (open) {
+      setSubject(`Payment Reminder — Unit ${unitNumber}`);
+      setBody(
+        `Dear ${ownerName},\n\nOur records show an outstanding balance of $${balance.toFixed(2)} on your account for Unit ${unitNumber}.\n\nPlease remit payment at your earliest convenience. If you believe this is an error or would like to discuss a payment arrangement, please contact us directly.\n\nThank you,\nYour HOA Management Team`,
+      );
+    }
+  }, [open, ownerName, unitNumber, balance]);
+
+  const sendMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/financial/payment-instructions/send", {
+        associationId,
+        targetType: "individual-owner",
+        selectedPersonId: personId,
+        subject: subject.trim(),
+        body: body.trim(),
+        bypassReadinessGate: true,
+      }).then((r) => r.json()),
+    onSuccess: () => {
+      toast({ title: "Notice sent", description: `Payment reminder sent to ${ownerName}` });
+      setOpen(false);
+    },
+    onError: (err: Error) =>
+      toast({ title: "Send failed", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs">
+          <Send className="h-3 w-3" />
+          Send Notice
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Send Payment Notice</DialogTitle>
+          <DialogDescription>
+            This notice will be emailed to <strong>{ownerName}</strong> (Unit {unitNumber}).
+            Edit the message below before sending.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="rounded-lg border bg-muted/20 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Outstanding balance: </span>
+            <span className="font-semibold text-destructive">${balance.toFixed(2)}</span>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Subject</Label>
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Message</Label>
+            <Textarea
+              rows={8}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => sendMutation.mutate()}
+            disabled={sendMutation.isPending || !subject.trim() || !body.trim()}
+          >
+            {sendMutation.isPending ? "Sending…" : "Send Notice"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function FinancialLedgerPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>({ from: null, to: null });
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [assocFilter, setAssocFilter] = useState<string>(activeAssociationId);
 
@@ -48,6 +156,43 @@ export default function FinancialLedgerPage() {
     },
     enabled: Boolean(assocFilter),
   });
+  const auditLogsQuery = useQuery<AuditLog[]>({
+    queryKey: [assocFilter ? `/api/audit-logs?associationId=${assocFilter}` : "/api/audit-logs"],
+    enabled: Boolean(assocFilter),
+  });
+
+  const { data: financialAlertsList = [], refetch: refetchAlerts } = useQuery<FinancialAlert[]>({
+    queryKey: ["/api/financial/alerts", assocFilter],
+    queryFn: async () => {
+      if (!assocFilter) return [];
+      const res = await apiRequest("GET", `/api/financial/alerts?associationId=${assocFilter}`);
+      return res.json();
+    },
+    enabled: Boolean(assocFilter),
+  });
+
+  const generateAlerts = useMutation({
+    mutationFn: async () => {
+      if (!assocFilter) throw new Error("No association selected");
+      const res = await apiRequest("POST", "/api/financial/alerts/generate", { associationId: assocFilter });
+      return res.json();
+    },
+    onSuccess: async (result: { generated: number }) => {
+      await refetchAlerts();
+      toast({ title: `${result.generated} new alerts generated` });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const dismissAlert = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/financial/alerts/${id}/dismiss`, {});
+      return res.json();
+    },
+    onSuccess: () => void refetchAlerts(),
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const analyticsQuery = useQuery<{
     collectionMetrics: {
       totalCharges: number;
@@ -113,6 +258,26 @@ export default function FinancialLedgerPage() {
     return map;
   }, [units]);
 
+  const filteredEntries = useMemo(() => {
+    const all = entriesQuery.data ?? [];
+    if (!dateRange.from && !dateRange.to) return all;
+    return all.filter((e) => {
+      const posted = new Date(e.postedAt);
+      if (dateRange.from && posted < dateRange.from) return false;
+      if (dateRange.to && posted > dateRange.to) return false;
+      return true;
+    });
+  }, [entriesQuery.data, dateRange]);
+
+  async function handleLedgerImport(rows: Record<string, string>[]): Promise<ImportResult> {
+    if (!activeAssociationId) throw new Error("Select an association context first");
+    const res = await apiRequest("POST", "/api/financial/owner-ledger/import", { associationId: activeAssociationId, rows });
+    const data = await res.json() as ImportResult;
+    queryClient.invalidateQueries({ queryKey: ["/api/financial/owner-ledger/entries"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/financial/owner-ledger/summary", activeAssociationId] });
+    return data;
+  }
+
   return (
     <div className="p-6 space-y-6">
       <WorkspacePageHeader
@@ -124,7 +289,7 @@ export default function FinancialLedgerPage() {
           { label: "Open Invoices", href: "/app/financial/invoices" },
           { label: "Open Budgets", href: "/app/financial/budgets" },
         ]}
-        actions={<Dialog open={open} onOpenChange={setOpen}>
+        actions={<div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} disabled={!activeAssociationId}><FileUp className="h-4 w-4 mr-2" />Import CSV</Button><Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Ledger Entry</Button></DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>Create Ledger Entry</DialogTitle></DialogHeader>
@@ -154,7 +319,7 @@ export default function FinancialLedgerPage() {
               </form>
             </Form>
           </DialogContent>
-        </Dialog>}
+        </Dialog></div>}
       />
 
       <AssociationScopeBanner
@@ -177,10 +342,48 @@ export default function FinancialLedgerPage() {
       >
         <Card>
           <CardContent className="p-6 space-y-3">
-            <h2 className="text-lg font-semibold">Balance Summary</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Balance Summary</h2>
+              {(summaryQuery.data ?? []).filter((s) => s.balance > 0).length > 0 && (
+                <Badge variant="destructive">
+                  {(summaryQuery.data ?? []).filter((s) => s.balance > 0).length} delinquent
+                </Badge>
+              )}
+            </div>
             <Table>
-              <TableHeader><TableRow><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Balance</TableHead></TableRow></TableHeader>
-              <TableBody>{(summaryQuery.data ?? []).map((s) => (<TableRow key={`${s.personId}-${s.unitId}`}><TableCell>{personName.get(s.personId) || s.personId}</TableCell><TableCell>{unitName.get(s.unitId) || s.unitId}</TableCell><TableCell><Badge variant={s.balance > 0 ? "destructive" : "default"}>${s.balance.toFixed(2)}</Badge></TableCell></TableRow>))}</TableBody>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Owner</TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead>Balance</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(summaryQuery.data ?? []).map((s) => (
+                  <TableRow key={`${s.personId}-${s.unitId}`}>
+                    <TableCell>{personName.get(s.personId) || s.personId}</TableCell>
+                    <TableCell>{unitName.get(s.unitId) || s.unitId}</TableCell>
+                    <TableCell>
+                      <Badge variant={s.balance > 0 ? "destructive" : "default"}>
+                        ${s.balance.toFixed(2)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {s.balance > 0 && assocFilter && (
+                        <SendNoticeDialog
+                          associationId={assocFilter}
+                          personId={s.personId}
+                          unitId={s.unitId}
+                          balance={s.balance}
+                          ownerName={personName.get(s.personId) || "Owner"}
+                          unitNumber={unitName.get(s.unitId) || s.unitId}
+                        />
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
             </Table>
           </CardContent>
         </Card>
@@ -300,7 +503,159 @@ export default function FinancialLedgerPage() {
         </Card>
       </div>
 
-      <Card><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead></TableRow></TableHeader><TableBody>{(entriesQuery.data ?? []).map((e) => (<TableRow key={e.id}><TableCell>{new Date(e.postedAt).toLocaleDateString()}</TableCell><TableCell>{personName.get(e.personId) || e.personId}</TableCell><TableCell>{unitName.get(e.unitId) || e.unitId}</TableCell><TableCell><Badge variant="secondary">{e.entryType}</Badge></TableCell><TableCell>${e.amount.toFixed(2)}</TableCell></TableRow>))}</TableBody></Table></CardContent></Card>
+      <Card>
+        <div className="flex items-center justify-between px-6 pt-5 pb-0 flex-wrap gap-2">
+          <h2 className="text-base font-semibold">
+            All Ledger Entries
+            {(dateRange.from || dateRange.to) && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                — {filteredEntries.length} of {entriesQuery.data?.length ?? 0} entries
+              </span>
+            )}
+          </h2>
+          <ExportCsvButton
+            headers={["Date", "Owner", "Unit", "Type", "Amount", "Description"]}
+            rows={(filteredEntries).map((e) => [
+              new Date(e.postedAt).toLocaleDateString(),
+              personName.get(e.personId) || e.personId,
+              unitName.get(e.unitId) || e.unitId,
+              e.entryType,
+              e.amount.toFixed(2),
+              e.description || "",
+            ])}
+            filename="ledger-entries"
+          />
+        </div>
+        <div className="px-6 py-3 border-b">
+          <DateRangePresets value={dateRange} onChange={setDateRange} />
+        </div>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {filteredEntries.map((e) => (
+                <TableRow key={e.id}>
+                  <TableCell>{new Date(e.postedAt).toLocaleDateString()}</TableCell>
+                  <TableCell>{personName.get(e.personId) || e.personId}</TableCell>
+                  <TableCell>{unitName.get(e.unitId) || e.unitId}</TableCell>
+                  <TableCell><Badge variant="secondary">{e.entryType}</Badge></TableCell>
+                  <TableCell>${e.amount.toFixed(2)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {assocFilter && (
+        <Card>
+          <div className="px-6 pt-5 pb-0">
+            <h2 className="text-base font-semibold">Financial Change History</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">Audit trail of all financial record changes and user actions.</p>
+          </div>
+          <CardContent className="p-0 mt-3">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Actor</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Entity</TableHead>
+                  <TableHead>Details</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(auditLogsQuery.data ?? [])
+                  .filter((log) => ["owner_ledger_entry", "invoice", "late_fee_event", "budget", "assessment"].includes(log.entityType))
+                  .slice(0, 50)
+                  .map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {new Date(log.createdAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-sm">{log.actorEmail}</TableCell>
+                      <TableCell><Badge variant="outline" className="font-mono text-xs">{log.action}</Badge></TableCell>
+                      <TableCell className="text-sm capitalize">{log.entityType.replace(/_/g, " ")}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
+                        {log.afterJson ? JSON.stringify(log.afterJson).slice(0, 80) : log.entityId || "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                {(auditLogsQuery.data ?? []).filter((log) =>
+                  ["owner_ledger_entry", "invoice", "late_fee_event", "budget", "assessment"].includes(log.entityType)
+                ).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      No financial change history recorded yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Financial Alerts Panel */}
+      {assocFilter && (
+        <Card>
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                <div className="font-semibold text-sm">Finance-Grade Alerts</div>
+                {financialAlertsList.filter(a => a.severity === "critical").length > 0 && (
+                  <Badge variant="destructive">{financialAlertsList.filter(a => a.severity === "critical").length} critical</Badge>
+                )}
+              </div>
+              <Button size="sm" variant="outline" onClick={() => generateAlerts.mutate()} disabled={generateAlerts.isPending || !assocFilter} className="gap-1.5">
+                <RefreshCw className={`h-3.5 w-3.5 ${generateAlerts.isPending ? "animate-spin" : ""}`} />
+                Run Scan
+              </Button>
+            </div>
+
+            {financialAlertsList.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-2">No active alerts. Run a scan to detect anomalies.</div>
+            ) : (
+              <div className="space-y-2">
+                {financialAlertsList.map((alert) => (
+                  <div key={alert.id} className={`flex items-start gap-3 rounded-md border px-3 py-2 ${alert.severity === "critical" ? "bg-red-50 dark:bg-red-950/20 border-red-200" : "bg-orange-50 dark:bg-orange-950/20 border-orange-200"}`}>
+                    <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${alert.severity === "critical" ? "text-red-600" : "text-orange-600"}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">{alert.title}</div>
+                      <div className="text-xs text-muted-foreground">{alert.message}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{new Date(alert.createdAt).toLocaleDateString()}</div>
+                    </div>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 shrink-0" onClick={() => dismissAlert.mutate(alert.id)}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <CsvImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Ledger Entries from CSV"
+        description="Upload a CSV to bulk-create owner ledger entries. Person is matched by email address; unit is matched by unit number. Both must exist in the active association."
+        columns={[
+          { key: "personEmail", label: "Owner Email", required: true },
+          { key: "unitNumber", label: "Unit Number", required: true },
+          { key: "entryType", label: "Type (charge/payment/credit…)", required: true },
+          { key: "amount", label: "Amount", required: true },
+          { key: "postedAt", label: "Posted Date (YYYY-MM-DD)", required: true },
+          { key: "description", label: "Description" },
+        ]}
+        sampleRows={[
+          ["jane@example.com", "101", "charge", "350.00", "2024-01-01", "Monthly HOA fee"],
+          ["bob@example.com", "102", "payment", "-350.00", "2024-01-15", "Payment received"],
+        ]}
+        onImport={handleLedgerImport}
+      />
     </div>
   );
 }

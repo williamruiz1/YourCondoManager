@@ -39,7 +39,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, FileText, Upload, Download, Tags, History } from "lucide-react";
+import { Plus, FileText, Upload, Download, Tags, History, AlertTriangle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
@@ -56,6 +57,8 @@ const formSchema = z.object({
   title: z.string().min(1, "Title is required"),
   documentType: z.string().min(1, "Document type is required"),
   uploadedBy: z.string().optional(),
+  isPortalVisible: z.boolean().default(false),
+  portalAudience: z.enum(["owner", "all"]).default("owner"),
 });
 
 const addTagSchema = z.object({
@@ -87,6 +90,14 @@ export default function DocumentsPage() {
 
   const { data: documents, isLoading } = useQuery<Document[]>({ queryKey: ["/api/documents"] });
   const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
+  const { data: missingFilesData } = useQuery<{ missingIds: string[] }>({
+    queryKey: ["/api/documents/missing-files"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/documents/missing-files");
+      return res.json();
+    },
+  });
+  const missingFileIds = useMemo(() => new Set(missingFilesData?.missingIds ?? []), [missingFilesData]);
 
   const { data: tags } = useQuery<DocumentTag[]>({
     queryKey: ["/api/documents", selectedDocument?.id, "tags"],
@@ -108,7 +119,7 @@ export default function DocumentsPage() {
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { associationId: "", title: "", documentType: "", uploadedBy: "" },
+    defaultValues: { associationId: "", title: "", documentType: "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner" },
   });
 
   const tagForm = useForm<z.infer<typeof addTagSchema>>({
@@ -151,6 +162,8 @@ export default function DocumentsPage() {
       formData.append("title", data.title);
       formData.append("documentType", data.documentType);
       if (data.uploadedBy) formData.append("uploadedBy", data.uploadedBy);
+      formData.append("isPortalVisible", data.isPortalVisible ? "1" : "0");
+      formData.append("portalAudience", data.portalAudience);
       if (selectedFile) formData.append("file", selectedFile);
 
       const res = await fetch("/api/documents", {
@@ -170,7 +183,7 @@ export default function DocumentsPage() {
       toast({ title: "Document uploaded successfully" });
       setUploadStage("complete");
       setOpen(false);
-      form.reset({ associationId: activeAssociationId, title: "", documentType: "", uploadedBy: "" });
+      form.reset({ associationId: activeAssociationId, title: "", documentType: "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner" });
       setSelectedFile(null);
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
@@ -322,6 +335,32 @@ export default function DocumentsPage() {
                       <FormMessage />
                     </FormItem>
                   )} />
+                  <FormField control={form.control} name="isPortalVisible" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center gap-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormLabel className="font-normal cursor-pointer">Make visible in Owner Portal</FormLabel>
+                    </FormItem>
+                  )} />
+                  {form.watch("isPortalVisible") && (
+                    <FormField control={form.control} name="portalAudience" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Portal Audience</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                          <SelectContent>
+                            <SelectItem value="owner">Owner only</SelectItem>
+                            <SelectItem value="all">All portal users</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  )}
                   <div>
                     <FormLabel>File</FormLabel>
                     <div
@@ -396,7 +435,7 @@ export default function DocumentsPage() {
         isLoading={isLoading}
         isEmpty={!isLoading && !documents?.length}
         emptyTitle="No documents yet"
-        emptyMessage="Upload documents for the active association to start the repository."
+        emptyMessage="Store CC&Rs, bylaws, meeting minutes, and insurance certificates here. Click 'Upload Document' to add the first file — you can tag it by type and make it visible in the owner portal."
       >
         <DataTableShell
           title="Document Repository"
@@ -439,6 +478,12 @@ export default function DocumentsPage() {
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-muted-foreground" />
                         <span className="font-medium">{d.title}</span>
+                        {missingFileIds.has(d.id) && (
+                          <span title="File not found on server" className="flex items-center gap-1 text-xs text-destructive">
+                            <AlertTriangle className="h-3 w-3" />
+                            Missing
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{getAssocName(d.associationId)}</TableCell>

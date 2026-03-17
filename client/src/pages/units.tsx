@@ -16,7 +16,8 @@ import {
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
-import { Plus, Building2, DoorOpen, MessageSquare, Pencil, ChevronDown, ChevronRight, Link2, User, X, UserPlus } from "lucide-react";
+import { Plus, Building2, DoorOpen, MessageSquare, Pencil, ChevronDown, ChevronRight, Link2, User, X, UserPlus, FileUp } from "lucide-react";
+import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -58,6 +59,7 @@ const buildingFormSchema = z.object({
 
 export default function UnitsPage() {
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"building" | "unit">("building");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLegacyBuilding, setEditingLegacyBuilding] = useState<string | null>(null);
@@ -186,6 +188,23 @@ export default function UnitsPage() {
     },
     onError: (error: Error) => toast({ title: "Link action failed", description: error.message, variant: "destructive" }),
   });
+
+  async function handleUnitsImport(rows: Record<string, string>[]): Promise<ImportResult> {
+    if (!activeAssociationId) throw new Error("Select an association context first");
+    const buildingByName = new Map(buildings.map((b) => [b.name.toLowerCase().trim(), b.id]));
+    const mapped = rows.map((row) => ({
+      associationId: activeAssociationId,
+      buildingId: buildingByName.get((row.buildingName ?? "").toLowerCase().trim()) ?? null,
+      unitNumber: row.unitNumber ?? "",
+      squareFootage: row.squareFootage ? Number(row.squareFootage) : undefined,
+    }));
+    const res = await apiRequest("POST", "/api/units/import", { rows: mapped });
+    const data = await res.json() as ImportResult;
+    queryClient.invalidateQueries({ queryKey: ["/api/units"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0] ?? "").startsWith("/api/residential/dataset") });
+    return data;
+  }
 
   const buildingById = useMemo(() => new Map(buildings.map((building) => [building.id, building])), [buildings]);
   const sortedPeopleOptions = useMemo(() => {
@@ -498,6 +517,16 @@ export default function UnitsPage() {
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Unit
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setImportOpen(true)}
+            data-testid="button-import-units"
+            disabled={!activeAssociationId}
+          >
+            <FileUp className="h-4 w-4 mr-2" />
+            Import CSV
           </Button>
         </div>
         <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -924,11 +953,29 @@ export default function UnitsPage() {
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <DoorOpen className="h-12 w-12 text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium" data-testid="text-empty-state">No units yet</h3>
-              <p className="text-sm text-muted-foreground mt-1">Add buildings first, then add units.</p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm">Units are the core of your association. Start by creating a building above, then add individual unit numbers inside it. Every owner, tenant, and ledger entry ties back to a unit.</p>
             </div>
           ) : null}
         </CardContent>
       </Card>
+
+      <CsvImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Units from CSV"
+        description="Upload a CSV file to bulk-create units. The buildingName column must match an existing building name exactly. Duplicate unit numbers within the same building will be skipped."
+        columns={[
+          { key: "unitNumber", label: "Unit Number", required: true },
+          { key: "buildingName", label: "Building Name" },
+          { key: "squareFootage", label: "Sq Ft" },
+        ]}
+        sampleRows={[
+          ["101", "Building A", "850"],
+          ["102", "Building A", "900"],
+          ["201", "Building B", ""],
+        ]}
+        onImport={handleUnitsImport}
+      />
     </div>
   );
 }

@@ -22,7 +22,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, UserCheck } from "lucide-react";
+import { Plus, UserCheck, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
@@ -100,8 +100,32 @@ export default function BoardPage() {
     return "secondary" as const;
   };
 
+  const today = new Date(); today.setHours(0,0,0,0);
+  const in90Days = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const expiringRoles = (boardRoles ?? []).filter((br) => {
+    if (!br.endDate) return false;
+    const end = new Date(br.endDate);
+    return end >= today && end <= in90Days;
+  });
+  const expiredRoles = (boardRoles ?? []).filter((br) => {
+    if (!br.endDate) return false;
+    return new Date(br.endDate) < today;
+  });
+
   return (
     <div className="p-6 space-y-6">
+      {expiredRoles.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span><strong>{expiredRoles.length} board role{expiredRoles.length !== 1 ? "s" : ""}</strong> have expired and may indicate a vacancy: {expiredRoles.map((br) => getPersonName(br.personId)).join(", ")}</span>
+        </div>
+      )}
+      {expiringRoles.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span><strong>{expiringRoles.length} board term{expiringRoles.length !== 1 ? "s" : ""}</strong> expiring within 90 days: {expiringRoles.map((br) => `${getPersonName(br.personId)} (${new Date(br.endDate!).toLocaleDateString()})`).join(", ")}</span>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Board Members</h1>
@@ -193,7 +217,7 @@ export default function BoardPage() {
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <UserCheck className="h-12 w-12 text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium" data-testid="text-empty-state">No board members yet</h3>
-              <p className="text-sm text-muted-foreground mt-1">Assign board roles to people.</p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm">Board members govern the association. Click "Assign Role" to designate a person as President, Treasurer, Secretary, or Member. You'll need people created first — go to People &gt; Add Person.</p>
             </div>
           ) : (
             <Table>
@@ -202,20 +226,40 @@ export default function BoardPage() {
                   <TableHead>Member</TableHead>
                   <TableHead>Association</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Start Date</TableHead>
+                  <TableHead>Term Start</TableHead>
+                  <TableHead>Term End</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {boardRoles.map((br) => (
-                  <TableRow key={br.id} data-testid={`row-board-${br.id}`}>
+                {boardRoles.map((br) => {
+                  const endDate = br.endDate ? new Date(br.endDate) : null;
+                  const isExpired = endDate && endDate < today;
+                  const isExpiring = endDate && endDate >= today && endDate <= in90Days;
+                  const daysUntilEnd = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                  return (
+                  <TableRow key={br.id} data-testid={`row-board-${br.id}`} className={isExpired ? "bg-red-50/40" : isExpiring ? "bg-amber-50/40" : ""}>
                     <TableCell className="font-medium">{getPersonName(br.personId)}</TableCell>
                     <TableCell className="text-muted-foreground">{getAssocName(br.associationId)}</TableCell>
                     <TableCell><Badge variant={getRoleBadgeVariant(br.role)}>{br.role}</Badge></TableCell>
                     <TableCell className="text-muted-foreground">{new Date(br.startDate).toLocaleDateString()}</TableCell>
-                    <TableCell>{br.endDate ? <Badge variant="outline">Past</Badge> : <Badge variant="default">Active</Badge>}</TableCell>
+                    <TableCell>
+                      {endDate ? (
+                        <div className="space-y-0.5">
+                          <div className={isExpired ? "text-red-600 font-medium" : isExpiring ? "text-amber-700 font-medium" : "text-muted-foreground"}>
+                            {endDate.toLocaleDateString()}
+                          </div>
+                          {isExpired && <Badge variant="destructive" className="text-xs">Expired</Badge>}
+                          {isExpiring && daysUntilEnd !== null && <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Expires in {daysUntilEnd}d</Badge>}
+                        </div>
+                      ) : <span className="text-muted-foreground text-sm">No end date</span>}
+                    </TableCell>
+                    <TableCell>
+                      {isExpired ? <Badge variant="destructive">Expired</Badge> : endDate ? <Badge variant="outline">Active</Badge> : <Badge variant="default">Active</Badge>}
+                    </TableCell>
                   </TableRow>
-                ))}
+                );
+                })}
               </TableBody>
             </Table>
           )}

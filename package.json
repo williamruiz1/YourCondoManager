@@ -14,7 +14,8 @@
     "backbone:metrics": "tsx script/generate-agent-backbone-metrics.ts",
     "backbone:sync-friction": "tsx script/sync-agent-backbone-friction-tasks.ts",
     "benchmark:ingestion": "tsx script/benchmark-ai-ingestion-accuracy.ts",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "test:payments": "tsx tests/payment-acceptance.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

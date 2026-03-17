@@ -11,6 +11,7 @@ import type {
   NoticeTemplate,
   OnboardingInvite,
   OnboardingSubmission,
+  PaymentReminderRule,
   Person,
   Unit,
 } from "@shared/schema";
@@ -26,31 +27,175 @@ import { Progress } from "@/components/ui/progress";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { ChevronDown, ChevronUp, AlertTriangle, Zap } from "lucide-react";
 
 const standardTemplateDefinitions = [
+  // Payments & Finance
   {
     name: "Payment Instructions - Standard",
     subjectTemplate: "Payment Instructions for {{association_name}}",
     headerTemplate: null,
-    bodyTemplate: "Hello {{recipient_name}},\n\nPlease use the approved payment methods below for your account.\n\n{{payment_methods}}\n\nIf you have questions, contact {{payment_support_email}} or {{payment_support_phone}}.\n\nThank you,\n{{association_name}}",
+    bodyTemplate: "Hello {{recipient_name}},\n\nPlease use the approved payment methods below for your account at {{association_name}}.\n\n{{payment_methods}}\n\nIf you have questions, contact {{payment_support_email}} or {{payment_support_phone}}.\n\nThank you,\n{{association_name}}",
     footerTemplate: "This notice applies to {{unit_label}}.",
     signatureTemplate: "{{association_name}} Management",
   },
   {
-    name: "Board Meeting Notice - Standard",
-    subjectTemplate: "Board Meeting Notice - {{association_name}}",
+    name: "Payment Reminder - 1st Notice",
+    subjectTemplate: "Friendly Reminder: {{association_name}} Assessment Due",
     headerTemplate: null,
-    bodyTemplate: "Hello {{recipient_name}},\n\nThis is notice of an upcoming board meeting for {{association_name}}.\n\nDate and agenda details will be posted in your resident portal.\n\nThank you,\n{{association_name}}",
+    bodyTemplate: "Hello {{recipient_name}},\n\nThis is a friendly reminder that your HOA assessment for {{unit_label}} is due. Please submit your payment at your earliest convenience to avoid late fees.\n\nIf you believe this is in error or have already paid, please disregard this message.\n\nThank you for being part of our community.\n{{association_name}}",
+    footerTemplate: "{{unit_label}} · {{association_name}}",
+    signatureTemplate: "{{association_name}} Finance Team",
+  },
+  {
+    name: "Payment Reminder - 2nd Notice (Past Due)",
+    subjectTemplate: "Past Due Notice: {{association_name}} Assessment",
+    headerTemplate: "PAST DUE NOTICE",
+    bodyTemplate: "Dear {{recipient_name}},\n\nOur records indicate that your HOA assessment for {{unit_label}} is past due. A late fee may have been applied to your account.\n\nPlease remit payment as soon as possible or contact us to discuss a payment plan. Continued non-payment may result in collection action.\n\n{{payment_methods}}\n\n{{association_name}}",
+    footerTemplate: "{{unit_label}} · {{association_name}}",
+    signatureTemplate: "{{association_name}} Finance Team",
+  },
+  {
+    name: "Special Assessment Notice",
+    subjectTemplate: "Special Assessment Notice — {{association_name}}",
+    headerTemplate: "SPECIAL ASSESSMENT NOTICE",
+    bodyTemplate: "Dear {{recipient_name}},\n\nThe Board of Directors of {{association_name}} has approved a special assessment for necessary capital improvements or unexpected expenses affecting the community.\n\nAssessment amount: [AMOUNT]\nDue date: [DUE DATE]\nPurpose: [DESCRIPTION OF WORK/EXPENSE]\n\nThis assessment is authorized under the association governing documents. Payment instructions will follow separately.\n\nIf you have questions, please contact the management office.\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{unit_label}} · {{association_name}}",
+    signatureTemplate: "{{association_name}} Board",
+  },
+  // Governance & Meetings
+  {
+    name: "Annual Meeting Notice",
+    subjectTemplate: "Annual Meeting Notice — {{association_name}}",
+    headerTemplate: "ANNUAL MEETING NOTICE",
+    bodyTemplate: "Dear {{recipient_name}},\n\nYou are hereby notified that the Annual Meeting of {{association_name}} will be held as follows:\n\nDate: [DATE]\nTime: [TIME]\nLocation: [LOCATION]\n\nAgenda items include: election of board members, review of financial statements, and any business properly brought before the membership.\n\nProxy forms are available upon request. Quorum requires [QUORUM PERCENTAGE]% of voting interests.\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{unit_label}} · {{association_name}}",
+    signatureTemplate: "{{association_name}} Board",
+  },
+  {
+    name: "Board Meeting Notice - Standard",
+    subjectTemplate: "Board Meeting Notice — {{association_name}}",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nNotice is hereby given that a meeting of the Board of Directors of {{association_name}} will be held:\n\nDate: [DATE]\nTime: [TIME]\nLocation: [LOCATION]\n\nAgenda items will be posted at the community notice board 48 hours in advance. Owners may attend to observe.\n\n{{association_name}} Board of Directors",
     footerTemplate: "{{unit_label}}",
     signatureTemplate: "{{association_name}} Board",
   },
   {
-    name: "Maintenance Update - Standard",
+    name: "Meeting Minutes Distribution",
+    subjectTemplate: "Meeting Minutes — {{association_name}} [MONTH YEAR]",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nThe approved minutes from the [MONTH YEAR] Board Meeting of {{association_name}} are now available. You may review them in your resident portal under Meeting Documents.\n\nKey decisions from this meeting included:\n[LIST KEY DECISIONS]\n\nIf you have questions about any agenda item, please contact the management office.\n\n{{association_name}}",
+    footerTemplate: null,
+    signatureTemplate: "{{association_name}} Secretary",
+  },
+  // Maintenance & Operations
+  {
+    name: "Maintenance Update - Status Notice",
     subjectTemplate: "Maintenance Update — {{unit_label}}",
     headerTemplate: null,
-    bodyTemplate: "Hello {{recipient_name}},\n\nWe are providing an update related to maintenance activity for {{unit_label}}.\n\nFor request details use: {{maintenance_request_link}}\n\nThank you,\n{{association_name}}",
+    bodyTemplate: "Hello {{recipient_name}},\n\nWe are providing an update regarding the maintenance request submitted for {{unit_label}}.\n\nRequest: [DESCRIPTION]\nCurrent Status: [STATUS]\nExpected Completion: [DATE]\n\nFor full details, visit your resident portal: {{maintenance_request_link}}\n\nThank you for your patience.\n{{association_name}}",
     footerTemplate: null,
     signatureTemplate: "{{association_name}} Operations",
+  },
+  {
+    name: "Planned Maintenance Notice",
+    subjectTemplate: "Upcoming Maintenance — {{association_name}}",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nPlanned maintenance will be performed in your community as follows:\n\nDate(s): [DATE RANGE]\nArea(s) Affected: [LOCATIONS]\nNature of Work: [DESCRIPTION]\nVendor: [VENDOR NAME]\n\nWe apologize for any inconvenience. Please plan accordingly. If you have specific concerns, contact [CONTACT INFO].\n\n{{association_name}} Management",
+    footerTemplate: "{{association_name}}",
+    signatureTemplate: "{{association_name}} Management",
+  },
+  {
+    name: "Emergency Maintenance Alert",
+    subjectTemplate: "URGENT: Emergency Maintenance — {{association_name}}",
+    headerTemplate: "EMERGENCY NOTICE",
+    bodyTemplate: "Dear {{recipient_name}},\n\nAn emergency maintenance situation requires immediate attention at {{association_name}}.\n\nSituation: [DESCRIPTION]\nAffected Area: [AREA]\nAction Required from Residents: [ACTION IF ANY]\n\nOur team is working to resolve this as quickly as possible. Updates will follow.\n\nFor urgent assistance: [EMERGENCY CONTACT]\n\n{{association_name}} Management",
+    footerTemplate: null,
+    signatureTemplate: "{{association_name}} Emergency Response",
+  },
+  // Compliance & Rules
+  {
+    name: "Rule Violation Notice - 1st Warning",
+    subjectTemplate: "Community Rule Notice — {{association_name}}",
+    headerTemplate: "NOTICE OF RULE VIOLATION",
+    bodyTemplate: "Dear {{recipient_name}},\n\nThis notice is to inform you that a potential violation of {{association_name}} community rules has been identified at {{unit_label}}:\n\nViolation: [DESCRIPTION OF VIOLATION]\nDate Observed: [DATE]\nRule Reference: [CC&R/RULE SECTION]\n\nPlease remedy this situation by [REMEDY DATE]. If you have already addressed this or believe this notice was issued in error, please contact us immediately.\n\nFailure to comply may result in fines as outlined in the governing documents.\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{unit_label}} · {{association_name}}",
+    signatureTemplate: "{{association_name}} Compliance",
+  },
+  {
+    name: "Rule Violation Notice - Final Warning",
+    subjectTemplate: "FINAL NOTICE: Rule Violation — {{association_name}}",
+    headerTemplate: "FINAL NOTICE OF RULE VIOLATION",
+    bodyTemplate: "Dear {{recipient_name}},\n\nDespite a previous notice, the rule violation at {{unit_label}} has not been resolved.\n\nViolation: [DESCRIPTION]\nOriginal Notice Date: [DATE]\nRemediation Deadline: [NEW DEADLINE]\n\nFine Schedule: [FINE AMOUNTS PER GOVERNING DOCUMENTS]\n\nThis is the final notice before fines and/or additional enforcement action are initiated. If you have remediated the violation, please provide documentation to the management office.\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{unit_label}} · {{association_name}}",
+    signatureTemplate: "{{association_name}} Compliance",
+  },
+  {
+    name: "Pet Registration Reminder",
+    subjectTemplate: "Pet Registration Required — {{association_name}}",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nThis is a reminder that all pets residing at {{unit_label}} must be registered with {{association_name}} per community rules.\n\nTo register your pet, please submit: [REQUIRED DOCUMENTS — e.g., vaccination records, pet photo, signed pet addendum].\n\nPlease complete registration by [DATE] to remain in compliance.\n\n{{association_name}} Management",
+    footerTemplate: null,
+    signatureTemplate: "{{association_name}} Management",
+  },
+  // Move-in / Move-out
+  {
+    name: "Welcome Letter - New Resident",
+    subjectTemplate: "Welcome to {{association_name}}!",
+    headerTemplate: "Welcome to Your New Home",
+    bodyTemplate: "Dear {{recipient_name}},\n\nWelcome to {{association_name}}! We are delighted to have you as a member of our community.\n\nKey information to get started:\n• Portal access: [PORTAL URL]\n• Assessment due date: [DAY OF MONTH] of each month\n• Emergency maintenance: [PHONE]\n• Management contact: [EMAIL / PHONE]\n\nPlease review the community rules and regulations, which are available in your resident portal. If you have any questions, don't hesitate to reach out.\n\nWe look forward to a great relationship!\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{unit_label}} · {{association_name}}",
+    signatureTemplate: "{{association_name}} Board",
+  },
+  {
+    name: "Move-Out Notice - Owner",
+    subjectTemplate: "Move-Out Notice Received — {{association_name}}",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nWe have received your notice of intent to transfer ownership of {{unit_label}}.\n\nPlease be advised of the following requirements:\n• Final account settlement is required prior to close\n• Move-out inspection must be scheduled with management\n• Parking passes, keys, and access cards must be returned\n• Buyer will need to complete association registration\n\nPlease contact us to coordinate the transition.\n\n{{association_name}} Management",
+    footerTemplate: "{{unit_label}}",
+    signatureTemplate: "{{association_name}} Management",
+  },
+  // Insurance & Legal
+  {
+    name: "Insurance Certificate Request",
+    subjectTemplate: "Insurance Certificate Required — {{association_name}}",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nPer {{association_name}} governing documents, all owners are required to maintain homeowner/renter insurance for their unit.\n\nPlease provide a current Certificate of Insurance (COI) naming {{association_name}} as an additional interested party.\n\nRequired coverage minimums:\n• Personal property: [AMOUNT]\n• Liability: [AMOUNT]\n\nPlease submit your COI to [CONTACT] by [DATE].\n\n{{association_name}} Management",
+    footerTemplate: "{{unit_label}}",
+    signatureTemplate: "{{association_name}} Management",
+  },
+  {
+    name: "Architectural Review Request Acknowledgment",
+    subjectTemplate: "Architectural Request Received — {{association_name}}",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nWe have received your Architectural Review Request for {{unit_label}}.\n\nRequest: [DESCRIPTION OF PROPOSED MODIFICATION]\nReceived: [DATE]\nEstimated Review Timeline: [TIMEFRAME]\n\nThe Architectural Review Committee will contact you with the determination. Please do not begin work until written approval has been received.\n\n{{association_name}} ARC",
+    footerTemplate: null,
+    signatureTemplate: "{{association_name}} Architectural Review Committee",
+  },
+  // Community
+  {
+    name: "Community Event Announcement",
+    subjectTemplate: "Community Event — {{association_name}}",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nYou're invited to a community event hosted by {{association_name}}!\n\nEvent: [NAME]\nDate: [DATE]\nTime: [TIME]\nLocation: [LOCATION]\n\n[ADDITIONAL DETAILS]\n\nWe hope to see you there!\n\n{{association_name}}",
+    footerTemplate: null,
+    signatureTemplate: "{{association_name}} Community",
+  },
+  {
+    name: "Budget Approval Notice",
+    subjectTemplate: "{{association_name}} Annual Budget Approved",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nThe Board of Directors of {{association_name}} has approved the annual operating budget for [FISCAL YEAR].\n\nKey highlights:\n• Total operating budget: [AMOUNT]\n• Reserve contribution: [AMOUNT]\n• Monthly assessment: [AMOUNT]\n\nThe full budget is available for review in your resident portal. Assessments for [FISCAL YEAR] are effective [DATE].\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{association_name}}",
+    signatureTemplate: "{{association_name}} Treasurer",
+  },
+  {
+    name: "Reserve Study Update Notice",
+    subjectTemplate: "Reserve Study Summary — {{association_name}}",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nThe Board of Directors of {{association_name}} has completed the [YEAR] Reserve Study.\n\nSummary findings:\n• Percent funded: [PERCENTAGE]%\n• Recommended monthly reserve contribution: [AMOUNT]\n• Major upcoming expenditures: [LIST]\n\nA full copy of the reserve study is available upon request from the management office.\n\n{{association_name}} Board of Directors",
+    footerTemplate: null,
+    signatureTemplate: "{{association_name}} Board",
   },
 ];
 
@@ -65,6 +210,8 @@ export default function CommunicationsPage() {
     duplicateEmailCount: number;
     skippedRecipients: number;
   } | null>(null);
+  const [showVarRef, setShowVarRef] = useState(false);
+  const [confirmSendOpen, setConfirmSendOpen] = useState(false);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
 
   const [templateForm, setTemplateForm] = useState({
@@ -126,6 +273,8 @@ export default function CommunicationsPage() {
     expiresAt: "",
   });
   const [reminderSweepHours, setReminderSweepHours] = useState("24");
+  const [emergencyAlertOpen, setEmergencyAlertOpen] = useState(false);
+  const [emergencyForm, setEmergencyForm] = useState({ subject: "", body: "", targetType: "all-occupants" as "all-occupants" | "all-owners" | "all-tenants" });
   const selectedAssociationId = activeAssociationId;
 
   const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
@@ -134,12 +283,91 @@ export default function CommunicationsPage() {
     enabled: Boolean(selectedAssociationId),
   });
   const { data: templates } = useQuery<NoticeTemplate[]>({ queryKey: ["/api/communications/templates"] });
+
+  // Payment reminder rules
+  const [reminderRuleOpen, setReminderRuleOpen] = useState(false);
+  const [reminderRuleForm, setReminderRuleForm] = useState({ name: "", templateId: "", daysRelativeToDue: "0", triggerOn: "overdue", minBalanceThreshold: "0" });
+  const { data: reminderRules = [], refetch: refetchReminderRules } = useQuery<PaymentReminderRule[]>({
+    queryKey: ["/api/financial/reminder-rules", selectedAssociationId],
+    queryFn: async () => {
+      if (!selectedAssociationId) return [];
+      const res = await apiRequest("GET", `/api/financial/reminder-rules?associationId=${selectedAssociationId}`);
+      return res.json();
+    },
+    enabled: Boolean(selectedAssociationId),
+  });
+
+  const createReminderRule = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssociationId) throw new Error("No association selected");
+      const res = await apiRequest("POST", "/api/financial/reminder-rules", {
+        associationId: selectedAssociationId,
+        name: reminderRuleForm.name,
+        templateId: reminderRuleForm.templateId || null,
+        daysRelativeToDue: Number(reminderRuleForm.daysRelativeToDue),
+        triggerOn: reminderRuleForm.triggerOn,
+        minBalanceThreshold: Number(reminderRuleForm.minBalanceThreshold),
+        isActive: 1,
+      });
+      return res.json();
+    },
+    onSuccess: async () => {
+      await refetchReminderRules();
+      setReminderRuleOpen(false);
+      setReminderRuleForm({ name: "", templateId: "", daysRelativeToDue: "0", triggerOn: "overdue", minBalanceThreshold: "0" });
+      toast({ title: "Reminder rule created" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const runReminderRule = useMutation({
+    mutationFn: async (ruleId: string) => {
+      const res = await apiRequest("POST", `/api/financial/reminder-rules/${ruleId}/run`, {});
+      return res.json();
+    },
+    onSuccess: (data: { sent: number }) => {
+      toast({ title: `Reminder run complete`, description: `${data.sent} reminder${data.sent !== 1 ? "s" : ""} sent.` });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const toggleReminderRule = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: number }) => {
+      const res = await apiRequest("PATCH", `/api/financial/reminder-rules/${id}`, { isActive });
+      return res.json();
+    },
+    onSuccess: async () => { await refetchReminderRules(); toast({ title: "Reminder rule updated" }); },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+  const updateDelivery = useMutation({
+    mutationFn: async ({ id, event, bounceType, bounceReason }: { id: string; event: string; bounceType?: string; bounceReason?: string }) => {
+      const res = await apiRequest("PATCH", `/api/communications/sends/${id}/delivery`, { event, bounceType, bounceReason });
+      return res.json();
+    },
+    onSuccess: () => { void refetchDeliveryStats(); toast({ title: "Delivery status updated" }); },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const { data: history } = useQuery<CommunicationHistory[]>({ queryKey: ["/api/communications/history"] });
   const { data: pendingSends } = useQuery<NoticeSend[]>({
     queryKey: ["/api/communications/sends?status=pending-approval"],
   });
   const { data: scheduledSends } = useQuery<NoticeSend[]>({
     queryKey: ["/api/communications/sends?status=scheduled"],
+  });
+  type DeliveryStats = {
+    total: number; delivered: number; opened: number; bounced: number; queued: number;
+    hardBounces: number; softBounces: number; deliveryRate: number; openRate: number; bounceRate: number;
+    bouncedEmails: Array<{ id: string; email: string; type: string | null; reason: string | null; bouncedAt: string | null; retryCount: number }>;
+  };
+  const { data: deliveryStats, refetch: refetchDeliveryStats } = useQuery<DeliveryStats>({
+    queryKey: ["/api/communications/delivery-stats", selectedAssociationId],
+    queryFn: async () => {
+      if (!selectedAssociationId) throw new Error("No association");
+      const res = await apiRequest("GET", `/api/communications/delivery-stats?associationId=${selectedAssociationId}`);
+      return res.json();
+    },
+    enabled: Boolean(selectedAssociationId),
   });
   const { data: readiness } = useQuery<{
     associationId: string;
@@ -419,6 +647,35 @@ export default function CommunicationsPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const sendEmergencyAlert = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssociationId) throw new Error("Select an association first");
+      if (!emergencyForm.subject.trim()) throw new Error("Subject is required");
+      if (!emergencyForm.body.trim()) throw new Error("Message body is required");
+      const res = await apiRequest("POST", "/api/communications/send-targeted", {
+        associationId: selectedAssociationId,
+        targetType: emergencyForm.targetType,
+        subject: `🚨 EMERGENCY: ${emergencyForm.subject}`,
+        body: emergencyForm.body,
+        requireApproval: false,
+        bypassReadinessGate: true,
+        scheduledFor: null,
+        messageClass: "operational",
+      });
+      return res.json() as Promise<{ recipientCount: number; sentCount: number; skippedRecipients: number; missingEmailCount: number }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/communications/history"] });
+      toast({
+        title: "Emergency alert sent",
+        description: `Sent to ${result.sentCount} of ${result.recipientCount} recipients. ${result.missingEmailCount} missing email.`,
+      });
+      setEmergencyAlertOpen(false);
+      setEmergencyForm({ subject: "", body: "", targetType: "all-occupants" });
+    },
+    onError: (err: Error) => toast({ title: "Emergency send failed", description: err.message, variant: "destructive" }),
+  });
+
   const reviewContactUpdate = useMutation({
     mutationFn: async (payload: { id: string; reviewStatus: "approved" | "rejected" }) => {
       const res = await apiRequest("PATCH", `/api/portal/contact-updates/${payload.id}/review`, {
@@ -646,11 +903,69 @@ export default function CommunicationsPage() {
         actions={
           <div className="flex items-center gap-2">
             <Button
+              variant="destructive"
+              className="gap-2"
+              disabled={!selectedAssociationId}
+              onClick={() => setEmergencyAlertOpen(true)}
+            >
+              <Zap className="h-4 w-4" />
+              Emergency Alert
+            </Button>
+            <Dialog open={emergencyAlertOpen} onOpenChange={setEmergencyAlertOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-red-600">
+                    <Zap className="h-5 w-5" />
+                    Send Emergency Alert
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                    <strong>This will send immediately</strong> to all selected recipients, bypassing scheduling and approval. Use only for genuine emergencies (water shutoff, safety events, building access issues).
+                  </div>
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                    Association: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Recipients</label>
+                    <Select value={emergencyForm.targetType} onValueChange={(v) => setEmergencyForm((p) => ({ ...p, targetType: v as typeof p.targetType }))}>
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all-occupants">All occupants (owners + tenants)</SelectItem>
+                        <SelectItem value="all-owners">All owners only</SelectItem>
+                        <SelectItem value="all-tenants">All tenants only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Input
+                    placeholder="Alert subject (e.g. 'Water Shutoff — Unit Access Required')"
+                    value={emergencyForm.subject}
+                    onChange={(e) => setEmergencyForm((p) => ({ ...p, subject: e.target.value }))}
+                  />
+                  <Textarea
+                    rows={6}
+                    placeholder="Alert message body. Be concise, clear, and include any required action."
+                    value={emergencyForm.body}
+                    onChange={(e) => setEmergencyForm((p) => ({ ...p, body: e.target.value }))}
+                  />
+                  <Button
+                    variant="destructive"
+                    className="w-full gap-2"
+                    disabled={sendEmergencyAlert.isPending || !emergencyForm.subject.trim() || !emergencyForm.body.trim() || !selectedAssociationId}
+                    onClick={() => sendEmergencyAlert.mutate()}
+                  >
+                    <Zap className="h-4 w-4" />
+                    {sendEmergencyAlert.isPending ? "Sending…" : "Send Emergency Alert Now"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Button
               variant="outline"
               onClick={() => seedStandardTemplates.mutate()}
               disabled={seedStandardTemplates.isPending || !selectedAssociationId}
             >
-              Load Standard Templates
+              Load HOA Template Library ({standardTemplateDefinitions.length})
             </Button>
             <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
               <DialogTrigger asChild><Button>New Template</Button></DialogTrigger>
@@ -1163,7 +1478,41 @@ export default function CommunicationsPage() {
             <Input placeholder="Subject override (optional)" value={targetedForm.subject} onChange={(e) => setTargetedForm((p) => ({ ...p, subject: e.target.value }))} />
             <Input placeholder="Variables JSON" value={targetedForm.variablesJson} onChange={(e) => setTargetedForm((p) => ({ ...p, variablesJson: e.target.value }))} />
           </div>
-          <Textarea rows={4} placeholder="Body override (optional)" value={targetedForm.body} onChange={(e) => setTargetedForm((p) => ({ ...p, body: e.target.value }))} />
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Body override (optional)</label>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground transition-colors"
+                onClick={() => setShowVarRef((v) => !v)}
+              >
+                {showVarRef ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                Variable reference
+              </button>
+            </div>
+            {showVarRef && (
+              <div className="rounded-md border bg-muted/30 p-3 text-xs font-mono space-y-1">
+                <div className="text-muted-foreground text-xs font-sans mb-2 font-medium">Available template variables</div>
+                {[
+                  ["{{recipient_name}}", "First + last name of the recipient"],
+                  ["{{association_name}}", "Association name"],
+                  ["{{unit_label}}", "Unit identifier (e.g. Unit 4B)"],
+                  ["{{payment_methods}}", "Formatted list of accepted payment methods"],
+                  ["{{payment_support_email}}", "Payment support email address"],
+                  ["{{payment_support_phone}}", "Payment support phone number"],
+                  ["{{payment_mailing_address}}", "Check mailing address"],
+                  ["{{payment_zelle_handle}}", "Zelle email or phone"],
+                  ["{{maintenance_request_link}}", "Portal link to maintenance request"],
+                ].map(([variable, description]) => (
+                  <div key={variable} className="grid grid-cols-[180px,1fr] gap-2">
+                    <span className="text-primary">{variable}</span>
+                    <span className="text-muted-foreground font-sans">{description}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Textarea rows={4} placeholder="Body override (optional)" value={targetedForm.body} onChange={(e) => setTargetedForm((p) => ({ ...p, body: e.target.value }))} />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Input
               type="datetime-local"
@@ -1195,13 +1544,49 @@ export default function CommunicationsPage() {
             />
             Bypass readiness gate for this send
           </label>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={() => previewRecipients.mutate()} disabled={previewRecipients.isPending}>
-              Preview Recipients
+              {previewRecipients.isPending ? "Loading…" : "Preview Recipients"}
             </Button>
-            <Button onClick={() => sendTargeted.mutate()} disabled={sendTargeted.isPending}>
-              Send Targeted
-            </Button>
+            {recipientPreview && recipientPreview.recipients.length > 0 ? (
+              <Dialog open={confirmSendOpen} onOpenChange={setConfirmSendOpen}>
+                <DialogTrigger asChild>
+                  <Button>Send to {recipientPreview.recipients.length} Recipient{recipientPreview.recipients.length !== 1 ? "s" : ""}</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Confirm Send</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 text-sm">
+                    <div className="rounded-lg border bg-amber-50 border-amber-200 p-3 flex gap-2 text-amber-800">
+                      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>This will send a live email to <strong>{recipientPreview.recipients.length} recipient{recipientPreview.recipients.length !== 1 ? "s" : ""}</strong>. This action cannot be undone.</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div><span className="text-muted-foreground">Target type: </span><strong>{targetedForm.targetType}</strong></div>
+                      {targetedForm.subject && <div><span className="text-muted-foreground">Subject: </span><strong>{targetedForm.subject}</strong></div>}
+                      <div><span className="text-muted-foreground">Recipients: </span><strong>{recipientPreview.recipients.length} of {recipientPreview.candidateCount}</strong></div>
+                      {recipientPreview.missingEmailCount > 0 && (
+                        <div className="text-amber-600">{recipientPreview.missingEmailCount} contact{recipientPreview.missingEmailCount !== 1 ? "s" : ""} will be skipped (no email on file)</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end mt-2">
+                    <Button variant="outline" onClick={() => setConfirmSendOpen(false)}>Cancel</Button>
+                    <Button
+                      onClick={() => { sendTargeted.mutate(); setConfirmSendOpen(false); }}
+                      disabled={sendTargeted.isPending}
+                    >
+                      {sendTargeted.isPending ? "Sending…" : "Confirm Send"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <Button onClick={() => sendTargeted.mutate()} disabled={sendTargeted.isPending || !recipientPreview}>
+                {!recipientPreview ? "Preview recipients first" : "Send Targeted"}
+              </Button>
+            )}
           </div>
           <div className="text-sm text-muted-foreground">
             Deliverable recipients: {recipientPreview?.recipients.length ?? 0} / {recipientPreview?.candidateCount ?? 0}
@@ -1414,6 +1799,159 @@ export default function CommunicationsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Payment Reminder Sequences */}
+      {selectedAssociationId ? (
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold">Automated Payment Reminder Sequences</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Configure automated reminders to send for overdue or upcoming payment balances.</p>
+              </div>
+              <Dialog open={reminderRuleOpen} onOpenChange={setReminderRuleOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" disabled={!selectedAssociationId}>Add Reminder Rule</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader><DialogTitle>Create Payment Reminder Rule</DialogTitle></DialogHeader>
+                  <div className="space-y-3">
+                    <Input placeholder="Rule name (e.g. 7-day overdue reminder)" value={reminderRuleForm.name} onChange={(e) => setReminderRuleForm((f) => ({ ...f, name: e.target.value }))} />
+                    <Select value={reminderRuleForm.triggerOn} onValueChange={(v) => setReminderRuleForm((f) => ({ ...f, triggerOn: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Trigger" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="overdue">When overdue</SelectItem>
+                        <SelectItem value="upcoming">Before due date</SelectItem>
+                        <SelectItem value="any-balance">Any outstanding balance</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Days relative to due date (negative = before, positive = after)</label>
+                      <Input type="number" value={reminderRuleForm.daysRelativeToDue} onChange={(e) => setReminderRuleForm((f) => ({ ...f, daysRelativeToDue: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Minimum balance threshold ($)</label>
+                      <Input type="number" min="0" value={reminderRuleForm.minBalanceThreshold} onChange={(e) => setReminderRuleForm((f) => ({ ...f, minBalanceThreshold: e.target.value }))} />
+                    </div>
+                    <Select value={reminderRuleForm.templateId || "none"} onValueChange={(v) => setReminderRuleForm((f) => ({ ...f, templateId: v === "none" ? "" : v }))}>
+                      <SelectTrigger><SelectValue placeholder="Email template (optional)" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Default reminder template</SelectItem>
+                        {(templates ?? []).map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setReminderRuleOpen(false)}>Cancel</Button>
+                      <Button onClick={() => createReminderRule.mutate()} disabled={!reminderRuleForm.name.trim() || createReminderRule.isPending}>Create Rule</Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Rule</TableHead>
+                  <TableHead>Trigger</TableHead>
+                  <TableHead>Days</TableHead>
+                  <TableHead>Min Balance</TableHead>
+                  <TableHead>Last Run</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reminderRules.map((rule) => (
+                  <TableRow key={rule.id}>
+                    <TableCell className="font-medium">{rule.name}</TableCell>
+                    <TableCell>{rule.triggerOn}</TableCell>
+                    <TableCell>{rule.daysRelativeToDue > 0 ? `+${rule.daysRelativeToDue}` : rule.daysRelativeToDue}</TableCell>
+                    <TableCell>${(rule.minBalanceThreshold ?? 0).toFixed(2)}</TableCell>
+                    <TableCell>{rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "Never"}</TableCell>
+                    <TableCell><Badge variant={rule.isActive ? "secondary" : "outline"}>{rule.isActive ? "active" : "paused"}</Badge></TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={runReminderRule.isPending || !rule.isActive}>Run Now</Button>
+                        <Button size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })} disabled={toggleReminderRule.isPending}>
+                          {rule.isActive ? "Pause" : "Activate"}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {reminderRules.length === 0 && (
+                  <TableRow><TableCell colSpan={7} className="h-16 text-center text-muted-foreground">No payment reminder rules configured.</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : null}
+        {deliveryStats ? (
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">Delivery Tracking &amp; Bounce Management</h2>
+                <p className="text-sm text-muted-foreground">Monitor email delivery rates and manage bounce handling for the active association.</p>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-md border p-3 text-center">
+                  <div className="text-xs text-muted-foreground">Total Sent</div>
+                  <div className="text-xl font-semibold">{deliveryStats.total}</div>
+                </div>
+                <div className="rounded-md border p-3 text-center">
+                  <div className="text-xs text-muted-foreground">Delivered</div>
+                  <div className="text-xl font-semibold text-green-600">{deliveryStats.delivered} <span className="text-sm text-muted-foreground">({deliveryStats.deliveryRate}%)</span></div>
+                </div>
+                <div className="rounded-md border p-3 text-center">
+                  <div className="text-xs text-muted-foreground">Opened</div>
+                  <div className="text-xl font-semibold text-blue-600">{deliveryStats.opened} <span className="text-sm text-muted-foreground">({deliveryStats.openRate}%)</span></div>
+                </div>
+                <div className="rounded-md border p-3 text-center">
+                  <div className="text-xs text-muted-foreground">Bounced</div>
+                  <div className="text-xl font-semibold text-red-600">{deliveryStats.bounced} <span className="text-sm text-muted-foreground">({deliveryStats.bounceRate}%)</span></div>
+                </div>
+              </div>
+              {deliveryStats.bouncedEmails.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Bounced Addresses <Badge variant="destructive">{deliveryStats.bounced}</Badge></div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Bounced At</TableHead>
+                        <TableHead>Retries</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {deliveryStats.bouncedEmails.map((b) => (
+                        <TableRow key={b.id}>
+                          <TableCell className="font-mono text-sm">{b.email}</TableCell>
+                          <TableCell><Badge variant={b.type === "hard" ? "destructive" : "secondary"}>{b.type || "unknown"}</Badge></TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{b.reason || "—"}</TableCell>
+                          <TableCell className="text-sm">{b.bouncedAt ? new Date(b.bouncedAt).toLocaleDateString() : "—"}</TableCell>
+                          <TableCell>{b.retryCount}</TableCell>
+                          <TableCell className="text-right">
+                            {b.type !== "hard" ? (
+                              <Button size="sm" variant="outline" onClick={() => updateDelivery.mutate({ id: b.id, event: "retry" })} disabled={updateDelivery.isPending}>
+                                Retry
+                              </Button>
+                            ) : <span className="text-xs text-muted-foreground">Hard bounce — no retry</span>}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">No bounced emails for this association.</div>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
         </>
       ) : null}
     </div>

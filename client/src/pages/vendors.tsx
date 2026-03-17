@@ -22,6 +22,8 @@ import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { DataTableShell } from "@/components/data-table-shell";
 import { TaskFlowChecklist } from "@/components/task-flow-checklist";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { AlertTriangle } from "lucide-react";
+import { ExportCsvButton } from "@/components/export-csv-button";
 
 const vendorDocumentTypes = ["Insurance", "Contract", "W-9", "License", "Compliance", "Other"];
 
@@ -94,6 +96,23 @@ export default function VendorsPage() {
     enabled: Boolean(activeAssociationId),
   });
   const selectedVendor = vendors.find((vendor) => vendor.id === selectedVendorId) ?? null;
+  type VendorMetrics = {
+    totalWorkOrders: number;
+    openWorkOrders: number;
+    closedWorkOrders: number;
+    avgResolutionDays: number | null;
+    byStatus: Record<string, number>;
+    byPriority: Record<string, number>;
+    recentWorkOrders: Array<{ id: string; title: string; status: string; priority: string | null; createdAt: string }>;
+  };
+  const { data: vendorMetrics } = useQuery<VendorMetrics>({
+    queryKey: ["/api/vendors", selectedVendorId, "metrics"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/vendors/${selectedVendorId}/metrics`);
+      return res.json();
+    },
+    enabled: Boolean(selectedVendorId),
+  });
   const { data: vendorDocuments = [] } = useQuery<Document[]>({
     queryKey: ["/api/vendors", selectedVendorId, "documents"],
     queryFn: async () => {
@@ -423,6 +442,21 @@ export default function VendorsPage() {
         }
       />
 
+      {expiredCount > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+          <div>
+            <p className="font-medium text-sm text-destructive">
+              {expiredCount} vendor{expiredCount !== 1 ? "s" : ""} with expired insurance
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Do not assign work orders to vendors with expired coverage. Request updated certificates of insurance and
+              update the expiry date when renewed. Scroll down to Renewal Alerts for the full list.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-4">
         <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Association Context</div><div className="mt-1 text-lg font-semibold">{activeAssociationName || "None selected"}</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Active Vendors</div><div className="mt-1 text-lg font-semibold">{activeCount}</div></CardContent></Card>
@@ -434,7 +468,7 @@ export default function VendorsPage() {
         isLoading={!vendors}
         isEmpty={!vendors.length}
         emptyTitle="No vendors yet"
-        emptyMessage={activeAssociationId ? "Add the first vendor to start compliance and assignment tracking." : "Select an association to manage vendors."}
+        emptyMessage={activeAssociationId ? "Add contractors, plumbers, landscapers, and other service providers here. Vendors can be assigned to work orders, and their insurance expiry dates are tracked and alerted." : "Select an association from the top navigation bar to manage its vendor directory."}
       >
         <DataTableShell
           title="Vendor Directory"
@@ -465,6 +499,11 @@ export default function VendorsPage() {
                   <SelectItem value="recent-expiry">Nearest expiry</SelectItem>
                 </SelectContent>
               </Select>
+              <ExportCsvButton
+                headers={["Name", "Trade", "Status", "Contact Email", "Contact Phone", "Service Area", "Insurance Expiry"]}
+                rows={visibleVendors.map((v) => [v.name, v.trade, v.status, v.primaryEmail || "", v.primaryContactName || "", v.serviceArea || "", v.insuranceExpiresAt ? new Date(v.insuranceExpiresAt).toLocaleDateString() : ""])}
+                filename={`vendors-${activeAssociationName || "all"}`}
+              />
             </div>
           }
         >
@@ -493,7 +532,26 @@ export default function VendorsPage() {
                     <div>{vendor.primaryContactName || "-"}</div>
                     <div className="text-xs text-muted-foreground">{vendor.primaryEmail || vendor.primaryPhone || "-"}</div>
                   </TableCell>
-                  <TableCell>{vendor.insuranceExpiresAt ? new Date(vendor.insuranceExpiresAt).toLocaleDateString() : "-"}</TableCell>
+                  <TableCell>
+                    {vendor.insuranceExpiresAt ? (
+                      <div className="space-y-0.5">
+                        <div className="text-sm">{new Date(vendor.insuranceExpiresAt).toLocaleDateString()}</div>
+                        {(() => {
+                          const alert = renewalAlerts.find((a) => a.vendorId === vendor.id);
+                          if (!alert) return null;
+                          return (
+                            <Badge variant={alert.severity === "expired" ? "destructive" : "secondary"} className="text-xs">
+                              {alert.severity === "expired"
+                                ? `Expired ${Math.abs(alert.daysUntilExpiry)}d ago`
+                                : `Expires in ${alert.daysUntilExpiry}d`}
+                            </Badge>
+                          );
+                        })()}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
                   <TableCell><Badge variant={vendor.status === "active" ? "default" : "secondary"}>{vendor.status}</Badge></TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -676,6 +734,45 @@ export default function VendorsPage() {
                   <div className="text-sm">{selectedVendor.notes || "No internal notes recorded for this vendor."}</div>
                 </CardContent>
               </Card>
+              {vendorMetrics && (
+                <Card>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="font-medium">Work Order Performance</div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded-md border p-3 text-center">
+                        <div className="text-2xl font-bold">{vendorMetrics.totalWorkOrders}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">Total</div>
+                      </div>
+                      <div className="rounded-md border p-3 text-center">
+                        <div className="text-2xl font-bold text-orange-600">{vendorMetrics.openWorkOrders}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">Open</div>
+                      </div>
+                      <div className="rounded-md border p-3 text-center">
+                        <div className="text-2xl font-bold text-green-600">{vendorMetrics.closedWorkOrders}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">Closed</div>
+                      </div>
+                    </div>
+                    {vendorMetrics.avgResolutionDays !== null && (
+                      <div className="text-sm text-muted-foreground">
+                        Avg. resolution time: <span className="font-medium text-foreground">{vendorMetrics.avgResolutionDays} days</span>
+                      </div>
+                    )}
+                    {vendorMetrics.recentWorkOrders.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Recent Work Orders</div>
+                        {vendorMetrics.recentWorkOrders.map((wo) => (
+                          <div key={wo.id} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                            <span className="truncate mr-2">{wo.title}</span>
+                            <Badge variant={wo.status === "closed" ? "secondary" : wo.status === "open" ? "outline" : "default"} className="shrink-0 text-xs">
+                              {wo.status}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
               <Card>
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">

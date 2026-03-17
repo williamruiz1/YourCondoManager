@@ -9,13 +9,16 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { Send, Users, FileText, CheckSquare, Square } from "lucide-react";
+import type { GovernanceReminderRule } from "@shared/schema";
 
 const schema = z.object({
   associationId: z.string().min(1),
@@ -51,6 +54,217 @@ const voteSchema = z.object({
   voteWeight: z.coerce.number().positive().default(1),
 });
 
+function MeetingNoticeDialog({
+  meeting,
+  associationId,
+  associationName,
+}: {
+  meeting: GovernanceMeeting;
+  associationId: string;
+  associationName: string;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+
+  const meetingDate = new Date(meeting.scheduledAt);
+  const formattedDate = meetingDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const formattedTime = meetingDate.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const defaultSubject = `Meeting Notice — ${meeting.title}`;
+  const defaultBody = [
+    `Dear ${associationName} Owners and Residents,`,
+    ``,
+    `You are hereby notified that a ${meeting.meetingType} meeting has been scheduled.`,
+    ``,
+    `Meeting Details:`,
+    `  Title: ${meeting.title}`,
+    `  Date: ${formattedDate}`,
+    `  Time: ${formattedTime}`,
+    ...(meeting.location ? [`  Location: ${meeting.location}`] : []),
+    ``,
+    ...(meeting.agenda
+      ? [`Agenda:\n${meeting.agenda}`, ``]
+      : []),
+    `If you have questions, please contact your association management office.`,
+    ``,
+    `Thank you,`,
+    `${associationName} Board of Directors`,
+  ].join("\n");
+
+  const [subject, setSubject] = useState(defaultSubject);
+  const [body, setBody] = useState(defaultBody);
+  const [targetType, setTargetType] = useState<"all-owners" | "all-occupants" | "board-members">("all-owners");
+
+  useEffect(() => {
+    if (open) {
+      setSubject(defaultSubject);
+      setBody(defaultBody);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const sendMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/communications/send-targeted", {
+        associationId,
+        targetType,
+        subject: subject.trim(),
+        body: body.trim(),
+        messageClass: "governance",
+        bypassReadinessGate: true,
+      }).then((r) => r.json()),
+    onSuccess: (result) => {
+      toast({
+        title: "Meeting notice sent",
+        description: `Notice sent to ${result.recipientCount ?? "all"} recipients`,
+      });
+      setOpen(false);
+    },
+    onError: (err: Error) =>
+      toast({ title: "Send failed", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="gap-1">
+          <Send className="h-3 w-3" />
+          Send Notice
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Send Meeting Notice</DialogTitle>
+          <DialogDescription>
+            Send a formal meeting notice to residents. Edit the message below before sending.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="rounded-lg border bg-muted/20 p-3 text-sm space-y-1">
+            <div><span className="text-muted-foreground">Meeting: </span><strong>{meeting.title}</strong></div>
+            <div><span className="text-muted-foreground">Date: </span>{formattedDate} at {formattedTime}</div>
+            {meeting.location && <div><span className="text-muted-foreground">Location: </span>{meeting.location}</div>}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Send to</Label>
+            <Select value={targetType} onValueChange={(v) => setTargetType(v as typeof targetType)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-owners">All owners</SelectItem>
+                <SelectItem value="all-occupants">All occupants (owners + tenants)</SelectItem>
+                <SelectItem value="board-members">Board members only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Subject</Label>
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Message</Label>
+            <Textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} className="font-mono text-xs" />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => sendMutation.mutate()}
+            disabled={sendMutation.isPending || !subject.trim() || !body.trim()}
+          >
+            {sendMutation.isPending ? "Sending…" : "Send Notice"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function QuorumDialog({
+  meeting,
+  persons,
+}: {
+  meeting: GovernanceMeeting;
+  persons: Person[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [present, setPresent] = useState<Set<string>>(new Set());
+
+  const total = persons.length;
+  const presentCount = present.size;
+  const quorumThreshold = Math.ceil(total / 2);
+  const quorumMet = presentCount >= quorumThreshold;
+
+  function toggle(id: string) {
+    setPresent((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="gap-1">
+          <Users className="h-3 w-3" />
+          Attendance
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Attendance &amp; Quorum</DialogTitle>
+          <DialogDescription>{meeting.title}</DialogDescription>
+        </DialogHeader>
+
+        <div className={`rounded-lg border p-3 text-sm font-medium ${quorumMet ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-700"}`}>
+          {quorumMet ? "✓ Quorum met" : "✗ Quorum not met"} — {presentCount} of {total} present
+          {total > 0 && ` (need ${quorumThreshold})`}
+        </div>
+
+        <div className="space-y-1 max-h-72 overflow-y-auto">
+          {persons.length === 0 && (
+            <p className="text-sm text-muted-foreground py-4 text-center">No persons found for this association.</p>
+          )}
+          {persons.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => toggle(p.id)}
+              className="w-full flex items-center gap-2 rounded border px-3 py-2 text-sm hover:bg-accent text-left"
+            >
+              {present.has(p.id) ? (
+                <CheckSquare className="h-4 w-4 text-primary shrink-0" />
+              ) : (
+                <Square className="h-4 w-4 text-muted-foreground shrink-0" />
+              )}
+              <span className={present.has(p.id) ? "font-medium" : "text-muted-foreground"}>
+                {p.firstName} {p.lastName}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MeetingsPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -58,6 +272,12 @@ export default function MeetingsPage() {
   const [selectedMeeting, setSelectedMeeting] = useState<GovernanceMeeting | null>(null);
   const [selectedResolutionId, setSelectedResolutionId] = useState("");
   const [resolutionSearch, setResolutionSearch] = useState("");
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderForm, setReminderForm] = useState({
+    name: "", trigger: "before_meeting" as "before_meeting" | "after_meeting" | "task_due" | "board_term_expiry",
+    daysOffset: 3, recipientType: "all_owners" as "all_owners" | "board_members" | "managers" | "meeting_attendees",
+    subjectTemplate: "", bodyTemplate: "", meetingTypes: "", isActive: 1,
+  });
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const meetingsQueryKey = activeAssociationId
     ? `/api/governance/meetings?associationId=${activeAssociationId}`
@@ -278,6 +498,19 @@ export default function MeetingsPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  // Generate sequential resolution reference numbers R-{year}-{seq}
+  const resolutionNumbers = useMemo(() => {
+    const sorted = [...(resolutions ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const map = new Map<string, string>();
+    const yearCounters: Record<string, number> = {};
+    for (const r of sorted) {
+      const year = new Date(r.createdAt).getFullYear();
+      yearCounters[year] = (yearCounters[year] ?? 0) + 1;
+      map.set(r.id, `R-${year}-${String(yearCounters[year]).padStart(3, "0")}`);
+    }
+    return map;
+  }, [resolutions]);
+
   const filteredResolutions = useMemo(() => {
     const list = resolutions ?? [];
     if (!resolutionSearch.trim()) return list;
@@ -295,6 +528,55 @@ export default function MeetingsPage() {
       );
     });
   }, [resolutions, resolutionSearch, meetings]);
+
+  const { data: reminderRules = [], refetch: refetchReminderRules } = useQuery<GovernanceReminderRule[]>({
+    queryKey: ["/api/governance/reminder-rules", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) return [];
+      const res = await apiRequest("GET", `/api/governance/reminder-rules?associationId=${activeAssociationId}`);
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+
+  const createReminderRule = useMutation({
+    mutationFn: async () => {
+      if (!activeAssociationId) throw new Error("No association selected");
+      const res = await apiRequest("POST", "/api/governance/reminder-rules", {
+        associationId: activeAssociationId,
+        ...reminderForm,
+        meetingTypes: reminderForm.meetingTypes || null,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      void refetchReminderRules();
+      setReminderOpen(false);
+      setReminderForm({ name: "", trigger: "before_meeting", daysOffset: 3, recipientType: "all_owners", subjectTemplate: "", bodyTemplate: "", meetingTypes: "", isActive: 1 });
+      toast({ title: "Reminder rule created" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const runReminderRule = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/governance/reminder-rules/${id}/run`);
+      return res.json();
+    },
+    onSuccess: (data: { sent: number; meetings: number }) => {
+      toast({ title: `Reminders sent`, description: `${data.sent} notices dispatched for ${data.meetings} meeting(s)` });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const toggleReminderRule = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: number }) => {
+      const res = await apiRequest("PATCH", `/api/governance/reminder-rules/${id}`, { isActive });
+      return res.json();
+    },
+    onSuccess: () => void refetchReminderRules(),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   function openNoteEditor(meeting: GovernanceMeeting) {
     setSelectedMeeting(meeting);
@@ -421,14 +703,24 @@ export default function MeetingsPage() {
                   <TableCell>{new Date(m.scheduledAt).toLocaleDateString()}</TableCell>
                   <TableCell><Badge variant="outline">{m.status}</Badge></TableCell>
                   <TableCell><Badge variant={m.summaryStatus === "published" ? "default" : "outline"}>{m.summaryStatus}</Badge></TableCell>
-                  <TableCell className="space-x-2">
-                    <Button size="sm" variant="outline" onClick={() => openNoteEditor(m)}>Edit Notes</Button>
-                    <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { status: m.status === "completed" ? "in-progress" : "completed" } })}>
-                      {m.status === "completed" ? "Reopen" : "Complete"}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { summaryStatus: m.summaryStatus === "published" ? "draft" : "published" } })}>
-                      {m.summaryStatus === "published" ? "Unpublish" : "Publish Summary"}
-                    </Button>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeAssociationId && (
+                        <MeetingNoticeDialog
+                          meeting={m}
+                          associationId={activeAssociationId}
+                          associationName={activeAssociationName}
+                        />
+                      )}
+                      <QuorumDialog meeting={m} persons={persons ?? []} />
+                      <Button size="sm" variant="outline" onClick={() => openNoteEditor(m)}>Edit Notes</Button>
+                      <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { status: m.status === "completed" ? "in-progress" : "completed" } })}>
+                        {m.status === "completed" ? "Reopen" : "Complete"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { summaryStatus: m.summaryStatus === "published" ? "draft" : "published" } })}>
+                        {m.summaryStatus === "published" ? "Unpublish" : "Publish Summary"}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -468,12 +760,13 @@ export default function MeetingsPage() {
           </Form>
 
           <Table>
-            <TableHeader><TableRow><TableHead>Resolution</TableHead><TableHead>Meeting</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead className="w-24">Ref #</TableHead><TableHead>Resolution</TableHead><TableHead>Meeting</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
             <TableBody>
               {filteredResolutions.map((r) => {
                 const meeting = meetings?.find((m) => m.id === r.meetingId);
                 return (
-                  <TableRow key={r.id} onClick={() => setSelectedResolutionId(r.id)} className="cursor-pointer">
+                  <TableRow key={r.id} onClick={() => setSelectedResolutionId(r.id)} className={`cursor-pointer ${r.id === selectedResolutionId ? "bg-primary/5 ring-1 ring-inset ring-primary" : ""}`}>
+                    <TableCell><code className="text-xs font-mono text-muted-foreground">{resolutionNumbers.get(r.id) || "—"}</code></TableCell>
                     <TableCell>{r.title}</TableCell>
                     <TableCell>{meeting?.title || "-"}</TableCell>
                     <TableCell>{meeting?.scheduledAt ? new Date(meeting.scheduledAt).toLocaleDateString() : "-"}</TableCell>
@@ -512,8 +805,8 @@ export default function MeetingsPage() {
       </Card>
 
       <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Edit Notes & Summary</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Edit Notes &amp; Minutes</DialogTitle></DialogHeader>
           <Form {...noteForm}>
             <form
               className="space-y-4"
@@ -524,16 +817,162 @@ export default function MeetingsPage() {
               })}
             >
               <FormField control={noteForm.control} name="notes" render={({ field }) => (
-                <FormItem><FormLabel>Meeting Notes</FormLabel><FormControl><Textarea rows={6} {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Meeting Notes</FormLabel><FormControl><Textarea rows={5} {...field} /></FormControl><FormMessage /></FormItem>
               )} />
+              <div className="flex items-center justify-between">
+                <FormLabel>Draft Minutes</FormLabel>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-1"
+                  onClick={() => {
+                    if (!selectedMeeting) return;
+                    const meetingDate = new Date(selectedMeeting.scheduledAt);
+                    const formattedDate = meetingDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+                    const formattedTime = meetingDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+                    const meetingResolutions = (resolutions ?? []).filter((r) => r.meetingId === selectedMeeting.id);
+                    const agendaLines = (agendaItems ?? [])
+                      .sort((a, b) => a.orderIndex - b.orderIndex)
+                      .map((item) => `  ${item.orderIndex + 1}. ${item.title}${item.description ? ` — ${item.description}` : ""}`)
+                      .join("\n");
+                    const resolutionLines = meetingResolutions
+                      .map((r) => `  - ${r.title} [${r.status}]${r.description ? `\n    ${r.description}` : ""}`)
+                      .join("\n");
+                    const draft = [
+                      `MEETING MINUTES`,
+                      `================`,
+                      `${activeAssociationName || "Association"}`,
+                      `${selectedMeeting.meetingType.charAt(0).toUpperCase() + selectedMeeting.meetingType.slice(1)} Meeting`,
+                      ``,
+                      `Date: ${formattedDate}`,
+                      `Time: ${formattedTime}`,
+                      ...(selectedMeeting.location ? [`Location: ${selectedMeeting.location}`] : []),
+                      ``,
+                      `CALL TO ORDER`,
+                      `The ${selectedMeeting.meetingType} meeting was called to order.`,
+                      ``,
+                      ...(agendaLines ? [`AGENDA\n${agendaLines}`, ``] : []),
+                      ...(selectedMeeting.notes ? [`DISCUSSION\n${selectedMeeting.notes}`, ``] : []),
+                      ...(resolutionLines ? [`RESOLUTIONS\n${resolutionLines}`, ``] : []),
+                      `ADJOURNMENT`,
+                      `There being no further business, the meeting was adjourned.`,
+                      ``,
+                      `_______________________________`,
+                      `Secretary, ${activeAssociationName || "Association"}`,
+                    ].join("\n");
+                    noteForm.setValue("summaryText", draft);
+                  }}
+                >
+                  <FileText className="h-3 w-3" />
+                  Generate Draft
+                </Button>
+              </div>
               <FormField control={noteForm.control} name="summaryText" render={({ field }) => (
-                <FormItem><FormLabel>Summary Draft</FormLabel><FormControl><Textarea rows={5} {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormControl><Textarea rows={12} className="font-mono text-xs" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <Button className="w-full" type="submit">Save</Button>
             </form>
           </Form>
         </DialogContent>
       </Dialog>
+
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Governance Reminder Cadence</h2>
+              <p className="text-sm text-muted-foreground">Automated reminders sent to owners and board members before or after meetings.</p>
+            </div>
+            <Dialog open={reminderOpen} onOpenChange={setReminderOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" disabled={!activeAssociationId}>Add Rule</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader><DialogTitle>New Reminder Rule</DialogTitle></DialogHeader>
+                <div className="space-y-3">
+                  <Input placeholder="Rule name *" value={reminderForm.name} onChange={(e) => setReminderForm((f) => ({ ...f, name: e.target.value }))} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Select value={reminderForm.trigger} onValueChange={(v) => setReminderForm((f) => ({ ...f, trigger: v as typeof f.trigger }))}>
+                      <SelectTrigger><SelectValue placeholder="Trigger" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="before_meeting">Before Meeting</SelectItem>
+                        <SelectItem value="after_meeting">After Meeting</SelectItem>
+                        <SelectItem value="task_due">Task Due</SelectItem>
+                        <SelectItem value="board_term_expiry">Board Term Expiry</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={reminderForm.recipientType} onValueChange={(v) => setReminderForm((f) => ({ ...f, recipientType: v as typeof f.recipientType }))}>
+                      <SelectTrigger><SelectValue placeholder="Recipients" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_owners">All Owners</SelectItem>
+                        <SelectItem value="board_members">Board Members</SelectItem>
+                        <SelectItem value="managers">Managers</SelectItem>
+                        <SelectItem value="meeting_attendees">Meeting Attendees</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Days offset</label>
+                      <Input type="number" min={1} value={reminderForm.daysOffset} onChange={(e) => setReminderForm((f) => ({ ...f, daysOffset: parseInt(e.target.value) || 3 }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Meeting types (comma separated)</label>
+                      <Input placeholder="board,annual" value={reminderForm.meetingTypes} onChange={(e) => setReminderForm((f) => ({ ...f, meetingTypes: e.target.value }))} />
+                    </div>
+                  </div>
+                  <Input placeholder="Subject template *" value={reminderForm.subjectTemplate} onChange={(e) => setReminderForm((f) => ({ ...f, subjectTemplate: e.target.value }))} />
+                  <Textarea placeholder="Body template *" rows={4} value={reminderForm.bodyTemplate} onChange={(e) => setReminderForm((f) => ({ ...f, bodyTemplate: e.target.value }))} />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setReminderOpen(false)}>Cancel</Button>
+                    <Button onClick={() => createReminderRule.mutate()} disabled={!reminderForm.name || !reminderForm.subjectTemplate || !reminderForm.bodyTemplate || createReminderRule.isPending}>
+                      Create
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Trigger</TableHead>
+                <TableHead>Days</TableHead>
+                <TableHead>Recipients</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Last Run</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {reminderRules.map((rule) => (
+                <TableRow key={rule.id}>
+                  <TableCell className="font-medium">{rule.name}</TableCell>
+                  <TableCell><Badge variant="outline">{rule.trigger.replace(/_/g, " ")}</Badge></TableCell>
+                  <TableCell>{rule.daysOffset}d</TableCell>
+                  <TableCell className="text-sm">{rule.recipientType.replace(/_/g, " ")}</TableCell>
+                  <TableCell><Badge variant={rule.isActive ? "default" : "secondary"}>{rule.isActive ? "Active" : "Paused"}</Badge></TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "—"}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={!rule.isActive || runReminderRule.isPending}>Run</Button>
+                      <Button size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}>
+                        {rule.isActive ? "Pause" : "Resume"}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {reminderRules.length === 0 && (
+                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground h-12">No reminder rules configured.</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

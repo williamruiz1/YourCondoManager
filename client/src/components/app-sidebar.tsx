@@ -15,6 +15,7 @@ import {
   Lightbulb,
   BookOpenCheck,
   Calculator,
+  BarChart2,
   ClipboardCheck,
   CalendarDays,
   Bot,
@@ -24,6 +25,13 @@ import {
   BriefcaseBusiness,
   ClipboardList,
   PackageOpen,
+  Shield,
+  Layers,
+  MessageCircle,
+  Megaphone,
+  GitMerge,
+  Repeat,
+  Flag,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -69,6 +77,13 @@ const navSections: NavSection[] = [
     label: "Overview",
     modules: [
       { title: "Dashboard", url: "/app", icon: LayoutDashboard },
+      {
+        title: "Portfolio",
+        url: "/app/portfolio",
+        icon: Layers,
+        activePrefix: "/app/portfolio",
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
+      },
       {
         title: "Associations",
         url: "/app/associations",
@@ -126,6 +141,9 @@ const navSections: NavSection[] = [
           { title: "Owner Ledger", url: "/app/financial/ledger", icon: BookOpenCheck, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
           { title: "Payments", url: "/app/financial/payments", icon: CircleDollarSign, roles: ["platform-admin", "board-admin", "manager"] },
           { title: "Budgets", url: "/app/financial/budgets", icon: Calculator, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+          { title: "Reports", url: "/app/financial/reports", icon: BarChart2, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+          { title: "Reconciliation", url: "/app/financial/reconciliation", icon: GitMerge, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Recurring Charges", url: "/app/financial/recurring-charges", icon: Repeat, roles: ["platform-admin", "board-admin", "manager"] },
         ],
       },
     ],
@@ -164,6 +182,26 @@ const navSections: NavSection[] = [
         roles: ["platform-admin", "board-admin", "manager", "viewer"],
       },
       {
+        title: "Resident Feedback",
+        url: "/app/resident-feedback",
+        icon: MessageCircle,
+        activePrefix: "/app/resident-feedback",
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
+      },
+      {
+        title: "Announcements",
+        url: "/app/announcements",
+        icon: Megaphone,
+        activePrefix: "/app/announcements",
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
+      },
+      {
+        title: "Insurance Policies",
+        url: "/app/insurance",
+        icon: Shield,
+        roles: ["platform-admin", "board-admin", "manager", "viewer"],
+      },
+      {
         title: "Communications",
         url: "/app/communications",
         icon: MessageSquare,
@@ -186,6 +224,7 @@ const navSections: NavSection[] = [
         children: [
           { title: "Owner Portal", url: "/portal", icon: Contact, roles: ["platform-admin"] },
           { title: "Admin Roadmap", url: "/app/admin/roadmap", icon: ListChecks, activePrefix: "/app/admin", roles: ["platform-admin", "board-admin"] },
+          { title: "Feature Flags", url: "/app/admin/feature-flags", icon: Flag, roles: ["platform-admin"] },
         ],
       },
     ],
