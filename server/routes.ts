@@ -18,6 +18,7 @@ import {
   getTrackingPixelBuffer,
   handleEmailClickTracking,
   handleEmailOpenTracking,
+  isEmailProviderConfigured,
   purgeTrackingData,
   sendPlatformEmail,
   verifyEmailConnection,
@@ -686,6 +687,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         status: "ok",
         env: process.env.NODE_ENV ?? "development",
         db: { host: dbHost, name: dbName },
+        emailProviderConfigured: isEmailProviderConfigured(),
         counts: {
           associations: c.associations,
           units: c.units,

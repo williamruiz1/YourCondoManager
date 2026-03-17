@@ -2772,7 +2772,7 @@ export interface IStorage {
     associationState?: string | null;
     associationCountry?: string | null;
   }) | undefined>;
-  sendOnboardingInvite(id: string, sentBy?: string | null): Promise<{ invite: OnboardingInvite; history: CommunicationHistory; delivery: { status: "sent" | "failed"; logId: string; provider: string; messageId: string | null; errorMessage?: string | null } }>;
+  sendOnboardingInvite(id: string, sentBy?: string | null): Promise<{ invite: OnboardingInvite; history: CommunicationHistory; delivery: { status: "sent" | "failed" | "simulated"; logId: string; provider: string; messageId: string | null; errorMessage?: string | null } }>;
   runOnboardingInviteReminderSweep(input: { associationId: string; sentBy?: string | null; olderThanHours?: number }): Promise<{ processed: number; sent: number; failed: number }>;
   createOnboardingSubmissionFromInvite(token: string, input: {
     firstName: string;
@@ -4635,7 +4635,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<{
     invite: OnboardingInvite;
     history: CommunicationHistory;
-    delivery: { status: "sent" | "failed"; logId: string; provider: string; messageId: string | null; errorMessage?: string | null };
+    delivery: { status: "sent" | "failed" | "simulated"; logId: string; provider: string; messageId: string | null; errorMessage?: string | null };
   }> {
     const [row] = await db
       .select({

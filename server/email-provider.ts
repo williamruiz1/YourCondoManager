@@ -29,7 +29,7 @@ export type SendEmailPayload = {
 };
 
 export type SendEmailResult = {
-  status: "sent" | "failed";
+  status: "sent" | "failed" | "simulated";
   messageId: string | null;
   logId: string;
   provider: string;
@@ -178,6 +178,10 @@ function isSmtpConfigured(config = getEmailConfig()): boolean {
   return Boolean(config.host && config.user && config.pass && config.fromAddress);
 }
 
+export function isEmailProviderConfigured(): boolean {
+  return isSmtpConfigured();
+}
+
 function getTrackingSecret(): string {
   return process.env.EMAIL_TRACKING_SECRET?.trim() || process.env.SESSION_SECRET?.trim() || "dev-email-tracking-secret";
 }
@@ -266,7 +270,7 @@ async function createEmailLog(payload: SendEmailPayload, trackingToken: string |
       subject: payload.subject,
       templateKey: payload.templateKey ?? null,
       status: "queued",
-      provider: isSmtpConfigured() ? "smtp" : "internal-mock",
+      provider: isSmtpConfigured() ? "smtp" : "simulation",
       providerMessageId: null,
       errorMessage: null,
       metadataJson: payload.metadata ?? null,
@@ -324,8 +328,8 @@ export async function verifyEmailConnection(): Promise<{ ok: boolean; provider: 
   if (!isSmtpConfigured(config)) {
     return {
       ok: true,
-      provider: "internal-mock",
-      message: "SMTP not configured; using internal mock delivery.",
+      provider: "simulation",
+      message: "SMTP not configured; emails will be simulated (not delivered).",
     };
   }
 
@@ -352,7 +356,7 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
 
   // Append owner portal link to all outbound emails
   const appBaseUrl = (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
-  const portalUrl = `${appBaseUrl}/owner-portal`;
+  const portalUrl = `${appBaseUrl}/portal`;
   const portalFooterHtml = `<hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb"/><p style="font-size:12px;color:#6b7280;margin:0">Access your owner portal anytime at <a href="${portalUrl}" style="color:#4f46e5">${portalUrl}</a></p>`;
   const portalFooterText = `\n\n---\nAccess your owner portal: ${portalUrl}`;
 
@@ -376,19 +380,20 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
   }
 
   if (!isSmtpConfigured(config)) {
-    const mockMessageId = `mock-${Date.now()}`;
+    console.warn("[email][simulation-mode] Email not sent — no provider configured", { to, subject: payload.subject });
+    const simMessageId = `sim-${Date.now()}`;
     await updateEmailLog(emailLog.id, {
-      status: "sent",
-      provider: "internal-mock",
-      providerMessageId: mockMessageId,
+      status: "simulated",
+      provider: "simulation",
+      providerMessageId: simMessageId,
       errorMessage: null,
       sentAt: new Date(),
     });
     return {
-      status: "sent",
-      messageId: mockMessageId,
+      status: "simulated",
+      messageId: simMessageId,
       logId: emailLog.id,
-      provider: "internal-mock",
+      provider: "simulation",
     };
   }
 
@@ -544,7 +549,7 @@ export function getEmailProviderStatus() {
     preferredProvider: "smtp",
     smtpConfigured,
     gmailConfigured: false,
-    activeProvider: smtpConfigured ? "smtp" : "internal-mock",
+    activeProvider: smtpConfigured ? "smtp" : "simulation",
     sender: config.fromAddress,
     fromName: config.fromName,
     trackingEnabled: config.trackingEnabled,

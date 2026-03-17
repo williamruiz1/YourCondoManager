@@ -541,7 +541,7 @@ export default function AssociationContextPage() {
           {
             label: "Copy Owner Portal Link",
             onClick: () => {
-              const url = `${window.location.origin}/owner-portal`;
+              const url = `${window.location.origin}/portal`;
               navigator.clipboard.writeText(url).then(() => {
                 toast({ title: "Link copied", description: url });
               });
