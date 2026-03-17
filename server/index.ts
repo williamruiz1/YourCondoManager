@@ -9,6 +9,7 @@ import { createServer } from "http";
 import { seedDatabase } from "./seed";
 import { storage } from "./storage";
 import { pool } from "./db";
+import { log } from "./logger";
 
 dotenv.config();
 dotenv.config({ path: ".env.local", override: true });
@@ -89,16 +90,7 @@ type AutomationJobState = {
 
 const globalAutomationState = globalThis as typeof globalThis & { __automationJobState?: AutomationJobState };
 
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
+export { log } from "./logger";
 
 async function runAutomationSweep() {
   const [scheduledResult, escalationResult, boardPackageResult] = await Promise.all([

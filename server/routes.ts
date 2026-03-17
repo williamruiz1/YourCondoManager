@@ -653,11 +653,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Health/diagnostics endpoint — shows DB state for deployment verification
   app.get("/api/health", async (_req, res) => {
     try {
-      const [assocResult, unitResult, buildingResult] = await Promise.all([
-        db.execute(sql`SELECT COUNT(*)::int AS count FROM associations`),
-        db.execute(sql`SELECT COUNT(*)::int AS count FROM units`),
-        db.execute(sql`SELECT COUNT(*)::int AS count FROM buildings`),
+      const [countsResult, assocListResult, authResult] = await Promise.all([
+        db.execute(sql`
+          SELECT
+            (SELECT COUNT(*)::int FROM associations) AS associations,
+            (SELECT COUNT(*)::int FROM units) AS units,
+            (SELECT COUNT(*)::int FROM buildings) AS buildings,
+            (SELECT COUNT(*)::int FROM persons) AS persons,
+            (SELECT COUNT(*)::int FROM auth_users) AS auth_users,
+            (SELECT COUNT(*)::int FROM admin_users) AS admin_users,
+            (SELECT COUNT(*)::int FROM admin_users WHERE is_active = 1 AND role = 'platform-admin') AS platform_admins
+        `),
+        db.execute(sql`
+          SELECT id, name, city, state,
+            (SELECT COUNT(*)::int FROM units u WHERE u.association_id = a.id) AS unit_count,
+            (SELECT COUNT(*)::int FROM buildings b WHERE b.association_id = a.id) AS building_count
+          FROM associations a
+          ORDER BY name
+          LIMIT 50
+        `),
+        db.execute(sql`
+          SELECT id, email, admin_user_id, is_active, last_login_at
+          FROM auth_users
+          ORDER BY last_login_at DESC NULLS LAST
+          LIMIT 10
+        `),
       ]);
+      const c = countsResult.rows[0] as any;
       const dbHost = process.env.PGHOST ?? "unknown";
       const dbName = process.env.PGDATABASE ?? "unknown";
       res.json({
@@ -665,10 +687,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         env: process.env.NODE_ENV ?? "development",
         db: { host: dbHost, name: dbName },
         counts: {
-          associations: (assocResult.rows[0] as any).count,
-          units: (unitResult.rows[0] as any).count,
-          buildings: (buildingResult.rows[0] as any).count,
+          associations: c.associations,
+          units: c.units,
+          buildings: c.buildings,
+          persons: c.persons,
+          auth_users: c.auth_users,
+          admin_users: c.admin_users,
+          platform_admins: c.platform_admins,
         },
+        associations: assocListResult.rows,
+        recentAuthUsers: authResult.rows,
       });
     } catch (err: any) {
       res.status(500).json({ status: "error", message: err.message });

@@ -1,8 +1,9 @@
 import { db } from "./db";
-import { and, eq, ilike } from "drizzle-orm";
+import { and, eq, ilike, sql } from "drizzle-orm";
 import {
   adminUsers, analysisRuns, analysisVersions, associations, boardRoles, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
 } from "@shared/schema";
+import { log } from "./logger";
 
 // All associations from the dev environment. These are inserted by exact ID on every
 // server start using ON CONFLICT DO NOTHING — safe to run repeatedly, never overwrites.
@@ -46,14 +47,38 @@ const KNOWN_ASSOCIATIONS: (typeof associations.$inferInsert)[] = [
 ];
 
 export async function seedDatabase() {
+  log(`[seed] starting :: KNOWN_ASSOCIATIONS=${KNOWN_ASSOCIATIONS.length}`, "seed");
+
   // Ensure all known associations exist — inserts by exact ID, skips any that already exist.
   // This runs on every startup so production stays in sync with dev without manual intervention.
+  let assocInserted = 0;
+  let assocSkipped = 0;
   for (const assoc of KNOWN_ASSOCIATIONS) {
-    await db.insert(associations).values(assoc).onConflictDoNothing();
+    const result = await db.insert(associations).values(assoc).onConflictDoNothing().returning({ id: associations.id });
+    if (result.length > 0) {
+      assocInserted++;
+    } else {
+      assocSkipped++;
+    }
   }
+  log(`[seed] associations :: inserted=${assocInserted} skipped(already-exist)=${assocSkipped}`, "seed");
+
+  // Log total row counts for key tables to verify DB copy completeness
+  const counts = await db.execute(sql`
+    SELECT
+      (SELECT COUNT(*)::int FROM associations) AS associations,
+      (SELECT COUNT(*)::int FROM units) AS units,
+      (SELECT COUNT(*)::int FROM buildings) AS buildings,
+      (SELECT COUNT(*)::int FROM persons) AS persons,
+      (SELECT COUNT(*)::int FROM auth_users) AS auth_users,
+      (SELECT COUNT(*)::int FROM admin_users) AS admin_users
+  `);
+  const c = counts.rows[0] as any;
+  log(`[seed] db counts :: associations=${c.associations} units=${c.units} buildings=${c.buildings} persons=${c.persons} auth_users=${c.auth_users} admin_users=${c.admin_users}`, "seed");
 
   // Seed demo units/people/ownerships only on a truly fresh database (no units yet).
   const existingUnits = await db.select().from(units);
+  log(`[seed] units check :: existingUnits=${existingUnits.length} (will seed demo data only if 0)`, "seed");
   if (existingUnits.length === 0) {
     const sunsetTowers = KNOWN_ASSOCIATIONS.find(a => a.name === "Sunset Towers")!;
     const lakewood = KNOWN_ASSOCIATIONS.find(a => a.name === "Lakewood Residences")!;
@@ -1059,6 +1084,154 @@ export async function seedDatabase() {
     }
   }
 
+  // Production Deployment Stability roadmap — tracks auth and data-sync issues
+  const [existingDeployStabilityProject] = await db
+    .select()
+    .from(roadmapProjects)
+    .where(eq(roadmapProjects.title, "Production Deployment Stability"));
+
+  if (!existingDeployStabilityProject) {
+    const [project] = await db.insert(roadmapProjects).values({
+      title: "Production Deployment Stability",
+      description: "Two active production issues: (1) association data edits made in dev are not reflected in published production environment after DB copy; (2) Google OAuth login on published site redirects back to sign-in page instead of establishing a session. Both require root-cause diagnosis, targeted fixes, and verification.",
+      status: "active",
+      isCollapsed: 0,
+    }).returning();
+
+    const [ws1] = await db.insert(roadmapWorkstreams).values({
+      projectId: project.id,
+      title: "Issue A — Dev Data Not Appearing in Production After DB Copy",
+      description: "Association edits made in dev (e.g. Cherry Hill Court Condominiums) are not visible in the published app after republishing with the 'Copy dev database to production' option checked. Root cause is unknown — could be silent pg_restore failures, FK constraint violations blocking partial tables, or the wrong DB being targeted.",
+      orderIndex: 0,
+      isCollapsed: 0,
+    }).returning();
+
+    const [ws2] = await db.insert(roadmapWorkstreams).values({
+      projectId: project.id,
+      title: "Issue B — Google OAuth Session Not Persisting on Published Site",
+      description: "Signing in with Google on the published site returns ?auth=success in the URL but the app renders the sign-in page instead of the workspace. Session is not established. Observed when using the same browser as the Replit IDE. chcmgmt18@gmail.com logs in successfully; yourcondomanagement@gmail.com does not.",
+      orderIndex: 1,
+      isCollapsed: 0,
+    }).returning();
+
+    await db.insert(roadmapTasks).values([
+      // Issue A tasks
+      {
+        projectId: project.id,
+        workstreamId: ws1.id,
+        title: "A-1 Add detailed seed and health logging to pinpoint where DB copy breaks down",
+        description: "Add per-table row counts and association-level breakdowns to /api/health and to seedDatabase() startup logs. This gives a definitive before/after snapshot to confirm whether the copy transferred the right data or stopped partway.",
+        status: "done",
+        effort: "small",
+        priority: "critical",
+        dependencyTaskIds: [],
+      },
+      {
+        projectId: project.id,
+        workstreamId: ws1.id,
+        title: "A-2 Verify FK constraint cleanliness in dev DB before each deploy",
+        description: "Run a pre-deploy FK integrity check query across all tables to confirm no orphaned rows exist that would cause pg_restore to fail silently. Document the check and make it repeatable.",
+        status: "todo",
+        effort: "small",
+        priority: "critical",
+        dependencyTaskIds: [],
+      },
+      {
+        projectId: project.id,
+        workstreamId: ws1.id,
+        title: "A-3 Diagnose whether /api/health post-deploy shows correct association data",
+        description: "After next republish, immediately hit /api/health on the production URL. Compare association list, unit counts, and building counts against dev. If counts match dev, the data is there and the issue is display/auth. If counts are wrong, the copy failed.",
+        status: "todo",
+        effort: "small",
+        priority: "critical",
+        dependencyTaskIds: [],
+      },
+      {
+        projectId: project.id,
+        workstreamId: ws1.id,
+        title: "A-4 Confirm association edit fields are stored in DB-backed columns not local state",
+        description: "Identify which fields the user edits for Cherry Hill Court (EIN, dateFormed, address, etc.) and verify they are persisted to the associations table and not held only in client state or a separate config store.",
+        status: "todo",
+        effort: "small",
+        priority: "high",
+        dependencyTaskIds: [],
+      },
+      {
+        projectId: project.id,
+        workstreamId: ws1.id,
+        title: "A-5 Fix any remaining FK violations blocking complete pg_restore",
+        description: "Using the FK integrity check from A-2, clean all orphaned rows across budget_lines, financial_categories, and any other FK-constrained tables. Re-run the check after cleanup.",
+        status: "todo",
+        effort: "medium",
+        priority: "critical",
+        dependencyTaskIds: [],
+      },
+      {
+        projectId: project.id,
+        workstreamId: ws1.id,
+        title: "A-6 Verify Cherry Hill Court data is visible in production post-fix",
+        description: "After fixing FK issues and redeploying, confirm in the published UI that Cherry Hill Court Condominiums shows the correct EIN, formation date, address, units, buildings, and any other edited fields.",
+        status: "todo",
+        effort: "small",
+        priority: "critical",
+        dependencyTaskIds: [],
+      },
+      // Issue B tasks
+      {
+        projectId: project.id,
+        workstreamId: ws2.id,
+        title: "B-1 Add OAuth callback and session restore logging to server/auth.ts",
+        description: "Log every key step in the Google OAuth flow: external account lookup result, email lookup result, admin bootstrap resolution, auth user created vs updated, isActive value, and session restore token verification outcome. This makes every login attempt fully traceable in server logs.",
+        status: "done",
+        effort: "small",
+        priority: "critical",
+        dependencyTaskIds: [],
+      },
+      {
+        projectId: project.id,
+        workstreamId: ws2.id,
+        title: "B-2 Fix is_active=0 blocking session establishment after OAuth",
+        description: "The auth_users record for yourcondomanagement@gmail.com has is_active=0. deserializeUser rejects inactive users, causing the session to be silently dropped after a successful OAuth callback. Fix: set isActive=1 on every OAuth login in updateAuthUser. Also update the dev DB record directly.",
+        status: "done",
+        effort: "small",
+        priority: "critical",
+        dependencyTaskIds: [],
+      },
+      {
+        projectId: project.id,
+        workstreamId: ws2.id,
+        title: "B-3 Investigate session cookie behavior when Replit IDE and published app share a browser",
+        description: "The user observes login failure specifically when using the same browser as the Replit IDE. Diagnose whether the 'sid' session cookie name conflicts across dev and production origins, whether SameSite=Lax blocks the cookie after the OAuth redirect, or whether a Replit iframe/proxy changes the origin seen by the server.",
+        status: "todo",
+        effort: "medium",
+        priority: "high",
+        dependencyTaskIds: [],
+      },
+      {
+        projectId: project.id,
+        workstreamId: ws2.id,
+        title: "B-4 Verify authRestore token flow completes correctly in production",
+        description: "After OAuth callback, the authRestore token in the redirect URL must be picked up by the frontend and POSTed to /api/auth/session/restore. Verify this call happens, returns 201, and that the resulting Set-Cookie header is accepted by the browser. Check network tab for the restore call and its response headers.",
+        status: "todo",
+        effort: "small",
+        priority: "high",
+        dependencyTaskIds: [],
+      },
+      {
+        projectId: project.id,
+        workstreamId: ws2.id,
+        title: "B-5 Confirm yourcondomanagement@gmail.com signs in and sees correct admin workspace",
+        description: "After deploying B-1 and B-2 fixes, verify end-to-end: login completes, session is established, /api/auth/me returns platform-admin role, and the workspace shows all accessible associations.",
+        status: "todo",
+        effort: "small",
+        priority: "critical",
+        dependencyTaskIds: [],
+      },
+    ]);
+
+    log("[seed] created roadmap project: Production Deployment Stability", "seed");
+  }
+
   // Warn if no active platform-admin exists after seeding — this means no one
   // can manage users or grant permissions. Fix by setting PLATFORM_ADMIN_EMAILS.
   const activePlatformAdmins = await db
@@ -1073,7 +1246,9 @@ export async function seedDatabase() {
         "  Fix: set the PLATFORM_ADMIN_EMAILS environment variable to your email\n" +
         "  and restart the server."
     );
+  } else {
+    log(`[seed] platform-admin accounts active=${activePlatformAdmins.length} emails=${activePlatformAdmins.map(a => a.email).join(", ")}`, "seed");
   }
 
-  console.log("Database seeded successfully");
+  log("[seed] complete", "seed");
 }

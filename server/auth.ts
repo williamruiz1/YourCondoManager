@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import passport from "passport";
 import { Strategy as GoogleStrategy, type Profile } from "passport-google-oauth20";
 import { storage } from "./storage";
+import { log } from "./logger";
 
 type SessionWithOAuth = {
   oauthReturnTo?: string;
@@ -170,11 +171,17 @@ function configurePassport() {
   passport.deserializeUser(async (userId: string, done) => {
     try {
       const user = await storage.getAuthUserById(String(userId));
-      if (!user || user.isActive !== 1) {
+      if (!user) {
+        log(`[auth][deserialize] user not found userId=${userId}`, "auth");
+        return done(null, false);
+      }
+      if (user.isActive !== 1) {
+        log(`[auth][deserialize] user inactive userId=${userId} email=${user.email} isActive=${user.isActive}`, "auth");
         return done(null, false);
       }
       return done(null, user as Express.User);
     } catch (error) {
+      log(`[auth][deserialize] error userId=${userId} err=${(error as Error).message}`, "auth");
       return done(error as Error);
     }
   });
@@ -192,13 +199,17 @@ function configurePassport() {
         try {
           const providerAccountId = profile.id?.trim();
           if (!providerAccountId) {
+            log("[auth][google] missing provider account id", "auth");
             return done(new Error("Google profile is missing account id"));
           }
 
           const email = profile.emails?.[0]?.value?.trim().toLowerCase() || "";
           if (!email) {
+            log(`[auth][google] missing email for providerAccountId=${providerAccountId}`, "auth");
             return done(new Error("Google profile is missing a verified email"));
           }
+
+          log(`[auth][google] callback for email=${email} providerAccountId=${providerAccountId}`, "auth");
 
           const names = profileNames(profile);
           const avatarUrl = profilePictureUrl(profile);
@@ -208,13 +219,18 @@ function configurePassport() {
           const external = await storage.getAuthExternalAccount("google", providerAccountId);
           if (external) {
             linkedUser = await storage.getAuthUserById(external.userId);
+            log(`[auth][google] external account found userId=${external.userId} linkedUser=${linkedUser ? "found" : "missing"}`, "auth");
+          } else {
+            log(`[auth][google] no external account for providerAccountId=${providerAccountId}`, "auth");
           }
 
           if (!linkedUser) {
             linkedUser = await storage.getAuthUserByEmail(email);
+            log(`[auth][google] email lookup email=${email} found=${!!linkedUser}`, "auth");
           }
 
           const bootstrap = await resolveExistingAdminForAuthenticatedUser({ email });
+          log(`[auth][google] admin bootstrap email=${email} adminUserId=${bootstrap.adminUserId ?? "null"}`, "auth");
 
           if (!linkedUser) {
             linkedUser = await storage.createAuthUser({
@@ -225,7 +241,9 @@ function configurePassport() {
               avatarUrl,
               isActive: 1,
             });
+            log(`[auth][google] created new auth user id=${linkedUser.id} email=${email} adminUserId=${bootstrap.adminUserId ?? "null"}`, "auth");
           } else {
+            const prevAdminUserId = linkedUser.adminUserId;
             linkedUser = await storage.updateAuthUser(linkedUser.id, {
               adminUserId: bootstrap.adminUserId,
               firstName: names.firstName ?? linkedUser.firstName,
@@ -233,6 +251,7 @@ function configurePassport() {
               avatarUrl: avatarUrl ?? linkedUser.avatarUrl,
               isActive: 1,
             }) ?? linkedUser;
+            log(`[auth][google] updated auth user id=${linkedUser.id} email=${email} adminUserId=${prevAdminUserId ?? "null"} -> ${bootstrap.adminUserId ?? "null"} isActive=1`, "auth");
           }
 
           await storage.upsertAuthExternalAccount({
@@ -244,8 +263,10 @@ function configurePassport() {
           });
           await storage.touchAuthUserLogin(linkedUser.id);
 
+          log(`[auth][google] login complete email=${email} authUserId=${linkedUser.id} adminUserId=${linkedUser.adminUserId ?? "null"} isActive=${linkedUser.isActive}`, "auth");
           return done(null, linkedUser as Express.User);
         } catch (error) {
+          log(`[auth][google] error: ${(error as Error).message}`, "auth");
           return done(error as Error);
         }
       },
@@ -385,16 +406,28 @@ export function registerAuthRoutes(app: Express) {
     if (!payload) return res.status(400).json({ message: "payload is required" });
 
     const verified = verifyAuthRestoreToken(payload);
-    if (!verified) return res.status(403).json({ message: "Invalid or expired auth restore payload" });
+    if (!verified) {
+      log("[auth][restore] token invalid or expired", "auth");
+      return res.status(403).json({ message: "Invalid or expired auth restore payload" });
+    }
 
     const user = await storage.getAuthUserById(verified.userId);
-    if (!user || user.isActive !== 1) {
+    if (!user) {
+      log(`[auth][restore] user not found userId=${verified.userId}`, "auth");
+      return res.status(403).json({ message: "Auth user not found or inactive" });
+    }
+    if (user.isActive !== 1) {
+      log(`[auth][restore] user inactive userId=${verified.userId} email=${user.email} isActive=${user.isActive}`, "auth");
       return res.status(403).json({ message: "Auth user not found or inactive" });
     }
 
     req.login(user as Express.User, async (error) => {
-      if (error) return res.status(500).json({ message: "Failed to restore session" });
+      if (error) {
+        log(`[auth][restore] req.login failed userId=${user.id} err=${error.message}`, "auth");
+        return res.status(500).json({ message: "Failed to restore session" });
+      }
       await storage.touchAuthUserLogin(user.id);
+      log(`[auth][restore] session restored userId=${user.id} email=${user.email} adminUserId=${user.adminUserId ?? "null"}`, "auth");
       return res.status(201).json({ authenticated: true, user });
     });
   });
