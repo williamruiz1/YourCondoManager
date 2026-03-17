@@ -538,6 +538,15 @@ export default function AssociationContextPage() {
           { label: "Open Documents", href: "/app/documents" },
           { label: "Open Communications", href: "/app/communications" },
           { label: "Open Units", href: "/app/units" },
+          {
+            label: "Copy Owner Portal Link",
+            onClick: () => {
+              const url = `${window.location.origin}/owner-portal`;
+              navigator.clipboard.writeText(url).then(() => {
+                toast({ title: "Link copied", description: url });
+              });
+            },
+          },
         ]}
       />
 

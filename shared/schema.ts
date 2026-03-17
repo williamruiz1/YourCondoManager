@@ -2120,9 +2120,10 @@ export type CollectionsHandoff = typeof collectionsHandoffs.$inferSelect;
 export type InsertCollectionsHandoff = z.infer<typeof insertCollectionsHandoffSchema>;
 
 // Portal login OTP tokens for verifiable authentication
+// associationId is nullable — OTP is now issued per-email across all associations
 export const portalLoginTokens = pgTable("portal_login_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  associationId: varchar("association_id").notNull().references(() => associations.id),
+  associationId: varchar("association_id").references(() => associations.id),
   email: text("email").notNull(),
   otpHash: text("otp_hash").notNull(),
   expiresAt: timestamp("expires_at").notNull(),

@@ -350,8 +350,14 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
   const trackingToken = trackingEnabled ? crypto.randomUUID() : null;
   const emailLog = await createEmailLog(payload, trackingToken);
 
+  // Append owner portal link to all outbound emails
+  const appBaseUrl = (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+  const portalUrl = `${appBaseUrl}/owner-portal`;
+  const portalFooterHtml = `<hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb"/><p style="font-size:12px;color:#6b7280;margin:0">Access your owner portal anytime at <a href="${portalUrl}" style="color:#4f46e5">${portalUrl}</a></p>`;
+  const portalFooterText = `\n\n---\nAccess your owner portal: ${portalUrl}`;
+
   let html = payload.html?.trim() || (payload.text?.trim() ? textToHtml(payload.text.trim()) : "");
-  const text = payload.text?.trim() || "";
+  const text = (payload.text?.trim() || "") + (payload.text?.trim() ? portalFooterText : "");
   if (!html && !text) {
     await updateEmailLog(emailLog.id, { status: "failed", errorMessage: "Email body is required" });
     return {
@@ -362,6 +368,8 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
       errorMessage: "Email body is required",
     };
   }
+
+  if (html) html = html + portalFooterHtml;
 
   if (trackingEnabled && html) {
     html = appendTrackingPixel(rewriteTrackedLinks(html, emailLog.id, config), emailLog.id, config);

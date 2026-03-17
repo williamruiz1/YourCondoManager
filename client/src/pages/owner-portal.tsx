@@ -123,8 +123,16 @@ function portalHeaders(portalAccessId: string) {
   };
 }
 
+type AssociationChoice = {
+  portalAccessId: string;
+  associationId: string;
+  associationName: string;
+  associationCity: string | null;
+  role: string;
+  email: string;
+};
+
 export default function OwnerPortalPage() {
-  const [associationId, setAssociationId] = useState("");
   const [email, setEmail] = useState("");
   const [portalAccessId, setPortalAccessId] = useState(() => window.localStorage.getItem("portalAccessId") || "");
   const [onboardingDismissed, setOnboardingDismissed] = useState(
@@ -168,16 +176,17 @@ export default function OwnerPortalPage() {
   const [paymentDescription, setPaymentDescription] = useState("HOA dues payment");
   const [paymentReceipt, setPaymentReceipt] = useState<{ amount: number; description: string; date: string; confirmationNumber?: string } | null>(null);
 
-  const [otpStep, setOtpStep] = useState<"email" | "otp">("email");
+  const [otpStep, setOtpStep] = useState<"email" | "otp" | "pick">("email");
   const [otp, setOtp] = useState("");
   const [otpSimulated, setOtpSimulated] = useState<string | null>(null);
+  const [associationChoices, setAssociationChoices] = useState<AssociationChoice[]>([]);
 
   const requestLogin = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/portal/request-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ associationId, email }),
+        body: JSON.stringify({ email }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json() as Promise<{ message: string; simulatedOtp?: string; simulationMode?: boolean }>;
@@ -189,18 +198,23 @@ export default function OwnerPortalPage() {
   });
 
   const verifyLogin = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (chosenAssociationId?: string) => {
       const res = await fetch("/api/portal/verify-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ associationId, email, otp }),
+        body: JSON.stringify({ email, otp, ...(chosenAssociationId ? { associationId: chosenAssociationId } : {}) }),
       });
       if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<{ portalAccessId: string }>;
+      return res.json() as Promise<{ portalAccessId?: string; associations?: AssociationChoice[] }>;
     },
     onSuccess: (result) => {
-      setPortalAccessId(result.portalAccessId);
-      window.localStorage.setItem("portalAccessId", result.portalAccessId);
+      if (result.associations && result.associations.length > 1) {
+        setAssociationChoices(result.associations);
+        setOtpStep("pick");
+      } else if (result.portalAccessId) {
+        setPortalAccessId(result.portalAccessId);
+        window.localStorage.setItem("portalAccessId", result.portalAccessId);
+      }
     },
   });
 
@@ -210,6 +224,16 @@ export default function OwnerPortalPage() {
     queryFn: async () => {
       const res = await fetch("/api/portal/me", { headers: portalHeaders(portalAccessId) });
       if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  const { data: myAssociations } = useQuery<AssociationChoice[]>({
+    queryKey: ["/api/portal/my-associations", portalAccessId || "none"],
+    enabled: Boolean(portalAccessId),
+    queryFn: async () => {
+      const res = await fetch("/api/portal/my-associations", { headers: portalHeaders(portalAccessId) });
+      if (!res.ok) return [];
       return res.json();
     },
   });
@@ -1092,34 +1116,64 @@ export default function OwnerPortalPage() {
         <h1 className="text-2xl font-bold tracking-tight">Owner Portal</h1>
         <p className="text-muted-foreground">
           {otpStep === "email"
-            ? "Enter your association ID and email to receive a one-time login code."
+            ? "Enter your email address to receive a one-time login code."
+            : otpStep === "pick"
+            ? "You have access to multiple associations. Select one to continue."
             : "Check your email for a 6-digit login code. It expires in 15 minutes."}
         </p>
         <Card>
           <CardContent className="p-6 space-y-3">
-            {otpStep === "email" ? (
+            {otpStep === "email" && (
               <>
-                <Input placeholder="Association ID" value={associationId} onChange={(e) => setAssociationId(e.target.value)} />
-                <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <Input placeholder="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && email && requestLogin.mutate()} />
                 {requestLogin.isError && <p className="text-sm text-destructive">{(requestLogin.error as Error).message}</p>}
-                <Button onClick={() => requestLogin.mutate()} disabled={requestLogin.isPending || !associationId || !email} className="w-full">
+                <Button onClick={() => requestLogin.mutate()} disabled={requestLogin.isPending || !email} className="w-full">
                   {requestLogin.isPending ? "Sending code…" : "Send Login Code"}
                 </Button>
               </>
-            ) : (
+            )}
+            {otpStep === "otp" && (
               <>
-                <p className="text-sm text-muted-foreground">Signed in as: <strong>{email}</strong></p>
+                <p className="text-sm text-muted-foreground">Code sent to: <strong>{email}</strong></p>
                 {otpSimulated && (
                   <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
                     <strong>Simulation mode:</strong> No email provider configured. Your code is: <strong className="font-mono text-lg">{otpSimulated}</strong>
                   </div>
                 )}
-                <Input placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} maxLength={6} className="font-mono text-center text-lg tracking-widest" />
+                <Input placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} maxLength={6}
+                  className="font-mono text-center text-lg tracking-widest"
+                  onKeyDown={(e) => e.key === "Enter" && otp.length >= 6 && verifyLogin.mutate(undefined)} />
                 {verifyLogin.isError && <p className="text-sm text-destructive">{(verifyLogin.error as Error).message}</p>}
-                <Button onClick={() => verifyLogin.mutate()} disabled={verifyLogin.isPending || otp.length < 6} className="w-full">
+                <Button onClick={() => verifyLogin.mutate(undefined)} disabled={verifyLogin.isPending || otp.length < 6} className="w-full">
                   {verifyLogin.isPending ? "Verifying…" : "Verify & Sign In"}
                 </Button>
                 <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); }}>
+                  Use a different email
+                </Button>
+              </>
+            )}
+            {otpStep === "pick" && (
+              <>
+                <p className="text-sm text-muted-foreground">Signed in as: <strong>{email}</strong></p>
+                <div className="space-y-2">
+                  {associationChoices.map((choice) => (
+                    <Button
+                      key={choice.portalAccessId}
+                      variant="outline"
+                      className="w-full justify-start h-auto py-3 px-4"
+                      onClick={() => verifyLogin.mutate(choice.associationId)}
+                      disabled={verifyLogin.isPending}
+                    >
+                      <div className="text-left">
+                        <div className="font-medium">{choice.associationName}</div>
+                        {choice.associationCity && <div className="text-xs text-muted-foreground">{choice.associationCity}</div>}
+                        <div className="text-xs text-muted-foreground capitalize">{choice.role}</div>
+                      </div>
+                    </Button>
+                  ))}
+                </div>
+                <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); setAssociationChoices([]); }}>
                   Use a different email
                 </Button>
               </>
@@ -1134,18 +1188,47 @@ export default function OwnerPortalPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Association Portal</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {myAssociations && myAssociations.length > 1
+              ? (myAssociations.find((a) => a.portalAccessId === portalAccessId)?.associationName ?? "Association Portal")
+              : "Association Portal"}
+          </h1>
           <p className="text-muted-foreground">Signed in as {displayName}</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => {
-            window.localStorage.removeItem("portalAccessId");
-            setPortalAccessId("");
-          }}
-        >
-          Sign Out
-        </Button>
+        <div className="flex items-center gap-2">
+          {myAssociations && myAssociations.length > 1 && (
+            <Select
+              value={portalAccessId}
+              onValueChange={(val) => {
+                setPortalAccessId(val);
+                window.localStorage.setItem("portalAccessId", val);
+              }}
+            >
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Switch association" />
+              </SelectTrigger>
+              <SelectContent>
+                {myAssociations.map((a) => (
+                  <SelectItem key={a.portalAccessId} value={a.portalAccessId}>
+                    <div>
+                      <div className="font-medium">{a.associationName}</div>
+                      {a.associationCity && <div className="text-xs text-muted-foreground">{a.associationCity}</div>}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.localStorage.removeItem("portalAccessId");
+              setPortalAccessId("");
+            }}
+          >
+            Sign Out
+          </Button>
+        </div>
       </div>
 
       {!onboardingDismissed && !me?.hasBoardAccess && (

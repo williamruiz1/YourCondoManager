@@ -6984,40 +6984,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Portal OTP login — step 1: request a one-time code
+  // Portal OTP login — step 1: request a one-time code (email-only, no association ID required)
   app.post("/api/portal/request-login", async (req, res) => {
     try {
-      const associationId = getParam(req.body?.associationId);
       const email = getParam(req.body?.email).trim().toLowerCase();
-      if (!associationId || !email) return res.status(400).json({ message: "associationId and email are required" });
+      if (!email) return res.status(400).json({ message: "email is required" });
 
-      const access = await storage.getPortalAccessByAssociationEmail(associationId, email);
-      // Always respond with success to avoid email enumeration
-      if (!access || access.status === "revoked") {
+      // Check whether this email has any active portal access across any association
+      const accesses = await storage.getPortalAccessesByEmail(email);
+      const activeAccesses = accesses.filter((a) => a.status === "active" || a.status === "invited");
+
+      // Always respond with same message to avoid email enumeration
+      if (activeAccesses.length === 0) {
         return res.json({ message: "If an account exists for this email, a login code has been sent." });
       }
 
-      // Generate a 6-digit OTP
+      // Generate a 6-digit OTP (one token covers all associations for this email)
       const otp = String(Math.floor(100000 + Math.random() * 900000));
       const otpHash = createHmac("sha256", process.env.SESSION_SECRET || "portal-otp-secret").update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
-      await db.delete(portalLoginTokens).where(
-        and(
-          eq(portalLoginTokens.associationId, associationId),
-          eq(portalLoginTokens.email, email),
-        ),
-      );
-      await db.insert(portalLoginTokens).values({ associationId, email, otpHash, expiresAt });
+      // Replace any existing pending token for this email
+      await db.delete(portalLoginTokens).where(eq(portalLoginTokens.email, email));
+      await db.insert(portalLoginTokens).values({ associationId: null, email, otpHash, expiresAt });
 
-      // Attempt to send the OTP via email; fall back to simulation mode
+      // Send the OTP via email; fall back to simulation mode
       const emailProviderReady = Boolean(process.env.SENDGRID_API_KEY || process.env.SMTP_HOST || process.env.GOOGLE_OAUTH_CLIENT_ID);
       if (emailProviderReady) {
         try {
           await sendPlatformEmail({
             to: email,
-            subject: "Your portal login code",
-            html: `<p>Your login code is: <strong>${otp}</strong></p><p>This code expires in 15 minutes.</p>`,
+            subject: "Your owner portal login code",
+            html: `<p>Your login code is: <strong style="font-size:1.5em;letter-spacing:0.1em">${otp}</strong></p><p>This code expires in 15 minutes.</p>`,
             text: `Your login code is: ${otp}\n\nThis code expires in 15 minutes.`,
           });
         } catch (emailErr: any) {
@@ -7029,7 +7027,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const response: Record<string, unknown> = { message: "If an account exists for this email, a login code has been sent." };
       if (!emailProviderReady) {
-        // Surface OTP in response when running without a real email provider
         response.simulatedOtp = otp;
         response.simulationMode = true;
       }
@@ -7039,18 +7036,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Portal OTP login — step 2: verify code and start session
+  // Portal OTP login — step 2: verify code
+  // Returns either { portalAccessId } (single association) or { associations: [...] } (picker needed)
   app.post("/api/portal/verify-login", async (req, res) => {
     try {
-      const associationId = getParam(req.body?.associationId);
       const email = getParam(req.body?.email).trim().toLowerCase();
       const otp = getParam(req.body?.otp).trim();
-      if (!associationId || !email || !otp) return res.status(400).json({ message: "associationId, email, and otp are required" });
+      // Optional: owner has already chosen an association from the picker
+      const chosenAssociationId = getParam(req.body?.associationId) || null;
+      if (!email || !otp) return res.status(400).json({ message: "email and otp are required" });
 
       const [token] = await db
         .select()
         .from(portalLoginTokens)
-        .where(and(eq(portalLoginTokens.associationId, associationId), eq(portalLoginTokens.email, email)))
+        .where(eq(portalLoginTokens.email, email))
         .limit(1);
 
       if (!token) return res.status(400).json({ message: "No pending login code. Request a new one." });
@@ -7068,9 +7067,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Mark token used
       await db.update(portalLoginTokens).set({ usedAt: new Date() }).where(eq(portalLoginTokens.id, token.id));
 
-      // Resolve portal access (same as legacy session endpoint)
-      const access = await storage.getPortalAccessByAssociationEmail(associationId, email);
-      if (!access) return res.status(404).json({ message: "No portal access found" });
+      // Resolve all active portal accesses for this email
+      const allAccesses = await storage.getPortalAccessesByEmail(email);
+      const activeAccesses = allAccesses.filter((a) => a.status === "active" || a.status === "invited");
+      if (activeAccesses.length === 0) return res.status(404).json({ message: "No active portal access found" });
+
+      // If owner has multiple associations and hasn't chosen yet, return the list
+      if (activeAccesses.length > 1 && !chosenAssociationId) {
+        const assocIds = activeAccesses.map((a) => a.associationId);
+        const allAssocs = await storage.getAssociations();
+        const assocMap = new Map(allAssocs.filter((a) => assocIds.includes(a.id)).map((a) => [a.id, a]));
+        return res.json({
+          associations: activeAccesses.map((a) => ({
+            portalAccessId: a.id,
+            associationId: a.associationId,
+            associationName: assocMap.get(a.associationId)?.name ?? a.associationId,
+            associationCity: assocMap.get(a.associationId)?.city ?? null,
+            role: a.role,
+            email: a.email,
+          })),
+        });
+      }
+
+      // Single association, or owner already picked one
+      const access = chosenAssociationId
+        ? activeAccesses.find((a) => a.associationId === chosenAssociationId)
+        : activeAccesses[0];
+      if (!access) return res.status(404).json({ message: "No portal access found for that association" });
 
       let sessionAccess = access;
       if (access.status === "invited" && access.boardRoleId) {
@@ -7127,6 +7150,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       effectiveRole: req.portalEffectiveRole || access.role,
       boardRoleId: req.portalBoardRoleId ?? access.boardRoleId ?? null,
     });
+  });
+
+  // Returns all associations the signed-in owner's email has portal access to (for switcher)
+  app.get("/api/portal/my-associations", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const email = req.portalEmail || "";
+      const accesses = await storage.getPortalAccessesByEmail(email);
+      const active = accesses.filter((a) => a.status === "active" || a.status === "invited");
+      const allAssocs = await storage.getAssociations();
+      const assocMap = new Map(allAssocs.map((a) => [a.id, a]));
+      res.json(active.map((a) => ({
+        portalAccessId: a.id,
+        associationId: a.associationId,
+        associationName: assocMap.get(a.associationId)?.name ?? a.associationId,
+        associationCity: assocMap.get(a.associationId)?.city ?? null,
+        role: a.role,
+        email: a.email,
+      })));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
   });
 
   app.get("/api/portal/documents", requirePortal, async (req: PortalRequest, res) => {

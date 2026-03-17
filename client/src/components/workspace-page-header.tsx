@@ -18,7 +18,8 @@ type BreadcrumbCrumb = {
 
 type Shortcut = {
   label: string;
-  href: string;
+  href?: string;
+  onClick?: () => void;
 };
 
 export function WorkspacePageHeader({
@@ -66,11 +67,17 @@ export function WorkspacePageHeader({
           </div>
           {shortcuts?.length ? (
             <div className="flex gap-2 flex-wrap">
-              {shortcuts.map((shortcut) => (
-                <Button key={shortcut.href} asChild size="sm" variant="outline">
-                  <Link href={shortcut.href}>{shortcut.label}</Link>
-                </Button>
-              ))}
+              {shortcuts.map((shortcut, i) =>
+                shortcut.onClick ? (
+                  <Button key={i} size="sm" variant="outline" onClick={shortcut.onClick}>
+                    {shortcut.label}
+                  </Button>
+                ) : (
+                  <Button key={shortcut.href} asChild size="sm" variant="outline">
+                    <Link href={shortcut.href!}>{shortcut.label}</Link>
+                  </Button>
+                )
+              )}
             </div>
           ) : null}
         </div>
