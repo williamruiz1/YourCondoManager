@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict kKbPzTM5j5DXMneu6Q7MDdOYTnyWlTYwggjXZvynMSw5tTAsTmmFF89swuMtGhj
+\restrict 4Xz2vJqXshBEcACWQFnkDhkGHDVNU6JJenONid1PQuYBPI6sloYjKCEtfHnhfnr
 
 -- Dumped from database version 16.10
 -- Dumped by pg_dump version 16.10
@@ -4298,8 +4298,6 @@ ec3a74f1-beb4-4786-9e1b-c52126e02aea	b7e6e265-f34e-47e3-9204-04db6da2b083	e60c34
 --
 
 COPY public.budget_lines (id, budget_version_id, account_id, category_id, line_item_name, planned_amount, sort_order, created_at, updated_at) FROM stdin;
-39f08e1c-07bc-4393-acfc-849e3b2d34ad	0b0a4fa3-ed41-4145-809d-83eecaa31b2e	\N	47158156-38dc-40ff-b594-70cf3b6b9ae2	Water Utilities	1200	1	2026-03-07 17:55:57.158838	2026-03-07 17:55:57.158
-bcaaecb3-a8c0-4f42-9d36-31a2b928fa45	f40b143e-a2eb-470f-8b12-d005d89e21c9	\N	8378e8e0-7d8f-46d3-8faa-9fffbe37b708	Water Utilities	1200	1	2026-03-07 18:37:31.965432	2026-03-07 18:37:31.965
 \.
 
 
@@ -4308,8 +4306,6 @@ bcaaecb3-a8c0-4f42-9d36-31a2b928fa45	f40b143e-a2eb-470f-8b12-d005d89e21c9	\N	837
 --
 
 COPY public.budget_versions (id, budget_id, version_number, status, notes, ratified_at, created_at, updated_at) FROM stdin;
-0b0a4fa3-ed41-4145-809d-83eecaa31b2e	b8c22e13-2a91-4091-81d2-74a7c448dce2	1	ratified	runtime verify	2026-03-07 17:55:57.169	2026-03-07 17:55:57.154342	2026-03-07 17:55:57.169
-f40b143e-a2eb-470f-8b12-d005d89e21c9	73b1cb8f-7cb1-4fca-8174-51f8a9b7e39b	1	ratified	runtime verify	2026-03-07 18:37:31.97	2026-03-07 18:37:31.961805	2026-03-07 18:37:31.97
 \.
 
 
@@ -4363,16 +4359,6 @@ e30d9d81-c1b3-4aff-b95b-6fe403908277	79a04089-c591-4e0c-8a52-1266355a7d83	\N	\N	
 --
 
 COPY public.clause_tags (id, clause_record_id, tag, created_at) FROM stdin;
-00170371-7800-42cb-a50c-e775ef61e7e5	64dc7d44-08f4-42cd-8067-62f460704ccc	meetings	2026-03-07 18:12:38.032288
-bcb4dd65-c9e0-4c3b-b5cc-8749b57cebf2	95236d59-99f9-4971-a8c3-a1d8b64620dd	meetings	2026-03-07 18:12:38.039832
-f81d481c-ff3c-4c76-8086-9b6dd01b42ba	95236d59-99f9-4971-a8c3-a1d8b64620dd	budget	2026-03-07 18:12:38.043491
-6ec1a080-a8b8-4282-b074-cc088e840149	95236d59-99f9-4971-a8c3-a1d8b64620dd	notice	2026-03-07 18:12:38.051036
-8c4604e5-2618-4928-9199-6287648896f3	5adfd1b8-a066-4a3a-a044-7e789b18e589	budget	2026-03-07 18:12:38.05973
-b7fd7068-9898-4ef0-9f34-1a03169a0dee	0de357ba-c18f-44d7-b630-5c7255ee7b7f	meetings	2026-03-07 18:37:53.743197
-efb8d76b-fc8d-4e40-883b-9ec5d3649ba2	a6196f56-1361-4ebd-845f-7717ecd7a6d1	meetings	2026-03-07 18:37:53.749643
-8a0435e6-0eea-47d6-b6d5-27546459f9c5	a6196f56-1361-4ebd-845f-7717ecd7a6d1	budget	2026-03-07 18:37:53.752591
-c0243b60-1c06-47fb-bf11-59b749155376	a6196f56-1361-4ebd-845f-7717ecd7a6d1	notice	2026-03-07 18:37:53.759804
-3c0cc2a4-1168-45b8-a84c-eadc67769fc6	e04d43fb-58b3-4103-a910-24c152ee40d2	budget	2026-03-07 18:37:53.769078
 c830646c-bcaf-4332-9fa9-4531859f97c3	b0467640-da3a-480e-831b-e19507f5c663	meetings	2026-03-09 15:39:07.434859
 04805fcb-a006-4186-ac9c-257c1ba4a9ad	b0467640-da3a-480e-831b-e19507f5c663	budget	2026-03-09 15:39:07.439693
 1e5bec51-00bf-4aaf-9695-0ae7df9349bd	e30d9d81-c1b3-4aff-b95b-6fe403908277	meetings	2026-03-09 15:39:33.299597
@@ -4467,13 +4453,6 @@ COPY public.document_tags (id, document_id, entity_type, entity_id, created_at) 
 --
 
 COPY public.document_versions (id, document_id, version_number, title, file_url, uploaded_by, created_at) FROM stdin;
-fa7008fb-c528-4136-a972-46ee2eeb1a9e	2668afe8-a4c3-4851-8a40-eb06a03796a3	1	Owner Packet A	/api/uploads/a.pdf	m5-verify-1772907779277@local	2026-03-07 18:22:59.369814
-9ba2a30c-719b-4892-9c45-30ec05d9835b	21f6b518-5a35-49ab-970d-f062da70acb7	1	Owner Packet B	/api/uploads/b.pdf	m5-verify-1772907779277@local	2026-03-07 18:22:59.380009
-4d1170a5-0680-4c2a-b6be-7601bc5b5788	fc570ce4-cfc6-4b37-933c-7b5afe602ec7	1	Owner Packet A	/api/uploads/a.pdf	m5-verify-1772907792763@local	2026-03-07 18:23:12.844936
-f45f1f6e-4d0d-4d3f-8e2c-4654a1d68c59	f4d36290-993b-4e78-a0c9-71de870b4190	1	Owner Packet B	/api/uploads/b.pdf	m5-verify-1772907792763@local	2026-03-07 18:23:12.854385
-641a63e5-be50-476c-a377-0555d64513c1	eb887f00-0d0d-464b-8db1-3d8818d67df8	1	Owner Packet A	/api/uploads/a.pdf	m5-verify-1772908684646@local	2026-03-07 18:38:04.733854
-44df6bc5-ad02-4ac9-b339-d6010530f280	84135731-642f-472d-9c93-795c539a1f63	1	Owner Packet B	/api/uploads/b.pdf	m5-verify-1772908684646@local	2026-03-07 18:38:04.743263
-e3b3f2bb-0adf-411f-b230-a021bdc902ac	6017c843-3e44-4b47-9cdc-2becc0160be3	1	Second Pass Upload	/api/uploads/1772920877166-613430235.txt	admin@local	2026-03-07 22:01:17.173214
 126d5d33-932b-445d-9ab8-bb8f97eef458	dff4fe33-2ebb-4784-aeac-234a6a1050db	1	CHC Bylaws	/api/uploads/1773680081933-729318237.pdf	William Ruiz	2026-03-16 16:54:42.413823
 4fcdde69-ea04-4ebb-9770-878888fdb4a7	57c9c8bd-2472-4521-9374-d70515b41b9b	1	CHC CT SOT Incorporation	/api/uploads/1773755295172-457800801.pdf	William Ruiz	2026-03-17 13:48:15.889651
 d8e5e9da-e0f8-4bae-bd7d-c8e3cc5bfd0d	1f844ff3-d406-493b-8b56-bd359d6d23df	1	CHC Declaration	/api/uploads/1773755335727-687250294.pdf	William Ruiz	2026-03-17 13:48:55.964457
@@ -4668,8 +4647,6 @@ COPY public.maintenance_schedule_templates (id, association_id, unit_id, vendor_
 --
 
 COPY public.meeting_agenda_items (id, meeting_id, title, description, order_index, created_at) FROM stdin;
-1077fd8d-b3a0-446b-83eb-ff666ff99f77	9676ea3c-144d-48c7-8ab8-ff94e4bed136	Adopt annual policy	Discuss and vote	1	2026-03-07 18:04:58.068506
-1dd98d0c-594f-4170-b803-2be9250717cb	61b91342-8ed1-4c4e-b03e-2925a69f121b	Adopt annual policy	Discuss and vote	1	2026-03-07 18:37:42.83769
 \.
 
 
@@ -4678,8 +4655,6 @@ COPY public.meeting_agenda_items (id, meeting_id, title, description, order_inde
 --
 
 COPY public.meeting_notes (id, meeting_id, note_type, content, created_by, created_at, updated_at) FROM stdin;
-579fb5c8-a507-43e5-a61a-dd1b46204c92	9676ea3c-144d-48c7-8ab8-ff94e4bed136	minutes	Discussion opened with quorum present.	m3-verify-1772906698033@local	2026-03-07 18:04:58.075222	2026-03-07 18:04:58.074
-40c158c3-9197-4f27-91dd-02de23fb7326	61b91342-8ed1-4c4e-b03e-2925a69f121b	minutes	Discussion opened with quorum present.	m3-verify-1772908662803@local	2026-03-07 18:37:42.841509	2026-03-07 18:37:42.84
 \.
 
 
@@ -5026,10 +5001,6 @@ COPY public.special_assessments (id, association_id, name, total_amount, start_d
 --
 
 COPY public.suggested_links (id, clause_record_id, entity_type, entity_id, confidence_score, is_approved, created_at, updated_at) FROM stdin;
-e017809c-e307-4717-9109-f6d013555380	95236d59-99f9-4971-a8c3-a1d8b64620dd	governance-template-item	budget-review	0.7	0	2026-03-07 18:12:38.046592	2026-03-07 18:12:38.046
-59f7ac64-bb43-4b59-827b-1bfceea3f4de	5adfd1b8-a066-4a3a-a044-7e789b18e589	governance-template-item	budget-review	0.7	1	2026-03-07 18:12:38.062037	2026-03-07 18:12:38.074
-bc5f4438-0cc2-4edd-93f8-0afc5e015583	a6196f56-1361-4ebd-845f-7717ecd7a6d1	governance-template-item	budget-review	0.7	0	2026-03-07 18:37:53.756126	2026-03-07 18:37:53.755
-b68b10d0-4e1d-4e69-ba69-d6cf51187c81	e04d43fb-58b3-4103-a910-24c152ee40d2	governance-template-item	budget-review	0.7	1	2026-03-07 18:37:53.772547	2026-03-07 18:37:53.784
 36498c1d-61a1-4264-b2c5-808ef09056df	b0467640-da3a-480e-831b-e19507f5c663	governance-template-item	budget-review	0.7	0	2026-03-09 15:39:07.442496	2026-03-09 15:39:07.442
 e387fe7f-e4a9-45a0-87c1-a30aba151269	e30d9d81-c1b3-4aff-b95b-6fe403908277	governance-template-item	budget-review	0.7	0	2026-03-09 15:39:33.305398	2026-03-09 15:39:33.305
 f0c0408a-ec76-4f3c-bccd-c0d22a059a66	36408554-891f-401b-9c06-8cb5e8d62c41	governance-template-item	budget-review	0.7	0	2026-03-09 15:40:31.280301	2026-03-09 15:40:31.279
@@ -5140,10 +5111,6 @@ COPY public.vendors (id, association_id, name, trade, service_area, primary_cont
 --
 
 COPY public.vote_records (id, resolution_id, voter_person_id, vote_choice, vote_weight, created_at) FROM stdin;
-edada0a0-bb05-4de8-8c7a-f44b46e0b670	4aba28b5-9419-449a-ba88-75eff327abc2	\N	yes	1	2026-03-07 18:04:58.083563
-29387d8d-556a-4928-9b00-3badc75a450a	4aba28b5-9419-449a-ba88-75eff327abc2	\N	no	0.25	2026-03-07 18:04:58.092734
-9f1c4333-8043-4467-9d7e-41fc33f8d8ad	053c2a47-52b4-412a-9a74-55df088015e5	\N	yes	1	2026-03-07 18:37:42.852086
-62f4eaae-7599-457a-a642-ffe2498bed6b	053c2a47-52b4-412a-9a74-55df088015e5	\N	no	0.25	2026-03-07 18:37:42.863242
 \.
 
 
@@ -7713,5 +7680,5 @@ ALTER TABLE ONLY public.work_orders
 -- PostgreSQL database dump complete
 --
 
-\unrestrict kKbPzTM5j5DXMneu6Q7MDdOYTnyWlTYwggjXZvynMSw5tTAsTmmFF89swuMtGhj
+\unrestrict 4Xz2vJqXshBEcACWQFnkDhkGHDVNU6JJenONid1PQuYBPI6sloYjKCEtfHnhfnr
 
