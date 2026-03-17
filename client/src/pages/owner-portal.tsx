@@ -21,6 +21,8 @@ type PortalSession = PortalAccess & {
   hasBoardAccess: boolean;
   effectiveRole: string;
   boardRoleId: string | null;
+  unitNumber: string | null;
+  building: string | null;
 };
 type AssociationOverview = {
   associationId: string;
@@ -180,6 +182,7 @@ export default function OwnerPortalPage() {
   const [otp, setOtp] = useState("");
   const [otpSimulated, setOtpSimulated] = useState<string | null>(null);
   const [associationChoices, setAssociationChoices] = useState<AssociationChoice[]>([]);
+  const [activeTab, setActiveTab] = useState<"overview" | "financials" | "unit" | "maintenance" | "documents" | "notices" | "board">("overview");
 
   const requestLogin = useMutation({
     mutationFn: async () => {
@@ -1112,132 +1115,196 @@ export default function OwnerPortalPage() {
 
   if (!portalAccessId) {
     return (
-      <div className="p-6 max-w-xl mx-auto space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight">Owner Portal</h1>
-        <p className="text-muted-foreground">
-          {otpStep === "email"
-            ? "Enter your email address to receive a one-time login code."
-            : otpStep === "pick"
-            ? "You have access to multiple associations. Select one to continue."
-            : "Check your email for a 6-digit login code. It expires in 15 minutes."}
-        </p>
-        <Card>
-          <CardContent className="p-6 space-y-3">
-            {otpStep === "email" && (
-              <>
-                <Input placeholder="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && email && requestLogin.mutate()} />
-                {requestLogin.isError && <p className="text-sm text-destructive">{(requestLogin.error as Error).message}</p>}
-                <Button onClick={() => requestLogin.mutate()} disabled={requestLogin.isPending || !email} className="w-full">
-                  {requestLogin.isPending ? "Sending code…" : "Send Login Code"}
-                </Button>
-              </>
-            )}
-            {otpStep === "otp" && (
-              <>
-                <p className="text-sm text-muted-foreground">Code sent to: <strong>{email}</strong></p>
-                {otpSimulated && (
-                  <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                    <strong>Simulation mode:</strong> No email provider configured. Your code is: <strong className="font-mono text-lg">{otpSimulated}</strong>
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-md space-y-6">
+          {/* Logo / Brand */}
+          <div className="text-center space-y-1">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-xl font-bold mb-2">
+              YCM
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight">Your Condo Management</h1>
+            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Owner Portal</p>
+            <p className="text-muted-foreground text-sm">
+              {otpStep === "email"
+                ? "Sign in to manage your HOA account, view balances, and submit requests."
+                : otpStep === "pick"
+                ? "You have access to multiple associations. Select one to continue."
+                : "Check your email for a 6-digit login code. It expires in 15 minutes."}
+            </p>
+          </div>
+
+          <Card className="shadow-md">
+            <CardContent className="p-6 space-y-4">
+              {otpStep === "email" && (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Email address</label>
+                    <Input placeholder="you@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && email && requestLogin.mutate()} />
                   </div>
-                )}
-                <Input placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} maxLength={6}
-                  className="font-mono text-center text-lg tracking-widest"
-                  onKeyDown={(e) => e.key === "Enter" && otp.length >= 6 && verifyLogin.mutate(undefined)} />
-                {verifyLogin.isError && <p className="text-sm text-destructive">{(verifyLogin.error as Error).message}</p>}
-                <Button onClick={() => verifyLogin.mutate(undefined)} disabled={verifyLogin.isPending || otp.length < 6} className="w-full">
-                  {verifyLogin.isPending ? "Verifying…" : "Verify & Sign In"}
-                </Button>
-                <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); }}>
-                  Use a different email
-                </Button>
-              </>
-            )}
-            {otpStep === "pick" && (
-              <>
-                <p className="text-sm text-muted-foreground">Signed in as: <strong>{email}</strong></p>
-                <div className="space-y-2">
-                  {associationChoices.map((choice) => (
-                    <Button
-                      key={choice.portalAccessId}
-                      variant="outline"
-                      className="w-full justify-start h-auto py-3 px-4"
-                      onClick={() => verifyLogin.mutate(choice.associationId)}
-                      disabled={verifyLogin.isPending}
-                    >
-                      <div className="text-left">
-                        <div className="font-medium">{choice.associationName}</div>
-                        {choice.associationCity && <div className="text-xs text-muted-foreground">{choice.associationCity}</div>}
-                        <div className="text-xs text-muted-foreground capitalize">{choice.role}</div>
-                      </div>
-                    </Button>
-                  ))}
-                </div>
-                <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); setAssociationChoices([]); }}>
-                  Use a different email
-                </Button>
-              </>
-            )}
-          </CardContent>
-        </Card>
+                  {requestLogin.isError && <p className="text-sm text-destructive">{(requestLogin.error as Error).message}</p>}
+                  <Button onClick={() => requestLogin.mutate()} disabled={requestLogin.isPending || !email} className="w-full">
+                    {requestLogin.isPending ? "Sending code…" : "Send Login Code"}
+                  </Button>
+                </>
+              )}
+              {otpStep === "otp" && (
+                <>
+                  <p className="text-sm text-muted-foreground">Code sent to: <strong>{email}</strong></p>
+                  {otpSimulated && (
+                    <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                      <strong>Dev mode:</strong> No email provider configured. Your code is: <strong className="font-mono text-lg">{otpSimulated}</strong>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">6-digit code</label>
+                    <Input placeholder="000000" value={otp} onChange={(e) => setOtp(e.target.value)} maxLength={6}
+                      className="font-mono text-center text-2xl tracking-widest h-14"
+                      onKeyDown={(e) => e.key === "Enter" && otp.length >= 6 && verifyLogin.mutate(undefined)} />
+                  </div>
+                  {verifyLogin.isError && <p className="text-sm text-destructive">{(verifyLogin.error as Error).message}</p>}
+                  <Button onClick={() => verifyLogin.mutate(undefined)} disabled={verifyLogin.isPending || otp.length < 6} className="w-full">
+                    {verifyLogin.isPending ? "Verifying…" : "Verify & Sign In"}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); }}>
+                    Use a different email
+                  </Button>
+                </>
+              )}
+              {otpStep === "pick" && (
+                <>
+                  <p className="text-sm text-muted-foreground">Signed in as: <strong>{email}</strong></p>
+                  <div className="space-y-2">
+                    {associationChoices.map((choice) => (
+                      <Button
+                        key={choice.portalAccessId}
+                        variant="outline"
+                        className="w-full justify-start h-auto py-3 px-4"
+                        onClick={() => verifyLogin.mutate(choice.associationId)}
+                        disabled={verifyLogin.isPending}
+                      >
+                        <div className="text-left">
+                          <div className="font-medium">{choice.associationName}</div>
+                          {choice.associationCity && <div className="text-xs text-muted-foreground">{choice.associationCity}</div>}
+                          <div className="text-xs text-muted-foreground capitalize">{choice.role}</div>
+                        </div>
+                      </Button>
+                    ))}
+                  </div>
+                  <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); setAssociationChoices([]); }}>
+                    Use a different email
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <p className="text-center text-xs text-muted-foreground">
+            Need help? Contact your association management office.
+          </p>
+        </div>
       </div>
     );
   }
 
+  const currentAssociation = myAssociations?.find((a) => a.portalAccessId === portalAccessId);
+  const associationName = currentAssociation?.associationName ?? "Owner Portal";
+  const associationCity = currentAssociation?.associationCity;
+  const unitLabel = me?.unitNumber
+    ? [me.building ? `Bldg ${me.building}` : null, `Unit ${me.unitNumber}`].filter(Boolean).join(" · ")
+    : null;
+
+  const ownerTabs = [
+    { id: "overview" as const, label: "Overview" },
+    { id: "financials" as const, label: "Financials" },
+    { id: "unit" as const, label: "My Unit" },
+    { id: "maintenance" as const, label: "Maintenance" },
+    { id: "documents" as const, label: "Documents" },
+    { id: "notices" as const, label: "Notices" },
+    ...(me?.hasBoardAccess ? [{ id: "board" as const, label: "Board Workspace" }] : []),
+  ];
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {myAssociations && myAssociations.length > 1
-              ? (myAssociations.find((a) => a.portalAccessId === portalAccessId)?.associationName ?? "Association Portal")
-              : "Association Portal"}
-          </h1>
-          <p className="text-muted-foreground">Signed in as {displayName}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {myAssociations && myAssociations.length > 1 && (
-            <Select
-              value={portalAccessId}
-              onValueChange={(val) => {
-                setPortalAccessId(val);
-                window.localStorage.setItem("portalAccessId", val);
+    <div className="min-h-screen bg-slate-50">
+      {/* Top header bar */}
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="px-6 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">YCM</div>
+            <div className="min-w-0">
+              <div className="font-semibold text-sm truncate">{associationName}</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {associationCity && <span className="text-xs text-muted-foreground">{associationCity}</span>}
+                {unitLabel && <span className="text-xs text-muted-foreground">· {unitLabel}</span>}
+                {me && <span className="text-xs text-muted-foreground capitalize">· {me.effectiveRole}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {myAssociations && myAssociations.length > 1 && (
+              <Select
+                value={portalAccessId}
+                onValueChange={(val) => {
+                  setPortalAccessId(val);
+                  window.localStorage.setItem("portalAccessId", val);
+                  setActiveTab("overview");
+                }}
+              >
+                <SelectTrigger className="w-44 h-8 text-xs">
+                  <SelectValue placeholder="Switch association" />
+                </SelectTrigger>
+                <SelectContent>
+                  {myAssociations.map((a) => (
+                    <SelectItem key={a.portalAccessId} value={a.portalAccessId}>
+                      <div>
+                        <div className="font-medium">{a.associationName}</div>
+                        {a.associationCity && <div className="text-xs text-muted-foreground">{a.associationCity}</div>}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.localStorage.removeItem("portalAccessId");
+                setPortalAccessId("");
               }}
             >
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Switch association" />
-              </SelectTrigger>
-              <SelectContent>
-                {myAssociations.map((a) => (
-                  <SelectItem key={a.portalAccessId} value={a.portalAccessId}>
-                    <div>
-                      <div className="font-medium">{a.associationName}</div>
-                      {a.associationCity && <div className="text-xs text-muted-foreground">{a.associationCity}</div>}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => {
-              window.localStorage.removeItem("portalAccessId");
-              setPortalAccessId("");
-            }}
-          >
-            Sign Out
-          </Button>
+              Sign Out
+            </Button>
+          </div>
+        </div>
+
+        {/* Tab navigation */}
+        <div className="px-6 flex gap-0 overflow-x-auto border-t">
+          {ownerTabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {!onboardingDismissed && !me?.hasBoardAccess && (
+      <div className="p-6 space-y-6 max-w-5xl mx-auto">
+
+      {(activeTab === "overview") && !onboardingDismissed && !me?.hasBoardAccess && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-5 space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-xs uppercase tracking-wide text-primary font-semibold">Welcome to Your Portal</div>
-                <div className="mt-1 font-medium">Here are a few things to get started as a new resident</div>
+                <div className="mt-1 font-medium">Here are a few things to get started</div>
               </div>
               <Button
                 type="button"
@@ -1261,9 +1328,9 @@ export default function OwnerPortalPage() {
                 },
                 {
                   done: Boolean(portalLedger),
-                  label: "Check your account balance",
+                  label: "Review your balance",
                   detail: portalLedger
-                    ? `Current balance: $${portalLedger.balance.toFixed(2)}`
+                    ? `Outstanding balance: $${portalLedger.balance.toFixed(2)}`
                     : "Review any outstanding charges or payments.",
                 },
                 {
@@ -1299,7 +1366,7 @@ export default function OwnerPortalPage() {
         </Card>
       )}
 
-      {me?.hasBoardAccess ? (
+      {me?.hasBoardAccess && activeTab === "board" ? (
         <>
           <Card>
             <CardContent className="p-6 space-y-4">
@@ -2201,8 +2268,65 @@ export default function OwnerPortalPage() {
         </>
       ) : null}
 
+      {/* Overview Tab: balance summary + recent notices */}
+      {activeTab === "overview" && (
+        <>
+          {/* Balance summary card */}
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground">Amount Due</div>
+                  <div className={`text-3xl font-bold mt-0.5 ${(financialDashboard?.balance ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>
+                    {(financialDashboard?.balance ?? 0) > 0
+                      ? `$${(financialDashboard?.balance ?? 0).toFixed(2)}`
+                      : (financialDashboard?.balance ?? 0) < 0
+                      ? `Credit $${Math.abs(financialDashboard?.balance ?? 0).toFixed(2)}`
+                      : "$0.00"}
+                  </div>
+                  {financialDashboard?.nextDueDate && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Next charge due {new Date(financialDashboard.nextDueDate).toLocaleDateString()}
+                    </div>
+                  )}
+                </div>
+                <Button size="sm" onClick={() => setActiveTab("financials")}>View Financials</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Recent notices */}
+          {(notices ?? []).length > 0 && (
+            <Card>
+              <CardContent className="p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold">Recent Notices</h2>
+                  <button className="text-xs text-primary hover:underline" onClick={() => setActiveTab("notices")}>View all</button>
+                </div>
+                <div className="divide-y">
+                  {(notices ?? []).slice(0, 3).map((notice) => (
+                    <div key={notice.id} className="py-2.5 first:pt-0 last:pb-0">
+                      <div className="text-sm font-medium">{notice.subject || "—"}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{notice.bodySnippet || ""}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{new Date(notice.createdAt).toLocaleDateString()}</div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* Documents Tab */}
+      {activeTab === "documents" && (
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-5 space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">Community Documents</h2>
+            <p className="text-sm text-muted-foreground">Association documents shared with owners, including CC&Rs, bylaws, and notices.</p>
+          </div>
+          <div className="rounded-md border overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -2221,65 +2345,82 @@ export default function OwnerPortalPage() {
                   <TableCell><a href={doc.fileUrl} className="underline text-sm" target="_blank" rel="noreferrer">Open</a></TableCell>
                 </TableRow>
               ))}
+              {(documents ?? []).length === 0 && (
+                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-4">No documents available yet.</TableCell></TableRow>
+              )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
+      )}
 
+      {/* Notices Tab */}
+      {activeTab === "notices" && (
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-5 space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">Notices</h2>
+            <p className="text-sm text-muted-foreground">Informational notices sent to your unit from management. These are one-way communications — no reply is needed.</p>
+          </div>
+          <div className="rounded-md border overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Subject</TableHead>
-                <TableHead>Snippet</TableHead>
-                <TableHead>Sent</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead>Message</TableHead>
+                <TableHead>Date</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(notices ?? []).map((notice) => {
+              {(notices ?? []).filter((n) => !(n.relatedType || "").startsWith("maintenance") && !(n.relatedType || "").startsWith("work-order")).map((notice) => {
                 const isPaymentNotice = (notice.relatedType || "").includes("payment") || (notice.subject || "").toLowerCase().includes("payment") || (notice.subject || "").toLowerCase().includes("due") || (notice.subject || "").toLowerCase().includes("balance");
+                const isRecent = (Date.now() - new Date(notice.createdAt).getTime()) < 7 * 24 * 60 * 60 * 1000;
                 return (
                   <TableRow key={notice.id}>
                     <TableCell>
-                      {notice.subject || "-"}
-                      {isPaymentNotice && (
-                        <Badge variant="secondary" className="ml-2 text-xs">Payment Notice</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {notice.subject || "-"}
+                        {isRecent && <Badge variant="default" className="text-xs">New</Badge>}
+                        {isPaymentNotice && <Badge variant="secondary" className="text-xs">Payment</Badge>}
+                      </div>
                     </TableCell>
                     <TableCell className="max-w-[360px] text-sm text-muted-foreground">{notice.bodySnippet || "-"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{new Date(notice.createdAt).toLocaleString()}</TableCell>
-                    <TableCell className="text-right">
-                      {isPaymentNotice && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setPaymentFormOpen(true);
-                            setPaymentReceipt(null);
-                            // Scroll to financial section
-                            document.getElementById("financial-dashboard")?.scrollIntoView({ behavior: "smooth" });
-                          }}
-                        >
-                          Pay Now
-                        </Button>
-                      )}
-                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{new Date(notice.createdAt).toLocaleDateString()}</TableCell>
                   </TableRow>
                 );
               })}
-              {(notices ?? []).length === 0 && (
-                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-4">No notices yet.</TableCell></TableRow>
+              {(notices ?? []).filter((n) => !(n.relatedType || "").startsWith("maintenance") && !(n.relatedType || "").startsWith("work-order")).length === 0 && (
+                <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-4">No notices yet.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
+      )}
 
+      {/* My Unit Tab */}
+      {activeTab === "unit" && (
       <Card>
-        <CardContent className="p-6 space-y-3">
-          <h2 className="text-lg font-semibold">Request Contact Update</h2>
+        <CardContent className="p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">My Unit & Contact Information</h2>
+            <p className="text-sm text-muted-foreground">Submit a request to update your contact details on file. Management will review and apply approved changes.</p>
+          </div>
+
+          {/* Unit context */}
+          {(me?.unitNumber || me?.building) && (
+            <div className="rounded-md border bg-muted/20 p-4 space-y-1">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Your Unit</div>
+              <div className="font-medium">
+                {[me.building ? `Building ${me.building}` : null, me.unitNumber ? `Unit ${me.unitNumber}` : null].filter(Boolean).join(", ")}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="text-sm font-medium mb-3">Request Contact Update</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input placeholder="New phone" value={requestedPhone} onChange={(e) => setRequestedPhone(e.target.value)} />
             <Textarea placeholder="New mailing address" value={requestedMailingAddress} onChange={(e) => setRequestedMailingAddress(e.target.value)} />
@@ -2302,7 +2443,10 @@ export default function OwnerPortalPage() {
           >
             Submit Update Request
           </Button>
+          </div>
 
+          <div>
+            <div className="text-sm font-medium mb-2">Previous Requests</div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -2327,9 +2471,14 @@ export default function OwnerPortalPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
+      )}
 
+      {/* Maintenance Tab */}
+      {activeTab === "maintenance" && (
+      <>
       <Card>
         <CardContent className="p-6 space-y-3">
           <h2 className="text-lg font-semibold">Submit Maintenance Request</h2>
@@ -2432,16 +2581,25 @@ export default function OwnerPortalPage() {
           </Table>
         </CardContent>
       </Card>
+      </>
+      )}
 
-      <Card id="financial-dashboard">
+      {/* Financials Tab */}
+      {activeTab === "financials" && (
+      <>
+      <Card>
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h2 className="text-lg font-semibold">Financial Dashboard</h2>
-              <p className="text-sm text-muted-foreground">Your account balance, upcoming charges, and payment history.</p>
+              <p className="text-sm text-muted-foreground">Your outstanding balance, upcoming charges, and payment history.</p>
             </div>
-            <div className={`text-xl font-bold ${(financialDashboard?.balance ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>
-              {(financialDashboard?.balance ?? 0) > 0 ? "Balance Due" : "Credit"}: ${Math.abs(financialDashboard?.balance ?? 0).toFixed(2)}
+            <div className={`text-2xl font-bold ${(financialDashboard?.balance ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>
+              {(financialDashboard?.balance ?? 0) > 0
+                ? `Amount Due: $${(financialDashboard?.balance ?? 0).toFixed(2)}`
+                : (financialDashboard?.balance ?? 0) < 0
+                ? `Credit: $${Math.abs(financialDashboard?.balance ?? 0).toFixed(2)}`
+                : "Balance: $0.00"}
             </div>
           </div>
 
@@ -2739,6 +2897,10 @@ export default function OwnerPortalPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
+
     </div>
+  </div>
   );
 }

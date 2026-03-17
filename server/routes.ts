@@ -6996,6 +6996,63 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const accesses = await storage.getPortalAccessesByEmail(email);
       const activeAccesses = accesses.filter((a) => a.status === "active" || a.status === "invited");
 
+      // Auto-provision portal access if the email matches a known owner/person with no existing access
+      if (activeAccesses.length === 0) {
+        const matchingPersons = await db
+          .select()
+          .from(persons)
+          .where(ilike(persons.email, email));
+
+        if (matchingPersons.length > 0) {
+          const personIds = matchingPersons.map((p) => p.id);
+
+          // Find all active ownerships for these persons
+          const activeOwnerships = await db
+            .select({ personId: ownerships.personId, unitId: ownerships.unitId })
+            .from(ownerships)
+            .where(and(inArray(ownerships.personId, personIds), isNull(ownerships.endDate)));
+
+          if (activeOwnerships.length > 0) {
+            const unitIds = Array.from(new Set(activeOwnerships.map((o) => o.unitId)));
+
+            // Resolve each unit's associationId
+            const unitRows = await db
+              .select({ id: units.id, associationId: units.associationId })
+              .from(units)
+              .where(inArray(units.id, unitIds));
+
+            const unitAssocMap = new Map(unitRows.map((u) => [u.id, u.associationId]));
+
+            // Build unique (associationId, personId) pairs to provision
+            const toProvision = new Map<string, { associationId: string; personId: string; unitId: string }>();
+            for (const o of activeOwnerships) {
+              const associationId = unitAssocMap.get(o.unitId);
+              if (!associationId) continue;
+              const key = `${associationId}:${o.personId}`;
+              if (!toProvision.has(key)) {
+                toProvision.set(key, { associationId, personId: o.personId, unitId: o.unitId });
+              }
+            }
+
+            // Check for any existing portal access records (any status) before creating
+            const existingByAssoc = new Set(accesses.map((a) => a.associationId));
+
+            for (const { associationId, personId, unitId } of Array.from(toProvision.values())) {
+              if (existingByAssoc.has(associationId)) continue; // already has access (even if suspended/revoked)
+              await storage.createPortalAccess(
+                { associationId, personId, unitId, email, role: "owner", status: "active" },
+                "system:auto-provision"
+              );
+              console.log("[portal-otp][auto-provision] Created portal access", { email, associationId, personId });
+            }
+
+            // Re-fetch after provisioning
+            const refreshed = await storage.getPortalAccessesByEmail(email);
+            activeAccesses.push(...refreshed.filter((a) => a.status === "active" || a.status === "invited"));
+          }
+        }
+      }
+
       // Always respond with same message to avoid email enumeration
       if (activeAccesses.length === 0) {
         return res.json({ message: "If an account exists for this email, a login code has been sent." });
@@ -7011,14 +7068,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await db.insert(portalLoginTokens).values({ associationId: null, email, otpHash, expiresAt });
 
       // Send the OTP via email; fall back to simulation mode
-      const emailProviderReady = Boolean(process.env.SENDGRID_API_KEY || process.env.SMTP_HOST || process.env.GOOGLE_OAUTH_CLIENT_ID);
+      const emailProviderReady = isEmailProviderConfigured();
       if (emailProviderReady) {
         try {
           await sendPlatformEmail({
             to: email,
             subject: "Your owner portal login code",
-            html: `<p>Your login code is: <strong style="font-size:1.5em;letter-spacing:0.1em">${otp}</strong></p><p>This code expires in 15 minutes.</p>`,
-            text: `Your login code is: ${otp}\n\nThis code expires in 15 minutes.`,
+            html: `
+<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+  <div style="margin-bottom:24px">
+    <div style="font-size:18px;font-weight:600;color:#111827">Owner Portal</div>
+  </div>
+  <p style="color:#374151;margin:0 0 16px">Use the code below to sign in to your owner portal. This code expires in <strong>15 minutes</strong>.</p>
+  <div style="background:#f3f4f6;border-radius:8px;padding:24px;text-align:center;margin:24px 0">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:8px">Your login code</div>
+    <div style="font-size:36px;font-weight:700;letter-spacing:0.25em;color:#111827;font-family:monospace">${otp}</div>
+  </div>
+  <p style="font-size:13px;color:#6b7280;margin:0">If you did not request this code, you can safely ignore this email. Do not share this code with anyone.</p>
+</div>`,
+            text: `Your owner portal login code is: ${otp}\n\nThis code expires in 15 minutes.\n\nIf you did not request this code, you can safely ignore this email.`,
           });
         } catch (emailErr: any) {
           console.error("[portal-otp][email-send-failed]", { email, error: emailErr.message });
@@ -7146,11 +7214,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/portal/me", requirePortal, async (req: PortalRequest, res) => {
     const access = await storage.getPortalAccessById(req.portalAccessId || "");
     if (!access) return res.status(404).json({ message: "Portal access not found" });
+    let unitNumber: string | null = null;
+    let building: string | null = null;
+    if (access.unitId) {
+      const unit = await storage.getUnitById(access.unitId);
+      if (unit) {
+        unitNumber = unit.unitNumber ?? null;
+        building = unit.building ?? null;
+      }
+    }
     res.json({
       ...access,
       hasBoardAccess: Boolean(req.portalHasBoardAccess),
       effectiveRole: req.portalEffectiveRole || access.role,
       boardRoleId: req.portalBoardRoleId ?? access.boardRoleId ?? null,
+      unitNumber,
+      building,
     });
   });
 
