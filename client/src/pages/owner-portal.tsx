@@ -357,6 +357,25 @@ export default function OwnerPortalPage() {
     },
   });
 
+  type MyUnit = {
+    unitId: string;
+    portalAccessId: string | null;
+    unitNumber: string | null;
+    building: string | null;
+    squareFootage: number | null;
+    balance: number;
+    occupants: Array<{ personId: string; firstName: string; lastName: string; email: string | null; phone: string | null; occupancyType: string }>;
+  };
+  const { data: myUnits = [] } = useQuery<MyUnit[]>({
+    queryKey: ["/api/portal/my-units", portalAccessId || "none"],
+    enabled: Boolean(portalAccessId),
+    queryFn: async () => {
+      const res = await fetch("/api/portal/my-units", { headers: portalHeaders(portalAccessId) });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const { data: financialDashboard, refetch: refetchFinancialDashboard } = useQuery<FinancialDashboard>({
     queryKey: ["/api/portal/financial-dashboard", portalAccessId || "none"],
     enabled: Boolean(portalAccessId),
@@ -855,6 +874,16 @@ export default function OwnerPortalPage() {
       setSelectedVendorInvoiceId(boardVendorInvoices[0].id);
     }
   }, [boardVendorInvoices, selectedVendorInvoiceId]);
+
+  // Pre-populate contact update form with current values on file when me loads
+  useEffect(() => {
+    if (!me) return;
+    setRequestedPhone((me as any).phone ?? "");
+    setRequestedMailingAddress((me as any).mailingAddress ?? "");
+    setRequestedEmergencyContactName((me as any).emergencyContactName ?? "");
+    setRequestedEmergencyContactPhone((me as any).emergencyContactPhone ?? "");
+    setRequestedContactPreference((me as any).contactPreference ?? "");
+  }, [me?.personId]);
 
   useEffect(() => {
     const invoice = (boardVendorInvoices ?? []).find((row) => row.id === selectedVendorInvoiceId);
@@ -2808,111 +2837,92 @@ export default function OwnerPortalPage() {
 
         {/* Section header */}
         <div>
-          <h2 className="text-lg font-semibold">{hasMultipleUnits ? "My Units" : "My Unit & Contact Information"}</h2>
+          <h2 className="text-lg font-semibold">My {myUnits.length === 1 ? "Unit" : "Units"}</h2>
           <p className="text-sm text-muted-foreground">
-            {hasMultipleUnits
-              ? `You own ${siblingUnits.length} units in ${associationName}. Select a unit below to update its contact information.`
-              : "Submit a request to update your contact details on file. Management will review and apply approved changes."}
+            {myUnits.length === 1
+              ? `Your unit at ${associationName}.`
+              : `You own ${myUnits.length} units at ${associationName}.`}
           </p>
         </div>
 
-        {/* Multi-unit: summary strip */}
-        {hasMultipleUnits && (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {siblingUnits.map((u) => {
-              const lbl = u.unitNumber
-                ? [u.building ? `Building ${u.building}` : null, `Unit ${u.unitNumber}`].filter(Boolean).join(", ")
-                : "Unit";
-              const bal = unitsBalance.find((b) => b.unitId === u.unitId);
-              const isCurrent = u.portalAccessId === portalAccessId;
-              return (
-                <button
-                  key={u.portalAccessId}
-                  onClick={() => {
-                    if (!isCurrent) {
-                      setPortalAccessId(u.portalAccessId);
-                      window.localStorage.setItem("portalAccessId", u.portalAccessId);
-                    }
-                  }}
-                  className={`rounded-xl border p-4 text-left transition-all space-y-2 ${
-                    isCurrent
-                      ? "border-primary bg-primary/5 shadow-sm"
-                      : "border-border hover:bg-muted/30"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-semibold text-sm">{lbl}</div>
-                      <div className="text-xs text-muted-foreground capitalize mt-0.5">{u.role}</div>
-                    </div>
-                    {isCurrent && (
-                      <Badge variant="outline" className="text-primary border-primary/40 shrink-0 text-xs">Viewing</Badge>
+        {/* All owned units */}
+        {myUnits.map((unit) => {
+          const unitLabel = [unit.building ? `Building ${unit.building}` : null, unit.unitNumber ? `Unit ${unit.unitNumber}` : null].filter(Boolean).join(", ") || "Unit";
+          return (
+            <Card key={unit.unitId}>
+              <CardContent className="p-6 space-y-4">
+                {/* Unit header with balance */}
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="font-semibold text-base">{unitLabel}</div>
+                    {unit.squareFootage && (
+                      <div className="text-xs text-muted-foreground mt-0.5">{unit.squareFootage.toLocaleString()} sq ft</div>
                     )}
                   </div>
-                  {bal !== undefined && (
-                    <div className={`text-base font-bold ${bal.balance > 0 ? "text-red-600" : "text-green-600"}`}>
-                      {bal.balance > 0
-                        ? `$${bal.balance.toFixed(2)} due`
-                        : bal.balance < 0
-                        ? `Credit $${Math.abs(bal.balance).toFixed(2)}`
-                        : "No balance due"}
+                  <div className={`text-right rounded-md px-3 py-2 text-sm shrink-0 ${unit.balance > 0 ? "bg-red-50 text-red-700" : unit.balance < 0 ? "bg-green-50 text-green-700" : "bg-muted/40 text-muted-foreground"}`}>
+                    <div className="text-xs font-medium uppercase tracking-wide opacity-70">Balance</div>
+                    <div className="font-bold">
+                      {unit.balance > 0 ? `$${unit.balance.toFixed(2)} due` : unit.balance < 0 ? `Credit $${Math.abs(unit.balance).toFixed(2)}` : "$0.00"}
                     </div>
-                  )}
-                  {!isCurrent && (
-                    <div className="text-xs text-primary font-medium">Click to manage this unit →</div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Active unit detail */}
-        <Card className={hasMultipleUnits ? "border-primary/30" : undefined}>
-          <CardContent className="p-6 space-y-5">
-
-            {/* Unit identity header */}
-            {(me?.unitNumber || me?.building) && (
-              <div className="flex items-center gap-3 rounded-lg border bg-muted/20 px-4 py-3">
-                <div className="flex-1 space-y-0.5">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {hasMultipleUnits ? "Currently managing" : "Your Unit"}
                   </div>
-                  <div className="font-semibold">
-                    {[me.building ? `Building ${me.building}` : null, me.unitNumber ? `Unit ${me.unitNumber}` : null].filter(Boolean).join(", ")}
-                  </div>
-                  {hasMultipleUnits && (
-                    <div className="text-xs text-muted-foreground">
-                      {associationName}{currentAssociation?.associationCity ? ` · ${currentAssociation.associationCity}` : ""}
+                </div>
+
+                {/* Occupants */}
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Occupants</div>
+                  {unit.occupants.length === 0 ? (
+                    <div className="text-sm text-muted-foreground italic">No active occupants on record.</div>
+                  ) : (
+                    <div className="rounded-lg border bg-muted/20 divide-y divide-border text-sm">
+                      {unit.occupants.map((o) => (
+                        <div key={o.personId} className="flex items-center gap-3 px-4 py-2.5">
+                          <div className="flex-1 space-y-0.5">
+                            <div className="font-medium">{[o.firstName, o.lastName].filter(Boolean).join(" ") || "Unknown"}</div>
+                            <div className="text-muted-foreground text-xs">{[o.email, o.phone].filter(Boolean).join(" · ") || "No contact info"}</div>
+                          </div>
+                          <Badge variant="outline" className="text-xs shrink-0">
+                            {o.occupancyType === "OWNER_OCCUPIED" ? "Owner Occupied" : "Tenant"}
+                          </Badge>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
-                {/* Balance chip for current unit */}
-                {(() => {
-                  const bal = unitsBalance.find((b) => b.portalAccessId === portalAccessId);
-                  if (!bal) return null;
-                  return (
-                    <div className={`text-right rounded-md px-3 py-2 text-sm ${bal.balance > 0 ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
-                      <div className="text-xs font-medium uppercase tracking-wide opacity-70">Balance</div>
-                      <div className="font-bold">
-                        {bal.balance > 0
-                          ? `$${bal.balance.toFixed(2)}`
-                          : bal.balance < 0
-                          ? `Credit $${Math.abs(bal.balance).toFixed(2)}`
-                          : "$0.00"}
-                      </div>
-                    </div>
-                  );
-                })()}
+              </CardContent>
+            </Card>
+          );
+        })}
+
+        {/* Contact info & update request — person-level, shown once */}
+        <Card>
+          <CardContent className="p-6 space-y-5">
+            {/* Current info on file */}
+            <div className="space-y-3">
+              <div className="text-sm font-semibold">Contact Information on File</div>
+              <div className="rounded-lg border bg-muted/20 divide-y divide-border text-sm">
+                {[
+                  { label: "Name", value: [(me as any)?.firstName, (me as any)?.lastName].filter(Boolean).join(" ") || null },
+                  { label: "Email", value: (me as any)?.email ?? null },
+                  { label: "Phone", value: (me as any)?.phone ?? null },
+                  { label: "Mailing Address", value: (me as any)?.mailingAddress ?? null },
+                  { label: "Emergency Contact", value: [(me as any)?.emergencyContactName, (me as any)?.emergencyContactPhone].filter(Boolean).join(" · ") || null },
+                  { label: "Contact Preference", value: (me as any)?.contactPreference ?? null },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex gap-3 px-4 py-2.5">
+                    <span className="w-36 shrink-0 text-muted-foreground">{label}</span>
+                    <span className={value ? "font-medium" : "text-muted-foreground italic"}>{value ?? "Not on file"}</span>
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
 
             {/* Contact update form */}
             <div className="space-y-3">
               <div className="text-sm font-semibold">Request Contact Update</div>
+              <p className="text-xs text-muted-foreground">Edit the fields below and submit — management will review and apply approved changes.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Input placeholder="New phone" value={requestedPhone} onChange={(e) => setRequestedPhone(e.target.value)} />
-                <Textarea placeholder="New mailing address" value={requestedMailingAddress} onChange={(e) => setRequestedMailingAddress(e.target.value)} />
+                <Input placeholder="Phone" value={requestedPhone} onChange={(e) => setRequestedPhone(e.target.value)} />
+                <Textarea placeholder="Mailing address" value={requestedMailingAddress} onChange={(e) => setRequestedMailingAddress(e.target.value)} />
                 <Input placeholder="Emergency contact name" value={requestedEmergencyContactName} onChange={(e) => setRequestedEmergencyContactName(e.target.value)} />
                 <Input placeholder="Emergency contact phone" value={requestedEmergencyContactPhone} onChange={(e) => setRequestedEmergencyContactPhone(e.target.value)} />
                 <Select value={requestedContactPreference || "none"} onValueChange={(v) => setRequestedContactPreference(v === "none" ? "" : v)}>
@@ -2929,13 +2939,7 @@ export default function OwnerPortalPage() {
                 onClick={() => submitContactUpdate.mutate()}
                 disabled={
                   submitContactUpdate.isPending ||
-                  (
-                    !requestedPhone.trim() &&
-                    !requestedMailingAddress.trim() &&
-                    !requestedEmergencyContactName.trim() &&
-                    !requestedEmergencyContactPhone.trim() &&
-                    !requestedContactPreference.trim()
-                  )
+                  (!requestedPhone.trim() && !requestedMailingAddress.trim() && !requestedEmergencyContactName.trim() && !requestedEmergencyContactPhone.trim() && !requestedContactPreference.trim())
                 }
               >
                 {submitContactUpdate.isPending ? "Submitting…" : "Submit Update Request"}
@@ -2964,20 +2968,14 @@ export default function OwnerPortalPage() {
                 <TableBody>
                   {(requests ?? []).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-sm text-muted-foreground">No requests submitted for this unit yet.</TableCell>
+                      <TableCell colSpan={3} className="text-sm text-muted-foreground">No update requests submitted yet.</TableCell>
                     </TableRow>
                   ) : (requests ?? []).map((request) => (
                     <TableRow key={request.id}>
                       <TableCell className="max-w-[460px]">
                         <div className="text-sm space-y-0.5">
                           {Object.entries(request.requestJson as Record<string, string>).map(([key, val]) => {
-                            const labels: Record<string, string> = {
-                              phone: "Phone",
-                              mailingAddress: "Mailing address",
-                              emergencyContactName: "Emergency contact name",
-                              emergencyContactPhone: "Emergency contact phone",
-                              contactPreference: "Contact preference",
-                            };
+                            const labels: Record<string, string> = { phone: "Phone", mailingAddress: "Mailing address", emergencyContactName: "Emergency contact name", emergencyContactPhone: "Emergency contact phone", contactPreference: "Contact preference" };
                             return (
                               <div key={key}>
                                 <span className="text-muted-foreground">{labels[key] ?? key}:</span>{" "}

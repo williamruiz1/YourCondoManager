@@ -8,7 +8,9 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
 import { storage } from "./storage";
-import { pool } from "./db";
+import { pool, db } from "./db";
+import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { recurringChargeSchedules, recurringChargeRuns, ownerships, units, ownerLedgerEntries } from "@shared/schema";
 import { log } from "./logger";
 
 dotenv.config();
@@ -92,14 +94,113 @@ const globalAutomationState = globalThis as typeof globalThis & { __automationJo
 
 export { log } from "./logger";
 
+async function runDueRecurringCharges(): Promise<{ succeeded: number; failed: number; skipped: number }> {
+  const now = new Date();
+  // Push date filter to DB instead of loading all active schedules
+  const dueNow = await db.select().from(recurringChargeSchedules).where(
+    and(
+      eq(recurringChargeSchedules.status, "active"),
+      or(isNull(recurringChargeSchedules.nextRunDate), lte(recurringChargeSchedules.nextRunDate, now))
+    )
+  );
+
+  let succeeded = 0, failed = 0, skipped = 0;
+
+  // Batch-fetch all units for association-wide schedules (avoids N+1)
+  const assocIds = [...new Set(dueNow.filter((s) => !s.unitId).map((s) => s.associationId))];
+  const assocUnitsMap = new Map<string, string[]>();
+  if (assocIds.length > 0) {
+    const allUnits = await db.select({ id: units.id, associationId: units.associationId })
+      .from(units).where(inArray(units.associationId, assocIds));
+    for (const u of allUnits) {
+      const arr = assocUnitsMap.get(u.associationId) ?? [];
+      arr.push(u.id);
+      assocUnitsMap.set(u.associationId, arr);
+    }
+  }
+
+  for (const schedule of dueNow) {
+    const targetUnitIds = schedule.unitId
+      ? [schedule.unitId]
+      : (assocUnitsMap.get(schedule.associationId) ?? []);
+
+    // Batch-fetch ownerships for all target units (avoids N+1)
+    const ownershipMap = new Map<string, typeof ownerships.$inferSelect>();
+    if (targetUnitIds.length > 0) {
+      const activeOwnerships = await db.select().from(ownerships)
+        .where(and(inArray(ownerships.unitId, targetUnitIds), isNull(ownerships.endDate)));
+      for (const o of activeOwnerships) {
+        if (!ownershipMap.has(o.unitId)) ownershipMap.set(o.unitId, o);
+      }
+    }
+
+    for (const unitId of targetUnitIds) {
+      const ownership = ownershipMap.get(unitId);
+
+      if (!ownership) {
+        await db.insert(recurringChargeRuns).values({
+          scheduleId: schedule.id,
+          associationId: schedule.associationId,
+          unitId,
+          status: "skipped",
+          errorMessage: "No active ownership found",
+          amount: schedule.amount,
+          ranAt: now,
+        });
+        skipped++;
+        continue;
+      }
+
+      const [run] = await db.insert(recurringChargeRuns).values({
+        scheduleId: schedule.id,
+        associationId: schedule.associationId,
+        unitId,
+        status: "pending",
+        amount: schedule.amount,
+        ranAt: now,
+      }).returning();
+
+      try {
+        const [entry] = await db.insert(ownerLedgerEntries).values({
+          associationId: schedule.associationId,
+          unitId,
+          personId: ownership.personId,
+          entryType: schedule.entryType,
+          amount: schedule.amount,
+          description: schedule.chargeDescription,
+          referenceType: "recurring_charge_schedule",
+          referenceId: schedule.id,
+          postedAt: now,
+        }).returning();
+        await db.update(recurringChargeRuns).set({ status: "success", ledgerEntryId: entry.id, ranAt: now }).where(eq(recurringChargeRuns.id, run.id));
+        succeeded++;
+      } catch (err: any) {
+        await db.update(recurringChargeRuns).set({ status: "failed", errorMessage: err.message }).where(eq(recurringChargeRuns.id, run.id));
+        failed++;
+      }
+    }
+
+    // Advance nextRunDate
+    const next = new Date(now);
+    if (schedule.frequency === "monthly") next.setMonth(next.getMonth() + 1);
+    else if (schedule.frequency === "quarterly") next.setMonth(next.getMonth() + 3);
+    else if (schedule.frequency === "annual") next.setFullYear(next.getFullYear() + 1);
+    next.setDate(Math.min(schedule.dayOfMonth ?? 1, 28));
+    await db.update(recurringChargeSchedules).set({ nextRunDate: next, updatedAt: now }).where(eq(recurringChargeSchedules.id, schedule.id));
+  }
+
+  return { succeeded, failed, skipped };
+}
+
 async function runAutomationSweep() {
-  const [scheduledResult, escalationResult, boardPackageResult] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult, recurringResult] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
     storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
+    runDueRecurringCharges(),
   ]);
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, recurring charges succeeded=${recurringResult.succeeded} failed=${recurringResult.failed} skipped=${recurringResult.skipped}`,
     "automation",
   );
 }

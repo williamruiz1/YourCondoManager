@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "tsx script/dev.ts",
-    "build": "drizzle-kit push && tsx script/build.ts",
+    "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "bootstrap:agent": "tsx script/generate-agent-bootstrap-manifest.ts && tsx script/generate-agent-durable-memory.ts",

@@ -40,7 +40,7 @@ export function WorkspacePageHeader({
   const crumbs = breadcrumbs ?? [{ label: title }];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-5 border-b border-border">
       <Breadcrumb>
         <BreadcrumbList>
           {crumbs.map((crumb, index) => (
@@ -60,10 +60,15 @@ export function WorkspacePageHeader({
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-2">
-          {eyebrow ? <div className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{eyebrow}</div> : null}
+          {eyebrow ? (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary/70" />
+              <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{eyebrow}</span>
+            </div>
+          ) : null}
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-            <p className="text-muted-foreground max-w-3xl">{summary}</p>
+            <h1 className="text-[1.75rem] font-semibold tracking-[-0.025em] leading-tight">{title}</h1>
+            <p className="text-sm text-muted-foreground max-w-3xl mt-0.5">{summary}</p>
           </div>
           {shortcuts?.length ? (
             <div className="flex gap-2 flex-wrap">

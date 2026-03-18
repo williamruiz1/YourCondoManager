@@ -113,7 +113,7 @@ function WorkspaceRouter({ adminRole }: { adminRole: AdminRole | null }) {
         <Route path="/app/admin/users" component={AdminUsersPage} />
         <Route path="/app/admin/feature-flags" component={FeatureFlagsPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
-        <Route path="/app/financial/fees" component={FinancialFeesPage} />
+        <Route path="/app/financial/fees"><RouteRedirect to="/app/financial/recurring-charges" /></Route>
         <Route path="/app/financial/assessments" component={FinancialAssessmentsPage} />
         <Route path="/app/financial/late-fees" component={FinancialLateFeesPage} />
         <Route path="/app/financial/foundation" component={FinancialFoundationPage} />

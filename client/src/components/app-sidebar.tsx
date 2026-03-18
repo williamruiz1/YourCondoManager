@@ -133,7 +133,7 @@ const navSections: NavSection[] = [
         activePrefix: "/app/financial",
         roles: ["platform-admin", "board-admin", "manager"],
         children: [
-          { title: "Fee Schedules", url: "/app/financial/fees", icon: CircleDollarSign, roles: ["platform-admin", "board-admin", "manager"] },
+          { title: "Fee Schedules", url: "/app/financial/recurring-charges", icon: Repeat, roles: ["platform-admin", "board-admin", "manager"] },
           { title: "Assessments", url: "/app/financial/assessments", icon: Landmark, roles: ["platform-admin", "board-admin", "manager"] },
           { title: "Late Fees", url: "/app/financial/late-fees", icon: Percent, roles: ["platform-admin", "board-admin", "manager"] },
           { title: "Invoices", url: "/app/financial/invoices", icon: ReceiptText, roles: ["platform-admin", "board-admin", "manager"] },
@@ -143,7 +143,6 @@ const navSections: NavSection[] = [
           { title: "Budgets", url: "/app/financial/budgets", icon: Calculator, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
           { title: "Reports", url: "/app/financial/reports", icon: BarChart2, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
           { title: "Reconciliation", url: "/app/financial/reconciliation", icon: GitMerge, roles: ["platform-admin", "board-admin", "manager"] },
-          { title: "Recurring Charges", url: "/app/financial/recurring-charges", icon: Repeat, roles: ["platform-admin", "board-admin", "manager"] },
         ],
       },
     ],
@@ -266,15 +265,15 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm flex-shrink-0">
             <Building2 className="h-4 w-4" />
           </div>
           <div className="group-data-[collapsible=icon]:hidden">
-            <h2 className="text-sm font-semibold tracking-tight" data-testid="text-app-title">
+            <h2 className="text-sm font-semibold tracking-[-0.01em]" data-testid="text-app-title">
               CondoManager
             </h2>
-            <p className="text-xs text-muted-foreground">Property Platform</p>
+            <p className="text-[11px] text-muted-foreground leading-tight">Property Platform</p>
           </div>
         </div>
       </SidebarHeader>
@@ -312,7 +311,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
         <SidebarGroup>
           <SidebarGroupLabel>In Context</SidebarGroupLabel>
           <SidebarGroupContent>
-            <div className="mx-2 mb-3 rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3 group-data-[collapsible=icon]:hidden">
+            <div className="mx-2 mb-3 rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3 shadow-sm group-data-[collapsible=icon]:hidden">
               {activeAssociationId ? (
                 <Link
                   href="/app/association-context"

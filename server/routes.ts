@@ -150,6 +150,7 @@ import {
   paymentWebhookEvents,
   paymentEventTransitions,
   portalLoginTokens,
+  occupancies,
 } from "@shared/schema";
 
 const uploadDir = path.resolve("uploads");
@@ -338,6 +339,7 @@ type PortalRequest = Request & {
   portalAccessId?: string;
   portalAssociationId?: string;
   portalPersonId?: string;
+  portalUnitId?: string | null;
   portalEmail?: string;
   portalRole?: string;
   portalBoardRoleId?: string | null;
@@ -632,6 +634,7 @@ async function requirePortal(req: PortalRequest, res: Response, next: NextFuncti
   req.portalAccessId = access.id;
   req.portalAssociationId = access.associationId;
   req.portalPersonId = access.personId;
+  req.portalUnitId = access.unitId ?? null;
   req.portalEmail = access.email;
   req.portalRole = access.role;
   req.portalBoardRoleId = boardRole?.id ?? null;
@@ -7034,7 +7037,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
             const unitAssocMap = new Map(unitRows.map((u) => [u.id, u.associationId]));
 
-            // Key by associationId:unitId — one portal_access row per unit, not per association
+            // Key by associationId:unitId — one portal_access row per unit per association
             const existingKeys = new Set(accesses.map((a) => `${a.associationId}:${a.unitId ?? ""}`));
             console.log("[portal-provision] Existing access keys", { existingKeys: Array.from(existingKeys) });
 
@@ -7304,6 +7307,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/portal/me", requirePortal, async (req: PortalRequest, res) => {
     const access = await storage.getPortalAccessById(req.portalAccessId || "");
     if (!access) return res.status(404).json({ message: "Portal access not found" });
+
     let unitNumber: string | null = null;
     let building: string | null = null;
     if (access.unitId) {
@@ -7313,6 +7317,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         building = unit.building ?? null;
       }
     }
+
+    // Fetch the person record so the portal can show current contact info on file
+    const [person] = await db.select().from(persons).where(eq(persons.id, access.personId)).limit(1);
+
+    // Fetch active occupants for the unit (tenants + owner-occupants)
+    let unitOccupants: Array<{ personId: string; firstName: string; lastName: string; email: string | null; phone: string | null; occupancyType: string }> = [];
+    if (access.unitId) {
+      const activeOccupancies = await db.select().from(occupancies)
+        .where(and(eq(occupancies.unitId, access.unitId), isNull(occupancies.endDate)));
+      if (activeOccupancies.length > 0) {
+        const occupantPersonIds = activeOccupancies.map((o) => o.personId);
+        const occupantPersons = await db.select().from(persons).where(inArray(persons.id, occupantPersonIds));
+        const personMap = new Map(occupantPersons.map((p) => [p.id, p]));
+        unitOccupants = activeOccupancies.map((o) => {
+          const p = personMap.get(o.personId);
+          return {
+            personId: o.personId,
+            firstName: p?.firstName ?? "",
+            lastName: p?.lastName ?? "",
+            email: p?.email ?? null,
+            phone: p?.phone ?? null,
+            occupancyType: o.occupancyType,
+          };
+        });
+      }
+    }
+
     res.json({
       ...access,
       hasBoardAccess: Boolean(req.portalHasBoardAccess),
@@ -7320,6 +7351,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       boardRoleId: req.portalBoardRoleId ?? access.boardRoleId ?? null,
       unitNumber,
       building,
+      // Current contact info on file
+      firstName: person?.firstName ?? null,
+      lastName: person?.lastName ?? null,
+      phone: person?.phone ?? null,
+      mailingAddress: person?.mailingAddress ?? null,
+      emergencyContactName: person?.emergencyContactName ?? null,
+      emergencyContactPhone: person?.emergencyContactPhone ?? null,
+      contactPreference: person?.contactPreference ?? null,
+      // Active occupants for this unit
+      unitOccupants,
     });
   });
 
@@ -7404,6 +7445,65 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           building: unit?.building ?? null,
           portalAccessId: myAccesses.find((a) => a.unitId === unitId)?.id ?? null,
           balance,
+        };
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/my-units", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAssociationId || !req.portalPersonId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const email = req.portalEmail || "";
+      const accesses = await storage.getPortalAccessesByEmail(email);
+      const myAccesses = accesses.filter(
+        (a) => a.associationId === req.portalAssociationId && (a.status === "active" || a.status === "invited") && a.unitId
+      );
+      const unitIds = myAccesses.map((a) => a.unitId).filter(Boolean) as string[];
+      if (unitIds.length === 0) return res.json([]);
+
+      const [allEntries, unitRows, allOccupancies] = await Promise.all([
+        storage.getOwnerLedgerEntries(req.portalAssociationId),
+        db.select().from(units).where(inArray(units.id, unitIds)),
+        db.select().from(occupancies).where(and(inArray(occupancies.unitId, unitIds), isNull(occupancies.endDate))),
+      ]);
+
+      // Fetch persons for all occupants in one query
+      const occupantPersonIds = [...new Set(allOccupancies.map((o) => o.personId))];
+      const occupantPersons = occupantPersonIds.length > 0
+        ? await db.select().from(persons).where(inArray(persons.id, occupantPersonIds))
+        : [];
+      const personMap = new Map(occupantPersons.map((p) => [p.id, p]));
+      const unitMap = new Map(unitRows.map((u) => [u.id, u]));
+
+      const result = unitIds.map((unitId) => {
+        const unit = unitMap.get(unitId);
+        const entries = allEntries.filter((e) => e.personId === req.portalPersonId && e.unitId === unitId);
+        const balance = entries.reduce((sum, e) => sum + e.amount, 0);
+        const unitOccupancies = allOccupancies.filter((o) => o.unitId === unitId);
+        const occupants = unitOccupancies.map((o) => {
+          const p = personMap.get(o.personId);
+          return {
+            personId: o.personId,
+            firstName: p?.firstName ?? "",
+            lastName: p?.lastName ?? "",
+            email: p?.email ?? null,
+            phone: p?.phone ?? null,
+            occupancyType: o.occupancyType,
+          };
+        });
+        return {
+          unitId,
+          portalAccessId: myAccesses.find((a) => a.unitId === unitId)?.id ?? null,
+          unitNumber: unit?.unitNumber ?? null,
+          building: unit?.building ?? null,
+          squareFootage: unit?.squareFootage ?? null,
+          balance,
+          occupants,
         };
       });
       res.json(result);
@@ -7523,24 +7623,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!req.portalAssociationId || !req.portalPersonId) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      const [allEntries, feeSchedules, paymentPlansAll] = await Promise.all([
+      const ownerUnitId = req.portalUnitId ?? null;
+      const [allEntries, activeSchedules, paymentPlansAll] = await Promise.all([
         storage.getOwnerLedgerEntries(req.portalAssociationId),
-        storage.getHoaFeeSchedules(req.portalAssociationId),
+        // Recurring charge schedules scoped to this owner's unit (or association-wide schedules)
+        db.select().from(recurringChargeSchedules).where(
+          and(
+            eq(recurringChargeSchedules.associationId, req.portalAssociationId),
+            eq(recurringChargeSchedules.status, "active"),
+            or(
+              isNull(recurringChargeSchedules.unitId),
+              ownerUnitId ? eq(recurringChargeSchedules.unitId, ownerUnitId) : sql`false`
+            )
+          )
+        ),
         db.select().from(paymentPlans).where(
           and(eq(paymentPlans.associationId, req.portalAssociationId), eq(paymentPlans.personId, req.portalPersonId))
         ),
       ]);
       const myEntries = allEntries.filter((e) => e.personId === req.portalPersonId);
       const balance = myEntries.reduce((sum, e) => sum + e.amount, 0);
-      const activeSchedules = feeSchedules.filter((s) => s.isActive === 1);
       const activePlan = paymentPlansAll.find((p) => p.status === "active") ?? null;
-      // Compute next charge due date from active fee schedules
-      const nextDue = activeSchedules.length > 0 ? (activeSchedules[0].startDate ? new Date(activeSchedules[0].startDate) : null) : null;
+      // Next due date from the soonest upcoming nextRunDate
+      const nextDue = activeSchedules
+        .map((s) => s.nextRunDate ? new Date(s.nextRunDate) : null)
+        .filter(Boolean)
+        .sort((a, b) => a!.getTime() - b!.getTime())[0] ?? null;
       res.json({
         balance,
         totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
         totalPaid: Math.abs(myEntries.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
-        feeSchedules: activeSchedules.map((s) => ({ id: s.id, name: s.name, amount: s.amount, frequency: s.frequency })),
+        feeSchedules: activeSchedules.map((s) => ({ id: s.id, name: s.chargeDescription, amount: s.amount, frequency: s.frequency })),
         nextDueDate: nextDue ? nextDue.toISOString() : null,
         paymentPlan: activePlan ? {
           id: activePlan.id,

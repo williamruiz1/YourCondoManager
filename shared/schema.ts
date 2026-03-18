@@ -929,7 +929,7 @@ export const portalAccess = pgTable("portal_access", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
-  uniquePortalAccessPerAssociationEmail: uniqueIndex("portal_access_assoc_email_uq").on(table.associationId, table.email),
+  uniquePortalAccessPerAssociationEmailUnit: uniqueIndex("portal_access_assoc_email_unit_uq").on(table.associationId, table.email, table.unitId),
 }));
 
 export const associationMemberships = pgTable("association_memberships", {
