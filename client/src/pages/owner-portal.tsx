@@ -224,11 +224,16 @@ export default function OwnerPortalPage() {
   });
 
   const verifyLogin = useMutation({
-    mutationFn: async (chosenAssociationId?: string) => {
+    mutationFn: async (chosen?: { portalAccessId?: string; associationId?: string }) => {
       const res = await fetch("/api/portal/verify-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp, ...(chosenAssociationId ? { associationId: chosenAssociationId } : {}) }),
+        body: JSON.stringify({
+          email,
+          otp,
+          ...(chosen?.portalAccessId ? { portalAccessId: chosen.portalAccessId } : {}),
+          ...(chosen?.associationId ? { associationId: chosen.associationId } : {}),
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json() as Promise<{ portalAccessId?: string; associations?: AssociationChoice[] }>;
@@ -1184,7 +1189,14 @@ export default function OwnerPortalPage() {
               {otpStep === "email"
                 ? "Sign in to manage your HOA account, view balances, and submit requests."
                 : otpStep === "pick"
-                ? "You have access to multiple associations. Select one to continue."
+                ? (() => {
+                    const uniqueAssocs = new Set(associationChoices.map((c) => c.associationId));
+                    if (uniqueAssocs.size > 1) return "You have access to multiple associations. Select one to continue.";
+                    const assocName = associationChoices[0]?.associationName ?? "your association";
+                    return associationChoices.length > 1
+                      ? `You own ${associationChoices.length} units at ${assocName}. Select a unit to continue.`
+                      : `Welcome back. Select your unit at ${assocName} to continue.`;
+                  })()
                 : "Check your email for a 6-digit login code. It expires in 15 minutes."}
             </p>
           </div>
@@ -1219,7 +1231,7 @@ export default function OwnerPortalPage() {
                       onKeyDown={(e) => e.key === "Enter" && otp.length >= 6 && verifyLogin.mutate(undefined)} />
                   </div>
                   {verifyLogin.isError && <p className="text-sm text-destructive">{(verifyLogin.error as Error).message}</p>}
-                  <Button onClick={() => verifyLogin.mutate(undefined)} disabled={verifyLogin.isPending || otp.length < 6} className="w-full">
+                  <Button onClick={() => verifyLogin.mutate()} disabled={verifyLogin.isPending || otp.length < 6} className="w-full">
                     {verifyLogin.isPending ? "Verifying…" : "Verify & Sign In"}
                   </Button>
                   <div className="flex gap-2">
@@ -1234,41 +1246,88 @@ export default function OwnerPortalPage() {
               )}
               {otpStep === "pick" && (
                 <>
-                  <p className="text-sm text-muted-foreground">Signed in as: <strong>{email}</strong></p>
-                  <div className="space-y-2">
+                  <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                    Signed in as <strong>{email}</strong>
+                  </div>
+
+                  {/* Group choices by association */}
+                  <div className="space-y-5">
                     {(() => {
-                      // Count how many choices share the same associationId to detect multi-unit owners
-                      const assocCounts = associationChoices.reduce<Record<string, number>>((acc, c) => {
-                        acc[c.associationId] = (acc[c.associationId] ?? 0) + 1;
-                        return acc;
-                      }, {});
-                      return associationChoices.map((choice) => {
-                        const hasMultipleUnits = assocCounts[choice.associationId] > 1;
-                        const unitLabel = choice.unitNumber
-                          ? [choice.building ? `Bldg ${choice.building}` : null, `Unit ${choice.unitNumber}`].filter(Boolean).join(" · ")
-                          : null;
+                      const byAssoc = new Map<string, AssociationChoice[]>();
+                      for (const c of associationChoices) {
+                        if (!byAssoc.has(c.associationId)) byAssoc.set(c.associationId, []);
+                        byAssoc.get(c.associationId)!.push(c);
+                      }
+                      const multipleAssocs = byAssoc.size > 1;
+
+                      return Array.from(byAssoc.entries()).map(([assocId, choices]) => {
+                        const assocName = choices[0].associationName;
+                        const assocCity = choices[0].associationCity;
+                        const multipleUnits = choices.length > 1;
+
                         return (
-                          <Button
-                            key={choice.portalAccessId}
-                            variant="outline"
-                            className="w-full justify-start h-auto py-3 px-4"
-                            onClick={() => verifyLogin.mutate(choice.associationId)}
-                            disabled={verifyLogin.isPending}
-                          >
-                            <div className="text-left">
-                              <div className="font-medium">{choice.associationName}</div>
-                              {choice.associationCity && <div className="text-xs text-muted-foreground">{choice.associationCity}</div>}
-                              {hasMultipleUnits && unitLabel && (
-                                <div className="text-xs font-medium text-primary mt-0.5">{unitLabel}</div>
-                              )}
-                              <div className="text-xs text-muted-foreground capitalize">{choice.role}</div>
+                          <div key={assocId} className="space-y-2">
+                            {/* Association header — always shown when multi-assoc; shown as context when multi-unit */}
+                            {(multipleAssocs || multipleUnits) && (
+                              <div className="space-y-0.5 pb-1">
+                                <div className="text-sm font-semibold">{assocName}</div>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  {assocCity && <span>{assocCity}</span>}
+                                  {multipleUnits && (
+                                    <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 font-medium">
+                                      {choices.length} units
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Unit cards — grid for multiple units, full-width for single */}
+                            <div className={multipleUnits ? "grid grid-cols-2 gap-2" : "space-y-2"}>
+                              {choices.map((choice) => {
+                                const unitLabel = choice.unitNumber
+                                  ? [choice.building ? `Bldg ${choice.building}` : null, `Unit ${choice.unitNumber}`]
+                                      .filter(Boolean).join(" · ")
+                                  : null;
+                                return (
+                                  <button
+                                    key={choice.portalAccessId}
+                                    onClick={() => verifyLogin.mutate({ portalAccessId: choice.portalAccessId, associationId: choice.associationId })}
+                                    disabled={verifyLogin.isPending}
+                                    className="group rounded-xl border border-border bg-background p-4 text-left transition-all hover:border-primary hover:bg-primary/5 hover:shadow-sm disabled:opacity-50 space-y-2 w-full"
+                                  >
+                                    {multipleUnits ? (
+                                      /* Unit-focused when same association */
+                                      <>
+                                        <div className="flex items-center justify-between gap-1">
+                                          <div className="font-semibold text-sm">{unitLabel ?? "Unit"}</div>
+                                          <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity text-xs">→</span>
+                                        </div>
+                                        <div className="text-xs text-muted-foreground capitalize">{choice.role}</div>
+                                      </>
+                                    ) : (
+                                      /* Association-focused for single unit or multiple associations */
+                                      <>
+                                        <div className="flex items-center justify-between gap-1">
+                                          <div className="font-semibold text-sm">{assocName}</div>
+                                          <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity text-xs">→</span>
+                                        </div>
+                                        {assocCity && <div className="text-xs text-muted-foreground">{assocCity}</div>}
+                                        {unitLabel && <div className="text-xs font-medium text-primary">{unitLabel}</div>}
+                                        <div className="text-xs text-muted-foreground capitalize">{choice.role}</div>
+                                      </>
+                                    )}
+                                  </button>
+                                );
+                              })}
                             </div>
-                          </Button>
+                          </div>
                         );
                       });
                     })()}
                   </div>
-                  <Button variant="ghost" size="sm" className="w-full" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); setAssociationChoices([]); }}>
+
+                  <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); setAssociationChoices([]); }}>
                     Use a different email
                   </Button>
                 </>
@@ -1324,7 +1383,7 @@ export default function OwnerPortalPage() {
   const ownerTabs = [
     { id: "overview" as const, label: "Overview" },
     { id: "financials" as const, label: "Financials" },
-    { id: "unit" as const, label: "My Unit" },
+    { id: "unit" as const, label: hasMultipleUnits ? "My Units" : "My Unit" },
     { id: "maintenance" as const, label: "Maintenance" },
     { id: "documents" as const, label: "Documents" },
     { id: "notices" as const, label: "Notices" },
@@ -1458,13 +1517,46 @@ export default function OwnerPortalPage() {
                   </div>
                 )}
               </div>
-              {unitLabel && (
+              {hasMultipleUnits ? (
+                <div className="bg-white/10 rounded-lg px-4 py-3 text-sm shrink-0 space-y-2">
+                  <div className="text-slate-400 text-xs uppercase tracking-wide">Your Units ({siblingUnits.length})</div>
+                  <div className="flex flex-wrap gap-2">
+                    {siblingUnits.map((u) => {
+                      const lbl = u.unitNumber
+                        ? [u.building ? `Bldg ${u.building}` : null, `Unit ${u.unitNumber}`].filter(Boolean).join(" · ")
+                        : "Unit";
+                      const isCurrent = u.portalAccessId === portalAccessId;
+                      return (
+                        <button
+                          key={u.portalAccessId}
+                          onClick={() => {
+                            if (!isCurrent) {
+                              setPortalAccessId(u.portalAccessId);
+                              window.localStorage.setItem("portalAccessId", u.portalAccessId);
+                              setActiveTab("overview");
+                            }
+                          }}
+                          className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+                            isCurrent
+                              ? "bg-white text-slate-800"
+                              : "bg-white/20 text-white hover:bg-white/30"
+                          }`}
+                        >
+                          {lbl}
+                          {isCurrent && <span className="ml-1 opacity-60">↗</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="text-slate-300 text-xs capitalize">{me?.effectiveRole}</div>
+                </div>
+              ) : unitLabel ? (
                 <div className="bg-white/10 rounded-lg px-4 py-3 text-sm shrink-0">
                   <div className="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Your Unit</div>
                   <div className="font-semibold text-white">{unitLabel}</div>
                   <div className="text-slate-300 text-xs capitalize mt-0.5">{me?.effectiveRole}</div>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -2712,110 +2804,203 @@ export default function OwnerPortalPage() {
 
       {/* My Unit Tab */}
       {activeTab === "unit" && (
-      <Card>
-        <CardContent className="p-6 space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold">My Unit & Contact Information</h2>
-            <p className="text-sm text-muted-foreground">Submit a request to update your contact details on file. Management will review and apply approved changes.</p>
-          </div>
+      <div className="space-y-6">
 
-          {/* Unit context */}
-          {(me?.unitNumber || me?.building) && (
-            <div className="rounded-md border bg-muted/20 p-4 space-y-1">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Your Unit</div>
-              <div className="font-medium">
-                {[me.building ? `Building ${me.building}` : null, me.unitNumber ? `Unit ${me.unitNumber}` : null].filter(Boolean).join(", ")}
-              </div>
-            </div>
-          )}
+        {/* Section header */}
+        <div>
+          <h2 className="text-lg font-semibold">{hasMultipleUnits ? "My Units" : "My Unit & Contact Information"}</h2>
+          <p className="text-sm text-muted-foreground">
+            {hasMultipleUnits
+              ? `You own ${siblingUnits.length} units in ${associationName}. Select a unit below to update its contact information.`
+              : "Submit a request to update your contact details on file. Management will review and apply approved changes."}
+          </p>
+        </div>
 
-          <div>
-            <div className="text-sm font-medium mb-3">Request Contact Update</div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Input placeholder="New phone" value={requestedPhone} onChange={(e) => setRequestedPhone(e.target.value)} />
-            <Textarea placeholder="New mailing address" value={requestedMailingAddress} onChange={(e) => setRequestedMailingAddress(e.target.value)} />
-            <Input placeholder="Emergency contact name" value={requestedEmergencyContactName} onChange={(e) => setRequestedEmergencyContactName(e.target.value)} />
-            <Input placeholder="Emergency contact phone" value={requestedEmergencyContactPhone} onChange={(e) => setRequestedEmergencyContactPhone(e.target.value)} />
-            <Select value={requestedContactPreference || "none"} onValueChange={(v) => setRequestedContactPreference(v === "none" ? "" : v)}>
-              <SelectTrigger><SelectValue placeholder="Contact preference" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No preference</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="phone">Phone</SelectItem>
-                <SelectItem value="sms">SMS</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            onClick={() => submitContactUpdate.mutate()}
-            disabled={
-              submitContactUpdate.isPending ||
-              (
-                !requestedPhone.trim() &&
-                !requestedMailingAddress.trim() &&
-                !requestedEmergencyContactName.trim() &&
-                !requestedEmergencyContactPhone.trim() &&
-                !requestedContactPreference.trim()
-              )
-            }
-          >
-            {submitContactUpdate.isPending ? "Submitting…" : "Submit Update Request"}
-          </Button>
-          {contactUpdateSuccess && (
-            <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-              Your update request has been submitted and is pending review by management.
-            </div>
-          )}
-          {submitContactUpdate.isError && (
-            <p className="text-sm text-destructive">{(submitContactUpdate.error as Error).message}</p>
-          )}
-          </div>
-
-          <div>
-            <div className="text-sm font-medium mb-2">Previous Requests</div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Requested Changes</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Submitted</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(requests ?? []).map((request) => (
-                <TableRow key={request.id}>
-                  <TableCell className="max-w-[460px]">
-                    <div className="text-sm space-y-0.5">
-                      {Object.entries(request.requestJson as Record<string, string>).map(([key, val]) => {
-                        const labels: Record<string, string> = {
-                          phone: "Phone",
-                          mailingAddress: "Mailing address",
-                          emergencyContactName: "Emergency contact name",
-                          emergencyContactPhone: "Emergency contact phone",
-                          contactPreference: "Contact preference",
-                        };
-                        return (
-                          <div key={key}>
-                            <span className="text-muted-foreground">{labels[key] ?? key}:</span>{" "}
-                            <span className="font-medium">{String(val)}</span>
-                          </div>
-                        );
-                      })}
+        {/* Multi-unit: summary strip */}
+        {hasMultipleUnits && (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {siblingUnits.map((u) => {
+              const lbl = u.unitNumber
+                ? [u.building ? `Building ${u.building}` : null, `Unit ${u.unitNumber}`].filter(Boolean).join(", ")
+                : "Unit";
+              const bal = unitsBalance.find((b) => b.unitId === u.unitId);
+              const isCurrent = u.portalAccessId === portalAccessId;
+              return (
+                <button
+                  key={u.portalAccessId}
+                  onClick={() => {
+                    if (!isCurrent) {
+                      setPortalAccessId(u.portalAccessId);
+                      window.localStorage.setItem("portalAccessId", u.portalAccessId);
+                    }
+                  }}
+                  className={`rounded-xl border p-4 text-left transition-all space-y-2 ${
+                    isCurrent
+                      ? "border-primary bg-primary/5 shadow-sm"
+                      : "border-border hover:bg-muted/30"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold text-sm">{lbl}</div>
+                      <div className="text-xs text-muted-foreground capitalize mt-0.5">{u.role}</div>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={request.reviewStatus === "approved" ? "default" : request.reviewStatus === "rejected" ? "destructive" : "outline"}>
-                      {request.reviewStatus}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{new Date(request.createdAt).toLocaleString()}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    {isCurrent && (
+                      <Badge variant="outline" className="text-primary border-primary/40 shrink-0 text-xs">Viewing</Badge>
+                    )}
+                  </div>
+                  {bal !== undefined && (
+                    <div className={`text-base font-bold ${bal.balance > 0 ? "text-red-600" : "text-green-600"}`}>
+                      {bal.balance > 0
+                        ? `$${bal.balance.toFixed(2)} due`
+                        : bal.balance < 0
+                        ? `Credit $${Math.abs(bal.balance).toFixed(2)}`
+                        : "No balance due"}
+                    </div>
+                  )}
+                  {!isCurrent && (
+                    <div className="text-xs text-primary font-medium">Click to manage this unit →</div>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+        {/* Active unit detail */}
+        <Card className={hasMultipleUnits ? "border-primary/30" : undefined}>
+          <CardContent className="p-6 space-y-5">
+
+            {/* Unit identity header */}
+            {(me?.unitNumber || me?.building) && (
+              <div className="flex items-center gap-3 rounded-lg border bg-muted/20 px-4 py-3">
+                <div className="flex-1 space-y-0.5">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {hasMultipleUnits ? "Currently managing" : "Your Unit"}
+                  </div>
+                  <div className="font-semibold">
+                    {[me.building ? `Building ${me.building}` : null, me.unitNumber ? `Unit ${me.unitNumber}` : null].filter(Boolean).join(", ")}
+                  </div>
+                  {hasMultipleUnits && (
+                    <div className="text-xs text-muted-foreground">
+                      {associationName}{currentAssociation?.associationCity ? ` · ${currentAssociation.associationCity}` : ""}
+                    </div>
+                  )}
+                </div>
+                {/* Balance chip for current unit */}
+                {(() => {
+                  const bal = unitsBalance.find((b) => b.portalAccessId === portalAccessId);
+                  if (!bal) return null;
+                  return (
+                    <div className={`text-right rounded-md px-3 py-2 text-sm ${bal.balance > 0 ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+                      <div className="text-xs font-medium uppercase tracking-wide opacity-70">Balance</div>
+                      <div className="font-bold">
+                        {bal.balance > 0
+                          ? `$${bal.balance.toFixed(2)}`
+                          : bal.balance < 0
+                          ? `Credit $${Math.abs(bal.balance).toFixed(2)}`
+                          : "$0.00"}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Contact update form */}
+            <div className="space-y-3">
+              <div className="text-sm font-semibold">Request Contact Update</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Input placeholder="New phone" value={requestedPhone} onChange={(e) => setRequestedPhone(e.target.value)} />
+                <Textarea placeholder="New mailing address" value={requestedMailingAddress} onChange={(e) => setRequestedMailingAddress(e.target.value)} />
+                <Input placeholder="Emergency contact name" value={requestedEmergencyContactName} onChange={(e) => setRequestedEmergencyContactName(e.target.value)} />
+                <Input placeholder="Emergency contact phone" value={requestedEmergencyContactPhone} onChange={(e) => setRequestedEmergencyContactPhone(e.target.value)} />
+                <Select value={requestedContactPreference || "none"} onValueChange={(v) => setRequestedContactPreference(v === "none" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Contact preference" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No preference</SelectItem>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="phone">Phone</SelectItem>
+                    <SelectItem value="sms">SMS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={() => submitContactUpdate.mutate()}
+                disabled={
+                  submitContactUpdate.isPending ||
+                  (
+                    !requestedPhone.trim() &&
+                    !requestedMailingAddress.trim() &&
+                    !requestedEmergencyContactName.trim() &&
+                    !requestedEmergencyContactPhone.trim() &&
+                    !requestedContactPreference.trim()
+                  )
+                }
+              >
+                {submitContactUpdate.isPending ? "Submitting…" : "Submit Update Request"}
+              </Button>
+              {contactUpdateSuccess && (
+                <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                  Your update request has been submitted and is pending review by management.
+                </div>
+              )}
+              {submitContactUpdate.isError && (
+                <p className="text-sm text-destructive">{(submitContactUpdate.error as Error).message}</p>
+              )}
+            </div>
+
+            {/* Previous requests */}
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Previous Requests</div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Requested Changes</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Submitted</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(requests ?? []).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-sm text-muted-foreground">No requests submitted for this unit yet.</TableCell>
+                    </TableRow>
+                  ) : (requests ?? []).map((request) => (
+                    <TableRow key={request.id}>
+                      <TableCell className="max-w-[460px]">
+                        <div className="text-sm space-y-0.5">
+                          {Object.entries(request.requestJson as Record<string, string>).map(([key, val]) => {
+                            const labels: Record<string, string> = {
+                              phone: "Phone",
+                              mailingAddress: "Mailing address",
+                              emergencyContactName: "Emergency contact name",
+                              emergencyContactPhone: "Emergency contact phone",
+                              contactPreference: "Contact preference",
+                            };
+                            return (
+                              <div key={key}>
+                                <span className="text-muted-foreground">{labels[key] ?? key}:</span>{" "}
+                                <span className="font-medium">{String(val)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={request.reviewStatus === "approved" ? "default" : request.reviewStatus === "rejected" ? "destructive" : "outline"}>
+                          {request.reviewStatus}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{new Date(request.createdAt).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
       )}
 
       {/* Maintenance Tab */}

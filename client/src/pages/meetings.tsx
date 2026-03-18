@@ -135,9 +135,8 @@ function MeetingNoticeDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-1">
-          <Send className="h-3 w-3" />
-          Send Notice
+        <Button size="icon" variant="outline" title="Send Notice">
+          <Send className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">
@@ -219,9 +218,8 @@ function QuorumDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-1">
-          <Users className="h-3 w-3" />
-          Attendance
+        <Button size="icon" variant="outline" title="Attendance">
+          <Users className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">

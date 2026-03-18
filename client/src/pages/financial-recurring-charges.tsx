@@ -305,8 +305,8 @@ export default function FinancialRecurringChargesPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       {r.status === "failed" && (
-                        <Button size="sm" variant="outline" onClick={() => retryRun.mutate(r.id)} disabled={retryRun.isPending}>
-                          <RotateCcw className="h-3.5 w-3.5 mr-1" /> Retry
+                        <Button size="icon" variant="outline" title="Retry" onClick={() => retryRun.mutate(r.id)} disabled={retryRun.isPending}>
+                          <RotateCcw className="h-4 w-4" />
                         </Button>
                       )}
                       {r.status === "success" && <CheckCircle2 className="h-4 w-4 text-green-500 inline-block" />}

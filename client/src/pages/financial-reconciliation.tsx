@@ -464,18 +464,18 @@ export default function FinancialReconciliationPage() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         {p.status === "open" && (
-                          <Button size="sm" variant="outline" onClick={() => updatePeriod.mutate({ id: p.id, action: "close" })}>
-                            <CheckSquare className="h-3.5 w-3.5 mr-1" /> Close
+                          <Button size="icon" variant="outline" title="Close" onClick={() => updatePeriod.mutate({ id: p.id, action: "close" })}>
+                            <CheckSquare className="h-4 w-4" />
                           </Button>
                         )}
                         {p.status === "closed" && (
-                          <Button size="sm" variant="outline" onClick={() => updatePeriod.mutate({ id: p.id, action: "lock" })}>
-                            <Lock className="h-3.5 w-3.5 mr-1" /> Lock
+                          <Button size="icon" variant="outline" title="Lock" onClick={() => updatePeriod.mutate({ id: p.id, action: "lock" })}>
+                            <Lock className="h-4 w-4" />
                           </Button>
                         )}
                         {p.status === "locked" && (
-                          <Button size="sm" variant="ghost" onClick={() => updatePeriod.mutate({ id: p.id, action: "reopen" })} title="Platform admin only">
-                            <LockOpen className="h-3.5 w-3.5 mr-1" /> Reopen
+                          <Button size="icon" variant="ghost" title="Reopen (Platform admin only)" onClick={() => updatePeriod.mutate({ id: p.id, action: "reopen" })}>
+                            <LockOpen className="h-4 w-4" />
                           </Button>
                         )}
                       </div>

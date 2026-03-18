@@ -576,13 +576,13 @@ export default function AssociationsPage() {
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="outline"
-                          size="sm"
+                          size="icon"
+                          title="Restore"
                           onClick={() => archiveMutation.mutate({ id: a.id, isArchived: 0 })}
                           disabled={archiveMutation.isPending}
                           data-testid={`button-restore-association-${a.id}`}
                         >
-                          <ArchiveRestore className="h-4 w-4 mr-1" />
-                          Restore
+                          <ArchiveRestore className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="outline"

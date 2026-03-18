@@ -90,9 +90,8 @@ function SendNoticeDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs">
-          <Send className="h-3 w-3" />
-          Send Notice
+        <Button size="icon" variant="outline" title="Send Notice">
+          <Send className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">

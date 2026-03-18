@@ -7000,8 +7000,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return true;
       });
 
-      // Auto-provision portal access if the email matches a known owner/person with no existing access
-      if (activeAccesses.length === 0) {
+      // Sync portal access for every active ownership unit — runs on every login attempt so
+      // units added after the first login are automatically provisioned.
+      {
         const matchingPersons = await db
           .select()
           .from(persons)
@@ -7010,7 +7011,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (matchingPersons.length > 0) {
           const personIds = matchingPersons.map((p) => p.id);
 
-          // Find all active ownerships for these persons
           const activeOwnerships = await db
             .select({ personId: ownerships.personId, unitId: ownerships.unitId })
             .from(ownerships)
@@ -7019,7 +7019,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (activeOwnerships.length > 0) {
             const unitIds = Array.from(new Set(activeOwnerships.map((o) => o.unitId)));
 
-            // Resolve each unit's associationId
             const unitRows = await db
               .select({ id: units.id, associationId: units.associationId })
               .from(units)
@@ -7027,32 +7026,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
             const unitAssocMap = new Map(unitRows.map((u) => [u.id, u.associationId]));
 
-            // Build unique (associationId, personId) pairs to provision
-            const toProvision = new Map<string, { associationId: string; personId: string; unitId: string }>();
+            // Key by associationId:unitId — one portal_access row per unit, not per association
+            const existingKeys = new Set(accesses.map((a) => `${a.associationId}:${a.unitId ?? ""}`));
+
             for (const o of activeOwnerships) {
               const associationId = unitAssocMap.get(o.unitId);
               if (!associationId) continue;
-              const key = `${associationId}:${o.personId}`;
-              if (!toProvision.has(key)) {
-                toProvision.set(key, { associationId, personId: o.personId, unitId: o.unitId });
-              }
-            }
-
-            // Check for any existing portal access records (any status) before creating
-            const existingByAssoc = new Set(accesses.map((a) => a.associationId));
-
-            for (const { associationId, personId, unitId } of Array.from(toProvision.values())) {
-              if (existingByAssoc.has(associationId)) continue; // already has access (even if suspended/revoked)
+              const key = `${associationId}:${o.unitId}`;
+              if (existingKeys.has(key)) continue; // already provisioned for this unit
               await storage.createPortalAccess(
-                { associationId, personId, unitId, email, role: "owner", status: "active" },
+                { associationId, personId: o.personId, unitId: o.unitId, email, role: "owner", status: "active" },
                 "system:auto-provision"
               );
-              console.log("[portal-otp][auto-provision] Created portal access", { email, associationId, personId });
+              console.log("[portal-otp][auto-provision] Created portal access", { email, associationId, unitId: o.unitId });
             }
 
-            // Re-fetch after provisioning
+            // Re-fetch active accesses after any new provisioning
             const refreshed = await storage.getPortalAccessesByEmail(email);
-            activeAccesses.push(...refreshed.filter((a) => a.status === "active" || a.status === "invited"));
+            activeAccesses.length = 0;
+            activeAccesses.push(
+              ...refreshed.filter((a) => {
+                if (a.status !== "active" && a.status !== "invited") return false;
+                if (a.role !== "board-member" && !a.unitId) return false;
+                return true;
+              })
+            );
           }
         }
       }
@@ -7167,6 +7165,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const email = getParam(req.body?.email).trim().toLowerCase();
       const otp = getParam(req.body?.otp).trim();
       // Optional: owner has already chosen an association from the picker
+      const chosenPortalAccessId = getParam(req.body?.portalAccessId) || null;
       const chosenAssociationId = getParam(req.body?.associationId) || null;
       if (!email || !otp) return res.status(400).json({ message: "email and otp are required" });
 
@@ -7201,11 +7200,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       if (activeAccesses.length === 0) return res.status(404).json({ message: "No active portal access found" });
 
-      // If owner has multiple associations and hasn't chosen yet, return the list
-      if (activeAccesses.length > 1 && !chosenAssociationId) {
-        const assocIds = activeAccesses.map((a) => a.associationId);
-        const allAssocs = await storage.getAssociations();
+      // If owner has multiple accesses and hasn't chosen yet, return the picker list
+      // This handles both multiple associations and multiple units within the same association
+      if (activeAccesses.length > 1 && !chosenPortalAccessId && !chosenAssociationId) {
+        const assocIds = [...new Set(activeAccesses.map((a) => a.associationId))];
+        const unitIds = activeAccesses.map((a) => a.unitId).filter(Boolean) as string[];
+        const [allAssocs, unitRows] = await Promise.all([
+          storage.getAssociations(),
+          unitIds.length > 0 ? db.select().from(units).where(inArray(units.id, unitIds)) : Promise.resolve([]),
+        ]);
         const assocMap = new Map(allAssocs.filter((a) => assocIds.includes(a.id)).map((a) => [a.id, a]));
+        const unitMap = new Map(unitRows.map((u) => [u.id, u]));
         return res.json({
           associations: activeAccesses.map((a) => ({
             portalAccessId: a.id,
@@ -7214,14 +7219,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             associationCity: assocMap.get(a.associationId)?.city ?? null,
             role: a.role,
             email: a.email,
+            unitId: a.unitId ?? null,
+            unitNumber: a.unitId ? (unitMap.get(a.unitId)?.unitNumber ?? null) : null,
+            building: a.unitId ? (unitMap.get(a.unitId)?.building ?? null) : null,
           })),
         });
       }
 
       // Single association, or owner already picked one
-      const access = chosenAssociationId
-        ? activeAccesses.find((a) => a.associationId === chosenAssociationId)
-        : activeAccesses[0];
+      const access = chosenPortalAccessId
+        ? activeAccesses.find((a) => a.id === chosenPortalAccessId)
+        : chosenAssociationId
+          ? activeAccesses.find((a) => a.associationId === chosenAssociationId)
+          : activeAccesses[0];
       if (!access) return res.status(404).json({ message: "No portal access found for that association" });
 
       let sessionAccess = access;

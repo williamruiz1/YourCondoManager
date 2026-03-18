@@ -1577,7 +1577,10 @@ export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({ id: t
 export const insertAuthUserSchema = createInsertSchema(authUsers).omit({ id: true, createdAt: true, updatedAt: true, lastLoginAt: true });
 export const insertAuthExternalAccountSchema = createInsertSchema(authExternalAccounts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
-export const insertHoaFeeScheduleSchema = createInsertSchema(hoaFeeSchedules).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertHoaFeeScheduleSchema = createInsertSchema(hoaFeeSchedules, {
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date().nullable().optional(),
+}).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertSpecialAssessmentSchema = createInsertSchema(specialAssessments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertLateFeeRuleSchema = createInsertSchema(lateFeeRules).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertLateFeeEventSchema = createInsertSchema(lateFeeEvents).omit({ id: true, createdAt: true });
