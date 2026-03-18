@@ -7003,10 +7003,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Sync portal access for every active ownership unit — runs on every login attempt so
       // units added after the first login are automatically provisioned.
       {
+        console.log("[portal-provision] Starting ownership sync", { email, existingAccessCount: accesses.length });
+
         const matchingPersons = await db
           .select()
           .from(persons)
           .where(ilike(persons.email, email));
+
+        console.log("[portal-provision] Matched persons", { count: matchingPersons.length, personIds: matchingPersons.map((p) => p.id) });
 
         if (matchingPersons.length > 0) {
           const personIds = matchingPersons.map((p) => p.id);
@@ -7016,6 +7020,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             .from(ownerships)
             .where(and(inArray(ownerships.personId, personIds), isNull(ownerships.endDate)));
 
+          console.log("[portal-provision] Active ownerships found", { count: activeOwnerships.length, ownerships: activeOwnerships });
+
           if (activeOwnerships.length > 0) {
             const unitIds = Array.from(new Set(activeOwnerships.map((o) => o.unitId)));
 
@@ -7024,25 +7030,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               .from(units)
               .where(inArray(units.id, unitIds));
 
+            console.log("[portal-provision] Resolved units", { unitRows });
+
             const unitAssocMap = new Map(unitRows.map((u) => [u.id, u.associationId]));
 
             // Key by associationId:unitId — one portal_access row per unit, not per association
             const existingKeys = new Set(accesses.map((a) => `${a.associationId}:${a.unitId ?? ""}`));
+            console.log("[portal-provision] Existing access keys", { existingKeys: Array.from(existingKeys) });
 
             for (const o of activeOwnerships) {
               const associationId = unitAssocMap.get(o.unitId);
-              if (!associationId) continue;
+              if (!associationId) {
+                console.warn("[portal-provision] No associationId resolved for unitId", { unitId: o.unitId });
+                continue;
+              }
               const key = `${associationId}:${o.unitId}`;
-              if (existingKeys.has(key)) continue; // already provisioned for this unit
+              if (existingKeys.has(key)) {
+                console.log("[portal-provision] Skipping — already provisioned", { key });
+                continue;
+              }
               await storage.createPortalAccess(
                 { associationId, personId: o.personId, unitId: o.unitId, email, role: "owner", status: "active" },
                 "system:auto-provision"
               );
-              console.log("[portal-otp][auto-provision] Created portal access", { email, associationId, unitId: o.unitId });
+              console.log("[portal-provision] Created portal access", { email, associationId, unitId: o.unitId });
             }
 
             // Re-fetch active accesses after any new provisioning
             const refreshed = await storage.getPortalAccessesByEmail(email);
+            console.log("[portal-provision] Post-sync accesses", { count: refreshed.length, ids: refreshed.map((a) => ({ id: a.id, unitId: a.unitId, status: a.status })) });
             activeAccesses.length = 0;
             activeAccesses.push(
               ...refreshed.filter((a) => {
@@ -7051,7 +7067,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 return true;
               })
             );
+          } else {
+            console.warn("[portal-provision] No active ownerships found for persons", { personIds });
           }
+        } else {
+          console.warn("[portal-provision] No person record matched email", { email });
         }
       }
 
@@ -7198,6 +7218,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (a.role !== "board-member" && !a.unitId) return false;
         return true;
       });
+      console.log("[portal-verify] Active accesses after OTP", { email, count: activeAccesses.length, accesses: activeAccesses.map((a) => ({ id: a.id, unitId: a.unitId, associationId: a.associationId, status: a.status })) });
       if (activeAccesses.length === 0) return res.status(404).json({ message: "No active portal access found" });
 
       // If owner has multiple accesses and hasn't chosen yet, return the picker list
@@ -7328,6 +7349,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const email = req.portalEmail || "";
       const accesses = await storage.getPortalAccessesByEmail(email);
       const active = accesses.filter((a) => a.status === "active" || a.status === "invited");
+      console.log("[portal-my-associations]", { email, totalAccesses: accesses.length, activeCount: active.length, active: active.map((a) => ({ id: a.id, unitId: a.unitId, associationId: a.associationId })) });
       const allAssocs = await storage.getAssociations();
       const assocMap = new Map(allAssocs.map((a) => [a.id, a]));
       // Fetch unit info for all accesses that have a unitId
@@ -7365,6 +7387,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         (a) => a.associationId === req.portalAssociationId && (a.status === "active" || a.status === "invited") && a.unitId
       );
       const unitIds = myAccesses.map((a) => a.unitId).filter(Boolean) as string[];
+      console.log("[portal-units-balance]", { email, associationId: req.portalAssociationId, personId: req.portalPersonId, totalAccesses: accesses.length, myAccessCount: myAccesses.length, unitIds });
       if (unitIds.length === 0) return res.json([]);
       const [allEntries, unitRows] = await Promise.all([
         storage.getOwnerLedgerEntries(req.portalAssociationId),
