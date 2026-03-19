@@ -932,6 +932,15 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
         <CardDescription>Review and force-transition webhook payment event states. Select an event to view its state history.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="rounded-lg border bg-muted/20 p-3">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Selected Event</div>
+          <div className="mt-1 text-sm font-medium">
+            {selectedEventId ? `${events.find((event: any) => event.id === selectedEventId)?.providerEventId?.slice(0, 20) || selectedEventId.slice(0, 12)}` : "Choose an event below"}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {selectedEventId ? "Review its state history and apply a manual transition only when reconciliation requires it." : "Start by selecting a payment event from the queue."}
+          </div>
+        </div>
         <div className="hidden md:block">
           <Table>
             <TableHeader>
@@ -989,16 +998,18 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
           <div className="rounded-md border p-3 space-y-3 bg-muted/20">
             <div className="text-sm font-medium">Force Status Transition</div>
             {transitions.length > 0 && (
-              <div className="text-xs text-muted-foreground space-y-0.5">
+              <div className="text-xs text-muted-foreground space-y-1">
                 <div className="font-medium text-foreground mb-1">State History:</div>
                 {transitions.map((t: any, i: number) => (
-                  <div key={i}>{t.fromStatus} → {t.toStatus} · {t.reason} · {new Date(t.transitionedAt).toLocaleString()}</div>
+                  <div key={i} className="rounded-md border bg-white px-3 py-2">
+                    {t.fromStatus} → {t.toStatus} · {t.reason} · {new Date(t.transitionedAt).toLocaleString()}
+                  </div>
                 ))}
               </div>
             )}
-            <div className="flex gap-2">
+            <div className={`gap-2 ${events.length > 0 ? "grid grid-cols-1 md:grid-cols-[144px_minmax(0,1fr)_auto]" : "flex"}`}>
               <Select value={newStatus} onValueChange={v => setNewStatus(v as typeof newStatus)}>
-                <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                <SelectTrigger className={events.length > 0 ? "min-h-11 md:w-36" : "min-h-11"}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="received">received</SelectItem>
                   <SelectItem value="processed">processed</SelectItem>
@@ -1006,8 +1017,8 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
                   <SelectItem value="failed">failed</SelectItem>
                 </SelectContent>
               </Select>
-              <Input placeholder="Reason" value={reason} onChange={e => setReason(e.target.value)} className="flex-1" />
-              <Button size="sm" onClick={() => forceTransition.mutate()} disabled={forceTransition.isPending}>Apply</Button>
+              <Input placeholder="Reason" value={reason} onChange={e => setReason(e.target.value)} className="min-h-11 flex-1" />
+              <Button size="sm" className="min-h-11" onClick={() => forceTransition.mutate()} disabled={forceTransition.isPending}>Apply</Button>
             </div>
           </div>
         )}
@@ -1041,7 +1052,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
         <CardHeader><CardTitle className="text-base">Payment Activity Summary</CardTitle></CardHeader>
         <CardContent>
           {stats && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
               {[
                 { label: "Total Payments", value: `$${stats.totalPayments.toFixed(2)}` },
                 { label: "Total Credits", value: `$${stats.totalCredits.toFixed(2)}` },
@@ -1049,7 +1060,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                 { label: "Last 30 Days Count", value: stats.last30DaysCount },
                 { label: "Last 30 Days Total", value: `$${stats.last30DaysTotal.toFixed(2)}` },
               ].map((s) => (
-                <div key={s.label} className="text-center">
+                <div key={s.label} className="rounded-lg border bg-muted/20 p-3 text-center">
                   <div className="text-2xl font-bold">{s.value}</div>
                   <div className="text-xs text-muted-foreground mt-1">{s.label}</div>
                 </div>
@@ -1102,6 +1113,11 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                       <Badge variant="outline" className="font-mono text-[10px]">Unit {e.unitId.slice(0, 8)}</Badge>
                       <Badge variant="outline" className="font-mono text-[10px]">Person {e.personId.slice(0, 8)}</Badge>
                     </div>
+                    {e.description ? (
+                      <div className="mt-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                        {e.description}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1146,7 +1162,7 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
         {isLoading ? (
           <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
         ) : exceptions.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-green-600 py-4">
+          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-4 text-sm text-green-600">
             <CheckCircle2 className="h-4 w-4" /> No exceptions found. All payment activity looks clean.
           </div>
         ) : (
@@ -1184,6 +1200,9 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
                     <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>
                     <Badge variant="outline" className="font-mono text-[10px]">Unit {ex.unitId.slice(0, 8)}</Badge>
                     <Badge variant="outline" className="font-mono text-[10px]">Person {ex.personId.slice(0, 8)}</Badge>
+                  </div>
+                  <div className="mt-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    Entry {ex.entryId.slice(0, 8)} · Review whether this needs follow-up or reclassification.
                   </div>
                 </div>
               ))}
@@ -1389,7 +1408,7 @@ export default function FinancialPaymentsPage() {
             <div className="text-sm text-muted-foreground">Select an association to manage payment rules.</div>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="flex items-center justify-between rounded-md border p-3">
                   <div>
                     <div className="text-sm font-medium">Allow Partial Payments</div>
@@ -1422,10 +1441,11 @@ export default function FinancialPaymentsPage() {
                 </div>
               </div>
               {partialRuleForm.allowPartialPayments && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Minimum Payment Amount ($)</label>
                     <Input
+                      className={isMobile ? "min-h-11" : undefined}
                       type="number"
                       min="0"
                       step="0.01"
@@ -1437,6 +1457,7 @@ export default function FinancialPaymentsPage() {
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Minimum Payment % of Balance</label>
                     <Input
+                      className={isMobile ? "min-h-11" : undefined}
                       type="number"
                       min="0"
                       max="100"
@@ -1448,8 +1469,8 @@ export default function FinancialPaymentsPage() {
                   </div>
                 </div>
               )}
-              <div className="flex justify-end">
-                <Button size="sm" onClick={() => savePartialRule.mutate()} disabled={savePartialRule.isPending}>
+              <div className={`flex justify-end ${isMobile ? "flex-col" : ""}`}>
+                <Button size="sm" className={isMobile ? "min-h-11" : undefined} onClick={() => savePartialRule.mutate()} disabled={savePartialRule.isPending}>
                   {savePartialRule.isPending ? "Saving…" : "Save Rules"}
                 </Button>
               </div>

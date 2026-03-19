@@ -27,6 +27,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -72,6 +73,7 @@ const profileFormSchema = z.object({
 });
 
 export default function AssociationContextPage() {
+  const isMobile = useIsMobile();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     unitId: "",
@@ -259,6 +261,13 @@ export default function AssociationContextPage() {
         return left.unitNumber.localeCompare(right.unitNumber);
       });
   }, [residentialDataset, latestSubmissionByUnit, unitInviteCount]);
+
+  const inviteQuickPickUnits = useMemo(() => unitCoverageRows.slice(0, 12), [unitCoverageRows]);
+
+  const selectedInviteUnit = useMemo(
+    () => unitCoverageRows.find((row) => row.unitId === inviteForm.unitId) ?? null,
+    [inviteForm.unitId, unitCoverageRows],
+  );
 
   const onboardingRecommendedActions = useMemo(() => {
     const actions: Array<{
@@ -985,8 +994,38 @@ export default function AssociationContextPage() {
                       </div>
                     </div>
                     <div className="grid gap-3">
+                      {inviteQuickPickUnits.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="text-xs text-muted-foreground">Quick pick a unit</div>
+                          <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                            <div className="flex min-w-max gap-2">
+                              {inviteQuickPickUnits.map((row) => (
+                                <Button
+                                  key={row.unitId}
+                                  type="button"
+                                  size="sm"
+                                  variant={inviteForm.unitId === row.unitId ? "default" : "outline"}
+                                  className="h-auto min-h-10 rounded-full px-3 py-2 text-left"
+                                  onClick={() => setInviteForm((prev) => ({ ...prev, unitId: row.unitId }))}
+                                >
+                                  <span className="font-medium">Unit {row.unitNumber}</span>
+                                  <span className="ml-1 text-xs opacity-80">{row.building}</span>
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                      {selectedInviteUnit ? (
+                        <div className="rounded-lg border bg-muted/20 px-3 py-2 text-sm">
+                          <div className="font-medium">Selected unit: {selectedInviteUnit.building} · Unit {selectedInviteUnit.unitNumber}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {formatOccupancyStatus(selectedInviteUnit.occupancyStatus)} · Owners {selectedInviteUnit.ownerCount} · Tenants {selectedInviteUnit.tenantCount}
+                          </div>
+                        </div>
+                      ) : null}
                       <Select value={inviteForm.unitId || "none"} onValueChange={(value) => setInviteForm((prev) => ({ ...prev, unitId: value === "none" ? "" : value }))}>
-                        <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
+                        <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Select unit" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">select unit</SelectItem>
                           {(residentialDataset?.units ?? []).map((unit) => (
@@ -995,19 +1034,19 @@ export default function AssociationContextPage() {
                         </SelectContent>
                       </Select>
                       <Select value={inviteForm.residentType} onValueChange={(value) => setInviteForm((prev) => ({ ...prev, residentType: value as "owner" | "tenant" }))}>
-                        <SelectTrigger><SelectValue placeholder="Resident type" /></SelectTrigger>
+                        <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Resident type" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="owner">Owner</SelectItem>
                           <SelectItem value="tenant">Tenant</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Input placeholder="Email (optional)" value={inviteForm.email} onChange={(event) => setInviteForm((prev) => ({ ...prev, email: event.target.value }))} />
-                      <Input placeholder="Phone (optional)" value={inviteForm.phone} onChange={(event) => setInviteForm((prev) => ({ ...prev, phone: event.target.value }))} />
-                      <Input type="datetime-local" value={inviteForm.expiresAt} onChange={(event) => setInviteForm((prev) => ({ ...prev, expiresAt: event.target.value }))} />
+                      <Input className={isMobile ? "min-h-11" : undefined} placeholder="Email (optional)" value={inviteForm.email} onChange={(event) => setInviteForm((prev) => ({ ...prev, email: event.target.value }))} />
+                      <Input className={isMobile ? "min-h-11" : undefined} placeholder="Phone (optional)" value={inviteForm.phone} onChange={(event) => setInviteForm((prev) => ({ ...prev, phone: event.target.value }))} />
+                      <Input className={isMobile ? "min-h-11" : undefined} type="datetime-local" value={inviteForm.expiresAt} onChange={(event) => setInviteForm((prev) => ({ ...prev, expiresAt: event.target.value }))} />
                       <Button onClick={() => createInviteMutation.mutate()} disabled={createInviteMutation.isPending}>
                         Create Onboarding Invite
                       </Button>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <Button
                           variant="outline"
                           onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner" })}
@@ -1023,7 +1062,7 @@ export default function AssociationContextPage() {
                           Copy Tenant Link
                         </Button>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <Button
                           variant="outline"
                           onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner", regenerate: true })}

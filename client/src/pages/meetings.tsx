@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Send, Users, FileText, CheckSquare, Square } from "lucide-react";
 import type { GovernanceReminderRule } from "@shared/schema";
 
@@ -139,7 +140,7 @@ function MeetingNoticeDialog({
           <Send className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto sm:max-h-[85vh]">
         <DialogHeader>
           <DialogTitle>Send Meeting Notice</DialogTitle>
           <DialogDescription>
@@ -222,7 +223,7 @@ function QuorumDialog({
           <Users className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto sm:max-h-[85vh]">
         <DialogHeader>
           <DialogTitle>Attendance &amp; Quorum</DialogTitle>
           <DialogDescription>{meeting.title}</DialogDescription>
@@ -265,6 +266,7 @@ function QuorumDialog({
 
 export default function MeetingsPage() {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<GovernanceMeeting | null>(null);
@@ -527,6 +529,16 @@ export default function MeetingsPage() {
     });
   }, [resolutions, resolutionSearch, meetings]);
 
+  const selectedResolution = useMemo(
+    () => (resolutions ?? []).find((resolution) => resolution.id === selectedResolutionId) ?? null,
+    [resolutions, selectedResolutionId],
+  );
+
+  const selectedResolutionMeeting = useMemo(
+    () => meetings?.find((meeting) => meeting.id === selectedResolution?.meetingId) ?? null,
+    [meetings, selectedResolution],
+  );
+
   const { data: reminderRules = [], refetch: refetchReminderRules } = useQuery<GovernanceReminderRule[]>({
     queryKey: ["/api/governance/reminder-rules", activeAssociationId],
     queryFn: async () => {
@@ -601,7 +613,7 @@ export default function MeetingsPage() {
           ) : null}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild><Button disabled={!activeAssociationId}>Schedule Meeting</Button></DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader><DialogTitle>Schedule Meeting</DialogTitle></DialogHeader>
               <Form {...form}>
                 <form className="space-y-4" onSubmit={form.handleSubmit((v) => createMeeting.mutate(v))}>
@@ -643,9 +655,17 @@ export default function MeetingsPage() {
         <CardContent className="p-6 space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="space-y-3">
-              <h2 className="text-sm font-medium">Meeting Agenda Items</h2>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-medium">Meeting Agenda Items</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedMeeting ? `Editing agenda for ${selectedMeeting.title}.` : "Select a meeting first to add agenda items."}
+                  </p>
+                </div>
+                {selectedMeeting ? <Badge variant="outline">{selectedMeeting.meetingType}</Badge> : null}
+              </div>
               <Form {...agendaForm}>
-                <form className="grid grid-cols-1 md:grid-cols-4 gap-2" onSubmit={agendaForm.handleSubmit((v) => addAgendaItem.mutate(v))}>
+                <form className="grid grid-cols-1 gap-2 md:grid-cols-4" onSubmit={agendaForm.handleSubmit((v) => addAgendaItem.mutate(v))}>
                   <Input placeholder="Agenda title" value={agendaForm.watch("title")} onChange={(e) => agendaForm.setValue("title", e.target.value)} />
                   <Input placeholder="Description" value={agendaForm.watch("description") || ""} onChange={(e) => agendaForm.setValue("description", e.target.value)} />
                   <div className="space-y-1">
@@ -658,23 +678,34 @@ export default function MeetingsPage() {
               <div className="space-y-1">
                 {(agendaItems ?? []).map((item) => (
                   <div key={item.id} className="rounded border p-2 text-sm">
-                    <div className="font-medium">{item.orderIndex}. {item.title}</div>
+                    <div className="font-medium">{item.orderIndex + 1}. {item.title}</div>
                     <div className="text-muted-foreground">{item.description || "No description"}</div>
                   </div>
                 ))}
-                {!agendaItems?.length ? <div className="text-sm text-muted-foreground">Select a meeting and add agenda items.</div> : null}
+                {!agendaItems?.length ? (
+                  <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                    {selectedMeeting ? "No agenda items added yet for this meeting." : "Select a meeting below to manage its agenda."}
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="space-y-3">
-              <h2 className="text-sm font-medium">Meeting Notes Log</h2>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!selectedMeeting}
-                onClick={() => addMeetingNote.mutate(`Minute entry ${new Date().toISOString()}`)}
-              >
-                Add Minute Snapshot
-              </Button>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-medium">Meeting Notes Log</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedMeeting ? "Capture rough minute entries before publishing a summary." : "Pick a meeting to review notes and minute snapshots."}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!selectedMeeting}
+                  onClick={() => addMeetingNote.mutate(`Minute entry ${new Date().toISOString()}`)}
+                >
+                  Add Minute Snapshot
+                </Button>
+              </div>
               <div className="space-y-1">
                 {(meetingNotes ?? []).map((note) => (
                   <div key={note.id} className="rounded border p-2 text-sm">
@@ -682,7 +713,11 @@ export default function MeetingsPage() {
                     <div className="text-xs text-muted-foreground">{new Date(note.createdAt).toLocaleString()}</div>
                   </div>
                 ))}
-                {!meetingNotes?.length ? <div className="text-sm text-muted-foreground">No meeting notes logged for selected meeting.</div> : null}
+                {!meetingNotes?.length ? (
+                  <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                    {selectedMeeting ? "No minute snapshots logged for this meeting yet." : "Select a meeting below to review or add minute snapshots."}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -696,7 +731,7 @@ export default function MeetingsPage() {
               <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Type</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Summary</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>
                 {(meetings ?? []).map((m) => (
-                  <TableRow key={m.id}>
+                  <TableRow key={m.id} className={selectedMeeting?.id === m.id ? "bg-primary/5" : undefined}>
                     <TableCell>{m.title}</TableCell>
                     <TableCell><Badge variant="secondary">{m.meetingType}</Badge></TableCell>
                     <TableCell>{new Date(m.scheduledAt).toLocaleDateString()}</TableCell>
@@ -712,6 +747,9 @@ export default function MeetingsPage() {
                           />
                         )}
                         <QuorumDialog meeting={m} persons={persons ?? []} />
+                        <Button size="sm" variant={selectedMeeting?.id === m.id ? "default" : "secondary"} onClick={() => setSelectedMeeting(m)}>
+                          {selectedMeeting?.id === m.id ? "Selected" : "Use For Agenda"}
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => openNoteEditor(m)}>Edit Notes</Button>
                         <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { status: m.status === "completed" ? "in-progress" : "completed" } })}>
                           {m.status === "completed" ? "Reopen" : "Complete"}
@@ -723,6 +761,13 @@ export default function MeetingsPage() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {(meetings ?? []).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-14 text-center text-muted-foreground">
+                      No meetings scheduled yet.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
               </TableBody>
             </Table>
           </div>
@@ -760,9 +805,21 @@ export default function MeetingsPage() {
                       {m.summaryStatus === "published" ? "Unpublish" : "Publish Summary"}
                     </Button>
                   </div>
+                  <Button
+                    size="sm"
+                    variant={selectedMeeting?.id === m.id ? "default" : "secondary"}
+                    onClick={() => setSelectedMeeting(m)}
+                  >
+                    {selectedMeeting?.id === m.id ? "Selected For Agenda & Notes" : "Use For Agenda & Notes"}
+                  </Button>
                 </div>
               </div>
             ))}
+            {(meetings ?? []).length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                No meetings scheduled yet. Create one above or load sample data to review the mobile workflow.
+              </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -770,7 +827,10 @@ export default function MeetingsPage() {
       <Card>
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-lg font-semibold">Decisions & Starter Vote Tracking</h2>
+            <div>
+              <h2 className="text-lg font-semibold">Decisions & Starter Vote Tracking</h2>
+              <p className="text-xs text-muted-foreground">Keep one selected resolution active, then record votes against that decision.</p>
+            </div>
             <Input
               className="max-w-sm"
               placeholder="Search by title, meeting, or date"
@@ -778,10 +838,9 @@ export default function MeetingsPage() {
               onChange={(e) => setResolutionSearch(e.target.value)}
             />
           </div>
-          <p className="text-xs text-muted-foreground">Record votes against a selected resolution using a named board participant.</p>
 
           <Form {...resolutionForm}>
-            <form className="grid grid-cols-1 md:grid-cols-4 gap-2" onSubmit={resolutionForm.handleSubmit((v) => addResolution.mutate(v))}>
+            <form className="grid grid-cols-1 gap-2 md:grid-cols-4" onSubmit={resolutionForm.handleSubmit((v) => addResolution.mutate(v))}>
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm flex items-center">
                 <span className="font-medium">{activeAssociationName || "None selected"}</span>
               </div>
@@ -796,6 +855,42 @@ export default function MeetingsPage() {
               <Button type="submit" disabled={addResolution.isPending}>Create Resolution</Button>
             </form>
           </Form>
+
+          <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Active Decision</div>
+                {selectedResolution ? (
+                  <>
+                    <div className="mt-1 text-sm font-semibold">{selectedResolution.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {resolutionNumbers.get(selectedResolution.id) || "—"}
+                      {selectedResolutionMeeting ? ` · ${selectedResolutionMeeting.title}` : " · No linked meeting"}
+                      {selectedResolutionMeeting?.scheduledAt ? ` · ${new Date(selectedResolutionMeeting.scheduledAt).toLocaleDateString()}` : ""}
+                    </div>
+                    {selectedResolution.description ? (
+                      <div className="mt-2 text-sm text-muted-foreground">{selectedResolution.description}</div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    Select a resolution below before recording votes or reviewing its status.
+                  </div>
+                )}
+              </div>
+              {selectedResolution ? (
+                <Badge variant={selectedResolution.status === "approved" ? "default" : selectedResolution.status === "rejected" ? "destructive" : "secondary"}>
+                  {selectedResolution.status}
+                </Badge>
+              ) : null}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Badge variant="secondary">Votes: {(votes ?? []).length}</Badge>
+              <Badge variant="outline">Yes: {(votes ?? []).filter((v) => v.voteChoice === "yes").length}</Badge>
+              <Badge variant="outline">No: {(votes ?? []).filter((v) => v.voteChoice === "no").length}</Badge>
+              <Badge variant="outline">Abstain: {(votes ?? []).filter((v) => v.voteChoice === "abstain").length}</Badge>
+            </div>
+          </div>
 
           <div className="hidden md:block">
             <Table>
@@ -813,6 +908,13 @@ export default function MeetingsPage() {
                     </TableRow>
                   );
                 })}
+                {filteredResolutions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-14 text-center text-muted-foreground">
+                      No resolutions match the current search.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
               </TableBody>
             </Table>
           </div>
@@ -840,37 +942,36 @@ export default function MeetingsPage() {
                 </button>
               );
             })}
+            {filteredResolutions.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                No resolutions match the current search or meeting filter.
+              </div>
+            ) : null}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
               <Select value={voteForm.watch("voterPersonId")} onValueChange={(v) => voteForm.setValue("voterPersonId", v)}>
-                <SelectTrigger><SelectValue placeholder="Board voter" /></SelectTrigger>
+                <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Board voter" /></SelectTrigger>
                 <SelectContent>
                   {(persons ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>)}
                 </SelectContent>
               </Select>
             <Select value={voteForm.watch("voteChoice")} onValueChange={(v) => voteForm.setValue("voteChoice", v as "yes" | "no" | "abstain")}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="yes">yes</SelectItem>
                 <SelectItem value="no">no</SelectItem>
                 <SelectItem value="abstain">abstain</SelectItem>
               </SelectContent>
             </Select>
-            <Input type="number" step="0.1" value={voteForm.watch("voteWeight")} onChange={(e) => voteForm.setValue("voteWeight", Number(e.target.value))} />
-            <Button disabled={!selectedResolutionId || addVote.isPending} onClick={voteForm.handleSubmit((v) => addVote.mutate(v))}>Record Vote</Button>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Badge variant="secondary">Selected resolution votes: {(votes ?? []).length}</Badge>
-            <Badge variant="outline">Yes: {(votes ?? []).filter((v) => v.voteChoice === "yes").length}</Badge>
-            <Badge variant="outline">No: {(votes ?? []).filter((v) => v.voteChoice === "no").length}</Badge>
-            <Badge variant="outline">Abstain: {(votes ?? []).filter((v) => v.voteChoice === "abstain").length}</Badge>
+            <Input className={isMobile ? "min-h-11" : undefined} type="number" step="0.1" value={voteForm.watch("voteWeight")} onChange={(e) => voteForm.setValue("voteWeight", Number(e.target.value))} />
+            <Button className={isMobile ? "min-h-11" : undefined} disabled={!selectedResolutionId || addVote.isPending} onClick={voteForm.handleSubmit((v) => addVote.mutate(v))}>Record Vote</Button>
           </div>
         </CardContent>
       </Card>
 
       <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader><DialogTitle>Edit Notes &amp; Minutes</DialogTitle></DialogHeader>
           <Form {...noteForm}>
             <form
@@ -953,11 +1054,11 @@ export default function MeetingsPage() {
               <DialogTrigger asChild>
                 <Button size="sm" disabled={!activeAssociationId}>Add Rule</Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto sm:max-h-[85vh]">
                 <DialogHeader><DialogTitle>New Reminder Rule</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <Input placeholder="Rule name *" value={reminderForm.name} onChange={(e) => setReminderForm((f) => ({ ...f, name: e.target.value }))} />
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Select value={reminderForm.trigger} onValueChange={(v) => setReminderForm((f) => ({ ...f, trigger: v as typeof f.trigger }))}>
                       <SelectTrigger><SelectValue placeholder="Trigger" /></SelectTrigger>
                       <SelectContent>
@@ -977,7 +1078,7 @@ export default function MeetingsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Days offset</label>
                       <Input type="number" min={1} value={reminderForm.daysOffset} onChange={(e) => setReminderForm((f) => ({ ...f, daysOffset: parseInt(e.target.value) || 3 }))} />

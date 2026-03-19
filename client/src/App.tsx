@@ -521,7 +521,7 @@ function WorkspaceSectionTabs({ adminRole }: { adminRole: AdminRole | null }) {
   if (visibleTabs.length <= 1) return null;
 
   return (
-    <div className="border-b px-3 py-3" data-testid={activeGroup.testId}>
+    <div className="sticky top-0 z-10 border-b bg-background/95 px-3 py-3 backdrop-blur" data-testid={activeGroup.testId}>
       <MobileTabBar
         items={visibleTabs.map((tab) => ({ id: tab.href, label: tab.label }))}
         value={visibleTabs.find((tab) => (tab.matchPrefixes ?? [tab.href]).some((prefix) => isTabActive(location, prefix)))?.href ?? visibleTabs[0].href}
@@ -542,7 +542,7 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
   return (
     <>
       <WorkspaceSectionTabs adminRole={adminRole} />
-      <main ref={mainRef} className="flex-1 overflow-auto pb-[env(safe-area-inset-bottom)]">
+      <main ref={mainRef} className="flex-1 overflow-auto pb-[max(env(safe-area-inset-bottom),1rem)]">
         <WorkspaceRouter adminRole={adminRole} />
       </main>
     </>
@@ -571,7 +571,7 @@ function WorkspaceShell({
         <div className="flex h-screen w-full">
           <AppSidebar adminRole={adminRole} />
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="sticky top-0 z-20 flex min-h-12 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur">
+            <header className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
               <HeaderActions
                 authSession={authSession}

@@ -4,6 +4,7 @@ import type { Association, BoardPackage, BoardPackageTemplate } from "@shared/sc
 
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ function formatSectionTitle(sectionKey: string) {
 
 export default function BoardPackagesPage() {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<BoardPackageTemplate | null>(null);
@@ -132,6 +134,12 @@ export default function BoardPackagesPage() {
       typeof (item as ReviewAnnotation).text === "string",
     );
   }, [selectedPackage]);
+  const selectedPackageSections = Array.isArray(selectedPackage?.contentJson) ? selectedPackage.contentJson : [];
+  const openAnnotationCount = selectedPackageAnnotations.filter((item) => !item.resolvedAt).length;
+  const distributionRecipientCount = distributionEmails
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean).length;
 
   const templateCounts = useMemo(() => ({
     templates: templates.length,
@@ -595,7 +603,7 @@ export default function BoardPackagesPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Select value={selectedPackage?.id ?? ""} onValueChange={setSelectedPackageId}>
-              <SelectTrigger><SelectValue placeholder="Select a generated package" /></SelectTrigger>
+              <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Select a generated package" /></SelectTrigger>
               <SelectContent>
                 {packages.map((item) => (
                   <SelectItem key={item.id} value={item.id}>{item.title} · {item.periodLabel}</SelectItem>
@@ -615,7 +623,34 @@ export default function BoardPackagesPage() {
                     </div>
                     <Badge variant="outline">{selectedPackage.status}</Badge>
                   </div>
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Review state</div>
+                      <div className="mt-1 text-sm font-semibold">{selectedPackage.status}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {openAnnotationCount > 0 ? `${openAnnotationCount} open annotation${openAnnotationCount === 1 ? "" : "s"}` : "No open review notes"}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Approval</div>
+                      <div className="mt-1 text-sm font-semibold">
+                        {selectedPackage.approvedAt ? "Approved" : "Awaiting approval"}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {selectedPackage.approvedAt ? new Date(selectedPackage.approvedAt).toLocaleString() : "Board packet still in draft review"}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Distribution</div>
+                      <div className="mt-1 text-sm font-semibold">
+                        {selectedPackage.distributedAt ? "Delivered" : "Not sent yet"}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {selectedPackage.distributedAt ? new Date(selectedPackage.distributedAt).toLocaleString() : "Approve the packet before distribution"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`flex gap-2 flex-wrap ${isMobile ? "flex-col" : ""}`}>
                     <Button
                       size="sm"
                       variant="outline"
@@ -652,24 +687,43 @@ export default function BoardPackagesPage() {
                 </div>
 
                 <div className="space-y-3">
-                  {Array.isArray(selectedPackage.contentJson) ? selectedPackage.contentJson.map((section: any, index) => (
-                    <div key={`${section?.key ?? "section"}-${index}`} className="rounded-md border p-4 space-y-2">
-                      <div className="font-medium">{typeof section?.title === "string" ? section.title : `Section ${index + 1}`}</div>
-                      <div className="space-y-1 text-sm text-muted-foreground">
-                        {Array.isArray(section?.items) && section.items.length > 0 ? (
-                          section.items.map((item: any, itemIndex: number) => (
-                            <div key={`${index}-${itemIndex}`}>• {String(item)}</div>
-                          ))
-                        ) : (
-                          <div>No generated items.</div>
-                        )}
-                      </div>
-                    </div>
-                  )) : null}
+                  {selectedPackageSections.map((section: any, index) => {
+                    const items = Array.isArray(section?.items) ? section.items : [];
+                    const sectionTitle = typeof section?.title === "string" ? section.title : `Section ${index + 1}`;
+                    return (
+                      <details key={`${section?.key ?? "section"}-${index}`} className="rounded-md border p-4" open={!isMobile && index === 0}>
+                        <summary className="cursor-pointer list-none">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-medium">{sectionTitle}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {items.length > 0 ? `${items.length} item${items.length === 1 ? "" : "s"} in this section` : "No generated items"}
+                              </div>
+                            </div>
+                            <Badge variant="secondary">{formatSectionTitle(String(section?.key ?? `section-${index}`))}</Badge>
+                          </div>
+                        </summary>
+                        <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                          {items.length > 0 ? (
+                            items.map((item: any, itemIndex: number) => (
+                              <div key={`${index}-${itemIndex}`} className="rounded-lg border bg-muted/20 px-3 py-2">
+                                {String(item)}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-lg border border-dashed px-3 py-3 text-sm text-muted-foreground">No generated items for this section.</div>
+                          )}
+                        </div>
+                      </details>
+                    );
+                  })}
                 </div>
 
                 <div className="rounded-md border p-4 space-y-3">
-                  <div className="font-medium">Distribution</div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium">Distribution</div>
+                    <Badge variant="secondary">{distributionRecipientCount} recipients</Badge>
+                  </div>
                   {boardMemberEmails.length > 0 && (
                     <div className="space-y-1.5">
                       <div className="text-xs text-muted-foreground uppercase tracking-wide">Board member recipients</div>
@@ -690,16 +744,18 @@ export default function BoardPackagesPage() {
                     </div>
                   )}
                   <Input
+                    className={isMobile ? "min-h-11" : undefined}
                     placeholder="Comma-separated recipient emails (or use suggestions above)"
                     value={distributionEmails}
                     onChange={(event) => setDistributionEmails(event.target.value)}
                   />
                   <Textarea
+                    className={isMobile ? "min-h-24" : undefined}
                     placeholder="Optional message to include above the package summary"
                     value={distributionMessage}
                     onChange={(event) => setDistributionMessage(event.target.value)}
                   />
-                  <div className="flex justify-end">
+                  <div className={`flex justify-end ${isMobile ? "flex-col" : ""}`}>
                     <Button
                       onClick={submitDistribution}
                       disabled={selectedPackage.status !== "approved" || distributePackage.isPending}
@@ -717,12 +773,14 @@ export default function BoardPackagesPage() {
                         {lastDistributionResult.recipients.map((email) => {
                           const failed = lastDistributionResult.failedRecipients.includes(email);
                           return (
-                            <div key={email} className="flex items-center gap-2 text-xs">
+                            <div key={email} className="flex items-center justify-between gap-3 rounded-md border bg-white px-3 py-2 text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
                               <span className={failed ? "text-destructive" : "text-green-700 dark:text-green-400"}>
                                 {failed ? "✕" : "✓"}
                               </span>
-                              <span>{email}</span>
-                              {failed && <Badge variant="destructive" className="text-[10px] h-4 px-1">failed</Badge>}
+                              <span className="truncate">{email}</span>
+                              </div>
+                              {failed ? <Badge variant="destructive" className="text-[10px] h-4 px-1">failed</Badge> : <Badge variant="outline" className="text-[10px] h-4 px-1">sent</Badge>}
                             </div>
                           );
                         })}
@@ -740,16 +798,16 @@ export default function BoardPackagesPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-medium">Review Annotations</div>
                     <Badge variant="secondary">
-                      {selectedPackageAnnotations.filter((item) => !item.resolvedAt).length} open / {selectedPackageAnnotations.length} total
+                      {openAnnotationCount} open / {selectedPackageAnnotations.length} total
                     </Badge>
                   </div>
                   <div className="grid gap-3 md:grid-cols-[180px,1fr,auto]">
                     <Select value={annotationSectionKey} onValueChange={setAnnotationSectionKey}>
-                      <SelectTrigger><SelectValue placeholder="Section" /></SelectTrigger>
+                      <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Section" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="general">General</SelectItem>
-                        {Array.isArray(selectedPackage.contentJson)
-                          ? selectedPackage.contentJson.map((section: any, index) => (
+                        {selectedPackageSections.length > 0
+                          ? selectedPackageSections.map((section: any, index) => (
                               <SelectItem key={`${section?.key ?? index}`} value={String(section?.key ?? `section-${index}`)}>
                                 {typeof section?.title === "string" ? section.title : `Section ${index + 1}`}
                               </SelectItem>
@@ -758,6 +816,7 @@ export default function BoardPackagesPage() {
                       </SelectContent>
                     </Select>
                     <Textarea
+                      className={isMobile ? "min-h-24" : undefined}
                       placeholder="Add reviewer note, change request, or approval comment"
                       value={annotationDraft}
                       onChange={(event) => setAnnotationDraft(event.target.value)}
@@ -776,8 +835,8 @@ export default function BoardPackagesPage() {
                           </Badge>
                         </div>
                         <div className="text-sm">{annotation.text}</div>
-                        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                          <div>
+                        <div className={`flex items-center justify-between gap-3 text-xs text-muted-foreground ${isMobile ? "flex-col items-start" : ""}`}>
+                          <div className="min-w-0">
                             Added {new Date(annotation.createdAt).toLocaleString()} by {annotation.createdBy}
                           </div>
                           {annotation.resolvedAt ? (

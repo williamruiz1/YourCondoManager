@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 
 const unitFormSchema = z.object({
@@ -58,6 +59,7 @@ const buildingFormSchema = z.object({
 });
 
 export default function UnitsPage() {
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"building" | "unit">("building");
@@ -100,6 +102,23 @@ export default function UnitsPage() {
     defaultValues: { associationId: "", name: "", address: "", totalUnits: undefined, notes: "" },
   });
 
+  function resetUnitDialogState() {
+    setOpen(false);
+    setEditingId(null);
+    setEditingLegacyBuilding(null);
+    setOwnerEntries([]);
+    setRemovedOwnershipIds(new Set());
+    setPendingNewOwners([]);
+    setAddOwnerPersonId("");
+    setAddOwnerPercentage("100");
+    setCurrentOccupancy(null);
+    setRemoveCurrentOccupancy(false);
+    setPendingNewOccupantId("");
+    setOccupancyTypeOverride("TENANT");
+    unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
+    buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
+  }
+
   useEffect(() => {
     if (!activeAssociationId || editingId) return;
     unitForm.setValue("associationId", activeAssociationId, { shouldValidate: true });
@@ -139,18 +158,6 @@ export default function UnitsPage() {
   const updateMutation = useMutation({
     mutationFn: (data: UnitMutationPayload & { id: string }) =>
       apiRequest("PATCH", `/api/units/${data.id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/units"] });
-      queryClient.invalidateQueries({
-        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
-      });
-      toast({ title: "Unit updated successfully" });
-      setOpen(false);
-      setEditingId(null);
-      setEditingLegacyBuilding(null);
-      unitForm.reset({ associationId: activeAssociationId, buildingId: "", unitNumber: "", squareFootage: undefined });
-      buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
-    },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
 
@@ -398,7 +405,7 @@ export default function UnitsPage() {
     });
   }
 
-  function onSubmitUnit(values: z.infer<typeof unitFormSchema>) {
+  async function onSubmitUnit(values: z.infer<typeof unitFormSchema>) {
     const selectedBuilding = values.buildingId ? buildingById.get(values.buildingId) : undefined;
 
     if (!editingId && !values.buildingId && !editingLegacyBuilding) {
@@ -418,19 +425,21 @@ export default function UnitsPage() {
     };
 
     if (editingId) {
-      updateMutation.mutate(
-        { ...payload, id: editingId },
-        {
-          onSuccess: async () => {
-            try {
-              await Promise.all([applyOwnershipChanges(editingId), applyOccupancyChanges(editingId)]);
-            } catch (error) {
-              const message = error instanceof Error ? error.message : "Failed to update unit";
-              toast({ title: "Update failed", description: message, variant: "destructive" });
-            }
-          },
-        },
-      );
+      try {
+        await updateMutation.mutateAsync({ ...payload, id: editingId });
+        await applyOwnershipChanges(editingId);
+        await applyOccupancyChanges(editingId);
+        await queryClient.invalidateQueries({ queryKey: ["/api/units"] });
+        await queryClient.invalidateQueries({
+          predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+        });
+        await queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+        toast({ title: "Unit updated successfully" });
+        resetUnitDialogState();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to update unit";
+        toast({ title: "Update failed", description: message, variant: "destructive" });
+      }
       return;
     }
 
@@ -532,14 +541,7 @@ export default function UnitsPage() {
   }
 
   const buildingGroups = useMemo(() => {
-    const ownerships = residentialDataset?.ownerships ?? [];
-    const occupancies = residentialDataset?.occupancies ?? [];
     const unitDirectoryByUnitId = new Map((residentialDataset?.unitDirectory ?? []).map((entry) => [entry.unit.id, entry]));
-    const ownershipCountByUnit = new Map<string, number>();
-    for (const ownership of ownerships) {
-      ownershipCountByUnit.set(ownership.unitId, (ownershipCountByUnit.get(ownership.unitId) ?? 0) + 1);
-    }
-    const occupancyByUnit = new Map(occupancies.map((occupancy) => [occupancy.unitId, occupancy.occupancyType]));
     const groups = new Map<string, { buildingId: string | null; building: string; units: Unit[] }>();
     for (const building of buildings) {
       groups.set(building.id, {
@@ -572,8 +574,8 @@ export default function UnitsPage() {
           .sort((left, right) => left.unitNumber.localeCompare(right.unitNumber))
           .map((unit) => {
             const unitDirectory = unitDirectoryByUnitId.get(unit.id);
+            const ownerCount = unitDirectory?.ownerCount ?? 0;
             const primaryOwner = unitDirectory?.owners.find((owner) => owner.person)?.person ?? null;
-            const ownerCount = ownershipCountByUnit.get(unit.id) ?? 0;
             const additionalOwnerCount = Math.max(ownerCount - (primaryOwner ? 1 : 0), 0);
             const ownerNameBase = primaryOwner
               ? `${primaryOwner.firstName ?? ""} ${primaryOwner.lastName ?? ""}`.trim()
@@ -583,7 +585,7 @@ export default function UnitsPage() {
             const ownerName = additionalOwnerCount > 0 ? `${ownerNameBase} +${additionalOwnerCount}` : ownerNameBase;
             const ownerEmail = primaryOwner?.email?.trim() ?? "";
             const ownerPhone = primaryOwner?.phone?.trim() ?? "";
-            const occupancyType = occupancyByUnit.get(unit.id);
+            const occupancyType = unitDirectory?.activeOccupancy?.occupancy.occupancyType;
             const occupancyLabel = occupancyType === "OWNER_OCCUPIED"
               ? "Owner"
               : occupancyType === "TENANT"
@@ -618,8 +620,8 @@ export default function UnitsPage() {
             };
           }),
         unitCount: group.units.length,
-        occupiedCount: group.units.filter((unit) => occupancyByUnit.has(unit.id)).length,
-        ownerLinkedCount: group.units.filter((unit) => (ownershipCountByUnit.get(unit.id) ?? 0) > 0).length,
+        occupiedCount: group.units.filter((unit) => unitDirectoryByUnitId.get(unit.id)?.activeOccupancy).length,
+        ownerLinkedCount: group.units.filter((unit) => (unitDirectoryByUnitId.get(unit.id)?.ownerCount ?? 0) > 0).length,
       }))
       .sort((left, right) => left.building.localeCompare(right.building));
   }, [buildings, residentialDataset, units]);
@@ -658,7 +660,7 @@ export default function UnitsPage() {
           </Button>
         </div>
         <Dialog open={open} onOpenChange={handleOpenChange}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader>
               <DialogTitle>
                 {editingId ? "Edit Unit" : dialogMode === "building" ? "New Building" : "New Unit"}
@@ -689,11 +691,11 @@ export default function UnitsPage() {
                       </FormItem>
                     )} />
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <FormField control={buildingForm.control} name="totalUnits" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Number of Units</FormLabel>
-                          <FormControl><Input data-testid="input-building-total-units" type="number" placeholder="24" {...field} /></FormControl>
+                          <FormControl><Input className={isMobile ? "min-h-11" : undefined} data-testid="input-building-total-units" type="number" placeholder="24" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
@@ -701,7 +703,7 @@ export default function UnitsPage() {
                       <FormField control={buildingForm.control} name="notes" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Notes</FormLabel>
-                          <FormControl><Textarea data-testid="input-building-notes" className="min-h-[40px]" placeholder="Optional details" {...field} /></FormControl>
+                          <FormControl><Textarea data-testid="input-building-notes" className={isMobile ? "min-h-24" : "min-h-[40px]"} placeholder="Optional details" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
@@ -734,7 +736,7 @@ export default function UnitsPage() {
                       ) : null}
                       <Select value={field.value || ""} onValueChange={field.onChange}>
                         <FormControl>
-                          <SelectTrigger data-testid="select-unit-building">
+                          <SelectTrigger className={isMobile ? "min-h-11" : undefined} data-testid="select-unit-building">
                             <SelectValue placeholder={buildingsLoading ? "Loading buildings..." : "Select a building"} />
                           </SelectTrigger>
                         </FormControl>
@@ -755,18 +757,18 @@ export default function UnitsPage() {
                     </FormItem>
                   )} />
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <FormField control={unitForm.control} name="unitNumber" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Unit Number</FormLabel>
-                        <FormControl><Input data-testid="input-unit-number" placeholder="101" {...field} /></FormControl>
+                        <FormControl><Input className={isMobile ? "min-h-11" : undefined} data-testid="input-unit-number" placeholder="101" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
                     <FormField control={unitForm.control} name="squareFootage" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Square Footage</FormLabel>
-                        <FormControl><Input data-testid="input-unit-sqft" type="number" placeholder="1200" {...field} /></FormControl>
+                        <FormControl><Input className={isMobile ? "min-h-11" : undefined} data-testid="input-unit-sqft" type="number" placeholder="1200" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -817,9 +819,9 @@ export default function UnitsPage() {
                         </div>
                       ))}
 
-                      <div className="flex gap-2 pt-1">
+                      <div className={`gap-2 pt-1 ${isMobile ? "grid grid-cols-1" : "flex"}`}>
                         <Select value={addOwnerPersonId} onValueChange={setAddOwnerPersonId}>
-                          <SelectTrigger className="flex-1 h-8 text-sm" data-testid="select-add-owner-person">
+                          <SelectTrigger className={isMobile ? "min-h-11 text-sm" : "flex-1 h-8 text-sm"} data-testid="select-add-owner-person">
                             <SelectValue placeholder="Add owner…" />
                           </SelectTrigger>
                           <SelectContent>
@@ -840,7 +842,7 @@ export default function UnitsPage() {
                           type="number"
                           min="1"
                           max="100"
-                          className="w-16 h-8 text-sm"
+                          className={isMobile ? "min-h-11 text-sm" : "w-16 h-8 text-sm"}
                           placeholder="%"
                           value={addOwnerPercentage}
                           onChange={(e) => setAddOwnerPercentage(e.target.value)}
@@ -850,7 +852,7 @@ export default function UnitsPage() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-8"
+                          className={isMobile ? "min-h-11" : "h-8"}
                           disabled={!addOwnerPersonId}
                           data-testid="button-add-owner"
                           onClick={() => {
@@ -883,39 +885,39 @@ export default function UnitsPage() {
                       ) : (
                         <div className="rounded-md border border-dashed p-3 space-y-2">
                           <div className="text-xs font-medium text-muted-foreground">New person</div>
-                          <div className="flex gap-2">
+                          <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex"}`}>
                             <Input
-                              className="h-7 text-xs"
+                              className={isMobile ? "min-h-10 text-sm" : "h-7 text-xs"}
                               placeholder="First name"
                               value={inlineFirstName}
                               onChange={(e) => setInlineFirstName(e.target.value)}
                             />
                             <Input
-                              className="h-7 text-xs"
+                              className={isMobile ? "min-h-10 text-sm" : "h-7 text-xs"}
                               placeholder="Last name"
                               value={inlineLastName}
                               onChange={(e) => setInlineLastName(e.target.value)}
                             />
                           </div>
-                          <div className="flex gap-2">
+                          <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex"}`}>
                             <Input
-                              className="h-7 text-xs"
+                              className={isMobile ? "min-h-10 text-sm" : "h-7 text-xs"}
                               placeholder="Email (optional)"
                               value={inlineEmail}
                               onChange={(e) => setInlineEmail(e.target.value)}
                             />
                             <Input
-                              className="h-7 text-xs"
+                              className={isMobile ? "min-h-10 text-sm" : "h-7 text-xs"}
                               placeholder="Phone (optional)"
                               value={inlinePhone}
                               onChange={(e) => setInlinePhone(e.target.value)}
                             />
                           </div>
-                          <div className="flex gap-2">
+                          <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex"}`}>
                             <Button
                               type="button"
                               size="sm"
-                              className="h-7 text-xs"
+                              className={isMobile ? "min-h-10 text-sm" : "h-7 text-xs"}
                               disabled={!inlineFirstName.trim() || !inlineLastName.trim() || createPersonInlineMutation.isPending}
                               onClick={() => createPersonInlineMutation.mutate({ firstName: inlineFirstName.trim(), lastName: inlineLastName.trim(), email: inlineEmail.trim(), phone: inlinePhone.trim() })}
                             >
@@ -925,7 +927,7 @@ export default function UnitsPage() {
                               type="button"
                               size="sm"
                               variant="ghost"
-                              className="h-7 text-xs"
+                              className={isMobile ? "min-h-10 text-sm" : "h-7 text-xs"}
                               onClick={() => { setInlineNewPersonOpen(false); setInlineFirstName(""); setInlineLastName(""); setInlineEmail(""); setInlinePhone(""); }}
                             >
                               Cancel
@@ -945,18 +947,18 @@ export default function UnitsPage() {
                       </div>
 
                       {/* Occupancy type is the primary choice */}
-                      <div className="flex rounded-md border overflow-hidden text-xs w-fit">
+                      <div className={`rounded-md border overflow-hidden text-xs ${isMobile ? "grid grid-cols-2 w-full" : "flex w-fit"}`}>
                         <button
                           type="button"
                           onClick={() => { setOccupancyTypeOverride("OWNER_OCCUPIED"); setPendingNewOccupantId(""); setRemoveCurrentOccupancy(false); }}
-                          className={`px-3 py-1 font-medium transition-colors ${occupancyTypeOverride === "OWNER_OCCUPIED" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                          className={`px-3 py-2 font-medium transition-colors ${occupancyTypeOverride === "OWNER_OCCUPIED" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
                         >
                           Owner-occupied
                         </button>
                         <button
                           type="button"
                           onClick={() => setOccupancyTypeOverride("TENANT")}
-                          className={`px-3 py-1 font-medium transition-colors border-l ${occupancyTypeOverride === "TENANT" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                          className={`px-3 py-2 font-medium transition-colors border-l ${occupancyTypeOverride === "TENANT" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
                         >
                           Tenant
                         </button>
@@ -981,7 +983,7 @@ export default function UnitsPage() {
                         <>
                           {/* Current tenant (from existing occupancy, if tenant type) */}
                           {currentOccupancy && currentOccupancy.occupancy.occupancyType === "TENANT" && !pendingNewOccupantId && !removeCurrentOccupancy ? (
-                            <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm flex items-center justify-between">
+                            <div className={`rounded-md border bg-muted/20 px-3 py-2 text-sm ${isMobile ? "space-y-2" : "flex items-center justify-between"}`}>
                               <span>{currentOccupancy.personName}</span>
                               <Button
                                 type="button"
@@ -997,7 +999,7 @@ export default function UnitsPage() {
 
                           {/* Pending new tenant selected */}
                           {pendingNewOccupantId ? (
-                            <div className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm flex items-center justify-between">
+                            <div className={`rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm ${isMobile ? "space-y-2" : "flex items-center justify-between"}`}>
                               <span>
                                 {(() => {
                                   const p = sortedPeopleOptions.find((p) => p.id === pendingNewOccupantId);
@@ -1023,7 +1025,7 @@ export default function UnitsPage() {
                               value=""
                               onValueChange={(val) => { setPendingNewOccupantId(val); setRemoveCurrentOccupancy(true); }}
                             >
-                              <SelectTrigger className="h-8 text-sm">
+                              <SelectTrigger className={isMobile ? "min-h-11 text-sm" : "h-8 text-sm"}>
                                 <SelectValue placeholder={
                                   currentOccupancy?.occupancy.occupancyType === "TENANT" && !removeCurrentOccupancy
                                     ? "Change tenant…"

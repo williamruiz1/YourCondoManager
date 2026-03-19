@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Paperclip, Upload, Download, ClipboardCheck } from "lucide-react";
 
 function downloadCsv(rows: string[][], filename: string) {
@@ -101,6 +102,7 @@ const calendarSchema = z.object({
 
 export default function GovernanceCompliancePage() {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [associationFilter, setAssociationFilter] = useState(activeAssociationId);
@@ -500,6 +502,7 @@ export default function GovernanceCompliancePage() {
   const activeComplianceAlerts = complianceAlerts.filter((alert) => alert.status === "active");
   const suppressedComplianceAlerts = complianceAlerts.filter((alert) => alert.status === "suppressed");
   const resolvedComplianceAlerts = complianceAlerts.filter((alert) => alert.status === "resolved");
+  const visibleComplianceAlerts = complianceAlerts.filter((alert) => alertStatusFilter === "all" || alert.status === alertStatusFilter);
   const templateFreshnessLabel = (template: GovernanceComplianceTemplate) => {
     if (!template.nextReviewDueAt) return "No review date";
     return new Date(template.nextReviewDueAt) < now ? "Stale" : "Current";
@@ -852,18 +855,29 @@ export default function GovernanceCompliancePage() {
             {complianceRules.map((rule) => {
               const payload = rule.payloadJson as Record<string, unknown>;
               return (
-                <div key={rule.id} className="rounded-md border p-4 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-medium">{String(payload.sourceTitle || "Compliance rule")}</div>
-                    <Badge variant="outline">{String(payload.severity || "low")}</Badge>
+                <details key={rule.id} className="rounded-md border p-4" open={!isMobile}>
+                  <summary className="list-none cursor-pointer">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{String(payload.sourceTitle || "Compliance rule")}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {String(payload.obligationType || "general-compliance")} · {String(payload.frequency || "event-driven")}
+                        </div>
+                      </div>
+                      <Badge variant="outline">{String(payload.severity || "low")}</Badge>
+                    </div>
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+                      {String(payload.obligationText || "")}
+                    </div>
+                    <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
+                      <div>Type: <span className="font-medium text-foreground">{String(payload.obligationType || "general-compliance")}</span></div>
+                      <div>Frequency: <span className="font-medium text-foreground">{String(payload.frequency || "event-driven")}</span></div>
+                      <div>Review: <span className="font-medium text-foreground">{rule.reviewStatus}</span></div>
+                    </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">{String(payload.obligationText || "")}</div>
-                  <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
-                    <div>Type: <span className="font-medium text-foreground">{String(payload.obligationType || "general-compliance")}</span></div>
-                    <div>Frequency: <span className="font-medium text-foreground">{String(payload.frequency || "event-driven")}</span></div>
-                    <div>Review: <span className="font-medium text-foreground">{rule.reviewStatus}</span></div>
-                  </div>
-                </div>
+                </details>
               );
             })}
             {complianceRules.length === 0 ? (
@@ -916,45 +930,65 @@ export default function GovernanceCompliancePage() {
             })}
           </div>
           <div className="space-y-2">
-            {complianceAlerts.filter(a => alertStatusFilter === "all" || a.status === alertStatusFilter).map((alert) => (
-              <div key={alert.templateItemId} className="rounded-md border p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="font-medium">{alert.templateItemTitle}</div>
-                    <div className="text-xs text-muted-foreground">{alert.templateName}</div>
+            {visibleComplianceAlerts.map((alert) => (
+              <details key={alert.templateItemId} className="rounded-md border p-4" open={!isMobile && alert.status === "active"}>
+                <summary className="list-none cursor-pointer">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="font-medium">{alert.templateItemTitle}</div>
+                      <div className="text-xs text-muted-foreground">{alert.templateName}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={alert.severity === "high" ? "destructive" : alert.severity === "medium" ? "secondary" : "outline"}>{alert.severity}</Badge>
+                      <Badge variant={alert.status === "active" ? "destructive" : alert.status === "suppressed" ? "secondary" : "outline"}>{alert.status}</Badge>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={alert.severity === "high" ? "destructive" : alert.severity === "medium" ? "secondary" : "outline"}>{alert.severity}</Badge>
-                    <Badge variant={alert.status === "active" ? "destructive" : alert.status === "suppressed" ? "secondary" : "outline"}>{alert.status}</Badge>
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2 xl:grid-cols-4">
+                    <div>Type: <span className="font-medium text-foreground">{alert.obligationType}</span></div>
+                    <div>Due Window: <span className="font-medium text-foreground">{alert.dueMonth}/{alert.dueDay}</span></div>
+                    <div>Legal Ref: <span className="font-medium text-foreground">{alert.legalReference || "-"}</span></div>
+                    <div>Source: <span className="font-medium text-foreground">{alert.sourceAuthority || "-"}</span></div>
                   </div>
-                </div>
-                <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2 xl:grid-cols-4">
-                  <div>Type: <span className="font-medium text-foreground">{alert.obligationType}</span></div>
-                  <div>Due Window: <span className="font-medium text-foreground">{alert.dueMonth}/{alert.dueDay}</span></div>
-                  <div>Legal Ref: <span className="font-medium text-foreground">{alert.legalReference || "-"}</span></div>
-                  <div>Source: <span className="font-medium text-foreground">{alert.sourceAuthority || "-"}</span></div>
-                </div>
-                {alert.staleRegulatoryRecord ? (
-                  <div className="text-xs text-destructive">The source regulatory record is past its review date. Verify the jurisdiction source before dismissing this alert.</div>
-                ) : null}
-                {alert.suppressionReason ? (
-                  <div className="text-xs text-muted-foreground">Override reason: {alert.suppressionReason}</div>
-                ) : null}
-                <div className="flex gap-2 flex-wrap">
-                  {alert.status === "active" && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={updateComplianceAlert.isPending || !associationFilter}
-                        onClick={() => {
-                          setSuppressDialogAlert(alert);
-                          setSuppressReason("");
-                          setSuppressDays("90");
-                        }}
-                      >
-                        Suppress
-                      </Button>
+                  {alert.staleRegulatoryRecord ? (
+                    <div className="rounded-lg border border-destructive/30 bg-red-50 px-3 py-2 text-xs text-destructive">The source regulatory record is past its review date. Verify the jurisdiction source before dismissing this alert.</div>
+                  ) : null}
+                  {alert.suppressionReason ? (
+                    <div className="rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">Override reason: {alert.suppressionReason}</div>
+                  ) : null}
+                  <div className={`flex gap-2 flex-wrap ${isMobile ? "flex-col" : ""}`}>
+                    {alert.status === "active" && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={updateComplianceAlert.isPending || !associationFilter}
+                          onClick={() => {
+                            setSuppressDialogAlert(alert);
+                            setSuppressReason("");
+                            setSuppressDays("90");
+                          }}
+                        >
+                          Suppress
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={updateComplianceAlert.isPending || !associationFilter}
+                          onClick={() => associationFilter && updateComplianceAlert.mutate({
+                            associationId: associationFilter,
+                            templateId: alert.templateId,
+                            templateItemId: alert.templateItemId,
+                            status: "resolved",
+                            notes: "Resolved after confirming bylaw or operational coverage.",
+                          })}
+                        >
+                          Mark Resolved
+                        </Button>
+                      </>
+                    )}
+                    {(alert.status === "suppressed" || alert.status === "resolved") && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -963,40 +997,24 @@ export default function GovernanceCompliancePage() {
                           associationId: associationFilter,
                           templateId: alert.templateId,
                           templateItemId: alert.templateItemId,
-                          status: "resolved",
-                          notes: "Resolved after confirming bylaw or operational coverage.",
+                          status: "active",
+                          suppressionReason: null,
+                          suppressedUntil: null,
                         })}
                       >
-                        Mark Resolved
+                        Reactivate
                       </Button>
-                    </>
-                  )}
-                  {(alert.status === "suppressed" || alert.status === "resolved") && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={updateComplianceAlert.isPending || !associationFilter}
-                      onClick={() => associationFilter && updateComplianceAlert.mutate({
-                        associationId: associationFilter,
-                        templateId: alert.templateId,
-                        templateItemId: alert.templateItemId,
-                        status: "active",
-                        suppressionReason: null,
-                        suppressedUntil: null,
-                      })}
-                    >
-                      Reactivate
-                    </Button>
-                  )}
-                  {alert.sourceUrl ? (
-                    <a className="text-xs underline underline-offset-4 inline-flex items-center px-3" href={alert.sourceUrl} target="_blank" rel="noreferrer">
-                      Open source
-                    </a>
-                  ) : null}
+                    )}
+                    {alert.sourceUrl ? (
+                      <a className="inline-flex items-center px-3 py-2 text-xs underline underline-offset-4" href={alert.sourceUrl} target="_blank" rel="noreferrer">
+                        Open source
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+              </details>
             ))}
-            {complianceAlerts.filter(a => alertStatusFilter === "all" || a.status === alertStatusFilter).length === 0 ? (
+            {visibleComplianceAlerts.length === 0 ? (
               <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                 No compliance alerts match the selected filter.
               </div>
@@ -1072,7 +1090,7 @@ export default function GovernanceCompliancePage() {
               Association Context: <span className="font-medium ml-1">{activeAssociationName || "None selected"}</span>
             </div>
             <Select value={selectedTemplateId || "none"} onValueChange={(v) => setSelectedTemplateId(v === "none" ? "" : v)}>
-              <SelectTrigger><SelectValue placeholder="Template" /></SelectTrigger>
+              <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Template" /></SelectTrigger>
               <SelectContent><SelectItem value="none">select template</SelectItem>{templates?.map((t) => <SelectItem key={t.id} value={t.id}>{templateLabel(t)} ({t.year})</SelectItem>)}</SelectContent>
             </Select>
             <Button onClick={() => generateTasks.mutate()} disabled={generateTasks.isPending || !associationFilter || !selectedTemplateId}>Generate Year Tasks</Button>
@@ -1283,7 +1301,7 @@ export default function GovernanceCompliancePage() {
                       </TableCell>
                       <TableCell>
                         <Select value={t.status} onValueChange={(status) => updateTask.mutate({ id: t.id, status: status as "todo" | "in-progress" | "done" })}>
-                          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className={`w-[140px] ${isMobile ? "min-h-11" : ""}`}><SelectValue /></SelectTrigger>
                           <SelectContent><SelectItem value="todo">todo</SelectItem><SelectItem value="in-progress">in-progress</SelectItem><SelectItem value="done">done</SelectItem></SelectContent>
                         </Select>
                       </TableCell>
@@ -1353,13 +1371,13 @@ export default function GovernanceCompliancePage() {
                         ) : null}
                       </div>
                       <Select value={t.status} onValueChange={(status) => updateTask.mutate({ id: t.id, status: status as "todo" | "in-progress" | "done" })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="todo">todo</SelectItem><SelectItem value="in-progress">in-progress</SelectItem><SelectItem value="done">done</SelectItem></SelectContent>
                       </Select>
                       <div className="flex items-center gap-2 flex-wrap">
                         {Array.isArray((t as any).evidenceUrlsJson) && ((t as any).evidenceUrlsJson as string[]).map((url: string, i: number) => (
-                          <a key={i} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-                            <Paperclip className="h-3 w-3" />{i + 1}
+                          <a key={i} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs text-blue-600 hover:underline">
+                            <Paperclip className="h-3 w-3" />Evidence {i + 1}
                           </a>
                         ))}
                         <input
@@ -1375,7 +1393,7 @@ export default function GovernanceCompliancePage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-8 px-3 text-xs gap-1"
+                          className={`px-3 text-xs gap-1 ${isMobile ? "min-h-10" : "h-8"}`}
                           onClick={() => evidenceInputRefs.current[t.id]?.click()}
                           disabled={uploadEvidence.isPending}
                         >

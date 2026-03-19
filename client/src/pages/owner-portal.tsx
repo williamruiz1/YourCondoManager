@@ -1838,6 +1838,17 @@ export default function OwnerPortalPage() {
   const currentUnitPayableBalance = Math.max(0, focusedFinancialUnit?.balance ?? 0);
   const defaultPaymentMethod = savedMethods.find((method) => method.isDefault === 1 && method.isActive !== 0) ?? savedMethods.find((method) => method.isActive !== 0) ?? null;
   const activeAutopayEnrollment = autopayEnrollments.find((entry) => entry.status === "active") ?? null;
+  const recentFocusedPayment = focusedFinancialLedgerEntries
+    .filter((entry) => entry.entryType === "payment" || entry.entryType === "credit")
+    .sort((a, b) => toTimestamp(b.postedAt) - toTimestamp(a.postedAt))[0] ?? null;
+  const paymentSetupStateLabel = activeAutopayEnrollment
+    ? "Autopay active"
+    : defaultPaymentMethod
+      ? "Method saved"
+      : "Setup needed";
+  const paymentSetupStateTone = activeAutopayEnrollment || defaultPaymentMethod
+    ? "bg-green-50 text-green-700"
+    : "bg-amber-50 text-amber-700";
   const boardAttentionItems = boardDashboard?.attention.items ?? [];
   const boardUpcomingMeetings = boardDashboard?.governance.upcomingMeetings ?? [];
   const boardOpenTasks = boardDashboard?.governance.openTasks ?? [];
@@ -2055,7 +2066,7 @@ export default function OwnerPortalPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
       {/* Top header bar */}
       <div className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
         <div className="flex flex-col gap-3 px-4 py-3 sm:px-6">
@@ -2193,7 +2204,7 @@ export default function OwnerPortalPage() {
         )}
 
         {workspaceMode === "owner" ? (
-          <div className="border-t px-4 py-3 sm:px-6">
+          <div className="hidden border-t px-4 py-3 sm:px-6 md:block">
             <MobileTabBar items={ownerTabs} value={activeTab} onChange={setActiveTab} />
           </div>
         ) : (
@@ -2243,7 +2254,7 @@ export default function OwnerPortalPage() {
         </div>
       )}
 
-      <div className="mx-auto max-w-5xl space-y-6 px-4 pb-24 pt-4 sm:px-6 md:space-y-8 md:px-8 md:pb-8">
+      <div className="mx-auto max-w-5xl space-y-6 px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 md:space-y-8 md:px-8 md:pb-8">
 
       {/* Overview Tab: association hero + onboarding + balance + notices */}
       {workspaceMode === "owner" && activeTab === "overview" && (
@@ -4013,6 +4024,44 @@ export default function OwnerPortalPage() {
                   </div>
                 </div>
 
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Statement status</div>
+                    <div className={`mt-2 text-sm font-semibold ${currentUnitPayableBalance > 0 ? "text-red-600" : focusedFinancialUnit?.balance && focusedFinancialUnit.balance < 0 ? "text-green-600" : "text-slate-700"}`}>
+                      {currentUnitPayableBalance > 0
+                        ? "Payment due now"
+                        : focusedFinancialUnit?.balance && focusedFinancialUnit.balance < 0
+                        ? "Account has a credit"
+                        : "Account is current"}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {financialDashboard?.nextDueDate ? `Next charge ${new Date(financialDashboard.nextDueDate).toLocaleDateString()}` : "No upcoming charge scheduled"}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Latest payment</div>
+                    <div className="mt-2 text-sm font-semibold">
+                      {recentFocusedPayment ? `$${Math.abs(recentFocusedPayment.amount).toFixed(2)}` : "No payment yet"}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {recentFocusedPayment
+                        ? `${new Date(recentFocusedPayment.postedAt).toLocaleDateString()} · ${recentFocusedPayment.description || formatStatusLabel(recentFocusedPayment.entryType)}`
+                        : "Pay from this page once a balance is due."}
+                    </div>
+                  </div>
+                  <div className={`rounded-xl border p-4 ${paymentSetupStateTone}`}>
+                    <div className="text-xs uppercase tracking-wide opacity-80">Payment setup</div>
+                    <div className="mt-2 text-sm font-semibold">{paymentSetupStateLabel}</div>
+                    <div className="mt-1 text-xs opacity-80">
+                      {activeAutopayEnrollment
+                        ? `Using ${defaultPaymentMethod?.displayName || "saved method"}`
+                        : defaultPaymentMethod
+                        ? `${defaultPaymentMethod.displayName} is ready for use`
+                        : "Add a method below before enabling autopay."}
+                    </div>
+                  </div>
+                </div>
+
                 {paymentReceipt ? (
                   <div className="rounded-md border border-green-200 bg-green-50 p-4 space-y-2">
                     <div className="flex items-center justify-between">
@@ -4040,7 +4089,7 @@ export default function OwnerPortalPage() {
                     </div>
 
                     {currentUnitPayableBalance > 0 ? (
-                      <div className="flex gap-2 flex-wrap">
+                      <div className={`flex gap-2 flex-wrap ${isMobile ? "flex-col" : ""}`}>
                         <Button size="sm" onClick={() => { setPaymentFormOpen(true); setPaymentAmount(currentUnitPayableBalance.toFixed(2)); setPaymentDescription("HOA dues payment"); }}>
                           Pay ${currentUnitPayableBalance.toFixed(2)}
                         </Button>
@@ -4060,14 +4109,14 @@ export default function OwnerPortalPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="space-y-1">
                             <label className="text-xs text-muted-foreground">Amount ($)</label>
-                            <Input type="number" min="0.01" step="0.01" placeholder="0.00" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
+                            <Input className={isMobile ? "min-h-11" : undefined} type="number" min="0.01" step="0.01" placeholder="0.00" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
                           </div>
                           <div className="space-y-1">
                             <label className="text-xs text-muted-foreground">Description</label>
-                            <Input placeholder="HOA dues payment" value={paymentDescription} onChange={(e) => setPaymentDescription(e.target.value)} />
+                            <Input className={isMobile ? "min-h-11" : undefined} placeholder="HOA dues payment" value={paymentDescription} onChange={(e) => setPaymentDescription(e.target.value)} />
                           </div>
                         </div>
-                        <div className="flex justify-end gap-2">
+                        <div className={`flex justify-end gap-2 ${isMobile ? "flex-col" : ""}`}>
                           <Button variant="outline" size="sm" onClick={() => setPaymentFormOpen(false)}>Cancel</Button>
                           <Button
                             size="sm"
@@ -4116,9 +4165,9 @@ export default function OwnerPortalPage() {
             <MobileSectionShell
               title="Recent transactions"
               summary="Charges, payments, and credits for the selected unit."
-              meta={recentPayments.length > 0 ? (
+              meta={recentFocusedPayment ? (
                 <div className="text-xs text-muted-foreground">
-                  Latest payment {new Date(recentPayments[0].postedAt).toLocaleDateString()} · ${Math.abs(recentPayments[0].amount).toFixed(2)}
+                  Latest payment {new Date(recentFocusedPayment.postedAt).toLocaleDateString()} · ${Math.abs(recentFocusedPayment.amount).toFixed(2)}
                 </div>
               ) : undefined}
             >
@@ -4174,7 +4223,10 @@ export default function OwnerPortalPage() {
                   ))}
                   {focusedFinancialLedgerEntries.length === 0 ? (
                     <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
-                      No ledger entries found for the selected unit.
+                      <div className="font-medium text-foreground">No account activity yet</div>
+                      <div className="mt-1">
+                        Charges, payments, and credits will appear here after the first posting for this unit.
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -4186,10 +4238,10 @@ export default function OwnerPortalPage() {
               actions={
                 <>
                   <Button size="sm" variant="outline" onClick={() => setAddMethodOpen((current) => !current)}>
-                    {addMethodOpen ? "Hide methods" : "Payment methods"}
+                    {addMethodOpen ? "Hide methods" : "Manage methods"}
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => setAutopayFormOpen((current) => !current)}>
-                    {autopayFormOpen ? "Hide autopay" : "Autopay"}
+                    {autopayFormOpen ? "Hide autopay" : "Manage autopay"}
                   </Button>
                 </>
               }
@@ -4253,26 +4305,28 @@ export default function OwnerPortalPage() {
                         ))}
                       </div>
                     ) : (
-                      <div className="rounded-lg border border-dashed bg-white p-4 text-sm text-muted-foreground">No saved payment methods are on file yet.</div>
+                      <div className="rounded-lg border border-dashed bg-white p-4 text-sm text-muted-foreground">
+                        Add a payment method to pay balances faster and enable autopay.
+                      </div>
                     )}
                     <div className="grid grid-cols-1 gap-3">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Display name</label>
-                        <Input placeholder="Primary bank account" value={methodForm.displayName} onChange={(e) => setMethodForm((current) => ({ ...current, displayName: e.target.value }))} />
+                        <Input className={isMobile ? "min-h-11" : undefined} placeholder="Primary bank account" value={methodForm.displayName} onChange={(e) => setMethodForm((current) => ({ ...current, displayName: e.target.value }))} />
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Bank name</label>
-                        <Input placeholder="Bank name" value={methodForm.bankName} onChange={(e) => setMethodForm((current) => ({ ...current, bankName: e.target.value }))} />
+                        <Input className={isMobile ? "min-h-11" : undefined} placeholder="Bank name" value={methodForm.bankName} onChange={(e) => setMethodForm((current) => ({ ...current, bankName: e.target.value }))} />
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">Last 4 digits</label>
-                          <Input placeholder="1234" value={methodForm.last4} onChange={(e) => setMethodForm((current) => ({ ...current, last4: e.target.value }))} />
+                          <Input className={isMobile ? "min-h-11" : undefined} placeholder="1234" value={methodForm.last4} onChange={(e) => setMethodForm((current) => ({ ...current, last4: e.target.value }))} />
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">Method type</label>
                           <Select value={methodForm.methodType} onValueChange={(value) => setMethodForm((current) => ({ ...current, methodType: value }))}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="ach">ACH</SelectItem>
                               <SelectItem value="card">Card</SelectItem>
@@ -4310,17 +4364,17 @@ export default function OwnerPortalPage() {
                     <div className="grid grid-cols-1 gap-3">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Amount</label>
-                        <Input placeholder="0.00" value={autopayForm.amount} onChange={(e) => setAutopayForm((current) => ({ ...current, amount: e.target.value }))} />
+                        <Input className={isMobile ? "min-h-11" : undefined} placeholder="0.00" value={autopayForm.amount} onChange={(e) => setAutopayForm((current) => ({ ...current, amount: e.target.value }))} />
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">Day of month</label>
-                          <Input placeholder="1" value={autopayForm.dayOfMonth} onChange={(e) => setAutopayForm((current) => ({ ...current, dayOfMonth: e.target.value }))} />
+                          <Input className={isMobile ? "min-h-11" : undefined} placeholder="1" value={autopayForm.dayOfMonth} onChange={(e) => setAutopayForm((current) => ({ ...current, dayOfMonth: e.target.value }))} />
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">Frequency</label>
                           <Select value={autopayForm.frequency} onValueChange={(value) => setAutopayForm((current) => ({ ...current, frequency: value }))}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="monthly">Monthly</SelectItem>
                               <SelectItem value="quarterly">Quarterly</SelectItem>
@@ -4331,7 +4385,7 @@ export default function OwnerPortalPage() {
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Description</label>
-                        <Input placeholder="Monthly dues autopay" value={autopayForm.description} onChange={(e) => setAutopayForm((current) => ({ ...current, description: e.target.value }))} />
+                        <Input className={isMobile ? "min-h-11" : undefined} placeholder="Monthly dues autopay" value={autopayForm.description} onChange={(e) => setAutopayForm((current) => ({ ...current, description: e.target.value }))} />
                       </div>
                     </div>
                     <Button size="sm" onClick={() => enrollAutopay.mutate()} disabled={enrollAutopay.isPending || !autopayForm.amount.trim()}>
@@ -4350,13 +4404,13 @@ export default function OwnerPortalPage() {
 
       {/* Mobile bottom tab navigation — shown on small screens in owner mode */}
       {workspaceMode === "owner" && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 border-t bg-white md:hidden">
+        <div className="fixed bottom-0 left-0 right-0 z-20 border-t bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
           <div className="flex">
             {ownerTabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 flex flex-col items-center justify-center py-2 px-1 text-xs font-medium transition-colors min-h-[3.5rem] ${
+                className={`flex-1 flex flex-col items-center justify-center px-1 py-2 text-xs font-medium transition-colors min-h-[3.75rem] ${
                   activeTab === tab.id
                     ? "text-primary border-t-2 border-primary -mt-px bg-primary/5"
                     : "text-muted-foreground"
