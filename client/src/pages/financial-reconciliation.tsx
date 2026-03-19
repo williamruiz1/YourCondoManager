@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertCircle, CheckCircle2, RefreshCw, Plus, GitMerge, Lock, LockOpen, CheckSquare, FileUp } from "lucide-react";
 import type { BankStatementImport, BankStatementTransaction, OwnerLedgerEntry, ReconciliationPeriod } from "@shared/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Parse a bank CSV — supports common formats: Date, Description, Amount (positive/negative)
 function parseBankCsv(csvText: string): { date: string; description: string; amount: number }[] {
@@ -52,6 +53,7 @@ function matchStatusBadge(status: string) {
 }
 
 export default function FinancialReconciliationPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
 
@@ -275,7 +277,7 @@ export default function FinancialReconciliationPage() {
       />
 
       {/* Workflow Step Indicator */}
-      <div className="flex items-center gap-0 rounded-lg border bg-muted/30 overflow-hidden">
+      <div className={`rounded-lg border bg-muted/30 overflow-hidden ${isMobile ? "grid grid-cols-1" : "flex items-center gap-0"}`}>
         {[
           { step: 1, label: "Import Statement", done: imports.length > 0 },
           { step: 2, label: "Auto-Match", done: stats.autoMatched > 0 },
@@ -287,7 +289,7 @@ export default function FinancialReconciliationPage() {
               {s.done ? <CheckCircle2 className="h-4 w-4" /> : s.step}
             </div>
             <span className={`font-medium truncate ${s.done ? "text-green-700 dark:text-green-400" : "text-muted-foreground"}`}>{s.label}</span>
-            {i < arr.length - 1 && <div className="ml-auto h-px w-4 bg-border shrink-0" />}
+            {!isMobile && i < arr.length - 1 && <div className="ml-auto h-px w-4 bg-border shrink-0" />}
           </div>
         ))}
       </div>
@@ -295,9 +297,9 @@ export default function FinancialReconciliationPage() {
       {/* Import + Select */}
       <Card>
         <CardContent className="pt-6 space-y-3">
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className={`gap-3 ${isMobile ? "grid grid-cols-1" : "flex items-center flex-wrap"}`}>
             <Select value={selectedImportId} onValueChange={setSelectedImportId}>
-              <SelectTrigger className="w-72">
+              <SelectTrigger className={isMobile ? "min-h-11 w-full" : "w-72"}>
                 <SelectValue placeholder="Select a statement import" />
               </SelectTrigger>
               <SelectContent>
@@ -309,11 +311,11 @@ export default function FinancialReconciliationPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button size="sm" variant="outline" onClick={() => setImportDialogOpen(true)} disabled={!activeAssociationId}>
+            <Button size="sm" variant="outline" className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => setImportDialogOpen(true)} disabled={!activeAssociationId}>
               <Plus className="h-4 w-4 mr-1" /> New Import
             </Button>
             {selectedImportId && (
-              <Button size="sm" variant="outline" onClick={() => autoMatch.mutate()} disabled={autoMatch.isPending}>
+              <Button size="sm" variant="outline" className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => autoMatch.mutate()} disabled={autoMatch.isPending}>
                 <RefreshCw className={`h-4 w-4 mr-1 ${autoMatch.isPending ? "animate-spin" : ""}`} />
                 Auto-Match
               </Button>
@@ -343,7 +345,7 @@ export default function FinancialReconciliationPage() {
       {transactions.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between gap-3">
+            <div className={`gap-3 ${isMobile ? "grid grid-cols-1" : "flex items-center justify-between"}`}>
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
                   <GitMerge className="h-4 w-4 text-blue-500" /> Match Queue
@@ -351,7 +353,7 @@ export default function FinancialReconciliationPage() {
                 <CardDescription>Review and match bank transactions to ledger entries</CardDescription>
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-36 h-8 text-xs">
+                <SelectTrigger className={isMobile ? "min-h-11 w-full text-sm" : "w-36 h-8 text-xs"}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -365,60 +367,113 @@ export default function FinancialReconciliationPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Matched Entry</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            {isMobile ? (
+              <div className="space-y-3">
                 {filteredTransactions.map((tx) => {
                   const matchedEntry = tx.matchedLedgerEntryId ? ledgerEntries.find(e => e.id === tx.matchedLedgerEntryId) : null;
                   return (
-                    <TableRow key={tx.id}>
-                      <TableCell className="text-sm text-muted-foreground">{new Date(tx.transactionDate).toLocaleDateString()}</TableCell>
-                      <TableCell className="max-w-xs truncate text-sm">{tx.description}</TableCell>
-                      <TableCell className={`font-medium ${tx.amount < 0 ? "text-red-600" : "text-green-600"}`}>
-                        {tx.amount < 0 ? "-" : "+"}${Math.abs(tx.amount).toFixed(2)}
-                      </TableCell>
-                      <TableCell>{matchStatusBadge(tx.matchStatus)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {matchedEntry ? (
-                          <span>{matchedEntry.description ?? matchedEntry.entryType} · ${Math.abs(matchedEntry.amount).toFixed(2)}</span>
-                        ) : tx.matchStatus === "excluded" ? <span className="italic">excluded</span> : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {(tx.matchStatus === "unmatched" || tx.matchStatus === "disputed") && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => { setManualMatchTx(tx); setManualLedgerEntryId(""); setManualNotes(""); }}>
-                                Match
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={() => setExcluded.mutate(tx.id)}>
-                                Exclude
-                              </Button>
-                            </>
-                          )}
-                          {(tx.matchStatus === "auto_matched" || tx.matchStatus === "manual_matched") && (
-                            <Button size="sm" variant="ghost" onClick={() => setManualMatchTx(tx)}>
-                              Review
-                            </Button>
-                          )}
+                    <div key={tx.id} className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium leading-5">{tx.description}</div>
+                          <div className="text-xs text-muted-foreground">{new Date(tx.transactionDate).toLocaleDateString()}</div>
                         </div>
-                      </TableCell>
-                    </TableRow>
+                        <div className={`text-sm font-semibold shrink-0 ${tx.amount < 0 ? "text-red-600" : "text-green-600"}`}>
+                          {tx.amount < 0 ? "-" : "+"}${Math.abs(tx.amount).toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {matchStatusBadge(tx.matchStatus)}
+                      </div>
+                      <div className="rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                        {matchedEntry
+                          ? `${matchedEntry.description ?? matchedEntry.entryType} · $${Math.abs(matchedEntry.amount).toFixed(2)}`
+                          : tx.matchStatus === "excluded"
+                            ? "Excluded from reconciliation"
+                            : "No ledger entry matched yet."}
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {(tx.matchStatus === "unmatched" || tx.matchStatus === "disputed") && (
+                          <>
+                            <Button className="min-h-11 w-full" variant="outline" onClick={() => { setManualMatchTx(tx); setManualLedgerEntryId(""); setManualNotes(""); }}>
+                              Match Transaction
+                            </Button>
+                            <Button className="min-h-11 w-full" variant="ghost" onClick={() => setExcluded.mutate(tx.id)}>
+                              Exclude from Queue
+                            </Button>
+                          </>
+                        )}
+                        {(tx.matchStatus === "auto_matched" || tx.matchStatus === "manual_matched") && (
+                          <Button className="min-h-11 w-full" variant="ghost" onClick={() => setManualMatchTx(tx)}>
+                            Review Match
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
                 {filteredTransactions.length === 0 && (
-                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">No transactions match the selected filter.</TableCell></TableRow>
+                  <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                    No transactions match the selected filter.
+                  </div>
                 )}
-              </TableBody>
-            </Table>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Matched Entry</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTransactions.map((tx) => {
+                    const matchedEntry = tx.matchedLedgerEntryId ? ledgerEntries.find(e => e.id === tx.matchedLedgerEntryId) : null;
+                    return (
+                      <TableRow key={tx.id}>
+                        <TableCell className="text-sm text-muted-foreground">{new Date(tx.transactionDate).toLocaleDateString()}</TableCell>
+                        <TableCell className="max-w-xs truncate text-sm">{tx.description}</TableCell>
+                        <TableCell className={`font-medium ${tx.amount < 0 ? "text-red-600" : "text-green-600"}`}>
+                          {tx.amount < 0 ? "-" : "+"}${Math.abs(tx.amount).toFixed(2)}
+                        </TableCell>
+                        <TableCell>{matchStatusBadge(tx.matchStatus)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {matchedEntry ? (
+                            <span>{matchedEntry.description ?? matchedEntry.entryType} · ${Math.abs(matchedEntry.amount).toFixed(2)}</span>
+                          ) : tx.matchStatus === "excluded" ? <span className="italic">excluded</span> : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            {(tx.matchStatus === "unmatched" || tx.matchStatus === "disputed") && (
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => { setManualMatchTx(tx); setManualLedgerEntryId(""); setManualNotes(""); }}>
+                                  Match
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => setExcluded.mutate(tx.id)}>
+                                  Exclude
+                                </Button>
+                              </>
+                            )}
+                            {(tx.matchStatus === "auto_matched" || tx.matchStatus === "manual_matched") && (
+                              <Button size="sm" variant="ghost" onClick={() => setManualMatchTx(tx)}>
+                                Review
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {filteredTransactions.length === 0 && (
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">No transactions match the selected filter.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
 
             {stats.unmatched === 0 && transactions.length > 0 && (
               <div className="flex items-center gap-2 text-sm text-green-600 mt-3">
@@ -449,52 +504,41 @@ export default function FinancialReconciliationPage() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          {periods.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-4 text-center">No reconciliation periods defined. Create one to track close status.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Dates</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Closed By</TableHead>
-                  <TableHead>Locked By</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {periods.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.periodLabel}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(p.startDate).toLocaleDateString()} – {new Date(p.endDate).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={p.status === "locked" ? "destructive" : p.status === "closed" ? "default" : "secondary"}>
-                        {p.status === "locked" && <Lock className="h-3 w-3 mr-1" />}
-                        {p.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {p.closedBy ? `${p.closedBy}${p.closedAt ? ` · ${new Date(p.closedAt).toLocaleDateString()}` : ""}` : "—"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {p.lockedBy ? `${p.lockedBy}${p.lockedAt ? ` · ${new Date(p.lockedAt).toLocaleDateString()}` : ""}` : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+          <CardContent>
+            {periods.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-4 text-center">No reconciliation periods defined. Create one to track close status.</div>
+            ) : (
+              isMobile ? (
+                <div className="space-y-3">
+                  {periods.map((p) => (
+                    <div key={p.id} className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-medium">{p.periodLabel}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(p.startDate).toLocaleDateString()} – {new Date(p.endDate).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <Badge variant={p.status === "locked" ? "destructive" : p.status === "closed" ? "default" : "secondary"}>
+                          {p.status === "locked" && <Lock className="h-3 w-3 mr-1" />}
+                          {p.status}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground">
+                        <div>Closed by: {p.closedBy ? `${p.closedBy}${p.closedAt ? ` · ${new Date(p.closedAt).toLocaleDateString()}` : ""}` : "—"}</div>
+                        <div>Locked by: {p.lockedBy ? `${p.lockedBy}${p.lockedAt ? ` · ${new Date(p.lockedAt).toLocaleDateString()}` : ""}` : "—"}</div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
                         {p.status === "open" && (
-                          <Button size="icon" variant="outline" title="Close" onClick={() => updatePeriod.mutate({ id: p.id, action: "close" })}>
-                            <CheckSquare className="h-4 w-4" />
+                          <Button className="min-h-11 w-full" variant="outline" onClick={() => updatePeriod.mutate({ id: p.id, action: "close" })}>
+                            <CheckSquare className="h-4 w-4 mr-2" /> Close Period
                           </Button>
                         )}
                         {p.status === "closed" && (
                           <ConfirmDialog
                             trigger={
-                              <Button size="sm" variant="outline" title="Lock period">
-                                <Lock className="h-4 w-4 mr-1" /> Lock
+                              <Button className="min-h-11 w-full" variant="outline" title="Lock period">
+                                <Lock className="h-4 w-4 mr-2" /> Lock Period
                               </Button>
                             }
                             title="Lock this reconciliation period?"
@@ -504,18 +548,79 @@ export default function FinancialReconciliationPage() {
                           />
                         )}
                         {p.status === "locked" && (
-                          <Button size="icon" variant="ghost" title="Reopen (Platform admin only)" onClick={() => updatePeriod.mutate({ id: p.id, action: "reopen" })}>
-                            <LockOpen className="h-4 w-4" />
+                          <Button className="min-h-11 w-full" variant="ghost" title="Reopen (Platform admin only)" onClick={() => updatePeriod.mutate({ id: p.id, action: "reopen" })}>
+                            <LockOpen className="h-4 w-4 mr-2" /> Reopen Period
                           </Button>
                         )}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Period</TableHead>
+                      <TableHead>Dates</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Closed By</TableHead>
+                      <TableHead>Locked By</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {periods.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell className="font-medium">{p.periodLabel}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(p.startDate).toLocaleDateString()} – {new Date(p.endDate).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={p.status === "locked" ? "destructive" : p.status === "closed" ? "default" : "secondary"}>
+                            {p.status === "locked" && <Lock className="h-3 w-3 mr-1" />}
+                            {p.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {p.closedBy ? `${p.closedBy}${p.closedAt ? ` · ${new Date(p.closedAt).toLocaleDateString()}` : ""}` : "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {p.lockedBy ? `${p.lockedBy}${p.lockedAt ? ` · ${new Date(p.lockedAt).toLocaleDateString()}` : ""}` : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            {p.status === "open" && (
+                              <Button size="icon" variant="outline" title="Close" onClick={() => updatePeriod.mutate({ id: p.id, action: "close" })}>
+                                <CheckSquare className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {p.status === "closed" && (
+                              <ConfirmDialog
+                                trigger={
+                                  <Button size="sm" variant="outline" title="Lock period">
+                                    <Lock className="h-4 w-4 mr-1" /> Lock
+                                  </Button>
+                                }
+                                title="Lock this reconciliation period?"
+                                description={`Locking "${p.periodLabel}" is irreversible. Once locked, no transactions in this period can be edited, re-matched, or deleted. This action is permanent and cannot be undone without platform administrator access.`}
+                                confirmLabel="Lock Period"
+                                onConfirm={() => updatePeriod.mutate({ id: p.id, action: "lock" })}
+                              />
+                            )}
+                            {p.status === "locked" && (
+                              <Button size="icon" variant="ghost" title="Reopen (Platform admin only)" onClick={() => updatePeriod.mutate({ id: p.id, action: "reopen" })}>
+                                <LockOpen className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )
+            )}
+          </CardContent>
       </Card>
 
       {/* New Period Dialog */}

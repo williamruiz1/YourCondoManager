@@ -24,6 +24,7 @@ import { AlertTriangle, Ban, CheckCircle2, Clock, DollarSign, FileText } from "l
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ExportCsvButton } from "@/components/export-csv-button";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const invoiceSchema = z.object({
   associationId: z.string().min(1),
@@ -41,6 +42,7 @@ const invoiceSchema = z.object({
 
 
 export default function FinancialInvoicesPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [attachmentInvoiceId, setAttachmentInvoiceId] = useState<string>("");
@@ -425,9 +427,9 @@ export default function FinancialInvoicesPage() {
           totalPages={totalInvoicePages}
           onPageChange={setInvoicePage}
           filterSlot={
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className={`gap-3 ${isMobile ? "grid grid-cols-1" : "flex items-center flex-wrap"}`}>
               {selectedIds.size > 0 && (
-                <Button size="sm" variant="default" onClick={() => bulkApprove.mutate()} disabled={bulkApprove.isPending} className="gap-1.5">
+                <Button size="sm" variant="default" onClick={() => bulkApprove.mutate()} disabled={bulkApprove.isPending} className={`gap-1.5 ${isMobile ? "min-h-11 w-full" : ""}`}>
                   <CheckCircle2 className="h-4 w-4" />
                   Approve {selectedIds.size} selected
                 </Button>
@@ -438,7 +440,7 @@ export default function FinancialInvoicesPage() {
                 filename={`invoices-${activeAssociationName || "all"}`}
               />
               <Select value={invoiceStatusFilter} onValueChange={setInvoiceStatusFilter}>
-                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className={isMobile ? "min-h-11 w-full" : "w-[180px]"}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="draft">Draft</SelectItem>
@@ -449,7 +451,7 @@ export default function FinancialInvoicesPage() {
                 </SelectContent>
               </Select>
               <Select value={invoiceSortBy} onValueChange={setInvoiceSortBy}>
-                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className={isMobile ? "min-h-11 w-full" : "w-[180px]"}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="newest">Newest first</SelectItem>
                   <SelectItem value="oldest">Oldest first</SelectItem>
@@ -460,76 +462,145 @@ export default function FinancialInvoicesPage() {
             </div>
           }
         >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-8"><Checkbox checked={filteredInvoices.length > 0 && selectedIds.size === filteredInvoices.length} onCheckedChange={(v) => { if (v) setSelectedIds(new Set(filteredInvoices.map(i => i.id))); else setSelectedIds(new Set()); }} /></TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>Invoice #</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Invoice Date</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          {isMobile ? (
+            <div className="space-y-3">
               {pagedInvoices.map((row) => {
                 const today = new Date(); today.setHours(0,0,0,0);
                 const isOverdue = row.dueDate && new Date(row.dueDate) < today && row.status !== "paid" && row.status !== "void";
                 return (
-                  <TableRow key={row.id} className={isOverdue ? "bg-red-50/50" : ""}>
-                    <TableCell className="w-8"><Checkbox checked={selectedIds.has(row.id)} onCheckedChange={(v) => { setSelectedIds(prev => { const next = new Set(prev); v ? next.add(row.id) : next.delete(row.id); return next; }); }} /></TableCell>
-                    <TableCell className="font-medium">{row.vendorName}</TableCell>
-                    <TableCell>{row.invoiceNumber || "-"}</TableCell>
-                    <TableCell>${Number(row.amount).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 flex-wrap">
-                        <Badge variant={row.status === "paid" ? "default" : row.status === "void" ? "destructive" : "secondary"} className="gap-1">
-                          {row.status === "paid" && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
-                          {row.status === "approved" && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
-                          {(row.status === "received" || row.status === "draft") && <FileText className="h-3 w-3" aria-hidden="true" />}
-                          {row.status === "void" && <Ban className="h-3 w-3" aria-hidden="true" />}
-                          {row.status}
-                        </Badge>
-                        {isOverdue && <Badge variant="destructive">Overdue</Badge>}
+                  <div key={row.id} className={`rounded-lg border p-4 space-y-3 ${isOverdue ? "border-red-200 bg-red-50/40" : ""}`}>
+                    <div className="flex items-start gap-3">
+                      <Checkbox checked={selectedIds.has(row.id)} onCheckedChange={(v) => { setSelectedIds(prev => { const next = new Set(prev); v ? next.add(row.id) : next.delete(row.id); return next; }); }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium">{row.vendorName}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Invoice {row.invoiceNumber || row.id.slice(0, 8)}
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell>{new Date(row.invoiceDate).toLocaleDateString()}</TableCell>
-                    <TableCell>{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "-"}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        {(row.status === "received" || row.status === "draft") && (
-                          <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ id: row.id, status: "approved" })}>
-                            Approve
-                          </Button>
-                        )}
-                        {row.status === "approved" && (
-                          <ConfirmDialog
-                            trigger={<Button size="sm">Mark Paid</Button>}
-                            title="Mark invoice as paid?"
-                            description={`This will mark ${row.vendorName} invoice ${row.invoiceNumber || row.id.slice(0,8)} ($${Number(row.amount).toFixed(2)}) as paid. This is a financial record update.`}
-                            confirmLabel="Mark Paid"
-                            onConfirm={() => updateStatus.mutate({ id: row.id, status: "paid" })}
-                          />
-                        )}
-                        {row.status !== "paid" && row.status !== "void" && (
-                          <ConfirmDialog
-                            trigger={<Button size="sm" variant="ghost" className="text-muted-foreground">Void</Button>}
-                            title="Void this invoice?"
-                            description={`Voiding ${row.vendorName} invoice ${row.invoiceNumber || row.id.slice(0,8)} will mark it as cancelled. This cannot be undone.`}
-                            confirmLabel="Void Invoice"
-                            destructive
-                            onConfirm={() => updateStatus.mutate({ id: row.id, status: "void" })}
-                          />
-                        )}
+                      <div className="text-sm font-semibold shrink-0">${Number(row.amount).toFixed(2)}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant={row.status === "paid" ? "default" : row.status === "void" ? "destructive" : "secondary"} className="gap-1">
+                        {row.status === "paid" && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
+                        {row.status === "approved" && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
+                        {(row.status === "received" || row.status === "draft") && <FileText className="h-3 w-3" aria-hidden="true" />}
+                        {row.status === "void" && <Ban className="h-3 w-3" aria-hidden="true" />}
+                        {row.status}
+                      </Badge>
+                      {isOverdue && <Badge variant="destructive">Overdue</Badge>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div>
+                        <div className="uppercase tracking-wide">Invoice Date</div>
+                        <div className="mt-1 text-sm text-foreground">{new Date(row.invoiceDate).toLocaleDateString()}</div>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                      <div>
+                        <div className="uppercase tracking-wide">Due Date</div>
+                        <div className="mt-1 text-sm text-foreground">{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "-"}</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {(row.status === "received" || row.status === "draft") && (
+                        <Button className="min-h-11 w-full" variant="outline" onClick={() => updateStatus.mutate({ id: row.id, status: "approved" })}>
+                          Approve Invoice
+                        </Button>
+                      )}
+                      {row.status === "approved" && (
+                        <ConfirmDialog
+                          trigger={<Button className="min-h-11 w-full">Mark Paid</Button>}
+                          title="Mark invoice as paid?"
+                          description={`This will mark ${row.vendorName} invoice ${row.invoiceNumber || row.id.slice(0,8)} ($${Number(row.amount).toFixed(2)}) as paid. This is a financial record update.`}
+                          confirmLabel="Mark Paid"
+                          onConfirm={() => updateStatus.mutate({ id: row.id, status: "paid" })}
+                        />
+                      )}
+                      {row.status !== "paid" && row.status !== "void" && (
+                        <ConfirmDialog
+                          trigger={<Button className="min-h-11 w-full" variant="ghost">Void Invoice</Button>}
+                          title="Void this invoice?"
+                          description={`Voiding ${row.vendorName} invoice ${row.invoiceNumber || row.id.slice(0,8)} will mark it as cancelled. This cannot be undone.`}
+                          confirmLabel="Void Invoice"
+                          destructive
+                          onConfirm={() => updateStatus.mutate({ id: row.id, status: "void" })}
+                        />
+                      )}
+                    </div>
+                  </div>
                 );
               })}
-            </TableBody>
-          </Table>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8"><Checkbox checked={filteredInvoices.length > 0 && selectedIds.size === filteredInvoices.length} onCheckedChange={(v) => { if (v) setSelectedIds(new Set(filteredInvoices.map(i => i.id))); else setSelectedIds(new Set()); }} /></TableHead>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Invoice #</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Invoice Date</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pagedInvoices.map((row) => {
+                  const today = new Date(); today.setHours(0,0,0,0);
+                  const isOverdue = row.dueDate && new Date(row.dueDate) < today && row.status !== "paid" && row.status !== "void";
+                  return (
+                    <TableRow key={row.id} className={isOverdue ? "bg-red-50/50" : ""}>
+                      <TableCell className="w-8"><Checkbox checked={selectedIds.has(row.id)} onCheckedChange={(v) => { setSelectedIds(prev => { const next = new Set(prev); v ? next.add(row.id) : next.delete(row.id); return next; }); }} /></TableCell>
+                      <TableCell className="font-medium">{row.vendorName}</TableCell>
+                      <TableCell>{row.invoiceNumber || "-"}</TableCell>
+                      <TableCell>${Number(row.amount).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1 flex-wrap">
+                          <Badge variant={row.status === "paid" ? "default" : row.status === "void" ? "destructive" : "secondary"} className="gap-1">
+                            {row.status === "paid" && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
+                            {row.status === "approved" && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
+                            {(row.status === "received" || row.status === "draft") && <FileText className="h-3 w-3" aria-hidden="true" />}
+                            {row.status === "void" && <Ban className="h-3 w-3" aria-hidden="true" />}
+                            {row.status}
+                          </Badge>
+                          {isOverdue && <Badge variant="destructive">Overdue</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell>{new Date(row.invoiceDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "-"}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          {(row.status === "received" || row.status === "draft") && (
+                            <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ id: row.id, status: "approved" })}>
+                              Approve
+                            </Button>
+                          )}
+                          {row.status === "approved" && (
+                            <ConfirmDialog
+                              trigger={<Button size="sm">Mark Paid</Button>}
+                              title="Mark invoice as paid?"
+                              description={`This will mark ${row.vendorName} invoice ${row.invoiceNumber || row.id.slice(0,8)} ($${Number(row.amount).toFixed(2)}) as paid. This is a financial record update.`}
+                              confirmLabel="Mark Paid"
+                              onConfirm={() => updateStatus.mutate({ id: row.id, status: "paid" })}
+                            />
+                          )}
+                          {row.status !== "paid" && row.status !== "void" && (
+                            <ConfirmDialog
+                              trigger={<Button size="sm" variant="ghost" className="text-muted-foreground">Void</Button>}
+                              title="Void this invoice?"
+                              description={`Voiding ${row.vendorName} invoice ${row.invoiceNumber || row.id.slice(0,8)} will mark it as cancelled. This cannot be undone.`}
+                              confirmLabel="Void Invoice"
+                              destructive
+                              onConfirm={() => updateStatus.mutate({ id: row.id, status: "void" })}
+                            />
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </DataTableShell>
       </AsyncStateBoundary>
 
@@ -569,29 +640,47 @@ export default function FinancialInvoicesPage() {
               totalPages={totalAttachmentPages}
               onPageChange={setAttachmentPage}
             >
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Invoice</TableHead>
-                    <TableHead>Vendor</TableHead>
-                    <TableHead>File</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              {isMobile ? (
+                <div className="space-y-3">
                   {pagedAttachments.map((attachment) => {
                     const invoice = (invoices ?? []).find((row) => row.id === attachment.expenseId);
                     return (
-                      <TableRow key={attachment.id}>
-                        <TableCell>{attachment.title}</TableCell>
-                        <TableCell>{invoice?.invoiceNumber || attachment.expenseId}</TableCell>
-                        <TableCell>{invoice?.vendorName || "-"}</TableCell>
-                        <TableCell><a className="underline text-sm" href={attachment.fileUrl} target="_blank" rel="noreferrer">Open</a></TableCell>
-                      </TableRow>
+                      <div key={attachment.id} className="rounded-lg border p-4 space-y-2">
+                        <div className="font-medium">{attachment.title}</div>
+                        <div className="text-xs text-muted-foreground">Invoice: {invoice?.invoiceNumber || attachment.expenseId}</div>
+                        <div className="text-xs text-muted-foreground">Vendor: {invoice?.vendorName || "-"}</div>
+                        <Button asChild variant="outline" className="min-h-11 w-full">
+                          <a href={attachment.fileUrl} target="_blank" rel="noreferrer">Open Attachment</a>
+                        </Button>
+                      </div>
                     );
                   })}
-                </TableBody>
-              </Table>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>File</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagedAttachments.map((attachment) => {
+                      const invoice = (invoices ?? []).find((row) => row.id === attachment.expenseId);
+                      return (
+                        <TableRow key={attachment.id}>
+                          <TableCell>{attachment.title}</TableCell>
+                          <TableCell>{invoice?.invoiceNumber || attachment.expenseId}</TableCell>
+                          <TableCell>{invoice?.vendorName || "-"}</TableCell>
+                          <TableCell><a className="underline text-sm" href={attachment.fileUrl} target="_blank" rel="noreferrer">Open</a></TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
             </DataTableShell>
           </CardContent>
         </Card>
