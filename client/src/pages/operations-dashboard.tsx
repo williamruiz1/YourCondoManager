@@ -98,12 +98,12 @@ export default function OperationsDashboardPage() {
         ]}
       />
       <div className="flex gap-2 flex-wrap">
-        <Button variant="outline" onClick={() => downloadReport("vendors")}>Export Vendor Report</Button>
-        <Button variant="outline" onClick={() => downloadReport("work-orders")}>Export Work Orders</Button>
-        <Button variant="outline" onClick={() => downloadReport("maintenance")}>Export Maintenance</Button>
+        <Button className="min-h-10" variant="outline" onClick={() => downloadReport("vendors")}>Export Vendor Report</Button>
+        <Button className="min-h-10" variant="outline" onClick={() => downloadReport("work-orders")}>Export Work Orders</Button>
+        <Button className="min-h-10" variant="outline" onClick={() => downloadReport("maintenance")}>Export Maintenance</Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-6">
         {[
           ["Open Work Orders", totals.openWorkOrders],
           ["Due Maintenance", totals.dueMaintenance],
@@ -160,7 +160,7 @@ export default function OperationsDashboardPage() {
               Review recent inspections to decide whether findings should become work orders or preventive schedule changes.
             </div>
             {(data?.recentInspections ?? []).slice(0, 5).map((record) => (
-              <div key={record.id} className="rounded border p-2">
+              <div key={record.id} className="rounded border p-3">
                 <div className="font-medium">{record.locationText}</div>
                 <div className="text-muted-foreground">{record.inspectionType} · {record.inspectorName}</div>
               </div>
@@ -175,12 +175,14 @@ export default function OperationsDashboardPage() {
           <CardHeader><CardTitle className="text-base">Recent Work Orders</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
             {(data?.recentWorkOrders ?? []).slice(0, 8).map((order) => (
-              <div key={order.id} className="flex items-center justify-between rounded border p-2 gap-3">
-                <div>
+              <div key={order.id} className="rounded border p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                   <div className="font-medium">{order.title}</div>
                   <div className="text-muted-foreground">{order.locationText || "No location"}</div>
                 </div>
                 <Badge variant="outline">{order.status}</Badge>
+                </div>
               </div>
             ))}
             {(data?.recentWorkOrders ?? []).length === 0 ? <div className="text-muted-foreground">No work orders yet.</div> : null}
@@ -191,12 +193,14 @@ export default function OperationsDashboardPage() {
           <CardHeader><CardTitle className="text-base">Due Maintenance Instances</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
             {(data?.dueInstances ?? []).slice(0, 8).map((instance) => (
-              <div key={instance.id} className="flex items-center justify-between rounded border p-2 gap-3">
-                <div>
+              <div key={instance.id} className="rounded border p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                   <div className="font-medium">{instance.title}</div>
                   <div className="text-muted-foreground">{new Date(instance.dueAt).toLocaleDateString()} · {instance.locationText}</div>
                 </div>
                 <Badge variant="outline">{instance.workOrderId ? "linked" : instance.status}</Badge>
+                </div>
               </div>
             ))}
             {(data?.dueInstances ?? []).length === 0 ? <div className="text-muted-foreground">No due maintenance instances.</div> : null}
@@ -208,12 +212,14 @@ export default function OperationsDashboardPage() {
         <CardHeader><CardTitle className="text-base">Operations Audit Trail</CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm">
           {(data?.recentAudit ?? []).map((entry) => (
-            <div key={entry.id} className="flex items-center justify-between gap-3 rounded border p-2">
-              <div>
+            <div key={entry.id} className="rounded border p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <div className="min-w-0">
                 <div className="font-medium">{entry.entityType}</div>
                 <div className="text-muted-foreground">{entry.action} · {entry.actorEmail || "system"}</div>
               </div>
               <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
+              </div>
             </div>
           ))}
           {(data?.recentAudit ?? []).length === 0 ? <div className="text-muted-foreground">No operations audit entries yet.</div> : null}

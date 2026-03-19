@@ -20,6 +20,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { AlertTriangle, Camera, ChevronDown, ChevronUp, Clock, Minus, Upload, X } from "lucide-react";
 import { DateRangePresets, type DateRange } from "@/components/date-range-presets";
 import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type WorkOrderStatus = "open" | "assigned" | "in-progress" | "pending-review" | "closed" | "cancelled";
 type WorkOrderPriority = "low" | "medium" | "high" | "urgent";
@@ -43,6 +45,7 @@ const emptyForm = {
 };
 
 export default function WorkOrdersPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [open, setOpen] = useState(false);
@@ -58,6 +61,7 @@ export default function WorkOrdersPage() {
   const [photoLabel, setPhotoLabel] = useState("");
   const [photoType, setPhotoType] = useState("before");
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const { data: workOrders = [] } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders", statusFilter, unitFilter],
@@ -387,6 +391,7 @@ export default function WorkOrdersPage() {
             <h2 className="text-lg font-semibold">Maintenance Requests Ready for Conversion</h2>
             <Badge variant="outline">{convertibleRequests.length} available</Badge>
           </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -420,6 +425,33 @@ export default function WorkOrdersPage() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {convertibleRequests.slice(0, 25).map((request) => (
+              <div key={request.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{request.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {units.find((unit) => unit.id === request.unitId)?.unitNumber || "-"} · {request.status}
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={() => convertRequest.mutate(request)} disabled={convertRequest.isPending}>Convert</Button>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">{request.status}</Badge>
+                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${request.priority === "urgent" ? "text-red-600" : request.priority === "high" ? "text-orange-600" : "text-slate-700"}`} aria-label={`Priority: ${request.priority}`}>
+                    {request.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
+                    {request.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
+                    {request.priority}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {convertibleRequests.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No unconverted maintenance requests.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -440,40 +472,88 @@ export default function WorkOrdersPage() {
           totalPages={totalPages}
           onPageChange={setPage}
           filterSlot={
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 flex-wrap">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All statuses</SelectItem>
-                    <SelectItem value="open">open</SelectItem>
-                    <SelectItem value="assigned">assigned</SelectItem>
-                    <SelectItem value="in-progress">in-progress</SelectItem>
-                    <SelectItem value="pending-review">pending-review</SelectItem>
-                    <SelectItem value="closed">closed</SelectItem>
-                    <SelectItem value="cancelled">cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={unitFilter} onValueChange={setUnitFilter}>
-                  <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All units</SelectItem>
-                    {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="updated">Recently updated</SelectItem>
-                    <SelectItem value="priority">Highest priority</SelectItem>
-                    <SelectItem value="status">Status A-Z</SelectItem>
-                  </SelectContent>
-                </Select>
+            isMobile ? (
+              <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen} className="w-full">
+                <div className="flex w-full items-center justify-between gap-2">
+                  <div className="text-xs text-muted-foreground">
+                    {statusFilter === "all" ? "All statuses" : statusFilter} · {unitFilter === "all" ? "All units" : "Filtered unit"}
+                  </div>
+                  <CollapsibleTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      {filtersOpen ? "Hide Filters" : "Show Filters"}
+                    </Button>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent className="pt-3">
+                  <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All statuses</SelectItem>
+                        <SelectItem value="open">open</SelectItem>
+                        <SelectItem value="assigned">assigned</SelectItem>
+                        <SelectItem value="in-progress">in-progress</SelectItem>
+                        <SelectItem value="pending-review">pending-review</SelectItem>
+                        <SelectItem value="closed">closed</SelectItem>
+                        <SelectItem value="cancelled">cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={unitFilter} onValueChange={setUnitFilter}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All units</SelectItem>
+                        {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="updated">Recently updated</SelectItem>
+                        <SelectItem value="priority">Highest priority</SelectItem>
+                        <SelectItem value="status">Status A-Z</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <DateRangePresets value={dateRange} onChange={(r) => { setDateRange(r); setPage(1); }} />
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full sm:w-[220px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="open">open</SelectItem>
+                      <SelectItem value="assigned">assigned</SelectItem>
+                      <SelectItem value="in-progress">in-progress</SelectItem>
+                      <SelectItem value="pending-review">pending-review</SelectItem>
+                      <SelectItem value="closed">closed</SelectItem>
+                      <SelectItem value="cancelled">cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={unitFilter} onValueChange={setUnitFilter}>
+                    <SelectTrigger className="w-full sm:w-[220px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All units</SelectItem>
+                      {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="updated">Recently updated</SelectItem>
+                      <SelectItem value="priority">Highest priority</SelectItem>
+                      <SelectItem value="status">Status A-Z</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DateRangePresets value={dateRange} onChange={(r) => { setDateRange(r); setPage(1); }} />
               </div>
-              <DateRangePresets value={dateRange} onChange={(r) => { setDateRange(r); setPage(1); }} />
-            </div>
+            )
           }
         >
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -544,6 +624,57 @@ export default function WorkOrdersPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {pagedWorkOrders.map((order) => {
+              const linkedReq = order.maintenanceRequestId ? requestById.get(order.maintenanceRequestId) : null;
+              const dueAt = linkedReq?.responseDueAt ? new Date(linkedReq.responseDueAt) : null;
+              const isActive = order.status !== "closed" && order.status !== "cancelled";
+              const isOverdue = Boolean(dueAt && isActive && dueAt < new Date());
+              return (
+                <div key={order.id} className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <button className="min-w-0 text-left" onClick={() => setSelectedOrderId(order.id)}>
+                      <div className="font-medium">{order.title}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{order.locationText || order.category}</div>
+                    </button>
+                    <div className="flex flex-col items-end gap-2">
+                      <Badge variant={order.status === "closed" ? "default" : "secondary"}>{order.status}</Badge>
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${order.priority === "urgent" ? "text-red-600" : order.priority === "high" ? "text-orange-600" : order.priority === "low" ? "text-slate-500" : "text-slate-700"}`} aria-label={`Priority: ${order.priority}`}>
+                        {order.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
+                        {order.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
+                        {order.priority === "medium" && <Minus className="h-3 w-3" aria-hidden="true" />}
+                        {order.priority === "low" && <ChevronDown className="h-3 w-3" aria-hidden="true" />}
+                        {order.priority}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
+                    <div>Unit: {units.find((unit) => unit.id === order.unitId)?.unitNumber || "-"}</div>
+                    <div>Vendor: {vendors.find((vendor) => vendor.id === order.vendorId)?.name || "-"}</div>
+                    <div>Invoice: {invoices.find((invoice) => invoice.id === order.vendorInvoiceId)?.invoiceNumber || (order.vendorInvoiceId ? "linked" : "-")}</div>
+                    <div>
+                      SLA: {dueAt ? (
+                        <span className={isOverdue ? "font-medium text-red-600" : ""}>{isOverdue ? "Overdue" : dueAt.toLocaleDateString()}</span>
+                      ) : "—"}
+                    </div>
+                    <div>
+                      Cost: {order.actualCost != null
+                        ? `$${order.actualCost.toFixed(2)} actual`
+                        : order.estimatedCost != null
+                          ? `$${order.estimatedCost.toFixed(2)} est`
+                          : "-"}
+                    </div>
+                    <div>Updated: {new Date(order.updatedAt).toLocaleString()}</div>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedOrderId(order.id)}>View</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => openEdit(order)}>Edit</Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </DataTableShell>
       </AsyncStateBoundary>
 

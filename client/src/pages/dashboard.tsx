@@ -123,21 +123,23 @@ function AlertRow({
 }) {
   if (count === 0) return null;
   return (
-    <div className="flex items-center justify-between rounded-lg border bg-background p-3">
-      <div className="flex items-center gap-3">
+    <div className="rounded-lg border bg-background p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
         <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${iconClass}`}>
           <Icon className="h-4 w-4" />
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-sm font-medium">{label}</div>
           <div className="text-xs text-muted-foreground">{sublabel}</div>
         </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Badge variant="destructive">{count}</Badge>
-        <Button asChild size="sm" variant="outline">
-          <Link href={href}>Review</Link>
-        </Button>
+        </div>
+        <div className="flex items-center justify-between gap-2 sm:justify-end">
+          <Badge variant="destructive">{count}</Badge>
+          <Button asChild size="sm" variant="outline">
+            <Link href={href}>Review</Link>
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -195,13 +197,13 @@ function QuickActions({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {actions.map((action) => (
             <Button
               key={action.label}
               asChild={!action.disabled}
               variant="outline"
-              className="h-auto flex-col gap-1.5 py-3 text-xs"
+              className="h-auto min-h-12 flex-col gap-1.5 py-3 text-xs"
               disabled={action.disabled}
               title={action.title}
             >
@@ -220,7 +222,7 @@ function QuickActions({
           ))}
           <Button
             variant="outline"
-            className="h-auto flex-col gap-1.5 py-3 text-xs"
+            className="h-auto min-h-12 flex-col gap-1.5 py-3 text-xs"
             onClick={onNewAssociation}
           >
             <Building2 className="h-4 w-4" />
@@ -516,12 +518,12 @@ export default function DashboardPage() {
       {activeAssociationId && onboardingState && onboardingState.state !== "complete" && (
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
                 Association Setup
               </CardTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 self-start sm:self-auto">
                 <div className="text-sm font-medium">{onboardingState.scorePercent}%</div>
                 <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
                   <div
@@ -582,8 +584,9 @@ export default function DashboardPage() {
           <CardContent>
             <div className="space-y-2">
               {associations.slice(0, 5).map((association) => (
-                <div key={association.id} className="flex items-center justify-between rounded-md border p-2">
-                  <div>
+                <div key={association.id} className="rounded-md border p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
                     <p className="text-sm font-medium">{association.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {association.city}, {association.state}
@@ -594,9 +597,11 @@ export default function DashboardPage() {
                     variant={association.id === activeAssociationId ? "default" : "outline"}
                     onClick={() => setActiveAssociationId(association.id)}
                     data-testid={`button-set-dashboard-context-${association.id}`}
+                    className="self-start sm:self-auto"
                   >
                     {association.id === activeAssociationId ? "In Context" : "Use Context"}
                   </Button>
+                  </div>
                 </div>
               ))}
             </div>

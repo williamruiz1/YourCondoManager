@@ -691,39 +691,79 @@ export default function MeetingsPage() {
 
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Type</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Summary</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {(meetings ?? []).map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell>{m.title}</TableCell>
-                  <TableCell><Badge variant="secondary">{m.meetingType}</Badge></TableCell>
-                  <TableCell>{new Date(m.scheduledAt).toLocaleDateString()}</TableCell>
-                  <TableCell><Badge variant="outline">{m.status}</Badge></TableCell>
-                  <TableCell><Badge variant={m.summaryStatus === "published" ? "default" : "outline"}>{m.summaryStatus}</Badge></TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1.5">
-                      {activeAssociationId && (
-                        <MeetingNoticeDialog
-                          meeting={m}
-                          associationId={activeAssociationId}
-                          associationName={activeAssociationName}
-                        />
-                      )}
-                      <QuorumDialog meeting={m} persons={persons ?? []} />
-                      <Button size="sm" variant="outline" onClick={() => openNoteEditor(m)}>Edit Notes</Button>
-                      <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { status: m.status === "completed" ? "in-progress" : "completed" } })}>
-                        {m.status === "completed" ? "Reopen" : "Complete"}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { summaryStatus: m.summaryStatus === "published" ? "draft" : "published" } })}>
-                        {m.summaryStatus === "published" ? "Unpublish" : "Publish Summary"}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Type</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Summary</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {(meetings ?? []).map((m) => (
+                  <TableRow key={m.id}>
+                    <TableCell>{m.title}</TableCell>
+                    <TableCell><Badge variant="secondary">{m.meetingType}</Badge></TableCell>
+                    <TableCell>{new Date(m.scheduledAt).toLocaleDateString()}</TableCell>
+                    <TableCell><Badge variant="outline">{m.status}</Badge></TableCell>
+                    <TableCell><Badge variant={m.summaryStatus === "published" ? "default" : "outline"}>{m.summaryStatus}</Badge></TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeAssociationId && (
+                          <MeetingNoticeDialog
+                            meeting={m}
+                            associationId={activeAssociationId}
+                            associationName={activeAssociationName}
+                          />
+                        )}
+                        <QuorumDialog meeting={m} persons={persons ?? []} />
+                        <Button size="sm" variant="outline" onClick={() => openNoteEditor(m)}>Edit Notes</Button>
+                        <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { status: m.status === "completed" ? "in-progress" : "completed" } })}>
+                          {m.status === "completed" ? "Reopen" : "Complete"}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { summaryStatus: m.summaryStatus === "published" ? "draft" : "published" } })}>
+                          {m.summaryStatus === "published" ? "Unpublish" : "Publish Summary"}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-3 p-4 md:hidden">
+            {(meetings ?? []).map((m) => (
+              <div key={m.id} className="rounded-xl border p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{m.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{new Date(m.scheduledAt).toLocaleDateString()}</div>
+                  </div>
+                  <Badge variant="secondary">{m.meetingType}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">{m.status}</Badge>
+                  <Badge variant={m.summaryStatus === "published" ? "default" : "outline"}>{m.summaryStatus}</Badge>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    {activeAssociationId && (
+                      <MeetingNoticeDialog
+                        meeting={m}
+                        associationId={activeAssociationId}
+                        associationName={activeAssociationName}
+                      />
+                    )}
+                    <QuorumDialog meeting={m} persons={persons ?? []} />
+                    <Button size="sm" variant="outline" onClick={() => openNoteEditor(m)}>Edit Notes</Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { status: m.status === "completed" ? "in-progress" : "completed" } })}>
+                      {m.status === "completed" ? "Reopen" : "Complete"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { summaryStatus: m.summaryStatus === "published" ? "draft" : "published" } })}>
+                      {m.summaryStatus === "published" ? "Unpublish" : "Publish Summary"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -757,23 +797,50 @@ export default function MeetingsPage() {
             </form>
           </Form>
 
-          <Table>
-            <TableHeader><TableRow><TableHead className="w-24">Ref #</TableHead><TableHead>Resolution</TableHead><TableHead>Meeting</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {filteredResolutions.map((r) => {
-                const meeting = meetings?.find((m) => m.id === r.meetingId);
-                return (
-                  <TableRow key={r.id} onClick={() => setSelectedResolutionId(r.id)} className={`cursor-pointer ${r.id === selectedResolutionId ? "bg-primary/5 ring-1 ring-inset ring-primary" : ""}`}>
-                    <TableCell><code className="text-xs font-mono text-muted-foreground">{resolutionNumbers.get(r.id) || "—"}</code></TableCell>
-                    <TableCell>{r.title}</TableCell>
-                    <TableCell>{meeting?.title || "-"}</TableCell>
-                    <TableCell>{meeting?.scheduledAt ? new Date(meeting.scheduledAt).toLocaleDateString() : "-"}</TableCell>
-                    <TableCell><Badge variant={r.status === "approved" ? "default" : r.status === "rejected" ? "destructive" : "secondary"}>{r.status}</Badge></TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader><TableRow><TableHead className="w-24">Ref #</TableHead><TableHead>Resolution</TableHead><TableHead>Meeting</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {filteredResolutions.map((r) => {
+                  const meeting = meetings?.find((m) => m.id === r.meetingId);
+                  return (
+                    <TableRow key={r.id} onClick={() => setSelectedResolutionId(r.id)} className={`cursor-pointer ${r.id === selectedResolutionId ? "bg-primary/5 ring-1 ring-inset ring-primary" : ""}`}>
+                      <TableCell><code className="text-xs font-mono text-muted-foreground">{resolutionNumbers.get(r.id) || "—"}</code></TableCell>
+                      <TableCell>{r.title}</TableCell>
+                      <TableCell>{meeting?.title || "-"}</TableCell>
+                      <TableCell>{meeting?.scheduledAt ? new Date(meeting.scheduledAt).toLocaleDateString() : "-"}</TableCell>
+                      <TableCell><Badge variant={r.status === "approved" ? "default" : r.status === "rejected" ? "destructive" : "secondary"}>{r.status}</Badge></TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {filteredResolutions.map((r) => {
+              const meeting = meetings?.find((m) => m.id === r.meetingId);
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => setSelectedResolutionId(r.id)}
+                  className={`w-full rounded-xl border p-4 text-left ${r.id === selectedResolutionId ? "bg-primary/5 ring-1 ring-inset ring-primary" : ""}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs text-muted-foreground">{resolutionNumbers.get(r.id) || "—"}</div>
+                      <div className="mt-1 text-sm font-medium">{r.title}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {meeting?.title || "No meeting"}
+                        {meeting?.scheduledAt ? ` · ${new Date(meeting.scheduledAt).toLocaleDateString()}` : ""}
+                      </div>
+                    </div>
+                    <Badge variant={r.status === "approved" ? "default" : r.status === "rejected" ? "destructive" : "secondary"}>{r.status}</Badge>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
               <Select value={voteForm.watch("voterPersonId")} onValueChange={(v) => voteForm.setValue("voterPersonId", v)}>
@@ -933,42 +1000,69 @@ export default function MeetingsPage() {
             </Dialog>
           </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Trigger</TableHead>
-                <TableHead>Days</TableHead>
-                <TableHead>Recipients</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last Run</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reminderRules.map((rule) => (
-                <TableRow key={rule.id}>
-                  <TableCell className="font-medium">{rule.name}</TableCell>
-                  <TableCell><Badge variant="outline">{rule.trigger.replace(/_/g, " ")}</Badge></TableCell>
-                  <TableCell>{rule.daysOffset}d</TableCell>
-                  <TableCell className="text-sm">{rule.recipientType.replace(/_/g, " ")}</TableCell>
-                  <TableCell><Badge variant={rule.isActive ? "default" : "secondary"}>{rule.isActive ? "Active" : "Paused"}</Badge></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "—"}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={!rule.isActive || runReminderRule.isPending}>Run</Button>
-                      <Button size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}>
-                        {rule.isActive ? "Pause" : "Resume"}
-                      </Button>
-                    </div>
-                  </TableCell>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Trigger</TableHead>
+                  <TableHead>Days</TableHead>
+                  <TableHead>Recipients</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Last Run</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-              {reminderRules.length === 0 && (
-                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground h-12">No reminder rules configured.</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {reminderRules.map((rule) => (
+                  <TableRow key={rule.id}>
+                    <TableCell className="font-medium">{rule.name}</TableCell>
+                    <TableCell><Badge variant="outline">{rule.trigger.replace(/_/g, " ")}</Badge></TableCell>
+                    <TableCell>{rule.daysOffset}d</TableCell>
+                    <TableCell className="text-sm">{rule.recipientType.replace(/_/g, " ")}</TableCell>
+                    <TableCell><Badge variant={rule.isActive ? "default" : "secondary"}>{rule.isActive ? "Active" : "Paused"}</Badge></TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "—"}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={!rule.isActive || runReminderRule.isPending}>Run</Button>
+                        <Button size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}>
+                          {rule.isActive ? "Pause" : "Resume"}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {reminderRules.length === 0 && (
+                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground h-12">No reminder rules configured.</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {reminderRules.map((rule) => (
+              <div key={rule.id} className="rounded-xl border p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{rule.name}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {rule.trigger.replace(/_/g, " ")} · {rule.daysOffset}d · {rule.recipientType.replace(/_/g, " ")}
+                    </div>
+                  </div>
+                  <Badge variant={rule.isActive ? "default" : "secondary"}>{rule.isActive ? "Active" : "Paused"}</Badge>
+                </div>
+                <div className="text-xs text-muted-foreground">Last run: {rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "—"}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={!rule.isActive || runReminderRule.isPending}>Run</Button>
+                  <Button size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}>
+                    {rule.isActive ? "Pause" : "Resume"}
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {reminderRules.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">No reminder rules configured.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
     </div>

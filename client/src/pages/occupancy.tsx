@@ -210,7 +210,7 @@ export default function OccupancyPage() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <FormField control={form.control} name="startDate" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Start Date</FormLabel>
@@ -263,7 +263,7 @@ export default function OccupancyPage() {
               {intakeForm.occupancyType === "OWNER_OCCUPIED" ? (
                 <Input type="number" placeholder="Ownership %" value={intakeForm.ownershipPercentage} onChange={(e) => setIntakeForm((p) => ({ ...p, ownershipPercentage: e.target.value }))} />
               ) : null}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Input placeholder="First name" value={intakeForm.firstName} onChange={(e) => setIntakeForm((p) => ({ ...p, firstName: e.target.value }))} />
                 <Input placeholder="Last name" value={intakeForm.lastName} onChange={(e) => setIntakeForm((p) => ({ ...p, lastName: e.target.value }))} />
               </div>
@@ -290,32 +290,61 @@ export default function OccupancyPage() {
               <p className="text-sm text-muted-foreground mt-1">Track who occupies each unit.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Person</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Start Date</TableHead>
-                  <TableHead>End Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Person</TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Start Date</TableHead>
+                      <TableHead>End Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {occupancies.map((o) => (
+                      <TableRow key={o.id} data-testid={`row-occupancy-${o.id}`}>
+                        <TableCell className="font-medium">{getPersonName(o.personId)}</TableCell>
+                        <TableCell>Unit {getUnitLabel(o.unitId)}</TableCell>
+                        <TableCell>
+                          <Badge variant={o.occupancyType === "OWNER_OCCUPIED" ? "default" : "secondary"}>
+                            {o.occupancyType === "OWNER_OCCUPIED" ? "Owner" : "Tenant"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{new Date(o.startDate).toLocaleDateString()}</TableCell>
+                        <TableCell className="text-muted-foreground">{o.endDate ? new Date(o.endDate).toLocaleDateString() : <Badge variant="outline">Current</Badge>}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="space-y-3 p-4 md:hidden">
                 {occupancies.map((o) => (
-                  <TableRow key={o.id} data-testid={`row-occupancy-${o.id}`}>
-                    <TableCell className="font-medium">{getPersonName(o.personId)}</TableCell>
-                    <TableCell>Unit {getUnitLabel(o.unitId)}</TableCell>
-                    <TableCell>
+                  <div key={o.id} data-testid={`row-occupancy-${o.id}`} className="rounded-xl border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{getPersonName(o.personId)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">Unit {getUnitLabel(o.unitId)}</div>
+                      </div>
                       <Badge variant={o.occupancyType === "OWNER_OCCUPIED" ? "default" : "secondary"}>
                         {o.occupancyType === "OWNER_OCCUPIED" ? "Owner" : "Tenant"}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{new Date(o.startDate).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-muted-foreground">{o.endDate ? new Date(o.endDate).toLocaleDateString() : <Badge variant="outline">Current</Badge>}</TableCell>
-                  </TableRow>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div>
+                        <div>Start</div>
+                        <div className="mt-1 text-foreground">{new Date(o.startDate).toLocaleDateString()}</div>
+                      </div>
+                      <div>
+                        <div>End</div>
+                        <div className="mt-1 text-foreground">{o.endDate ? new Date(o.endDate).toLocaleDateString() : "Current"}</div>
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

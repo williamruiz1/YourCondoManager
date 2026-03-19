@@ -473,38 +473,101 @@ export default function DocumentsPage() {
         >
           <Card>
             <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Association</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Uploaded By</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Owner Portal</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Association</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Uploaded By</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Owner Portal</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagedDocuments.map((d) => (
+                      <TableRow key={d.id} data-testid={`row-document-${d.id}`}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">{d.title}</span>
+                            {missingFileIds.has(d.id) && (
+                              <span title="File not found on server" className="flex items-center gap-1 text-xs text-destructive">
+                                <AlertTriangle className="h-3 w-3" />
+                                Missing
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{getAssocName(d.associationId)}</TableCell>
+                        <TableCell><Badge variant="secondary">{d.documentType}</Badge></TableCell>
+                        <TableCell className="text-muted-foreground">{d.uploadedBy || "-"}</TableCell>
+                        <TableCell className="text-muted-foreground">{new Date(d.createdAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={Boolean(d.isPortalVisible)}
+                              onCheckedChange={(checked) => togglePortalVisibility.mutate({ id: d.id, isPortalVisible: checked })}
+                              aria-label="Toggle owner portal visibility"
+                            />
+                            {d.isPortalVisible ? (
+                              <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                                <Eye className="h-3 w-3" />Visible
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <EyeOff className="h-3 w-3" />Hidden
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right space-x-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            title="Manage"
+                            onClick={() => {
+                              setSelectedDocument(d);
+                              setMetaOpen(true);
+                            }}
+                          >
+                            <Tags className="h-4 w-4" />
+                          </Button>
+                          <Button variant="outline" size="icon" title="Download" asChild data-testid={`button-download-document-${d.id}`}>
+                            <a href={d.fileUrl} target="_blank" rel="noopener noreferrer">
+                              <Download className="h-4 w-4" />
+                            </a>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="space-y-3 p-4 md:hidden">
                 {pagedDocuments.map((d) => (
-                  <TableRow key={d.id} data-testid={`row-document-${d.id}`}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{d.title}</span>
-                        {missingFileIds.has(d.id) && (
-                          <span title="File not found on server" className="flex items-center gap-1 text-xs text-destructive">
-                            <AlertTriangle className="h-3 w-3" />
-                            Missing
-                          </span>
-                        )}
+                  <div key={d.id} data-testid={`row-document-${d.id}`} className="rounded-xl border p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <div className="break-words text-sm font-medium">{d.title}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {getAssocName(d.associationId)} · {new Date(d.createdAt).toLocaleDateString()}
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{getAssocName(d.associationId)}</TableCell>
-                    <TableCell><Badge variant="secondary">{d.documentType}</Badge></TableCell>
-                    <TableCell className="text-muted-foreground">{d.uploadedBy || "-"}</TableCell>
-                    <TableCell className="text-muted-foreground">{new Date(d.createdAt).toLocaleDateString()}</TableCell>
-                    <TableCell>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary">{d.documentType}</Badge>
+                      {missingFileIds.has(d.id) ? (
+                        <Badge variant="destructive" className="gap-1">
+                          <AlertTriangle className="h-3 w-3" />Missing
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{d.uploadedBy || "Uploader not set"}</div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2">
                       <div className="flex items-center gap-2">
                         <Switch
                           checked={Boolean(d.isPortalVisible)}
@@ -521,29 +584,32 @@ export default function DocumentsPage() {
                           </span>
                         )}
                       </div>
-                    </TableCell>
-                    <TableCell className="text-right space-x-2">
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
                       <Button
                         variant="outline"
-                        size="icon"
-                        title="Manage"
+                        size="sm"
                         onClick={() => {
                           setSelectedDocument(d);
                           setMetaOpen(true);
                         }}
                       >
-                        <Tags className="h-4 w-4" />
+                        Manage
                       </Button>
-                      <Button variant="outline" size="icon" title="Download" asChild data-testid={`button-download-document-${d.id}`}>
+                      <Button variant="outline" size="sm" asChild>
                         <a href={d.fileUrl} target="_blank" rel="noopener noreferrer">
-                          <Download className="h-4 w-4" />
+                          Open
                         </a>
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                      <Button variant="outline" size="sm" asChild data-testid={`button-download-document-${d.id}`}>
+                        <a href={d.fileUrl} download>
+                          Download
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
             </CardContent>
           </Card>
         </DataTableShell>
@@ -565,16 +631,38 @@ export default function DocumentsPage() {
           <DialogHeader>
             <DialogTitle>{selectedDocument ? `Manage: ${selectedDocument.title}` : "Manage Document"}</DialogTitle>
           </DialogHeader>
+          {selectedDocument ? (
+            <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="break-words text-sm font-medium">{selectedDocument.title}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {selectedDocument.documentType} · {getAssocName(selectedDocument.associationId)}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <a href={selectedDocument.fileUrl} target="_blank" rel="noopener noreferrer">
+                    Open
+                  </a>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <a href={selectedDocument.fileUrl} download>
+                    Download
+                  </a>
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Tags className="h-4 w-4" />
                 Tags
               </div>
-              <div className="space-y-2 max-h-44 overflow-auto border rounded-md p-3">
+              <div className="space-y-2 max-h-44 overflow-auto rounded-md border p-3">
                 {tags?.length ? (
                   tags.map((tag) => (
-                    <div key={tag.id} className="text-sm text-muted-foreground">
+                    <div key={tag.id} className="break-all text-sm text-muted-foreground">
                       <Badge variant="outline">{tag.entityType}</Badge>
                       <span className="ml-2">{tag.entityId}</span>
                     </div>
@@ -631,19 +719,28 @@ export default function DocumentsPage() {
                 <History className="h-4 w-4" />
                 Versions
               </div>
-              <div className="space-y-2 max-h-44 overflow-auto border rounded-md p-3">
+              <div className="space-y-2 max-h-44 overflow-auto rounded-md border p-3">
                 {versions?.length ? (
                   versions.map((version) => (
-                    <div key={version.id} className="flex items-center justify-between gap-3 text-sm">
-                      <div>
+                    <div key={version.id} className="rounded-lg border p-3 text-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
                         <p className="font-medium">v{version.versionNumber}: {version.title}</p>
                         <p className="text-muted-foreground">{new Date(version.createdAt).toLocaleDateString()}</p>
                       </div>
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={version.fileUrl} target="_blank" rel="noopener noreferrer">
-                          <Download className="h-3 w-3 mr-1" />Open
-                        </a>
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={version.fileUrl} target="_blank" rel="noopener noreferrer">
+                            Open
+                          </a>
+                        </Button>
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={version.fileUrl} download>
+                            Download
+                          </a>
+                        </Button>
+                      </div>
+                      </div>
                     </div>
                   ))
                 ) : (

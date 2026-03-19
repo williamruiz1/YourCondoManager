@@ -387,7 +387,7 @@ export default function OwnersPage() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <FormField control={form.control} name="startDate" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Start Date</FormLabel>
@@ -430,140 +430,244 @@ export default function OwnersPage() {
               <p className="text-sm text-muted-foreground mt-1">Assign owners to units to track ownership.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Owner</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Mailing Address</TableHead>
-                  <TableHead>Ownership</TableHead>
-                  <TableHead>Start Date</TableHead>
-                  <TableHead>End Date</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Owner</TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Mailing Address</TableHead>
+                      <TableHead>Ownership</TableHead>
+                      <TableHead>Start Date</TableHead>
+                      <TableHead>End Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ownerRows.map((row) => {
+                      const draft = drafts[row.ownership.id];
+                      const personId = row.person?.id ?? "";
+                      return (
+                        <TableRow
+                          key={row.ownership.id}
+                          data-testid={`row-ownership-${row.ownership.id}`}
+                          className={!isBulkEditing && row.person ? "cursor-pointer" : ""}
+                          onClick={() => {
+                            if (isBulkEditing || !personId) return;
+                            openOwnerDetail(personId);
+                          }}
+                        >
+                          <TableCell className="font-medium min-w-[200px]">
+                            {isBulkEditing && draft ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                <Input
+                                  value={draft.firstName}
+                                  onChange={(e) => updateDraft(row.ownership.id, { firstName: e.target.value })}
+                                  placeholder="First name"
+                                />
+                                <Input
+                                  value={draft.lastName}
+                                  onChange={(e) => updateDraft(row.ownership.id, { lastName: e.target.value })}
+                                  placeholder="Last name"
+                                />
+                              </div>
+                            ) : (
+                              row.person ? `${row.person.firstName} ${row.person.lastName}` : "Unknown"
+                            )}
+                          </TableCell>
+                          <TableCell>{draft?.unitLabel ?? "Unknown"}</TableCell>
+                          <TableCell className="min-w-[220px]">
+                            {isBulkEditing && draft ? (
+                              <Input
+                                value={draft.email}
+                                onChange={(e) => updateDraft(row.ownership.id, { email: e.target.value })}
+                                placeholder="owner@example.com"
+                              />
+                            ) : (
+                              row.person?.email || <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="min-w-[160px]">
+                            {isBulkEditing && draft ? (
+                              <Input
+                                value={draft.phone}
+                                onChange={(e) => updateDraft(row.ownership.id, { phone: e.target.value })}
+                                placeholder="(555) 123-4567"
+                              />
+                            ) : (
+                              row.person?.phone || <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="min-w-[240px]">
+                            {isBulkEditing && draft ? (
+                              <Input
+                                value={draft.mailingAddress}
+                                onChange={(e) => updateDraft(row.ownership.id, { mailingAddress: e.target.value })}
+                                placeholder="Mailing address"
+                              />
+                            ) : (
+                              row.person?.mailingAddress || <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="min-w-[120px]">
+                            {isBulkEditing && draft ? (
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={draft.ownershipPercentage}
+                                onChange={(e) => updateDraft(row.ownership.id, { ownershipPercentage: e.target.value })}
+                              />
+                            ) : (
+                              <Badge variant="secondary">{row.ownership.ownershipPercentage}%</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="min-w-[140px]">
+                            {isBulkEditing && draft ? (
+                              <Input
+                                type="date"
+                                value={draft.startDate}
+                                onChange={(e) => updateDraft(row.ownership.id, { startDate: e.target.value })}
+                              />
+                            ) : (
+                              <span className="text-muted-foreground">{toDateInput(row.ownership.startDate)}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="min-w-[140px]">
+                            {isBulkEditing && draft ? (
+                              <Input
+                                type="date"
+                                value={draft.endDate}
+                                onChange={(e) => updateDraft(row.ownership.id, { endDate: e.target.value })}
+                              />
+                            ) : (
+                              row.ownership.endDate ? <span className="text-muted-foreground">{toDateInput(row.ownership.endDate)}</span> : <Badge variant="outline">Current</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {personId ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openOwnerDetail(personId);
+                                }}
+                              >
+                                Open Detail
+                              </Button>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="space-y-3 p-4 md:hidden">
                 {ownerRows.map((row) => {
                   const draft = drafts[row.ownership.id];
                   const personId = row.person?.id ?? "";
                   return (
-                    <TableRow
-                      key={row.ownership.id}
-                      data-testid={`row-ownership-${row.ownership.id}`}
-                      className={!isBulkEditing && row.person ? "cursor-pointer" : ""}
-                      onClick={() => {
-                        if (isBulkEditing || !personId) return;
-                        openOwnerDetail(personId);
-                      }}
-                    >
-                      <TableCell className="font-medium min-w-[200px]">
-                        {isBulkEditing && draft ? (
-                          <div className="grid grid-cols-2 gap-2">
-                            <Input
-                              value={draft.firstName}
-                              onChange={(e) => updateDraft(row.ownership.id, { firstName: e.target.value })}
-                              placeholder="First name"
-                            />
-                            <Input
-                              value={draft.lastName}
-                              onChange={(e) => updateDraft(row.ownership.id, { lastName: e.target.value })}
-                              placeholder="Last name"
-                            />
-                          </div>
-                        ) : (
-                          row.person ? `${row.person.firstName} ${row.person.lastName}` : "Unknown"
-                        )}
-                      </TableCell>
-                      <TableCell>{draft?.unitLabel ?? "Unknown"}</TableCell>
-                      <TableCell className="min-w-[220px]">
-                        {isBulkEditing && draft ? (
+                    <div key={row.ownership.id} data-testid={`row-ownership-${row.ownership.id}`} className="rounded-xl border p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          {isBulkEditing && draft ? (
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <Input
+                                value={draft.firstName}
+                                onChange={(e) => updateDraft(row.ownership.id, { firstName: e.target.value })}
+                                placeholder="First name"
+                              />
+                              <Input
+                                value={draft.lastName}
+                                onChange={(e) => updateDraft(row.ownership.id, { lastName: e.target.value })}
+                                placeholder="Last name"
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              <div className="text-sm font-medium">{row.person ? `${row.person.firstName} ${row.person.lastName}` : "Unknown"}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">{draft?.unitLabel ?? "Unknown"}</div>
+                            </>
+                          )}
+                        </div>
+                        {!isBulkEditing ? <Badge variant="secondary">{row.ownership.ownershipPercentage}%</Badge> : null}
+                      </div>
+                      {isBulkEditing && draft ? (
+                        <div className="space-y-3">
                           <Input
                             value={draft.email}
                             onChange={(e) => updateDraft(row.ownership.id, { email: e.target.value })}
                             placeholder="owner@example.com"
                           />
-                        ) : (
-                          row.person?.email || <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="min-w-[160px]">
-                        {isBulkEditing && draft ? (
                           <Input
                             value={draft.phone}
                             onChange={(e) => updateDraft(row.ownership.id, { phone: e.target.value })}
                             placeholder="(555) 123-4567"
                           />
-                        ) : (
-                          row.person?.phone || <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="min-w-[240px]">
-                        {isBulkEditing && draft ? (
                           <Input
                             value={draft.mailingAddress}
                             onChange={(e) => updateDraft(row.ownership.id, { mailingAddress: e.target.value })}
                             placeholder="Mailing address"
                           />
-                        ) : (
-                          row.person?.mailingAddress || <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="min-w-[120px]">
-                        {isBulkEditing && draft ? (
-                          <Input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={draft.ownershipPercentage}
-                            onChange={(e) => updateDraft(row.ownership.id, { ownershipPercentage: e.target.value })}
-                          />
-                        ) : (
-                          <Badge variant="secondary">{row.ownership.ownershipPercentage}%</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="min-w-[140px]">
-                        {isBulkEditing && draft ? (
-                          <Input
-                            type="date"
-                            value={draft.startDate}
-                            onChange={(e) => updateDraft(row.ownership.id, { startDate: e.target.value })}
-                          />
-                        ) : (
-                          <span className="text-muted-foreground">{toDateInput(row.ownership.startDate)}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="min-w-[140px]">
-                        {isBulkEditing && draft ? (
-                          <Input
-                            type="date"
-                            value={draft.endDate}
-                            onChange={(e) => updateDraft(row.ownership.id, { endDate: e.target.value })}
-                          />
-                        ) : (
-                          row.ownership.endDate ? <span className="text-muted-foreground">{toDateInput(row.ownership.endDate)}</span> : <Badge variant="outline">Current</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {personId ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openOwnerDetail(personId);
-                            }}
-                          >
-                            Open Detail
-                          </Button>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={draft.ownershipPercentage}
+                              onChange={(e) => updateDraft(row.ownership.id, { ownershipPercentage: e.target.value })}
+                            />
+                            <Input
+                              type="date"
+                              value={draft.startDate}
+                              onChange={(e) => updateDraft(row.ownership.id, { startDate: e.target.value })}
+                            />
+                            <Input
+                              type="date"
+                              value={draft.endDate}
+                              onChange={(e) => updateDraft(row.ownership.id, { endDate: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-1 text-xs text-muted-foreground">
+                            <div>{row.person?.email || "-"}</div>
+                            <div>{row.person?.phone || "-"}</div>
+                            <div>{row.person?.mailingAddress || "-"}</div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                            <div>
+                              <div>Start</div>
+                              <div className="mt-1 text-foreground">{toDateInput(row.ownership.startDate)}</div>
+                            </div>
+                            <div>
+                              <div>End</div>
+                              <div className="mt-1 text-foreground">{row.ownership.endDate ? toDateInput(row.ownership.endDate) : "Current"}</div>
+                            </div>
+                          </div>
+                          {personId ? (
+                            <Button
+                              className="w-full"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openOwnerDetail(personId)}
+                            >
+                              Open Detail
+                            </Button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
                   );
                 })}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

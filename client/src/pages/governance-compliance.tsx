@@ -1148,10 +1148,24 @@ export default function GovernanceCompliancePage() {
                   <Button type="submit" disabled={createTemplateItem.isPending || !selectedTemplateId}>Add</Button>
                 </form>
               </Form>
-              <Table>
-                <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Authority</TableHead><TableHead>Due</TableHead></TableRow></TableHeader>
-                <TableBody>{(templateItems ?? []).map((i) => <TableRow key={i.id}><TableCell>{i.title}</TableCell><TableCell>{i.legalReference || i.sourceCitation || "-"}</TableCell><TableCell>{i.dueMonth}/{i.dueDay}</TableCell></TableRow>)}</TableBody>
-              </Table>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Authority</TableHead><TableHead>Due</TableHead></TableRow></TableHeader>
+                  <TableBody>{(templateItems ?? []).map((i) => <TableRow key={i.id}><TableCell>{i.title}</TableCell><TableCell>{i.legalReference || i.sourceCitation || "-"}</TableCell><TableCell>{i.dueMonth}/{i.dueDay}</TableCell></TableRow>)}</TableBody>
+                </Table>
+              </div>
+              <div className="space-y-3 md:hidden">
+                {(templateItems ?? []).map((i) => (
+                  <div key={i.id} className="rounded-xl border p-4">
+                    <div className="text-sm font-medium">{i.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{i.legalReference || i.sourceCitation || "No authority reference"}</div>
+                    <div className="mt-3 text-xs text-muted-foreground">Due {i.dueMonth}/{i.dueDay}</div>
+                  </div>
+                ))}
+                {(templateItems ?? []).length === 0 ? (
+                  <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No template items yet.</div>
+                ) : null}
+              </div>
             </div>
 
             <div>
@@ -1231,50 +1245,117 @@ export default function GovernanceCompliancePage() {
           </div>
           <div>
             <h3 className="text-sm font-medium mb-2">Compliance Task Table</h3>
-            <Table>
-              <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Due</TableHead><TableHead>Status</TableHead><TableHead>Evidence</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {filteredTasks
-                  .slice()
-                  .sort((a, b) => {
-                    // Overdue first, then by due date, then no due date last
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Due</TableHead><TableHead>Status</TableHead><TableHead>Evidence</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {filteredTasks
+                    .slice()
+                    .sort((a, b) => {
+                      const aDate = a.dueDate ? new Date(a.dueDate) : null;
+                      const bDate = b.dueDate ? new Date(b.dueDate) : null;
+                      if (!aDate && !bDate) return 0;
+                      if (!aDate) return 1;
+                      if (!bDate) return -1;
+                      return aDate.getTime() - bDate.getTime();
+                    })
+                    .map((t) => {
                     const now = new Date();
-                    const aDate = a.dueDate ? new Date(a.dueDate) : null;
-                    const bDate = b.dueDate ? new Date(b.dueDate) : null;
-                    if (!aDate && !bDate) return 0;
-                    if (!aDate) return 1;
-                    if (!bDate) return -1;
-                    return aDate.getTime() - bDate.getTime();
-                  })
-                  .map((t) => {
+                    const dueDate = t.dueDate ? new Date(t.dueDate) : null;
+                    const daysUntil = dueDate ? Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                    const isOverdue = dueDate && dueDate < now && t.status !== "done";
+                    const isDueSoon = daysUntil !== null && daysUntil >= 0 && daysUntil <= 14 && t.status !== "done";
+                    return (
+                    <TableRow key={t.id} className={isOverdue ? "bg-red-50/50" : isDueSoon ? "bg-amber-50/50" : ""}>
+                      <TableCell>{t.title}</TableCell>
+                      <TableCell>
+                        <div className="space-y-0.5">
+                          <div className={isOverdue ? "text-red-600 font-medium" : isDueSoon ? "text-amber-700 font-medium" : ""}>
+                            {dueDate ? dueDate.toLocaleDateString() : "-"}
+                          </div>
+                          {isOverdue && daysUntil !== null && (
+                            <Badge variant="destructive" className="text-xs">{Math.abs(daysUntil)}d overdue</Badge>
+                          )}
+                          {isDueSoon && (
+                            <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Due in {daysUntil}d</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Select value={t.status} onValueChange={(status) => updateTask.mutate({ id: t.id, status: status as "todo" | "in-progress" | "done" })}>
+                          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectItem value="todo">todo</SelectItem><SelectItem value="in-progress">in-progress</SelectItem><SelectItem value="done">done</SelectItem></SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {Array.isArray((t as any).evidenceUrlsJson) && ((t as any).evidenceUrlsJson as string[]).map((url: string, i: number) => (
+                            <a key={i} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                              <Paperclip className="h-3 w-3" />{i + 1}
+                            </a>
+                          ))}
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                            className="hidden"
+                            ref={(el) => { evidenceInputRefs.current[t.id] = el; }}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) uploadEvidence.mutate({ taskId: t.id, file });
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs gap-1"
+                            onClick={() => evidenceInputRefs.current[t.id]?.click()}
+                            disabled={uploadEvidence.isPending}
+                          >
+                            <Upload className="h-3 w-3" />
+                            {uploadEvidence.isPending ? "…" : "Upload"}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="space-y-3 md:hidden">
+              {filteredTasks
+                .slice()
+                .sort((a, b) => {
+                  const aDate = a.dueDate ? new Date(a.dueDate) : null;
+                  const bDate = b.dueDate ? new Date(b.dueDate) : null;
+                  if (!aDate && !bDate) return 0;
+                  if (!aDate) return 1;
+                  if (!bDate) return -1;
+                  return aDate.getTime() - bDate.getTime();
+                })
+                .map((t) => {
                   const now = new Date();
                   const dueDate = t.dueDate ? new Date(t.dueDate) : null;
                   const daysUntil = dueDate ? Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
                   const isOverdue = dueDate && dueDate < now && t.status !== "done";
                   const isDueSoon = daysUntil !== null && daysUntil >= 0 && daysUntil <= 14 && t.status !== "done";
                   return (
-                  <TableRow key={t.id} className={isOverdue ? "bg-red-50/50" : isDueSoon ? "bg-amber-50/50" : ""}>
-                    <TableCell>{t.title}</TableCell>
-                    <TableCell>
-                      <div className="space-y-0.5">
-                        <div className={isOverdue ? "text-red-600 font-medium" : isDueSoon ? "text-amber-700 font-medium" : ""}>
-                          {dueDate ? dueDate.toLocaleDateString() : "-"}
+                    <div key={t.id} className={`rounded-xl border p-4 space-y-3 ${isOverdue ? "bg-red-50/50" : isDueSoon ? "bg-amber-50/50" : ""}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">{t.title}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{dueDate ? dueDate.toLocaleDateString() : "No due date"}</div>
                         </div>
-                        {isOverdue && daysUntil !== null && (
+                        {isOverdue && daysUntil !== null ? (
                           <Badge variant="destructive" className="text-xs">{Math.abs(daysUntil)}d overdue</Badge>
-                        )}
-                        {isDueSoon && (
+                        ) : isDueSoon ? (
                           <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Due in {daysUntil}d</Badge>
-                        )}
+                        ) : null}
                       </div>
-                    </TableCell>
-                    <TableCell>
                       <Select value={t.status} onValueChange={(status) => updateTask.mutate({ id: t.id, status: status as "todo" | "in-progress" | "done" })}>
-                        <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="todo">todo</SelectItem><SelectItem value="in-progress">in-progress</SelectItem><SelectItem value="done">done</SelectItem></SelectContent>
                       </Select>
-                    </TableCell>
-                    <TableCell>
                       <div className="flex items-center gap-2 flex-wrap">
                         {Array.isArray((t as any).evidenceUrlsJson) && ((t as any).evidenceUrlsJson as string[]).map((url: string, i: number) => (
                           <a key={i} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
@@ -1294,20 +1375,21 @@ export default function GovernanceCompliancePage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-6 px-2 text-xs gap-1"
+                          className="h-8 px-3 text-xs gap-1"
                           onClick={() => evidenceInputRefs.current[t.id]?.click()}
                           disabled={uploadEvidence.isPending}
                         >
                           <Upload className="h-3 w-3" />
-                          {uploadEvidence.isPending ? "…" : "Upload"}
+                          {uploadEvidence.isPending ? "…" : "Upload Evidence"}
                         </Button>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                );
+                    </div>
+                  );
                 })}
-              </TableBody>
-            </Table>
+              {filteredTasks.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No compliance tasks yet.</div>
+              ) : null}
+            </div>
           </div>
         </CardContent>
       </Card>

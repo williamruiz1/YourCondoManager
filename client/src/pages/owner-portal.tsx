@@ -8,6 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MobileSectionShell } from "@/components/mobile-section-shell";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const maintenanceCategories = ["general", "plumbing", "electrical", "hvac", "common-area", "security", "other"];
 const maintenancePriorities = ["low", "medium", "high", "urgent"] as const;
@@ -227,6 +230,7 @@ function isValidEmail(value: string) {
 }
 
 export default function OwnerPortalPage() {
+  const isMobile = useIsMobile();
   const [email, setEmail] = useState("");
   const [portalAccessId, setPortalAccessId] = useState(() => window.localStorage.getItem("portalAccessId") || "");
   // "permanent" = localStorage, "session" = sessionStorage (remind later), false = show
@@ -1408,8 +1412,8 @@ export default function OwnerPortalPage() {
 
   if (!portalAccessId) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md space-y-6">
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 px-4 py-6 sm:px-6">
+        <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col justify-center space-y-5">
           {/* Logo / Brand */}
           <div className="text-center space-y-1">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-xl font-bold mb-2">
@@ -1426,8 +1430,8 @@ export default function OwnerPortalPage() {
             </p>
           </div>
 
-          <Card className="shadow-md">
-            <CardContent className="p-6 space-y-4">
+          <Card className="rounded-2xl border-white/70 shadow-md">
+            <CardContent className="space-y-4 p-5 sm:p-6">
               {otpStep === "email" && (
                 <>
                   <div className="space-y-1">
@@ -1475,7 +1479,7 @@ export default function OwnerPortalPage() {
                     Signed in as <strong>{email}</strong>
                   </div>
 
-                  <div className="space-y-5">
+                  <div className="space-y-4">
                     {(() => {
                       const byAssoc = new Map<string, AssociationChoice[]>();
                       for (const c of associationChoices) {
@@ -1501,7 +1505,7 @@ export default function OwnerPortalPage() {
                             <button
                               onClick={() => verifyLogin.mutate({ associationId: assocId })}
                               disabled={verifyLogin.isPending}
-                              className="group rounded-xl border border-border bg-background p-4 text-left transition-all hover:border-primary hover:bg-primary/5 hover:shadow-sm disabled:opacity-50 space-y-2 w-full"
+                              className="group w-full space-y-2 rounded-2xl border border-border bg-background p-4 text-left transition-all hover:border-primary hover:bg-primary/5 hover:shadow-sm disabled:opacity-50"
                             >
                               <div className="flex items-center justify-between gap-1">
                                 <div className="font-semibold text-sm">{assocName}</div>
@@ -2053,8 +2057,9 @@ export default function OwnerPortalPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Top header bar */}
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="px-6 py-3 flex items-center justify-between gap-3">
+      <div className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
+        <div className="flex flex-col gap-3 px-4 py-3 sm:px-6">
+          <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">YCM</div>
             <div className="min-w-0">
@@ -2065,11 +2070,12 @@ export default function OwnerPortalPage() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             {me?.hasBoardAccess ? (
               <Button
                 variant={workspaceMode === "board" ? "default" : "outline"}
                 size="sm"
+                className="min-h-10"
                 onClick={() => {
                   setWorkspaceMode(workspaceMode === "board" ? "owner" : "board");
                   if (workspaceMode === "board") {
@@ -2091,7 +2097,7 @@ export default function OwnerPortalPage() {
                   setActiveTab("overview");
                 }}
               >
-                <SelectTrigger className="w-44 h-8 text-xs">
+                <SelectTrigger className="h-10 w-full min-w-[12rem] text-xs sm:w-44">
                   <SelectValue placeholder="Switch association" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2109,6 +2115,7 @@ export default function OwnerPortalPage() {
             <Button
               variant="outline"
               size="sm"
+              className="min-h-10"
               onClick={() => {
                 window.localStorage.removeItem("portalAccessId");
                 setPortalAccessId("");
@@ -2118,9 +2125,10 @@ export default function OwnerPortalPage() {
             </Button>
           </div>
         </div>
+        </div>
 
         {workspaceMode === "owner" && (
-          <div className="px-6 py-5 border-t bg-gradient-to-br from-slate-800 to-slate-700 text-white">
+          <div className="border-t bg-gradient-to-br from-slate-800 to-slate-700 px-4 py-5 text-white sm:px-6">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
               <div className="space-y-1">
                 <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Your Association</div>
@@ -2142,7 +2150,7 @@ export default function OwnerPortalPage() {
                 )}
               </div>
               {hasMultipleUnits ? (
-                <div className="bg-white/10 rounded-lg px-4 py-3 text-sm shrink-0 space-y-2">
+                <div className="shrink-0 space-y-2 rounded-xl bg-white/10 px-4 py-3 text-sm md:max-w-sm">
                   <div className="text-slate-400 text-xs uppercase tracking-wide">Your Units ({siblingUnits.length})</div>
                   <div className="flex flex-wrap gap-2">
                     {siblingUnits.map((u) => {
@@ -2174,7 +2182,7 @@ export default function OwnerPortalPage() {
                   <div className="text-slate-300 text-xs capitalize">{me?.effectiveRole}</div>
                 </div>
               ) : unitLabel ? (
-                <div className="bg-white/10 rounded-lg px-4 py-3 text-sm shrink-0">
+                <div className="shrink-0 rounded-xl bg-white/10 px-4 py-3 text-sm">
                   <div className="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Your Unit</div>
                   <div className="font-semibold text-white">{unitLabel}</div>
                   <div className="text-slate-300 text-xs capitalize mt-0.5">{me?.effectiveRole}</div>
@@ -2185,23 +2193,11 @@ export default function OwnerPortalPage() {
         )}
 
         {workspaceMode === "owner" ? (
-          <div className="px-6 flex gap-0 overflow-x-auto border-t">
-            {ownerTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="border-t px-4 py-3 sm:px-6">
+            <MobileTabBar items={ownerTabs} value={activeTab} onChange={setActiveTab} />
           </div>
         ) : (
-          <div className="px-6 py-3 border-t bg-slate-50">
+          <div className="border-t bg-slate-50 px-4 py-3 sm:px-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Board Workspace</div>
@@ -2214,7 +2210,7 @@ export default function OwnerPortalPage() {
       </div>
 
       {workspaceMode === "owner" && (financialDashboard?.balance ?? 0) > 0 && (
-        <div className={`px-6 py-2.5 flex items-center justify-between gap-3 border-b ${
+        <div className={`flex flex-col items-start justify-between gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:px-6 ${
           (financialDashboard?.balance ?? 0) > 500
             ? "bg-red-50 border-red-100"
             : (financialDashboard?.balance ?? 0) > 0
@@ -2239,7 +2235,7 @@ export default function OwnerPortalPage() {
           <Button
             size="sm"
             variant="default"
-            className="shrink-0 h-7 text-xs px-3"
+            className="h-9 shrink-0 px-3 text-xs sm:h-7"
             onClick={() => setActiveTab("financials")}
           >
             Pay Now
@@ -2247,33 +2243,27 @@ export default function OwnerPortalPage() {
         </div>
       )}
 
-      <div className="p-6 md:p-8 space-y-8 max-w-5xl mx-auto pb-20 md:pb-8">
+      <div className="mx-auto max-w-5xl space-y-6 px-4 pb-24 pt-4 sm:px-6 md:space-y-8 md:px-8 md:pb-8">
 
       {/* Overview Tab: association hero + onboarding + balance + notices */}
       {workspaceMode === "owner" && activeTab === "overview" && (
         <>
-	          <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] items-start lg:h-[calc(100vh-12rem)]">
-	            <div className="self-start rounded-xl border bg-white p-2">
-	              {[
-	                { id: "summary" as const, label: "Summary" },
-	                { id: "owner-info" as const, label: "Owner Info" },
-                { id: "occupancy" as const, label: "Occupancy" },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setOverviewSubtab(tab.id)}
-                  className={`w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                    overviewSubtab === tab.id
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                  }`}
-	                >
-	                  {tab.label}
-	                </button>
-	              ))}
-	            </div>
+	          <div className="space-y-4">
+              <MobileTabBar
+                items={[
+                  { id: "summary" as const, label: "Summary" },
+                  { id: "owner-info" as const, label: "Owner Info" },
+                  { id: "occupancy" as const, label: "Occupancy" },
+                ]}
+                value={overviewSubtab}
+                onChange={setOverviewSubtab}
+                fullWidth
+              />
 
-	            <div ref={overviewContentRef} className="space-y-8 overflow-y-auto pr-1 lg:h-[calc(100vh-12rem)]">
+	            <div
+                ref={overviewContentRef}
+                className={`space-y-6 pr-0 md:space-y-8 ${isMobile ? "" : "lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto lg:pr-1"}`}
+              >
 
           {overviewSubtab === "summary" && (
             <>
@@ -3290,45 +3280,84 @@ export default function OwnerPortalPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <h3 className="text-sm font-medium">Recent Ledger Activity</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Description</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(boardDashboard?.financial.recentLedgerEntries ?? []).map((entry) => (
-                        <TableRow key={entry.id}>
-                          <TableCell>{entry.entryType}</TableCell>
-                          <TableCell>${entry.amount.toFixed(2)}</TableCell>
-                          <TableCell>{entry.description || "-"}</TableCell>
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Description</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {(boardDashboard?.financial.recentLedgerEntries ?? []).map((entry) => (
+                          <TableRow key={entry.id}>
+                            <TableCell>{entry.entryType}</TableCell>
+                            <TableCell>${entry.amount.toFixed(2)}</TableCell>
+                            <TableCell>{entry.description || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="space-y-3 md:hidden">
+                    {(boardDashboard?.financial.recentLedgerEntries ?? []).map((entry) => (
+                      <div key={entry.id} className="rounded-xl border p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium">{entry.description || formatStatusLabel(entry.entryType)}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{formatStatusLabel(entry.entryType)}</div>
+                          </div>
+                          <div className="text-sm font-semibold">${entry.amount.toFixed(2)}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {(boardDashboard?.financial.recentLedgerEntries ?? []).length === 0 ? (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No recent ledger activity.</div>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <h3 className="text-sm font-medium">Recent Vendor Invoices</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Vendor</TableHead>
-                        <TableHead>Invoice</TableHead>
-                        <TableHead>Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(boardDashboard?.financial.recentInvoices ?? []).map((invoice) => (
-                        <TableRow key={invoice.id}>
-                          <TableCell>{invoice.vendorName || "-"}</TableCell>
-                          <TableCell>{invoice.invoiceNumber || "-"}</TableCell>
-                          <TableCell>${invoice.amount.toFixed(2)}</TableCell>
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Vendor</TableHead>
+                          <TableHead>Invoice</TableHead>
+                          <TableHead>Amount</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {(boardDashboard?.financial.recentInvoices ?? []).map((invoice) => (
+                          <TableRow key={invoice.id}>
+                            <TableCell>{invoice.vendorName || "-"}</TableCell>
+                            <TableCell>{invoice.invoiceNumber || "-"}</TableCell>
+                            <TableCell>${invoice.amount.toFixed(2)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="space-y-3 md:hidden">
+                    {(boardDashboard?.financial.recentInvoices ?? []).map((invoice) => (
+                      <div key={invoice.id} className="rounded-xl border p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium">{invoice.vendorName || "Vendor invoice"}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Invoice {invoice.invoiceNumber || "-"}
+                              {invoice.invoiceDate ? ` · ${new Date(invoice.invoiceDate).toLocaleDateString()}` : ""}
+                            </div>
+                          </div>
+                          <div className="text-sm font-semibold">${invoice.amount.toFixed(2)}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {(boardDashboard?.financial.recentInvoices ?? []).length === 0 ? (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No recent invoices.</div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -3346,54 +3375,94 @@ export default function OwnerPortalPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <h3 className="text-sm font-medium">Upcoming Meetings</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>State</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(boardDashboard?.governance.upcomingMeetings ?? []).map((meeting) => (
-                        <TableRow key={meeting.id}>
-                          <TableCell>{meeting.title}</TableCell>
-                          <TableCell>{meeting.scheduledAt ? new Date(meeting.scheduledAt).toLocaleDateString() : "-"}</TableCell>
-                          <TableCell>{meeting.meetingType || "-"}</TableCell>
-                          <TableCell>
-                            <div className="flex gap-2 flex-wrap">
-                              <Badge variant={getStatusBadgeVariant(meeting.status)}>{formatStatusLabel(meeting.status)}</Badge>
-                              <Badge variant={getStatusBadgeVariant(meeting.summaryStatus)}>{formatStatusLabel(meeting.summaryStatus)}</Badge>
-                            </div>
-                          </TableCell>
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Title</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>State</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {(boardDashboard?.governance.upcomingMeetings ?? []).map((meeting) => (
+                          <TableRow key={meeting.id}>
+                            <TableCell>{meeting.title}</TableCell>
+                            <TableCell>{meeting.scheduledAt ? new Date(meeting.scheduledAt).toLocaleDateString() : "-"}</TableCell>
+                            <TableCell>{meeting.meetingType || "-"}</TableCell>
+                            <TableCell>
+                              <div className="flex gap-2 flex-wrap">
+                                <Badge variant={getStatusBadgeVariant(meeting.status)}>{formatStatusLabel(meeting.status)}</Badge>
+                                <Badge variant={getStatusBadgeVariant(meeting.summaryStatus)}>{formatStatusLabel(meeting.summaryStatus)}</Badge>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="space-y-3 md:hidden">
+                    {(boardDashboard?.governance.upcomingMeetings ?? []).map((meeting) => (
+                      <div key={meeting.id} className="rounded-xl border p-4 space-y-3">
+                        <div>
+                          <div className="text-sm font-medium">{meeting.title}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {meeting.scheduledAt ? new Date(meeting.scheduledAt).toLocaleDateString() : "Date not set"}
+                            {meeting.meetingType ? ` · ${meeting.meetingType}` : ""}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant={getStatusBadgeVariant(meeting.status)}>{formatStatusLabel(meeting.status)}</Badge>
+                          <Badge variant={getStatusBadgeVariant(meeting.summaryStatus)}>{formatStatusLabel(meeting.summaryStatus)}</Badge>
+                        </div>
+                      </div>
+                    ))}
+                    {(boardDashboard?.governance.upcomingMeetings ?? []).length === 0 ? (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No upcoming meetings scheduled.</div>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <h3 className="text-sm font-medium">Open Governance Tasks</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Task</TableHead>
-                        <TableHead>Due</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(boardDashboard?.governance.openTasks ?? []).map((task) => (
-                        <TableRow key={task.id}>
-                          <TableCell>{task.title}</TableCell>
-                          <TableCell>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "-"}</TableCell>
-                          <TableCell>
-                            <Badge variant={getStatusBadgeVariant(task.status)}>{formatStatusLabel(task.status)}</Badge>
-                          </TableCell>
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Task</TableHead>
+                          <TableHead>Due</TableHead>
+                          <TableHead>Status</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {(boardDashboard?.governance.openTasks ?? []).map((task) => (
+                          <TableRow key={task.id}>
+                            <TableCell>{task.title}</TableCell>
+                            <TableCell>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "-"}</TableCell>
+                            <TableCell>
+                              <Badge variant={getStatusBadgeVariant(task.status)}>{formatStatusLabel(task.status)}</Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="space-y-3 md:hidden">
+                    {(boardDashboard?.governance.openTasks ?? []).map((task) => (
+                      <div key={task.id} className="rounded-xl border p-4 space-y-3">
+                        <div>
+                          <div className="text-sm font-medium">{task.title}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Due {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "not scheduled"}
+                          </div>
+                        </div>
+                        <Badge variant={getStatusBadgeVariant(task.status)}>{formatStatusLabel(task.status)}</Badge>
+                      </div>
+                    ))}
+                    {(boardDashboard?.governance.openTasks ?? []).length === 0 ? (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No open governance tasks.</div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -3541,25 +3610,40 @@ export default function OwnerPortalPage() {
                   <h2 className="text-lg font-semibold">Recent Activity</h2>
                   <p className="text-sm text-muted-foreground">See the living board record by workflow area instead of scanning one undifferentiated audit list.</p>
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  {[
-                    { id: "all", label: "All" },
-                    { id: "governance", label: "Governance" },
-                    { id: "financial", label: "Financial" },
-                    { id: "communications", label: "Messages" },
-                    { id: "operations", label: "Operations" },
-                    { id: "access", label: "Access" },
-                  ].map((filter) => (
-                    <Button
-                      key={filter.id}
-                      size="sm"
-                      variant={boardActivityFilter === filter.id ? "default" : "outline"}
-                      onClick={() => setBoardActivityFilter(filter.id as typeof boardActivityFilter)}
-                    >
-                      {filter.label}
-                    </Button>
-                  ))}
-                </div>
+                {isMobile ? (
+                  <MobileTabBar
+                    items={[
+                      { id: "all", label: "All" },
+                      { id: "governance", label: "Governance" },
+                      { id: "financial", label: "Financial" },
+                      { id: "communications", label: "Messages" },
+                      { id: "operations", label: "Operations" },
+                      { id: "access", label: "Access" },
+                    ]}
+                    value={boardActivityFilter}
+                    onChange={(value) => setBoardActivityFilter(value as typeof boardActivityFilter)}
+                  />
+                ) : (
+                  <div className="flex gap-2 flex-wrap">
+                    {[
+                      { id: "all", label: "All" },
+                      { id: "governance", label: "Governance" },
+                      { id: "financial", label: "Financial" },
+                      { id: "communications", label: "Messages" },
+                      { id: "operations", label: "Operations" },
+                      { id: "access", label: "Access" },
+                    ].map((filter) => (
+                      <Button
+                        key={filter.id}
+                        size="sm"
+                        variant={boardActivityFilter === filter.id ? "default" : "outline"}
+                        onClick={() => setBoardActivityFilter(filter.id as typeof boardActivityFilter)}
+                      >
+                        {filter.label}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="space-y-3">
                 {filteredBoardActivityItems.map((entry) => (
@@ -3592,30 +3676,47 @@ export default function OwnerPortalPage() {
 
       {/* Documents Tab */}
       {activeTab === "documents" && (
-      <Card>
-        <CardContent className="p-5 space-y-3">
-          <div>
-            <h2 className="text-lg font-semibold">Community Documents</h2>
-            <p className="text-sm text-muted-foreground">Association documents shared with owners, grouped so recent and high-value files are easier to spot.</p>
-          </div>
+      <MobileSectionShell
+        eyebrow="Documents"
+        title="Community Documents"
+        summary="Association files shared with owners, grouped so recent and high-value documents are easier to scan and open from a phone."
+      >
           {(documents ?? []).length > 0 ? (
             <div className="grid gap-3">
               {recentDocuments.map((doc) => {
                 const isRecent = (Date.now() - toTimestamp(doc.createdAt)) < 30 * 24 * 60 * 60 * 1000;
                 return (
-                  <div key={doc.id} className="rounded-lg border p-4 flex items-start justify-between gap-4">
-                    <div className="min-w-0">
+                  <div key={doc.id} className="rounded-xl border p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <div className="font-medium">{doc.title}</div>
+                        <div className="min-w-0 break-words text-sm font-medium sm:text-base">{doc.title}</div>
                         {isRecent ? <Badge>New</Badge> : null}
                         <Badge variant="outline">{formatStatusLabel(doc.documentType)}</Badge>
                         <Badge variant="secondary">{doc.portalAudience}</Badge>
                       </div>
-                      <div className="text-xs text-muted-foreground mt-2">
+                      <div className="text-xs text-muted-foreground">
                         Added {new Date(doc.createdAt).toLocaleDateString()}
                       </div>
                     </div>
-                    <a href={doc.fileUrl} className="underline text-sm shrink-0" target="_blank" rel="noreferrer">Open</a>
+                    <div className="flex shrink-0 gap-2">
+                      <a
+                        href={doc.fileUrl}
+                        className="inline-flex min-h-10 items-center justify-center rounded-full border px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open
+                      </a>
+                      <a
+                        href={doc.fileUrl}
+                        download
+                        className="inline-flex min-h-10 items-center justify-center rounded-full border px-4 text-sm text-muted-foreground transition-colors hover:bg-muted"
+                      >
+                        Download
+                      </a>
+                    </div>
+                    </div>
                   </div>
                 );
               })}
@@ -3623,18 +3724,22 @@ export default function OwnerPortalPage() {
           ) : (
             <div className="rounded-md border py-8 text-center text-sm text-muted-foreground">No documents available yet.</div>
           )}
-        </CardContent>
-      </Card>
+      </MobileSectionShell>
       )}
 
       {/* Notices Tab */}
       {activeTab === "notices" && (
-      <Card>
-        <CardContent className="p-5 space-y-3">
-          <div>
-            <h2 className="text-lg font-semibold">Message Center</h2>
-            <p className="text-sm text-muted-foreground">Association notices and maintenance-related updates in one place, with scope and urgency made explicit.</p>
+      <MobileSectionShell
+        eyebrow="Notices"
+        title="Message Center"
+        summary="Association notices and maintenance-related updates in one place, with scope and urgency made explicit."
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{ownerMessageCenterItems.length} messages</Badge>
+            <Badge variant="secondary">{ownerMessageCenterItems.filter((item) => !readNoticeIds.includes(item.id)).length} unread</Badge>
           </div>
+        }
+      >
           <div className="space-y-2">
             {ownerMessageCenterItems.map((item) => {
               const isExpanded = expandedNoticeId === item.id;
@@ -3642,15 +3747,15 @@ export default function OwnerPortalPage() {
               const isHtml = (item.detail || "").trimStart().startsWith("<");
               const renderedPreview = item.snippet || stripHtml(item.detail);
               return (
-                <div key={item.id} className="rounded-md border overflow-hidden">
+                <div key={item.id} className="overflow-hidden rounded-xl border">
                   <button
-                    className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors"
+                    className="w-full px-4 py-4 text-left transition-colors hover:bg-muted/30"
                     onClick={() => {
                       if (!isExpanded) markNoticeRead(item.id);
                       setExpandedNoticeId(isExpanded ? null : item.id);
                     }}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm">{item.title}</span>
@@ -3666,10 +3771,10 @@ export default function OwnerPortalPage() {
                           <Badge variant="secondary" className="text-xs">{item.scopeLabel}</Badge>
                         </div>
                         {!isExpanded && renderedPreview && (
-                          <div className="text-xs text-muted-foreground mt-0.5 truncate">{renderedPreview}</div>
+                          <div className="mt-1 text-xs text-muted-foreground sm:truncate">{renderedPreview}</div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center justify-between gap-2 sm:justify-end sm:shrink-0">
                         <span className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleDateString()}</span>
                         <span className="text-xs text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>
                       </div>
@@ -3681,7 +3786,7 @@ export default function OwnerPortalPage() {
                         <iframe
                           srcDoc={item.detail ?? ""}
                           className="w-full border-0 bg-white"
-                          style={{ minHeight: "520px" }}
+                          style={{ minHeight: isMobile ? "420px" : "520px" }}
                           onLoad={(e) => {
                             const iframe = e.currentTarget;
                             const doc = iframe.contentDocument;
@@ -3707,31 +3812,44 @@ export default function OwnerPortalPage() {
               <div className="rounded-md border py-8 text-center text-sm text-muted-foreground">No messages yet.</div>
             )}
           </div>
-        </CardContent>
-      </Card>
+      </MobileSectionShell>
       )}
 
       {/* Maintenance Tab */}
       {activeTab === "maintenance" && (
       <>
-      <Card>
-        <CardContent className="p-6 space-y-3">
-          <h2 className="text-lg font-semibold">Submit Maintenance Request</h2>
+      <MobileSectionShell
+        eyebrow="Maintenance"
+        title="Submit Maintenance Request"
+        summary="Report an issue quickly, attach photos, and track open work without navigating a dense operator-style screen."
+      >
+        <div className="space-y-4">
           <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
             Response targets: <strong>urgent</strong> — 4 hours, <strong>high</strong> — 12 hours, <strong>medium</strong> — 48 hours, <strong>low</strong> — 120 hours. Overdue requests escalate automatically.
           </div>
-          <Input placeholder="Issue title" value={maintenanceTitle} onChange={(e) => setMaintenanceTitle(e.target.value)} />
-          <Textarea placeholder="Describe the issue" value={maintenanceDescription} onChange={(e) => setMaintenanceDescription(e.target.value)} />
+          <div className="grid gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Issue title</label>
+              <Input placeholder="Issue title" value={maintenanceTitle} onChange={(e) => setMaintenanceTitle(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</label>
+              <Textarea placeholder="Describe the issue" value={maintenanceDescription} onChange={(e) => setMaintenanceDescription(e.target.value)} />
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input placeholder="Location (unit/common area)" value={maintenanceLocation} onChange={(e) => setMaintenanceLocation(e.target.value)} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Location</label>
+              <Input placeholder="Location (unit/common area)" value={maintenanceLocation} onChange={(e) => setMaintenanceLocation(e.target.value)} />
+            </div>
             <Select value={maintenanceCategory} onValueChange={setMaintenanceCategory}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
               <SelectContent>
                 {maintenanceCategories.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={maintenancePriority} onValueChange={setMaintenancePriority}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Priority" /></SelectTrigger>
               <SelectContent>
                 {maintenancePriorities.map((priority) => <SelectItem key={priority} value={priority}>{priority}</SelectItem>)}
               </SelectContent>
@@ -3767,7 +3885,7 @@ export default function OwnerPortalPage() {
 
           <div className="space-y-3">
             {(maintenanceRequests ?? []).map((request) => (
-              <div key={request.id} className="rounded-md border p-4 space-y-2">
+              <div key={request.id} className="space-y-2 rounded-xl border p-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <div className="font-medium">{request.title}</div>
@@ -3796,12 +3914,15 @@ export default function OwnerPortalPage() {
             ))}
             {(maintenanceRequests ?? []).length === 0 ? <div className="text-sm text-muted-foreground">No maintenance requests submitted yet.</div> : null}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </MobileSectionShell>
 
-      <Card>
-        <CardContent className="p-6 space-y-3">
-          <h2 className="text-lg font-semibold">Maintenance Updates</h2>
+      <MobileSectionShell
+        eyebrow="Updates"
+        title="Maintenance Updates"
+        summary="Read the latest owner-facing maintenance notices in a mobile-friendly timeline."
+      >
+        <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -3823,35 +3944,44 @@ export default function OwnerPortalPage() {
               ) : null}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="space-y-3 md:hidden">
+          {maintenanceUpdates.map((notice) => (
+            <div key={notice.id} className="rounded-xl border p-4">
+              <div className="text-sm font-medium">{notice.subject || "-"}</div>
+              <div className="mt-2 text-sm text-muted-foreground">{notice.bodySnippet || "-"}</div>
+              <div className="mt-3 text-xs text-muted-foreground">{new Date(notice.createdAt).toLocaleString()}</div>
+            </div>
+          ))}
+          {maintenanceUpdates.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No maintenance updates yet.</div>
+          ) : null}
+        </div>
+      </MobileSectionShell>
       </>
       )}
 
       {/* Financials Tab */}
       {activeTab === "financials" && (
       <>
-      <Card>
-        <CardContent className="p-6 space-y-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Financials</div>
-              <h2 className="text-xl font-semibold mt-1">Pay dues and review recent activity</h2>
-              <p className="text-sm text-muted-foreground mt-1">Stay focused on one unit, one amount due, and the latest transactions.</p>
-            </div>
-            <div className={`text-right rounded-xl px-4 py-3 ${totalPortfolioBalance > 0 ? "bg-red-50 text-red-700" : totalPortfolioBalance < 0 ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-700"}`}>
-              <div className="text-xs uppercase tracking-wide opacity-70">Account total</div>
-              <div className="text-2xl font-bold mt-1">
-                {totalPortfolioBalance > 0
-                  ? `$${totalPortfolioBalance.toFixed(2)} due`
-                  : totalPortfolioBalance < 0
-                  ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
-                  : "$0.00"}
-              </div>
+      <MobileSectionShell
+        eyebrow="Financials"
+        title="Pay dues and review recent activity"
+        summary="Stay focused on one unit, one amount due, and the latest transactions."
+        meta={
+          <div className={`rounded-xl px-4 py-3 ${totalPortfolioBalance > 0 ? "bg-red-50 text-red-700" : totalPortfolioBalance < 0 ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-700"}`}>
+            <div className="text-xs uppercase tracking-wide opacity-70">Account total</div>
+            <div className="mt-1 text-2xl font-bold">
+              {totalPortfolioBalance > 0
+                ? `$${totalPortfolioBalance.toFixed(2)} due`
+                : totalPortfolioBalance < 0
+                ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
+                : "$0.00"}
             </div>
           </div>
-
-          <div className="space-y-6">
+        }
+      >
+        <div className="space-y-6">
             {myUnits.length > 1
               ? renderOwnerUnitSelector({
                   activeUnitId: focusedFinancialUnit?.unitId,
@@ -3859,8 +3989,8 @@ export default function OwnerPortalPage() {
                 })
               : null}
 
-            <Card>
-              <CardContent className="p-6 space-y-6">
+            <div className="rounded-2xl border bg-slate-50/60 p-4 sm:p-6">
+              <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="space-y-2">
                     <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Current statement</div>
@@ -3980,22 +4110,19 @@ export default function OwnerPortalPage() {
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="text-sm font-semibold">Recent transactions</div>
-                    <div className="text-xs text-muted-foreground mt-1">Charges, payments, and credits for the selected unit.</div>
-                  </div>
-                  {recentPayments.length > 0 ? (
-                    <div className="text-xs text-muted-foreground">
-                      Latest payment {new Date(recentPayments[0].postedAt).toLocaleDateString()} · ${Math.abs(recentPayments[0].amount).toFixed(2)}
-                    </div>
-                  ) : null}
+            <MobileSectionShell
+              title="Recent transactions"
+              summary="Charges, payments, and credits for the selected unit."
+              meta={recentPayments.length > 0 ? (
+                <div className="text-xs text-muted-foreground">
+                  Latest payment {new Date(recentPayments[0].postedAt).toLocaleDateString()} · ${Math.abs(recentPayments[0].amount).toFixed(2)}
                 </div>
+              ) : undefined}
+            >
+                <div className="hidden md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -4025,26 +4152,49 @@ export default function OwnerPortalPage() {
                     ) : null}
                   </TableBody>
                 </Table>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="text-sm font-semibold">Payment setup</div>
-                    <div className="text-xs text-muted-foreground mt-1">Only open this when you need to update saved methods or autopay.</div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    <Button size="sm" variant="outline" onClick={() => setAddMethodOpen((current) => !current)}>
-                      {addMethodOpen ? "Hide methods" : "Payment methods"}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setAutopayFormOpen((current) => !current)}>
-                      {autopayFormOpen ? "Hide autopay" : "Autopay"}
-                    </Button>
-                  </div>
                 </div>
+                <div className="space-y-3 md:hidden">
+                  {focusedFinancialLedgerEntries.map((entry) => (
+                    <div key={entry.id} className="rounded-xl border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">{entry.description || formatStatusLabel(entry.entryType)}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{new Date(entry.postedAt).toLocaleDateString()}</div>
+                        </div>
+                        <div className={`text-right text-sm font-semibold ${entry.amount > 0 ? "text-red-600" : "text-green-600"}`}>
+                          {entry.amount > 0 ? "+" : ""}{entry.amount.toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <Badge variant={entry.entryType === "payment" || entry.entryType === "credit" ? "default" : entry.entryType === "late-fee" ? "destructive" : "outline"}>
+                          {formatStatusLabel(entry.entryType)}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                  {focusedFinancialLedgerEntries.length === 0 ? (
+                    <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+                      No ledger entries found for the selected unit.
+                    </div>
+                  ) : null}
+                </div>
+            </MobileSectionShell>
 
+            <MobileSectionShell
+              title="Payment setup"
+              summary="Open this only when you need to update saved methods or autopay."
+              actions={
+                <>
+                  <Button size="sm" variant="outline" onClick={() => setAddMethodOpen((current) => !current)}>
+                    {addMethodOpen ? "Hide methods" : "Payment methods"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setAutopayFormOpen((current) => !current)}>
+                    {autopayFormOpen ? "Hide autopay" : "Autopay"}
+                  </Button>
+                </>
+              }
+            >
+                <div className="space-y-4">
                 {(defaultPaymentMethod || activeAutopayEnrollment || financialDashboard?.paymentPlan) ? (
                   <div className="grid gap-3 md:grid-cols-3">
                     <div className="rounded-lg border p-4">
@@ -4189,11 +4339,10 @@ export default function OwnerPortalPage() {
                     </Button>
                   </div>
                 ) : null}
-              </CardContent>
-            </Card>
-          </div>
-        </CardContent>
-      </Card>
+                </div>
+            </MobileSectionShell>
+        </div>
+      </MobileSectionShell>
       </>
       )}
 

@@ -220,48 +220,89 @@ export default function BoardPage() {
               <p className="text-sm text-muted-foreground mt-1 max-w-sm">Board members govern the association. Click "Assign Role" to designate a person as President, Treasurer, Secretary, or Member. You'll need people created first — go to People &gt; Add Person.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Member</TableHead>
-                  <TableHead>Association</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Term Start</TableHead>
-                  <TableHead>Term End</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Association</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Term Start</TableHead>
+                      <TableHead>Term End</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {boardRoles.map((br) => {
+                      const endDate = br.endDate ? new Date(br.endDate) : null;
+                      const isExpired = endDate && endDate < today;
+                      const isExpiring = endDate && endDate >= today && endDate <= in90Days;
+                      const daysUntilEnd = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                      return (
+                      <TableRow key={br.id} data-testid={`row-board-${br.id}`} className={isExpired ? "bg-red-50/40" : isExpiring ? "bg-amber-50/40" : ""}>
+                        <TableCell className="font-medium">{getPersonName(br.personId)}</TableCell>
+                        <TableCell className="text-muted-foreground">{getAssocName(br.associationId)}</TableCell>
+                        <TableCell><Badge variant={getRoleBadgeVariant(br.role)}>{br.role}</Badge></TableCell>
+                        <TableCell className="text-muted-foreground">{new Date(br.startDate).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          {endDate ? (
+                            <div className="space-y-0.5">
+                              <div className={isExpired ? "text-red-600 font-medium" : isExpiring ? "text-amber-700 font-medium" : "text-muted-foreground"}>
+                                {endDate.toLocaleDateString()}
+                              </div>
+                              {isExpired && <Badge variant="destructive" className="text-xs">Expired</Badge>}
+                              {isExpiring && daysUntilEnd !== null && <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Expires in {daysUntilEnd}d</Badge>}
+                            </div>
+                          ) : <span className="text-muted-foreground text-sm">No end date</span>}
+                        </TableCell>
+                        <TableCell>
+                          {isExpired ? <Badge variant="destructive">Expired</Badge> : endDate ? <Badge variant="outline">Active</Badge> : <Badge variant="default">Active</Badge>}
+                        </TableCell>
+                      </TableRow>
+                    );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="space-y-3 p-4 md:hidden">
                 {boardRoles.map((br) => {
                   const endDate = br.endDate ? new Date(br.endDate) : null;
                   const isExpired = endDate && endDate < today;
                   const isExpiring = endDate && endDate >= today && endDate <= in90Days;
                   const daysUntilEnd = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
                   return (
-                  <TableRow key={br.id} data-testid={`row-board-${br.id}`} className={isExpired ? "bg-red-50/40" : isExpiring ? "bg-amber-50/40" : ""}>
-                    <TableCell className="font-medium">{getPersonName(br.personId)}</TableCell>
-                    <TableCell className="text-muted-foreground">{getAssocName(br.associationId)}</TableCell>
-                    <TableCell><Badge variant={getRoleBadgeVariant(br.role)}>{br.role}</Badge></TableCell>
-                    <TableCell className="text-muted-foreground">{new Date(br.startDate).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      {endDate ? (
-                        <div className="space-y-0.5">
-                          <div className={isExpired ? "text-red-600 font-medium" : isExpiring ? "text-amber-700 font-medium" : "text-muted-foreground"}>
-                            {endDate.toLocaleDateString()}
-                          </div>
-                          {isExpired && <Badge variant="destructive" className="text-xs">Expired</Badge>}
-                          {isExpiring && daysUntilEnd !== null && <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Expires in {daysUntilEnd}d</Badge>}
+                    <div key={br.id} data-testid={`row-board-${br.id}`} className={`rounded-xl border p-4 space-y-3 ${isExpired ? "bg-red-50/40" : isExpiring ? "bg-amber-50/40" : ""}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">{getPersonName(br.personId)}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{getAssocName(br.associationId)}</div>
                         </div>
-                      ) : <span className="text-muted-foreground text-sm">No end date</span>}
-                    </TableCell>
-                    <TableCell>
-                      {isExpired ? <Badge variant="destructive">Expired</Badge> : endDate ? <Badge variant="outline">Active</Badge> : <Badge variant="default">Active</Badge>}
-                    </TableCell>
-                  </TableRow>
-                );
+                        <Badge variant={getRoleBadgeVariant(br.role)}>{br.role}</Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <div className="text-muted-foreground">Term start</div>
+                          <div className="mt-1">{new Date(br.startDate).toLocaleDateString()}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Term end</div>
+                          <div className={`mt-1 ${isExpired ? "text-red-600 font-medium" : isExpiring ? "text-amber-700 font-medium" : ""}`}>
+                            {endDate ? endDate.toLocaleDateString() : "No end date"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {isExpired ? <Badge variant="destructive">Expired</Badge> : endDate ? <Badge variant="outline">Active</Badge> : <Badge variant="default">Active</Badge>}
+                        {isExpiring && daysUntilEnd !== null ? (
+                          <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Expires in {daysUntilEnd}d</Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
                 })}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

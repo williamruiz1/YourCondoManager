@@ -116,14 +116,14 @@ export default function OnboardingInvitePage() {
   const ownerFormInvalid = invite?.residentType === "owner" && form.occupancyIntent === "rental" && validTenantCount === 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-2xl space-y-6">
+    <div className="min-h-screen bg-slate-50 px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-2xl space-y-5 sm:space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Unit Intake Form</h1>
         </div>
 
-        <Card>
-          <CardContent className="p-6 space-y-4">
+        <Card className="rounded-2xl">
+          <CardContent className="space-y-4 p-4 sm:p-6">
             {inviteQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading invite...</div> : null}
             {inviteQuery.isError ? <div className="text-sm text-destructive">{(inviteQuery.error as Error).message}</div> : null}
 
@@ -199,7 +199,7 @@ export default function OnboardingInvitePage() {
                             <div className="text-sm font-medium">Second owner</div>
                             <div className="text-xs text-muted-foreground">Add a second owner if title is shared.</div>
                           </div>
-                          <Button type="button" variant="outline" size="sm" onClick={() => setIncludeSecondOwner((current) => !current)}>
+                          <Button type="button" variant="outline" size="sm" className="min-h-10 sm:min-h-8" onClick={() => setIncludeSecondOwner((current) => !current)}>
                             {includeSecondOwner ? "Remove second owner" : "Add second owner"}
                           </Button>
                         </div>
@@ -250,6 +250,7 @@ export default function OnboardingInvitePage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                className="min-h-10 sm:min-h-8"
                                 onClick={() => setTenantResidents((rows) => [...rows, createEmptyResident()])}
                               >
                                 Add Tenant
@@ -263,6 +264,7 @@ export default function OnboardingInvitePage() {
                                     type="button"
                                     variant="ghost"
                                     size="sm"
+                                    className="min-h-10 sm:min-h-8"
                                     onClick={() => setTenantResidents((rows) => rows.length === 1 ? [createEmptyResident()] : rows.filter((_, rowIndex) => rowIndex !== index))}
                                   >
                                     Remove Tenant
@@ -296,6 +298,7 @@ export default function OnboardingInvitePage() {
                       <div className="text-sm text-destructive">Add at least one complete tenant entry for a rental submission.</div>
                     ) : null}
                     <Button
+                      className="min-h-11 w-full sm:w-auto"
                       onClick={() => submitMutation.mutate()}
                       disabled={submitMutation.isPending || !form.firstName.trim() || !form.lastName.trim() || !form.startDate || ownerFormInvalid}
                     >

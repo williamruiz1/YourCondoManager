@@ -857,71 +857,124 @@ export default function AssociationContextPage() {
                         <Link href="/app/communications">Open Communications</Link>
                       </Button>
                     </div>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Unit</TableHead>
-                          <TableHead>Coverage</TableHead>
-                          <TableHead>Invites</TableHead>
-                          <TableHead>Submission</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {unitCoverageRows.slice(0, 25).map((row) => (
-                        <TableRow key={row.unitId}>
-                            <TableCell>
-                              <div className="font-medium">Unit {row.unitNumber}</div>
-                              <div className="text-xs text-muted-foreground">{row.building}</div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={row.coverageStatus === "claimed" ? "default" : row.coverageStatus === "pending-review" ? "secondary" : "outline"}>
-                                {row.coverageStatus.replace("-", " ")}
-                              </Badge>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                {formatOccupancyStatus(row.occupancyStatus)} · Owners {row.ownerCount} · Tenants {row.tenantCount}
-                                {row.lastOccupancyUpdate ? ` · Updated ${new Date(row.lastOccupancyUpdate).toLocaleDateString()}` : ""}
-                              </div>
-                            </TableCell>
-                            <TableCell>{row.inviteCount}</TableCell>
-                            <TableCell>
-                              {row.latestSubmission ? (
-                                <div className="text-xs">
-                                  <div>{row.latestSubmission.firstName} {row.latestSubmission.lastName}</div>
-                                  <div className="text-muted-foreground">{row.latestSubmission.status}</div>
-                                </div>
-                              ) : <span className="text-xs text-muted-foreground">No submission</span>}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-2">
-                                <Button size="sm" variant="outline" onClick={() => openManualIntake({ unitId: row.unitId, ownerCount: row.ownerCount, occupantCount: row.occupantCount })}>
-                                  Manual Entry
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "owner" })}
-                                  disabled={unitLinkMutation.isPending}
-                                >
-                                  Owner Link
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "tenant" })}
-                                  disabled={unitLinkMutation.isPending}
-                                >
-                                  Tenant Link
-                                </Button>
-                              </div>
-                            </TableCell>
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Unit</TableHead>
+                            <TableHead>Coverage</TableHead>
+                            <TableHead>Invites</TableHead>
+                            <TableHead>Submission</TableHead>
+                            <TableHead>Actions</TableHead>
                           </TableRow>
-                        ))}
-                        {unitCoverageRows.length === 0 ? (
-                          <TableRow><TableCell colSpan={5} className="text-muted-foreground">No units available for onboarding coverage.</TableCell></TableRow>
-                        ) : null}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {unitCoverageRows.slice(0, 25).map((row) => (
+                          <TableRow key={row.unitId}>
+                              <TableCell>
+                                <div className="font-medium">Unit {row.unitNumber}</div>
+                                <div className="text-xs text-muted-foreground">{row.building}</div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={row.coverageStatus === "claimed" ? "default" : row.coverageStatus === "pending-review" ? "secondary" : "outline"}>
+                                  {row.coverageStatus.replace("-", " ")}
+                                </Badge>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {formatOccupancyStatus(row.occupancyStatus)} · Owners {row.ownerCount} · Tenants {row.tenantCount}
+                                  {row.lastOccupancyUpdate ? ` · Updated ${new Date(row.lastOccupancyUpdate).toLocaleDateString()}` : ""}
+                                </div>
+                              </TableCell>
+                              <TableCell>{row.inviteCount}</TableCell>
+                              <TableCell>
+                                {row.latestSubmission ? (
+                                  <div className="text-xs">
+                                    <div>{row.latestSubmission.firstName} {row.latestSubmission.lastName}</div>
+                                    <div className="text-muted-foreground">{row.latestSubmission.status}</div>
+                                  </div>
+                                ) : <span className="text-xs text-muted-foreground">No submission</span>}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button size="sm" variant="outline" onClick={() => openManualIntake({ unitId: row.unitId, ownerCount: row.ownerCount, occupantCount: row.occupantCount })}>
+                                    Manual Entry
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "owner" })}
+                                    disabled={unitLinkMutation.isPending}
+                                  >
+                                    Owner Link
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "tenant" })}
+                                    disabled={unitLinkMutation.isPending}
+                                  >
+                                    Tenant Link
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {unitCoverageRows.length === 0 ? (
+                            <TableRow><TableCell colSpan={5} className="text-muted-foreground">No units available for onboarding coverage.</TableCell></TableRow>
+                          ) : null}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <div className="space-y-3 md:hidden">
+                      {unitCoverageRows.slice(0, 25).map((row) => (
+                        <div key={row.unitId} className="rounded-xl border p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium">Unit {row.unitNumber}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">{row.building}</div>
+                            </div>
+                            <Badge variant={row.coverageStatus === "claimed" ? "default" : row.coverageStatus === "pending-review" ? "secondary" : "outline"}>
+                              {row.coverageStatus.replace("-", " ")}
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatOccupancyStatus(row.occupancyStatus)} · Owners {row.ownerCount} · Tenants {row.tenantCount}
+                            {row.lastOccupancyUpdate ? ` · Updated ${new Date(row.lastOccupancyUpdate).toLocaleDateString()}` : ""}
+                          </div>
+                          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                            <span>{row.inviteCount} invite{row.inviteCount === 1 ? "" : "s"}</span>
+                            <span>
+                              {row.latestSubmission
+                                ? `${row.latestSubmission.firstName} ${row.latestSubmission.lastName} · ${row.latestSubmission.status}`
+                                : "No submission"}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <Button size="sm" variant="outline" onClick={() => openManualIntake({ unitId: row.unitId, ownerCount: row.ownerCount, occupantCount: row.occupantCount })}>
+                              Manual Entry
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "owner" })}
+                              disabled={unitLinkMutation.isPending}
+                            >
+                              Owner Link
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "tenant" })}
+                              disabled={unitLinkMutation.isPending}
+                            >
+                              Tenant Link
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {unitCoverageRows.length === 0 ? (
+                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No units available for onboarding coverage.</div>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="rounded-xl border p-4 space-y-4">
@@ -1006,38 +1059,69 @@ export default function AssociationContextPage() {
               <AccordionContent className="pb-4">
                 <div className="rounded-xl border p-4 space-y-4">
                   <div className="text-sm font-semibold">Recent Invites</div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Unit</TableHead>
-                        <TableHead>Resident</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {onboardingInvites.slice(0, 12).map((invite) => (
-                        <TableRow key={invite.id}>
-                          <TableCell>Unit {invite.unitLabel || invite.unitId}</TableCell>
-                          <TableCell className="capitalize">{invite.residentType}</TableCell>
-                          <TableCell><Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge></TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => sendInviteMutation.mutate(invite.id)}
-                              disabled={sendInviteMutation.isPending || !invite.email}
-                            >
-                              {invite.lastSentAt ? "Resend" : "Send"}
-                            </Button>
-                          </TableCell>
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Unit</TableHead>
+                          <TableHead>Resident</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
                         </TableRow>
-                      ))}
-                      {onboardingInvites.length === 0 ? (
-                        <TableRow><TableCell colSpan={4} className="text-muted-foreground">No onboarding invites yet.</TableCell></TableRow>
-                      ) : null}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {onboardingInvites.slice(0, 12).map((invite) => (
+                          <TableRow key={invite.id}>
+                            <TableCell>Unit {invite.unitLabel || invite.unitId}</TableCell>
+                            <TableCell className="capitalize">{invite.residentType}</TableCell>
+                            <TableCell><Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge></TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => sendInviteMutation.mutate(invite.id)}
+                                disabled={sendInviteMutation.isPending || !invite.email}
+                              >
+                                {invite.lastSentAt ? "Resend" : "Send"}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {onboardingInvites.length === 0 ? (
+                          <TableRow><TableCell colSpan={4} className="text-muted-foreground">No onboarding invites yet.</TableCell></TableRow>
+                        ) : null}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="space-y-3 md:hidden">
+                    {onboardingInvites.slice(0, 12).map((invite) => (
+                      <div key={invite.id} className="rounded-xl border p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium">Unit {invite.unitLabel || invite.unitId}</div>
+                            <div className="mt-1 text-xs text-muted-foreground capitalize">{invite.residentType}</div>
+                          </div>
+                          <Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {invite.email || invite.phone || "No delivery target set"}
+                          {invite.lastSentAt ? ` · Last sent ${new Date(invite.lastSentAt).toLocaleString()}` : ""}
+                        </div>
+                        <Button
+                          className="w-full"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => sendInviteMutation.mutate(invite.id)}
+                          disabled={sendInviteMutation.isPending || !invite.email}
+                        >
+                          {invite.lastSentAt ? "Resend" : "Send"}
+                        </Button>
+                      </div>
+                    ))}
+                    {onboardingInvites.length === 0 ? (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No onboarding invites yet.</div>
+                    ) : null}
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -1047,85 +1131,152 @@ export default function AssociationContextPage() {
               <AccordionContent className="pb-4">
                 <div className="rounded-xl border p-4 space-y-4">
                   <div className="text-sm font-semibold">Submission Review Queue</div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Unit</TableHead>
-                        <TableHead>Person</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {onboardingSubmissions.slice(0, 12).map((submission) => (
-                        <TableRow key={submission.id}>
-                          <TableCell>Unit {submission.unitLabel || submission.unitId}</TableCell>
-                          <TableCell>
-                            <div>{submission.firstName} {submission.lastName}</div>
-                            {submission.reviewNotes?.length ? (
-                              <div className="mt-1 text-xs text-muted-foreground">{submission.reviewNotes.join(" ")}</div>
-                            ) : null}
-                            {submission.rejectionReason ? (
-                              <div className="mt-1 text-xs text-destructive">Last rejection: {submission.rejectionReason}</div>
-                            ) : null}
-                          </TableCell>
-                          <TableCell><Badge variant={submission.status === "pending" ? "secondary" : "outline"}>{submission.status}</Badge></TableCell>
-                          <TableCell className="space-x-2">
-                            {submission.status === "pending" ? (
-                              <div className="space-y-2">
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => openSubmissionReview(submission.id)}
-                                  >
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Unit</TableHead>
+                          <TableHead>Person</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {onboardingSubmissions.slice(0, 12).map((submission) => (
+                          <TableRow key={submission.id}>
+                            <TableCell>Unit {submission.unitLabel || submission.unitId}</TableCell>
+                            <TableCell>
+                              <div>{submission.firstName} {submission.lastName}</div>
+                              {submission.reviewNotes?.length ? (
+                                <div className="mt-1 text-xs text-muted-foreground">{submission.reviewNotes.join(" ")}</div>
+                              ) : null}
+                              {submission.rejectionReason ? (
+                                <div className="mt-1 text-xs text-destructive">Last rejection: {submission.rejectionReason}</div>
+                              ) : null}
+                            </TableCell>
+                            <TableCell><Badge variant={submission.status === "pending" ? "secondary" : "outline"}>{submission.status}</Badge></TableCell>
+                            <TableCell className="space-x-2">
+                              {submission.status === "pending" ? (
+                                <div className="space-y-2">
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => openSubmissionReview(submission.id)}
+                                    >
+                                      Open
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => reviewSubmissionMutation.mutate({ id: submission.id, decision: "approved" })}
+                                      disabled={reviewSubmissionMutation.isPending}
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      onClick={() => reviewSubmissionMutation.mutate({
+                                        id: submission.id,
+                                        decision: "rejected",
+                                        rejectionReason: rejectionDrafts[submission.id] || "Please update the submission and try again.",
+                                      })}
+                                      disabled={reviewSubmissionMutation.isPending}
+                                    >
+                                      Request Changes
+                                    </Button>
+                                  </div>
+                                  <Textarea
+                                    rows={2}
+                                    placeholder="Reason for rejection / requested changes"
+                                    value={rejectionDrafts[submission.id] || ""}
+                                    onChange={(event) => updateRejectionDraft(submission.id, event.target.value)}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex gap-2 items-center">
+                                  <span className="text-xs text-muted-foreground">
+                                    {submission.reviewedBy ? `Reviewed by ${submission.reviewedBy}` : "Reviewed"}
+                                  </span>
+                                  <Button size="sm" variant="outline" onClick={() => openSubmissionReview(submission.id)}>
                                     Open
                                   </Button>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => reviewSubmissionMutation.mutate({ id: submission.id, decision: "approved" })}
-                                    disabled={reviewSubmissionMutation.isPending}
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => reviewSubmissionMutation.mutate({
-                                      id: submission.id,
-                                      decision: "rejected",
-                                      rejectionReason: rejectionDrafts[submission.id] || "Please update the submission and try again.",
-                                    })}
-                                    disabled={reviewSubmissionMutation.isPending}
-                                  >
-                                    Request Changes
-                                  </Button>
                                 </div>
-                                <Textarea
-                                  rows={2}
-                                  placeholder="Reason for rejection / requested changes"
-                                  value={rejectionDrafts[submission.id] || ""}
-                                  onChange={(event) => updateRejectionDraft(submission.id, event.target.value)}
-                                />
-                              </div>
-                            ) : (
-                              <div className="flex gap-2 items-center">
-                                <span className="text-xs text-muted-foreground">
-                                  {submission.reviewedBy ? `Reviewed by ${submission.reviewedBy}` : "Reviewed"}
-                                </span>
-                                <Button size="sm" variant="outline" onClick={() => openSubmissionReview(submission.id)}>
-                                  Open
-                                </Button>
-                              </div>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {onboardingSubmissions.length === 0 ? (
-                        <TableRow><TableCell colSpan={4} className="text-muted-foreground">No onboarding submissions yet.</TableCell></TableRow>
-                      ) : null}
-                    </TableBody>
-                  </Table>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {onboardingSubmissions.length === 0 ? (
+                          <TableRow><TableCell colSpan={4} className="text-muted-foreground">No onboarding submissions yet.</TableCell></TableRow>
+                        ) : null}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="space-y-3 md:hidden">
+                    {onboardingSubmissions.slice(0, 12).map((submission) => (
+                      <div key={submission.id} className="rounded-xl border p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium">Unit {submission.unitLabel || submission.unitId}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{submission.firstName} {submission.lastName}</div>
+                          </div>
+                          <Badge variant={submission.status === "pending" ? "secondary" : "outline"}>{submission.status}</Badge>
+                        </div>
+                        {submission.reviewNotes?.length ? (
+                          <div className="text-xs text-muted-foreground">{submission.reviewNotes.join(" ")}</div>
+                        ) : null}
+                        {submission.rejectionReason ? (
+                          <div className="text-xs text-destructive">Last rejection: {submission.rejectionReason}</div>
+                        ) : null}
+                        {submission.status === "pending" ? (
+                          <>
+                            <Textarea
+                              rows={2}
+                              placeholder="Reason for rejection / requested changes"
+                              value={rejectionDrafts[submission.id] || ""}
+                              onChange={(event) => updateRejectionDraft(submission.id, event.target.value)}
+                            />
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                              <Button size="sm" variant="outline" onClick={() => openSubmissionReview(submission.id)}>
+                                Open
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => reviewSubmissionMutation.mutate({ id: submission.id, decision: "approved" })}
+                                disabled={reviewSubmissionMutation.isPending}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => reviewSubmissionMutation.mutate({
+                                  id: submission.id,
+                                  decision: "rejected",
+                                  rejectionReason: rejectionDrafts[submission.id] || "Please update the submission and try again.",
+                                })}
+                                disabled={reviewSubmissionMutation.isPending}
+                              >
+                                Request Changes
+                              </Button>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-muted-foreground">
+                              {submission.reviewedBy ? `Reviewed by ${submission.reviewedBy}` : "Reviewed"}
+                            </span>
+                            <Button size="sm" variant="outline" onClick={() => openSubmissionReview(submission.id)}>
+                              Open
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {onboardingSubmissions.length === 0 ? (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No onboarding submissions yet.</div>
+                    ) : null}
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -1157,8 +1308,20 @@ export default function AssociationContextPage() {
           ) : (
             documents.slice(0, 8).map((document) => (
               <div key={document.id} className="rounded-md border p-3">
-                <div className="font-medium">{document.title}</div>
-                <div className="text-xs text-muted-foreground">{document.documentType}</div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="break-words font-medium">{document.title}</div>
+                    <div className="text-xs text-muted-foreground">{document.documentType}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" asChild>
+                      <a href={document.fileUrl} target="_blank" rel="noreferrer">Open</a>
+                    </Button>
+                    <Button size="sm" variant="outline" asChild>
+                      <a href={document.fileUrl} download>Download</a>
+                    </Button>
+                  </div>
+                </div>
               </div>
             ))
           )}

@@ -1187,6 +1187,7 @@ export default function CommunicationsPage() {
               Run Reminder Sweep
             </Button>
           </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1252,6 +1253,37 @@ export default function CommunicationsPage() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {(onboardingInvites ?? []).slice(0, 25).map((invite) => {
+              const inviteUrl = typeof window === "undefined" ? `/onboarding/${invite.token}` : `${window.location.origin}/onboarding/${invite.token}`;
+              return (
+                <div key={invite.id} className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium">{invite.unitLabel ? `Unit ${invite.unitLabel}` : invite.unitId}</div>
+                      <div className="mt-1 text-xs text-muted-foreground capitalize">{invite.residentType}</div>
+                    </div>
+                    <Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge>
+                  </div>
+                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                    <div>Contact: {invite.email || invite.phone || "-"}</div>
+                    <div>Last sent: {invite.lastSentAt ? new Date(invite.lastSentAt).toLocaleString() : "-"}</div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => navigator?.clipboard?.writeText?.(inviteUrl)}>Copy Link</Button>
+                    <Button size="sm" variant="outline" onClick={() => window.open(inviteUrl, "_blank", "noopener,noreferrer")}>Open Link</Button>
+                    <Button size="sm" variant="outline" onClick={() => sendOnboardingInvite.mutate(invite.id)} disabled={sendOnboardingInvite.isPending || !invite.email}>
+                      {invite.lastSentAt ? "Resend" : "Send"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+            {(onboardingInvites ?? []).length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No onboarding links created yet.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -1266,6 +1298,7 @@ export default function CommunicationsPage() {
             </div>
             <Badge variant="secondary">Pending: {(onboardingSubmissions ?? []).filter((row) => row.status === "pending").length}</Badge>
           </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1309,6 +1342,37 @@ export default function CommunicationsPage() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {(onboardingSubmissions ?? []).slice(0, 50).map((row) => (
+              <div key={row.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{row.firstName} {row.lastName}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {row.unitLabel ? `Unit ${row.unitLabel}` : row.unitId} · <span className="capitalize">{row.residentType}</span>
+                    </div>
+                  </div>
+                  <Badge variant={row.status === "pending" ? "secondary" : "outline"}>{row.status}</Badge>
+                </div>
+                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                  <div>Submitted: {new Date(row.submittedAt).toLocaleString()}</div>
+                  <div>Contact: {row.email || row.phone || row.inviteEmail || "-"}</div>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Button size="sm" className="flex-1" onClick={() => reviewOnboardingSubmission.mutate({ id: row.id, decision: "approved" })} disabled={reviewOnboardingSubmission.isPending || row.status !== "pending"}>
+                    Approve
+                  </Button>
+                  <Button size="sm" variant="destructive" className="flex-1" onClick={() => reviewOnboardingSubmission.mutate({ id: row.id, decision: "rejected" })} disabled={reviewOnboardingSubmission.isPending || row.status !== "pending"}>
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {(onboardingSubmissions ?? []).length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No onboarding submissions yet.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
         </>
@@ -1593,6 +1657,7 @@ export default function CommunicationsPage() {
             {" "} | Missing email: {recipientPreview?.missingEmailCount ?? 0}
             {" "} | Duplicate email: {recipientPreview?.duplicateEmailCount ?? 0}
           </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1616,6 +1681,21 @@ export default function CommunicationsPage() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {(recipientPreview?.recipients ?? []).slice(0, 25).map((row) => (
+              <div key={`${row.email}-${row.unitId}`} className="rounded-xl border p-4">
+                <div className="font-medium">{row.email}</div>
+                <div className="mt-2 text-xs text-muted-foreground">Role: {row.role}</div>
+                <div className="text-xs text-muted-foreground">Unit: {row.unitId}</div>
+              </div>
+            ))}
+            {!recipientPreview ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No preview run yet.</div>
+            ) : recipientPreview.recipients.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No deliverable recipients matched the current targeting rules.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
       ) : null}
@@ -1625,6 +1705,7 @@ export default function CommunicationsPage() {
       <Card>
         <CardContent className="p-6 space-y-4">
           <h2 className="text-lg font-semibold">Contact Update Review Queue</h2>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1664,6 +1745,32 @@ export default function CommunicationsPage() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {(contactUpdates ?? []).filter((row) => row.reviewStatus === "pending").map((row) => (
+              <div key={row.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-sm font-medium">Contact update request</div>
+                  <Badge variant="secondary">{row.reviewStatus}</Badge>
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">Created: {new Date(row.createdAt).toLocaleString()}</div>
+                <div className="mt-2 rounded-lg bg-muted/30 p-3 text-xs text-muted-foreground break-words">
+                  {JSON.stringify(row.requestJson)}
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Button size="sm" className="flex-1" onClick={() => reviewContactUpdate.mutate({ id: row.id, reviewStatus: "approved" })} disabled={reviewContactUpdate.isPending}>
+                    Approve
+                  </Button>
+                  <Button size="sm" variant="destructive" className="flex-1" onClick={() => reviewContactUpdate.mutate({ id: row.id, reviewStatus: "rejected" })} disabled={reviewContactUpdate.isPending}>
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {(contactUpdates ?? []).filter((row) => row.reviewStatus === "pending").length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No pending contact updates.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -1675,6 +1782,7 @@ export default function CommunicationsPage() {
               Run SLA Escalations
             </Button>
           </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1709,6 +1817,36 @@ export default function CommunicationsPage() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {(maintenanceRequests ?? []).slice(0, 100).map((row) => (
+              <div key={row.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{row.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Created {new Date(row.createdAt).toLocaleString()}</div>
+                  </div>
+                  <Badge variant="secondary">{row.status}</Badge>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="outline">{row.priority}</Badge>
+                  <Badge variant="outline">{row.escalationStage}</Badge>
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">
+                  SLA due: {row.responseDueAt ? new Date(row.responseDueAt).toLocaleString() : "-"}
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <Button size="sm" variant="outline" onClick={() => updateMaintenanceStatus.mutate({ id: row.id, status: "triaged" })} disabled={updateMaintenanceStatus.isPending}>Triage</Button>
+                  <Button size="sm" variant="outline" onClick={() => updateMaintenanceStatus.mutate({ id: row.id, status: "in-progress" })} disabled={updateMaintenanceStatus.isPending}>In Progress</Button>
+                  <Button size="sm" onClick={() => updateMaintenanceStatus.mutate({ id: row.id, status: "resolved" })} disabled={updateMaintenanceStatus.isPending}>Resolve</Button>
+                  <Button size="sm" variant="destructive" onClick={() => updateMaintenanceStatus.mutate({ id: row.id, status: "rejected" })} disabled={updateMaintenanceStatus.isPending}>Reject</Button>
+                </div>
+              </div>
+            ))}
+            {(maintenanceRequests ?? []).length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No maintenance requests yet.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -1723,6 +1861,7 @@ export default function CommunicationsPage() {
           <div className="text-sm text-muted-foreground">
             Pending approvals: {(pendingSends ?? []).length} | Scheduled: {(scheduledSends ?? []).length}
           </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1773,6 +1912,44 @@ export default function CommunicationsPage() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {(pendingSends ?? []).map((row) => (
+              <div key={row.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{row.subjectRendered}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{row.recipientEmail}</div>
+                  </div>
+                  <Badge variant="secondary">{row.status}</Badge>
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">Dispatch at: {new Date(row.sentAt).toLocaleString()}</div>
+                <div className="mt-4 flex gap-2">
+                  <Button size="sm" className="flex-1" onClick={() => approveSend.mutate({ id: row.id, decision: "approved" })} disabled={approveSend.isPending}>
+                    Approve
+                  </Button>
+                  <Button size="sm" variant="destructive" className="flex-1" onClick={() => approveSend.mutate({ id: row.id, decision: "rejected" })} disabled={approveSend.isPending}>
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {(scheduledSends ?? []).slice(0, 20).map((row) => (
+              <div key={row.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{row.subjectRendered}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{row.recipientEmail}</div>
+                  </div>
+                  <Badge variant="outline">{row.status}</Badge>
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">Dispatch at: {new Date(row.sentAt).toLocaleString()}</div>
+              </div>
+            ))}
+            {(pendingSends ?? []).length === 0 && (scheduledSends ?? []).length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No pending approvals or scheduled notices.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -1783,20 +1960,42 @@ export default function CommunicationsPage() {
               Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
             </div>
           </div>
-          <Table>
-            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Channel</TableHead><TableHead>Recipient</TableHead><TableHead>Subject</TableHead><TableHead>Related</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {filteredHistory.map((h) => (
-                <TableRow key={h.id}>
-                  <TableCell>{new Date(h.createdAt).toLocaleString()}</TableCell>
-                  <TableCell><Badge variant="secondary">{h.channel}</Badge></TableCell>
-                  <TableCell>{h.recipientEmail || "-"}</TableCell>
-                  <TableCell>{h.subject || "-"}</TableCell>
-                  <TableCell>{h.relatedType || "-"} {h.relatedId || ""}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Channel</TableHead><TableHead>Recipient</TableHead><TableHead>Subject</TableHead><TableHead>Related</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {filteredHistory.map((h) => (
+                  <TableRow key={h.id}>
+                    <TableCell>{new Date(h.createdAt).toLocaleString()}</TableCell>
+                    <TableCell><Badge variant="secondary">{h.channel}</Badge></TableCell>
+                    <TableCell>{h.recipientEmail || "-"}</TableCell>
+                    <TableCell>{h.subject || "-"}</TableCell>
+                    <TableCell>{h.relatedType || "-"} {h.relatedId || ""}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-3 p-4 md:hidden">
+            {filteredHistory.map((h) => (
+              <div key={h.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{h.subject || "Untitled communication"}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{h.recipientEmail || "No recipient"}</div>
+                  </div>
+                  <Badge variant="secondary">{h.channel}</Badge>
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">{new Date(h.createdAt).toLocaleString()}</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Related: {h.relatedType || "-"} {h.relatedId || ""}
+                </div>
+              </div>
+            ))}
+            {filteredHistory.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No communication history yet.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -1848,42 +2047,71 @@ export default function CommunicationsPage() {
                 </DialogContent>
               </Dialog>
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Rule</TableHead>
-                  <TableHead>Trigger</TableHead>
-                  <TableHead>Days</TableHead>
-                  <TableHead>Min Balance</TableHead>
-                  <TableHead>Last Run</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reminderRules.map((rule) => (
-                  <TableRow key={rule.id}>
-                    <TableCell className="font-medium">{rule.name}</TableCell>
-                    <TableCell>{rule.triggerOn}</TableCell>
-                    <TableCell>{rule.daysRelativeToDue > 0 ? `+${rule.daysRelativeToDue}` : rule.daysRelativeToDue}</TableCell>
-                    <TableCell>${(rule.minBalanceThreshold ?? 0).toFixed(2)}</TableCell>
-                    <TableCell>{rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "Never"}</TableCell>
-                    <TableCell><Badge variant={rule.isActive ? "secondary" : "outline"}>{rule.isActive ? "active" : "paused"}</Badge></TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={runReminderRule.isPending || !rule.isActive}>Run Now</Button>
-                        <Button size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })} disabled={toggleReminderRule.isPending}>
-                          {rule.isActive ? "Pause" : "Activate"}
-                        </Button>
-                      </div>
-                    </TableCell>
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Rule</TableHead>
+                    <TableHead>Trigger</TableHead>
+                    <TableHead>Days</TableHead>
+                    <TableHead>Min Balance</TableHead>
+                    <TableHead>Last Run</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-                {reminderRules.length === 0 && (
-                  <TableRow><TableCell colSpan={7} className="h-16 text-center text-muted-foreground">No payment reminder rules configured.</TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {reminderRules.map((rule) => (
+                    <TableRow key={rule.id}>
+                      <TableCell className="font-medium">{rule.name}</TableCell>
+                      <TableCell>{rule.triggerOn}</TableCell>
+                      <TableCell>{rule.daysRelativeToDue > 0 ? `+${rule.daysRelativeToDue}` : rule.daysRelativeToDue}</TableCell>
+                      <TableCell>${(rule.minBalanceThreshold ?? 0).toFixed(2)}</TableCell>
+                      <TableCell>{rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "Never"}</TableCell>
+                      <TableCell><Badge variant={rule.isActive ? "secondary" : "outline"}>{rule.isActive ? "active" : "paused"}</Badge></TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={runReminderRule.isPending || !rule.isActive}>Run Now</Button>
+                          <Button size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })} disabled={toggleReminderRule.isPending}>
+                            {rule.isActive ? "Pause" : "Activate"}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {reminderRules.length === 0 && (
+                    <TableRow><TableCell colSpan={7} className="h-16 text-center text-muted-foreground">No payment reminder rules configured.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="space-y-3 md:hidden">
+              {reminderRules.map((rule) => (
+                <div key={rule.id} className="rounded-xl border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">{rule.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {rule.triggerOn} · {rule.daysRelativeToDue > 0 ? `+${rule.daysRelativeToDue}` : rule.daysRelativeToDue} days · min ${(
+                          rule.minBalanceThreshold ?? 0
+                        ).toFixed(2)}
+                      </div>
+                    </div>
+                    <Badge variant={rule.isActive ? "secondary" : "outline"}>{rule.isActive ? "active" : "paused"}</Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">Last run: {rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "Never"}</div>
+                  <div className="flex gap-2">
+                    <Button className="flex-1" size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={runReminderRule.isPending || !rule.isActive}>Run Now</Button>
+                    <Button className="flex-1" size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })} disabled={toggleReminderRule.isPending}>
+                      {rule.isActive ? "Pause" : "Activate"}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {reminderRules.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No payment reminder rules configured.</div>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -1915,36 +2143,62 @@ export default function CommunicationsPage() {
               {deliveryStats.bouncedEmails.length > 0 ? (
                 <div className="space-y-2">
                   <div className="text-sm font-medium">Bounced Addresses <Badge variant="destructive">{deliveryStats.bounced}</Badge></div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Reason</TableHead>
-                        <TableHead>Bounced At</TableHead>
-                        <TableHead>Retries</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {deliveryStats.bouncedEmails.map((b) => (
-                        <TableRow key={b.id}>
-                          <TableCell className="font-mono text-sm">{b.email}</TableCell>
-                          <TableCell><Badge variant={b.type === "hard" ? "destructive" : "secondary"}>{b.type || "unknown"}</Badge></TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{b.reason || "—"}</TableCell>
-                          <TableCell className="text-sm">{b.bouncedAt ? new Date(b.bouncedAt).toLocaleDateString() : "—"}</TableCell>
-                          <TableCell>{b.retryCount}</TableCell>
-                          <TableCell className="text-right">
-                            {b.type !== "hard" ? (
-                              <Button size="sm" variant="outline" onClick={() => updateDelivery.mutate({ id: b.id, event: "retry" })} disabled={updateDelivery.isPending}>
-                                Retry
-                              </Button>
-                            ) : <span className="text-xs text-muted-foreground">Hard bounce — no retry</span>}
-                          </TableCell>
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead>Bounced At</TableHead>
+                          <TableHead>Retries</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {deliveryStats.bouncedEmails.map((b) => (
+                          <TableRow key={b.id}>
+                            <TableCell className="font-mono text-sm">{b.email}</TableCell>
+                            <TableCell><Badge variant={b.type === "hard" ? "destructive" : "secondary"}>{b.type || "unknown"}</Badge></TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{b.reason || "—"}</TableCell>
+                            <TableCell className="text-sm">{b.bouncedAt ? new Date(b.bouncedAt).toLocaleDateString() : "—"}</TableCell>
+                            <TableCell>{b.retryCount}</TableCell>
+                            <TableCell className="text-right">
+                              {b.type !== "hard" ? (
+                                <Button size="sm" variant="outline" onClick={() => updateDelivery.mutate({ id: b.id, event: "retry" })} disabled={updateDelivery.isPending}>
+                                  Retry
+                                </Button>
+                              ) : <span className="text-xs text-muted-foreground">Hard bounce — no retry</span>}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="space-y-3 md:hidden">
+                    {deliveryStats.bouncedEmails.map((b) => (
+                      <div key={b.id} className="rounded-xl border p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="break-all font-mono text-sm">{b.email}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{b.reason || "No bounce reason provided"}</div>
+                          </div>
+                          <Badge variant={b.type === "hard" ? "destructive" : "secondary"}>{b.type || "unknown"}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                          <span>{b.bouncedAt ? new Date(b.bouncedAt).toLocaleDateString() : "No date"}</span>
+                          <span>{b.retryCount} retr{b.retryCount === 1 ? "y" : "ies"}</span>
+                        </div>
+                        {b.type !== "hard" ? (
+                          <Button className="w-full" size="sm" variant="outline" onClick={() => updateDelivery.mutate({ id: b.id, event: "retry" })} disabled={updateDelivery.isPending}>
+                            Retry delivery
+                          </Button>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">Hard bounce. Retry is disabled.</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="text-sm text-muted-foreground">No bounced emails for this association.</div>

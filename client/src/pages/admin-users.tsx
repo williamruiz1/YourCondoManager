@@ -174,77 +174,137 @@ export default function AdminUsersPage() {
               <p className="text-sm text-muted-foreground mt-1">Create at least one admin user.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Current Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Update Role</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Current Role</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Update Role</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedUsers.map((user) => {
+                      const update = roleUpdates[user.id] || { role: user.role, reason: "" };
+                      return (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">{user.email}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{user.role}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {user.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={update.role}
+                              onValueChange={(value) => {
+                                setRoleUpdates((prev) => ({
+                                  ...prev,
+                                  [user.id]: { ...update, role: value },
+                                }));
+                              }}
+                            >
+                              <SelectTrigger className="w-[170px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {roleOptions.map((role) => (
+                                  <SelectItem key={role} value={role}>
+                                    {role}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              placeholder="Reason for role change"
+                              value={update.reason}
+                              onChange={(e) => {
+                                setRoleUpdates((prev) => ({
+                                  ...prev,
+                                  [user.id]: { ...update, reason: e.target.value },
+                                }));
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              onClick={() => handleApplyRole(user)}
+                              disabled={updateRoleMutation.isPending}
+                            >
+                              Apply
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="space-y-3 p-4 md:hidden">
                 {sortedUsers.map((user) => {
                   const update = roleUpdates[user.id] || { role: user.role, reason: "" };
                   return (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.email}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{user.role}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {user.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={update.role}
-                          onValueChange={(value) => {
-                            setRoleUpdates((prev) => ({
-                              ...prev,
-                              [user.id]: { ...update, role: value },
-                            }));
-                          }}
-                        >
-                          <SelectTrigger className="w-[170px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {roleOptions.map((role) => (
-                              <SelectItem key={role} value={role}>
-                                {role}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          placeholder="Reason for role change"
-                          value={update.reason}
-                          onChange={(e) => {
-                            setRoleUpdates((prev) => ({
-                              ...prev,
-                              [user.id]: { ...update, reason: e.target.value },
-                            }));
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          onClick={() => handleApplyRole(user)}
-                          disabled={updateRoleMutation.isPending}
-                        >
-                          Apply
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                    <div key={user.id} className="rounded-xl border p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium break-all">{user.email}</div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Badge variant="secondary">{user.role}</Badge>
+                            {user.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                          </div>
+                        </div>
+                      </div>
+                      <Select
+                        value={update.role}
+                        onValueChange={(value) => {
+                          setRoleUpdates((prev) => ({
+                            ...prev,
+                            [user.id]: { ...update, role: value },
+                          }));
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roleOptions.map((role) => (
+                            <SelectItem key={role} value={role}>
+                              {role}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder="Reason for role change"
+                        value={update.reason}
+                        onChange={(e) => {
+                          setRoleUpdates((prev) => ({
+                            ...prev,
+                            [user.id]: { ...update, reason: e.target.value },
+                          }));
+                        }}
+                      />
+                      <Button
+                        className="w-full"
+                        size="sm"
+                        onClick={() => handleApplyRole(user)}
+                        disabled={updateRoleMutation.isPending}
+                      >
+                        Apply
+                      </Button>
+                    </div>
                   );
                 })}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

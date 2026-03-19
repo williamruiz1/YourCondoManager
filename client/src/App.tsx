@@ -22,6 +22,7 @@ import {
 import { AssociationProvider, useAssociationContext } from "@/context/association-context";
 import { GlobalCommandPalette } from "@/components/global-command-palette";
 import { canAccessWipRoute } from "@/lib/wip-features";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const WorkspacePreviewPage = lazy(() => import("@/pages/workspace-preview"));
@@ -433,7 +434,7 @@ function HeaderActions({
     <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
       <GlobalCommandPalette adminRole={adminRole} />
       <Select value={activeAssociationId ?? undefined} onValueChange={setActiveAssociationId}>
-        <SelectTrigger className="h-8 w-full max-w-full sm:w-[220px] lg:w-64" data-testid="select-active-association">
+        <SelectTrigger className="h-10 w-full max-w-full sm:h-8 sm:w-[220px] lg:w-64" data-testid="select-active-association">
           <SelectValue placeholder="Select association" />
         </SelectTrigger>
         <SelectContent>
@@ -450,7 +451,7 @@ function HeaderActions({
             <Button
               variant="outline"
               size="sm"
-              className="min-w-0 max-w-full justify-start gap-2 px-2 sm:max-w-[260px]"
+              className="min-h-10 min-w-0 max-w-full justify-start gap-2 px-2 sm:min-h-8 sm:max-w-[260px]"
               data-testid="button-account-menu"
             >
               <Avatar className="h-6 w-6">
@@ -490,7 +491,7 @@ function HeaderActions({
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (
-        <Button size="sm" onClick={onStartGoogleSignIn} data-testid="button-google-signin">
+        <Button size="sm" className="min-h-10 sm:min-h-8" onClick={onStartGoogleSignIn} data-testid="button-google-signin">
           Sign in with Google
         </Button>
       )}
@@ -509,7 +510,7 @@ function isTabActive(location: string, href: string) {
 }
 
 function WorkspaceSectionTabs({ adminRole }: { adminRole: AdminRole | null }) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const activeGroup = workspaceSectionTabGroups.find((group) =>
     group.matchPrefixes.some((prefix) => location === prefix || location.startsWith(`${prefix}/`)),
   );
@@ -520,29 +521,28 @@ function WorkspaceSectionTabs({ adminRole }: { adminRole: AdminRole | null }) {
   if (visibleTabs.length <= 1) return null;
 
   return (
-    <div className="border-b px-3 py-2">
-      <div className="flex items-center gap-2 overflow-x-auto" data-testid={activeGroup.testId}>
-        {visibleTabs.map((tab) => (
-          <Button
-            key={tab.href}
-            asChild
-            size="sm"
-            variant={((tab.matchPrefixes ?? [tab.href]).some((prefix) => isTabActive(location, prefix))) ? "default" : "outline"}
-            data-testid={`tab-${activeGroup.id}-${tab.label.toLowerCase().replace(/\s+/g, "-")}`}
-          >
-            <Link href={tab.href}>{tab.label}</Link>
-          </Button>
-        ))}
-      </div>
+    <div className="border-b px-3 py-3" data-testid={activeGroup.testId}>
+      <MobileTabBar
+        items={visibleTabs.map((tab) => ({ id: tab.href, label: tab.label }))}
+        value={visibleTabs.find((tab) => (tab.matchPrefixes ?? [tab.href]).some((prefix) => isTabActive(location, prefix)))?.href ?? visibleTabs[0].href}
+        onChange={navigate}
+      />
     </div>
   );
 }
 
 function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
+  const [location] = useLocation();
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [location]);
+
   return (
     <>
       <WorkspaceSectionTabs adminRole={adminRole} />
-      <main className="flex-1 overflow-auto">
+      <main ref={mainRef} className="flex-1 overflow-auto pb-[env(safe-area-inset-bottom)]">
         <WorkspaceRouter adminRole={adminRole} />
       </main>
     </>
@@ -571,7 +571,7 @@ function WorkspaceShell({
         <div className="flex h-screen w-full">
           <AppSidebar adminRole={adminRole} />
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex min-h-12 flex-wrap items-center gap-2 border-b px-3 py-2">
+            <header className="sticky top-0 z-20 flex min-h-12 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
               <HeaderActions
                 authSession={authSession}

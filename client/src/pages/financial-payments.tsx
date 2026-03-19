@@ -15,6 +15,8 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useAssociationContext } from "@/context/association-context";
 import { FinanceTabBar } from "@/components/finance-tab-bar";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { OwnerPaymentLink, PaymentGatewayConnection, PaymentMethodConfig, PartialPaymentRule, Person, Unit } from "@shared/schema";
 import {
   CreditCard,
@@ -930,36 +932,58 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
         <CardDescription>Review and force-transition webhook payment event states. Select an event to view its state history.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Event ID</TableHead>
-              <TableHead>Provider</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Received</TableHead>
-              <TableHead className="text-right">Select</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {events.slice(0, 20).map((e: any) => (
-              <TableRow key={e.id} className={selectedEventId === e.id ? "bg-muted/30" : ""}>
-                <TableCell className="font-mono text-xs">{e.providerEventId?.slice(0, 20)}</TableCell>
-                <TableCell className="text-xs capitalize">{e.provider}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{e.eventType ?? "—"}</TableCell>
-                <TableCell className="text-sm">{e.amount != null ? `$${e.amount.toFixed(2)}` : "—"}</TableCell>
-                <TableCell><Badge variant={(statusColors[e.status] ?? "outline") as any}>{e.status}</Badge></TableCell>
-                <TableCell className="text-xs text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</TableCell>
-                <TableCell className="text-right">
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedEventId(prev => prev === e.id ? null : e.id)}>
-                    {selectedEventId === e.id ? "Deselect" : "Select"}
-                  </Button>
-                </TableCell>
+        <div className="hidden md:block">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Event ID</TableHead>
+                <TableHead>Provider</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Received</TableHead>
+                <TableHead className="text-right">Select</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {events.slice(0, 20).map((e: any) => (
+                <TableRow key={e.id} className={selectedEventId === e.id ? "bg-muted/30" : ""}>
+                  <TableCell className="font-mono text-xs">{e.providerEventId?.slice(0, 20)}</TableCell>
+                  <TableCell className="text-xs capitalize">{e.provider}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{e.eventType ?? "—"}</TableCell>
+                  <TableCell className="text-sm">{e.amount != null ? `$${e.amount.toFixed(2)}` : "—"}</TableCell>
+                  <TableCell><Badge variant={(statusColors[e.status] ?? "outline") as any}>{e.status}</Badge></TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedEventId(prev => prev === e.id ? null : e.id)}>
+                      {selectedEventId === e.id ? "Deselect" : "Select"}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="space-y-3 md:hidden">
+          {events.slice(0, 20).map((e: any) => (
+            <div key={e.id} className={`rounded-xl border p-4 space-y-3 ${selectedEventId === e.id ? "bg-muted/30" : ""}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-mono text-xs">{e.providerEventId?.slice(0, 20) || e.id.slice(0, 12)}</div>
+                  <div className="mt-1 text-xs text-muted-foreground capitalize">{e.provider} · {e.eventType ?? "—"}</div>
+                </div>
+                <Badge variant={(statusColors[e.status] ?? "outline") as any}>{e.status}</Badge>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span>{e.amount != null ? `$${e.amount.toFixed(2)}` : "—"}</span>
+                <span className="text-xs text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</span>
+              </div>
+              <Button className="w-full" size="sm" variant="outline" onClick={() => setSelectedEventId(prev => prev === e.id ? null : e.id)}>
+                {selectedEventId === e.id ? "Deselect" : "Select"}
+              </Button>
+            </div>
+          ))}
+        </div>
 
         {selectedEventId && (
           <div className="rounded-md border p-3 space-y-3 bg-muted/20">
@@ -1043,23 +1067,45 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
           ) : entries.length === 0 ? (
             <div className="text-sm text-muted-foreground py-4 text-center">No payments recorded yet — configure payment methods above, then record the first owner payment to start tracking collections.</div>
           ) : (
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Type", "Amount", "Unit", "Person", "Description"].map(h => <th key={h} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
-                <tbody>
-                  {entries.slice().reverse().map((e) => (
-                    <tr key={e.id} className="border-b last:border-0">
-                      <td className="py-1.5 pr-4 text-muted-foreground">{new Date(e.postedAt).toLocaleDateString()}</td>
-                      <td className="py-1.5 pr-4"><Badge variant={e.entryType === "payment" ? "default" : "secondary"} className="text-xs">{e.entryType}</Badge></td>
-                      <td className={`py-1.5 pr-4 font-medium ${e.amount < 0 ? "text-green-600" : "text-red-500"}`}>{e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}</td>
-                      <td className="py-1.5 pr-4 font-mono text-xs">{e.unitId.slice(0, 8)}</td>
-                      <td className="py-1.5 pr-4 font-mono text-xs">{e.personId.slice(0, 8)}</td>
-                      <td className="py-1.5 text-muted-foreground truncate max-w-xs">{e.description ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="hidden md:block overflow-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Type", "Amount", "Unit", "Person", "Description"].map(h => <th key={h} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
+                  <tbody>
+                    {entries.slice().reverse().map((e) => (
+                      <tr key={e.id} className="border-b last:border-0">
+                        <td className="py-1.5 pr-4 text-muted-foreground">{new Date(e.postedAt).toLocaleDateString()}</td>
+                        <td className="py-1.5 pr-4"><Badge variant={e.entryType === "payment" ? "default" : "secondary"} className="text-xs">{e.entryType}</Badge></td>
+                        <td className={`py-1.5 pr-4 font-medium ${e.amount < 0 ? "text-green-600" : "text-red-500"}`}>{e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}</td>
+                        <td className="py-1.5 pr-4 font-mono text-xs">{e.unitId.slice(0, 8)}</td>
+                        <td className="py-1.5 pr-4 font-mono text-xs">{e.personId.slice(0, 8)}</td>
+                        <td className="py-1.5 text-muted-foreground truncate max-w-xs">{e.description ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="space-y-3 md:hidden">
+                {entries.slice().reverse().map((e) => (
+                  <div key={e.id} className="rounded-xl border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{e.description ?? "Payment activity"}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{new Date(e.postedAt).toLocaleDateString()}</div>
+                      </div>
+                      <div className={`text-sm font-semibold ${e.amount < 0 ? "text-green-600" : "text-red-500"}`}>
+                        {e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge variant={e.entryType === "payment" ? "default" : "secondary"} className="text-xs">{e.entryType}</Badge>
+                      <Badge variant="outline" className="font-mono text-[10px]">Unit {e.unitId.slice(0, 8)}</Badge>
+                      <Badge variant="outline" className="font-mono text-[10px]">Person {e.personId.slice(0, 8)}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -1104,25 +1150,45 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
             <CheckCircle2 className="h-4 w-4" /> No exceptions found. All payment activity looks clean.
           </div>
         ) : (
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Exception Type", "Amount", "Unit", "Person", "Description"].map(h => <th key={h} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
-              <tbody>
-                {exceptions.map((ex) => (
-                  <tr key={ex.id} className="border-b last:border-0">
-                    <td className="py-1.5 pr-4 text-muted-foreground">{new Date(ex.postedAt).toLocaleDateString()}</td>
-                    <td className="py-1.5 pr-4">
-                      <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>
-                    </td>
-                    <td className="py-1.5 pr-4 font-medium text-red-500">${Math.abs(ex.amount).toFixed(2)}</td>
-                    <td className="py-1.5 pr-4 font-mono text-xs">{ex.unitId.slice(0, 8)}</td>
-                    <td className="py-1.5 pr-4 font-mono text-xs">{ex.personId.slice(0, 8)}</td>
-                    <td className="py-1.5 text-muted-foreground">{ex.description}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="hidden md:block overflow-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Exception Type", "Amount", "Unit", "Person", "Description"].map(h => <th key={h} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
+                <tbody>
+                  {exceptions.map((ex) => (
+                    <tr key={ex.id} className="border-b last:border-0">
+                      <td className="py-1.5 pr-4 text-muted-foreground">{new Date(ex.postedAt).toLocaleDateString()}</td>
+                      <td className="py-1.5 pr-4">
+                        <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>
+                      </td>
+                      <td className="py-1.5 pr-4 font-medium text-red-500">${Math.abs(ex.amount).toFixed(2)}</td>
+                      <td className="py-1.5 pr-4 font-mono text-xs">{ex.unitId.slice(0, 8)}</td>
+                      <td className="py-1.5 pr-4 font-mono text-xs">{ex.personId.slice(0, 8)}</td>
+                      <td className="py-1.5 text-muted-foreground">{ex.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="space-y-3 md:hidden">
+              {exceptions.map((ex) => (
+                <div key={ex.id} className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">{ex.description}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{new Date(ex.postedAt).toLocaleDateString()}</div>
+                    </div>
+                    <div className="text-sm font-semibold text-red-500">${Math.abs(ex.amount).toFixed(2)}</div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>
+                    <Badge variant="outline" className="font-mono text-[10px]">Unit {ex.unitId.slice(0, 8)}</Badge>
+                    <Badge variant="outline" className="font-mono text-[10px]">Person {ex.personId.slice(0, 8)}</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -1135,6 +1201,8 @@ export default function FinancialPaymentsPage() {
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { setActiveAssociationId } = useAssociationContext();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState("methods");
   const { data: associations = [] } = useQuery({ queryKey: ["/api/associations"] });
 
   const selectedAssociationId = activeAssociationId;
@@ -1218,41 +1286,56 @@ export default function FinancialPaymentsPage() {
         explanation="Payment methods and gateway connections are scoped to the selected association. Select one to manage its payment setup."
       />
 
-      <Tabs defaultValue="methods">
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="methods" className="gap-1.5">
-            <CreditCard className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Methods</span>
-            {paymentMethods.length > 0 && (
-              <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">{paymentMethods.length}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="gateway" className="gap-1.5">
-            <Zap className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Gateway</span>
-            {gatewayConnections.filter((c) => c.isActive === 1).length > 0 && (
-              <Badge variant="default" className="ml-1 h-4 px-1 text-xs">
-                <CheckCircle2 className="h-2.5 w-2.5" />
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="links" className="gap-1.5">
-            <Link2 className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Links</span>
-          </TabsTrigger>
-          <TabsTrigger value="webhooks" className="gap-1.5">
-            <Webhook className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Webhooks</span>
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="gap-1.5">
-            <Info className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Activity</span>
-          </TabsTrigger>
-          <TabsTrigger value="exceptions" className="gap-1.5">
-            <AlertCircle className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Exceptions</span>
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        {isMobile ? (
+          <MobileTabBar
+            items={[
+              { id: "methods", label: paymentMethods.length > 0 ? `Methods ${paymentMethods.length}` : "Methods" },
+              { id: "gateway", label: gatewayConnections.filter((c) => c.isActive === 1).length > 0 ? "Gateway On" : "Gateway" },
+              { id: "links", label: "Links" },
+              { id: "webhooks", label: "Webhooks" },
+              { id: "activity", label: "Activity" },
+              { id: "exceptions", label: "Exceptions" },
+            ]}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
+        ) : (
+          <TabsList className="grid w-full grid-cols-6">
+            <TabsTrigger value="methods" className="gap-1.5">
+              <CreditCard className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Methods</span>
+              {paymentMethods.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">{paymentMethods.length}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="gateway" className="gap-1.5">
+              <Zap className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Gateway</span>
+              {gatewayConnections.filter((c) => c.isActive === 1).length > 0 && (
+                <Badge variant="default" className="ml-1 h-4 px-1 text-xs">
+                  <CheckCircle2 className="h-2.5 w-2.5" />
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="links" className="gap-1.5">
+              <Link2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Links</span>
+            </TabsTrigger>
+            <TabsTrigger value="webhooks" className="gap-1.5">
+              <Webhook className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Webhooks</span>
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="gap-1.5">
+              <Info className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Activity</span>
+            </TabsTrigger>
+            <TabsTrigger value="exceptions" className="gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Exceptions</span>
+            </TabsTrigger>
+          </TabsList>
+        )}
 
         <TabsContent value="methods" className="mt-4">
           <PaymentMethodsTab
