@@ -151,6 +151,7 @@ import {
   paymentEventTransitions,
   portalLoginTokens,
   occupancies,
+  associations,
 } from "@shared/schema";
 
 const uploadDir = path.resolve("uploads");
@@ -190,11 +191,233 @@ const DIRECT_INGEST_PARSEABLE_EXTENSIONS = new Set([
 ]);
 
 const isPublishedState = process.env.NODE_ENV === "production";
+const portalOtpSecretRaw = process.env.PORTAL_OTP_SECRET?.trim() || process.env.SESSION_SECRET?.trim() || "";
+const portalOtpSecret = portalOtpSecretRaw;
 
 const SLA_HOURS: Record<string, number> = { urgent: 4, high: 12, medium: 48, low: 120 };
 function computeResponseDueAt(priority: string, from: Date = new Date()): Date {
   const hours = SLA_HOURS[priority] ?? 48;
   return new Date(from.getTime() + hours * 60 * 60 * 1000);
+}
+
+function escapeHtml(value: string | null | undefined): string {
+  return (value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function isValidEmailAddress(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function formatCurrency(amount: number, currency = "USD"): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amount);
+  } catch {
+    return `$${amount.toFixed(2)}`;
+  }
+}
+
+function shouldReturnJson(req: Request): boolean {
+  const accept = (req.headers.accept || "").toLowerCase();
+  return req.query.format === "json" || accept.includes("application/json");
+}
+
+function parseStripeSignature(headerValue: string): { timestamp: string | null; signature: string | null } {
+  const parts = headerValue.split(",").map((part) => part.trim());
+  const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2) || null;
+  const signature = parts.find((part) => part.startsWith("v1="))?.slice(3) || null;
+  return { timestamp, signature };
+}
+
+function isStripeEventPayload(value: unknown): value is {
+  id: string;
+  type: string;
+  data: { object: Record<string, unknown> };
+} {
+  return Boolean(
+    value
+      && typeof value === "object"
+      && typeof (value as Record<string, unknown>).id === "string"
+      && typeof (value as Record<string, unknown>).type === "string"
+      && (value as Record<string, unknown>).data
+      && typeof (value as Record<string, unknown>).data === "object",
+  );
+}
+
+function getStripeEventMetadata(payload: unknown): Record<string, unknown> {
+  if (!isStripeEventPayload(payload)) return {};
+  const object = payload.data.object;
+  const metadata = object && typeof object === "object" ? object.metadata : null;
+  return metadata && typeof metadata === "object" ? metadata as Record<string, unknown> : {};
+}
+
+function normalizeStripeWebhookPayload(payload: unknown): {
+  associationId: string | null;
+  providerEventId: string | null;
+  eventType: string | null;
+  status: "succeeded" | "failed" | "pending";
+  amount: number | null;
+  currency: string | null;
+  personId: string | null;
+  unitId: string | null;
+  paymentLinkToken: string | null;
+  gatewayReference: string | null;
+  rawPayloadJson: unknown;
+} | null {
+  if (!isStripeEventPayload(payload)) return null;
+  const object = payload.data.object;
+  const metadata = getStripeEventMetadata(payload);
+  const amountCents =
+    typeof object.amount_total === "number"
+      ? object.amount_total
+      : typeof object.amount_received === "number"
+        ? object.amount_received
+        : typeof object.amount === "number"
+          ? object.amount
+          : null;
+  const paymentStatus = typeof object.payment_status === "string" ? object.payment_status : null;
+  const eventType = payload.type;
+  let status: "succeeded" | "failed" | "pending" = "pending";
+  if (
+    eventType === "checkout.session.async_payment_succeeded"
+    || eventType === "payment_intent.succeeded"
+    || (eventType === "checkout.session.completed" && paymentStatus === "paid")
+  ) {
+    status = "succeeded";
+  } else if (
+    eventType === "checkout.session.async_payment_failed"
+    || eventType === "payment_intent.payment_failed"
+  ) {
+    status = "failed";
+  }
+
+  return {
+    associationId: typeof metadata.associationId === "string" ? metadata.associationId : null,
+    providerEventId: payload.id,
+    eventType,
+    status,
+    amount: typeof amountCents === "number" ? Number((amountCents / 100).toFixed(2)) : null,
+    currency: typeof object.currency === "string" ? object.currency : typeof metadata.currency === "string" ? metadata.currency : null,
+    personId: typeof metadata.personId === "string" ? metadata.personId : null,
+    unitId: typeof metadata.unitId === "string" ? metadata.unitId : null,
+    paymentLinkToken: typeof metadata.paymentLinkToken === "string" ? metadata.paymentLinkToken : null,
+    gatewayReference:
+      typeof object.payment_intent === "string"
+        ? object.payment_intent
+        : typeof object.id === "string"
+          ? object.id
+          : null,
+    rawPayloadJson: payload,
+  };
+}
+
+function renderPaymentLinkPage(params: {
+  associationName: string;
+  ownerName: string;
+  unitLabel: string;
+  linkToken: string;
+  status: string;
+  amountDue: number;
+  currency: string;
+  memo: string | null;
+  expiresAt: Date | null;
+  allowPartial: boolean;
+  outstandingBalance: number;
+  checkoutAvailable: boolean;
+  manualInstructions: string[];
+  stateMessage: string;
+  stateTone: "info" | "warning" | "success" | "danger";
+  flashMessage: string | null;
+}): string {
+  const toneStyles = {
+    info: { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" },
+    warning: { bg: "#fff7ed", border: "#fdba74", text: "#c2410c" },
+    success: { bg: "#ecfdf5", border: "#86efac", text: "#15803d" },
+    danger: { bg: "#fef2f2", border: "#fca5a5", text: "#b91c1c" },
+  }[params.stateTone];
+  const flashHtml = params.flashMessage
+    ? `<div style="margin:0 0 16px 0;padding:14px 16px;border-radius:12px;background:#f8fafc;border:1px solid #cbd5e1;color:#334155;font-size:14px;line-height:1.6;">${escapeHtml(params.flashMessage)}</div>`
+    : "";
+  const manualInstructionsHtml = params.manualInstructions.length > 0
+    ? `<div style="margin-top:20px;">
+        <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:10px;">Other approved payment methods</div>
+        <div style="display:grid;gap:12px;">
+          ${params.manualInstructions.map((instruction) => `<div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;background:#ffffff;white-space:pre-wrap;font-size:14px;line-height:1.6;color:#334155;">${escapeHtml(instruction)}</div>`).join("")}
+        </div>
+      </div>`
+    : "";
+  const paymentFormHtml = params.checkoutAvailable
+    ? `<form method="POST" action="/api/portal/payments/link/${encodeURIComponent(params.linkToken)}/checkout-session" style="display:grid;gap:14px;">
+        ${params.allowPartial
+          ? `<label style="display:grid;gap:6px;">
+              <span style="font-size:13px;font-weight:600;color:#334155;">Amount to pay</span>
+              <input name="amount" type="number" min="0.01" max="${params.amountDue.toFixed(2)}" step="0.01" value="${params.amountDue.toFixed(2)}" style="border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;font-size:16px;"/>
+            </label>
+            <div style="font-size:12px;color:#64748b;">You can pay up to ${escapeHtml(formatCurrency(params.amountDue, params.currency))} with this link.</div>`
+          : `<input type="hidden" name="amount" value="${params.amountDue.toFixed(2)}"/>
+            <div style="font-size:14px;color:#334155;">This payment link is locked to the exact amount due.</div>`}
+        <button type="submit" style="appearance:none;border:none;border-radius:12px;background:#0f766e;color:#ffffff;font-size:15px;font-weight:700;padding:14px 18px;cursor:pointer;">
+          Pay by ACH bank transfer
+        </button>
+        <div style="font-size:12px;color:#64748b;">You will be redirected to a secure hosted checkout session to complete payment.</div>
+      </form>`
+    : `<div style="font-size:14px;color:#475569;line-height:1.7;">Online ACH checkout is not currently active for this association. Use one of the approved payment methods below.</div>`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>${escapeHtml(params.associationName)} Payment Portal</title>
+</head>
+<body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <div style="max-width:760px;margin:0 auto;padding:32px 16px 48px;">
+    <div style="border-radius:20px;overflow:hidden;box-shadow:0 20px 60px rgba(15,23,42,0.12);background:#ffffff;">
+      <div style="background:#1e3a5f;padding:30px 32px;">
+        <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#bfdbfe;font-weight:700;">Owner Portal</div>
+        <div style="font-size:28px;line-height:1.2;font-weight:800;color:#ffffff;margin-top:8px;">${escapeHtml(params.associationName)}</div>
+        <div style="font-size:14px;color:#cbd5e1;margin-top:10px;">Secure payment access for ${escapeHtml(params.ownerName)} · ${escapeHtml(params.unitLabel)}</div>
+      </div>
+      <div style="padding:28px 32px 32px;">
+        ${flashHtml}
+        <div style="padding:14px 16px;border-radius:14px;background:${toneStyles.bg};border:1px solid ${toneStyles.border};color:${toneStyles.text};font-size:14px;line-height:1.6;margin-bottom:20px;">${escapeHtml(params.stateMessage)}</div>
+        <div style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:24px;">
+          <div style="border:1px solid #e2e8f0;border-radius:14px;padding:16px;background:#f8fafc;">
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;font-weight:700;">This link covers</div>
+            <div style="font-size:26px;font-weight:800;margin-top:8px;">${escapeHtml(formatCurrency(params.amountDue, params.currency))}</div>
+          </div>
+          <div style="border:1px solid #e2e8f0;border-radius:14px;padding:16px;background:#f8fafc;">
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;font-weight:700;">Outstanding balance</div>
+            <div style="font-size:26px;font-weight:800;margin-top:8px;">${escapeHtml(formatCurrency(params.outstandingBalance, params.currency))}</div>
+          </div>
+          <div style="border:1px solid #e2e8f0;border-radius:14px;padding:16px;background:#f8fafc;">
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;font-weight:700;">Link status</div>
+            <div style="font-size:20px;font-weight:800;margin-top:12px;text-transform:capitalize;">${escapeHtml(params.status.replaceAll("-", " "))}</div>
+          </div>
+        </div>
+        ${params.memo ? `<div style="margin-bottom:18px;font-size:14px;color:#475569;line-height:1.7;"><strong style="color:#0f172a;">Memo:</strong> ${escapeHtml(params.memo)}</div>` : ""}
+        ${params.expiresAt ? `<div style="margin-bottom:18px;font-size:13px;color:#64748b;">This link expires on ${escapeHtml(params.expiresAt.toLocaleString())}.</div>` : ""}
+        <div style="border:1px solid #e2e8f0;border-radius:18px;padding:20px;background:#f8fafc;">
+          <div style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:8px;">Pay your balance</div>
+          <div style="font-size:14px;line-height:1.7;color:#475569;margin-bottom:16px;">Use the secure ACH checkout below, or pay with one of the alternate methods configured by the association.</div>
+          ${paymentFormHtml}
+        </div>
+        ${manualInstructionsHtml}
+      </div>
+      <div style="padding:16px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;line-height:1.6;">
+        This payment portal link is intended for the recipient named above. If you reached this page in error, contact the association before making a payment.
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
 }
 
 function getParam(value: string | string[] | undefined): string {
@@ -651,11 +874,93 @@ function requirePortalBoard(req: PortalRequest, res: Response, next: NextFunctio
   return next();
 }
 
+function requirePortalBoardReadOnly(_req: PortalRequest, res: Response, _next: NextFunction) {
+  return res.status(403).json({ message: "Board workspace is read-only for board members" });
+}
+
+async function getOwnedPortalUnitsForAssociation(input: {
+  associationId: string;
+  personId: string;
+  email: string;
+}) {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  if (!normalizedEmail) return [];
+
+  const ownedUnitRows = await db
+    .select({
+      unitId: units.id,
+      unitNumber: units.unitNumber,
+      building: units.building,
+      squareFootage: units.squareFootage,
+    })
+    .from(ownerships)
+    .innerJoin(units, eq(ownerships.unitId, units.id))
+    .where(
+      and(
+        eq(ownerships.personId, input.personId),
+        eq(units.associationId, input.associationId),
+        isNull(ownerships.endDate),
+      ),
+    );
+
+  const ownedUnits = Array.from(
+    new Map(ownedUnitRows.map((unit) => [unit.unitId, unit])).values(),
+  );
+
+  const existingAccesses = (await storage.getPortalAccessesByEmail(normalizedEmail)).filter(
+    (access) =>
+      access.associationId === input.associationId &&
+      access.personId === input.personId &&
+      Boolean(access.unitId) &&
+      (access.status === "active" || access.status === "invited"),
+  );
+
+  const accessByUnitId = new Map<string, typeof existingAccesses[number]>();
+  for (const access of existingAccesses) {
+    if (access.unitId) {
+      accessByUnitId.set(access.unitId, access);
+    }
+  }
+
+  for (const unit of ownedUnits) {
+    if (accessByUnitId.has(unit.unitId)) continue;
+    try {
+      const created = await storage.createPortalAccess(
+        {
+          associationId: input.associationId,
+          personId: input.personId,
+          unitId: unit.unitId,
+          email: normalizedEmail,
+          role: "owner",
+          status: "active",
+        },
+        "system:portal-owner-unit-sync",
+      );
+      if (created.unitId) {
+        accessByUnitId.set(created.unitId, created);
+      }
+    } catch (error) {
+      console.warn("[portal-owner-unit-sync] Failed to create portal access", {
+        associationId: input.associationId,
+        personId: input.personId,
+        unitId: unit.unitId,
+        email: normalizedEmail,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return ownedUnits.map((unit) => ({
+    ...unit,
+    portalAccessId: accessByUnitId.get(unit.unitId)?.id ?? null,
+  }));
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   registerAuthRoutes(app);
 
   // Health/diagnostics endpoint — shows DB state for deployment verification
-  app.get("/api/health", async (_req, res) => {
+  app.get("/api/health", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
     try {
       const [countsResult, assocListResult, authResult] = await Promise.all([
         db.execute(sql`
@@ -1599,6 +1904,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       const result = await storage.createOccupancy(parsed, req.adminUserEmail);
       res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/occupancies/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const id = getParam(req.params.id);
+      const [existing] = await db.select().from(occupancies).where(eq(occupancies.id, id));
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const [unit] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, existing.unitId));
+      if (!unit) return res.status(404).json({ message: "Unit not found" });
+      assertAssociationScope(req, unit.associationId);
+      const endDate = req.body?.endDate ? new Date(req.body.endDate) : null;
+      const [result] = await db.update(occupancies).set({ endDate }).where(eq(occupancies.id, id)).returning();
+      res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -3322,13 +3643,238 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.post("/api/portal/payments/link/:token/checkout-session", async (req, res) => {
+    try {
+      const token = getParam(req.params.token);
+      if (!token) return res.status(400).json({ message: "token is required" });
+
+      const link = await storage.getOwnerPaymentLinkByToken(token);
+      if (!link) {
+        if (shouldReturnJson(req)) return res.status(404).json({ message: "Payment link not found" });
+        return res.status(404).send("Payment link not found");
+      }
+      if (link.status !== "active") {
+        const message = `This payment link is ${link.status}.`;
+        if (shouldReturnJson(req)) return res.status(400).json({ message });
+        return res.redirect(303, `/api/portal/payments/link/${encodeURIComponent(token)}?checkout=unavailable`);
+      }
+
+      const gateway = await storage.getActivePaymentGatewayConnection({
+        associationId: link.associationId,
+        provider: "stripe",
+      });
+      if (!gateway?.secretKey) {
+        const message = "Online ACH checkout is not configured for this association.";
+        if (shouldReturnJson(req)) return res.status(400).json({ message });
+        return res.redirect(303, `/api/portal/payments/link/${encodeURIComponent(token)}?checkout=unavailable`);
+      }
+
+      const [association, unit, person, entries] = await Promise.all([
+        db.select().from(associations).where(eq(associations.id, link.associationId)).then((rows) => rows[0] ?? null),
+        db.select().from(units).where(eq(units.id, link.unitId)).then((rows) => rows[0] ?? null),
+        db.select().from(persons).where(eq(persons.id, link.personId)).then((rows) => rows[0] ?? null),
+        db.select({ amount: ownerLedgerEntries.amount }).from(ownerLedgerEntries).where(and(
+          eq(ownerLedgerEntries.associationId, link.associationId),
+          eq(ownerLedgerEntries.unitId, link.unitId),
+          eq(ownerLedgerEntries.personId, link.personId),
+        )),
+      ]);
+
+      if (!association || !unit || !person) {
+        throw new Error("Payment link references invalid association data");
+      }
+
+      const outstandingBalance = Number(entries.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+      const maxAllowedAmount = Number(Math.min(
+        Math.max(outstandingBalance, 0),
+        Math.max(link.amount, 0),
+      ).toFixed(2));
+      if (maxAllowedAmount <= 0) {
+        const message = "This balance is no longer payable.";
+        if (shouldReturnJson(req)) return res.status(400).json({ message });
+        return res.redirect(303, `/api/portal/payments/link/${encodeURIComponent(token)}?checkout=unavailable`);
+      }
+
+      const requestedAmountRaw = typeof req.body?.amount === "string" ? req.body.amount : req.body?.amount;
+      const requestedAmount = requestedAmountRaw == null || requestedAmountRaw === ""
+        ? maxAllowedAmount
+        : Number(requestedAmountRaw);
+      if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+        throw new Error("amount must be a positive number");
+      }
+
+      const amount = Number(requestedAmount.toFixed(2));
+      if (amount > maxAllowedAmount) {
+        throw new Error(`Payment amount exceeds the available balance for this link (${formatCurrency(maxAllowedAmount, link.currency)})`);
+      }
+      if (!link.allowPartial && Math.abs(amount - maxAllowedAmount) > 0.009) {
+        throw new Error("This payment link requires the exact amount due");
+      }
+
+      const appBaseUrl = (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+      const successUrl = `${appBaseUrl}/api/portal/payments/link/${encodeURIComponent(token)}?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = `${appBaseUrl}/api/portal/payments/link/${encodeURIComponent(token)}?checkout=cancelled`;
+      const description = link.memo?.trim() || `${association.name} owner payment`;
+      const amountCents = Math.round(amount * 100);
+      const currency = (link.currency || "USD").toLowerCase();
+
+      const sessionParams = new URLSearchParams();
+      sessionParams.set("mode", "payment");
+      sessionParams.set("success_url", successUrl);
+      sessionParams.set("cancel_url", cancelUrl);
+      sessionParams.set("payment_method_types[0]", "us_bank_account");
+      sessionParams.set("billing_address_collection", "auto");
+      if (person.email?.trim()) {
+        sessionParams.set("customer_email", person.email.trim());
+      }
+      sessionParams.set("payment_method_options[us_bank_account][verification_method]", "instant");
+      sessionParams.set("line_items[0][quantity]", "1");
+      sessionParams.set("line_items[0][price_data][currency]", currency);
+      sessionParams.set("line_items[0][price_data][unit_amount]", String(amountCents));
+      sessionParams.set("line_items[0][price_data][product_data][name]", description);
+      sessionParams.set("payment_intent_data[description]", `${association.name} payment for ${unit.unitNumber}`);
+      sessionParams.set("payment_intent_data[metadata][associationId]", link.associationId);
+      sessionParams.set("payment_intent_data[metadata][unitId]", link.unitId);
+      sessionParams.set("payment_intent_data[metadata][personId]", link.personId);
+      sessionParams.set("payment_intent_data[metadata][paymentLinkToken]", link.token);
+      sessionParams.set("payment_intent_data[metadata][currency]", link.currency || "USD");
+      sessionParams.set("payment_intent_data[metadata][amount]", amount.toFixed(2));
+      sessionParams.set("metadata[associationId]", link.associationId);
+      sessionParams.set("metadata[unitId]", link.unitId);
+      sessionParams.set("metadata[personId]", link.personId);
+      sessionParams.set("metadata[paymentLinkToken]", link.token);
+      sessionParams.set("metadata[currency]", link.currency || "USD");
+      sessionParams.set("metadata[amount]", amount.toFixed(2));
+
+      const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${gateway.secretKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: sessionParams.toString(),
+      });
+
+      const stripeBody = await stripeResponse.json().catch(() => null) as Record<string, unknown> | null;
+      if (!stripeResponse.ok || !stripeBody || typeof stripeBody.url !== "string") {
+        const providerMessage =
+          stripeBody && typeof stripeBody.error === "object" && stripeBody.error && typeof (stripeBody.error as Record<string, unknown>).message === "string"
+            ? (stripeBody.error as Record<string, unknown>).message as string
+            : "Stripe could not create a hosted checkout session";
+        throw new Error(providerMessage);
+      }
+
+      if (shouldReturnJson(req)) {
+        return res.status(201).json({
+          checkoutUrl: stripeBody.url,
+          checkoutSessionId: typeof stripeBody.id === "string" ? stripeBody.id : null,
+          amount,
+          currency: link.currency,
+        });
+      }
+
+      res.redirect(303, stripeBody.url);
+    } catch (error: any) {
+      if (shouldReturnJson(req)) {
+        return res.status(400).json({ message: error.message });
+      }
+      const token = getParam(req.params.token);
+      const safeToken = token ? encodeURIComponent(token) : "";
+      res.redirect(303, `/api/portal/payments/link/${safeToken}?checkout=error&message=${encodeURIComponent(error.message)}`);
+    }
+  });
+
   app.get("/api/portal/payments/link/:token", async (req, res) => {
     try {
       const token = getParam(req.params.token);
       if (!token) return res.status(400).json({ message: "token is required" });
       const link = await storage.getOwnerPaymentLinkByToken(token);
       if (!link) return res.status(404).json({ message: "Payment link not found" });
-      res.json(link);
+      if (shouldReturnJson(req)) {
+        return res.json(link);
+      }
+
+      const [association, unit, person, entries, paymentMethods, gateway] = await Promise.all([
+        db.select().from(associations).where(eq(associations.id, link.associationId)).then((rows) => rows[0] ?? null),
+        db.select().from(units).where(eq(units.id, link.unitId)).then((rows) => rows[0] ?? null),
+        db.select().from(persons).where(eq(persons.id, link.personId)).then((rows) => rows[0] ?? null),
+        db.select({ amount: ownerLedgerEntries.amount }).from(ownerLedgerEntries).where(and(
+          eq(ownerLedgerEntries.associationId, link.associationId),
+          eq(ownerLedgerEntries.unitId, link.unitId),
+          eq(ownerLedgerEntries.personId, link.personId),
+        )),
+        storage.getPaymentMethodConfigs(link.associationId),
+        storage.getActivePaymentGatewayConnection({ associationId: link.associationId, provider: "stripe" }),
+      ]);
+
+      if (!association || !unit || !person) {
+        return res.status(404).send("Payment link references invalid association data");
+      }
+
+      const outstandingBalance = Number(Math.max(0, entries.reduce((sum, row) => sum + row.amount, 0)).toFixed(2));
+      const amountDue = Number(Math.min(outstandingBalance || link.amount, link.amount).toFixed(2));
+      const activeMethods = paymentMethods.filter((method) => method.isActive === 1);
+      const manualInstructions = activeMethods.map((method) => {
+        const lines = [method.displayName];
+        if (method.bankName) lines.push(`Bank: ${method.bankName}`);
+        if (method.accountName) lines.push(`Account name: ${method.accountName}`);
+        if (method.routingNumber) lines.push(`Routing number: ${method.routingNumber}`);
+        if (method.accountNumber) {
+          const accountDigits = method.accountNumber.replace(/\s+/g, "");
+          const maskedAccountNumber = accountDigits.length > 4
+            ? `****${accountDigits.slice(-4)}`
+            : accountDigits;
+          lines.push(`Account number: ${maskedAccountNumber}`);
+        }
+        if (method.zelleHandle) lines.push(`Zelle: ${method.zelleHandle}`);
+        if (method.mailingAddress) lines.push(`Mailing address: ${method.mailingAddress}`);
+        if (method.instructions?.trim()) lines.push(method.instructions.trim());
+        return lines.filter(Boolean).join("\n");
+      });
+
+      let stateMessage = "Use this secure payment link to complete your association payment.";
+      let stateTone: "info" | "warning" | "success" | "danger" = "info";
+      if (link.status === "paid") {
+        stateMessage = "This payment link has already been used successfully.";
+        stateTone = "success";
+      } else if (link.status === "expired") {
+        stateMessage = "This payment link has expired. Contact the association if you still need to pay online.";
+        stateTone = "warning";
+      } else if (link.status === "void") {
+        stateMessage = "This payment link has been voided and can no longer be used.";
+        stateTone = "danger";
+      } else if (outstandingBalance <= 0) {
+        stateMessage = "There is no remaining payable balance on this account.";
+        stateTone = "success";
+      }
+
+      const checkoutQuery = typeof req.query.checkout === "string" ? req.query.checkout : null;
+      const checkoutMessages: Record<string, string> = {
+        success: "Stripe accepted the payment session. ACH payments can remain pending while the bank confirms settlement.",
+        cancelled: "Checkout was cancelled. You can try again when ready.",
+        unavailable: "Online ACH checkout is not active for this payment link. Use one of the alternate payment methods below.",
+        error: typeof req.query.message === "string" ? req.query.message : "Online checkout could not be started.",
+      };
+
+      res.status(200).setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(renderPaymentLinkPage({
+        associationName: association.name,
+        ownerName: `${person.firstName} ${person.lastName}`.trim() || (person.email || "Owner"),
+        unitLabel: [unit.building ? `Building ${unit.building}` : null, unit.unitNumber ? `Unit ${unit.unitNumber}` : null].filter(Boolean).join(" · ") || "Unit",
+        linkToken: link.token,
+        status: link.status,
+        amountDue: Math.max(amountDue, 0),
+        currency: link.currency || "USD",
+        memo: link.memo,
+        expiresAt: link.expiresAt,
+        allowPartial: link.allowPartial === 1,
+        outstandingBalance,
+        checkoutAvailable: link.status === "active" && outstandingBalance > 0 && amountDue > 0 && Boolean(gateway?.secretKey),
+        manualInstructions,
+        stateMessage,
+        stateTone,
+        flashMessage: checkoutQuery ? (checkoutMessages[checkoutQuery] || null) : null,
+      }));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -3340,6 +3886,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const stripeSignature = req.header("stripe-signature");
       const hmacSignature = req.header("x-webhook-hmac-sha256");
       const webhookSharedSecret = process.env.PAYMENT_WEBHOOK_SHARED_SECRET;
+
+      const normalizedStripeEvent = normalizeStripeWebhookPayload(req.body);
+      if (stripeSignature && normalizedStripeEvent?.associationId) {
+        const gateway = await storage.getActivePaymentGatewayConnection({
+          associationId: normalizedStripeEvent.associationId,
+          provider: "stripe",
+        });
+        if (!gateway?.webhookSecret) {
+          return res.status(403).json({ message: "Stripe webhook secret is not configured" });
+        }
+        const rawBody = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString("utf8") : JSON.stringify(req.body);
+        const { timestamp, signature } = parseStripeSignature(stripeSignature);
+        if (!timestamp || !signature) {
+          return res.status(403).json({ message: "Missing Stripe signature components" });
+        }
+        const expected = createHmac("sha256", gateway.webhookSecret)
+          .update(`${timestamp}.${rawBody}`)
+          .digest("hex");
+        const expectedBuf = Buffer.from(expected, "utf8");
+        const providedBuf = Buffer.from(signature, "utf8");
+        if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
+          return res.status(403).json({ message: "Invalid Stripe webhook signature" });
+        }
+
+        const result = await storage.processPaymentWebhookEvent({
+          associationId: normalizedStripeEvent.associationId,
+          provider: "stripe",
+          providerEventId: normalizedStripeEvent.providerEventId || "",
+          eventType: normalizedStripeEvent.eventType,
+          status: normalizedStripeEvent.status,
+          amount: normalizedStripeEvent.amount,
+          currency: normalizedStripeEvent.currency,
+          personId: normalizedStripeEvent.personId,
+          unitId: normalizedStripeEvent.unitId,
+          paymentLinkToken: normalizedStripeEvent.paymentLinkToken,
+          gatewayReference: normalizedStripeEvent.gatewayReference,
+          rawPayloadJson: normalizedStripeEvent.rawPayloadJson,
+        });
+        return res.status(200).json(result);
+      }
 
       if (stripeSignature || hmacSignature) {
         // HMAC-SHA256 verification — lookup signing secret for this association
@@ -6573,6 +7159,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         methodType: string; displayName: string; last4?: string; bankName?: string; externalTokenRef?: string;
       };
       if (!displayName) return res.status(400).json({ message: "displayName is required" });
+      const normalizedMethodType = methodType || "ach";
+      if (!["ach", "check", "zelle", "other"].includes(normalizedMethodType)) {
+        return res.status(400).json({ message: "methodType must be ach, check, zelle, or other" });
+      }
 
       // If setting as default, clear existing defaults
       if (req.body.isDefault) {
@@ -6584,7 +7174,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const [result] = await db.insert(savedPaymentMethods).values({
         associationId: req.portalAssociationId!,
         personId: req.portalPersonId!,
-        methodType: (methodType || "ach") as "ach" | "card" | "check" | "zelle" | "other",
+        methodType: normalizedMethodType as "ach" | "check" | "zelle" | "other",
         displayName,
         last4: last4 || null,
         bankName: bankName || null,
@@ -7085,7 +7675,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Generate a 6-digit OTP (one token covers all associations for this email)
       const otp = String(Math.floor(100000 + Math.random() * 900000));
-      const otpHash = createHmac("sha256", process.env.SESSION_SECRET || "portal-otp-secret").update(otp).digest("hex");
+      const otpHash = createHmac("sha256", portalOtpSecret).update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
       // Replace any existing pending token for this email
@@ -7206,12 +7796,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Increment attempts before verifying to prevent timing-based enumeration
       await db.update(portalLoginTokens).set({ attempts: token.attempts + 1 }).where(eq(portalLoginTokens.id, token.id));
 
-      const expectedHash = createHmac("sha256", process.env.SESSION_SECRET || "portal-otp-secret").update(otp).digest("hex");
+      const expectedHash = createHmac("sha256", portalOtpSecret).update(otp).digest("hex");
       const match = timingSafeEqual(Buffer.from(expectedHash, "hex"), Buffer.from(token.otpHash, "hex"));
       if (!match) return res.status(400).json({ message: "Invalid login code." });
-
-      // Mark token used
-      await db.update(portalLoginTokens).set({ usedAt: new Date() }).where(eq(portalLoginTokens.id, token.id));
 
       // Resolve all active portal accesses for this email
       const allAccesses = await storage.getPortalAccessesByEmail(email);
@@ -7224,10 +7811,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.log("[portal-verify] Active accesses after OTP", { email, count: activeAccesses.length, accesses: activeAccesses.map((a) => ({ id: a.id, unitId: a.unitId, associationId: a.associationId, status: a.status })) });
       if (activeAccesses.length === 0) return res.status(404).json({ message: "No active portal access found" });
 
-      // If owner has multiple accesses and hasn't chosen yet, return the picker list
-      // This handles both multiple associations and multiple units within the same association
-      if (activeAccesses.length > 1 && !chosenPortalAccessId && !chosenAssociationId) {
-        const assocIds = [...new Set(activeAccesses.map((a) => a.associationId))];
+      // Only require a picker when the email spans multiple associations.
+      // Owners can choose among units after sign-in from within the portal.
+      const distinctAssociationIds = Array.from(new Set(activeAccesses.map((a) => a.associationId)));
+      if (distinctAssociationIds.length > 1 && !chosenPortalAccessId && !chosenAssociationId) {
+        const assocIds = Array.from(new Set(activeAccesses.map((a) => a.associationId)));
         const unitIds = activeAccesses.map((a) => a.unitId).filter(Boolean) as string[];
         const [allAssocs, unitRows] = await Promise.all([
           storage.getAssociations(),
@@ -7253,10 +7841,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Single association, or owner already picked one
       const access = chosenPortalAccessId
         ? activeAccesses.find((a) => a.id === chosenPortalAccessId)
-        : chosenAssociationId
-          ? activeAccesses.find((a) => a.associationId === chosenAssociationId)
-          : activeAccesses[0];
+          : chosenAssociationId
+            ? activeAccesses.find((a) => a.associationId === chosenAssociationId)
+            : activeAccesses[0];
       if (!access) return res.status(404).json({ message: "No portal access found for that association" });
+
+      // Only consume the OTP once a concrete portal access has been selected.
+      await db.update(portalLoginTokens).set({ usedAt: new Date() }).where(eq(portalLoginTokens.id, token.id));
 
       let sessionAccess = access;
       if (access.status === "invited" && access.boardRoleId) {
@@ -7265,37 +7856,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           sessionAccess = (await storage.updatePortalAccess(access.id, { status: "active", acceptedAt: access.acceptedAt ?? new Date() }, "system")) ?? access;
         }
       }
-      if (sessionAccess.status !== "active") return res.status(404).json({ message: "No active portal access found" });
-      await storage.touchPortalAccessLogin(sessionAccess.id);
-      res.json({ portalAccessId: sessionAccess.id, associationId: sessionAccess.associationId, role: sessionAccess.role, email: sessionAccess.email });
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  // Legacy email-only portal session (kept for backward compatibility; deprecated in favor of OTP flow)
-  app.post("/api/portal/session", async (req, res) => {
-    try {
-      const associationId = getParam(req.body?.associationId);
-      const email = getParam(req.body?.email).trim().toLowerCase();
-      if (!associationId || !email) return res.status(400).json({ message: "associationId and email are required" });
-      const access = await storage.getPortalAccessByAssociationEmail(associationId, email);
-      if (!access) return res.status(404).json({ message: "No portal access found" });
-
-      let sessionAccess = access;
-      if (access.status === "invited" && access.boardRoleId) {
-        const [boardRole] = access.boardRoleId
-          ? (await storage.getBoardRoles(access.associationId)).filter((row) => row.id === access.boardRoleId)
-          : [];
-        if (!boardRole) {
-          return res.status(403).json({ message: "Board invite is not linked to an active board role" });
-        }
-        sessionAccess = (await storage.updatePortalAccess(access.id, {
-          status: "active",
-          acceptedAt: access.acceptedAt ?? new Date(),
-        }, "system")) ?? access;
-      }
-
       if (sessionAccess.status !== "active") return res.status(404).json({ message: "No active portal access found" });
       await storage.touchPortalAccessLogin(sessionAccess.id);
       res.json({ portalAccessId: sessionAccess.id, associationId: sessionAccess.associationId, role: sessionAccess.role, email: sessionAccess.email });
@@ -7364,6 +7924,131 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  app.patch("/api/portal/me", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalPersonId) {
+        return res.status(403).json({ message: "Portal person context required" });
+      }
+      const payload = req.body ?? {};
+      const patch = {
+        phone: typeof payload.phone === "string" ? payload.phone.trim() || null : null,
+        mailingAddress: typeof payload.mailingAddress === "string" ? payload.mailingAddress.trim() || null : null,
+        emergencyContactName: typeof payload.emergencyContactName === "string" ? payload.emergencyContactName.trim() || null : null,
+        emergencyContactPhone: typeof payload.emergencyContactPhone === "string" ? payload.emergencyContactPhone.trim() || null : null,
+        contactPreference: typeof payload.contactPreference === "string" ? payload.contactPreference.trim() || null : null,
+      };
+      const result = await storage.updatePerson(req.portalPersonId, patch, req.portalEmail || "portal-user");
+      if (!result) return res.status(404).json({ message: "Person not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/occupancy", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAssociationId || !req.portalPersonId || !req.portalEmail) {
+        return res.status(403).json({ message: "Portal owner context required" });
+      }
+
+      const unitId = getParam(req.body?.unitId);
+      const occupancyType = req.body?.occupancyType;
+      if (!unitId) return res.status(400).json({ message: "unitId is required" });
+      if (occupancyType !== "OWNER_OCCUPIED" && occupancyType !== "TENANT") {
+        return res.status(400).json({ message: "occupancyType must be OWNER_OCCUPIED or TENANT" });
+      }
+
+      const ownedUnits = await getOwnedPortalUnitsForAssociation({
+        associationId: req.portalAssociationId,
+        personId: req.portalPersonId,
+        email: req.portalEmail,
+      });
+      if (!ownedUnits.some((unit) => unit.unitId === unitId)) {
+        return res.status(403).json({ message: "You can only update occupancy for units you own" });
+      }
+
+      if (occupancyType === "OWNER_OCCUPIED") {
+        const occupancy = await storage.createOccupancy({
+          unitId,
+          personId: req.portalPersonId,
+          occupancyType: "OWNER_OCCUPIED",
+          startDate: new Date(),
+          endDate: null,
+        }, req.portalEmail);
+        return res.status(201).json({ occupancy });
+      }
+
+      const tenant = req.body?.tenant;
+      if (!tenant || typeof tenant !== "object") {
+        return res.status(400).json({ message: "tenant details are required for tenant occupancy" });
+      }
+
+      const firstName = getParam(tenant.firstName);
+      const lastName = getParam(tenant.lastName);
+      const email = getParam(tenant.email).trim() || null;
+      const phone = getParam(tenant.phone).trim() || null;
+      if (!firstName || !lastName) {
+        return res.status(400).json({ message: "tenant firstName and lastName are required" });
+      }
+      if (!email) {
+        return res.status(400).json({ message: "tenant email is required" });
+      }
+      if (!isValidEmailAddress(email)) {
+        return res.status(400).json({ message: "tenant email must be a valid email address" });
+      }
+
+      let tenantPerson = null;
+      if (email) {
+        [tenantPerson] = await db
+          .select()
+          .from(persons)
+          .where(and(eq(persons.associationId, req.portalAssociationId), ilike(persons.email, email)))
+          .limit(1);
+      }
+      if (!tenantPerson && phone) {
+        [tenantPerson] = await db
+          .select()
+          .from(persons)
+          .where(and(eq(persons.associationId, req.portalAssociationId), eq(persons.phone, phone)))
+          .limit(1);
+      }
+
+      if (tenantPerson) {
+        tenantPerson = (await storage.updatePerson(tenantPerson.id, {
+          firstName,
+          lastName,
+          email,
+          phone,
+          associationId: req.portalAssociationId,
+        }, req.portalEmail)) ?? tenantPerson;
+      } else {
+        tenantPerson = await storage.createPerson({
+          associationId: req.portalAssociationId,
+          firstName,
+          lastName,
+          email,
+          phone,
+          mailingAddress: null,
+          emergencyContactName: null,
+          emergencyContactPhone: null,
+          contactPreference: email ? "email" : "phone",
+        }, req.portalEmail);
+      }
+
+      const occupancy = await storage.createOccupancy({
+        unitId,
+        personId: tenantPerson.id,
+        occupancyType: "TENANT",
+        startDate: new Date(),
+        endDate: null,
+      }, req.portalEmail);
+
+      res.status(201).json({ occupancy, person: tenantPerson });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   // Returns public-facing details for the portal user's association
   app.get("/api/portal/association", requirePortal, async (req: PortalRequest, res) => {
     try {
@@ -7390,6 +8075,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const email = req.portalEmail || "";
       const accesses = await storage.getPortalAccessesByEmail(email);
       const active = accesses.filter((a) => a.status === "active" || a.status === "invited");
+      const ownedCurrentAssociationUnits = req.portalAssociationId && req.portalPersonId
+        ? await getOwnedPortalUnitsForAssociation({
+          associationId: req.portalAssociationId,
+          personId: req.portalPersonId,
+          email,
+        })
+        : [];
       console.log("[portal-my-associations]", { email, totalAccesses: accesses.length, activeCount: active.length, active: active.map((a) => ({ id: a.id, unitId: a.unitId, associationId: a.associationId })) });
       const allAssocs = await storage.getAssociations();
       const assocMap = new Map(allAssocs.map((a) => [a.id, a]));
@@ -7400,7 +8092,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const unitRows = await db.select().from(units).where(inArray(units.id, unitIds));
         for (const u of unitRows) unitMap.set(u.id, { unitNumber: u.unitNumber, building: u.building });
       }
-      res.json(active.map((a) => ({
+      const ownedCurrentAssociationEntries = ownedCurrentAssociationUnits.map((unit) => ({
+        portalAccessId: unit.portalAccessId,
+        associationId: req.portalAssociationId!,
+        associationName: assocMap.get(req.portalAssociationId!)?.name ?? req.portalAssociationId!,
+        associationCity: assocMap.get(req.portalAssociationId!)?.city ?? null,
+        role: "owner",
+        email,
+        unitId: unit.unitId,
+        unitNumber: unit.unitNumber ?? null,
+        building: unit.building ?? null,
+      }));
+      const otherAccessEntries = active
+        .filter((a) => a.associationId !== req.portalAssociationId || !a.unitId)
+        .map((a) => ({
         portalAccessId: a.id,
         associationId: a.associationId,
         associationName: assocMap.get(a.associationId)?.name ?? a.associationId,
@@ -7410,7 +8115,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         unitId: a.unitId ?? null,
         unitNumber: a.unitId ? (unitMap.get(a.unitId)?.unitNumber ?? null) : null,
         building: a.unitId ? (unitMap.get(a.unitId)?.building ?? null) : null,
-      })));
+      }));
+
+      const combined = Array.from(
+        new Map(
+          [...otherAccessEntries, ...ownedCurrentAssociationEntries]
+            .filter((entry) => entry.portalAccessId)
+            .map((entry) => [entry.portalAccessId!, entry]),
+        ).values(),
+      );
+
+      res.json(combined);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -7421,29 +8136,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!req.portalAssociationId || !req.portalPersonId) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      // Find all active portal_access records for this person in this association
       const email = req.portalEmail || "";
-      const accesses = await storage.getPortalAccessesByEmail(email);
-      const myAccesses = accesses.filter(
-        (a) => a.associationId === req.portalAssociationId && (a.status === "active" || a.status === "invited") && a.unitId
-      );
-      const unitIds = myAccesses.map((a) => a.unitId).filter(Boolean) as string[];
-      console.log("[portal-units-balance]", { email, associationId: req.portalAssociationId, personId: req.portalPersonId, totalAccesses: accesses.length, myAccessCount: myAccesses.length, unitIds });
+      const ownedUnits = await getOwnedPortalUnitsForAssociation({
+        associationId: req.portalAssociationId,
+        personId: req.portalPersonId,
+        email,
+      });
+      const unitIds = ownedUnits.map((unit) => unit.unitId);
+      console.log("[portal-units-balance]", { email, associationId: req.portalAssociationId, personId: req.portalPersonId, ownedUnitCount: ownedUnits.length, unitIds });
       if (unitIds.length === 0) return res.json([]);
-      const [allEntries, unitRows] = await Promise.all([
-        storage.getOwnerLedgerEntries(req.portalAssociationId),
-        db.select().from(units).where(inArray(units.id, unitIds)),
-      ]);
-      const unitMap = new Map(unitRows.map((u) => [u.id, u]));
+      const allEntries = await storage.getOwnerLedgerEntries(req.portalAssociationId);
       const result = unitIds.map((unitId) => {
         const entries = allEntries.filter((e) => e.personId === req.portalPersonId && e.unitId === unitId);
         const balance = entries.reduce((sum, e) => sum + e.amount, 0);
-        const unit = unitMap.get(unitId);
+        const unit = ownedUnits.find((entry) => entry.unitId === unitId);
         return {
           unitId,
           unitNumber: unit?.unitNumber ?? null,
           building: unit?.building ?? null,
-          portalAccessId: myAccesses.find((a) => a.unitId === unitId)?.id ?? null,
+          portalAccessId: unit?.portalAccessId ?? null,
           balance,
         };
       });
@@ -7459,26 +8170,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(403).json({ message: "Not authorized" });
       }
       const email = req.portalEmail || "";
-      const accesses = await storage.getPortalAccessesByEmail(email);
-      const myAccesses = accesses.filter(
-        (a) => a.associationId === req.portalAssociationId && (a.status === "active" || a.status === "invited") && a.unitId
-      );
-      const unitIds = myAccesses.map((a) => a.unitId).filter(Boolean) as string[];
+      const ownedUnits = await getOwnedPortalUnitsForAssociation({
+        associationId: req.portalAssociationId,
+        personId: req.portalPersonId,
+        email,
+      });
+      const unitIds = ownedUnits.map((unit) => unit.unitId);
       if (unitIds.length === 0) return res.json([]);
 
-      const [allEntries, unitRows, allOccupancies] = await Promise.all([
+      const [allEntries, allOccupancies] = await Promise.all([
         storage.getOwnerLedgerEntries(req.portalAssociationId),
-        db.select().from(units).where(inArray(units.id, unitIds)),
         db.select().from(occupancies).where(and(inArray(occupancies.unitId, unitIds), isNull(occupancies.endDate))),
       ]);
 
       // Fetch persons for all occupants in one query
-      const occupantPersonIds = [...new Set(allOccupancies.map((o) => o.personId))];
+      const occupantPersonIds = Array.from(new Set(allOccupancies.map((o) => o.personId)));
       const occupantPersons = occupantPersonIds.length > 0
         ? await db.select().from(persons).where(inArray(persons.id, occupantPersonIds))
         : [];
       const personMap = new Map(occupantPersons.map((p) => [p.id, p]));
-      const unitMap = new Map(unitRows.map((u) => [u.id, u]));
+      const unitMap = new Map(ownedUnits.map((u) => [u.unitId, u]));
 
       const result = unitIds.map((unitId) => {
         const unit = unitMap.get(unitId);
@@ -7498,7 +8209,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
         return {
           unitId,
-          portalAccessId: myAccesses.find((a) => a.unitId === unitId)?.id ?? null,
+          portalAccessId: unit?.portalAccessId ?? null,
           unitNumber: unit?.unitNumber ?? null,
           building: unit?.building ?? null,
           squareFootage: unit?.squareFootage ?? null,
@@ -7524,7 +8235,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/portal/notices", requirePortal, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getPortalCommunicationHistory(req.portalAccessId || "");
-      res.json(result);
+      const relatedNoticeIds = result
+        .filter((row) => row.relatedId && typeof row.relatedId === "string" && (row.relatedType || "").startsWith("notice"))
+        .map((row) => row.relatedId!) as string[];
+      const noticeBodyById = new Map<string, string>();
+      if (relatedNoticeIds.length > 0) {
+        const sends = await db
+          .select({ id: noticeSends.id, bodyRendered: noticeSends.bodyRendered })
+          .from(noticeSends)
+          .where(inArray(noticeSends.id, Array.from(new Set(relatedNoticeIds))));
+        for (const send of sends) {
+          noticeBodyById.set(send.id, send.bodyRendered);
+        }
+      }
+      res.json(result.map((row) => ({
+        ...row,
+        bodyRendered: row.relatedId ? (noticeBodyById.get(row.relatedId) ?? null) : null,
+      })));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -7754,6 +8481,61 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/portal/board/dashboard", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
     try {
+      const classifyBoardActivity = (entityType: string, action: string) => {
+        const entity = entityType.toLowerCase();
+        const normalizedAction = action.toLowerCase();
+        if (entity.includes("portal") || entity.includes("board-role") || normalizedAction.includes("access")) {
+          return { lane: "access", laneLabel: "Access" };
+        }
+        if (entity.includes("meeting") || entity.includes("governance") || entity.includes("board-package")) {
+          return { lane: "governance", laneLabel: "Governance" };
+        }
+        if (entity.includes("ledger") || entity.includes("invoice") || entity.includes("payment") || entity.includes("budget") || entity.includes("utility")) {
+          return { lane: "financial", laneLabel: "Financial" };
+        }
+        if (entity.includes("document") || entity.includes("notice") || entity.includes("communication")) {
+          return { lane: "communications", laneLabel: "Communications" };
+        }
+        if (entity.includes("maintenance") || entity.includes("work-order") || entity.includes("inspection")) {
+          return { lane: "operations", laneLabel: "Operations" };
+        }
+        return { lane: "general", laneLabel: "General" };
+      };
+      const summarizeAuditEntry = (entry: { entityType: string; action: string; beforeJson: unknown; afterJson: unknown }) => {
+        const classification = classifyBoardActivity(entry.entityType, entry.action);
+        const before = entry.beforeJson && typeof entry.beforeJson === "object" ? entry.beforeJson as Record<string, unknown> : null;
+        const after = entry.afterJson && typeof entry.afterJson === "object" ? entry.afterJson as Record<string, unknown> : null;
+        const beforeKeys = before ? Object.keys(before) : [];
+        const afterKeys = after ? Object.keys(after) : [];
+        const changedFields = Array.from(new Set([...beforeKeys, ...afterKeys])).filter((key) => {
+          const beforeValue = before ? JSON.stringify(before[key] ?? null) : "__missing__";
+          const afterValue = after ? JSON.stringify(after[key] ?? null) : "__missing__";
+          return beforeValue !== afterValue;
+        });
+        const entityLabel = entry.entityType.replace(/[-_]/g, " ");
+        let summary = `${entry.action} ${entityLabel}`.trim();
+        if (entry.entityType === "portal-access" && after?.status) {
+          summary = `Board access ${String(after.status).replace(/-/g, " ")}`;
+        } else if (entry.entityType === "board-package" && after?.status) {
+          summary = `Board package ${String(after.status).replace(/-/g, " ")}`;
+        } else if (entry.entityType === "governance-meeting" && after?.title) {
+          summary = `${entry.action} meeting ${String(after.title)}`;
+        } else if (entry.entityType === "document" && after?.title) {
+          summary = `${entry.action} document ${String(after.title)}`;
+        } else if (entry.entityType === "maintenance-request" && after?.title) {
+          summary = `${entry.action} maintenance request ${String(after.title)}`;
+        } else if (entry.entityType === "vendor-invoice" && after?.invoiceNumber) {
+          summary = `${entry.action} vendor invoice ${String(after.invoiceNumber)}`;
+        } else if (entry.entityType === "annual-governance-task" && after?.title) {
+          summary = `${entry.action} governance task ${String(after.title)}`;
+        }
+        return {
+          lane: classification.lane,
+          laneLabel: classification.laneLabel,
+          summary,
+          changedFields: changedFields.slice(0, 6),
+        };
+      };
       const associationId = req.portalAssociationId || "";
       const [
         overview,
@@ -7967,6 +8749,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             action: entry.action,
             actorEmail: entry.actorEmail,
             createdAt: entry.createdAt,
+            ...summarizeAuditEntry(entry),
           })),
         },
       });
@@ -7986,7 +8769,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/portal/board/association", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/association", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const payload = insertAssociationSchema.partial().parse({
         name: req.body?.name,
@@ -8019,7 +8802,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/portal/board/meetings", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/meetings", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const parsed = insertGovernanceMeetingSchema.parse({
         associationId: req.portalAssociationId,
@@ -8040,7 +8823,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/portal/board/meetings/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/meetings/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const meeting = (await storage.getGovernanceMeetings(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!meeting) return res.status(404).json({ message: "Meeting not found in association" });
@@ -8072,7 +8855,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/portal/board/governance-tasks", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/governance-tasks", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const parsed = insertAnnualGovernanceTaskSchema.parse({
         associationId: req.portalAssociationId,
@@ -8090,7 +8873,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/portal/board/governance-tasks/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/governance-tasks/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const task = (await storage.getAnnualGovernanceTasks(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!task) return res.status(404).json({ message: "Governance task not found in association" });
@@ -8119,7 +8902,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/portal/board/documents", requirePortal, requirePortalBoard, upload.single("file"), async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/documents", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, upload.single("file"), async (req: PortalRequest, res) => {
     try {
       const file = req.file;
       if (!file) return res.status(400).json({ message: "File is required" });
@@ -8143,7 +8926,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/portal/board/documents/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/documents/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const document = (await storage.getDocuments(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!document) return res.status(404).json({ message: "Document not found in association" });
@@ -8180,7 +8963,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/portal/board/communications/send", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/communications/send", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const recipientEmail = typeof req.body?.recipientEmail === "string" ? req.body.recipientEmail.trim() : "";
       const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
@@ -8203,7 +8986,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/portal/board/maintenance-requests/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/maintenance-requests/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const request = (await storage.getMaintenanceRequests({ associationId: req.portalAssociationId })).find((row) => row.id === getParam(req.params.id));
       if (!request) return res.status(404).json({ message: "Maintenance request not found in association" });
@@ -8234,7 +9017,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/portal/board/vendor-invoices", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/vendor-invoices", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const parsed = insertVendorInvoiceSchema.parse({
         associationId: req.portalAssociationId,
@@ -8256,7 +9039,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/portal/board/vendor-invoices/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/vendor-invoices/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const invoice = (await storage.getVendorInvoices(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!invoice) return res.status(404).json({ message: "Vendor invoice not found in association" });
@@ -8298,7 +9081,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/portal/board/owner-ledger/entries", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/owner-ledger/entries", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const unit = (await storage.getUnits(req.portalAssociationId)).find((row) => row.id === req.body?.unitId);
       if (!unit) return res.status(400).json({ message: "Unit not found in association" });
@@ -8331,7 +9114,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/portal/board/persons/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/persons/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const people = await storage.getPersons(req.portalAssociationId);
       const person = people.find((row) => row.id === getParam(req.params.id));
@@ -8354,7 +9137,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/portal/board/units/:id", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/units/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const unit = (await storage.getUnits(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!unit) return res.status(404).json({ message: "Unit not found in association" });
@@ -8381,7 +9164,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/portal/board/roles", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/roles", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
     try {
       const payload = insertBoardRoleSchema.parse({
         personId: req.body?.personId,

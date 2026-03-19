@@ -77,6 +77,7 @@ export default function UnitsPage() {
   const [currentOccupancy, setCurrentOccupancy] = useState<{ occupancy: Occupancy; personName: string } | null>(null);
   const [removeCurrentOccupancy, setRemoveCurrentOccupancy] = useState(false);
   const [pendingNewOccupantId, setPendingNewOccupantId] = useState("");
+  const [occupancyTypeOverride, setOccupancyTypeOverride] = useState<"OWNER_OCCUPIED" | "TENANT">("TENANT");
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { data: residentialDataset } = useResidentialDataset(activeAssociationId || undefined);
@@ -296,6 +297,10 @@ export default function UnitsPage() {
           }
         : null,
     );
+    const defaultOccType = activeOcc
+      ? (activeOcc.occupancy.occupancyType as "OWNER_OCCUPIED" | "TENANT")
+      : activeOwners.length > 0 ? "OWNER_OCCUPIED" : "TENANT";
+    setOccupancyTypeOverride(defaultOccType);
     setRemoveCurrentOccupancy(false);
     setPendingNewOccupantId("");
     setOpen(true);
@@ -347,36 +352,50 @@ export default function UnitsPage() {
 
   async function applyOccupancyChanges(unitId: string) {
     const effectiveAt = new Date().toISOString();
-    let changed = false;
 
-    // End the current occupancy if the user removed it or is replacing it
-    const newOccupantId = pendingNewOccupantId || null;
-    if (currentOccupancy && (removeCurrentOccupancy || (newOccupantId && newOccupantId !== currentOccupancy.occupancy.personId))) {
-      await apiRequest("PATCH", `/api/occupancies/${currentOccupancy.occupancy.id}`, { endDate: effectiveAt });
-      changed = true;
+    // Determine target occupant based on occupancy type
+    const targetType = occupancyTypeOverride;
+    let targetPersonId: string | null = null;
+
+    if (targetType === "OWNER_OCCUPIED") {
+      // Derive occupant from the first active owner
+      const firstActiveOwner = ownerEntries.find((e) => !removedOwnershipIds.has(e.ownership.id));
+      const firstPendingOwner = pendingNewOwners[0];
+      targetPersonId = firstActiveOwner?.ownership.personId ?? firstPendingOwner?.personId ?? null;
+    } else {
+      // TENANT: use selected tenant or keep existing if unchanged
+      if (pendingNewOccupantId) {
+        targetPersonId = pendingNewOccupantId;
+      } else if (!removeCurrentOccupancy && currentOccupancy?.occupancy.occupancyType === "TENANT") {
+        targetPersonId = currentOccupancy.occupancy.personId;
+      }
     }
 
-    // Create new occupancy if a new person was selected (and it's not already the current occupant)
-    if (newOccupantId && (!currentOccupancy || removeCurrentOccupancy || newOccupantId !== currentOccupancy.occupancy.personId)) {
-      // Determine occupancy type: if the new occupant is also an owner of this unit, mark as owner-occupied
-      const isOwnerOccupied =
-        ownerEntries.some((e) => !removedOwnershipIds.has(e.ownership.id) && e.ownership.personId === newOccupantId) ||
-        pendingNewOwners.some((e) => e.personId === newOccupantId);
+    const currentPersonId = currentOccupancy?.occupancy.personId ?? null;
+    const currentType = currentOccupancy?.occupancy.occupancyType ?? null;
+
+    const needsChange = currentPersonId !== targetPersonId || currentType !== targetType;
+    if (!needsChange) return;
+
+    // End existing occupancy
+    if (currentOccupancy) {
+      await apiRequest("PATCH", `/api/occupancies/${currentOccupancy.occupancy.id}`, { endDate: effectiveAt });
+    }
+
+    // Create new occupancy with target person
+    if (targetPersonId) {
       await apiRequest("POST", "/api/occupancies", {
         unitId,
-        personId: newOccupantId,
-        occupancyType: isOwnerOccupied ? "OWNER_OCCUPIED" : "TENANT",
+        personId: targetPersonId,
+        occupancyType: targetType,
         startDate: effectiveAt,
       });
-      changed = true;
     }
 
-    if (changed) {
-      queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
-      queryClient.invalidateQueries({
-        predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
-      });
-    }
+    queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
+    queryClient.invalidateQueries({
+      predicate: (query) => String(query.queryKey[0] ?? "").startsWith("/api/residential/dataset"),
+    });
   }
 
   function onSubmitUnit(values: z.infer<typeof unitFormSchema>) {
@@ -485,6 +504,7 @@ export default function UnitsPage() {
       setCurrentOccupancy(null);
       setRemoveCurrentOccupancy(false);
       setPendingNewOccupantId("");
+      setOccupancyTypeOverride("TENANT");
     }
   }
 
@@ -921,57 +941,108 @@ export default function UnitsPage() {
                     <div className="space-y-2">
                       <div className="text-sm font-medium flex items-center gap-2">
                         <User className="h-4 w-4" />
-                        Tenant / Occupant
+                        Occupancy
                       </div>
 
-                      {currentOccupancy && !removeCurrentOccupancy ? (
-                        <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-sm">
-                          <span>{currentOccupancy.personName}</span>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => setRemoveCurrentOccupancy(true)}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-muted-foreground rounded-md border border-dashed px-3 py-2">
-                          {removeCurrentOccupancy ? "Current tenant will be removed." : "No tenant assigned."}
-                        </div>
-                      )}
+                      {/* Occupancy type is the primary choice */}
+                      <div className="flex rounded-md border overflow-hidden text-xs w-fit">
+                        <button
+                          type="button"
+                          onClick={() => { setOccupancyTypeOverride("OWNER_OCCUPIED"); setPendingNewOccupantId(""); setRemoveCurrentOccupancy(false); }}
+                          className={`px-3 py-1 font-medium transition-colors ${occupancyTypeOverride === "OWNER_OCCUPIED" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                        >
+                          Owner-occupied
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOccupancyTypeOverride("TENANT")}
+                          className={`px-3 py-1 font-medium transition-colors border-l ${occupancyTypeOverride === "TENANT" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                        >
+                          Tenant
+                        </button>
+                      </div>
 
-                      {pendingNewOccupantId ? (
-                        <div className="flex items-center justify-between rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                          <span>{sortedPeopleOptions.find((p) => p.id === pendingNewOccupantId) ? `${sortedPeopleOptions.find((p) => p.id === pendingNewOccupantId)!.firstName ?? ""} ${sortedPeopleOptions.find((p) => p.id === pendingNewOccupantId)!.lastName ?? ""}`.trim() : "—"} <span className="text-xs">(pending)</span></span>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => setPendingNewOccupantId("")}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <Select value={pendingNewOccupantId} onValueChange={setPendingNewOccupantId}>
-                          <SelectTrigger className="h-8 text-sm">
-                            <SelectValue placeholder="Assign tenant…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {sortedPeopleOptions
-                              .filter((p) => !currentOccupancy || removeCurrentOccupancy || p.id !== currentOccupancy.occupancy.personId)
-                              .map((person) => (
-                                <SelectItem key={person.id} value={person.id}>
-                                  {`${person.firstName ?? ""} ${person.lastName ?? ""}`.trim()}
-                                  {person.email ? ` · ${person.email}` : ""}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                      {/* Owner-occupied: occupant is derived from the owner — no separate selection */}
+                      {occupancyTypeOverride === "OWNER_OCCUPIED" && (() => {
+                        const activeOwner = ownerEntries.find((e) => !removedOwnershipIds.has(e.ownership.id));
+                        const pendingOwner = pendingNewOwners[0];
+                        const ownerName = activeOwner?.personName ?? pendingOwner?.personName ?? null;
+                        return (
+                          <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                            {ownerName
+                              ? <span>Occupant: <span className="font-medium text-foreground">{ownerName}</span></span>
+                              : "Add an owner above — they will be set as the occupant."}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Tenant: must assign a separate person */}
+                      {occupancyTypeOverride === "TENANT" && (
+                        <>
+                          {/* Current tenant (from existing occupancy, if tenant type) */}
+                          {currentOccupancy && currentOccupancy.occupancy.occupancyType === "TENANT" && !pendingNewOccupantId && !removeCurrentOccupancy ? (
+                            <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm flex items-center justify-between">
+                              <span>{currentOccupancy.personName}</span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => setRemoveCurrentOccupancy(true)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : null}
+
+                          {/* Pending new tenant selected */}
+                          {pendingNewOccupantId ? (
+                            <div className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm flex items-center justify-between">
+                              <span>
+                                {(() => {
+                                  const p = sortedPeopleOptions.find((p) => p.id === pendingNewOccupantId);
+                                  return p ? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim() : "—";
+                                })()}
+                                <span className="text-xs text-muted-foreground ml-1">(pending)</span>
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => setPendingNewOccupantId("")}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : null}
+
+                          {/* Tenant selector: shown when no pending tenant */}
+                          {!pendingNewOccupantId ? (
+                            <Select
+                              value=""
+                              onValueChange={(val) => { setPendingNewOccupantId(val); setRemoveCurrentOccupancy(true); }}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue placeholder={
+                                  currentOccupancy?.occupancy.occupancyType === "TENANT" && !removeCurrentOccupancy
+                                    ? "Change tenant…"
+                                    : "Assign tenant…"
+                                } />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {sortedPeopleOptions
+                                  .filter((p) => !currentOccupancy || p.id !== currentOccupancy.occupancy.personId)
+                                  .map((person) => (
+                                    <SelectItem key={person.id} value={person.id}>
+                                      {`${person.firstName ?? ""} ${person.lastName ?? ""}`.trim()}
+                                      {person.email ? ` · ${person.email}` : ""}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          ) : null}
+                        </>
                       )}
 
                       <div className="text-xs text-muted-foreground">

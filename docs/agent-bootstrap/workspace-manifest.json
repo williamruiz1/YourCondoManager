@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-16T14:31:31.397Z",
+  "generatedAt": "2026-03-19T02:43:53.584Z",
   "purpose": "Reusable startup snapshot for coding agents working in the CondoManager workspace.",
   "repository": {
     "root": "/home/runner/workspace",
@@ -27,8 +27,8 @@
     "verificationNote": "TypeScript checks currently surface an existing RegExpStringIterator issue in server/storage.ts around matchAll iteration. Treat it as a known repo issue unless that area is being changed."
   },
   "routes": {
-    "total": 69,
-    "appRoutes": 33,
+    "total": 77,
+    "appRoutes": 41,
     "publicRoutes": 36,
     "entries": [
       {
@@ -77,6 +77,11 @@
         "redirectTo": null
       },
       {
+        "path": "/app/admin/feature-flags",
+        "component": "FeatureFlagsPage",
+        "redirectTo": null
+      },
+      {
         "path": "/app/admin/roadmap",
         "component": "RoadmapPage",
         "redirectTo": null
@@ -88,7 +93,12 @@
       },
       {
         "path": "/app/ai/ingestion",
-        "component": "AiIngestionPage",
+        "component": null,
+        "redirectTo": null
+      },
+      {
+        "path": "/app/announcements",
+        "component": "AnnouncementsPage",
         "redirectTo": null
       },
       {
@@ -128,8 +138,8 @@
       },
       {
         "path": "/app/financial/fees",
-        "component": "FinancialFeesPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/financial/recurring-charges"
       },
       {
         "path": "/app/financial/foundation",
@@ -154,6 +164,21 @@
       {
         "path": "/app/financial/payments",
         "component": "FinancialPaymentsPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/reconciliation",
+        "component": "FinancialReconciliationPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/recurring-charges",
+        "component": "FinancialRecurringChargesPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/financial/reports",
+        "component": "FinancialReportsPage",
         "redirectTo": null
       },
       {
@@ -182,14 +207,19 @@
         "redirectTo": null
       },
       {
+        "path": "/app/insurance",
+        "component": "InsurancePage",
+        "redirectTo": null
+      },
+      {
         "path": "/app/maintenance-schedules",
         "component": "MaintenanceSchedulesPage",
         "redirectTo": null
       },
       {
         "path": "/app/occupancy",
-        "component": "OccupancyPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/units"
       },
       {
         "path": "/app/operations/dashboard",
@@ -198,8 +228,8 @@
       },
       {
         "path": "/app/owners",
-        "component": "OwnersPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/persons"
       },
       {
         "path": "/app/persons",
@@ -208,7 +238,17 @@
       },
       {
         "path": "/app/platform/controls",
-        "component": "PlatformControlsPage",
+        "component": null,
+        "redirectTo": null
+      },
+      {
+        "path": "/app/portfolio",
+        "component": "PortfolioPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/resident-feedback",
+        "component": "ResidentFeedbackPage",
         "redirectTo": null
       },
       {
@@ -324,7 +364,7 @@
       {
         "path": "/occupancy",
         "component": null,
-        "redirectTo": "/app/occupancy"
+        "redirectTo": "/app/units"
       },
       {
         "path": "/onboarding/:token",
@@ -339,7 +379,7 @@
       {
         "path": "/owners",
         "component": null,
-        "redirectTo": "/app/owners"
+        "redirectTo": "/app/persons"
       },
       {
         "path": "/persons",
@@ -379,7 +419,7 @@
     ]
   },
   "pages": {
-    "totalLazyPages": 37,
+    "totalLazyPages": 43,
     "entries": [
       {
         "id": "AdminUsersPage",
@@ -388,6 +428,10 @@
       {
         "id": "AiIngestionPage",
         "importPath": "@/pages/ai-ingestion"
+      },
+      {
+        "id": "AnnouncementsPage",
+        "importPath": "@/pages/announcements"
       },
       {
         "id": "AssociationContextPage",
@@ -422,6 +466,10 @@
         "importPath": "@/pages/executive"
       },
       {
+        "id": "FeatureFlagsPage",
+        "importPath": "@/pages/feature-flags"
+      },
+      {
         "id": "FinancialAssessmentsPage",
         "importPath": "@/pages/financial-assessments"
       },
@@ -454,6 +502,18 @@
         "importPath": "@/pages/financial-payments"
       },
       {
+        "id": "FinancialReconciliationPage",
+        "importPath": "@/pages/financial-reconciliation"
+      },
+      {
+        "id": "FinancialRecurringChargesPage",
+        "importPath": "@/pages/financial-recurring-charges"
+      },
+      {
+        "id": "FinancialReportsPage",
+        "importPath": "@/pages/financial-reports"
+      },
+      {
         "id": "FinancialUtilitiesPage",
         "importPath": "@/pages/financial-utilities"
       },
@@ -464,6 +524,10 @@
       {
         "id": "InspectionsPage",
         "importPath": "@/pages/inspections"
+      },
+      {
+        "id": "InsurancePage",
+        "importPath": "@/pages/insurance"
       },
       {
         "id": "LandingPage",
@@ -482,10 +546,6 @@
         "importPath": "@/pages/not-found"
       },
       {
-        "id": "OccupancyPage",
-        "importPath": "@/pages/occupancy"
-      },
-      {
         "id": "OnboardingInvitePage",
         "importPath": "@/pages/onboarding-invite"
       },
@@ -498,16 +558,20 @@
         "importPath": "@/pages/owner-portal"
       },
       {
-        "id": "OwnersPage",
-        "importPath": "@/pages/owners"
-      },
-      {
         "id": "PersonsPage",
         "importPath": "@/pages/persons"
       },
       {
         "id": "PlatformControlsPage",
         "importPath": "@/pages/platform-controls"
+      },
+      {
+        "id": "PortfolioPage",
+        "importPath": "@/pages/portfolio"
+      },
+      {
+        "id": "ResidentFeedbackPage",
+        "importPath": "@/pages/resident-feedback"
       },
       {
         "id": "RoadmapPage",

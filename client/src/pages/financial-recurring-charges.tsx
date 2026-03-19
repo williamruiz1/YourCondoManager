@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,8 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertCircle, CheckCircle2, Play, Plus, RefreshCw, RotateCcw, PauseCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, Play, Plus, RefreshCw, RotateCcw, PauseCircle } from "lucide-react";
 import type { RecurringChargeSchedule, RecurringChargeRun } from "@shared/schema";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 function statusBadge(status: string) {
   const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -66,6 +68,19 @@ export default function FinancialRecurringChargesPage() {
     },
     enabled: Boolean(activeAssociationId),
   });
+
+  const { data: units = [] } = useQuery<Array<{ id: string; unitNumber: string }>>({
+    queryKey: ["/api/units"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/units");
+      return res.json();
+    },
+  });
+  const unitNumberMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const u of units) map.set(u.id, u.unitNumber);
+    return map;
+  }, [units]);
 
   const createSchedule = useMutation({
     mutationFn: async () => {
@@ -138,7 +153,9 @@ export default function FinancialRecurringChargesPage() {
   const activeSchedules = schedules.filter(s => s.status === "active").length;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Recurring Charges"
         summary="Define automatic charge schedules, run them on demand, and manage failed charge retries."
@@ -180,10 +197,18 @@ export default function FinancialRecurringChargesPage() {
               <CardDescription>Recurring charges applied to units on a defined cadence</CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => runNow.mutate()} disabled={runNow.isPending || !activeAssociationId}>
-                <Play className={`h-4 w-4 mr-1 ${runNow.isPending ? "animate-pulse" : ""}`} />
-                {runNow.isPending ? "Running…" : "Run Now"}
-              </Button>
+              <ConfirmDialog
+                trigger={
+                  <Button size="sm" variant="outline" disabled={runNow.isPending || !activeAssociationId}>
+                    <Play className={`h-4 w-4 mr-1 ${runNow.isPending ? "animate-pulse" : ""}`} />
+                    {runNow.isPending ? "Running…" : "Run Now"}
+                  </Button>
+                }
+                title="Run charge schedules now?"
+                description={`This will immediately post charges for all ${activeSchedules} active schedule${activeSchedules !== 1 ? "s" : ""} that are due for ${activeAssociationName || "the selected association"}. Posted charges will appear on owner ledgers right away.`}
+                confirmLabel="Run Charges"
+                onConfirm={() => runNow.mutate()}
+              />
               <Button size="sm" onClick={() => setScheduleDialogOpen(true)} disabled={!activeAssociationId}>
                 <Plus className="h-4 w-4 mr-1" /> New Schedule
               </Button>
@@ -208,6 +233,7 @@ export default function FinancialRecurringChargesPage() {
                   <TableHead>Status</TableHead>
                   <TableHead>Max Retries</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right">Runs</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -246,6 +272,15 @@ export default function FinancialRecurringChargesPage() {
                           </Button>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span
+                        className="text-xs text-muted-foreground hover:text-foreground cursor-pointer inline-flex items-center gap-1"
+                        onClick={() => setSelectedScheduleId(prev => prev === s.id ? "" : s.id)}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                        View runs
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -295,7 +330,7 @@ export default function FinancialRecurringChargesPage() {
                     <TableCell className="text-sm text-muted-foreground">
                       {r.ranAt ? new Date(r.ranAt).toLocaleString() : new Date(r.createdAt).toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-xs font-mono text-muted-foreground">{r.unitId ? r.unitId.slice(0, 8) + "…" : "all"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{r.unitId ? (unitNumberMap.get(r.unitId) || r.unitId.slice(0, 8) + "…") : "all"}</TableCell>
                     <TableCell className="font-medium">${r.amount.toFixed(2)}</TableCell>
                     <TableCell>{statusBadge(r.status)}</TableCell>
                     <TableCell className="text-sm">{r.retryCount}</TableCell>
@@ -399,6 +434,7 @@ export default function FinancialRecurringChargesPage() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

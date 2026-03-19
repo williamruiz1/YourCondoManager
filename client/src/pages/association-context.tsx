@@ -513,8 +513,8 @@ export default function AssociationContextPage() {
           eyebrow="Context"
           breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Association Context" }]}
           shortcuts={[
-            { label: "Open Associations", href: "/app/associations" },
-            { label: "Open Documents", href: "/app/documents" },
+            { label: "Associations", href: "/app/associations" },
+            { label: "Documents", href: "/app/documents" },
           ]}
         />
         <AssociationScopeBanner
@@ -535,11 +535,11 @@ export default function AssociationContextPage() {
         eyebrow="Context"
         breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Association Context" }]}
         shortcuts={[
-          { label: "Open Documents", href: "/app/documents" },
-          { label: "Open Communications", href: "/app/communications" },
-          { label: "Open Units", href: "/app/units" },
+          { label: "Documents", href: "/app/documents" },
+          { label: "Communications", href: "/app/communications" },
+          { label: "Units", href: "/app/units" },
           {
-            label: "Copy Owner Portal Link",
+            label: "Owner Portal Link",
             onClick: () => {
               const url = `${window.location.origin}/portal`;
               navigator.clipboard.writeText(url).then(() => {

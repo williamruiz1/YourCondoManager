@@ -14,7 +14,8 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useAssociationContext } from "@/context/association-context";
-import type { OwnerPaymentLink, PaymentGatewayConnection, PaymentMethodConfig, Person, Unit } from "@shared/schema";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
+import type { OwnerPaymentLink, PaymentGatewayConnection, PaymentMethodConfig, PartialPaymentRule, Person, Unit } from "@shared/schema";
 import {
   CreditCard,
   Zap,
@@ -25,7 +26,10 @@ import {
   Copy,
   Info,
   Shield,
+  ArrowRight,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Link } from "wouter";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 // ── Payment Methods Tab ───────────────────────────────────────────────────────
@@ -123,7 +127,7 @@ function PaymentMethodsTab({
           Payment methods tell owners <strong>how to pay</strong> their HOA dues. These appear in payment
           notices and in the owner portal. Add one method per payment channel (e.g., one for bank transfer,
           one for Zelle). A Stripe gateway connection is only required if you want owners to pay online
-          via credit/debit card — configure that in the Gateway tab.
+          via ACH bank account debit — configure that in the Gateway tab.
         </p>
       </div>
 
@@ -299,7 +303,7 @@ function GatewayTab({
         <div className="text-sm text-muted-foreground space-y-2">
           <p>
             A gateway connection is <strong>optional</strong> and only required if you want owners to pay
-            online via credit or debit card. Most self-managed associations use bank transfer or Zelle instead —
+            online via ACH bank debit. Most self-managed associations use bank transfer or Zelle instead —
             configure those in the Payment Methods tab.
           </p>
           <p>
@@ -488,7 +492,7 @@ function PaymentLinksTab({
         <p className="text-sm text-muted-foreground">
           Generate a unique payment link for a specific owner. Copy the link and paste it into a payment
           notice or email. The owner visits the link to see their balance and pay. Links require a gateway
-          connection for online card payments — for manual payment methods, this link shows instructions
+          connection for online ACH payments — for manual payment methods, this link shows instructions
           instead.
         </p>
       </div>
@@ -1037,7 +1041,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
           {isLoading ? (
             <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
           ) : entries.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-4 text-center">No payment activity found for this association.</div>
+            <div className="text-sm text-muted-foreground py-4 text-center">No payments recorded yet — configure payment methods above, then record the first owner payment to start tracking collections.</div>
           ) : (
             <div className="overflow-auto">
               <table className="w-full text-sm">
@@ -1130,6 +1134,7 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
 export default function FinancialPaymentsPage() {
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { setActiveAssociationId } = useAssociationContext();
+  const { toast } = useToast();
   const { data: associations = [] } = useQuery({ queryKey: ["/api/associations"] });
 
   const selectedAssociationId = activeAssociationId;
@@ -1149,11 +1154,60 @@ export default function FinancialPaymentsPage() {
       : "/api/financial/payment-methods"],
   });
 
+  const [partialRuleForm, setPartialRuleForm] = useState({
+    allowPartialPayments: true,
+    minimumPaymentAmount: "",
+    minimumPaymentPercent: "",
+    requirePaymentConfirmation: false,
+    sendReceiptEmail: true,
+  });
+
+  const { data: partialPaymentRule, refetch: refetchPartialRule } = useQuery<PartialPaymentRule | null>({
+    queryKey: ["/api/financial/partial-payment-rules", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) return null;
+      const res = await apiRequest("GET", `/api/financial/partial-payment-rules?associationId=${activeAssociationId}`);
+      if (res.status === 404) return null;
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+
+  useEffect(() => {
+    if (partialPaymentRule) {
+      setPartialRuleForm({
+        allowPartialPayments: Boolean(partialPaymentRule.allowPartialPayments),
+        minimumPaymentAmount: partialPaymentRule.minimumPaymentAmount != null ? String(partialPaymentRule.minimumPaymentAmount) : "",
+        minimumPaymentPercent: partialPaymentRule.minimumPaymentPercent != null ? String(partialPaymentRule.minimumPaymentPercent) : "",
+        requirePaymentConfirmation: Boolean(partialPaymentRule.requirePaymentConfirmation),
+        sendReceiptEmail: Boolean(partialPaymentRule.sendReceiptEmail),
+      });
+    }
+  }, [partialPaymentRule]);
+
+  const savePartialRule = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", "/api/financial/partial-payment-rules", {
+        associationId: activeAssociationId,
+        allowPartialPayments: partialRuleForm.allowPartialPayments ? 1 : 0,
+        minimumPaymentAmount: partialRuleForm.minimumPaymentAmount ? parseFloat(partialRuleForm.minimumPaymentAmount) : null,
+        minimumPaymentPercent: partialRuleForm.minimumPaymentPercent ? parseFloat(partialRuleForm.minimumPaymentPercent) : null,
+        requirePaymentConfirmation: partialRuleForm.requirePaymentConfirmation ? 1 : 0,
+        sendReceiptEmail: partialRuleForm.sendReceiptEmail ? 1 : 0,
+      });
+      return res.json();
+    },
+    onSuccess: () => { refetchPartialRule(); toast({ title: "Payment rules saved" }); },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Payments"
-        summary="Configure how owners pay their dues — add payment methods, optionally connect a card gateway, and generate owner payment links."
+        summary="Configure how owners pay their dues — add payment methods, optionally connect an ACH gateway, and generate owner payment links."
         eyebrow="Finance"
         breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Payments" }]}
       />
@@ -1240,6 +1294,87 @@ export default function FinancialPaymentsPage() {
           <ExceptionsTab associationId={selectedAssociationId} />
         </TabsContent>
       </Tabs>
+
+      {/* Partial Payment Rules */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Partial Payment Rules</CardTitle>
+          <CardDescription>Control whether owners can make partial payments and set minimum payment thresholds</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!activeAssociationId ? (
+            <div className="text-sm text-muted-foreground">Select an association to manage payment rules.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div>
+                    <div className="text-sm font-medium">Allow Partial Payments</div>
+                    <div className="text-xs text-muted-foreground">Allow owners to pay less than the full balance</div>
+                  </div>
+                  <Switch
+                    checked={partialRuleForm.allowPartialPayments}
+                    onCheckedChange={v => setPartialRuleForm(f => ({ ...f, allowPartialPayments: v }))}
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div>
+                    <div className="text-sm font-medium">Require Confirmation</div>
+                    <div className="text-xs text-muted-foreground">Show confirmation dialog before payment</div>
+                  </div>
+                  <Switch
+                    checked={partialRuleForm.requirePaymentConfirmation}
+                    onCheckedChange={v => setPartialRuleForm(f => ({ ...f, requirePaymentConfirmation: v }))}
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div>
+                    <div className="text-sm font-medium">Send Receipt Email</div>
+                    <div className="text-xs text-muted-foreground">Email owner a receipt after payment</div>
+                  </div>
+                  <Switch
+                    checked={partialRuleForm.sendReceiptEmail}
+                    onCheckedChange={v => setPartialRuleForm(f => ({ ...f, sendReceiptEmail: v }))}
+                  />
+                </div>
+              </div>
+              {partialRuleForm.allowPartialPayments && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Minimum Payment Amount ($)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="No minimum"
+                      value={partialRuleForm.minimumPaymentAmount}
+                      onChange={e => setPartialRuleForm(f => ({ ...f, minimumPaymentAmount: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Minimum Payment % of Balance</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      placeholder="No minimum %"
+                      value={partialRuleForm.minimumPaymentPercent}
+                      onChange={e => setPartialRuleForm(f => ({ ...f, minimumPaymentPercent: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => savePartialRule.mutate()} disabled={savePartialRule.isPending}>
+                  {savePartialRule.isPending ? "Saving…" : "Save Rules"}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+      </div>
     </div>
   );
 }

@@ -52,7 +52,10 @@ if (isProduction) {
   app.set("trust proxy", true);
 }
 
-const sessionSecret = process.env.SESSION_SECRET?.trim() || "dev-session-secret";
+const sessionSecret = process.env.SESSION_SECRET?.trim();
+if (!sessionSecret) {
+  throw new Error("SESSION_SECRET must be set");
+}
 const sessionMaxAgeMs = Math.max(60_000, Number(process.env.SESSION_MAX_AGE_MS || 7 * 24 * 60 * 60 * 1000));
 const sessionCookieSameSite = (() => {
   const raw = (process.env.SESSION_COOKIE_SAME_SITE || "lax").trim().toLowerCase();

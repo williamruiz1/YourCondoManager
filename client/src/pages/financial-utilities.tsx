@@ -15,6 +15,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
 
 const utilitySchema = z.object({
   associationId: z.string().min(1),
@@ -41,11 +42,19 @@ export default function FinancialUtilitiesPage() {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
   const { data: accounts } = useQuery<FinancialAccount[]>({ queryKey: ["/api/financial/accounts"] });
   const { data: categories } = useQuery<FinancialCategory[]>({ queryKey: ["/api/financial/categories"] });
-  const { data: utilities } = useQuery<UtilityPayment[]>({ queryKey: ["/api/financial/utilities"] });
+  const { data: utilities } = useQuery<UtilityPayment[]>({
+    queryKey: ["/api/financial/utilities", activeAssociationId],
+    queryFn: async () => {
+      const params = activeAssociationId ? `?associationId=${activeAssociationId}` : "";
+      const res = await apiRequest("GET", `/api/financial/utilities${params}`);
+      return res.json();
+    },
+  });
   const { data: attachments } = useQuery<ExpenseAttachment[]>({ queryKey: ["/api/financial/expense-attachments"] });
 
   const form = useForm<z.infer<typeof utilitySchema>>({
@@ -95,6 +104,18 @@ export default function FinancialUtilitiesPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const markPaid = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/financial/utilities/${id}`, { status: "paid", paidDate: new Date().toISOString() });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/utilities", activeAssociationId] });
+      toast({ title: "Marked as paid" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const uploadAttachment = useMutation({
     mutationFn: async () => {
       if (!attachmentFile || !attachmentUtilityId || !attachmentAssocId || !attachmentTitle) {
@@ -126,7 +147,9 @@ export default function FinancialUtilitiesPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Utility Payments</h1>
@@ -162,7 +185,69 @@ export default function FinancialUtilitiesPage() {
         </Dialog>
       </div>
 
-      <Card><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Provider</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead></TableRow></TableHeader><TableBody>{(utilities ?? []).map((row) => (<TableRow key={row.id}><TableCell>{row.utilityType}</TableCell><TableCell>{row.providerName}</TableCell><TableCell>${row.amount.toFixed(2)}</TableCell><TableCell><Badge variant="secondary">{row.status}</Badge></TableCell><TableCell>{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "-"}</TableCell></TableRow>))}</TableBody></Table></CardContent></Card>
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-base font-semibold flex-1">Utility Bills</h2>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="due">Due</SelectItem>
+                <SelectItem value="scheduled">Scheduled</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(utilities ?? []).filter(r => statusFilter === "all" || r.status === statusFilter).length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
+              <p className="text-sm">{statusFilter === "all" ? "No utility bills recorded yet." : `No ${statusFilter} utility bills.`}</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Due</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(utilities ?? [])
+                  .filter(r => statusFilter === "all" || r.status === statusFilter)
+                  .map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-medium">{row.utilityType}</TableCell>
+                      <TableCell>{row.providerName}</TableCell>
+                      <TableCell>${row.amount.toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Badge variant={row.status === "paid" ? "default" : row.status === "due" ? "destructive" : "secondary"}>
+                          {row.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "—"}</TableCell>
+                      <TableCell className="text-right">
+                        {row.status !== "paid" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => markPaid.mutate(row.id)}
+                            disabled={markPaid.isPending}
+                          >
+                            Mark Paid
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-6 space-y-4">
@@ -176,13 +261,21 @@ export default function FinancialUtilitiesPage() {
           <Table>
             <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Utility</TableHead><TableHead>File</TableHead></TableRow></TableHeader>
             <TableBody>
-              {(attachments ?? []).filter((a) => a.expenseType === "utility-payment").map((a) => (
-                <TableRow key={a.id}><TableCell>{a.title}</TableCell><TableCell>{a.expenseId}</TableCell><TableCell><a className="underline text-sm" href={a.fileUrl} target="_blank" rel="noreferrer">Open</a></TableCell></TableRow>
-              ))}
+              {(attachments ?? []).filter((a) => a.expenseType === "utility-payment").map((a) => {
+                const utility = (utilities ?? []).find(u => u.id === a.expenseId);
+                return (
+                  <TableRow key={a.id}>
+                    <TableCell>{a.title}</TableCell>
+                    <TableCell>{utility ? `${utility.utilityType} — ${utility.providerName}` : a.expenseId}</TableCell>
+                    <TableCell><a className="underline text-sm" href={a.fileUrl} target="_blank" rel="noreferrer">Open</a></TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

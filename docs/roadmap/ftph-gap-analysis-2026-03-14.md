@@ -69,8 +69,8 @@ Delivered now:
 - Webhook-driven payment posting into the ledger
 
 Gaps still open:
-- No real hosted payment checkout or ACH/card collection flow
-- No owner-managed saved payment methods in the portal
+- No real hosted ACH payment checkout or bank-account collection flow
+- No owner-managed saved ACH payment methods in the portal
 - No autopay enrollment or recurring charge orchestration
 - No delinquency workflow, collections handoff, or aging dashboard
 - No bank reconciliation workflow
@@ -237,7 +237,7 @@ Outcome:
 
 Core tasks:
 - Implement live provider credential verification and secure secret handling
-- Create hosted payment session or checkout flow for ACH and card
+- Create hosted ACH payment session or checkout flow for bank-account payments only
 - Add signed webhook verification and stronger payment event lifecycle states
 - Build admin payment activity visibility tied to ledger outcomes
 
@@ -248,7 +248,7 @@ Outcome:
 
 Core tasks:
 - Add portal payment screen with balance summary and payable options
-- Add saved payment methods and owner-managed defaults
+- Add saved ACH payment methods and owner-managed defaults
 - Support full and partial payment rules with receipts
 - Link reminders and due notices to payment actions
 

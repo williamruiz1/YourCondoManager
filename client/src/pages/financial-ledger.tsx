@@ -18,12 +18,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { FileUp, Send, AlertTriangle, RefreshCw, X } from "lucide-react";
 import { ExportCsvButton } from "@/components/export-csv-button";
 import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { DateRangePresets, type DateRange } from "@/components/date-range-presets";
+
+function formatAuditDetails(json: unknown): string {
+  if (!json || typeof json !== "object") return String(json ?? "—");
+  const entries = Object.entries(json as Record<string, unknown>)
+    .filter(([, v]) => v !== null && v !== undefined)
+    .slice(0, 5)
+    .map(([k, v]) => {
+      const label = k.replace(/_/g, " ");
+      const val = typeof v === "number" ? Number(v).toFixed(2) : String(v).slice(0, 30);
+      return `${label}: ${val}`;
+    });
+  return entries.join(" · ") || "—";
+}
 
 const entrySchema = z.object({
   associationId: z.string().min(1),
@@ -90,8 +104,9 @@ function SendNoticeDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="outline" title="Send Notice">
-          <Send className="h-4 w-4" />
+        <Button size="sm" variant="outline" title="Send Notice" className="gap-1.5">
+          <Send className="h-3.5 w-3.5" />
+          Send Notice
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">
@@ -145,7 +160,14 @@ export default function FinancialLedgerPage() {
   const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
   const { data: units } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
   const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
-  const entriesQuery = useQuery<OwnerLedgerEntry[]>({ queryKey: ["/api/financial/owner-ledger/entries"] });
+  const entriesQuery = useQuery<OwnerLedgerEntry[]>({
+    queryKey: ["/api/financial/owner-ledger/entries", assocFilter],
+    queryFn: async () => {
+      const params = assocFilter ? `?associationId=${assocFilter}` : "";
+      const res = await apiRequest("GET", `/api/financial/owner-ledger/entries${params}`);
+      return res.json();
+    },
+  });
   const summaryQuery = useQuery<Array<{ personId: string; unitId: string; balance: number }>>({
     queryKey: ["/api/financial/owner-ledger/summary", assocFilter || "none"],
     queryFn: async () => {
@@ -278,7 +300,9 @@ export default function FinancialLedgerPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Owner Ledger"
         summary="Post owner-ledger entries, review balances, and monitor collection risk within the active association scope."
@@ -310,7 +334,12 @@ export default function FinancialLedgerPage() {
                     <FormItem><FormLabel>Type</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="charge">charge</SelectItem><SelectItem value="assessment">assessment</SelectItem><SelectItem value="payment">payment</SelectItem><SelectItem value="late-fee">late-fee</SelectItem><SelectItem value="credit">credit</SelectItem><SelectItem value="adjustment">adjustment</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="amount" render={({ field }) => (
-                    <FormItem><FormLabel>Amount (positive=owed, negative=credit)</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem>
+                      <FormLabel>Amount</FormLabel>
+                      <p className="text-xs text-muted-foreground -mt-1">Use a negative amount for payments and credits</p>
+                      <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
                   )} />
                 </div>
                 <FormField control={form.control} name="postedAt" render={({ field }) => (<FormItem><FormLabel>Posted Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
@@ -530,7 +559,7 @@ export default function FinancialLedgerPage() {
         </div>
         <CardContent className="p-0">
           <Table>
-            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Description</TableHead></TableRow></TableHeader>
             <TableBody>
               {filteredEntries.map((e) => (
                 <TableRow key={e.id}>
@@ -539,6 +568,7 @@ export default function FinancialLedgerPage() {
                   <TableCell>{unitName.get(e.unitId) || e.unitId}</TableCell>
                   <TableCell><Badge variant="secondary">{e.entryType}</Badge></TableCell>
                   <TableCell>${e.amount.toFixed(2)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground max-w-xs truncate" title={e.description || ""}>{e.description || "—"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -576,7 +606,7 @@ export default function FinancialLedgerPage() {
                       <TableCell><Badge variant="outline" className="font-mono text-xs">{log.action}</Badge></TableCell>
                       <TableCell className="text-sm capitalize">{log.entityType.replace(/_/g, " ")}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
-                        {log.afterJson ? JSON.stringify(log.afterJson).slice(0, 80) : log.entityId || "—"}
+                        {formatAuditDetails(log.afterJson) || log.entityId || "—"}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -655,6 +685,7 @@ export default function FinancialLedgerPage() {
         ]}
         onImport={handleLedgerImport}
       />
+      </div>
     </div>
   );
 }

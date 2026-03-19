@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertCircle, CheckCircle2, RefreshCw, Plus, GitMerge, Lock, LockOpen, CheckSquare, FileUp } from "lucide-react";
 import type { BankStatementImport, BankStatementTransaction, OwnerLedgerEntry, ReconciliationPeriod } from "@shared/schema";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 // Parse a bank CSV — supports common formats: Date, Description, Amount (positive/negative)
 function parseBankCsv(csvText: string): { date: string; description: string; amount: number }[] {
@@ -256,7 +258,9 @@ export default function FinancialReconciliationPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Bank Reconciliation"
         summary="Import bank statements, auto-match transactions to ledger entries, and manually review unmatched items."
@@ -269,6 +273,24 @@ export default function FinancialReconciliationPage() {
         activeAssociationName={activeAssociationName}
         explanation="Reconciliation is scoped per association. Select one to manage its bank statement imports."
       />
+
+      {/* Workflow Step Indicator */}
+      <div className="flex items-center gap-0 rounded-lg border bg-muted/30 overflow-hidden">
+        {[
+          { step: 1, label: "Import Statement", done: imports.length > 0 },
+          { step: 2, label: "Auto-Match", done: stats.autoMatched > 0 },
+          { step: 3, label: "Review Unmatched", done: stats.unmatched === 0 && transactions.length > 0 },
+          { step: 4, label: "Lock Period", done: periods.some(p => p.status === "locked") },
+        ].map((s, i, arr) => (
+          <div key={s.step} className={`flex items-center gap-2 flex-1 px-4 py-3 text-sm ${s.done ? "bg-green-50 dark:bg-green-900/20" : ""}`}>
+            <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold shrink-0 ${s.done ? "bg-green-500 text-white" : "bg-muted-foreground/20 text-muted-foreground"}`}>
+              {s.done ? <CheckCircle2 className="h-4 w-4" /> : s.step}
+            </div>
+            <span className={`font-medium truncate ${s.done ? "text-green-700 dark:text-green-400" : "text-muted-foreground"}`}>{s.label}</span>
+            {i < arr.length - 1 && <div className="ml-auto h-px w-4 bg-border shrink-0" />}
+          </div>
+        ))}
+      </div>
 
       {/* Import + Select */}
       <Card>
@@ -469,9 +491,17 @@ export default function FinancialReconciliationPage() {
                           </Button>
                         )}
                         {p.status === "closed" && (
-                          <Button size="icon" variant="outline" title="Lock" onClick={() => updatePeriod.mutate({ id: p.id, action: "lock" })}>
-                            <Lock className="h-4 w-4" />
-                          </Button>
+                          <ConfirmDialog
+                            trigger={
+                              <Button size="sm" variant="outline" title="Lock period">
+                                <Lock className="h-4 w-4 mr-1" /> Lock
+                              </Button>
+                            }
+                            title="Lock this reconciliation period?"
+                            description={`Locking "${p.periodLabel}" is irreversible. Once locked, no transactions in this period can be edited, re-matched, or deleted. This action is permanent and cannot be undone without platform administrator access.`}
+                            confirmLabel="Lock Period"
+                            onConfirm={() => updatePeriod.mutate({ id: p.id, action: "lock" })}
+                          />
                         )}
                         {p.status === "locked" && (
                           <Button size="icon" variant="ghost" title="Reopen (Platform admin only)" onClick={() => updatePeriod.mutate({ id: p.id, action: "reopen" })}>
@@ -602,6 +632,7 @@ export default function FinancialReconciliationPage() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

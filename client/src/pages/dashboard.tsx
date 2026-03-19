@@ -19,6 +19,9 @@ import {
   UserPlus,
   BookOpen,
   Sparkles,
+  CheckCircle2,
+  Circle,
+  ChevronRight,
 } from "lucide-react";
 import { SetupWizard } from "@/components/setup-wizard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -384,6 +387,22 @@ export default function DashboardPage() {
     queryKey: alertsQueryKey,
   });
 
+  const { data: onboardingState } = useQuery<{
+    state: "not-started" | "in-progress" | "blocked" | "complete";
+    scorePercent: number;
+    remediationItems: Array<{ label: string; href: string; summary: string }>;
+    components: {
+      unitsConfigured: { score: number; total: number; completed: number };
+      ownerDataCollected: { score: number; total: number; completed: number };
+      boardMembersConfigured: { score: number; total: number; completed: number };
+      paymentMethodsConfigured: { score: number; total: number; completed: number };
+      communicationTemplatesConfigured: { score: number; total: number; completed: number };
+    };
+  }>({
+    queryKey: [activeAssociationId ? `/api/onboarding/state?associationId=${activeAssociationId}` : null],
+    enabled: Boolean(activeAssociationId),
+  });
+
   const cards = [
     {
       title: "Associations",
@@ -493,6 +512,53 @@ export default function DashboardPage() {
       </div>
 
       <QuickActions activeAssociationId={activeAssociationId} onNewAssociation={() => setWizardOpen(true)} adminRole={adminRole} />
+
+      {activeAssociationId && onboardingState && onboardingState.state !== "complete" && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+                Association Setup
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium">{onboardingState.scorePercent}%</div>
+                <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${onboardingState.scorePercent}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Complete these steps to fully configure your association.
+            </p>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-1">
+              {[
+                { label: "Units configured", done: onboardingState.components.unitsConfigured.completed > 0, href: "/app/units" },
+                { label: "Owner data collected", done: onboardingState.components.ownerDataCollected.total === onboardingState.components.ownerDataCollected.completed, href: "/app/association-context" },
+                { label: "Board members configured", done: onboardingState.components.boardMembersConfigured.completed > 0, href: "/app/board" },
+                { label: "Payment methods configured", done: onboardingState.components.paymentMethodsConfigured.completed > 0, href: "/app/financial/foundation" },
+                { label: "Communication templates configured", done: onboardingState.components.communicationTemplatesConfigured.completed > 0, href: "/app/communications" },
+              ].map((step) => (
+                <Link key={step.label} href={step.href}>
+                  <div className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors hover:bg-muted/50 ${step.done ? "text-muted-foreground" : ""}`}>
+                    {step.done
+                      ? <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+                      : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    }
+                    <span className={step.done ? "line-through" : "font-medium"}>{step.label}</span>
+                    {!step.done && <ChevronRight className="h-3 w-3 ml-auto text-muted-foreground" />}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <AlertsPanel
         alerts={alerts}

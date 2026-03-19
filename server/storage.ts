@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
-import { randomBytes } from "crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { execFile } from "child_process";
 import { readFile } from "fs/promises";
 import path from "path";
@@ -330,6 +330,131 @@ function maskSecret(value: string): string {
   if (!trimmed) return "";
   if (trimmed.length <= 6) return "*".repeat(trimmed.length);
   return `${trimmed.slice(0, 4)}...${trimmed.slice(-2)}`;
+}
+
+type EncryptedGatewaySecret = {
+  alg: "aes-256-gcm";
+  iv: string;
+  tag: string;
+  ciphertext: string;
+};
+
+type PaymentGatewayCredentialMetadata = {
+  encryptedSecretKey?: EncryptedGatewaySecret | null;
+  encryptedWebhookSecret?: EncryptedGatewaySecret | null;
+  verification?: {
+    provider: "stripe" | "other";
+    mode: "live-account" | "structural";
+    accountId?: string | null;
+    livemode?: boolean | null;
+    verifiedAt: string;
+  };
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getGatewayEncryptionKey(): Buffer {
+  const raw = process.env.PAYMENT_GATEWAY_ENCRYPTION_KEY?.trim();
+  if (!raw) {
+    throw new Error("PAYMENT_GATEWAY_ENCRYPTION_KEY must be set before saving payment gateway credentials");
+  }
+  return createHash("sha256").update(raw).digest();
+}
+
+function encryptGatewaySecret(secret: string): EncryptedGatewaySecret {
+  const key = getGatewayEncryptionKey();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+
+  return {
+    alg: "aes-256-gcm",
+    iv: iv.toString("base64"),
+    tag: tag.toString("base64"),
+    ciphertext: ciphertext.toString("base64"),
+  };
+}
+
+function decryptGatewaySecret(secret: EncryptedGatewaySecret | null | undefined): string | null {
+  if (!secret) return null;
+  if (secret.alg !== "aes-256-gcm") {
+    throw new Error("Unsupported gateway secret encryption algorithm");
+  }
+  const key = getGatewayEncryptionKey();
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    key,
+    Buffer.from(secret.iv, "base64"),
+  );
+  decipher.setAuthTag(Buffer.from(secret.tag, "base64"));
+  const plaintext = Buffer.concat([
+    decipher.update(Buffer.from(secret.ciphertext, "base64")),
+    decipher.final(),
+  ]);
+  return plaintext.toString("utf8");
+}
+
+function sanitizePaymentGatewayMetadata(metadataJson: unknown): unknown {
+  if (!isRecord(metadataJson)) return metadataJson;
+  const sanitized = { ...metadataJson };
+  delete sanitized._gatewayCredentials;
+  return sanitized;
+}
+
+function sanitizePaymentGatewayConnection(connection: PaymentGatewayConnection): PaymentGatewayConnection {
+  return {
+    ...connection,
+    metadataJson: sanitizePaymentGatewayMetadata(connection.metadataJson),
+  };
+}
+
+async function verifyStripeGatewayCredentials(payload: {
+  publishableKey: string;
+  secretKey: string;
+  providerAccountId: string | null;
+}): Promise<{ accountId: string; livemode: boolean; checks: string[] }> {
+  const checks: string[] = [];
+  if (!payload.publishableKey.startsWith("pk_")) {
+    throw new Error("Stripe publishable key must start with pk_");
+  }
+  if (!payload.secretKey.startsWith("sk_")) {
+    throw new Error("Stripe secret key must start with sk_");
+  }
+
+  const keyMode = payload.secretKey.startsWith("sk_live_") ? "live" : payload.secretKey.startsWith("sk_test_") ? "test" : "unknown";
+  const publishableMode = payload.publishableKey.startsWith("pk_live_") ? "live" : payload.publishableKey.startsWith("pk_test_") ? "test" : "unknown";
+  if (keyMode !== "unknown" && publishableMode !== "unknown" && keyMode !== publishableMode) {
+    throw new Error("Stripe publishable and secret keys must both be test or both be live");
+  }
+
+  const response = await fetch("https://api.stripe.com/v1/account", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${payload.secretKey}`,
+    },
+  });
+
+  const body = await response.json().catch(() => null) as Record<string, unknown> | null;
+  if (!response.ok || !body || typeof body.id !== "string") {
+    const providerMessage =
+      body && isRecord(body.error) && typeof body.error.message === "string"
+        ? body.error.message
+        : "Stripe rejected the provided credentials";
+    throw new Error(`Stripe live verification failed: ${providerMessage}`);
+  }
+
+  const accountId = body.id;
+  const livemode = Boolean(body.livemode);
+  if (payload.providerAccountId && payload.providerAccountId !== accountId) {
+    throw new Error(`Stripe account mismatch: provided ${payload.providerAccountId} but key belongs to ${accountId}`);
+  }
+
+  checks.push(`Verified Stripe account ${accountId} via live API call.`);
+  checks.push(`Account mode: ${livemode ? "live" : "test"}.`);
+  return { accountId, livemode, checks };
 }
 
 function normalizeCurrency(value: unknown): string {
@@ -2898,6 +3023,15 @@ export interface IStorage {
   createPaymentMethodConfig(data: InsertPaymentMethodConfig): Promise<PaymentMethodConfig>;
   updatePaymentMethodConfig(id: string, data: Partial<InsertPaymentMethodConfig>): Promise<PaymentMethodConfig | undefined>;
   getPaymentGatewayConnections(associationId?: string): Promise<PaymentGatewayConnection[]>;
+  getActivePaymentGatewayConnection(payload: {
+    associationId: string;
+    provider?: "stripe" | "other" | null;
+  }): Promise<{
+    connection: PaymentGatewayConnection;
+    publishableKey: string | null;
+    secretKey: string | null;
+    webhookSecret: string | null;
+  } | null>;
   validateAndUpsertPaymentGatewayConnection(payload: {
     associationId: string;
     provider: "stripe" | "other";
@@ -6135,13 +6269,51 @@ export class DatabaseStorage implements IStorage {
 
   async getPaymentGatewayConnections(associationId?: string): Promise<PaymentGatewayConnection[]> {
     if (!associationId) {
-      return db.select().from(paymentGatewayConnections).orderBy(desc(paymentGatewayConnections.updatedAt));
+      const rows = await db.select().from(paymentGatewayConnections).orderBy(desc(paymentGatewayConnections.updatedAt));
+      return rows.map((row) => sanitizePaymentGatewayConnection(row));
     }
-    return db
+    const rows = await db
       .select()
       .from(paymentGatewayConnections)
       .where(eq(paymentGatewayConnections.associationId, associationId))
       .orderBy(desc(paymentGatewayConnections.updatedAt));
+    return rows.map((row) => sanitizePaymentGatewayConnection(row));
+  }
+
+  async getActivePaymentGatewayConnection(payload: {
+    associationId: string;
+    provider?: "stripe" | "other" | null;
+  }): Promise<{
+    connection: PaymentGatewayConnection;
+    publishableKey: string | null;
+    secretKey: string | null;
+    webhookSecret: string | null;
+  } | null> {
+    const providerFilter = payload.provider ?? null;
+    const rows = await db
+      .select()
+      .from(paymentGatewayConnections)
+      .where(and(
+        eq(paymentGatewayConnections.associationId, payload.associationId),
+        eq(paymentGatewayConnections.isActive, 1),
+        providerFilter ? eq(paymentGatewayConnections.provider, providerFilter) : undefined,
+      ))
+      .orderBy(desc(paymentGatewayConnections.updatedAt))
+      .limit(1);
+    const connection = rows[0];
+    if (!connection) return null;
+
+    const metadata = isRecord(connection.metadataJson) ? connection.metadataJson : {};
+    const gatewayCredentials = isRecord(metadata._gatewayCredentials)
+      ? metadata._gatewayCredentials as PaymentGatewayCredentialMetadata
+      : null;
+
+    return {
+      connection: sanitizePaymentGatewayConnection(connection),
+      publishableKey: connection.publishableKey?.trim() || null,
+      secretKey: decryptGatewaySecret(gatewayCredentials?.encryptedSecretKey ?? null),
+      webhookSecret: decryptGatewaySecret(gatewayCredentials?.encryptedWebhookSecret ?? null),
+    };
   }
 
   async validateAndUpsertPaymentGatewayConnection(payload: {
@@ -6164,6 +6336,8 @@ export class DatabaseStorage implements IStorage {
     const publishableKey = payload.publishableKey?.trim() || null;
     const secretKey = payload.secretKey?.trim() || null;
     const webhookSecret = payload.webhookSecret?.trim() || null;
+    const baseMetadata = isRecord(payload.metadataJson) ? { ...payload.metadataJson } : {};
+    let validationMessage = "Gateway credentials passed validation.";
 
     if (payload.provider === "stripe") {
       if (!publishableKey || !publishableKey.startsWith("pk_")) checks.push("Stripe publishable key must start with pk_");
@@ -6179,17 +6353,49 @@ export class DatabaseStorage implements IStorage {
       throw new Error(checks.join("; "));
     }
 
+    let resolvedProviderAccountId = providerAccountId;
+    const verification: PaymentGatewayCredentialMetadata["verification"] = {
+      provider: payload.provider,
+      mode: payload.provider === "stripe" ? "live-account" : "structural",
+      verifiedAt: new Date().toISOString(),
+    };
+
+    if (payload.provider === "stripe") {
+      const verified = await verifyStripeGatewayCredentials({
+        publishableKey: publishableKey!,
+        secretKey: secretKey!,
+        providerAccountId,
+      });
+      resolvedProviderAccountId = verified.accountId;
+      verification.accountId = verified.accountId;
+      verification.livemode = verified.livemode;
+      checks.push(...verified.checks);
+      validationMessage = `Stripe credentials verified for account ${verified.accountId}.`;
+    } else {
+      checks.push("Stored non-Stripe provider credentials after structural validation.");
+      validationMessage = "Provider credentials passed structural validation and were stored securely.";
+    }
+
+    const credentialMetadata: PaymentGatewayCredentialMetadata = {
+      encryptedSecretKey: secretKey ? encryptGatewaySecret(secretKey) : null,
+      encryptedWebhookSecret: webhookSecret ? encryptGatewaySecret(webhookSecret) : null,
+      verification,
+    };
+
     const values: InsertPaymentGatewayConnection = {
       associationId: payload.associationId,
       provider: payload.provider,
-      providerAccountId,
+      providerAccountId: resolvedProviderAccountId,
       publishableKey,
       secretKeyMasked: secretKey ? maskSecret(secretKey) : null,
       webhookSecretMasked: webhookSecret ? maskSecret(webhookSecret) : null,
       validationStatus: "valid",
-      validationMessage: "Gateway credentials passed structural validation.",
+      validationMessage,
       isActive: payload.isActive === false ? 0 : 1,
-      metadataJson: payload.metadataJson ?? null,
+      metadataJson: {
+        ...baseMetadata,
+        _gatewayCredentials: credentialMetadata,
+      },
     };
 
     const [existing] = await db
@@ -6226,10 +6432,8 @@ export class DatabaseStorage implements IStorage {
 
     return {
       validated: true,
-      checks: [
-        `Validated ${payload.provider} credentials for association ${payload.associationId}.`,
-      ],
-      connection,
+      checks,
+      connection: sanitizePaymentGatewayConnection(connection),
     };
   }
 

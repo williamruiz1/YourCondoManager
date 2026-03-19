@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Association, SpecialAssessment } from "@shared/schema";
+import type { SpecialAssessment } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +43,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calculator, Plus } from "lucide-react";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { Textarea } from "@/components/ui/textarea";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const createSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -54,15 +59,35 @@ const createSchema = z.object({
   notes: z.string().optional(),
 });
 
+function InstallmentPreview({ form }: { form: ReturnType<typeof useForm<any>> }) {
+  const totalAmount = form.watch("totalAmount");
+  const installmentCount = form.watch("installmentCount");
+  const perInstallment = totalAmount > 0 && installmentCount > 0
+    ? (Number(totalAmount) / Number(installmentCount)).toFixed(2)
+    : null;
+
+  if (!perInstallment) return null;
+  return (
+    <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm flex items-center justify-between">
+      <span className="text-muted-foreground">Per installment</span>
+      <span className="font-semibold">${perInstallment}</span>
+    </div>
+  );
+}
+
 export default function FinancialAssessmentsPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
 
   const { data: rows, isLoading } = useQuery<SpecialAssessment[]>({
-    queryKey: ["/api/financial/assessments"],
+    queryKey: ["/api/financial/assessments", activeAssociationId],
+    queryFn: async () => {
+      const params = activeAssociationId ? `?associationId=${activeAssociationId}` : "";
+      const res = await apiRequest("GET", `/api/financial/assessments${params}`);
+      return res.json();
+    },
   });
-  const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
 
   const form = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
@@ -122,122 +147,125 @@ export default function FinancialAssessmentsPage() {
     },
   });
 
-  const assocNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const assoc of associations ?? []) {
-      map.set(assoc.id, assoc.name);
-    }
-    return map;
-  }, [associations]);
-
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Special Assessments</h1>
-          <p className="text-muted-foreground">Track one-time or installment-based assessments for the current association context.</p>
-        </div>
-        <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) form.reset(); }}>
-          <DialogTrigger asChild>
-            <Button disabled={!activeAssociationId}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Assessment
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Special Assessment</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form className="space-y-4" onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}>
-                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                  Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
-                </div>
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Special Assessments"
+        summary="Track one-time or installment-based assessments for the active association."
+        eyebrow="Finance"
+        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Special Assessments" }]}
+        actions={
+          <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) form.reset(); }}>
+            <DialogTrigger asChild>
+              <Button disabled={!activeAssociationId}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Assessment
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create Special Assessment</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form className="space-y-4" onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}>
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                    Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+                  </div>
 
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl><Input placeholder="2026 Roof Repair Assessment" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
-                    name="totalAmount"
+                    name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Total Amount</FormLabel>
-                        <FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl>
+                        <FormLabel>Name</FormLabel>
+                        <FormControl><Input placeholder="2026 Roof Repair Assessment" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="totalAmount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Total Amount</FormLabel>
+                          <FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="installmentCount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Installments</FormLabel>
+                          <FormControl><Input type="number" min="1" max="60" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <InstallmentPreview form={form} />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="startDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Start Date</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="endDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>End Date (Optional)</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
                   <FormField
                     control={form.control}
-                    name="installmentCount"
+                    name="notes"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Installments</FormLabel>
-                        <FormControl><Input type="number" min="1" max="60" {...field} /></FormControl>
+                        <FormLabel>Notes</FormLabel>
+                        <FormControl><Textarea placeholder="Optional assessment context, board resolution reference, etc." rows={3} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="startDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Start Date</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="endDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>End Date (Optional)</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Notes</FormLabel>
-                      <FormControl><Input placeholder="Optional assessment context" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <Button type="submit" className="w-full" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? "Saving..." : "Create Assessment"}
-                </Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
+                  <Button type="submit" className="w-full" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? "Saving..." : "Create Assessment"}
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation="Assessments are scoped to the active association. Select one to view and create assessments."
+      />
 
       <Card>
         <CardContent className="p-0">
@@ -257,6 +285,7 @@ export default function FinancialAssessmentsPage() {
                   <TableHead>Association</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Installments</TableHead>
+                  <TableHead>Per Installment</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
@@ -265,19 +294,34 @@ export default function FinancialAssessmentsPage() {
                 {rows.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{assocNameById.get(row.associationId) ?? "Unknown"}</TableCell>
+                    <TableCell className="text-muted-foreground">{activeAssociationName || row.associationId.slice(0, 8)}</TableCell>
                     <TableCell>${row.totalAmount.toFixed(2)}</TableCell>
                     <TableCell>{row.installmentCount}</TableCell>
+                    <TableCell>${(row.totalAmount / row.installmentCount).toFixed(2)}</TableCell>
                     <TableCell>{row.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}</TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => toggleMutation.mutate(row)}
-                        disabled={toggleMutation.isPending}
-                      >
-                        {row.isActive ? "Deactivate" : "Activate"}
-                      </Button>
+                      {row.isActive ? (
+                        <ConfirmDialog
+                          trigger={
+                            <Button variant="outline" size="sm" disabled={toggleMutation.isPending}>
+                              Deactivate
+                            </Button>
+                          }
+                          title="Deactivate Assessment?"
+                          description={`Deactivating "${row.name}" will stop future installments from being posted. If installments have already been partially posted, this may create accounting inconsistencies. This action can be reversed by reactivating the assessment.`}
+                          confirmLabel="Deactivate"
+                          onConfirm={() => toggleMutation.mutate(row)}
+                        />
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleMutation.mutate(row)}
+                          disabled={toggleMutation.isPending}
+                        >
+                          Activate
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -286,6 +330,7 @@ export default function FinancialAssessmentsPage() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

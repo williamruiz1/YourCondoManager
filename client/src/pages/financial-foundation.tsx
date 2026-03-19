@@ -3,12 +3,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import type { Association, FinancialAccount, FinancialCategory, FinancialApproval, PartialPaymentRule } from "@shared/schema";
+import { Link } from "wouter";
+import { ArrowRight } from "lucide-react";
+import type { FinancialAccount, FinancialCategory, FinancialApproval } from "@shared/schema";
 import { Textarea } from "@/components/ui/textarea";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
 
 const accountSchema = z.object({
   associationId: z.string().min(1),
@@ -42,57 +46,21 @@ export default function FinancialFoundationPage() {
   const [approvalForm, setApprovalForm] = useState({ changeType: "budget-amendment", changeDescription: "", changeAmount: "", notes: "" });
   const [approvalStatusFilter, setApprovalStatusFilter] = useState<"pending" | "all">("pending");
 
-  const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
-  const { data: accounts } = useQuery<FinancialAccount[]>({ queryKey: ["/api/financial/accounts"] });
-  const { data: categories } = useQuery<FinancialCategory[]>({ queryKey: ["/api/financial/categories"] });
-
-  const { data: partialPaymentRule, refetch: refetchPartialRule } = useQuery<PartialPaymentRule | null>({
-    queryKey: ["/api/financial/partial-payment-rules", activeAssociationId],
+  const { data: accounts } = useQuery<FinancialAccount[]>({
+    queryKey: ["/api/financial/accounts", activeAssociationId],
     queryFn: async () => {
-      if (!activeAssociationId) return null;
-      const res = await apiRequest("GET", `/api/financial/partial-payment-rules?associationId=${activeAssociationId}`);
+      const params = activeAssociationId ? `?associationId=${activeAssociationId}` : "";
+      const res = await apiRequest("GET", `/api/financial/accounts${params}`);
       return res.json();
     },
-    enabled: Boolean(activeAssociationId),
   });
-  const [partialRuleForm, setPartialRuleForm] = useState({
-    allowPartialPayments: true,
-    minimumPaymentAmount: "",
-    minimumPaymentPercent: "",
-    requirePaymentConfirmation: true,
-    sendReceiptEmail: true,
-  });
-
-  useEffect(() => {
-    if (partialPaymentRule) {
-      setPartialRuleForm({
-        allowPartialPayments: Boolean(partialPaymentRule.allowPartialPayments),
-        minimumPaymentAmount: partialPaymentRule.minimumPaymentAmount != null ? String(partialPaymentRule.minimumPaymentAmount) : "",
-        minimumPaymentPercent: partialPaymentRule.minimumPaymentPercent != null ? String(partialPaymentRule.minimumPaymentPercent) : "",
-        requirePaymentConfirmation: Boolean(partialPaymentRule.requirePaymentConfirmation),
-        sendReceiptEmail: Boolean(partialPaymentRule.sendReceiptEmail),
-      });
-    }
-  }, [partialPaymentRule]);
-
-  const savePartialRule = useMutation({
-    mutationFn: async () => {
-      if (!activeAssociationId) throw new Error("No association selected");
-      const res = await apiRequest("PUT", "/api/financial/partial-payment-rules", {
-        associationId: activeAssociationId,
-        allowPartialPayments: partialRuleForm.allowPartialPayments ? 1 : 0,
-        minimumPaymentAmount: partialRuleForm.minimumPaymentAmount ? parseFloat(partialRuleForm.minimumPaymentAmount) : null,
-        minimumPaymentPercent: partialRuleForm.minimumPaymentPercent ? parseFloat(partialRuleForm.minimumPaymentPercent) : null,
-        requirePaymentConfirmation: partialRuleForm.requirePaymentConfirmation ? 1 : 0,
-        sendReceiptEmail: partialRuleForm.sendReceiptEmail ? 1 : 0,
-      });
+  const { data: categories } = useQuery<FinancialCategory[]>({
+    queryKey: ["/api/financial/categories", activeAssociationId],
+    queryFn: async () => {
+      const params = activeAssociationId ? `?associationId=${activeAssociationId}` : "";
+      const res = await apiRequest("GET", `/api/financial/categories${params}`);
       return res.json();
     },
-    onSuccess: async () => {
-      await refetchPartialRule();
-      toast({ title: "Partial payment rules saved" });
-    },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const { data: approvals = [], refetch: refetchApprovals } = useQuery<FinancialApproval[]>({
@@ -183,11 +151,20 @@ export default function FinancialFoundationPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Finance Foundation</h1>
-        <p className="text-muted-foreground">Configure financial accounts and categories for the current association context.</p>
-      </div>
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Chart of Accounts"
+        summary="Configure financial accounts and categories for the active association. Complete this step before setting up fee schedules and assessments."
+        eyebrow="Finance"
+        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Chart of Accounts" }]}
+      />
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation="Accounts and categories are scoped to the active association. Select one to manage its chart of accounts."
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
@@ -214,14 +191,20 @@ export default function FinancialFoundationPage() {
                 </DialogContent>
               </Dialog>
             </div>
-            <Table>
-              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Code</TableHead><TableHead>Type</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {(accounts ?? []).map((a) => (
-                  <TableRow key={a.id}><TableCell>{a.name}</TableCell><TableCell>{a.accountCode || "-"}</TableCell><TableCell><Badge variant="secondary">{a.accountType}</Badge></TableCell></TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {(accounts ?? []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                <p className="text-sm">No accounts yet. Add your first account to begin.</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Code</TableHead><TableHead>Type</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {(accounts ?? []).map((a) => (
+                    <TableRow key={a.id}><TableCell>{a.name}</TableCell><TableCell>{a.accountCode || "-"}</TableCell><TableCell><Badge variant="secondary">{a.accountType}</Badge></TableCell></TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
@@ -248,14 +231,20 @@ export default function FinancialFoundationPage() {
                 </DialogContent>
               </Dialog>
             </div>
-            <Table>
-              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Type</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {(categories ?? []).map((c) => (
-                  <TableRow key={c.id}><TableCell>{c.name}</TableCell><TableCell><Badge variant="secondary">{c.categoryType}</Badge></TableCell></TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {(categories ?? []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                <p className="text-sm">No categories yet. Add your first category to begin.</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Type</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {(categories ?? []).map((c) => (
+                    <TableRow key={c.id}><TableCell>{c.name}</TableCell><TableCell><Badge variant="secondary">{c.categoryType}</Badge></TableCell></TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -360,85 +349,26 @@ export default function FinancialFoundationPage() {
         </CardContent>
       </Card>
 
-      {/* Partial Payment Rules */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Partial Payment Rules</CardTitle>
-          <CardDescription>Control whether owners can make partial payments and set minimum payment thresholds</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!activeAssociationId ? (
-            <div className="text-sm text-muted-foreground">Select an association to manage payment rules.</div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between rounded-md border p-3">
-                  <div>
-                    <div className="text-sm font-medium">Allow Partial Payments</div>
-                    <div className="text-xs text-muted-foreground">Allow owners to pay less than the full balance</div>
-                  </div>
-                  <Switch
-                    checked={partialRuleForm.allowPartialPayments}
-                    onCheckedChange={v => setPartialRuleForm(f => ({ ...f, allowPartialPayments: v }))}
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-md border p-3">
-                  <div>
-                    <div className="text-sm font-medium">Require Confirmation</div>
-                    <div className="text-xs text-muted-foreground">Show confirmation dialog before payment</div>
-                  </div>
-                  <Switch
-                    checked={partialRuleForm.requirePaymentConfirmation}
-                    onCheckedChange={v => setPartialRuleForm(f => ({ ...f, requirePaymentConfirmation: v }))}
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-md border p-3">
-                  <div>
-                    <div className="text-sm font-medium">Send Receipt Email</div>
-                    <div className="text-xs text-muted-foreground">Email owner a receipt after payment</div>
-                  </div>
-                  <Switch
-                    checked={partialRuleForm.sendReceiptEmail}
-                    onCheckedChange={v => setPartialRuleForm(f => ({ ...f, sendReceiptEmail: v }))}
-                  />
-                </div>
+      {/* Forward guidance */}
+      <Card className="border-dashed">
+        <CardContent className="p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0 mt-0.5">
+              <ArrowRight className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="font-semibold text-sm">Chart of Accounts set up? Next: Fee Schedules</div>
+              <div className="text-sm text-muted-foreground mt-0.5">
+                Configure recurring charges to automatically post to owner ledgers each month.
               </div>
-              {partialRuleForm.allowPartialPayments && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Minimum Payment Amount ($)</label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="No minimum"
-                      value={partialRuleForm.minimumPaymentAmount}
-                      onChange={e => setPartialRuleForm(f => ({ ...f, minimumPaymentAmount: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Minimum Payment % of Balance</label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      placeholder="No minimum %"
-                      value={partialRuleForm.minimumPaymentPercent}
-                      onChange={e => setPartialRuleForm(f => ({ ...f, minimumPaymentPercent: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              )}
-              <div className="flex justify-end">
-                <Button size="sm" onClick={() => savePartialRule.mutate()} disabled={savePartialRule.isPending}>
-                  {savePartialRule.isPending ? "Saving…" : "Save Rules"}
-                </Button>
-              </div>
-            </>
-          )}
+              <Link href="/app/financial/recurring-charges" className="inline-flex items-center gap-1 mt-2 text-sm text-primary hover:underline font-medium">
+                Go to Fee Schedules <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

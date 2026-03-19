@@ -228,3 +228,93 @@ Verify before closure.
 Also:
 - when repeated agent setup work appears, convert it into backbone automation work instead of normalizing the repetition
 - update the roadmap and durable planning artifacts so the next interaction starts with more context and less rediscovery
+
+## Active Roadmap Project: Mobile Optimization
+
+### Project Description
+Optimize the platform for mobile use across owner, board, manager, admin, and shared communication/document experiences so the product works as a primary responsive web application rather than a desktop-first interface squeezed into small screens.
+
+### Workstream 1: Mobile Foundations And Shared UI Standards
+Tasks:
+- Audit shared spacing, typography, touch target, and breakpoint patterns across shared components and key pages
+- Define mobile layout standards for page headers, section spacing, cards, tab bars, drawers, button groups, and sticky actions
+- Standardize responsive behavior for tables by converting dense tables into prioritized mobile list or card patterns
+- Standardize responsive behavior for forms with single-column defaults, persistent labels, inline validation, and keyboard-safe layouts
+- Standardize mobile-safe patterns for filters and low-frequency controls using drawers, sheets, or expandable sections
+- Create a reusable mobile section shell for pages with headers, status, actions, and long content
+- Document the mobile UI rules in a durable shared guidance artifact
+
+### Workstream 2: Global Navigation, Authentication, And Session Flows
+Tasks:
+- Review mobile behavior for login, OTP, association selection, and workspace switching
+- Simplify stacked auth screens so each step fits within the viewport cleanly
+- Standardize mobile navigation patterns for owner, board, manager, and admin contexts
+- Review fixed headers, sticky submenus, and bottom navigation so they do not overlap content
+- Ensure tab changes and subpage changes reset or preserve scroll intentionally
+- Make portal context switching between units and associations mobile-friendly
+- Verify safe-area spacing and bottom-nav behavior on phone-sized screens
+
+### Workstream 3: Owner Portal Mobile Experience
+Tasks:
+- Audit `overview`, `financials`, `maintenance`, `documents`, and `notices` on common mobile widths
+- Refine overview subpage layout so summary, owner info, and occupancy work cleanly in narrow viewports
+- Ensure owner info and occupancy forms are single-column, labeled, and easy to edit and save on mobile
+- Optimize unit selection for touch interaction and horizontal scrolling
+- Simplify financials into a statement-first mobile flow with balance, pay action, recent transactions, and payment setup
+- Convert dense financial history tables into mobile-friendly transaction cards or prioritized rows
+- Review maintenance submission and request history for attachment handling, long text, and status readability
+- Review document and notice views for readable typography, download actions, and expansion behavior
+- Verify mobile behavior for bottom tab navigation and long-scrolling content
+
+### Workstream 4: Board Workspace Mobile Experience
+Tasks:
+- Audit board landing, agenda, tasks, meeting summaries, approvals, packages, and activity views on mobile
+- Identify board workflows that should support mobile review versus desktop-only authoring
+- Collapse dense governance dashboards into prioritized cards with progressive disclosure
+- Convert board activity feeds and approval queues into mobile-first list patterns
+- Review attachments, packets, and long-form content for readable mobile access
+- Ensure board actions such as approve, review, comment, and open detail remain reachable on mobile
+- Define which board workflows should explicitly show desktop-preferred messaging
+
+### Workstream 5: Manager And Admin Workspace Mobile Experience
+Tasks:
+- Audit admin dashboard, work queues, maintenance triage, communications, financial review, and association switching on mobile
+- Break large multi-panel dashboards into mobile stacks ordered by urgency
+- Move filter-heavy or configuration-heavy controls into drawers or dedicated subviews
+- Convert operational tables into mobile queue cards with visible status, scope, and next action
+- Review multi-step admin forms for mobile-safe progression and save states
+- Ensure core operational tasks can be completed on mobile: acknowledge, assign, update status, send notice, review account, open record
+- Mark workflows that are truly desktop-first and provide explicit handoff messaging instead of poor mobile fallbacks
+
+### Workstream 6: Resident, Shared Content, And Cross-Role Communication Surfaces
+Tasks:
+- Audit notices, announcements, documents, communication history, and resident-facing content on mobile
+- Improve readability for message cards, timelines, attachments, and metadata
+- Ensure document previews, download actions, and filenames behave cleanly on small screens
+- Standardize mobile treatment for badges, statuses, timestamps, and association or unit labels
+- Review empty states and success states so they stay concise on small screens
+- Ensure shared content components do not rely on desktop-only table layouts
+
+### Workstream 7: Data Density, Performance, And Interaction Quality
+Tasks:
+- Identify screens with excessive card stacking, redundant summaries, or repeated data blocks
+- Reduce duplicate status surfaces and keep one primary decision area per screen
+- Audit heavy tables, long feeds, and expensive panels for mobile performance impact
+- Improve perceived performance with progressive loading and lighter default states where needed
+- Review tap targets, scroll traps, nested scroll areas, and overlap with sticky UI
+- Ensure modals, drawers, selects, and date pickers behave correctly with the mobile keyboard
+
+### Workstream 8: QA, Verification, And Rollout
+Tasks:
+- Define a core mobile viewport matrix for 320px, 375px, 390px, 430px, and 768px widths
+- Create a role-based mobile test checklist for owner, board, manager, admin, and shared public/auth flows
+- Add manual verification scripts for the highest-frequency mobile journeys
+- Capture before and after screenshots for major workstreams
+- Identify candidate UI regression coverage for mobile-critical flows if automation is added
+- Establish a release gate that requires mobile verification on touched role surfaces
+- Track unresolved desktop-only workflows explicitly so they are not misrepresented as mobile-ready
+
+### Priority Guidance
+- P0: auth, navigation, owner portal overview, owner portal financials, owner portal maintenance, shared form standards, and mobile-safe action placement
+- P1: admin queues, shared content surfaces, documents and notices, mobile transaction history, and manager triage flows
+- P2: board deep workflows, desktop-preferred boundary cleanup, and longer-tail responsive refinements

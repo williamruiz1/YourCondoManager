@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { lazy, Suspense, useEffect, useRef } from "react";
+import { ChevronDown, LogOut } from "lucide-react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
@@ -9,7 +10,15 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AssociationProvider, useAssociationContext } from "@/context/association-context";
 import { GlobalCommandPalette } from "@/components/global-command-palette";
 import { canAccessWipRoute } from "@/lib/wip-features";
@@ -71,6 +80,138 @@ type AuthSession = {
     role: AdminRole;
   } | null;
 };
+
+type WorkspaceSectionTab = {
+  label: string;
+  href: string;
+  matchPrefixes?: string[];
+  roles?: AdminRole[];
+};
+
+type WorkspaceSectionTabGroup = {
+  id: string;
+  matchPrefixes: string[];
+  testId: string;
+  tabs: WorkspaceSectionTab[];
+};
+
+const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
+  {
+    id: "residential",
+    matchPrefixes: ["/app/units", "/app/persons"],
+    testId: "tabs-residential-inpage",
+    tabs: [
+      { label: "Buildings & Units", href: "/app/units", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "People", href: "/app/persons", roles: ["platform-admin", "board-admin", "manager"] },
+    ],
+  },
+  {
+    id: "governance",
+    matchPrefixes: ["/app/board", "/app/governance/board-packages", "/app/governance/meetings", "/app/governance/compliance"],
+    testId: "tabs-governance-inpage",
+    tabs: [
+      { label: "Board Members", href: "/app/board", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Board Packages", href: "/app/governance/board-packages", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Meetings", href: "/app/governance/meetings", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Compliance", href: "/app/governance/compliance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+    ],
+  },
+  {
+    id: "finance-setup",
+    matchPrefixes: ["/app/financial/foundation", "/app/financial/recurring-charges", "/app/financial/assessments", "/app/financial/late-fees", "/app/financial/utilities"],
+    testId: "tabs-finance-setup-inpage",
+    tabs: [
+      { label: "Setup", href: "/app/financial/foundation", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Fee Schedules", href: "/app/financial/recurring-charges", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Assessments", href: "/app/financial/assessments", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Late Fees", href: "/app/financial/late-fees", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Utilities", href: "/app/financial/utilities", roles: ["platform-admin", "board-admin", "manager"] },
+    ],
+  },
+  {
+    id: "owner-accounts",
+    matchPrefixes: ["/app/financial/ledger", "/app/financial/invoices", "/app/financial/payments"],
+    testId: "tabs-owner-accounts-inpage",
+    tabs: [
+      { label: "Owner Ledger", href: "/app/financial/ledger", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Invoices", href: "/app/financial/invoices", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Payments", href: "/app/financial/payments", roles: ["platform-admin", "board-admin", "manager"] },
+    ],
+  },
+  {
+    id: "oversight-reporting",
+    matchPrefixes: ["/app/financial/budgets", "/app/financial/reports", "/app/financial/reconciliation"],
+    testId: "tabs-oversight-reporting-inpage",
+    tabs: [
+      { label: "Budgets", href: "/app/financial/budgets", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Reports", href: "/app/financial/reports", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Reconciliation", href: "/app/financial/reconciliation", roles: ["platform-admin", "board-admin", "manager"] },
+    ],
+  },
+  {
+    id: "service-delivery",
+    matchPrefixes: ["/app/work-orders", "/app/maintenance-schedules", "/app/inspections"],
+    testId: "tabs-service-delivery-inpage",
+    tabs: [
+      { label: "Work Orders", href: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Maintenance Schedules", href: "/app/maintenance-schedules", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Inspections", href: "/app/inspections", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+    ],
+  },
+  {
+    id: "vendor-risk",
+    matchPrefixes: ["/app/vendors", "/app/insurance"],
+    testId: "tabs-vendor-risk-inpage",
+    tabs: [
+      { label: "Vendors", href: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Insurance Policies", href: "/app/insurance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+    ],
+  },
+  {
+    id: "resident-communications",
+    matchPrefixes: ["/app/communications", "/app/announcements", "/app/resident-feedback", "/app/ai/ingestion"],
+    testId: "tabs-resident-communications-inpage",
+    tabs: [
+      { label: "Communications", href: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Announcements", href: "/app/announcements", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Resident Feedback", href: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "AI Ingestion", href: "/app/ai/ingestion", roles: ["platform-admin", "board-admin", "manager"] },
+    ],
+  },
+  {
+    id: "platform",
+    matchPrefixes: ["/app/platform/controls", "/app/admin", "/portal"],
+    testId: "tabs-platform-inpage",
+    tabs: [
+      { label: "Platform Controls", href: "/app/platform/controls", roles: ["platform-admin"] },
+      { label: "Admin Roadmap", href: "/app/admin/roadmap", matchPrefixes: ["/app/admin", "/app/admin/roadmap"], roles: ["platform-admin", "board-admin"] },
+      { label: "Executive", href: "/app/admin/executive", roles: ["platform-admin", "board-admin"] },
+      { label: "Admin Users", href: "/app/admin/users", roles: ["platform-admin"] },
+      { label: "Feature Flags", href: "/app/admin/feature-flags", roles: ["platform-admin"] },
+      { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
+    ],
+  },
+];
+
+function formatAdminRole(role: AdminRole) {
+  return role
+    .split("-")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function getUserInitials(email?: string | null) {
+  const source = email?.split("@")[0]?.trim();
+  if (!source) return "CM";
+  const parts = source.split(/[._-]+/).filter(Boolean);
+  if (parts.length === 1) {
+    return source.slice(0, 2).toUpperCase();
+  }
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
 
 function RouteFallback() {
   return (
@@ -284,12 +425,15 @@ function HeaderActions({
   onLogoutGoogleSession: () => Promise<void>;
 }) {
   const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
+  const accountEmail = authSession?.user?.email || authSession?.admin?.email || null;
+  const activeAssociationName =
+    associations.find((association) => association.id === activeAssociationId)?.name ?? "Select association";
 
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
       <GlobalCommandPalette adminRole={adminRole} />
-      <Select value={activeAssociationId} onValueChange={setActiveAssociationId}>
-        <SelectTrigger className="h-8 w-64" data-testid="select-active-association">
+      <Select value={activeAssociationId ?? undefined} onValueChange={setActiveAssociationId}>
+        <SelectTrigger className="h-8 w-full max-w-full sm:w-[220px] lg:w-64" data-testid="select-active-association">
           <SelectValue placeholder="Select association" />
         </SelectTrigger>
         <SelectContent>
@@ -300,46 +444,91 @@ function HeaderActions({
           ))}
         </SelectContent>
       </Select>
-      {adminRole ? <Badge variant="secondary">{adminRole}</Badge> : null}
-      <Button
-        size="sm"
-        variant={authSession?.authenticated ? "outline" : "default"}
-        onClick={onStartGoogleSignIn}
-        data-testid="button-google-signin"
-      >
-        {authSession?.authenticated ? `Google: ${authSession.user?.email || "Signed in"}` : "Sign in with Google"}
-      </Button>
       {authSession?.authenticated ? (
-        <Button size="sm" variant="outline" onClick={() => void onLogoutGoogleSession()} data-testid="button-google-signout">
-          Sign out
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-w-0 max-w-full justify-start gap-2 px-2 sm:max-w-[260px]"
+              data-testid="button-account-menu"
+            >
+              <Avatar className="h-6 w-6">
+                <AvatarFallback className="text-[10px] font-semibold">
+                  {getUserInitials(accountEmail)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="hidden min-w-0 flex-1 text-left sm:flex sm:flex-col">
+                <span className="truncate text-xs font-medium leading-tight">
+                  {accountEmail || "Signed in"}
+                </span>
+                <span className="truncate text-[11px] font-normal leading-tight text-muted-foreground">
+                  {adminRole ? formatAdminRole(adminRole) : activeAssociationName}
+                </span>
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel className="space-y-1">
+              <div className="truncate text-sm">{accountEmail || "Signed in"}</div>
+              {adminRole ? (
+                <div className="text-xs font-normal text-muted-foreground">
+                  {formatAdminRole(adminRole)}
+                </div>
+              ) : null}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => void onLogoutGoogleSession()}
+              data-testid="button-google-signout"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Button size="sm" onClick={onStartGoogleSignIn} data-testid="button-google-signin">
+          Sign in with Google
         </Button>
-      ) : null}
-      <Button asChild size="sm" data-testid="button-open-admin-roadmap-global">
-        <Link href="/app/admin/roadmap">Admin Roadmap</Link>
-      </Button>
+      )}
     </div>
   );
 }
 
-function AdminPageTabs() {
-  const [location] = useLocation();
+function canAccessTab(role: AdminRole | null, tab: WorkspaceSectionTab) {
+  if (!tab.roles?.length) return true;
+  if (!role) return false;
+  return tab.roles.includes(role);
+}
 
-  const tabs = [
-    { label: "Roadmap", href: "/app/admin/roadmap", isActive: location === "/app/admin" || location === "/app/admin/roadmap" },
-    { label: "Executive", href: "/app/admin/executive", isActive: location === "/app/admin/executive" },
-    { label: "Admin Users", href: "/app/admin/users", isActive: location === "/app/admin/users" },
-  ];
+function isTabActive(location: string, href: string) {
+  return location === href || location.startsWith(`${href}/`);
+}
+
+function WorkspaceSectionTabs({ adminRole }: { adminRole: AdminRole | null }) {
+  const [location] = useLocation();
+  const activeGroup = workspaceSectionTabGroups.find((group) =>
+    group.matchPrefixes.some((prefix) => location === prefix || location.startsWith(`${prefix}/`)),
+  );
+
+  if (!activeGroup) return null;
+
+  const visibleTabs = activeGroup.tabs.filter((tab) => canAccessTab(adminRole, tab));
+  if (visibleTabs.length <= 1) return null;
 
   return (
     <div className="border-b px-3 py-2">
-      <div className="flex items-center gap-2" data-testid="tabs-admin-inpage">
-        {tabs.map((tab) => (
+      <div className="flex items-center gap-2 overflow-x-auto" data-testid={activeGroup.testId}>
+        {visibleTabs.map((tab) => (
           <Button
             key={tab.href}
             asChild
             size="sm"
-            variant={tab.isActive ? "default" : "outline"}
-            data-testid={`tab-admin-${tab.label.toLowerCase().replace(/\s+/g, "-")}`}
+            variant={((tab.matchPrefixes ?? [tab.href]).some((prefix) => isTabActive(location, prefix))) ? "default" : "outline"}
+            data-testid={`tab-${activeGroup.id}-${tab.label.toLowerCase().replace(/\s+/g, "-")}`}
           >
             <Link href={tab.href}>{tab.label}</Link>
           </Button>
@@ -350,16 +539,9 @@ function AdminPageTabs() {
 }
 
 function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
-  const [location] = useLocation();
-  const showAdminTabs =
-    location === "/app/admin" ||
-    location === "/app/admin/roadmap" ||
-    location === "/app/admin/executive" ||
-    location === "/app/admin/users";
-
   return (
     <>
-      {showAdminTabs ? <AdminPageTabs /> : null}
+      <WorkspaceSectionTabs adminRole={adminRole} />
       <main className="flex-1 overflow-auto">
         <WorkspaceRouter adminRole={adminRole} />
       </main>
@@ -389,7 +571,7 @@ function WorkspaceShell({
         <div className="flex h-screen w-full">
           <AppSidebar adminRole={adminRole} />
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex h-12 items-center justify-between gap-2 border-b p-2">
+            <header className="flex min-h-12 flex-wrap items-center gap-2 border-b px-3 py-2">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
               <HeaderActions
                 authSession={authSession}
@@ -420,29 +602,42 @@ function AuthAwareApp() {
     },
   });
 
-  useEffect(() => {
+  async function attemptAuthRestore() {
+    const response = await fetch("/api/auth/session/restore", {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      throw new Error("restore-failed");
+    }
+    await refetchAuthSession();
+    queryClient.invalidateQueries();
+  }
+
+  function clearAuthSuccessQueryParam() {
     const params = new URLSearchParams(window.location.search);
-    const authRestore = params.get("authRestore");
-    if (!authRestore) return;
-    window.localStorage.setItem("authRestorePayload", authRestore);
-    params.delete("authRestore");
+    if (!params.has("auth")) return;
+    params.delete("auth");
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
     window.history.replaceState({}, "", nextUrl);
-  }, []);
+  }
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
       if (!event.data || typeof event.data !== "object") return;
-      const payload = event.data as { type?: string; authRestore?: string };
+      const payload = event.data as { type?: string };
       if (payload.type !== "google-oauth-success") return;
-      if (typeof payload.authRestore === "string" && payload.authRestore.trim()) {
-        window.localStorage.setItem("authRestorePayload", payload.authRestore.trim());
-      }
-      queryClient.invalidateQueries();
-      refetchAuthSession();
-      window.location.reload();
+      authRestoreAttemptedRef.current = true;
+      attemptAuthRestore()
+        .then(() => {
+          clearAuthSuccessQueryParam();
+          window.location.reload();
+        })
+        .catch(() => {
+          authRestoreAttemptedRef.current = false;
+        });
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
@@ -451,26 +646,16 @@ function AuthAwareApp() {
   useEffect(() => {
     if (authSession?.authenticated) return;
     if (authRestoreAttemptedRef.current) return;
-    const payload = (window.localStorage.getItem("authRestorePayload") || "").trim();
-    if (!payload) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth") !== "success") return;
 
     authRestoreAttemptedRef.current = true;
-    fetch("/api/auth/session/restore", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ payload }),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          window.localStorage.removeItem("authRestorePayload");
-          return;
-        }
-        await refetchAuthSession();
-        queryClient.invalidateQueries();
+    attemptAuthRestore()
+      .then(() => {
+        clearAuthSuccessQueryParam();
       })
       .catch(() => {
-        window.localStorage.removeItem("authRestorePayload");
+        clearAuthSuccessQueryParam();
       });
   }, [authSession, refetchAuthSession]);
 
@@ -509,7 +694,6 @@ function AuthAwareApp() {
         credentials: "include",
       });
     } finally {
-      window.localStorage.removeItem("authRestorePayload");
       authRestoreAttemptedRef.current = false;
       queryClient.clear();
       window.location.assign("/");

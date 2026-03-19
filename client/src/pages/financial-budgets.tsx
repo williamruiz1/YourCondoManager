@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { ChevronRight, Plus, CheckCircle2, FileText } from "lucide-react";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 type BudgetVarianceRow = {
   budgetLineId: string;
@@ -24,12 +26,12 @@ type BudgetVarianceRow = {
   categoryId: string | null;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  proposed: "bg-blue-100 text-blue-800 border-blue-200",
-  ratified: "bg-green-100 text-green-800 border-green-200",
-  archived: "bg-gray-100 text-gray-600 border-gray-200",
-};
+function budgetStatusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
+  if (status === "ratified") return "default";
+  if (status === "proposed") return "secondary";
+  if (status === "archived") return "outline";
+  return "secondary"; // draft
+}
 
 export default function FinancialBudgetsPage() {
   const { toast } = useToast();
@@ -220,11 +222,15 @@ export default function FinancialBudgetsPage() {
   const selectedVersion = (versionsQuery.data ?? []).find((v) => v.id === versionId);
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Budget Operations</h1>
-        <p className="text-muted-foreground">Manage annual budgets, versions, line items, and track variance against actuals.</p>
-      </div>
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Budgets"
+        summary="Create and manage association budgets, track versions, and monitor budget vs. actual variance."
+        eyebrow="Finance"
+        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Budgets" }]}
+      />
 
       {/* Association context breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -238,9 +244,9 @@ export default function FinancialBudgetsPage() {
         {selectedVersion && (
           <>
             <ChevronRight className="h-4 w-4" />
-            <span className={cn("px-1.5 py-0.5 rounded text-xs font-medium border", STATUS_COLORS[selectedVersion.status] ?? STATUS_COLORS.draft)}>
+            <Badge variant={budgetStatusVariant(selectedVersion.status)}>
               v{selectedVersion.versionNumber} · {selectedVersion.status}
-            </span>
+            </Badge>
           </>
         )}
       </div>
@@ -284,13 +290,13 @@ export default function FinancialBudgetsPage() {
           </Dialog>
         </div>
 
-        {budgetsQuery.data?.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center">
-            <FileText className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-            <p className="text-sm font-medium">No budgets yet</p>
-            <p className="text-xs text-muted-foreground mt-1">Create a budget to start tracking planned vs. actual spending.</p>
+        {budgetsQuery.data?.length === 0 && !budgetsQuery.isLoading && (
+          <div className="rounded-lg border border-dashed p-6 text-center space-y-2">
+            <p className="font-medium text-sm">No budgets yet</p>
+            <p className="text-sm text-muted-foreground">To get started: <strong>1.</strong> Create a Budget → <strong>2.</strong> Add a Version → <strong>3.</strong> Add Line Items</p>
           </div>
-        ) : (
+        )}
+        {(budgetsQuery.data?.length ?? 0) > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {(budgetsQuery.data ?? []).map((b) => (
               <button
@@ -311,7 +317,7 @@ export default function FinancialBudgetsPage() {
               </button>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Version selection */}
@@ -372,7 +378,7 @@ export default function FinancialBudgetsPage() {
                   )}
                 >
                   v{v.versionNumber}
-                  <span className={cn("text-xs px-1.5 py-0.5 rounded", STATUS_COLORS[v.status] ?? STATUS_COLORS.draft)}>{v.status}</span>
+                  <Badge variant={budgetStatusVariant(v.status)}>{v.status}</Badge>
                 </button>
               ))}
             </div>
@@ -614,6 +620,7 @@ export default function FinancialBudgetsPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

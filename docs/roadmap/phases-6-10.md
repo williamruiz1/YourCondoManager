@@ -40,7 +40,7 @@ Phases 1–5 delivered the following completed capabilities:
 
 ### Workstream 6.1 — Payment Gateway Integration
 
-**Intent:** Enable online HOA dues and assessment payments via ACH and card through a payment gateway (Stripe or equivalent).
+**Intent:** Enable online HOA dues and assessment payments via ACH bank debit only through a payment gateway (Stripe or equivalent).
 
 **Functional Units:**
 - 6.1.1 Connect Payment Gateway Account [Integration]
@@ -53,11 +53,11 @@ Phases 1–5 delivered the following completed capabilities:
   - Webhook-driven payment capture that writes to the owner ledger
   - Payment event stores gateway reference, amount, method, and timestamp
 - 6.1.4 Payment Method Management [UX]
-  - Allow owners to save and manage ACH/card on file via portal
+  - Allow owners to save and manage ACH bank-account methods on file via portal
 
 **Dependencies:** Owner Portal (Phase 5), Owner Ledger (Phase 2)
-**Risks:** PCI scope, gateway credential security, webhook idempotency
-**Open Questions:** Support partial payments? Single gateway or pluggable? Stripe Connect for per-association accounts?
+**Risks:** ACH authorization and return handling, gateway credential security, webhook idempotency
+**Open Questions:** Support partial payments? Single gateway or pluggable? Per-association provider accounts?
 
 ---
 

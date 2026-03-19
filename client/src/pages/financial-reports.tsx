@@ -3,13 +3,17 @@ import { useQuery } from "@tanstack/react-query";
 import type { Budget, BudgetLine, BudgetVersion, OwnerLedgerEntry } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Download } from "lucide-react";
+import { AlertTriangle, Download, Info, Printer } from "lucide-react";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
 
 type LedgerSummaryRow = {
   personId: string;
@@ -25,6 +29,14 @@ type BudgetVarianceRow = {
 };
 
 type ReportType = "pl" | "collection" | "ar-aging" | "reserve" | "board";
+
+const REPORT_DESCRIPTIONS: Record<ReportType, { label: string; description: string }> = {
+  pl: { label: "P&L", description: "Profit & Loss — summarizes income received versus charges billed and adjustments posted over the selected period." },
+  collection: { label: "Collections", description: "Collection Rate — shows how much of the total billed amount has been collected and what remains outstanding." },
+  "ar-aging": { label: "AR Aging", description: "Accounts Receivable Aging — lists owner accounts with outstanding balances sorted by how much they owe." },
+  reserve: { label: "Reserve", description: "Reserve Fund — shows budget line items designated for reserves and estimates the current reserve fund balance." },
+  board: { label: "Board Report", description: "Board Financial Summary — a combined report covering net position, collection rate, delinquency, and reserve fund, suitable for board meetings." },
+};
 
 const PERIODS = [
   { label: "Last 30 days", days: 30 },
@@ -263,54 +275,84 @@ export default function FinancialReportsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Financial Reports</h1>
-        <p className="text-muted-foreground">Income &amp; expense summary, collection rates, and accounts receivable aging for {activeAssociationName || "the selected association"}.</p>
-      </div>
+    <div className="flex flex-col min-h-0">
+      <style>{`@media print { .no-print { display: none; } }`}</style>
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Financial Reports"
+        eyebrow="Finance"
+        summary="Income & expense summary, collection rates, and accounts receivable aging for the active association."
+        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Reports" }]}
+      />
 
-      {!activeAssociationId && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          Select an association from the header to generate reports.
-        </div>
-      )}
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation="Reports are computed from ledger data scoped to the active association. Select an association to generate reports."
+      />
 
       {/* Controls */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="flex rounded-md border overflow-hidden">
-          {(["pl", "collection", "ar-aging", "reserve", "board"] as ReportType[]).map((r) => (
-            <button
-              key={r}
-              onClick={() => setReport(r)}
-              className={cn(
-                "px-3 py-1.5 text-sm font-medium transition-colors",
-                report === r ? "bg-primary text-primary-foreground" : "hover:bg-accent",
-              )}
-            >
-              {r === "pl" ? "P&L" : r === "collection" ? "Collections" : r === "ar-aging" ? "AR Aging" : r === "reserve" ? "Reserve" : "Board Report"}
-            </button>
-          ))}
+      <TooltipProvider>
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex rounded-md border overflow-hidden">
+            {(["pl", "collection", "ar-aging", "reserve", "board"] as ReportType[]).map((r) => {
+              const def = REPORT_DESCRIPTIONS[r];
+              return (
+                <Tooltip key={r}>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setReport(r)}
+                      className={cn(
+                        "flex items-center gap-1 px-3 py-1.5 text-sm font-medium transition-colors",
+                        report === r ? "bg-primary text-primary-foreground" : "hover:bg-accent",
+                      )}
+                    >
+                      {def.label}
+                      <Info className="h-3 w-3 opacity-60" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs text-xs">
+                    {def.description}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+
+          <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v))}>
+            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {PERIODS.map((p) => (
+                <SelectItem key={p.days} value={String(p.days)}>{p.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1 ml-auto"
+            onClick={report === "pl" ? exportPlCsv : report === "collection" ? exportCollectionCsv : report === "reserve" ? exportReserveCsv : report === "board" ? exportBoardReportCsv : exportAgingCsv}
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button variant="outline" size="sm" className="gap-1" onClick={() => window.print()}>
+            <Printer className="h-4 w-4" />
+            Print
+          </Button>
         </div>
+      </TooltipProvider>
 
-        <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v))}>
-          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {PERIODS.map((p) => (
-              <SelectItem key={p.days} value={String(p.days)}>{p.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1 ml-auto"
-          onClick={report === "pl" ? exportPlCsv : report === "collection" ? exportCollectionCsv : exportAgingCsv}
-        >
-          <Download className="h-4 w-4" />
-          Export CSV
-        </Button>
-      </div>
+      {periodDays === 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>
+            <strong>All time</strong> includes every ledger entry since the association was created. For large associations this may be slow and the results may be too broad for useful analysis. Consider selecting a specific period instead.
+          </span>
+        </div>
+      )}
 
       {/* P&L Report */}
       {report === "pl" && (
@@ -618,6 +660,7 @@ export default function FinancialReportsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

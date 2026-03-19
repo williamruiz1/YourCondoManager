@@ -30,7 +30,7 @@ const projects: ProjectDef[] = [
     workstreams: [
       {
         title: "Payment Gateway Integration",
-        description: "Enable online HOA dues and assessment payments via ACH and card through a payment gateway.",
+        description: "Enable online HOA dues and assessment payments via ACH bank debit only through a payment gateway.",
         orderIndex: 0,
         tasks: [
           {
@@ -53,7 +53,7 @@ const projects: ProjectDef[] = [
           },
           {
             title: "Owner payment method management in portal",
-            description: "Allow owners to save and manage ACH/card on file via the owner portal.",
+            description: "Allow owners to save and manage ACH bank-account methods on file via the owner portal.",
             effort: "medium",
             priority: "high",
           },

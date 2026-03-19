@@ -1281,6 +1281,166 @@ export async function seedDatabase() {
     log("[seed] created roadmap project: Production Deployment Stability", "seed");
   }
 
+  const [existingMobileOptimizationProject] = await db
+    .select()
+    .from(roadmapProjects)
+    .where(eq(roadmapProjects.title, "Mobile Optimization"));
+
+  if (!existingMobileOptimizationProject) {
+    const [project] = await db.insert(roadmapProjects).values({
+      title: "Mobile Optimization",
+      description: "Platform-wide roadmap to make owner, board, manager, admin, and shared communication/document experiences work as a primary responsive web application on mobile without degrading desktop workflows.",
+      status: "active",
+      isCollapsed: 0,
+    }).returning();
+
+    const workstreamDefinitions: {
+      title: string;
+      description: string;
+      priority: "low" | "medium" | "high" | "critical";
+      tasks: [string, string, "small" | "medium" | "large"][];
+    }[] = [
+      {
+        title: "Mobile Foundations And Shared UI Standards",
+        description: "Create the shared mobile layout, form, table, and action-placement standards that every workspace follows.",
+        priority: "critical" as const,
+        tasks: [
+          ["Audit shared spacing, typography, touch target, and breakpoint patterns across shared components and key pages", "Review shared UI patterns across components and major pages to identify inconsistent mobile behavior and define the baseline for standardization.", "large"],
+          ["Define mobile layout standards for page headers, section spacing, cards, tab bars, drawers, button groups, and sticky actions", "Create a durable layout standard for common page structures so mobile pages behave consistently across roles.", "large"],
+          ["Standardize responsive behavior for tables with list or card fallbacks on narrow screens", "Replace dense desktop tables with prioritized columns, list patterns, or cards when space is constrained.", "medium"],
+          ["Standardize responsive behavior for forms with single-column defaults, persistent labels, inline validation, and keyboard-safe layouts", "Ensure form entry remains readable and finishable on small screens without clipped fields, ambiguous labels, or keyboard overlap.", "medium"],
+          ["Standardize mobile-safe patterns for filters and low-frequency controls using drawers, sheets, or expandable sections", "Move secondary controls out of cramped inline toolbars so task-critical actions remain visible on phones.", "medium"],
+          ["Create a reusable mobile section shell for pages with headers, status, actions, and long content", "Introduce a shared section primitive so product teams can compose mobile-safe screens without rebuilding the same layout logic repeatedly.", "large"],
+          ["Document mobile UI rules in a durable shared guidance artifact", "Capture the resulting standards in project guidance so future work follows the same mobile contract.", "small"],
+        ],
+      },
+      {
+        title: "Global Navigation, Authentication, And Session Flows",
+        description: "Make entry, switching, and navigation clean and predictable on phones.",
+        priority: "critical" as const,
+        tasks: [
+          ["Review mobile behavior for login, OTP, association selection, and workspace switching", "Audit entry and context-switching flows on common phone widths to identify overflow, clipping, and step-order issues.", "medium"],
+          ["Simplify stacked auth screens so each step fits within the viewport cleanly", "Refactor authentication layouts so each step is readable and actionable without accidental scroll traps or hidden controls.", "medium"],
+          ["Standardize mobile navigation patterns for owner, board, manager, and admin contexts", "Define role-aware navigation behavior so mobile users can predict how top-level and subpage navigation works across the platform.", "large"],
+          ["Review fixed headers, sticky submenus, and bottom navigation so they do not overlap content", "Resolve header, sticky region, and bottom-nav collisions that hide content or actions on small screens.", "medium"],
+          ["Ensure tab changes and subpage changes reset or preserve scroll intentionally", "Make mobile navigation transitions predictable by choosing explicit scroll restoration behavior per flow.", "small"],
+          ["Make portal context switching between units and associations mobile-friendly", "Improve unit and association switching controls for touch interaction, visibility, and small-screen legibility.", "medium"],
+          ["Verify safe-area spacing and bottom-nav behavior on phone-sized screens", "Ensure phone-sized devices preserve safe-area spacing around anchored navigation and actions.", "small"],
+        ],
+      },
+      {
+        title: "Owner Portal Mobile Experience",
+        description: "Make the owner portal easy to scan, navigate, edit, and act on from a phone.",
+        priority: "critical" as const,
+        tasks: [
+          ["Audit owner portal overview, financials, maintenance, documents, and notices on common mobile widths", "Review the primary owner-facing surfaces on narrow screens and identify layout breakage, hidden actions, and readability issues.", "large"],
+          ["Refine overview layout so summary, owner info, and occupancy work cleanly in narrow viewports", "Rework the overview information hierarchy so the owner landing page reads clearly on phones.", "medium"],
+          ["Ensure owner info and occupancy forms are single-column, labeled, and easy to edit and save on mobile", "Convert profile and occupancy editing flows into mobile-safe form structures with clear labels and accessible save actions.", "medium"],
+          ["Optimize unit selection for touch interaction and horizontal scrolling", "Improve multi-unit switching so owners can change context easily on phones without cramped controls.", "small"],
+          ["Simplify financials into a statement-first mobile flow with balance, pay action, recent transactions, and payment setup", "Restructure owner financials so the most common payment and review actions appear first on mobile.", "large"],
+          ["Convert dense financial history tables into mobile-friendly transaction cards or prioritized rows", "Replace narrow-screen ledger tables with a readable mobile transaction pattern.", "medium"],
+          ["Review maintenance submission and request history for attachment handling, long text, and status readability", "Ensure maintenance flows remain usable on phones for both request creation and review.", "medium"],
+          ["Review document and notice views for readable typography, download actions, and expansion behavior", "Make long-form owner content clean to read and act on from a phone.", "medium"],
+          ["Verify mobile behavior for bottom tab navigation and long-scrolling content", "Confirm owner navigation remains reachable and does not interfere with long-form portal content.", "small"],
+        ],
+      },
+      {
+        title: "Board Workspace Mobile Experience",
+        description: "Support board review and light action on mobile while clearly separating desktop-preferred authoring workflows.",
+        priority: "medium" as const,
+        tasks: [
+          ["Audit board landing, agenda, tasks, meeting summaries, approvals, packages, and activity views on mobile", "Identify which governance surfaces are readable and actionable on phones versus those that currently fail on narrow screens.", "large"],
+          ["Identify board workflows that should support mobile review versus desktop-only authoring", "Define the support boundary so mobile expectations are explicit instead of accidental.", "medium"],
+          ["Collapse dense governance dashboards into prioritized cards with progressive disclosure", "Break multi-panel board dashboards into mobile-safe review stacks ordered by urgency.", "medium"],
+          ["Convert board activity feeds and approval queues into mobile-first list patterns", "Replace dense queue layouts with mobile-first feed and approval surfaces.", "medium"],
+          ["Review attachments, packets, and long-form content for readable mobile access", "Ensure board members can open and read governance materials on phones without broken layouts.", "medium"],
+          ["Ensure board actions such as approve, review, comment, and open detail remain reachable on mobile", "Anchor critical board actions so they remain visible and usable on small screens.", "small"],
+          ["Define which board workflows should explicitly show desktop-preferred messaging", "Mark workflows that should not pretend to be mobile-ready when desktop remains the better operating surface.", "small"],
+        ],
+      },
+      {
+        title: "Manager And Admin Workspace Mobile Experience",
+        description: "Reduce friction for operational users doing triage, review, and follow-up from mobile.",
+        priority: "high" as const,
+        tasks: [
+          ["Audit admin dashboard, work queues, maintenance triage, communications, financial review, and association switching on mobile", "Review core operator workflows on phones to identify layout and actionability gaps.", "large"],
+          ["Break large multi-panel dashboards into mobile stacks ordered by urgency", "Recompose desktop dashboards into mobile-first information hierarchies.", "large"],
+          ["Move filter-heavy or configuration-heavy controls into drawers or dedicated subviews", "Remove secondary controls from cramped inline layouts and preserve space for high-frequency operator actions.", "medium"],
+          ["Convert operational tables into mobile queue cards with visible status, scope, and next action", "Replace dense back-office tables with mobile queue patterns optimized for triage.", "medium"],
+          ["Review multi-step admin forms for mobile-safe progression and save states", "Ensure operational forms can be completed in mobile-sized steps without losing progress.", "medium"],
+          ["Ensure core operational tasks can be completed on mobile: acknowledge, assign, update status, send notice, review account, open record", "Protect the highest-frequency operator actions so they remain finishable from a phone.", "large"],
+          ["Mark workflows that are truly desktop-first and provide explicit handoff messaging instead of poor mobile fallbacks", "Clarify when operators should switch to desktop rather than forcing broken small-screen interactions.", "small"],
+        ],
+      },
+      {
+        title: "Resident, Shared Content, And Cross-Role Communication Surfaces",
+        description: "Improve the mobile behavior of shared content surfaces used across roles.",
+        priority: "high" as const,
+        tasks: [
+          ["Audit notices, announcements, documents, communication history, and resident-facing content on mobile", "Review the platform's shared reading and communication surfaces for readability and actionability on phones.", "medium"],
+          ["Improve readability for message cards, timelines, attachments, and metadata", "Refine shared content presentation so message details remain legible without desktop width.", "medium"],
+          ["Ensure document previews, download actions, and filenames behave cleanly on small screens", "Make document access predictable on mobile for both operators and residents.", "small"],
+          ["Standardize mobile treatment for badges, statuses, timestamps, and association or unit labels", "Reduce visual clutter and inconsistency in shared metadata patterns on small screens.", "small"],
+          ["Review empty states and success states so they stay concise on small screens", "Ensure low-content states do not dominate the viewport or bury next actions on phones.", "small"],
+          ["Ensure shared content components do not rely on desktop-only table layouts", "Remove table-only assumptions from shared communication and content modules.", "medium"],
+        ],
+      },
+      {
+        title: "Data Density, Performance, And Interaction Quality",
+        description: "Keep mobile pages fast, readable, and physically usable.",
+        priority: "medium" as const,
+        tasks: [
+          ["Identify screens with excessive card stacking, redundant summaries, or repeated data blocks", "Reduce unnecessary repetition so mobile screens surface one primary decision area at a time.", "medium"],
+          ["Reduce duplicate status surfaces and keep one primary decision area per screen", "Simplify dense pages so status and action placement remain clear on phones.", "medium"],
+          ["Audit heavy tables, long feeds, and expensive panels for mobile performance impact", "Measure and reduce mobile performance bottlenecks in data-heavy surfaces.", "medium"],
+          ["Improve perceived performance with progressive loading and lighter default states where needed", "Make mobile pages feel faster even when underlying data surfaces remain large.", "medium"],
+          ["Review tap targets, scroll traps, nested scroll areas, and overlap with sticky UI", "Fix physical interaction issues that make phone usage frustrating or error-prone.", "small"],
+          ["Ensure modals, drawers, selects, and date pickers behave correctly with the mobile keyboard", "Resolve keyboard overlap and viewport issues in common mobile interaction primitives.", "small"],
+        ],
+      },
+      {
+        title: "QA, Verification, And Rollout",
+        description: "Make mobile quality measurable, repeatable, and visible during rollout.",
+        priority: "high" as const,
+        tasks: [
+          ["Define a core mobile viewport matrix for 320px, 375px, 390px, 430px, and 768px widths", "Adopt a standard viewport coverage matrix for validating mobile behavior consistently.", "small"],
+          ["Create a role-based mobile test checklist for owner, board, manager, admin, and shared public/auth flows", "Define a repeatable manual verification checklist across the major user roles.", "medium"],
+          ["Add manual verification scripts for the highest-frequency mobile journeys", "Capture exact mobile verification paths for the flows most likely to regress.", "medium"],
+          ["Capture before and after screenshots for major workstreams", "Create a visual record of mobile improvements to support rollout and regression review.", "small"],
+          ["Identify candidate UI regression coverage for mobile-critical flows if automation is added", "Document where automation would provide the most leverage for mobile regression control.", "small"],
+          ["Establish a release gate that requires mobile verification on touched role surfaces", "Require mobile validation when relevant platform surfaces are changed.", "medium"],
+          ["Track unresolved desktop-only workflows explicitly so they are not misrepresented as mobile-ready", "Maintain a clear inventory of desktop-preferred workflows during the transition to better mobile coverage.", "small"],
+        ],
+      },
+    ];
+
+    for (let workstreamIndex = 0; workstreamIndex < workstreamDefinitions.length; workstreamIndex += 1) {
+      const workstreamDefinition = workstreamDefinitions[workstreamIndex];
+      const [workstream] = await db.insert(roadmapWorkstreams).values({
+        projectId: project.id,
+        title: workstreamDefinition.title,
+        description: workstreamDefinition.description,
+        orderIndex: workstreamIndex,
+        isCollapsed: 0,
+      }).returning();
+
+      await db.insert(roadmapTasks).values(
+        workstreamDefinition.tasks.map((taskDefinition) => ({
+          projectId: project.id,
+          workstreamId: workstream.id,
+          title: taskDefinition[0],
+          description: taskDefinition[1],
+          status: "todo" as const,
+          effort: taskDefinition[2],
+          priority: workstreamDefinition.priority,
+          dependencyTaskIds: [],
+        })),
+      );
+    }
+
+    log("[seed] created roadmap project: Mobile Optimization", "seed");
+  }
+
   // Warn if no active platform-admin exists after seeding — this means no one
   // can manage users or grant permissions. Fix by setting PLATFORM_ADMIN_EMAILS.
   const activePlatformAdmins = await db

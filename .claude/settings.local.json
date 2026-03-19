@@ -23,7 +23,11 @@
       "Read(//home/runner/.config/**)",
       "Read(//run/secrets/**)",
       "Bash(which pg_dump pg_restore psql 2>/dev/null && pg_dump --version)",
-      "Bash(pg_dump \"$DATABASE_URL\" \\\\\n  --no-owner \\\\\n  --no-acl \\\\\n  --format=plain \\\\\n  --file=/home/runner/workspace/dev_export.sql \\\\\n  2>&1 && echo \"Export complete\" && wc -l /home/runner/workspace/dev_export.sql)"
+      "Bash(pg_dump \"$DATABASE_URL\" \\\\\n  --no-owner \\\\\n  --no-acl \\\\\n  --format=plain \\\\\n  --file=/home/runner/workspace/dev_export.sql \\\\\n  2>&1 && echo \"Export complete\" && wc -l /home/runner/workspace/dev_export.sql)",
+      "Bash(grep -l \"FinanceTabBar\" /home/runner/workspace/client/src/pages/financial-*.tsx)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx tsx:*)"
     ]
   }
 }

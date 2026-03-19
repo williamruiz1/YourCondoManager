@@ -38,9 +38,9 @@ const workstreams: WorkstreamDef[] = [
       },
       {
         key: "hosted-checkout",
-        title: "Build hosted ACH and card checkout/session flow",
+        title: "Build hosted ACH checkout/session flow",
         description:
-          "Create a real payment-session flow so owner balances can be paid through a provider-backed checkout instead of admin-side token testing only.",
+          "Create a real ACH payment-session flow so owner balances can be paid through a provider-backed bank-account checkout instead of admin-side token testing only.",
         effort: "large",
         priority: "critical",
         dependencyKeys: ["gateway-live-verification"],
@@ -83,7 +83,7 @@ const workstreams: WorkstreamDef[] = [
         key: "saved-payment-methods",
         title: "Support saved payment methods and owner-managed defaults",
         description:
-          "Allow owners to save and manage ACH/card methods through the provider-backed workflow instead of relying only on static payment instructions.",
+          "Allow owners to save and manage ACH bank-account methods through the provider-backed workflow instead of relying only on static payment instructions.",
         effort: "large",
         priority: "high",
         dependencyKeys: ["hosted-checkout"],

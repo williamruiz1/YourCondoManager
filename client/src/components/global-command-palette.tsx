@@ -64,6 +64,8 @@ const SEARCH_ICON: Record<string, typeof Search> = {
   vendor: Users,
   "work-order": Wrench,
   document: FileText,
+  invoice: CircleDollarSign,
+  "ledger-entry": CircleDollarSign,
 };
 
 export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | null }) {
@@ -125,6 +127,56 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
   const filteredNavigation = navigationLinks.filter((item) => canAccess(item, adminRole));
   const filteredCreate = createLinks.filter((item) => canAccess(item, adminRole));
 
+  const contextualCreateLinks = useMemo(() => {
+    const routeActions: Array<{ prefix: string; links: CommandLink[] }> = [
+      {
+        prefix: "/app/financial",
+        links: [
+          { label: "Record Payment", href: "/app/financial/payments", keywords: "create payment record finance", icon: CircleDollarSign },
+          { label: "Create Invoice", href: "/app/financial/invoices", keywords: "create invoice vendor payable", icon: CircleDollarSign },
+          { label: "Post Ledger Entry", href: "/app/financial/ledger", keywords: "create ledger entry charge credit", icon: CircleDollarSign },
+        ],
+      },
+      {
+        prefix: "/app/work-orders",
+        links: [
+          { label: "Create Work Order", href: "/app/work-orders", keywords: "create work order maintenance request", icon: Wrench },
+        ],
+      },
+      {
+        prefix: "/app/board",
+        links: [
+          { label: "Add Board Member", href: "/app/board", keywords: "create board role member", icon: Users },
+          { label: "Schedule Meeting", href: "/app/governance/meetings", keywords: "create meeting schedule agenda", icon: CalendarDays },
+        ],
+      },
+      {
+        prefix: "/app/documents",
+        links: [
+          { label: "Upload Document", href: "/app/documents", keywords: "create upload document file", icon: FileText },
+        ],
+      },
+      {
+        prefix: "/app/communications",
+        links: [
+          { label: "Create Notice Template", href: "/app/communications", keywords: "create template notice email", icon: MessageSquare },
+        ],
+      },
+    ];
+
+    const match = routeActions.find(ra => location.startsWith(ra.prefix));
+    const base = match ? match.links : createLinks;
+    return base.filter(item => canAccess(item, adminRole));
+  }, [location, adminRole]);
+
+  const createGroupLabel = location.startsWith("/app/financial")
+    ? "Finance Actions"
+    : location.startsWith("/app/work-orders")
+    ? "Work Order Actions"
+    : location.startsWith("/app/board")
+    ? "Board Actions"
+    : "Create";
+
   function openRoute(href: string) {
     setOpen(false);
     navigate(href);
@@ -132,12 +184,18 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
 
   return (
     <>
-      <Button variant="outline" size="sm" className="hidden md:flex min-w-[220px] justify-between" onClick={() => setOpen(true)}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="hidden min-w-0 items-center gap-2 px-3 md:flex lg:min-w-[220px] lg:justify-between"
+        onClick={() => setOpen(true)}
+      >
         <span className="inline-flex items-center gap-2 text-muted-foreground">
           <Search className="h-4 w-4" />
-          Search, jump, or create
+          <span className="lg:hidden">Search</span>
+          <span className="hidden lg:inline">Search, jump, or create</span>
         </span>
-        <span className="text-xs text-muted-foreground">Ctrl K</span>
+        <span className="hidden text-xs text-muted-foreground lg:inline">Ctrl K</span>
       </Button>
       <Button variant="outline" size="icon" className="md:hidden" onClick={() => setOpen(true)}>
         <Search className="h-4 w-4" />
@@ -149,6 +207,15 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
           value={query}
           onValueChange={setQuery}
         />
+        {activeAssociationId && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 border-b text-xs text-muted-foreground bg-muted/30">
+            <Building2 className="h-3 w-3" />
+            <span>Scoped to:</span>
+            <span className="font-medium text-foreground">
+              {associations.find(a => a.id === activeAssociationId)?.name ?? activeAssociationId}
+            </span>
+          </div>
+        )}
         <CommandList>
           <CommandEmpty>{query.length >= 2 ? "No results found." : "Type to search records or navigate."}</CommandEmpty>
 
@@ -191,8 +258,8 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
 
           <CommandSeparator />
 
-          <CommandGroup heading="Create">
-            {filteredCreate.map((item) => (
+          <CommandGroup heading={createGroupLabel}>
+            {contextualCreateLinks.map((item) => (
               <CommandItem key={`create-${item.href}`} onSelect={() => openRoute(item.href)} value={`${item.label} ${item.keywords}`}>
                 <item.icon />
                 <span>{item.label}</span>

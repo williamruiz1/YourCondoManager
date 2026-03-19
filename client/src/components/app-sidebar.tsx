@@ -1,5 +1,4 @@
 import { useLocation, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Building2,
@@ -8,14 +7,6 @@ import {
   FileText,
   Contact,
   CircleDollarSign,
-  Landmark,
-  Percent,
-  FolderCog,
-  ReceiptText,
-  Lightbulb,
-  BookOpenCheck,
-  Calculator,
-  BarChart2,
   ClipboardCheck,
   CalendarDays,
   Bot,
@@ -29,8 +20,6 @@ import {
   Layers,
   MessageCircle,
   Megaphone,
-  GitMerge,
-  Repeat,
   Flag,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -43,13 +32,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import type { Document } from "@shared/schema";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { canAccessWipRoute } from "@/lib/wip-features";
 
@@ -67,168 +52,92 @@ type NavModule = NavLink & {
   children?: NavLink[];
 };
 
-type NavSection = {
-  label: string;
-  modules: NavModule[];
-};
 
-const navSections: NavSection[] = [
+// Top-level platform overview — always visible
+const overviewModules: NavModule[] = [
+  { title: "Dashboard", url: "/app", icon: LayoutDashboard },
   {
-    label: "Overview",
-    modules: [
-      { title: "Dashboard", url: "/app", icon: LayoutDashboard },
-      {
-        title: "Portfolio",
-        url: "/app/portfolio",
-        icon: Layers,
-        activePrefix: "/app/portfolio",
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-      },
-      {
-        title: "Associations",
-        url: "/app/associations",
-        icon: Building2,
-        activePrefix: "/app/associations",
-      },
+    title: "Portfolio",
+    url: "/app/portfolio",
+    icon: Layers,
+    activePrefix: "/app/portfolio",
+    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+  },
+  {
+    title: "Associations",
+    url: "/app/associations",
+    icon: Building2,
+    activePrefix: "/app/associations",
+  },
+];
+
+// Scoped to the selected association — shown under the association's name
+const associationModules: NavModule[] = [
+  {
+    title: "Buildings & Units",
+    url: "/app/units",
+    icon: DoorOpen,
+    activePrefix: "/app/units",
+    roles: ["platform-admin", "board-admin", "manager"],
+    children: [
+      { title: "People", url: "/app/persons", icon: Contact, roles: ["platform-admin", "board-admin", "manager"] },
     ],
   },
   {
-    label: "Residential",
-    modules: [
-      {
-        title: "Buildings & Units",
-        url: "/app/units",
-        icon: DoorOpen,
-        activePrefix: "/app/units",
-        roles: ["platform-admin", "board-admin", "manager"],
-        children: [
-          { title: "People", url: "/app/persons", icon: Contact, roles: ["platform-admin", "board-admin", "manager"] },
-        ],
-      },
+    title: "Finance",
+    url: "/app/financial/foundation",
+    icon: CircleDollarSign,
+    activePrefix: "/app/financial",
+    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+  },
+  {
+    title: "Board",
+    url: "/app/board",
+    icon: UserCheck,
+    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    children: [
+      { title: "Board Packages", url: "/app/governance/board-packages", icon: PackageOpen, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Meetings", url: "/app/governance/meetings", icon: CalendarDays, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Compliance", url: "/app/governance/compliance", icon: ClipboardCheck, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
   },
   {
-    label: "Governance",
-    modules: [
-      {
-        title: "Board Members",
-        url: "/app/board",
-        icon: UserCheck,
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-        children: [
-          { title: "Board Packages", url: "/app/governance/board-packages", icon: PackageOpen, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-          { title: "Meetings", url: "/app/governance/meetings", icon: CalendarDays, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-          { title: "Compliance", url: "/app/governance/compliance", icon: ClipboardCheck, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-        ],
-      },
-    ],
+    title: "Documents",
+    url: "/app/documents",
+    icon: FileText,
+    activePrefix: "/app/documents",
+    roles: ["platform-admin", "board-admin", "manager", "viewer"],
   },
   {
-    label: "Finance",
-    modules: [
-      {
-        title: "Finance Setup",
-        url: "/app/financial/foundation",
-        icon: FolderCog,
-        activePrefix: "/app/financial",
-        roles: ["platform-admin", "board-admin", "manager"],
-        children: [
-          { title: "Fee Schedules", url: "/app/financial/recurring-charges", icon: Repeat, roles: ["platform-admin", "board-admin", "manager"] },
-          { title: "Assessments", url: "/app/financial/assessments", icon: Landmark, roles: ["platform-admin", "board-admin", "manager"] },
-          { title: "Late Fees", url: "/app/financial/late-fees", icon: Percent, roles: ["platform-admin", "board-admin", "manager"] },
-          { title: "Invoices", url: "/app/financial/invoices", icon: ReceiptText, roles: ["platform-admin", "board-admin", "manager"] },
-          { title: "Utilities", url: "/app/financial/utilities", icon: Lightbulb, roles: ["platform-admin", "board-admin", "manager"] },
-          { title: "Owner Ledger", url: "/app/financial/ledger", icon: BookOpenCheck, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-          { title: "Payments", url: "/app/financial/payments", icon: CircleDollarSign, roles: ["platform-admin", "board-admin", "manager"] },
-          { title: "Budgets", url: "/app/financial/budgets", icon: Calculator, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-          { title: "Reports", url: "/app/financial/reports", icon: BarChart2, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-          { title: "Reconciliation", url: "/app/financial/reconciliation", icon: GitMerge, roles: ["platform-admin", "board-admin", "manager"] },
-        ],
-      },
-    ],
-  },
-  {
-    label: "Operations",
-    modules: [
-      {
-        title: "Operations Dashboard",
-        url: "/app/operations/dashboard",
-        icon: LayoutDashboard,
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-      },
-      {
-        title: "Vendors",
-        url: "/app/vendors",
-        icon: BriefcaseBusiness,
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-      },
-      {
-        title: "Work Orders",
-        url: "/app/work-orders",
-        icon: ClipboardList,
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-      },
-      {
-        title: "Maintenance Schedules",
-        url: "/app/maintenance-schedules",
-        icon: CalendarDays,
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-      },
-      {
-        title: "Inspections",
-        url: "/app/inspections",
-        icon: ClipboardCheck,
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-      },
-      {
-        title: "Resident Feedback",
-        url: "/app/resident-feedback",
-        icon: MessageCircle,
-        activePrefix: "/app/resident-feedback",
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-      },
-      {
-        title: "Announcements",
-        url: "/app/announcements",
-        icon: Megaphone,
-        activePrefix: "/app/announcements",
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-      },
-      {
-        title: "Insurance Policies",
-        url: "/app/insurance",
-        icon: Shield,
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-      },
-      {
-        title: "Communications",
-        url: "/app/communications",
-        icon: MessageSquare,
-        roles: ["platform-admin", "board-admin", "manager", "viewer"],
-        children: [
-          { title: "AI Ingestion", url: "/app/ai/ingestion", icon: Bot, roles: ["platform-admin", "board-admin", "manager"] },
-        ],
-      },
-    ],
-  },
-  {
-    label: "Platform",
-    modules: [
-      {
-        title: "Platform Controls",
-        url: "/app/platform/controls",
-        icon: SlidersHorizontal,
-        activePrefix: "/app/platform",
-        roles: ["platform-admin"],
-        children: [
-          { title: "Owner Portal", url: "/portal", icon: Contact, roles: ["platform-admin"] },
-          { title: "Admin Roadmap", url: "/app/admin/roadmap", icon: ListChecks, activePrefix: "/app/admin", roles: ["platform-admin", "board-admin"] },
-          { title: "Feature Flags", url: "/app/admin/feature-flags", icon: Flag, roles: ["platform-admin"] },
-        ],
-      },
+    title: "Operations",
+    url: "/app/operations/dashboard",
+    icon: ClipboardList,
+    activePrefix: "/app/operations",
+    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    children: [
+      { title: "Work Orders", url: "/app/work-orders", icon: ClipboardList, activePrefix: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Vendors", url: "/app/vendors", icon: BriefcaseBusiness, activePrefix: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Communications", url: "/app/communications", icon: MessageSquare, activePrefix: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
   },
 ];
+
+// Platform-admin-only controls
+const platformModules: NavModule[] = [
+  {
+    title: "Platform Controls",
+    url: "/app/platform/controls",
+    icon: SlidersHorizontal,
+    activePrefix: "/app/platform",
+    roles: ["platform-admin"],
+    children: [
+      { title: "Owner Portal", url: "/portal", icon: Contact, roles: ["platform-admin"] },
+      { title: "Admin Roadmap", url: "/app/admin/roadmap", icon: ListChecks, activePrefix: "/app/admin", roles: ["platform-admin"] },
+      { title: "Feature Flags", url: "/app/admin/feature-flags", icon: Flag, roles: ["platform-admin"] },
+    ],
+  },
+];
+
 
 function isLinkActive(location: string, item: NavLink): boolean {
   const activeBase = item.activePrefix ?? item.url;
@@ -241,31 +150,26 @@ function canAccess(item: NavLink, role?: AdminRole | null) {
   return item.roles.includes(role);
 }
 
+function filterModules(modules: NavModule[], adminRole?: AdminRole | null): NavModule[] {
+  return modules
+    .filter((m) => canAccess(m, adminRole) && canAccessWipRoute(m.url, adminRole))
+    .map((m) => ({
+      ...m,
+      children: m.children?.filter((c) => canAccess(c, adminRole) && canAccessWipRoute(c.url, adminRole)),
+    }));
+}
+
 export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
   const [location] = useLocation();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
-  const { data: documents = [] } = useQuery<Document[]>({
-    queryKey: ["/api/documents"],
-    enabled: Boolean(activeAssociationId),
-  });
-  const visibleSections = navSections
-    .map((section) => ({
-      ...section,
-      modules: section.modules
-        .filter((module) => canAccess(module, adminRole) && canAccessWipRoute(module.url, adminRole))
-        .map((module) => ({
-          ...module,
-          children: module.children?.filter((child) => canAccess(child, adminRole) && canAccessWipRoute(child.url, adminRole)),
-        })),
-    }))
-    .filter((section) => section.modules.length > 0);
-  const overviewSection = visibleSections.find((section) => section.label === "Overview");
-  const remainingSections = visibleSections.filter((section) => section.label !== "Overview");
+  const visibleOverview = filterModules(overviewModules, adminRole);
+  const visibleAssociation = filterModules(associationModules, adminRole);
+  const visiblePlatform = filterModules(platformModules, adminRole);
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-2.5">
+      <SidebarHeader className="border-b border-sidebar-border">
+        <div className="p-4 flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm flex-shrink-0">
             <Building2 className="h-4 w-4" />
           </div>
@@ -276,84 +180,66 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
             <p className="text-[11px] text-muted-foreground leading-tight">Property Platform</p>
           </div>
         </div>
+        <div className="px-3 pb-3 group-data-[collapsible=icon]:hidden">
+          {activeAssociationId ? (
+            <Link
+              href="/app/association-context"
+              className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/60"
+              data-testid="link-selected-association-overview"
+            >
+              <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Association</div>
+                <div className="text-xs font-semibold truncate">{activeAssociationName}</div>
+              </div>
+            </Link>
+          ) : (
+            <Link
+              href="/app/association-context"
+              className="flex items-center gap-2 rounded-lg border border-dashed border-sidebar-border px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/30"
+            >
+              <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-muted-foreground">Select association</span>
+            </Link>
+          )}
+        </div>
       </SidebarHeader>
       <SidebarContent>
-        {overviewSection ? (
-          <SidebarGroup key={overviewSection.label}>
-            <SidebarGroupLabel>{overviewSection.label}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {overviewSection.modules.map((module) => {
-                  const childActive = module.children?.some((child) => isLinkActive(location, child)) ?? false;
-                  const moduleActive = isLinkActive(location, module) || childActive;
-
-                  return (
-                    <SidebarMenuItem key={module.title}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={moduleActive}
-                        tooltip={module.title}
-                        className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
-                      >
-                        <Link href={module.url} data-testid={`link-nav-${module.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                          <module.icon className="h-4 w-4" />
-                          <span>{module.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ) : null}
-
+        {/* Overview: Dashboard, Portfolio, Associations */}
         <SidebarGroup>
-          <SidebarGroupLabel>In Context</SidebarGroupLabel>
+          <SidebarGroupLabel>Overview</SidebarGroupLabel>
           <SidebarGroupContent>
-            <div className="mx-2 mb-3 rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3 shadow-sm group-data-[collapsible=icon]:hidden">
-              {activeAssociationId ? (
-                <Link
-                  href="/app/association-context"
-                  className="block rounded-md transition-colors hover:bg-sidebar-accent/60 focus:outline-none focus:ring-2 focus:ring-sidebar-ring"
-                  data-testid="link-selected-association-overview"
-                >
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Selected Association</div>
-                  <div className="mt-1 text-sm font-semibold">{activeAssociationName || "No association selected"}</div>
-                </Link>
-              ) : (
-                <div className="rounded-md">
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Selected Association</div>
-                  <div className="mt-1 text-sm font-semibold">{activeAssociationName || "No association selected"}</div>
-                </div>
-              )}
-              <div className="mt-3 space-y-1">
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={location.startsWith("/app/documents")} tooltip="Documents">
-                      <Link href="/app/documents">
-                        <FileText className="h-4 w-4" />
-                        <span>Documents</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </div>
-              <div className="mt-3 text-xs text-muted-foreground">
-                {activeAssociationId ? `${documents.length} documents in this association` : "Set context from the header selector"}
-              </div>
-            </div>
+            <SidebarMenu>
+              {visibleOverview.map((module) => (
+                <SidebarMenuItem key={module.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isLinkActive(location, module)}
+                    tooltip={module.title}
+                    className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+                  >
+                    <Link href={module.url} data-testid={`link-nav-${module.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <module.icon className="h-4 w-4" />
+                      <span>{module.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        {remainingSections.map((section) => (
-          <SidebarGroup key={section.label}>
-            <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+
+        {/* Association workspace — scoped to selected association */}
+        {visibleAssociation.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="truncate">
+              {activeAssociationName || "Association"}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {section.modules.map((module) => {
+                {visibleAssociation.map((module) => {
                   const childActive = module.children?.some((child) => isLinkActive(location, child)) ?? false;
                   const moduleActive = isLinkActive(location, module) || childActive;
-
                   return (
                     <SidebarMenuItem key={module.title}>
                       <SidebarMenuButton
@@ -367,27 +253,43 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
                           <span>{module.title}</span>
                         </Link>
                       </SidebarMenuButton>
-                      {module.children?.length ? (
-                        <SidebarMenuSub>
-                          {module.children.map((child) => (
-                            <SidebarMenuSubItem key={child.title}>
-                              <SidebarMenuSubButton asChild isActive={isLinkActive(location, child)}>
-                                <Link href={child.url} data-testid={`link-nav-${child.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                                  <child.icon className="h-3.5 w-3.5" />
-                                  <span>{child.title}</span>
-                                </Link>
-                              </SidebarMenuSubButton>
-                            </SidebarMenuSubItem>
-                          ))}
-                        </SidebarMenuSub>
-                      ) : null}
                     </SidebarMenuItem>
                   );
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        ))}
+        )}
+
+        {/* Platform controls — platform-admin only */}
+        {visiblePlatform.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Platform</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {visiblePlatform.map((module) => {
+                  const childActive = module.children?.some((child) => isLinkActive(location, child)) ?? false;
+                  const moduleActive = isLinkActive(location, module) || childActive;
+                  return (
+                    <SidebarMenuItem key={module.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={moduleActive}
+                        tooltip={module.title}
+                        className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+                      >
+                        <Link href={module.url} data-testid={`link-nav-${module.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                          <module.icon className="h-4 w-4" />
+                          <span>{module.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarRail />
     </Sidebar>

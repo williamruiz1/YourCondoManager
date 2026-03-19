@@ -1340,14 +1340,14 @@ export type InsertWebhookSigningSecret = typeof webhookSigningSecrets.$inferInse
 export const insertWebhookSigningSecretSchema = createInsertSchema(webhookSigningSecrets);
 
 // Owner saved payment methods — per-owner payment method preferences (no sensitive data stored)
-export const savedPaymentMethodTypeEnum = pgEnum("saved_payment_method_type", ["ach", "card", "check", "zelle", "other"]);
+export const savedPaymentMethodTypeEnum = pgEnum("saved_payment_method_type", ["ach", "check", "zelle", "other"]);
 export const savedPaymentMethods = pgTable("saved_payment_methods", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
   personId: varchar("person_id").notNull().references(() => persons.id),
   methodType: savedPaymentMethodTypeEnum("method_type").notNull().default("ach"),
   displayName: text("display_name").notNull(), // e.g., "Chase checking ••••1234"
-  last4: text("last4"), // last 4 digits of account/card (display only)
+  last4: text("last4"), // last 4 digits of account (display only)
   bankName: text("bank_name"),
   externalTokenRef: text("external_token_ref"), // reference to payment processor token (no raw account data)
   isDefault: integer("is_default").notNull().default(0),

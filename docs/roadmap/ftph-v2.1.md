@@ -40,8 +40,8 @@
 
 ### Gaps Not Explicitly Captured in the Original v2.1 Draft
 - Financial operations are structurally broad, but the live platform still lacks a full production payment loop:
-  - no hosted ACH/card checkout
-  - no owner-managed saved payment methods
+  - no hosted ACH checkout
+  - no owner-managed saved ACH payment methods
   - no autopay enrollment and recurring collections
   - no delinquency workflow or collections handoff
   - no bank reconciliation workflow
@@ -525,7 +525,7 @@
 ## Recorded Post-Publication Gaps to Carry Forward
 - Phase 6 candidate gaps:
   - hosted owner payment flow
-  - saved payment methods
+  - saved ACH payment methods
   - autopay and recurring collections
   - delinquency workflow and collections handoff
   - bank reconciliation

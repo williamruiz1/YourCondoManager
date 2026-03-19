@@ -18,8 +18,10 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { DataTableShell } from "@/components/data-table-shell";
 import { AlertTriangle, Ban, CheckCircle2, Clock, DollarSign, FileText } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ExportCsvButton } from "@/components/export-csv-button";
 
@@ -53,6 +55,8 @@ export default function FinancialInvoicesPage() {
   const [attachmentPage, setAttachmentPage] = useState(1);
   const fileRef = useRef<HTMLInputElement>(null);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { data: vendors } = useQuery<Vendor[]>({ queryKey: ["/api/vendors"] });
   const { data: accounts } = useQuery<FinancialAccount[]>({ queryKey: ["/api/financial/accounts"] });
@@ -160,6 +164,20 @@ export default function FinancialInvoicesPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const bulkApprove = useMutation({
+    mutationFn: async () => {
+      for (const id of Array.from(selectedIds)) {
+        await apiRequest("PATCH", `/api/financial/invoices/${id}`, { status: "approved" });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/invoices"] });
+      toast({ title: "Invoices approved", description: `${selectedIds.size} invoice(s) marked as approved.` });
+      setSelectedIds(new Set());
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const apStats = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -170,12 +188,17 @@ export default function FinancialInvoicesPage() {
       (inv.status === "received" || inv.status === "approved" || inv.status === "draft") &&
       inv.dueDate && new Date(inv.dueDate) < today,
     );
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const paid = all.filter((inv) => inv.status === "paid" && inv.invoiceDate && new Date(inv.invoiceDate) >= startOfMonth);
     return {
       pendingCount: pending.length,
       pendingAmount: pending.reduce((s, i) => s + Number(i.amount), 0),
       approvedAmount: approved.reduce((s, i) => s + Number(i.amount), 0),
       overdueCount: overdue.length,
       overdueAmount: overdue.reduce((s, i) => s + Number(i.amount), 0),
+      paidMtdAmount: paid.reduce((s, i) => s + Number(i.amount), 0),
+      paidMtdCount: paid.length,
     };
   }, [invoices, activeAssociationId]);
 
@@ -260,14 +283,16 @@ export default function FinancialInvoicesPage() {
   }, [attachmentPage, totalAttachmentPages]);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Vendor Invoices"
         summary="Record invoices, classify spend, and keep supporting files attached without losing association context."
         eyebrow="Finance"
         breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Vendor Invoices" }]}
         shortcuts={[
-          { label: "Open Financial Ledger", href: "/app/financial-ledger" },
+          { label: "Open Financial Ledger", href: "/app/financial/ledger" },
           { label: "Open Vendors", href: "/app/vendors" },
         ]}
         actions={
@@ -359,7 +384,7 @@ export default function FinancialInvoicesPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <div className="rounded-lg border p-4">
           <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Clock className="h-4 w-4" /> Pending Approval</div>
           <div className="text-2xl font-bold">${apStats.pendingAmount.toFixed(2)}</div>
@@ -376,13 +401,18 @@ export default function FinancialInvoicesPage() {
           <div className={`text-2xl font-bold ${apStats.overdueCount > 0 ? "text-red-600" : ""}`}>${apStats.overdueAmount.toFixed(2)}</div>
           <div className="text-xs text-muted-foreground">{apStats.overdueCount} past due date</div>
         </div>
+        <div className="rounded-lg border p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><DollarSign className="h-4 w-4" /> Paid (MTD)</div>
+          <div className="text-2xl font-bold text-green-700">${apStats.paidMtdAmount.toFixed(2)}</div>
+          <div className="text-xs text-muted-foreground">{apStats.paidMtdCount} invoice{apStats.paidMtdCount !== 1 ? "s" : ""} this month</div>
+        </div>
       </div>
 
       <AsyncStateBoundary
         isLoading={!invoices || !attachments}
         isEmpty={!invoices?.length}
         emptyTitle="No vendor invoices yet"
-        emptyMessage="Create the first invoice for the active association to start the payable record."
+        emptyMessage="Add the first vendor invoice to begin tracking payables — attach a PDF, assign it to a vendor, and mark it paid when the check clears."
       >
         <DataTableShell
           title="Invoice Register"
@@ -396,6 +426,12 @@ export default function FinancialInvoicesPage() {
           onPageChange={setInvoicePage}
           filterSlot={
             <div className="flex items-center gap-3 flex-wrap">
+              {selectedIds.size > 0 && (
+                <Button size="sm" variant="default" onClick={() => bulkApprove.mutate()} disabled={bulkApprove.isPending} className="gap-1.5">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Approve {selectedIds.size} selected
+                </Button>
+              )}
               <ExportCsvButton
                 headers={["Vendor", "Invoice #", "Amount", "Status", "Invoice Date", "Due Date"]}
                 rows={filteredInvoices.map((inv) => [inv.vendorName, inv.invoiceNumber || "", Number(inv.amount).toFixed(2), inv.status, new Date(inv.invoiceDate).toLocaleDateString(), inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : ""])}
@@ -427,6 +463,7 @@ export default function FinancialInvoicesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8"><Checkbox checked={filteredInvoices.length > 0 && selectedIds.size === filteredInvoices.length} onCheckedChange={(v) => { if (v) setSelectedIds(new Set(filteredInvoices.map(i => i.id))); else setSelectedIds(new Set()); }} /></TableHead>
                 <TableHead>Vendor</TableHead>
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Amount</TableHead>
@@ -442,6 +479,7 @@ export default function FinancialInvoicesPage() {
                 const isOverdue = row.dueDate && new Date(row.dueDate) < today && row.status !== "paid" && row.status !== "void";
                 return (
                   <TableRow key={row.id} className={isOverdue ? "bg-red-50/50" : ""}>
+                    <TableCell className="w-8"><Checkbox checked={selectedIds.has(row.id)} onCheckedChange={(v) => { setSelectedIds(prev => { const next = new Set(prev); v ? next.add(row.id) : next.delete(row.id); return next; }); }} /></TableCell>
                     <TableCell className="font-medium">{row.vendorName}</TableCell>
                     <TableCell>{row.invoiceNumber || "-"}</TableCell>
                     <TableCell>${Number(row.amount).toFixed(2)}</TableCell>
@@ -493,6 +531,7 @@ export default function FinancialInvoicesPage() {
             </TableBody>
           </Table>
         </DataTableShell>
+      </AsyncStateBoundary>
 
         <Card>
           <CardContent className="p-6 space-y-4">
@@ -556,7 +595,7 @@ export default function FinancialInvoicesPage() {
             </DataTableShell>
           </CardContent>
         </Card>
-      </AsyncStateBoundary>
+      </div>
     </div>
   );
 }

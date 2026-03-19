@@ -41,12 +41,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Plus, Play, CheckSquare, Square, Loader2, HandCoins } from "lucide-react";
+import { AlertCircle, Plus, Play, Loader2, HandCoins } from "lucide-react";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { HelpTooltip } from "@/components/help-tooltip";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
 
 const feeTypeOptions = ["flat", "percent"] as const;
 
@@ -432,11 +436,34 @@ export default function FinancialLateFeesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col min-h-0">
+      <FinanceTabBar />
+      <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Late Fees"
+        eyebrow="Finance"
+        summary="Manage late fee rules, review applied fees, and recover delinquent balances through payment plans and collections handoffs."
+        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Late Fees" }]}
+      />
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation="Late fee rules, events, and recovery actions are scoped to the active association."
+      />
+
+      <Tabs defaultValue="rules" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="rules">Rules &amp; Calculator</TabsTrigger>
+          <TabsTrigger value="activity">Fee Activity</TabsTrigger>
+          <TabsTrigger value="recovery">Recovery</TabsTrigger>
+        </TabsList>
+
+        {/* ── Tab 1: Rules & Calculator ── */}
+        <TabsContent value="rules" className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Late Fee Rules</h1>
-          <p className="text-muted-foreground">Configure and run late-fee calculations for the current association context.</p>
+          <h2 className="text-lg font-semibold">Late Fee Rules</h2>
+          <p className="text-muted-foreground text-sm">Configure rules that define how late fees are calculated for the active association.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -699,32 +726,171 @@ export default function FinancialLateFeesPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
 
+        {/* ── Tab 2: Fee Activity ── */}
+        <TabsContent value="activity" className="space-y-6">
       <Card>
         <CardContent className="p-0">
+          {(events ?? []).length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="text-lg font-medium">No fee events yet</h3>
+              <p className="text-sm text-muted-foreground mt-1">Use the Rules &amp; Calculator tab to apply late fees.</p>
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Rule</TableHead>
                 <TableHead>Balance</TableHead>
-                <TableHead>Fee</TableHead>
+                <TableHead>Fee Applied</TableHead>
+                <TableHead>Due Date</TableHead>
                 <TableHead>As Of</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(events ?? []).slice(0, 20).map((event) => (
+              {(events ?? []).slice(0, 50).map((event) => (
                 <TableRow key={event.id}>
                   <TableCell>{rules?.find((r) => r.id === event.ruleId)?.name ?? event.ruleId}</TableCell>
                   <TableCell>${event.balanceAmount.toFixed(2)}</TableCell>
-                  <TableCell>${event.calculatedFee.toFixed(2)}</TableCell>
+                  <TableCell className="font-medium">${event.calculatedFee.toFixed(2)}</TableCell>
+                  <TableCell>{new Date(event.dueDate).toLocaleDateString()}</TableCell>
                   <TableCell>{new Date(event.asOfDate).toLocaleDateString()}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 
+      {/* Delinquency Thresholds & Escalation */}
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Delinquency Thresholds &amp; Escalation</h2>
+              <p className="text-sm text-muted-foreground">Configure escalation stages and scan for accounts that qualify for escalated collections action.</p>
+            </div>
+            <div className="flex gap-2">
+              <ConfirmDialog
+                trigger={
+                  <Button size="sm" variant="outline" disabled={!activeAssociationId || runEscalationScan.isPending || thresholds.length === 0}>
+                    {runEscalationScan.isPending ? "Scanning..." : "Run Scan"}
+                  </Button>
+                }
+                title="Run escalation scan?"
+                description={`This will evaluate all delinquent accounts against your ${thresholds.length} configured threshold stage${thresholds.length !== 1 ? "s" : ""} and create or update escalation records accordingly.`}
+                confirmLabel="Run Scan"
+                onConfirm={() => runEscalationScan.mutate()}
+                disabled={!activeAssociationId || runEscalationScan.isPending || thresholds.length === 0}
+              />
+              <Dialog open={thresholdDialogOpen} onOpenChange={setThresholdDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" disabled={!activeAssociationId}>Add Threshold</Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader><DialogTitle>New Delinquency Threshold</DialogTitle></DialogHeader>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Stage #</label>
+                        <Input type="number" min={1} value={thresholdForm.stage} onChange={(e) => setThresholdForm((f) => ({ ...f, stage: parseInt(e.target.value) || 1 }))} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Action Type</label>
+                        <select className="w-full rounded-md border px-3 py-2 text-sm" value={thresholdForm.actionType} onChange={(e) => setThresholdForm((f) => ({ ...f, actionType: e.target.value }))}>
+                          <option value="notice">Notice</option>
+                          <option value="late_fee">Late Fee</option>
+                          <option value="lien">Lien</option>
+                          <option value="collections">Collections</option>
+                        </select>
+                      </div>
+                    </div>
+                    <Input placeholder="Stage name" value={thresholdForm.stageName} onChange={(e) => setThresholdForm((f) => ({ ...f, stageName: e.target.value }))} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Min Balance ($)</label>
+                        <Input type="number" min={0} step="0.01" value={thresholdForm.minimumBalance} onChange={(e) => setThresholdForm((f) => ({ ...f, minimumBalance: parseFloat(e.target.value) || 0 }))} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Min Days Overdue</label>
+                        <Input type="number" min={0} value={thresholdForm.minimumDaysOverdue} onChange={(e) => setThresholdForm((f) => ({ ...f, minimumDaysOverdue: parseInt(e.target.value) || 0 }))} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setThresholdDialogOpen(false)}>Cancel</Button>
+                      <Button onClick={() => createThreshold.mutate()} disabled={!thresholdForm.stageName || createThreshold.isPending}>Add</Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+
+          {thresholds.length > 0 ? (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Configured Stages</div>
+              <div className="flex flex-wrap gap-2">
+                {thresholds.map((t) => (
+                  <div key={t.id} className="rounded-md border px-3 py-2 text-sm">
+                    <span className="font-medium">Stage {t.stage}</span>: {t.stageName} — ≥${t.minimumBalance} &amp; ≥{t.minimumDaysOverdue}d overdue
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">No thresholds configured. Add stages to enable escalation scanning.</div>
+          )}
+
+          {escalations.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Active Escalations ({escalations.filter((e) => e.status === "active").length})</div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Unit ID</TableHead>
+                    <TableHead>Person ID</TableHead>
+                    <TableHead>Stage</TableHead>
+                    <TableHead>Balance</TableHead>
+                    <TableHead>Days Overdue</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {escalations.map((esc) => (
+                    <TableRow key={esc.id}>
+                      <TableCell className="font-mono text-sm">{esc.unitId.slice(0, 8)}</TableCell>
+                      <TableCell className="font-mono text-sm">{esc.personId.slice(0, 8)}</TableCell>
+                      <TableCell><Badge variant="outline">Stage {esc.currentStage}</Badge></TableCell>
+                      <TableCell className="text-red-600 font-medium">${Math.abs(esc.balance).toFixed(2)}</TableCell>
+                      <TableCell>{esc.daysPastDue}d</TableCell>
+                      <TableCell><Badge variant={esc.status === "active" ? "destructive" : esc.status === "resolved" ? "default" : "secondary"}>{esc.status}</Badge></TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {esc.status === "active" && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "on_payment_plan" })}>Plan</Button>
+                              <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "referred" })}>Refer</Button>
+                              <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "resolved" })}>Resolve</Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+        </TabsContent>
+
+        {/* ── Tab 3: Recovery ── */}
+        <TabsContent value="recovery" className="space-y-6">
       {/* Payment Plans */}
       <Card>
         <CardContent className="pt-6 space-y-4">
@@ -844,120 +1010,6 @@ export default function FinancialLateFeesPage() {
         </CardContent>
       </Card>
 
-      {/* Delinquency Thresholds & Escalation */}
-      <Card>
-        <CardContent className="pt-6 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">Delinquency Thresholds &amp; Escalation</h2>
-              <p className="text-sm text-muted-foreground">Configure escalation stages and scan for accounts that qualify for escalated collections action.</p>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => runEscalationScan.mutate()} disabled={!activeAssociationId || runEscalationScan.isPending || thresholds.length === 0}>
-                {runEscalationScan.isPending ? "Scanning..." : "Run Scan"}
-              </Button>
-              <Dialog open={thresholdDialogOpen} onOpenChange={setThresholdDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm" disabled={!activeAssociationId}>Add Threshold</Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader><DialogTitle>New Delinquency Threshold</DialogTitle></DialogHeader>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Stage #</label>
-                        <Input type="number" min={1} value={thresholdForm.stage} onChange={(e) => setThresholdForm((f) => ({ ...f, stage: parseInt(e.target.value) || 1 }))} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Action Type</label>
-                        <select className="w-full rounded-md border px-3 py-2 text-sm" value={thresholdForm.actionType} onChange={(e) => setThresholdForm((f) => ({ ...f, actionType: e.target.value }))}>
-                          <option value="notice">Notice</option>
-                          <option value="late_fee">Late Fee</option>
-                          <option value="lien">Lien</option>
-                          <option value="collections">Collections</option>
-                        </select>
-                      </div>
-                    </div>
-                    <Input placeholder="Stage name" value={thresholdForm.stageName} onChange={(e) => setThresholdForm((f) => ({ ...f, stageName: e.target.value }))} />
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Min Balance ($)</label>
-                        <Input type="number" min={0} step="0.01" value={thresholdForm.minimumBalance} onChange={(e) => setThresholdForm((f) => ({ ...f, minimumBalance: parseFloat(e.target.value) || 0 }))} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Min Days Overdue</label>
-                        <Input type="number" min={0} value={thresholdForm.minimumDaysOverdue} onChange={(e) => setThresholdForm((f) => ({ ...f, minimumDaysOverdue: parseInt(e.target.value) || 0 }))} />
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setThresholdDialogOpen(false)}>Cancel</Button>
-                      <Button onClick={() => createThreshold.mutate()} disabled={!thresholdForm.stageName || createThreshold.isPending}>Add</Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </div>
-
-          {thresholds.length > 0 ? (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Configured Stages</div>
-              <div className="flex flex-wrap gap-2">
-                {thresholds.map((t) => (
-                  <div key={t.id} className="rounded-md border px-3 py-2 text-sm">
-                    <span className="font-medium">Stage {t.stage}</span>: {t.stageName} — ≥${t.minimumBalance} &amp; ≥{t.minimumDaysOverdue}d overdue
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">No thresholds configured. Add stages to enable escalation scanning.</div>
-          )}
-
-          {escalations.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Active Escalations ({escalations.filter((e) => e.status === "active").length})</div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Unit ID</TableHead>
-                    <TableHead>Person ID</TableHead>
-                    <TableHead>Stage</TableHead>
-                    <TableHead>Balance</TableHead>
-                    <TableHead>Days Overdue</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {escalations.map((esc) => (
-                    <TableRow key={esc.id}>
-                      <TableCell className="font-mono text-sm">{esc.unitId.slice(0, 8)}</TableCell>
-                      <TableCell className="font-mono text-sm">{esc.personId.slice(0, 8)}</TableCell>
-                      <TableCell><Badge variant="outline">Stage {esc.currentStage}</Badge></TableCell>
-                      <TableCell className="text-red-600 font-medium">${Math.abs(esc.balance).toFixed(2)}</TableCell>
-                      <TableCell>{esc.daysPastDue}d</TableCell>
-                      <TableCell><Badge variant={esc.status === "active" ? "destructive" : esc.status === "resolved" ? "default" : "secondary"}>{esc.status}</Badge></TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {esc.status === "active" && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "on_payment_plan" })}>Plan</Button>
-                              <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "referred" })}>Refer</Button>
-                              <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "resolved" })}>Resolve</Button>
-                            </>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Collections Handoff & Aging Dashboard */}
       <Card>
         <CardContent className="pt-6 space-y-4">
@@ -1067,6 +1119,9 @@ export default function FinancialLateFeesPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
+      </div>
     </div>
   );
 }

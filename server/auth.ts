@@ -13,7 +13,9 @@ type SessionWithOAuth = {
 
 let passportConfigured = false;
 const AUTH_RESTORE_TTL_SECONDS = Math.max(60, Number(process.env.AUTH_RESTORE_TTL_SECONDS || 15 * 60));
-const AUTH_RESTORE_SECRET = (process.env.AUTH_RESTORE_SECRET || process.env.SESSION_SECRET || "dev-session-secret").trim();
+const authRestoreSecret = process.env.AUTH_RESTORE_SECRET?.trim() || process.env.SESSION_SECRET?.trim() || "";
+const AUTH_RESTORE_SECRET = authRestoreSecret;
+const AUTH_RESTORE_COOKIE = "auth_restore";
 
 function base64UrlEncode(input: string): string {
   return Buffer.from(input, "utf8")
@@ -31,6 +33,40 @@ function base64UrlDecode(input: string): string {
 
 function signAuthRestorePayload(payloadB64: string): string {
   return createHmac("sha256", AUTH_RESTORE_SECRET).update(payloadB64).digest("base64url");
+}
+
+function readCookie(req: Request, name: string): string {
+  const cookieHeader = req.header("cookie") || "";
+  for (const part of cookieHeader.split(";")) {
+    const [rawName, ...rest] = part.trim().split("=");
+    if (rawName !== name) continue;
+    return decodeURIComponent(rest.join("="));
+  }
+  return "";
+}
+
+function isSecureRequest(req: Request): boolean {
+  const forwardedProto = (req.header("x-forwarded-proto") || "").split(",")[0]?.trim().toLowerCase();
+  return forwardedProto === "https" || req.secure;
+}
+
+function setAuthRestoreCookie(req: Request, res: Response, token: string) {
+  res.cookie(AUTH_RESTORE_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isSecureRequest(req),
+    maxAge: AUTH_RESTORE_TTL_SECONDS * 1000,
+    path: "/api/auth/session/restore",
+  });
+}
+
+function clearAuthRestoreCookie(req: Request, res: Response) {
+  res.clearCookie(AUTH_RESTORE_COOKIE, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isSecureRequest(req),
+    path: "/api/auth/session/restore",
+  });
 }
 
 function createAuthRestoreToken(userId: string): string {
@@ -360,6 +396,9 @@ export function registerAuthRoutes(app: Express) {
       const popup = Boolean((req.session as SessionWithOAuth).oauthPopup);
       const authUserId = (req.user as { id?: string } | undefined)?.id || "";
       const authRestore = authUserId ? createAuthRestoreToken(authUserId) : "";
+      if (authRestore) {
+        setAuthRestoreCookie(req, res, authRestore);
+      }
       delete (req.session as SessionWithOAuth).oauthReturnTo;
       delete (req.session as SessionWithOAuth).oauthPopup;
       delete (req.session as SessionWithOAuth).oauthCallbackUrl;
@@ -375,7 +414,7 @@ export function registerAuthRoutes(app: Express) {
       (function() {
         try {
           if (window.opener && !window.opener.closed) {
-            window.opener.postMessage({ type: "google-oauth-success", returnTo: ${JSON.stringify(safeReturnTo)}, authRestore: ${JSON.stringify(authRestore)} }, window.location.origin);
+            window.opener.postMessage({ type: "google-oauth-success", returnTo: ${JSON.stringify(safeReturnTo)} }, window.location.origin);
           }
         } catch (_error) {}
         setTimeout(function() {
@@ -388,7 +427,7 @@ export function registerAuthRoutes(app: Express) {
         return res.status(200).send(html);
       }
 
-      const redirectWithAuth = `${returnTo}${returnTo.includes("?") ? "&" : "?"}auth=success${authRestore ? `&authRestore=${encodeURIComponent(authRestore)}` : ""}`;
+      const redirectWithAuth = `${returnTo}${returnTo.includes("?") ? "&" : "?"}auth=success`;
       return res.redirect(redirectWithAuth);
     });
   };
@@ -402,30 +441,35 @@ export function registerAuthRoutes(app: Express) {
   app.get("/api/callback/google", handleGoogleOAuthCallback);
 
   app.post("/api/auth/session/restore", async (req: Request, res: Response) => {
-    const payload = typeof req.body?.payload === "string" ? req.body.payload.trim() : "";
+    const payload = readCookie(req, AUTH_RESTORE_COOKIE);
     if (!payload) return res.status(400).json({ message: "payload is required" });
 
     const verified = verifyAuthRestoreToken(payload);
     if (!verified) {
+      clearAuthRestoreCookie(req, res);
       log("[auth][restore] token invalid or expired", "auth");
       return res.status(403).json({ message: "Invalid or expired auth restore payload" });
     }
 
     const user = await storage.getAuthUserById(verified.userId);
     if (!user) {
+      clearAuthRestoreCookie(req, res);
       log(`[auth][restore] user not found userId=${verified.userId}`, "auth");
       return res.status(403).json({ message: "Auth user not found or inactive" });
     }
     if (user.isActive !== 1) {
+      clearAuthRestoreCookie(req, res);
       log(`[auth][restore] user inactive userId=${verified.userId} email=${user.email} isActive=${user.isActive}`, "auth");
       return res.status(403).json({ message: "Auth user not found or inactive" });
     }
 
     req.login(user as Express.User, async (error) => {
       if (error) {
+        clearAuthRestoreCookie(req, res);
         log(`[auth][restore] req.login failed userId=${user.id} err=${error.message}`, "auth");
         return res.status(500).json({ message: "Failed to restore session" });
       }
+      clearAuthRestoreCookie(req, res);
       await storage.touchAuthUserLogin(user.id);
       log(`[auth][restore] session restored userId=${user.id} email=${user.email} adminUserId=${user.adminUserId ?? "null"}`, "auth");
       return res.status(201).json({ authenticated: true, user });
