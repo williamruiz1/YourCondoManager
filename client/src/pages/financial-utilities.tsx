@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { FinanceTabBar } from "@/components/finance-tab-bar";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const utilitySchema = z.object({
   associationId: z.string().min(1),
@@ -34,6 +35,7 @@ const utilitySchema = z.object({
 
 
 export default function FinancialUtilitiesPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [attachmentUtilityId, setAttachmentUtilityId] = useState<string>("");
@@ -157,24 +159,24 @@ export default function FinancialUtilitiesPage() {
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Utility Payment</Button></DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Create Utility Payment</DialogTitle></DialogHeader>
             <Form {...form}>
               <form className="space-y-4" onSubmit={form.handleSubmit((v) => createUtility.mutate(v))}>
                 <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                   Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={form.control} name="utilityType" render={({ field }) => (<FormItem><FormLabel>Utility Type</FormLabel><FormControl><Input placeholder="Water" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="providerName" render={({ field }) => (<FormItem><FormLabel>Provider</FormLabel><FormControl><Input placeholder="Provider" {...field} /></FormControl><FormMessage /></FormItem>)} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="status" render={({ field }) => (
                     <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="due">due</SelectItem><SelectItem value="scheduled">scheduled</SelectItem><SelectItem value="paid">paid</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="paidDate" render={({ field }) => (<FormItem><FormLabel>Paid Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                 </div>

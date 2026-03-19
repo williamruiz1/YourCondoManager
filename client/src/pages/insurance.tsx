@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Table,
   TableBody,
@@ -80,6 +81,7 @@ function slaStatus(policy: AssociationInsurancePolicy) {
 }
 
 export default function InsurancePage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [open, setOpen] = useState(false);
@@ -187,13 +189,13 @@ export default function InsurancePage() {
                 Add Policy
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader>
                 <DialogTitle>{editingId ? "Edit Policy" : "New Insurance Policy"}</DialogTitle>
               </DialogHeader>
               <Form {...form}>
                 <form className="space-y-4" onSubmit={form.handleSubmit((v) => createMutation.mutate(v))}>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                     <FormField control={form.control} name="policyType" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Policy Type</FormLabel>
@@ -221,7 +223,7 @@ export default function InsurancePage() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                     <FormField control={form.control} name="effectiveDate" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Effective Date</FormLabel>
@@ -237,7 +239,7 @@ export default function InsurancePage() {
                       </FormItem>
                     )} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                     <FormField control={form.control} name="premiumAmount" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Annual Premium ($)</FormLabel>
@@ -346,7 +348,7 @@ export default function InsurancePage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
+                        <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
                           <Button size="sm" variant="outline" onClick={() => openEdit(policy)}>
                             Edit
                           </Button>

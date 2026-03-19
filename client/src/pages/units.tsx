@@ -575,14 +575,21 @@ export default function UnitsPage() {
           .map((unit) => {
             const unitDirectory = unitDirectoryByUnitId.get(unit.id);
             const ownerCount = unitDirectory?.ownerCount ?? 0;
-            const primaryOwner = unitDirectory?.owners.find((owner) => owner.person)?.person ?? null;
-            const additionalOwnerCount = Math.max(ownerCount - (primaryOwner ? 1 : 0), 0);
-            const ownerNameBase = primaryOwner
+            const allOwnerPersons = (unitDirectory?.owners ?? [])
+              .filter((owner) => owner.person)
+              .map((owner) => owner.person!);
+            const primaryOwner = allOwnerPersons[0] ?? null;
+            const additionalOwners = allOwnerPersons.slice(1).map((p) => ({
+              personId: p.id,
+              personName: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
+              email: p.email?.trim() ?? "",
+              phone: p.phone?.trim() ?? "",
+            }));
+            const ownerName = primaryOwner
               ? `${primaryOwner.firstName ?? ""} ${primaryOwner.lastName ?? ""}`.trim()
               : ownerCount > 0
                 ? "Owner linked"
                 : "Unassigned";
-            const ownerName = additionalOwnerCount > 0 ? `${ownerNameBase} +${additionalOwnerCount}` : ownerNameBase;
             const ownerEmail = primaryOwner?.email?.trim() ?? "";
             const ownerPhone = primaryOwner?.phone?.trim() ?? "";
             const occupancyType = unitDirectory?.activeOccupancy?.occupancy.occupancyType;
@@ -610,6 +617,7 @@ export default function UnitsPage() {
               ownerEmail,
               ownerPhone,
               ownerPersonId: primaryOwner?.id ?? null,
+              additionalOwners,
               occupancyType,
               occupancyLabel,
               tenantPerson,
@@ -1201,6 +1209,34 @@ export default function UnitsPage() {
                                 </Button>
                               </div>
                             </div>
+
+                            {row.additionalOwners.map((additionalOwner) => (
+                              <div key={additionalOwner.personId} className="mt-2 rounded-md border bg-muted/20 px-3 py-2">
+                                <div className="grid gap-3 lg:grid-cols-[80px_110px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] lg:items-center">
+                                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    <User className="h-3 w-3 shrink-0" />
+                                    <span>Co-owner</span>
+                                  </div>
+                                  <div />
+                                  <div className="min-w-0 w-full rounded-md border bg-background px-2 py-2 text-left lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
+                                    <div className="truncate text-sm">{additionalOwner.personName || "No name"}</div>
+                                  </div>
+                                  <CopyableCell
+                                    label="Owner email"
+                                    value={additionalOwner.email}
+                                    fallback="No email"
+                                    onCopy={copyFieldValue}
+                                  />
+                                  <CopyableCell
+                                    label="Owner phone"
+                                    value={additionalOwner.phone}
+                                    fallback="No phone"
+                                    onCopy={copyFieldValue}
+                                  />
+                                  <div />
+                                </div>
+                              </div>
+                            ))}
 
                             {row.tenantPerson ? (
                               <div className="mt-2 rounded-md border border-dashed bg-muted/20 px-3 py-2">

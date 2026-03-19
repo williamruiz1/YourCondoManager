@@ -25,6 +25,7 @@ import { FileUp, Send, AlertTriangle, RefreshCw, X } from "lucide-react";
 import { ExportCsvButton } from "@/components/export-csv-button";
 import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { DateRangePresets, type DateRange } from "@/components/date-range-presets";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 function formatAuditDetails(json: unknown): string {
   if (!json || typeof json !== "object") return String(json ?? "—");
@@ -64,6 +65,7 @@ function SendNoticeDialog({
   ownerName: string;
   unitNumber: string;
 }) {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState(
@@ -109,7 +111,7 @@ function SendNoticeDialog({
           Send Notice
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
         <DialogHeader>
           <DialogTitle>Send Payment Notice</DialogTitle>
           <DialogDescription>
@@ -135,9 +137,10 @@ function SendNoticeDialog({
             />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+        <DialogFooter className={isMobile ? "grid grid-cols-1 gap-2" : undefined}>
+          <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button
+            className={isMobile ? "w-full" : undefined}
             onClick={() => sendMutation.mutate()}
             disabled={sendMutation.isPending || !subject.trim() || !body.trim()}
           >
@@ -150,6 +153,7 @@ function SendNoticeDialog({
 }
 
 export default function FinancialLedgerPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -314,14 +318,14 @@ export default function FinancialLedgerPage() {
         ]}
         actions={<div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} disabled={!activeAssociationId}><FileUp className="h-4 w-4 mr-2" />Import CSV</Button><Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Ledger Entry</Button></DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Create Ledger Entry</DialogTitle></DialogHeader>
             <Form {...form}>
               <form className="space-y-4" onSubmit={form.handleSubmit((v) => createEntry.mutate(v))}>
                 <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                   Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={form.control} name="unitId" render={({ field }) => (
                     <FormItem><FormLabel>Unit</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{units?.map((u) => <SelectItem key={u.id} value={u.id}>{u.unitNumber}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                   )} />
@@ -329,7 +333,7 @@ export default function FinancialLedgerPage() {
                     <FormItem><FormLabel>Owner</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{persons?.map((p) => <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                   )} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={form.control} name="entryType" render={({ field }) => (
                     <FormItem><FormLabel>Type</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="charge">charge</SelectItem><SelectItem value="assessment">assessment</SelectItem><SelectItem value="payment">payment</SelectItem><SelectItem value="late-fee">late-fee</SelectItem><SelectItem value="credit">credit</SelectItem><SelectItem value="adjustment">adjustment</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />

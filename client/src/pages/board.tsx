@@ -26,6 +26,7 @@ import { Plus, UserCheck, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const boardRoleOptions = ["President", "Vice President", "Treasurer", "Secretary", "Board Member"];
 
@@ -40,6 +41,7 @@ const formSchema = z.object({
 });
 
 export default function BoardPage() {
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -135,7 +137,7 @@ export default function BoardPage() {
           <DialogTrigger asChild>
             <Button data-testid="button-add-board-role" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />Assign Role</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Assign Board Role</DialogTitle></DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -166,7 +168,7 @@ export default function BoardPage() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={form.control} name="startDate" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Start Date</FormLabel>

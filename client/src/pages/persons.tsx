@@ -31,6 +31,7 @@ import type { Association } from "@shared/schema";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import type { ResidentialDatasetPersonDirectoryItem } from "@shared/schema";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -54,6 +55,7 @@ type AddressSearchResult = {
 type RoleFilter = "all" | "owner" | "tenant" | "board";
 
 export default function PersonsPage() {
+  const isMobile = useIsMobile();
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -397,11 +399,11 @@ export default function PersonsPage() {
           <DialogTrigger asChild>
             <Button data-testid="button-add-person"><Plus className="h-4 w-4 mr-2" />Add Person</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>{editingId ? "Edit Person" : "New Person"}</DialogTitle></DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={form.control} name="firstName" render={({ field }) => (
                     <FormItem>
                       <FormLabel>First Name</FormLabel>
@@ -432,7 +434,7 @@ export default function PersonsPage() {
                   </FormItem>
                 )} />
                 {!editingId ? (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                     <FormField control={form.control} name="residentRole" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Role</FormLabel>
@@ -554,7 +556,7 @@ export default function PersonsPage() {
           </DialogContent>
         </Dialog>
         <Dialog open={boardRoleOpen} onOpenChange={setBoardRoleOpen}>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Assign Board Role</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <Select value={boardRolePersonId || "none"} onValueChange={(value) => setBoardRolePersonId(value === "none" ? "" : value)}>
@@ -585,11 +587,11 @@ export default function PersonsPage() {
                   <SelectItem value="Board Member">Board Member</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                 <Input type="date" value={boardRoleStartDate} onChange={(event) => setBoardRoleStartDate(event.target.value)} />
                 <Input type="date" value={boardRoleEndDate} onChange={(event) => setBoardRoleEndDate(event.target.value)} />
               </div>
-              <Button onClick={() => createBoardRoleMutation.mutate()} disabled={createBoardRoleMutation.isPending}>
+              <Button className={isMobile ? "w-full" : undefined} onClick={() => createBoardRoleMutation.mutate()} disabled={createBoardRoleMutation.isPending}>
                 {createBoardRoleMutation.isPending ? "Saving..." : "Assign Role"}
               </Button>
             </div>

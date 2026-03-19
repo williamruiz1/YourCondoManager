@@ -15,6 +15,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { ChevronRight, Plus, CheckCircle2, FileText } from "lucide-react";
 import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type BudgetVarianceRow = {
   budgetLineId: string;
@@ -34,6 +35,7 @@ function budgetStatusVariant(status: string): "default" | "secondary" | "outline
 }
 
 export default function FinancialBudgetsPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
 
@@ -261,7 +263,7 @@ export default function FinancialBudgetsPage() {
                 <Plus className="h-4 w-4 mr-1" /> New Budget
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader><DialogTitle>Create Budget</DialogTitle></DialogHeader>
               <div className="space-y-3">
                 <div className="space-y-1">
@@ -272,7 +274,7 @@ export default function FinancialBudgetsPage() {
                   <label className="text-sm font-medium">Fiscal year</label>
                   <Input type="number" value={budgetForm.fiscalYear} onChange={(e) => setBudgetForm((s) => ({ ...s, fiscalYear: e.target.value }))} />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className={`grid gap-2 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <div className="space-y-1">
                     <label className="text-sm font-medium">Start date</label>
                     <Input type="date" value={budgetForm.periodStart} onChange={(e) => setBudgetForm((s) => ({ ...s, periodStart: e.target.value }))} />
@@ -331,7 +333,7 @@ export default function FinancialBudgetsPage() {
                   <Plus className="h-4 w-4 mr-1" /> New Version
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
                 <DialogHeader><DialogTitle>Create Budget Version</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div className="space-y-1">
@@ -413,7 +415,7 @@ export default function FinancialBudgetsPage() {
                     <Plus className="h-4 w-4 mr-1" /> Add Line
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
                   <DialogHeader><DialogTitle>Add Budget Line</DialogTitle></DialogHeader>
                   <div className="space-y-3">
                     <div className="space-y-1">

@@ -31,10 +31,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Plus, Shield } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const roleOptions = ["platform-admin", "board-admin", "manager", "viewer"] as const;
 
 export default function AdminUsersPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -115,7 +117,7 @@ export default function AdminUsersPage() {
               Add Admin User
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader>
               <DialogTitle>Create Admin User</DialogTitle>
             </DialogHeader>

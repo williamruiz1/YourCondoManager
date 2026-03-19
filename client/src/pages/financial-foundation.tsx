@@ -21,6 +21,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const accountSchema = z.object({
   associationId: z.string().min(1),
@@ -36,6 +37,7 @@ const categorySchema = z.object({
 });
 
 export default function FinancialFoundationPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [openAccount, setOpenAccount] = useState(false);
   const [openCategory, setOpenCategory] = useState(false);
@@ -173,7 +175,7 @@ export default function FinancialFoundationPage() {
               <h2 className="text-lg font-semibold">Accounts</h2>
               <Dialog open={openAccount} onOpenChange={setOpenAccount}>
                 <DialogTrigger asChild><Button size="sm">Add Account</Button></DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
                   <DialogHeader><DialogTitle>Create Account</DialogTitle></DialogHeader>
                   <Form {...accountForm}>
                     <form className="space-y-4" onSubmit={accountForm.handleSubmit((v) => createAccount.mutate(v))}>
@@ -214,7 +216,7 @@ export default function FinancialFoundationPage() {
               <h2 className="text-lg font-semibold">Categories</h2>
               <Dialog open={openCategory} onOpenChange={setOpenCategory}>
                 <DialogTrigger asChild><Button size="sm">Add Category</Button></DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
                   <DialogHeader><DialogTitle>Create Category</DialogTitle></DialogHeader>
                   <Form {...categoryForm}>
                     <form className="space-y-4" onSubmit={categoryForm.handleSubmit((v) => createCategory.mutate(v))}>
@@ -269,7 +271,7 @@ export default function FinancialFoundationPage() {
                 <DialogTrigger asChild>
                   <Button size="sm" disabled={!activeAssociationId}>Request Approval</Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
                   <DialogHeader><DialogTitle>Submit Financial Change for Approval</DialogTitle></DialogHeader>
                   <div className="space-y-3">
                     <div className="space-y-1">
@@ -298,9 +300,9 @@ export default function FinancialFoundationPage() {
                       <label className="text-xs text-muted-foreground">Additional notes</label>
                       <Input placeholder="Optional context..." value={approvalForm.notes} onChange={(e) => setApprovalForm((f) => ({ ...f, notes: e.target.value }))} />
                     </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
-                      <Button onClick={() => createApproval.mutate()} disabled={!approvalForm.changeDescription.trim() || createApproval.isPending}>Submit Request</Button>
+                    <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                      <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
+                      <Button className={isMobile ? "w-full" : undefined} onClick={() => createApproval.mutate()} disabled={!approvalForm.changeDescription.trim() || createApproval.isPending}>Submit Request</Button>
                     </div>
                   </div>
                 </DialogContent>

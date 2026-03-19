@@ -1735,11 +1735,19 @@ export default function OwnerPortalPage() {
   const focusedOwnedUnit = myUnits.find((unit) => unit.unitId === ownedUnitFocusId) ?? myUnits[0] ?? null;
   const focusedUnitLabel = focusedOwnedUnit ? formatUnitContextLabel(focusedOwnedUnit.building, focusedOwnedUnit.unitNumber) : (unitLabel || "Current unit");
   const focusedOwnerOccupants = focusedOwnedUnit?.occupants.filter((occupant) => occupant.occupancyType === "OWNER_OCCUPIED") ?? [];
+  const focusedTenantOccupant = focusedOwnedUnit?.occupants.find((occupant) => occupant.occupancyType === "TENANT") ?? null;
   const focusedOccupancyStatus = focusedOwnedUnit?.occupants.some((occupant) => occupant.occupancyType === "TENANT")
     ? "rented"
     : focusedOwnerOccupants.length > 0
       ? "owner-occupied"
       : "unknown";
+  const focusedOwnerName = focusedOwnerOccupants.length > 0
+    ? focusedOwnerOccupants.map((occupant) => [occupant.firstName, occupant.lastName].filter(Boolean).join(" ")).filter(Boolean).join(", ")
+    : [(me as any)?.firstName, (me as any)?.lastName].filter(Boolean).join(" ") || "Owner";
+  const focusedTenantName = focusedTenantOccupant
+    ? [focusedTenantOccupant.firstName, focusedTenantOccupant.lastName].filter(Boolean).join(" ") || "Tenant"
+    : "";
+  const focusedUnitOpenMaintenanceCount = focusedOwnedUnit ? (maintenanceCountsByUnitId.get(focusedOwnedUnit.unitId) ?? 0) : 0;
   const hasSavedOwnerContactInfo = Boolean(
     (me as any)?.phone ||
     (me as any)?.mailingAddress ||
@@ -2306,7 +2314,7 @@ export default function OwnerPortalPage() {
                 </div>
                 <div className="space-y-3">
                   {prioritizedOwnerActions.map((item, index) => (
-                    <div key={item.id} className="rounded-xl border p-4 flex items-start justify-between gap-4">
+                    <div key={item.id} className={`rounded-xl border p-4 gap-4 ${isMobile ? "space-y-3" : "flex items-start justify-between"}`}>
                       <div className="flex items-start gap-3 min-w-0">
                         <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
                           item.tone === "high"
@@ -2327,7 +2335,12 @@ export default function OwnerPortalPage() {
                           <div className="text-sm text-muted-foreground mt-1">{item.detail}</div>
                         </div>
                       </div>
-                      <Button size="sm" variant={item.tone === "high" ? "default" : "outline"} onClick={() => openOwnerView(item.tab, "overviewSubtab" in item ? item.overviewSubtab : undefined)}>
+                      <Button
+                        size="sm"
+                        className={isMobile ? "min-h-11 w-full" : undefined}
+                        variant={item.tone === "high" ? "default" : "outline"}
+                        onClick={() => openOwnerView(item.tab, "overviewSubtab" in item ? item.overviewSubtab : undefined)}
+                      >
                         {item.cta}
                       </Button>
                     </div>
@@ -2372,6 +2385,54 @@ export default function OwnerPortalPage() {
                       Next charge due on {new Date(financialDashboard.nextDueDate).toLocaleDateString()}.
                     </div>
                   ) : null}
+                  <div className={`rounded-xl border bg-white/80 p-4 ${isMobile ? "space-y-4" : "grid gap-4 md:grid-cols-[1.1fr_0.9fr]"}`}>
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">Current Unit</div>
+                        <div className="mt-1 text-lg font-semibold">{focusedUnitLabel}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          {focusedUnitOpenMaintenanceCount} active maintenance item{focusedUnitOpenMaintenanceCount === 1 ? "" : "s"} and
+                          {" "}
+                          {focusedOccupancyStatus === "rented"
+                            ? "tenant occupancy"
+                            : focusedOccupancyStatus === "owner-occupied"
+                            ? "owner occupancy"
+                            : "occupancy not confirmed"}.
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg bg-slate-50 p-3">
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Owner</div>
+                          <div className="mt-1 text-sm font-medium">{focusedOwnerName}</div>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 p-3">
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Occupancy</div>
+                          <div className="mt-1 text-sm font-medium">
+                            {focusedOccupancyStatus === "rented" ? "Rented" : focusedOccupancyStatus === "owner-occupied" ? "Owner Occupied" : "Unknown"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3">
+                      <Button
+                        variant="outline"
+                        className={isMobile ? "min-h-11 w-full" : "justify-between"}
+                        onClick={() => openOwnerView("overview", "owner-info")}
+                      >
+                        Review contact details
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className={isMobile ? "min-h-11 w-full" : "justify-between"}
+                        onClick={() => openOwnerView("overview", "occupancy")}
+                      >
+                        Review occupancy
+                      </Button>
+                      <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                        {focusedTenantName ? `Current tenant: ${focusedTenantName}` : "No tenant details are currently stored for this unit."}
+                      </div>
+                    </div>
+                  </div>
                   {unitsBalance.length > 0 ? (
                     <div className="space-y-2">
                       {unitsBalance.map((unit) => {
@@ -2576,9 +2637,10 @@ export default function OwnerPortalPage() {
                   <div className="text-sm text-muted-foreground mt-1">Review the contact details tied to your owner profile.</div>
                 </div>
                 {ownerInfoEditing ? (
-                  <div className="flex gap-2">
+                  <div className={`gap-2 ${isMobile ? "grid grid-cols-1 w-full" : "flex"}`}>
                     <Button
                       variant="outline"
+                      className={isMobile ? "min-h-11 w-full" : undefined}
                       onClick={() => {
                         resetOwnerInfoForm();
                         setOwnerInfoEditing(false);
@@ -2586,13 +2648,14 @@ export default function OwnerPortalPage() {
                     >
                       Cancel
                     </Button>
-                    <Button onClick={() => saveOwnerInfo.mutate()} disabled={saveOwnerInfo.isPending}>
+                    <Button className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => saveOwnerInfo.mutate()} disabled={saveOwnerInfo.isPending}>
                       {saveOwnerInfo.isPending ? "Saving..." : "Save Changes"}
                     </Button>
                   </div>
                 ) : (
                   <Button
                     variant="outline"
+                    className={isMobile ? "min-h-11 w-full" : undefined}
                     onClick={() => {
                       resetOwnerInfoForm();
                       setOwnerInfoEditing(true);
@@ -2601,6 +2664,26 @@ export default function OwnerPortalPage() {
                     Edit
                   </Button>
                 )}
+              </div>
+
+              <div className={`gap-4 ${isMobile ? "grid grid-cols-1" : "grid md:grid-cols-3"}`}>
+                <div className="rounded-xl border bg-slate-50/80 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Unit</div>
+                  <div className="mt-1 text-sm font-semibold">{focusedUnitLabel}</div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {focusedOccupancyStatus === "rented" ? "Rented unit" : focusedOccupancyStatus === "owner-occupied" ? "Owner occupied" : "Occupancy not confirmed"}
+                  </div>
+                </div>
+                <div className="rounded-xl border bg-slate-50/80 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Preferred Contact</div>
+                  <div className="mt-1 text-sm font-semibold">{requestedContactPreference || "No preference"}</div>
+                  <div className="mt-2 text-xs text-muted-foreground">{requestedPhone || "No phone on file"}</div>
+                </div>
+                <div className="rounded-xl border bg-slate-50/80 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Emergency Contact</div>
+                  <div className="mt-1 text-sm font-semibold">{requestedEmergencyContactName || "Not provided"}</div>
+                  <div className="mt-2 text-xs text-muted-foreground">{requestedEmergencyContactPhone || "No emergency phone on file"}</div>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -2626,7 +2709,7 @@ export default function OwnerPortalPage() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Mailing Address</label>
-                    <Textarea value={requestedMailingAddress} onChange={(e) => setRequestedMailingAddress(e.target.value)} />
+                    <Textarea className={isMobile ? "min-h-24" : undefined} value={requestedMailingAddress} onChange={(e) => setRequestedMailingAddress(e.target.value)} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Emergency Contact Name</label>
@@ -2639,7 +2722,7 @@ export default function OwnerPortalPage() {
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Contact Preference</label>
                     <Select value={requestedContactPreference || "none"} onValueChange={(v) => setRequestedContactPreference(v === "none" ? "" : v)}>
-                      <SelectTrigger><SelectValue placeholder="Contact preference" /></SelectTrigger>
+                      <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Contact preference" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No preference</SelectItem>
                         <SelectItem value="email">Email</SelectItem>
@@ -2696,7 +2779,7 @@ export default function OwnerPortalPage() {
                     <div>
                       <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Occupancy</div>
                       <h2 className="text-base font-semibold mt-1">{focusedUnitLabel}</h2>
-                      <div className="text-sm text-muted-foreground mt-1">
+                  <div className="text-sm text-muted-foreground mt-1">
                         Review and edit occupancy one unit at a time.
                       </div>
                     </div>
@@ -2720,6 +2803,21 @@ export default function OwnerPortalPage() {
                       })
                     : null}
 
+                  <div className={`gap-4 ${isMobile ? "grid grid-cols-1" : "grid md:grid-cols-3"}`}>
+                    <div className="rounded-xl border bg-white p-4">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Unit</div>
+                      <div className="mt-1 text-sm font-semibold">{focusedUnitLabel}</div>
+                    </div>
+                    <div className="rounded-xl border bg-white p-4">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Owner</div>
+                      <div className="mt-1 text-sm font-semibold">{focusedOwnerName}</div>
+                    </div>
+                    <div className="rounded-xl border bg-white p-4">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Tenant</div>
+                      <div className="mt-1 text-sm font-semibold">{focusedTenantName || "None on file"}</div>
+                    </div>
+                  </div>
+
                   <div className="rounded-lg border bg-slate-50 p-4 space-y-4">
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div>
@@ -2729,9 +2827,10 @@ export default function OwnerPortalPage() {
                           </div>
                         </div>
                         {occupancyEditing ? (
-                          <div className="flex gap-2">
+                          <div className={`gap-2 ${isMobile ? "grid grid-cols-1 w-full" : "flex"}`}>
                             <Button
                               variant="outline"
+                              className={isMobile ? "min-h-11 w-full" : undefined}
                               onClick={() => {
                                 resetOccupancyForm();
                                 setOccupancyEditing(false);
@@ -2739,13 +2838,14 @@ export default function OwnerPortalPage() {
                             >
                               Cancel
                             </Button>
-                            <Button onClick={() => saveOccupancy.mutate()} disabled={saveOccupancy.isPending || !focusedOwnedUnit}>
+                            <Button className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => saveOccupancy.mutate()} disabled={saveOccupancy.isPending || !focusedOwnedUnit}>
                               {saveOccupancy.isPending ? "Saving..." : "Save Occupancy"}
                             </Button>
                           </div>
                         ) : (
                           <Button
                             variant="outline"
+                            className={isMobile ? "min-h-11 w-full" : undefined}
                             onClick={() => {
                               resetOccupancyForm();
                               setOccupancyEditing(true);
@@ -2767,7 +2867,7 @@ export default function OwnerPortalPage() {
                                 occupancyType: value as "OWNER_OCCUPIED" | "TENANT",
                               }))}
                             >
-                              <SelectTrigger className="max-w-xs">
+                              <SelectTrigger className={isMobile ? "min-h-11 w-full" : "max-w-xs"}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -2815,6 +2915,7 @@ export default function OwnerPortalPage() {
                           <div className="space-y-1">
                             <label className="text-xs text-muted-foreground">Note for Management</label>
                             <Textarea
+                              className={isMobile ? "min-h-24" : undefined}
                               value={occupancyForm.notes}
                               onChange={(e) => setOccupancyForm((current) => ({ ...current, notes: e.target.value }))}
                             />
@@ -3009,7 +3110,7 @@ export default function OwnerPortalPage() {
                         </div>
                         <div className="text-sm">{item.recommendation}</div>
                         <div className="text-sm text-muted-foreground">Support: {item.evidence}</div>
-                        <div className="flex items-center justify-between gap-3 flex-wrap text-xs text-muted-foreground">
+                        <div className={`gap-3 text-xs text-muted-foreground ${isMobile ? "grid grid-cols-1" : "flex items-center justify-between flex-wrap"}`}>
                           <span>{item.dueLabel}</span>
                           <span>{item.auditLabel}</span>
                         </div>
@@ -3029,13 +3130,15 @@ export default function OwnerPortalPage() {
                   </div>
                   <div className="space-y-3">
                     {boardRecentChangeSummary.map((entry) => (
-                      <div key={entry.id} className="rounded-lg border p-3 space-y-1">
-                        <div className="font-medium">{formatStatusLabel(entry.action)}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {entry.entityType}
-                          {entry.actorEmail ? ` · ${entry.actorEmail}` : ""}
+                      <div key={entry.id} className="rounded-lg border p-3 space-y-2">
+                        <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex items-center justify-between flex-wrap"}`}>
+                          <div className="font-medium">{formatStatusLabel(entry.action)}</div>
+                          <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
                         </div>
-                        <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline">{entry.entityType}</Badge>
+                          {entry.actorEmail ? <Badge variant="secondary">{entry.actorEmail}</Badge> : null}
+                        </div>
                       </div>
                     ))}
                     {boardRecentChangeSummary.length === 0 ? (
@@ -3055,43 +3158,43 @@ export default function OwnerPortalPage() {
                 <h2 className="text-lg font-semibold">Board Lanes</h2>
                 <p className="text-sm text-muted-foreground">Move through decisions, meetings, packages, and risks before opening execution tools.</p>
               </div>
-              <div className="grid gap-3 lg:grid-cols-6">
-                <button type="button" onClick={() => scrollToBoardSection("board-home")} className="rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors">
+              <div className={isMobile ? "flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2" : "grid gap-3 lg:grid-cols-6"}>
+                <button type="button" onClick={() => scrollToBoardSection("board-home")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Home</div>
                   <div className="mt-2 text-sm font-medium">{boardAttentionItems.length} active item{boardAttentionItems.length === 1 ? "" : "s"}</div>
                   <div className="text-sm text-muted-foreground mt-1">Start with decisions, recent changes, and current risks.</div>
                 </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-decisions")} className="rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                <button type="button" onClick={() => scrollToBoardSection("board-decisions")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Decisions</div>
                   <div className="mt-2 text-sm font-medium">{boardDecisionCards.length} recommended</div>
                   <div className="text-sm text-muted-foreground mt-1">Recommended actions with due dates and audit context.</div>
                 </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-meetings")} className="rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                <button type="button" onClick={() => scrollToBoardSection("board-meetings")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Meetings</div>
                   <div className="mt-2 text-sm font-medium">{boardUpcomingMeetings.length} upcoming</div>
                   <div className="text-sm text-muted-foreground mt-1">Agenda readiness, minutes, tasks, and board package prep.</div>
                 </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-financials")} className="rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                <button type="button" onClick={() => scrollToBoardSection("board-financials")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Financials</div>
                   <div className="mt-2 text-sm font-medium">${boardDashboard?.financial.openBalance?.toFixed(2) ?? "0.00"} open</div>
                   <div className="text-sm text-muted-foreground mt-1">Cash exposure, invoices, ledger movement, and owner balances.</div>
                 </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-messages")} className="rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                <button type="button" onClick={() => scrollToBoardSection("board-messages")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Packages</div>
                   <div className="mt-2 text-sm font-medium">{(boardPackageStates.draft ?? 0) + (boardPackageStates.approved ?? 0) + (boardPackageStates.distributed ?? 0)} tracked</div>
                   <div className="text-sm text-muted-foreground mt-1">Board packages, shared documents, and communication history.</div>
                 </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-operations")} className="rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                <button type="button" onClick={() => scrollToBoardSection("board-operations")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Compliance</div>
                   <div className="mt-2 text-sm font-medium">{boardDashboard?.governance.openTaskCount ?? 0} open tasks</div>
                   <div className="text-sm text-muted-foreground mt-1">Governance tasks, maintenance exceptions, and compliance follow-up.</div>
                 </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-activity")} className="rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                <button type="button" onClick={() => scrollToBoardSection("board-activity")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Activity</div>
                   <div className="mt-2 text-sm font-medium">{boardActivityItems.length} recent event{boardActivityItems.length === 1 ? "" : "s"}</div>
                   <div className="text-sm text-muted-foreground mt-1">Audit history grouped by governance, financials, communications, operations, and access.</div>
                 </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-boundary")} className="rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                <button type="button" onClick={() => scrollToBoardSection("board-boundary")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Boundary</div>
                   <div className="mt-2 text-sm font-medium">Oversight only</div>
                   <div className="text-sm text-muted-foreground mt-1">Board mode excludes manager-only editing, execution, and cross-association controls.</div>
@@ -3658,8 +3761,8 @@ export default function OwnerPortalPage() {
               </div>
               <div className="space-y-3">
                 {filteredBoardActivityItems.map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
-                    <div>
+                  <div key={entry.id} className={`rounded-md border p-3 ${isMobile ? "space-y-3" : "flex items-center justify-between gap-3"}`}>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="font-medium">{entry.title}</div>
                         <Badge variant="outline">{entry.laneLabel}</Badge>
@@ -3671,7 +3774,7 @@ export default function OwnerPortalPage() {
                         </div>
                       ) : null}
                     </div>
-                    <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
+                    <div className={`text-xs text-muted-foreground ${isMobile ? "" : "shrink-0"}`}>{new Date(entry.createdAt).toLocaleString()}</div>
                   </div>
                 ))}
                 {filteredBoardActivityItems.length === 0 ? (

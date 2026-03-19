@@ -48,6 +48,7 @@ import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { Textarea } from "@/components/ui/textarea";
 import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const createSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -76,6 +77,7 @@ function InstallmentPreview({ form }: { form: ReturnType<typeof useForm<any>> })
 }
 
 export default function FinancialAssessmentsPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -164,7 +166,7 @@ export default function FinancialAssessmentsPage() {
                 New Assessment
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader>
                 <DialogTitle>Create Special Assessment</DialogTitle>
               </DialogHeader>
@@ -186,7 +188,7 @@ export default function FinancialAssessmentsPage() {
                     )}
                   />
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                     <FormField
                       control={form.control}
                       name="totalAmount"
@@ -214,7 +216,7 @@ export default function FinancialAssessmentsPage() {
 
                   <InstallmentPreview form={form} />
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                     <FormField
                       control={form.control}
                       name="startDate"

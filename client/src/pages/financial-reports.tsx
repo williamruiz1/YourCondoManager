@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { AlertTriangle, Download, Info, Printer } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type LedgerSummaryRow = {
   personId: string;
@@ -62,6 +63,7 @@ function downloadCsv(rows: string[][], filename: string) {
 }
 
 export default function FinancialReportsPage() {
+  const isMobile = useIsMobile();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [report, setReport] = useState<ReportType>("pl");
   const [periodDays, setPeriodDays] = useState(90);
@@ -392,32 +394,53 @@ export default function FinancialReportsPage() {
 
           <Card>
             <CardHeader><CardTitle className="text-base">Breakdown by Entry Type</CardTitle></CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Entry Type</TableHead>
-                    <TableHead className="text-right">Total Amount</TableHead>
-                    <TableHead>Classification</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+            <CardContent className={isMobile ? "pt-4" : "p-0"}>
+              {isMobile ? (
+                <div className="space-y-3">
                   {Object.entries(plData.byType).map(([type, amount]) => (
-                    <TableRow key={type}>
-                      <TableCell className="capitalize font-medium">{type.replace(/-/g, " ")}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(amount)}</TableCell>
-                      <TableCell>
-                        <Badge variant={type === "payment" || type === "credit" ? "default" : "secondary"}>
-                          {type === "payment" || type === "credit" ? "Income" : type === "adjustment" ? "Adjustment" : "Billed"}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
+                    <div key={type} className="rounded-lg border p-4 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="capitalize font-medium">{type.replace(/-/g, " ")}</div>
+                        <div className="mt-2">
+                          <Badge variant={type === "payment" || type === "credit" ? "default" : "secondary"}>
+                            {type === "payment" || type === "credit" ? "Income" : type === "adjustment" ? "Adjustment" : "Billed"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-sm font-semibold">{formatCurrency(amount)}</div>
+                    </div>
                   ))}
                   {Object.keys(plData.byType).length === 0 && (
-                    <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-8">No ledger entries found for the selected period.</TableCell></TableRow>
+                    <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No ledger entries found for the selected period.</div>
                   )}
-                </TableBody>
-              </Table>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Entry Type</TableHead>
+                      <TableHead className="text-right">Total Amount</TableHead>
+                      <TableHead>Classification</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(plData.byType).map(([type, amount]) => (
+                      <TableRow key={type}>
+                        <TableCell className="capitalize font-medium">{type.replace(/-/g, " ")}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(amount)}</TableCell>
+                        <TableCell>
+                          <Badge variant={type === "payment" || type === "credit" ? "default" : "secondary"}>
+                            {type === "payment" || type === "credit" ? "Income" : type === "adjustment" ? "Adjustment" : "Billed"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {Object.keys(plData.byType).length === 0 && (
+                      <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-8">No ledger entries found for the selected period.</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -507,43 +530,70 @@ export default function FinancialReportsPage() {
 
           <Card>
             <CardHeader><CardTitle className="text-base">Account Balances</CardTitle></CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Person</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+            <CardContent className={isMobile ? "pt-4" : "p-0"}>
+              {isMobile ? (
+                <div className="space-y-3">
                   {agingData.rows
                     .slice()
                     .sort((a, b) => a.balance - b.balance)
                     .map((row) => (
-                      <TableRow key={`${row.unitId}-${row.personId}`}>
-                        <TableCell className="font-medium">{row.unitId.slice(0, 8)}</TableCell>
-                        <TableCell>{row.personId.slice(0, 8)}</TableCell>
-                        <TableCell className={cn("text-right font-medium", row.balance < 0 ? "text-red-600" : "text-green-700")}>
-                          {formatCurrency(row.balance)}
-                        </TableCell>
-                        <TableCell>
+                      <div key={`${row.unitId}-${row.personId}`} className="rounded-lg border p-4 space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-medium">Unit {row.unitId.slice(0, 8)}</div>
+                            <div className="text-xs text-muted-foreground">Person {row.personId.slice(0, 8)}</div>
+                          </div>
                           <Badge variant={row.balance < 0 ? "destructive" : "default"}>
                             {row.balance < 0 ? "Past Due" : "Current"}
                           </Badge>
-                        </TableCell>
-                      </TableRow>
+                        </div>
+                        <div className={cn("text-sm font-semibold", row.balance < 0 ? "text-red-600" : "text-green-700")}>
+                          {formatCurrency(row.balance)}
+                        </div>
+                      </div>
                     ))}
                   {agingData.rows.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                        No balance data available.
-                      </TableCell>
-                    </TableRow>
+                    <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No balance data available.</div>
                   )}
-                </TableBody>
-              </Table>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Person</TableHead>
+                      <TableHead className="text-right">Balance</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agingData.rows
+                      .slice()
+                      .sort((a, b) => a.balance - b.balance)
+                      .map((row) => (
+                        <TableRow key={`${row.unitId}-${row.personId}`}>
+                          <TableCell className="font-medium">{row.unitId.slice(0, 8)}</TableCell>
+                          <TableCell>{row.personId.slice(0, 8)}</TableCell>
+                          <TableCell className={cn("text-right font-medium", row.balance < 0 ? "text-red-600" : "text-green-700")}>
+                            {formatCurrency(row.balance)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={row.balance < 0 ? "destructive" : "default"}>
+                              {row.balance < 0 ? "Past Due" : "Current"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    {agingData.rows.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          No balance data available.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -584,23 +634,34 @@ export default function FinancialReportsPage() {
           {reserveData.reserveLines.length > 0 ? (
             <Card>
               <CardHeader><CardTitle className="text-base">Reserve Line Items</CardTitle></CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Line Item</TableHead>
-                      <TableHead className="text-right">Planned Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+              <CardContent className={isMobile ? "pt-4" : "p-0"}>
+                {isMobile ? (
+                  <div className="space-y-3">
                     {reserveData.reserveLines.map((l) => (
-                      <TableRow key={l.id}>
-                        <TableCell>{l.lineItemName}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(l.plannedAmount)}</TableCell>
-                      </TableRow>
+                      <div key={l.id} className="rounded-lg border p-4 flex items-start justify-between gap-3">
+                        <div className="font-medium">{l.lineItemName}</div>
+                        <div className="text-sm font-semibold">{formatCurrency(l.plannedAmount)}</div>
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Line Item</TableHead>
+                        <TableHead className="text-right">Planned Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reserveData.reserveLines.map((l) => (
+                        <TableRow key={l.id}>
+                          <TableCell>{l.lineItemName}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(l.plannedAmount)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           ) : (
@@ -642,19 +703,31 @@ export default function FinancialReportsPage() {
             </Card>
             <Card>
               <CardHeader><CardTitle className="text-base">Delinquency Summary ({agingData.delinquent.length} owners)</CardTitle></CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader><TableRow><TableHead>Unit</TableHead><TableHead className="text-right">Balance Due</TableHead></TableRow></TableHeader>
-                  <TableBody>
+              <CardContent className={isMobile ? "pt-4" : "p-0"}>
+                {isMobile ? (
+                  <div className="space-y-3">
                     {agingData.delinquent.slice(0, 8).map((r) => (
-                      <TableRow key={`${r.unitId}-${r.personId}`}>
-                        <TableCell>{r.unitId.slice(0, 8)}</TableCell>
-                        <TableCell className="text-right text-red-600 font-medium">{formatCurrency(Math.abs(r.balance))}</TableCell>
-                      </TableRow>
+                      <div key={`${r.unitId}-${r.personId}`} className="rounded-lg border p-4 flex items-start justify-between gap-3">
+                        <div className="font-medium">Unit {r.unitId.slice(0, 8)}</div>
+                        <div className="text-sm font-semibold text-red-600">{formatCurrency(Math.abs(r.balance))}</div>
+                      </div>
                     ))}
-                    {agingData.delinquent.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No delinquent accounts</TableCell></TableRow>}
-                  </TableBody>
-                </Table>
+                    {agingData.delinquent.length === 0 && <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No delinquent accounts</div>}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Unit</TableHead><TableHead className="text-right">Balance Due</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {agingData.delinquent.slice(0, 8).map((r) => (
+                        <TableRow key={`${r.unitId}-${r.personId}`}>
+                          <TableCell>{r.unitId.slice(0, 8)}</TableCell>
+                          <TableCell className="text-right text-red-600 font-medium">{formatCurrency(Math.abs(r.balance))}</TableCell>
+                        </TableRow>
+                      ))}
+                      {agingData.delinquent.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No delinquent accounts</TableCell></TableRow>}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -512,7 +512,7 @@ export default function GovernanceCompliancePage() {
     <div className="p-6 space-y-6">
       {/* Suppression dialog */}
       <Dialog open={Boolean(suppressDialogAlert)} onOpenChange={(open) => { if (!open) setSuppressDialogAlert(null); }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>Suppress Compliance Alert</DialogTitle>
           </DialogHeader>
@@ -542,9 +542,10 @@ export default function GovernanceCompliancePage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setSuppressDialogAlert(null)}>Cancel</Button>
+              <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                <Button variant="outline" className={isMobile ? "w-full" : undefined} onClick={() => setSuppressDialogAlert(null)}>Cancel</Button>
                 <Button
+                  className={isMobile ? "w-full" : undefined}
                   disabled={!suppressReason.trim() || updateComplianceAlert.isPending}
                   onClick={() => {
                     if (!associationFilter || !suppressDialogAlert) return;
@@ -589,7 +590,7 @@ export default function GovernanceCompliancePage() {
           </Button>
           <Dialog open={openTemplate} onOpenChange={setOpenTemplate}>
             <DialogTrigger asChild><Button variant="outline">New Template</Button></DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader><DialogTitle>Create Compliance Template</DialogTitle></DialogHeader>
               <Form {...templateForm}>
                 <form className="space-y-4" onSubmit={templateForm.handleSubmit((v) => createTemplate.mutate(v))}>
@@ -637,7 +638,7 @@ export default function GovernanceCompliancePage() {
                   <FormField control={templateForm.control} name="sourceAuthority" render={({ field }) => (<FormItem><FormLabel>Source Authority</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={templateForm.control} name="sourceUrl" render={({ field }) => (<FormItem><FormLabel>Source URL</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={templateForm.control} name="sourceDocumentTitle" render={({ field }) => (<FormItem><FormLabel>Source Document Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-1 md:grid-cols-3"}`}>
                     <FormField control={templateForm.control} name="sourceDocumentDate" render={({ field }) => (<FormItem><FormLabel>Source Doc Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={templateForm.control} name="effectiveDate" render={({ field }) => (<FormItem><FormLabel>Effective Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={templateForm.control} name="nextReviewDueAt" render={({ field }) => (<FormItem><FormLabel>Next Review Due</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
@@ -650,7 +651,7 @@ export default function GovernanceCompliancePage() {
           </Dialog>
           <Dialog open={openTask} onOpenChange={setOpenTask}>
             <DialogTrigger asChild><Button>New Governance Task</Button></DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader><DialogTitle>Create Annual Governance Task</DialogTitle></DialogHeader>
               <Form {...taskForm}>
                 <form className="space-y-4" onSubmit={taskForm.handleSubmit((v) => createTask.mutate(v))}>
@@ -676,7 +677,7 @@ export default function GovernanceCompliancePage() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                     <FormField control={taskForm.control} name="ownerPersonId" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Owner</FormLabel>
@@ -701,7 +702,7 @@ export default function GovernanceCompliancePage() {
           </Dialog>
           <Dialog open={openCalendar} onOpenChange={setOpenCalendar}>
             <DialogTrigger asChild><Button variant="outline">New Calendar Event</Button></DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader><DialogTitle>Create Calendar Event</DialogTitle></DialogHeader>
               <Form {...calendarForm}>
                 <form className="space-y-4" onSubmit={calendarForm.handleSubmit((v) => createCalendarEvent.mutate(v))}>
@@ -709,7 +710,7 @@ export default function GovernanceCompliancePage() {
                     <FormItem><FormLabel>Association</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{associations?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                   )} />
                   <FormField control={calendarForm.control} name="title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                     <FormField control={calendarForm.control} name="startsAt" render={({ field }) => (<FormItem><FormLabel>Start</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={calendarForm.control} name="endsAt" render={({ field }) => (<FormItem><FormLabel>End (optional)</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   </div>

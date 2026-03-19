@@ -625,13 +625,13 @@ export default function FinancialReconciliationPage() {
 
       {/* New Period Dialog */}
       <Dialog open={periodDialogOpen} onOpenChange={setPeriodDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>Create Reconciliation Period</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Input placeholder="Period label (e.g., March 2026)" value={periodForm.periodLabel} onChange={e => setPeriodForm(f => ({ ...f, periodLabel: e.target.value }))} />
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Start Date</label>
                 <Input type="date" value={periodForm.startDate} onChange={e => setPeriodForm(f => ({ ...f, startDate: e.target.value }))} />
@@ -642,9 +642,9 @@ export default function FinancialReconciliationPage() {
               </div>
             </div>
             <Textarea placeholder="Notes (optional)" value={periodForm.notes} onChange={e => setPeriodForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setPeriodDialogOpen(false)}>Cancel</Button>
-              <Button onClick={() => createPeriod.mutate()} disabled={!periodForm.periodLabel || !periodForm.startDate || !periodForm.endDate || createPeriod.isPending}>Create</Button>
+            <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+              <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setPeriodDialogOpen(false)}>Cancel</Button>
+              <Button className={isMobile ? "w-full" : undefined} onClick={() => createPeriod.mutate()} disabled={!periodForm.periodLabel || !periodForm.startDate || !periodForm.endDate || createPeriod.isPending}>Create</Button>
             </div>
           </div>
         </DialogContent>
@@ -652,7 +652,7 @@ export default function FinancialReconciliationPage() {
 
       {/* Manual Match Dialog */}
       <Dialog open={Boolean(manualMatchTx)} onOpenChange={(o) => { if (!o) setManualMatchTx(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>Manual Match Transaction</DialogTitle>
           </DialogHeader>
@@ -670,9 +670,9 @@ export default function FinancialReconciliationPage() {
                 <label className="text-xs text-muted-foreground">Notes</label>
                 <Textarea placeholder="Reconciliation notes" value={manualNotes} onChange={e => setManualNotes(e.target.value)} rows={2} />
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setManualMatchTx(null)}>Cancel</Button>
-                <Button onClick={() => manualMatch.mutate()} disabled={manualMatch.isPending}>Save Match</Button>
+              <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setManualMatchTx(null)}>Cancel</Button>
+                <Button className={isMobile ? "w-full" : undefined} onClick={() => manualMatch.mutate()} disabled={manualMatch.isPending}>Save Match</Button>
               </div>
             </div>
           )}
@@ -681,18 +681,18 @@ export default function FinancialReconciliationPage() {
 
       {/* Import Dialog */}
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>Import Bank Statement</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Input placeholder="Filename / statement label" value={importForm.filename} onChange={e => setImportForm(f => ({ ...f, filename: e.target.value }))} />
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Statement Date</label>
                 <Input type="date" value={importForm.statementDate} onChange={e => setImportForm(f => ({ ...f, statementDate: e.target.value }))} />
               </div>
-              <div />
+              {isMobile ? null : <div />}
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Opening Balance ($)</label>
                 <Input type="number" step="0.01" value={importForm.openingBalance} onChange={e => setImportForm(f => ({ ...f, openingBalance: e.target.value }))} />
@@ -730,9 +730,9 @@ export default function FinancialReconciliationPage() {
               </label>
               <Textarea placeholder='[{"date":"2026-03-01","description":"Payment from Unit 1","amount":-250.00}]' value={importForm.transactions} onChange={e => setImportForm(f => ({ ...f, transactions: e.target.value }))} rows={4} className="font-mono text-xs" />
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setImportDialogOpen(false)}>Cancel</Button>
-              <Button onClick={() => createImport.mutate()} disabled={createImport.isPending}>Import</Button>
+            <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+              <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setImportDialogOpen(false)}>Cancel</Button>
+              <Button className={isMobile ? "w-full" : undefined} onClick={() => createImport.mutate()} disabled={createImport.isPending}>Import</Button>
             </div>
           </div>
         </DialogContent>

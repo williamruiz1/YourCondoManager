@@ -43,6 +43,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { DollarSign, Plus } from "lucide-react";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const frequencies = ["monthly", "quarterly", "annually", "one-time"] as const;
 
@@ -58,6 +59,7 @@ const createSchema = z.object({
 });
 
 export default function FinancialFeesPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -158,7 +160,7 @@ export default function FinancialFeesPage() {
               New Fee Schedule
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader>
               <DialogTitle>Create HOA Fee Schedule</DialogTitle>
             </DialogHeader>
@@ -180,7 +182,7 @@ export default function FinancialFeesPage() {
                   )}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField
                     control={form.control}
                     name="amount"
@@ -215,7 +217,7 @@ export default function FinancialFeesPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField
                     control={form.control}
                     name="startDate"

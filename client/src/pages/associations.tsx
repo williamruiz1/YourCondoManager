@@ -34,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Plus, Building2, MapPin, Search, Archive, ArchiveRestore, Trash2, Pencil, Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +68,7 @@ function isAssociationArchived(association: Association): boolean {
 }
 
 export default function AssociationsPage() {
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showArchivedSection, setShowArchivedSection] = useState(false);
@@ -376,7 +378,7 @@ export default function AssociationsPage() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={form.control} name="city" render={({ field }) => (
                     <FormItem>
                       <FormLabel>City</FormLabel>
@@ -414,23 +416,53 @@ export default function AssociationsPage() {
             <CardTitle className="text-base">Association Overview</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Association Footprint</div><div className="font-semibold">{selectedOverview.units} units</div></div>
-              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Resident Coverage</div><div className="font-semibold">{selectedOverview.activeOwners + selectedOverview.activeOccupants} residents</div></div>
-              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Contact Readiness</div><div className="font-semibold">{selectedOverview.contactCoveragePercent}%</div></div>
-              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Onboarding Progress</div><div className="font-semibold">{selectedOverview.onboardingScorePercent}%</div></div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Maintenance Open</div><div className="font-semibold">{selectedOverview.maintenanceOpen}</div></div>
-              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Maintenance Overdue</div><div className="font-semibold">{selectedOverview.maintenanceOverdue}</div></div>
-              <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Payment Methods Ready</div><div className="font-semibold">{selectedOverview.paymentMethodsActive}</div></div>
-              <div className="rounded-md border bg-muted/20 p-3">
-                <div className="text-muted-foreground">Onboarding State</div>
-                <Badge variant={selectedOverview.onboardingState === "complete" ? "default" : selectedOverview.onboardingState === "blocked" ? "destructive" : "secondary"}>
-                  {selectedOverview.onboardingState}
-                </Badge>
+            {isMobile ? (
+              <div className="space-y-3">
+                <div className="rounded-lg border bg-muted/15 p-4 space-y-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Community Snapshot</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Association Footprint</span><span className="font-semibold">{selectedOverview.units} units</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Resident Coverage</span><span className="font-semibold">{selectedOverview.activeOwners + selectedOverview.activeOccupants} residents</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Contact Readiness</span><span className="font-semibold">{selectedOverview.contactCoveragePercent}%</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Onboarding Progress</span><span className="font-semibold">{selectedOverview.onboardingScorePercent}%</span></div>
+                  </div>
+                </div>
+                <div className="rounded-lg border bg-muted/15 p-4 space-y-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Operations Snapshot</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Maintenance Open</span><span className="font-semibold">{selectedOverview.maintenanceOpen}</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Maintenance Overdue</span><span className="font-semibold">{selectedOverview.maintenanceOverdue}</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Payment Methods Ready</span><span className="font-semibold">{selectedOverview.paymentMethodsActive}</span></div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">Onboarding State</span>
+                      <Badge variant={selectedOverview.onboardingState === "complete" ? "default" : selectedOverview.onboardingState === "blocked" ? "destructive" : "secondary"}>
+                        {selectedOverview.onboardingState}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Association Footprint</div><div className="font-semibold">{selectedOverview.units} units</div></div>
+                  <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Resident Coverage</div><div className="font-semibold">{selectedOverview.activeOwners + selectedOverview.activeOccupants} residents</div></div>
+                  <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Contact Readiness</div><div className="font-semibold">{selectedOverview.contactCoveragePercent}%</div></div>
+                  <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Onboarding Progress</div><div className="font-semibold">{selectedOverview.onboardingScorePercent}%</div></div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Maintenance Open</div><div className="font-semibold">{selectedOverview.maintenanceOpen}</div></div>
+                  <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Maintenance Overdue</div><div className="font-semibold">{selectedOverview.maintenanceOverdue}</div></div>
+                  <div className="rounded-md border bg-muted/20 p-3"><div className="text-muted-foreground">Payment Methods Ready</div><div className="font-semibold">{selectedOverview.paymentMethodsActive}</div></div>
+                  <div className="rounded-md border bg-muted/20 p-3">
+                    <div className="text-muted-foreground">Onboarding State</div>
+                    <Badge variant={selectedOverview.onboardingState === "complete" ? "default" : selectedOverview.onboardingState === "blocked" ? "destructive" : "secondary"}>
+                      {selectedOverview.onboardingState}
+                    </Badge>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       ) : null}
@@ -481,7 +513,7 @@ export default function AssociationsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
                         <Button
                           size="icon"
                           variant={a.id === activeAssociationId ? "default" : "outline"}
@@ -603,16 +635,17 @@ export default function AssociationsPage() {
         </CardContent>
       </Card>
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(isOpen) => { if (!isOpen) setDeleteTarget(null); }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>Delete Association</DialogTitle>
             <DialogDescription>
               Permanently delete <span className="font-medium">{deleteTarget?.name}</span>? This cannot be undone and will fail if the association has linked records (units, documents, etc.).
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <DialogFooter className={isMobile ? "grid grid-cols-1 gap-2" : undefined}>
+            <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button
+              className={isMobile ? "w-full" : undefined}
               variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}

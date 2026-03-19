@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import { useLocation } from "wouter";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const formSchema = z.object({
   unitId: z.string().min(1, "Unit is required"),
@@ -108,6 +109,7 @@ function validateOwnershipTotals(
 }
 
 export default function OwnersPage() {
+  const isMobile = useIsMobile();
   const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [isBulkEditing, setIsBulkEditing] = useState(false);
@@ -352,7 +354,7 @@ export default function OwnersPage() {
             <DialogTrigger asChild>
               <Button data-testid="button-add-ownership"><Plus className="h-4 w-4 mr-2" />Assign Owner</Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader><DialogTitle>Assign Owner to Unit</DialogTitle></DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -387,7 +389,7 @@ export default function OwnersPage() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
                     <FormField control={form.control} name="startDate" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Start Date</FormLabel>

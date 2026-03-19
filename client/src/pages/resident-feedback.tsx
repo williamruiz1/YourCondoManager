@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type FeedbackAnalytics = {
   total: number;
@@ -25,6 +26,7 @@ const SCORE_LABELS: Record<number, string> = { 1: "Very Poor", 2: "Poor", 3: "Ne
 const CATEGORIES = ["maintenance", "management", "amenities", "communication", "neighbor", "financial", "general"] as const;
 
 export default function ResidentFeedbackPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId } = useActiveAssociation();
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "in-review" | "resolved">("all");
@@ -226,15 +228,15 @@ export default function ResidentFeedbackPage() {
                             <DialogTrigger asChild>
                               <Button size="sm" variant="outline" onClick={() => { setNoteDialogFeedback(fb); setAdminNoteText(fb.adminNotes || ""); }}>Note</Button>
                             </DialogTrigger>
-                            <DialogContent>
+                            <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
                               <DialogHeader><DialogTitle>Add Admin Note</DialogTitle></DialogHeader>
                               <div className="space-y-3">
                                 <div className="text-sm">{fb.subject || "(no subject)"}</div>
                                 {fb.feedbackText && <div className="text-sm text-muted-foreground bg-muted/30 rounded p-2">{fb.feedbackText}</div>}
                                 <Textarea placeholder="Internal notes about this feedback..." value={adminNoteText} onChange={(e) => setAdminNoteText(e.target.value)} rows={3} />
-                                <div className="flex justify-end gap-2">
-                                  <Button variant="outline" onClick={() => setNoteDialogFeedback(null)}>Cancel</Button>
-                                  <Button onClick={() => updateFeedback.mutate({ id: fb.id, adminNotes: adminNoteText })}>Save Note</Button>
+                                <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                                  <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setNoteDialogFeedback(null)}>Cancel</Button>
+                                  <Button className={isMobile ? "w-full" : undefined} onClick={() => updateFeedback.mutate({ id: fb.id, adminNotes: adminNoteText })}>Save Note</Button>
                                 </div>
                               </div>
                             </DialogContent>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { AuditLog } from "@shared/schema";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type OperationsDashboardData = {
   totals: {
@@ -25,6 +26,7 @@ type OperationsDashboardData = {
 };
 
 export default function OperationsDashboardPage() {
+  const isMobile = useIsMobile();
   const { data } = useQuery<OperationsDashboardData>({
     queryKey: ["/api/operations/dashboard"],
   });
@@ -128,37 +130,69 @@ export default function OperationsDashboardPage() {
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Work Order Aging</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
-              Use this breakdown to decide whether the team should dispatch, follow up, or close work.
-            </div>
-            <div className="flex items-center justify-between"><span>Open / Assigned</span><Badge variant="outline">{data?.workOrderAging.open ?? 0}</Badge></div>
-            <div className="flex items-center justify-between"><span>In Progress</span><Badge variant="outline">{data?.workOrderAging.inProgress ?? 0}</Badge></div>
-            <div className="flex items-center justify-between"><span>Pending Review</span><Badge variant="outline">{data?.workOrderAging.pendingReview ?? 0}</Badge></div>
-            <div className="flex items-center justify-between"><span>Closed</span><Badge variant="outline">{data?.workOrderAging.closed ?? 0}</Badge></div>
-          </CardContent>
-        </Card>
+        {isMobile ? (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Operational Snapshot</CardTitle></CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Work Orders</div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between"><span>Open / Assigned</span><Badge variant="outline">{data?.workOrderAging.open ?? 0}</Badge></div>
+                  <div className="flex items-center justify-between"><span>In Progress</span><Badge variant="outline">{data?.workOrderAging.inProgress ?? 0}</Badge></div>
+                  <div className="flex items-center justify-between"><span>Pending Review</span><Badge variant="outline">{data?.workOrderAging.pendingReview ?? 0}</Badge></div>
+                  <div className="flex items-center justify-between"><span>Closed</span><Badge variant="outline">{data?.workOrderAging.closed ?? 0}</Badge></div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Vendors</div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between"><span>Active</span><Badge variant="outline">{data?.vendorStatus.active ?? 0}</Badge></div>
+                  <div className="flex items-center justify-between"><span>Inactive</span><Badge variant="outline">{data?.vendorStatus.inactive ?? 0}</Badge></div>
+                  <div className="flex items-center justify-between"><span>Pending Renewal</span><Badge variant="outline">{data?.vendorStatus.pendingRenewal ?? 0}</Badge></div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Work Order Aging</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
+                  Use this breakdown to decide whether the team should dispatch, follow up, or close work.
+                </div>
+                <div className="flex items-center justify-between"><span>Open / Assigned</span><Badge variant="outline">{data?.workOrderAging.open ?? 0}</Badge></div>
+                <div className="flex items-center justify-between"><span>In Progress</span><Badge variant="outline">{data?.workOrderAging.inProgress ?? 0}</Badge></div>
+                <div className="flex items-center justify-between"><span>Pending Review</span><Badge variant="outline">{data?.workOrderAging.pendingReview ?? 0}</Badge></div>
+                <div className="flex items-center justify-between"><span>Closed</span><Badge variant="outline">{data?.workOrderAging.closed ?? 0}</Badge></div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Vendor Status</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
-              Vendor status shows whether current compliance is strong enough to keep assigning operational work safely.
-            </div>
-            <div className="flex items-center justify-between"><span>Active</span><Badge variant="outline">{data?.vendorStatus.active ?? 0}</Badge></div>
-            <div className="flex items-center justify-between"><span>Inactive</span><Badge variant="outline">{data?.vendorStatus.inactive ?? 0}</Badge></div>
-            <div className="flex items-center justify-between"><span>Pending Renewal</span><Badge variant="outline">{data?.vendorStatus.pendingRenewal ?? 0}</Badge></div>
-          </CardContent>
-        </Card>
-
+            <Card>
+              <CardHeader><CardTitle className="text-base">Vendor Status</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
+                  Vendor status shows whether current compliance is strong enough to keep assigning operational work safely.
+                </div>
+                <div className="flex items-center justify-between"><span>Active</span><Badge variant="outline">{data?.vendorStatus.active ?? 0}</Badge></div>
+                <div className="flex items-center justify-between"><span>Inactive</span><Badge variant="outline">{data?.vendorStatus.inactive ?? 0}</Badge></div>
+                <div className="flex items-center justify-between"><span>Pending Renewal</span><Badge variant="outline">{data?.vendorStatus.pendingRenewal ?? 0}</Badge></div>
+              </CardContent>
+            </Card>
+          </>
+        )}
         <Card>
           <CardHeader><CardTitle className="text-base">Recent Inspections</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
-              Review recent inspections to decide whether findings should become work orders or preventive schedule changes.
-            </div>
+            {isMobile ? (
+              <div className="text-xs text-muted-foreground">
+                Review recent inspections to decide whether findings should become work orders or schedule changes.
+              </div>
+            ) : (
+              <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
+                Review recent inspections to decide whether findings should become work orders or preventive schedule changes.
+              </div>
+            )}
             {(data?.recentInspections ?? []).slice(0, 5).map((record) => (
               <div key={record.id} className="rounded border p-3">
                 <div className="font-medium">{record.locationText}</div>

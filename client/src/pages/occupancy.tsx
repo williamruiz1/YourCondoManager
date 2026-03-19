@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const formSchema = z.object({
   unitId: z.string().min(1, "Unit is required"),
@@ -35,6 +36,7 @@ const formSchema = z.object({
 });
 
 export default function OccupancyPage() {
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const { toast } = useToast();
@@ -169,7 +171,7 @@ export default function OccupancyPage() {
           <DialogTrigger asChild>
             <Button data-testid="button-add-occupancy"><Plus className="h-4 w-4 mr-2" />Add Occupancy</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Record Occupancy</DialogTitle></DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -210,7 +212,7 @@ export default function OccupancyPage() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
                   <FormField control={form.control} name="startDate" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Start Date</FormLabel>
@@ -237,7 +239,7 @@ export default function OccupancyPage() {
           <DialogTrigger asChild>
             <Button variant="outline">Onboarding Intake</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Owner/Tenant Onboarding Intake</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -263,7 +265,7 @@ export default function OccupancyPage() {
               {intakeForm.occupancyType === "OWNER_OCCUPIED" ? (
                 <Input type="number" placeholder="Ownership %" value={intakeForm.ownershipPercentage} onChange={(e) => setIntakeForm((p) => ({ ...p, ownershipPercentage: e.target.value }))} />
               ) : null}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
                 <Input placeholder="First name" value={intakeForm.firstName} onChange={(e) => setIntakeForm((p) => ({ ...p, firstName: e.target.value }))} />
                 <Input placeholder="Last name" value={intakeForm.lastName} onChange={(e) => setIntakeForm((p) => ({ ...p, lastName: e.target.value }))} />
               </div>
@@ -273,7 +275,7 @@ export default function OccupancyPage() {
               <Input placeholder="Emergency contact name" value={intakeForm.emergencyContactName} onChange={(e) => setIntakeForm((p) => ({ ...p, emergencyContactName: e.target.value }))} />
               <Input placeholder="Emergency contact phone" value={intakeForm.emergencyContactPhone} onChange={(e) => setIntakeForm((p) => ({ ...p, emergencyContactPhone: e.target.value }))} />
               <Input placeholder="Contact preference (email/phone/sms)" value={intakeForm.contactPreference} onChange={(e) => setIntakeForm((p) => ({ ...p, contactPreference: e.target.value }))} />
-              <Button onClick={() => intakeMutation.mutate()} disabled={intakeMutation.isPending}>Submit Intake</Button>
+              <Button className={isMobile ? "w-full" : undefined} onClick={() => intakeMutation.mutate()} disabled={intakeMutation.isPending}>Submit Intake</Button>
             </div>
           </DialogContent>
         </Dialog>

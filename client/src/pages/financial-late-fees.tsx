@@ -51,6 +51,7 @@ import { HelpTooltip } from "@/components/help-tooltip";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const feeTypeOptions = ["flat", "percent"] as const;
 
@@ -78,6 +79,7 @@ type LedgerSummaryRow = { personId: string; unitId: string; balance: number };
 type BulkPreviewRow = LedgerSummaryRow & { daysLate: number; calculatedFee: number; selected: boolean };
 
 export default function FinancialLateFeesPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [calcResult, setCalcResult] = useState<{ calculatedFee: number; daysLate: number; appliedEventId: string | null } | null>(null);
@@ -472,7 +474,7 @@ export default function FinancialLateFeesPage() {
               New Rule
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Create Late Fee Rule</DialogTitle></DialogHeader>
             <Form {...ruleForm}>
               <form className="space-y-4" onSubmit={ruleForm.handleSubmit((values) => createRuleMutation.mutate(values))}>
@@ -482,7 +484,7 @@ export default function FinancialLateFeesPage() {
                 <FormField control={ruleForm.control} name="name" render={({ field }) => (
                   <FormItem><FormLabel>Name</FormLabel><FormControl><Input placeholder="Standard late fee rule" {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={ruleForm.control} name="feeType" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Type</FormLabel>
@@ -500,7 +502,7 @@ export default function FinancialLateFeesPage() {
                     <FormItem><FormLabel>Fee Amount</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                   <FormField control={ruleForm.control} name="graceDays" render={({ field }) => (
                     <FormItem><FormLabel>Grace Days</FormLabel><FormControl><Input type="number" min="0" max="365" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
@@ -790,10 +792,10 @@ export default function FinancialLateFeesPage() {
                 <DialogTrigger asChild>
                   <Button size="sm" disabled={!activeAssociationId}>Add Threshold</Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
                   <DialogHeader><DialogTitle>New Delinquency Threshold</DialogTitle></DialogHeader>
                   <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Stage #</label>
                         <Input type="number" min={1} value={thresholdForm.stage} onChange={(e) => setThresholdForm((f) => ({ ...f, stage: parseInt(e.target.value) || 1 }))} />
@@ -809,7 +811,7 @@ export default function FinancialLateFeesPage() {
                       </div>
                     </div>
                     <Input placeholder="Stage name" value={thresholdForm.stageName} onChange={(e) => setThresholdForm((f) => ({ ...f, stageName: e.target.value }))} />
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Min Balance ($)</label>
                         <Input type="number" min={0} step="0.01" value={thresholdForm.minimumBalance} onChange={(e) => setThresholdForm((f) => ({ ...f, minimumBalance: parseFloat(e.target.value) || 0 }))} />
@@ -819,9 +821,9 @@ export default function FinancialLateFeesPage() {
                         <Input type="number" min={0} value={thresholdForm.minimumDaysOverdue} onChange={(e) => setThresholdForm((f) => ({ ...f, minimumDaysOverdue: parseInt(e.target.value) || 0 }))} />
                       </div>
                     </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setThresholdDialogOpen(false)}>Cancel</Button>
-                      <Button onClick={() => createThreshold.mutate()} disabled={!thresholdForm.stageName || createThreshold.isPending}>Add</Button>
+                    <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                      <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setThresholdDialogOpen(false)}>Cancel</Button>
+                      <Button className={isMobile ? "w-full" : undefined} onClick={() => createThreshold.mutate()} disabled={!thresholdForm.stageName || createThreshold.isPending}>Add</Button>
                     </div>
                   </div>
                 </DialogContent>
@@ -899,18 +901,18 @@ export default function FinancialLateFeesPage() {
               <h3 className="text-base font-semibold">Payment Plans</h3>
               <p className="text-sm text-muted-foreground">Create structured installment plans for delinquent accounts.</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className={`gap-3 ${isMobile ? "grid grid-cols-1 w-full sm:w-auto" : "flex items-center"}`}>
               {delinquentWithNoPlan.length > 0 && (
                 <Badge variant="destructive">{delinquentWithNoPlan.length} delinquent without plan</Badge>
               )}
               <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-1" />New Plan</Button>
+                  <Button size="sm" className={isMobile ? "min-h-11 w-full" : undefined} disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-1" />New Plan</Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
                   <DialogHeader><DialogTitle>Create Payment Plan</DialogTitle></DialogHeader>
                   <div className="space-y-3">
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "md:grid-cols-2"}`}>
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Unit ID</label>
                         <Input placeholder="Unit ID" value={planForm.unitId} onChange={(e) => setPlanForm((f) => ({ ...f, unitId: e.target.value }))} />
@@ -945,9 +947,10 @@ export default function FinancialLateFeesPage() {
                       </div>
                     </div>
                     <Textarea placeholder="Notes (optional)" value={planForm.notes} onChange={(e) => setPlanForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setPlanDialogOpen(false)}>Cancel</Button>
+                    <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                      <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setPlanDialogOpen(false)}>Cancel</Button>
                       <Button
+                        className={isMobile ? "w-full" : undefined}
                         onClick={() => createPlan.mutate()}
                         disabled={!planForm.unitId || !planForm.personId || !planForm.totalAmount || !planForm.installmentAmount || createPlan.isPending}
                       >
@@ -959,54 +962,107 @@ export default function FinancialLateFeesPage() {
               </Dialog>
             </div>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Unit</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Paid</TableHead>
-                <TableHead>Remaining</TableHead>
-                <TableHead>Installment</TableHead>
-                <TableHead>Next Due</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          {isMobile ? (
+            <div className="space-y-3">
               {paymentPlansList.map((plan) => {
                 const remaining = plan.totalAmount - (plan.amountPaid ?? 0);
                 return (
-                  <TableRow key={plan.id}>
-                    <TableCell>{plan.unitId.slice(0, 8)}...</TableCell>
-                    <TableCell>${plan.totalAmount.toFixed(2)}</TableCell>
-                    <TableCell>${(plan.amountPaid ?? 0).toFixed(2)}</TableCell>
-                    <TableCell className={remaining > 0 ? "text-destructive font-medium" : ""}>${remaining.toFixed(2)}</TableCell>
-                    <TableCell>${plan.installmentAmount.toFixed(2)} / {plan.installmentFrequency}</TableCell>
-                    <TableCell>{plan.nextDueDate ? new Date(plan.nextDueDate).toLocaleDateString() : "-"}</TableCell>
-                    <TableCell>
-                      <Badge variant={plan.status === "active" ? "secondary" : plan.status === "completed" ? "outline" : "destructive"}>{plan.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        {plan.status === "active" && (
-                          <>
-                            <Button size="sm" variant="outline" onClick={() => updatePlanStatus.mutate({ id: plan.id, status: "completed" })}>Complete</Button>
-                            <Button size="sm" variant="outline" onClick={() => updatePlanStatus.mutate({ id: plan.id, status: "defaulted" })}>Default</Button>
-                          </>
-                        )}
-                        {(plan.status === "defaulted" || plan.status === "cancelled") && (
-                          <Button size="sm" variant="outline" onClick={() => updatePlanStatus.mutate({ id: plan.id, status: "active" })}>Reactivate</Button>
-                        )}
+                  <div key={plan.id} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium">Unit {plan.unitId.slice(0, 8)}...</div>
+                        <div className="text-xs text-muted-foreground">
+                          {plan.nextDueDate ? `Next due ${new Date(plan.nextDueDate).toLocaleDateString()}` : "No next due date"}
+                        </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                      <Badge variant={plan.status === "active" ? "secondary" : plan.status === "completed" ? "outline" : "destructive"}>{plan.status}</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div>
+                        <div className="uppercase tracking-wide">Total</div>
+                        <div className="mt-1 text-sm text-foreground">${plan.totalAmount.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-wide">Paid</div>
+                        <div className="mt-1 text-sm text-foreground">${(plan.amountPaid ?? 0).toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-wide">Remaining</div>
+                        <div className={`mt-1 text-sm font-medium ${remaining > 0 ? "text-destructive" : "text-foreground"}`}>${remaining.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-wide">Installment</div>
+                        <div className="mt-1 text-sm text-foreground">${plan.installmentAmount.toFixed(2)} / {plan.installmentFrequency}</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {plan.status === "active" && (
+                        <>
+                          <Button className="min-h-11 w-full" variant="outline" onClick={() => updatePlanStatus.mutate({ id: plan.id, status: "completed" })}>Complete Plan</Button>
+                          <Button className="min-h-11 w-full" variant="outline" onClick={() => updatePlanStatus.mutate({ id: plan.id, status: "defaulted" })}>Mark Defaulted</Button>
+                        </>
+                      )}
+                      {(plan.status === "defaulted" || plan.status === "cancelled") && (
+                        <Button className="min-h-11 w-full" variant="outline" onClick={() => updatePlanStatus.mutate({ id: plan.id, status: "active" })}>Reactivate Plan</Button>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
               {paymentPlansList.length === 0 && (
-                <TableRow><TableCell colSpan={8} className="h-16 text-center text-muted-foreground">No payment plans set up yet.</TableCell></TableRow>
+                <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No payment plans set up yet.</div>
               )}
-            </TableBody>
-          </Table>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Unit</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Paid</TableHead>
+                  <TableHead>Remaining</TableHead>
+                  <TableHead>Installment</TableHead>
+                  <TableHead>Next Due</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paymentPlansList.map((plan) => {
+                  const remaining = plan.totalAmount - (plan.amountPaid ?? 0);
+                  return (
+                    <TableRow key={plan.id}>
+                      <TableCell>{plan.unitId.slice(0, 8)}...</TableCell>
+                      <TableCell>${plan.totalAmount.toFixed(2)}</TableCell>
+                      <TableCell>${(plan.amountPaid ?? 0).toFixed(2)}</TableCell>
+                      <TableCell className={remaining > 0 ? "text-destructive font-medium" : ""}>${remaining.toFixed(2)}</TableCell>
+                      <TableCell>${plan.installmentAmount.toFixed(2)} / {plan.installmentFrequency}</TableCell>
+                      <TableCell>{plan.nextDueDate ? new Date(plan.nextDueDate).toLocaleDateString() : "-"}</TableCell>
+                      <TableCell>
+                        <Badge variant={plan.status === "active" ? "secondary" : plan.status === "completed" ? "outline" : "destructive"}>{plan.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {plan.status === "active" && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => updatePlanStatus.mutate({ id: plan.id, status: "completed" })}>Complete</Button>
+                              <Button size="sm" variant="outline" onClick={() => updatePlanStatus.mutate({ id: plan.id, status: "defaulted" })}>Default</Button>
+                            </>
+                          )}
+                          {(plan.status === "defaulted" || plan.status === "cancelled") && (
+                            <Button size="sm" variant="outline" onClick={() => updatePlanStatus.mutate({ id: plan.id, status: "active" })}>Reactivate</Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {paymentPlansList.length === 0 && (
+                  <TableRow><TableCell colSpan={8} className="h-16 text-center text-muted-foreground">No payment plans set up yet.</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -1025,7 +1081,7 @@ export default function FinancialLateFeesPage() {
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-1" />Refer Account</Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
                 <DialogHeader><DialogTitle>Refer Account to Collections</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <Input placeholder="Unit ID" value={handoffForm.unitId} onChange={(e) => setHandoffForm((f) => ({ ...f, unitId: e.target.value }))} />
@@ -1034,9 +1090,9 @@ export default function FinancialLateFeesPage() {
                   <Input placeholder="Agency Name (optional)" value={handoffForm.agencyName} onChange={(e) => setHandoffForm((f) => ({ ...f, agencyName: e.target.value }))} />
                   <Input placeholder="Agency Case Number (optional)" value={handoffForm.agencyCaseNumber} onChange={(e) => setHandoffForm((f) => ({ ...f, agencyCaseNumber: e.target.value }))} />
                   <Textarea placeholder="Notes (optional)" value={handoffForm.notes} onChange={(e) => setHandoffForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setHandoffDialogOpen(false)}>Cancel</Button>
-                    <Button onClick={() => createHandoff.mutate()} disabled={!handoffForm.unitId || !handoffForm.personId || !handoffForm.referralAmount || createHandoff.isPending}>Refer</Button>
+                  <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                    <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setHandoffDialogOpen(false)}>Cancel</Button>
+                    <Button className={isMobile ? "w-full" : undefined} onClick={() => createHandoff.mutate()} disabled={!handoffForm.unitId || !handoffForm.personId || !handoffForm.referralAmount || createHandoff.isPending}>Refer</Button>
                   </div>
                 </div>
               </DialogContent>
@@ -1046,7 +1102,7 @@ export default function FinancialLateFeesPage() {
           {agingData && (
             <>
               {/* Aging Buckets */}
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
                 {[
                   { label: "Current (0-30d)", value: agingData.buckets.current, color: "text-green-600" },
                   { label: "31-60 Days", value: agingData.buckets.days31to60, color: "text-yellow-600" },
@@ -1069,48 +1125,93 @@ export default function FinancialLateFeesPage() {
 
               {/* Handoff Records */}
               {agingData.handoffs.length > 0 && (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Unit</TableHead>
-                      <TableHead>Person</TableHead>
-                      <TableHead>Referral Date</TableHead>
-                      <TableHead>Referred Amount</TableHead>
-                      <TableHead>Current Balance</TableHead>
-                      <TableHead>Agency</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                isMobile ? (
+                  <div className="space-y-3">
                     {agingData.handoffs.map((h) => (
-                      <TableRow key={h.id}>
-                        <TableCell className="font-mono text-xs">{h.unitId.slice(0, 8)}</TableCell>
-                        <TableCell className="font-mono text-xs">{h.personId.slice(0, 8)}</TableCell>
-                        <TableCell className="text-sm">{new Date(h.referralDate).toLocaleDateString()}</TableCell>
-                        <TableCell className="text-red-600">${h.referralAmount.toFixed(2)}</TableCell>
-                        <TableCell className="text-red-600">${h.currentBalance.toFixed(2)}</TableCell>
-                        <TableCell className="text-sm">{h.agencyName ?? "—"}</TableCell>
-                        <TableCell>
+                      <div key={h.id} className="rounded-lg border p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-medium">Unit {h.unitId.slice(0, 8)}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Referred {new Date(h.referralDate).toLocaleDateString()}
+                            </div>
+                          </div>
                           <Badge variant={h.status === "settled" ? "default" : h.status === "active" ? "destructive" : "secondary"}>
                             {h.status}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            {(h.status === "referred" || h.status === "active") && (
-                              <>
-                                <Button size="sm" variant="outline" onClick={() => updateHandoff.mutate({ id: h.id, status: "active" })}>Activate</Button>
-                                <Button size="sm" variant="outline" onClick={() => updateHandoff.mutate({ id: h.id, status: "settled" })}>Settled</Button>
-                                <Button size="sm" variant="outline" onClick={() => updateHandoff.mutate({ id: h.id, status: "withdrawn" })}>Withdraw</Button>
-                              </>
-                            )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                          <div>
+                            <div className="uppercase tracking-wide">Referred</div>
+                            <div className="mt-1 text-sm text-red-600">${h.referralAmount.toFixed(2)}</div>
                           </div>
-                        </TableCell>
-                      </TableRow>
+                          <div>
+                            <div className="uppercase tracking-wide">Current Balance</div>
+                            <div className="mt-1 text-sm text-red-600">${h.currentBalance.toFixed(2)}</div>
+                          </div>
+                          <div>
+                            <div className="uppercase tracking-wide">Person</div>
+                            <div className="mt-1 text-sm text-foreground">{h.personId.slice(0, 8)}</div>
+                          </div>
+                          <div>
+                            <div className="uppercase tracking-wide">Agency</div>
+                            <div className="mt-1 text-sm text-foreground">{h.agencyName ?? "—"}</div>
+                          </div>
+                        </div>
+                        {(h.status === "referred" || h.status === "active") && (
+                          <div className="grid grid-cols-1 gap-2">
+                            <Button className="min-h-11 w-full" variant="outline" onClick={() => updateHandoff.mutate({ id: h.id, status: "active" })}>Activate Referral</Button>
+                            <Button className="min-h-11 w-full" variant="outline" onClick={() => updateHandoff.mutate({ id: h.id, status: "settled" })}>Mark Settled</Button>
+                            <Button className="min-h-11 w-full" variant="outline" onClick={() => updateHandoff.mutate({ id: h.id, status: "withdrawn" })}>Withdraw Referral</Button>
+                          </div>
+                        )}
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Unit</TableHead>
+                        <TableHead>Person</TableHead>
+                        <TableHead>Referral Date</TableHead>
+                        <TableHead>Referred Amount</TableHead>
+                        <TableHead>Current Balance</TableHead>
+                        <TableHead>Agency</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {agingData.handoffs.map((h) => (
+                        <TableRow key={h.id}>
+                          <TableCell className="font-mono text-xs">{h.unitId.slice(0, 8)}</TableCell>
+                          <TableCell className="font-mono text-xs">{h.personId.slice(0, 8)}</TableCell>
+                          <TableCell className="text-sm">{new Date(h.referralDate).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-red-600">${h.referralAmount.toFixed(2)}</TableCell>
+                          <TableCell className="text-red-600">${h.currentBalance.toFixed(2)}</TableCell>
+                          <TableCell className="text-sm">{h.agencyName ?? "—"}</TableCell>
+                          <TableCell>
+                            <Badge variant={h.status === "settled" ? "default" : h.status === "active" ? "destructive" : "secondary"}>
+                              {h.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              {(h.status === "referred" || h.status === "active") && (
+                                <>
+                                  <Button size="sm" variant="outline" onClick={() => updateHandoff.mutate({ id: h.id, status: "active" })}>Activate</Button>
+                                  <Button size="sm" variant="outline" onClick={() => updateHandoff.mutate({ id: h.id, status: "settled" })}>Settled</Button>
+                                  <Button size="sm" variant="outline" onClick={() => updateHandoff.mutate({ id: h.id, status: "withdrawn" })}>Withdraw</Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )
               )}
               {agingData.handoffs.length === 0 && (
                 <div className="text-sm text-muted-foreground">No accounts currently referred to collections.</div>

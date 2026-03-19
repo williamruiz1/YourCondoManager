@@ -28,6 +28,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { ChevronDown, ChevronUp, AlertTriangle, Zap } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const standardTemplateDefinitions = [
   // Payments & Finance
@@ -200,6 +201,7 @@ const standardTemplateDefinitions = [
 ];
 
 export default function CommunicationsPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const [workspacePanel, setWorkspacePanel] = useState<"delivery" | "onboarding" | "operations">("delivery");
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -912,7 +914,7 @@ export default function CommunicationsPage() {
               Emergency Alert
             </Button>
             <Dialog open={emergencyAlertOpen} onOpenChange={setEmergencyAlertOpen}>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2 text-red-600">
                     <Zap className="h-5 w-5" />
@@ -969,7 +971,7 @@ export default function CommunicationsPage() {
             </Button>
             <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
               <DialogTrigger asChild><Button>New Template</Button></DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto sm:max-h-[85vh]">
                 <DialogHeader><DialogTitle>Create Notice Template</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -1617,7 +1619,7 @@ export default function CommunicationsPage() {
                 <DialogTrigger asChild>
                   <Button>Send to {recipientPreview.recipients.length} Recipient{recipientPreview.recipients.length !== 1 ? "s" : ""}</Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
                   <DialogHeader>
                     <DialogTitle>Confirm Send</DialogTitle>
                   </DialogHeader>
@@ -1635,9 +1637,10 @@ export default function CommunicationsPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-2 justify-end mt-2">
-                    <Button variant="outline" onClick={() => setConfirmSendOpen(false)}>Cancel</Button>
+                  <div className={`mt-2 gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                    <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setConfirmSendOpen(false)}>Cancel</Button>
                     <Button
+                      className={isMobile ? "w-full" : undefined}
                       onClick={() => { sendTargeted.mutate(); setConfirmSendOpen(false); }}
                       disabled={sendTargeted.isPending}
                     >
@@ -2012,7 +2015,7 @@ export default function CommunicationsPage() {
                 <DialogTrigger asChild>
                   <Button size="sm" disabled={!selectedAssociationId}>Add Reminder Rule</Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
                   <DialogHeader><DialogTitle>Create Payment Reminder Rule</DialogTitle></DialogHeader>
                   <div className="space-y-3">
                     <Input placeholder="Rule name (e.g. 7-day overdue reminder)" value={reminderRuleForm.name} onChange={(e) => setReminderRuleForm((f) => ({ ...f, name: e.target.value }))} />
@@ -2039,9 +2042,9 @@ export default function CommunicationsPage() {
                         {(templates ?? []).map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setReminderRuleOpen(false)}>Cancel</Button>
-                      <Button onClick={() => createReminderRule.mutate()} disabled={!reminderRuleForm.name.trim() || createReminderRule.isPending}>Create Rule</Button>
+                    <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                      <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setReminderRuleOpen(false)}>Cancel</Button>
+                      <Button className={isMobile ? "w-full" : undefined} onClick={() => createReminderRule.mutate()} disabled={!reminderRuleForm.name.trim() || createReminderRule.isPending}>Create Rule</Button>
                     </div>
                   </div>
                 </DialogContent>
