@@ -32,6 +32,14 @@ This audit reconciles the active `Mobile Optimization` roadmap project against t
 - `Break large multi-panel dashboards into mobile stacks ordered by urgency`
   Evidence: `client/src/pages/operations-dashboard.tsx` now collapses the dashboard into urgency-first cards and mobile section shells rather than preserving the desktop panel structure.
 
+### Board Workspace Mobile Experience
+- `Audit board landing, agenda, tasks, meeting summaries, approvals, packages, and activity views on mobile`
+  Evidence: board member roster cards exist in `client/src/pages/board.tsx`; meeting agenda, note log, resolution, vote, and reminder flows expose dedicated mobile cards and action groups in `client/src/pages/meetings.tsx`; packet review and distribution flows expose mobile card/list treatments in `client/src/pages/board-packages.tsx`; and governance task/compliance queues expose mobile card/list fallbacks in `client/src/pages/governance-compliance.tsx`.
+- `Ensure board actions such as approve, review, comment, and open detail remain reachable on mobile`
+  Evidence: mobile packet review supports approve, revert, distribute, annotation add, and annotation resolve actions in `client/src/pages/board-packages.tsx`; meeting mobile cards keep notice, quorum, note editing, completion, summary publishing, and agenda selection reachable in `client/src/pages/meetings.tsx`; compliance mobile cards keep task status updates and alert suppression actions reachable in `client/src/pages/governance-compliance.tsx`.
+- `Review attachments, packets, and long-form content for readable mobile access`
+  Evidence: generated packet sections, distribution logs, and reviewer annotations are readable in stacked mobile sections in `client/src/pages/board-packages.tsx`; long-form minutes and compliance authoring dialogs in `client/src/pages/meetings.tsx` and `client/src/pages/governance-compliance.tsx` now preserve mobile access while clearly handing heavy authoring back to desktop where appropriate.
+
 ### Resident, Shared Content, And Cross-Role Communication Surfaces
 - `Ensure document previews, download actions, and filenames behave cleanly on small screens`
   Evidence: mobile document cards with `Manage`, `Open`, and `Download` actions plus readable file titles and metadata exist in `client/src/pages/documents.tsx`.
