@@ -56,6 +56,15 @@ function formatSectionTitle(sectionKey: string) {
   return sectionOptions.find((section) => section.key === sectionKey)?.label ?? sectionKey;
 }
 
+function MobileDesktopHandoff({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+      <div className="font-medium">{title}</div>
+      <div className="mt-1 text-xs leading-5 text-amber-800">{body}</div>
+    </div>
+  );
+}
+
 export default function BoardPackagesPage() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -363,22 +372,29 @@ export default function BoardPackagesPage() {
             <DialogTrigger asChild>
               <Button disabled={!activeAssociationId} onClick={openCreate}>New Template</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-3xl">
+            <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader>
               <DialogTitle>{editing ? "Edit Board Package Template" : "Create Board Package Template"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
+              {isMobile ? (
+                <MobileDesktopHandoff
+                  title="Desktop preferred for heavy packet authoring"
+                  body="Phone review and quick edits are supported here, but large section design changes and deep packet restructuring are still better on desktop."
+                />
+              ) : null}
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                 Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <Input
+                  className={isMobile ? "min-h-11" : undefined}
                   placeholder="Template title"
                   value={templateForm.title}
                   onChange={(event) => setTemplateForm((current) => ({ ...current, title: event.target.value }))}
                 />
                 <Select value={templateForm.frequency} onValueChange={(value) => setTemplateForm((current) => ({ ...current, frequency: value }))}>
-                  <SelectTrigger><SelectValue placeholder="Frequency" /></SelectTrigger>
+                  <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Frequency" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="monthly">monthly</SelectItem>
                     <SelectItem value="quarterly">quarterly</SelectItem>
@@ -400,7 +416,7 @@ export default function BoardPackagesPage() {
                   <span>Auto-generate before meetings</span>
                 </label>
                 <Select value={templateForm.meetingType} onValueChange={(value) => setTemplateForm((current) => ({ ...current, meetingType: value }))}>
-                  <SelectTrigger><SelectValue placeholder="Meeting type" /></SelectTrigger>
+                  <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Meeting type" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="board">board</SelectItem>
                     <SelectItem value="budget">budget</SelectItem>
@@ -409,6 +425,7 @@ export default function BoardPackagesPage() {
                   </SelectContent>
                 </Select>
                 <Input
+                  className={isMobile ? "min-h-11" : undefined}
                   type="number"
                   min="0"
                   step="1"
@@ -439,13 +456,15 @@ export default function BoardPackagesPage() {
                 </div>
               </div>
               <Textarea
+                className={isMobile ? "min-h-24" : undefined}
                 placeholder="Notes for operators and reviewers"
                 value={templateForm.notes}
                 onChange={(event) => setTemplateForm((current) => ({ ...current, notes: event.target.value }))}
               />
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <div className={`flex justify-end gap-2 ${isMobile ? "flex-col" : ""}`}>
+                <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
                 <Button
+                  className={isMobile ? "w-full" : undefined}
                   onClick={() => saveTemplate.mutate()}
                   disabled={!templateForm.title.trim() || templateForm.sections.length === 0}
                 >

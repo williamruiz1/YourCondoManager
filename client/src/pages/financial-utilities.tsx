@@ -167,18 +167,18 @@ export default function FinancialUtilitiesPage() {
                   Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                 </div>
                 <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
-                  <FormField control={form.control} name="utilityType" render={({ field }) => (<FormItem><FormLabel>Utility Type</FormLabel><FormControl><Input placeholder="Water" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={form.control} name="providerName" render={({ field }) => (<FormItem><FormLabel>Provider</FormLabel><FormControl><Input placeholder="Provider" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={form.control} name="utilityType" render={({ field }) => (<FormItem><FormLabel>Utility Type</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} placeholder="Water" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={form.control} name="providerName" render={({ field }) => (<FormItem><FormLabel>Provider</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} placeholder="Provider" {...field} /></FormControl><FormMessage /></FormItem>)} />
                 </div>
                 <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
-                  <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="status" render={({ field }) => (
-                    <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="due">due</SelectItem><SelectItem value="scheduled">scheduled</SelectItem><SelectItem value="paid">paid</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                    <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="due">due</SelectItem><SelectItem value="scheduled">scheduled</SelectItem><SelectItem value="paid">paid</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />
                 </div>
                 <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
-                  <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={form.control} name="paidDate" render={({ field }) => (<FormItem><FormLabel>Paid Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={form.control} name="paidDate" render={({ field }) => (<FormItem><FormLabel>Paid Date</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                 </div>
                 <Button className="w-full" type="submit" disabled={createUtility.isPending}>Save</Button>
               </form>
@@ -192,7 +192,7 @@ export default function FinancialUtilitiesPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-base font-semibold flex-1">Utility Bills</h2>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectTrigger className={isMobile ? "min-h-11 w-full" : "w-[160px]"}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="due">Due</SelectItem>
@@ -204,6 +204,44 @@ export default function FinancialUtilitiesPage() {
           {(utilities ?? []).filter(r => statusFilter === "all" || r.status === statusFilter).length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
               <p className="text-sm">{statusFilter === "all" ? "No utility bills recorded yet." : `No ${statusFilter} utility bills.`}</p>
+            </div>
+          ) : isMobile ? (
+            <div className="space-y-3">
+              {(utilities ?? [])
+                .filter(r => statusFilter === "all" || r.status === statusFilter)
+                .map((row) => (
+                  <div key={row.id} className="rounded-xl border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium">{row.utilityType}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{row.providerName}</div>
+                      </div>
+                      <Badge variant={row.status === "paid" ? "default" : row.status === "due" ? "destructive" : "secondary"}>
+                        {row.status}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div>
+                        <div className="uppercase tracking-wide">Amount</div>
+                        <div className="mt-1 text-sm text-foreground">${row.amount.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-wide">Due</div>
+                        <div className="mt-1 text-sm text-foreground">{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "—"}</div>
+                      </div>
+                    </div>
+                    {row.status !== "paid" && (
+                      <Button
+                        className="min-h-11 w-full"
+                        variant="outline"
+                        onClick={() => markPaid.mutate(row.id)}
+                        disabled={markPaid.isPending}
+                      >
+                        Mark Paid
+                      </Button>
+                    )}
+                  </div>
+                ))}
             </div>
           ) : (
             <Table>
@@ -255,11 +293,27 @@ export default function FinancialUtilitiesPage() {
         <CardContent className="p-6 space-y-4">
           <h2 className="text-lg font-semibold">Utility Attachments</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <Select value={attachmentUtilityId || "none"} onValueChange={(v) => { const id = v === "none" ? "" : v; setAttachmentUtilityId(id); const row = (utilities ?? []).find((i) => i.id === id); setAttachmentAssocId(row?.associationId || ""); }}><SelectTrigger><SelectValue placeholder="Utility record" /></SelectTrigger><SelectContent><SelectItem value="none">select utility</SelectItem>{(utilities ?? []).map((i) => <SelectItem key={i.id} value={i.id}>{i.utilityType} {i.providerName}</SelectItem>)}</SelectContent></Select>
-            <Input placeholder="Attachment title" value={attachmentTitle} onChange={(e) => setAttachmentTitle(e.target.value)} />
+            <Select value={attachmentUtilityId || "none"} onValueChange={(v) => { const id = v === "none" ? "" : v; setAttachmentUtilityId(id); const row = (utilities ?? []).find((i) => i.id === id); setAttachmentAssocId(row?.associationId || ""); }}><SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Utility record" /></SelectTrigger><SelectContent><SelectItem value="none">select utility</SelectItem>{(utilities ?? []).map((i) => <SelectItem key={i.id} value={i.id}>{i.utilityType} {i.providerName}</SelectItem>)}</SelectContent></Select>
+            <Input className={isMobile ? "min-h-11" : undefined} placeholder="Attachment title" value={attachmentTitle} onChange={(e) => setAttachmentTitle(e.target.value)} />
             <div className="border rounded-md p-2 text-sm cursor-pointer" onClick={() => fileRef.current?.click()}>{attachmentFile?.name || "Choose file"}<input ref={fileRef} type="file" className="hidden" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} /></div>
-            <Button onClick={() => uploadAttachment.mutate()} disabled={uploadAttachment.isPending}>Upload</Button>
+            <Button className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => uploadAttachment.mutate()} disabled={uploadAttachment.isPending}>Upload</Button>
           </div>
+          {isMobile ? (
+            <div className="space-y-3">
+              {(attachments ?? []).filter((a) => a.expenseType === "utility-payment").map((a) => {
+                const utility = (utilities ?? []).find(u => u.id === a.expenseId);
+                return (
+                  <div key={a.id} className="rounded-xl border p-4 space-y-2">
+                    <div className="text-sm font-medium">{a.title}</div>
+                    <div className="text-xs text-muted-foreground">{utility ? `${utility.utilityType} — ${utility.providerName}` : a.expenseId}</div>
+                    <Button asChild variant="outline" className="min-h-11 w-full">
+                      <a href={a.fileUrl} target="_blank" rel="noreferrer">Open Attachment</a>
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
           <Table>
             <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Utility</TableHead><TableHead>File</TableHead></TableRow></TableHeader>
             <TableBody>
@@ -275,6 +329,7 @@ export default function FinancialUtilitiesPage() {
               })}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
       </div>

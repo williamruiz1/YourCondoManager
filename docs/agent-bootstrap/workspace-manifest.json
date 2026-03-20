@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-19T21:36:41.812Z",
+  "generatedAt": "2026-03-20T00:36:36.213Z",
   "purpose": "Reusable startup snapshot for coding agents working in the CondoManager workspace.",
   "repository": {
     "root": "/home/runner/workspace",
@@ -108,7 +108,7 @@
       },
       {
         "path": "/app/associations",
-        "component": "AssociationsPage",
+        "component": null,
         "redirectTo": null
       },
       {
@@ -243,7 +243,7 @@
       },
       {
         "path": "/app/portfolio",
-        "component": "PortfolioPage",
+        "component": null,
         "redirectTo": null
       },
       {

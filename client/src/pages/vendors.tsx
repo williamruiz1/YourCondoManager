@@ -24,6 +24,7 @@ import { TaskFlowChecklist } from "@/components/task-flow-checklist";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AlertTriangle } from "lucide-react";
 import { ExportCsvButton } from "@/components/export-csv-button";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const vendorDocumentTypes = ["Insurance", "Contract", "W-9", "License", "Compliance", "Other"];
 
@@ -73,6 +74,7 @@ function toPayload(values: VendorFormValues) {
 
 export default function VendorsPage() {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [open, setOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
@@ -292,7 +294,7 @@ export default function VendorsPage() {
             <DialogTrigger asChild>
               <Button disabled={!activeAssociationId}>Add Vendor</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader>
                 <DialogTitle>{editingVendor ? "Edit Vendor" : "Create Vendor"}</DialogTitle>
               </DialogHeader>
@@ -308,7 +310,7 @@ export default function VendorsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Vendor Name</FormLabel>
-                        <FormControl><Input {...field} /></FormControl>
+                        <FormControl><Input {...field} className={isMobile ? "min-h-11" : undefined} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -319,7 +321,7 @@ export default function VendorsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Trade</FormLabel>
-                        <FormControl><Input {...field} placeholder="plumbing, landscaping, electrician" /></FormControl>
+                        <FormControl><Input {...field} className={isMobile ? "min-h-11" : undefined} placeholder="plumbing, landscaping, electrician" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -330,7 +332,7 @@ export default function VendorsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Primary Contact</FormLabel>
-                        <FormControl><Input {...field} value={field.value || ""} /></FormControl>
+                        <FormControl><Input {...field} className={isMobile ? "min-h-11" : undefined} value={field.value || ""} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -341,7 +343,7 @@ export default function VendorsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Service Area</FormLabel>
-                        <FormControl><Input {...field} value={field.value || ""} placeholder="New Haven County" /></FormControl>
+                        <FormControl><Input {...field} className={isMobile ? "min-h-11" : undefined} value={field.value || ""} placeholder="New Haven County" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -352,7 +354,7 @@ export default function VendorsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Email</FormLabel>
-                        <FormControl><Input {...field} value={field.value || ""} type="email" /></FormControl>
+                        <FormControl><Input {...field} className={isMobile ? "min-h-11" : undefined} value={field.value || ""} type="email" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -363,7 +365,7 @@ export default function VendorsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Phone</FormLabel>
-                        <FormControl><Input {...field} value={field.value || ""} /></FormControl>
+                        <FormControl><Input {...field} className={isMobile ? "min-h-11" : undefined} value={field.value || ""} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -374,7 +376,7 @@ export default function VendorsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>License Number</FormLabel>
-                        <FormControl><Input {...field} value={field.value || ""} /></FormControl>
+                        <FormControl><Input {...field} className={isMobile ? "min-h-11" : undefined} value={field.value || ""} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -385,7 +387,7 @@ export default function VendorsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Insurance Expires</FormLabel>
-                        <FormControl><Input {...field} value={field.value || ""} type="date" /></FormControl>
+                        <FormControl><Input {...field} className={isMobile ? "min-h-11" : undefined} value={field.value || ""} type="date" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -398,7 +400,7 @@ export default function VendorsPage() {
                         <FormLabel>Status</FormLabel>
                         <Select value={field.value} onValueChange={field.onChange}>
                           <FormControl>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="active">active</SelectItem>
@@ -417,7 +419,7 @@ export default function VendorsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Notes</FormLabel>
-                        <FormControl><Textarea {...field} value={field.value || ""} rows={4} /></FormControl>
+                        <FormControl><Textarea {...field} className={isMobile ? "min-h-28" : undefined} value={field.value || ""} rows={4} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -481,9 +483,9 @@ export default function VendorsPage() {
           totalPages={totalPages}
           onPageChange={setPage}
           filterSlot={
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className={`flex items-center gap-3 flex-wrap ${isMobile ? "w-full" : ""}`}>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className={isMobile ? "w-full min-h-11" : "w-[180px]"}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
@@ -492,7 +494,7 @@ export default function VendorsPage() {
                 </SelectContent>
               </Select>
               <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className={isMobile ? "w-full min-h-11" : "w-[180px]"}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="name">Name A-Z</SelectItem>
                   <SelectItem value="trade">Trade A-Z</SelectItem>
@@ -507,6 +509,7 @@ export default function VendorsPage() {
             </div>
           }
         >
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -572,6 +575,52 @@ export default function VendorsPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {pagedVendors.map((vendor) => (
+              <div key={vendor.id} className="rounded-xl border p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <button className="min-w-0 text-left" onClick={() => setSelectedVendorId(vendor.id)}>
+                    <div className="font-medium">{vendor.name}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{vendor.serviceArea || "Service area not set"}</div>
+                  </button>
+                  <Badge variant={vendor.status === "active" ? "default" : "secondary"}>{vendor.status}</Badge>
+                </div>
+                <div className="grid gap-2 text-xs text-muted-foreground">
+                  <div>Trade: {vendor.trade}</div>
+                  <div>Contact: {vendor.primaryContactName || "-"}</div>
+                  <div>{vendor.primaryEmail || vendor.primaryPhone || "-"}</div>
+                  <div>
+                    Insurance: {vendor.insuranceExpiresAt ? new Date(vendor.insuranceExpiresAt).toLocaleDateString() : "—"}
+                  </div>
+                </div>
+                {(() => {
+                  const alert = renewalAlerts.find((a) => a.vendorId === vendor.id);
+                  if (!alert) return null;
+                  return (
+                    <Badge variant={alert.severity === "expired" ? "destructive" : "secondary"} className="text-xs">
+                      {alert.severity === "expired"
+                        ? `Expired ${Math.abs(alert.daysUntilExpiry)}d ago`
+                        : `Expires in ${alert.daysUntilExpiry}d`}
+                    </Badge>
+                  );
+                })()}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedVendorId(vendor.id)}>View</Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingVendor(vendor);
+                      setOpen(true);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
         </DataTableShell>
       </AsyncStateBoundary>
 
@@ -581,6 +630,7 @@ export default function VendorsPage() {
             <h2 className="text-lg font-semibold">Renewal Alerts</h2>
             <p className="text-sm text-muted-foreground">Insurance expirations within 30 days are flagged automatically and vendor status is pushed to pending-renewal unless the vendor is inactive.</p>
           </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -612,6 +662,24 @@ export default function VendorsPage() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {renewalAlerts.map((alert) => (
+              <div key={alert.vendorId} className="rounded-xl border p-4 space-y-2">
+                <button className="text-left font-medium" onClick={() => setSelectedVendorId(alert.vendorId)}>
+                  {alert.vendorName}
+                </button>
+                <div className="flex items-center justify-between gap-3">
+                  <Badge variant={alert.severity === "expired" ? "destructive" : "secondary"}>{alert.severity}</Badge>
+                  <span className="text-xs text-muted-foreground">{alert.daysUntilExpiry}d</span>
+                </div>
+                <div className="text-xs text-muted-foreground">{new Date(alert.insuranceExpiresAt).toLocaleDateString()}</div>
+              </div>
+            ))}
+            {renewalAlerts.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No vendor renewal alerts in the current association.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -631,13 +699,14 @@ export default function VendorsPage() {
             <div className="space-y-3">
               <div className="grid gap-3 md:grid-cols-2">
                 <Input
+                  className={isMobile ? "min-h-11" : undefined}
                   placeholder="Document title"
                   value={documentTitle}
                   onChange={(event) => setDocumentTitle(event.target.value)}
                   disabled={!selectedVendor}
                 />
                 <Select value={documentType} onValueChange={setDocumentType} disabled={!selectedVendor}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {vendorDocumentTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
                   </SelectContent>
@@ -655,6 +724,7 @@ export default function VendorsPage() {
                   />
                 </div>
                 <Button
+                  className={isMobile ? "w-full min-h-11" : undefined}
                   onClick={() => {
                     setDocumentUploadStage("uploading");
                     uploadVendorDocument.mutate();
@@ -679,6 +749,7 @@ export default function VendorsPage() {
             />
           </div>
 
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -709,6 +780,22 @@ export default function VendorsPage() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
+          <div className="space-y-3 md:hidden">
+            {vendorDocuments.map((document) => (
+              <div key={document.id} className="rounded-xl border p-4 space-y-2">
+                <div className="text-sm font-medium">{document.title}</div>
+                <div className="text-xs text-muted-foreground">{document.documentType} · {new Date(document.createdAt).toLocaleDateString()}</div>
+                <a className="inline-flex text-sm underline" href={document.fileUrl} target="_blank" rel="noreferrer">Open</a>
+              </div>
+            ))}
+            {selectedVendor && vendorDocuments.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No vendor documents filed yet.</div>
+            ) : null}
+            {!selectedVendor ? (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Choose a vendor from the registry first.</div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 

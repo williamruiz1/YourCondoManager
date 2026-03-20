@@ -55,6 +55,15 @@ const voteSchema = z.object({
   voteWeight: z.coerce.number().positive().default(1),
 });
 
+function MobileDesktopHandoff({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+      <div className="font-medium">{title}</div>
+      <div className="mt-1 text-xs leading-5 text-amber-800">{body}</div>
+    </div>
+  );
+}
+
 function MeetingNoticeDialog({
   meeting,
   associationId,
@@ -982,10 +991,16 @@ export default function MeetingsPage() {
                 setNoteOpen(false);
               })}
             >
+              {isMobile ? (
+                <MobileDesktopHandoff
+                  title="Desktop preferred for long-form minutes editing"
+                  body="Mobile is suitable for quick note capture, status review, and summary checks. Final long-form minutes editing and formatting should still be completed on desktop."
+                />
+              ) : null}
               <FormField control={noteForm.control} name="notes" render={({ field }) => (
-                <FormItem><FormLabel>Meeting Notes</FormLabel><FormControl><Textarea rows={5} {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Meeting Notes</FormLabel><FormControl><Textarea rows={5} className={isMobile ? "min-h-28" : undefined} {...field} /></FormControl><FormMessage /></FormItem>
               )} />
-              <div className="flex items-center justify-between">
+              <div className={`flex items-center justify-between gap-3 ${isMobile ? "flex-col items-stretch" : ""}`}>
                 <FormLabel>Draft Minutes</FormLabel>
                 <Button
                   type="button"
@@ -1035,7 +1050,7 @@ export default function MeetingsPage() {
                 </Button>
               </div>
               <FormField control={noteForm.control} name="summaryText" render={({ field }) => (
-                <FormItem><FormControl><Textarea rows={12} className="font-mono text-xs" {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormControl><Textarea rows={12} className={`font-mono text-xs ${isMobile ? "min-h-[18rem]" : ""}`} {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <Button className="w-full" type="submit">Save</Button>
             </form>

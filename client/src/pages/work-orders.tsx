@@ -20,7 +20,6 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { AlertTriangle, Camera, ChevronDown, ChevronUp, Clock, Minus, Upload, X } from "lucide-react";
 import { DateRangePresets, type DateRange } from "@/components/date-range-presets";
 import { Label } from "@/components/ui/label";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type WorkOrderStatus = "open" | "assigned" | "in-progress" | "pending-review" | "closed" | "cancelled";
@@ -248,6 +247,12 @@ export default function WorkOrdersPage() {
   }, [search, sortBy, workOrders]);
   const totalPages = Math.max(1, Math.ceil(visibleWorkOrders.length / 10));
   const pagedWorkOrders = visibleWorkOrders.slice((page - 1) * 10, page * 10);
+  const activeFilterCount = Number(statusFilter !== "all") + Number(unitFilter !== "all") + Number(dateRange.from !== null || dateRange.to !== null);
+  const filterSummaryParts = [
+    statusFilter === "all" ? "All statuses" : statusFilter,
+    unitFilter === "all" ? "All units" : "1 unit",
+    sortBy === "updated" ? "Recently updated" : sortBy === "priority" ? "Highest priority" : "Status A-Z",
+  ];
 
   useEffect(() => {
     if (selectedOrderId && !workOrders.some((order) => order.id === selectedOrderId)) {
@@ -281,84 +286,122 @@ export default function WorkOrdersPage() {
             <DialogTrigger asChild>
               <Button disabled={!activeAssociationId} onClick={openCreate}>New Work Order</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader><DialogTitle>{editing ? "Edit Work Order" : "Create Work Order"}</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                   Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <Input placeholder="Title" value={form.title} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} />
-                  <Input placeholder="Location" value={form.locationText} onChange={(e) => setForm((current) => ({ ...current, locationText: e.target.value }))} />
-                  <Select value={form.unitId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value === "none" ? "" : value }))}>
-                    <SelectTrigger><SelectValue placeholder="Unit" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No unit</SelectItem>
-                      {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={form.vendorId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, vendorId: value === "none" ? "" : value }))}>
-                    <SelectTrigger><SelectValue placeholder="Vendor" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Unassigned vendor</SelectItem>
-                      {vendors.map((vendor) => <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={form.priority} onValueChange={(value: WorkOrderPriority) => setForm((current) => ({ ...current, priority: value }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">low</SelectItem>
-                      <SelectItem value="medium">medium</SelectItem>
-                      <SelectItem value="high">high</SelectItem>
-                      <SelectItem value="urgent">urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={form.status} onValueChange={(value: WorkOrderStatus) => setForm((current) => ({ ...current, status: value }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="open">open</SelectItem>
-                      <SelectItem value="assigned">assigned</SelectItem>
-                      <SelectItem value="in-progress">in-progress</SelectItem>
-                      <SelectItem value="pending-review">pending-review</SelectItem>
-                      <SelectItem value="closed">closed</SelectItem>
-                      <SelectItem value="cancelled">cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input placeholder="Assigned to" value={form.assignedTo} onChange={(e) => setForm((current) => ({ ...current, assignedTo: e.target.value }))} />
-                  <Input placeholder="Estimated cost" type="number" min="0" step="0.01" value={form.estimatedCost} onChange={(e) => setForm((current) => ({ ...current, estimatedCost: e.target.value }))} />
-                  <Select
-                    value={form.vendorInvoiceId || "none"}
-                    onValueChange={(value) => {
-                      const nextValue = value === "none" ? "" : value;
-                      const invoice = availableInvoices.find((item) => item.id === nextValue);
-                      setForm((current) => ({
-                        ...current,
-                        vendorInvoiceId: nextValue,
-                        actualCost: invoice ? String(invoice.amount) : current.actualCost,
-                      }));
-                    }}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Linked invoice" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No linked invoice</SelectItem>
-                      {availableInvoices.map((invoice) => (
-                        <SelectItem key={invoice.id} value={invoice.id}>
-                          {invoice.vendorName} · {invoice.invoiceNumber || invoice.id.slice(0, 6)} · ${invoice.amount.toFixed(2)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    placeholder="Actual cost"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.actualCost}
-                    onChange={(e) => setForm((current) => ({ ...current, actualCost: e.target.value }))}
-                  />
+                  <div className="space-y-1.5">
+                    <Label htmlFor="work-order-title">Title</Label>
+                    <Input id="work-order-title" className={isMobile ? "min-h-11" : undefined} placeholder="Roof leak above stairwell" value={form.title} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="work-order-location">Location</Label>
+                    <Input id="work-order-location" className={isMobile ? "min-h-11" : undefined} placeholder="Building A stair landing" value={form.locationText} onChange={(e) => setForm((current) => ({ ...current, locationText: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Unit</Label>
+                    <Select value={form.unitId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value === "none" ? "" : value }))}>
+                      <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Unit" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No unit</SelectItem>
+                        {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Vendor</Label>
+                    <Select value={form.vendorId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, vendorId: value === "none" ? "" : value }))}>
+                      <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Vendor" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Unassigned vendor</SelectItem>
+                        {vendors.map((vendor) => <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Priority</Label>
+                    <Select value={form.priority} onValueChange={(value: WorkOrderPriority) => setForm((current) => ({ ...current, priority: value }))}>
+                      <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">low</SelectItem>
+                        <SelectItem value="medium">medium</SelectItem>
+                        <SelectItem value="high">high</SelectItem>
+                        <SelectItem value="urgent">urgent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Status</Label>
+                    <Select value={form.status} onValueChange={(value: WorkOrderStatus) => setForm((current) => ({ ...current, status: value }))}>
+                      <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="open">open</SelectItem>
+                        <SelectItem value="assigned">assigned</SelectItem>
+                        <SelectItem value="in-progress">in-progress</SelectItem>
+                        <SelectItem value="pending-review">pending-review</SelectItem>
+                        <SelectItem value="closed">closed</SelectItem>
+                        <SelectItem value="cancelled">cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="work-order-assignee">Assigned to</Label>
+                    <Input id="work-order-assignee" className={isMobile ? "min-h-11" : undefined} placeholder="Facilities coordinator" value={form.assignedTo} onChange={(e) => setForm((current) => ({ ...current, assignedTo: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="work-order-estimated-cost">Estimated cost</Label>
+                    <Input id="work-order-estimated-cost" className={isMobile ? "min-h-11" : undefined} placeholder="0.00" type="number" min="0" step="0.01" value={form.estimatedCost} onChange={(e) => setForm((current) => ({ ...current, estimatedCost: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Linked invoice</Label>
+                    <Select
+                      value={form.vendorInvoiceId || "none"}
+                      onValueChange={(value) => {
+                        const nextValue = value === "none" ? "" : value;
+                        const invoice = availableInvoices.find((item) => item.id === nextValue);
+                        setForm((current) => ({
+                          ...current,
+                          vendorInvoiceId: nextValue,
+                          actualCost: invoice ? String(invoice.amount) : current.actualCost,
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Linked invoice" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No linked invoice</SelectItem>
+                        {availableInvoices.map((invoice) => (
+                          <SelectItem key={invoice.id} value={invoice.id}>
+                            {invoice.vendorName} · {invoice.invoiceNumber || invoice.id.slice(0, 6)} · ${invoice.amount.toFixed(2)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="work-order-actual-cost">Actual cost</Label>
+                    <Input
+                      id="work-order-actual-cost"
+                      className={isMobile ? "min-h-11" : undefined}
+                      placeholder="0.00"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.actualCost}
+                      onChange={(e) => setForm((current) => ({ ...current, actualCost: e.target.value }))}
+                    />
+                  </div>
                 </div>
-                <Textarea placeholder="Description" value={form.description} onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))} rows={4} />
-                <Textarea placeholder="Resolution notes" value={form.resolutionNotes} onChange={(e) => setForm((current) => ({ ...current, resolutionNotes: e.target.value }))} rows={3} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="work-order-description">Description</Label>
+                  <Textarea id="work-order-description" className={isMobile ? "min-h-28" : undefined} placeholder="Describe the problem, urgency, and any access instructions." value={form.description} onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))} rows={4} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="work-order-resolution-notes">Resolution notes</Label>
+                  <Textarea id="work-order-resolution-notes" className={isMobile ? "min-h-24" : undefined} placeholder="Capture follow-up details, completion notes, or pending review context." value={form.resolutionNotes} onChange={(e) => setForm((current) => ({ ...current, resolutionNotes: e.target.value }))} rows={3} />
+                </div>
                 <Button className="w-full" onClick={() => saveWorkOrder.mutate()} disabled={saveWorkOrder.isPending || !form.title.trim() || !form.description.trim()}>
                   {editing ? "Save Changes" : "Create Work Order"}
                 </Button>
@@ -473,50 +516,81 @@ export default function WorkOrdersPage() {
           onPageChange={setPage}
           filterSlot={
             isMobile ? (
-              <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen} className="w-full">
+              <>
                 <div className="flex w-full items-center justify-between gap-2">
-                  <div className="text-xs text-muted-foreground">
-                    {statusFilter === "all" ? "All statuses" : statusFilter} · {unitFilter === "all" ? "All units" : "Filtered unit"}
+                  <div className="min-w-0 text-xs text-muted-foreground">
+                    {filterSummaryParts.join(" · ")}
                   </div>
-                  <CollapsibleTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      {filtersOpen ? "Hide Filters" : "Show Filters"}
-                    </Button>
-                  </CollapsibleTrigger>
+                  <Button size="sm" variant="outline" onClick={() => setFiltersOpen(true)}>
+                    Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                  </Button>
                 </div>
-                <CollapsibleContent className="pt-3">
-                  <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All statuses</SelectItem>
-                        <SelectItem value="open">open</SelectItem>
-                        <SelectItem value="assigned">assigned</SelectItem>
-                        <SelectItem value="in-progress">in-progress</SelectItem>
-                        <SelectItem value="pending-review">pending-review</SelectItem>
-                        <SelectItem value="closed">closed</SelectItem>
-                        <SelectItem value="cancelled">cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={unitFilter} onValueChange={setUnitFilter}>
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All units</SelectItem>
-                        {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Select value={sortBy} onValueChange={setSortBy}>
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="updated">Recently updated</SelectItem>
-                        <SelectItem value="priority">Highest priority</SelectItem>
-                        <SelectItem value="status">Status A-Z</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <DateRangePresets value={dateRange} onChange={(r) => { setDateRange(r); setPage(1); }} />
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
+                <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+                  <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-3xl">
+                    <SheetHeader>
+                      <SheetTitle>Filter Work Orders</SheetTitle>
+                      <SheetDescription>Keep queue controls in a separate mobile sheet so primary actions stay visible.</SheetDescription>
+                    </SheetHeader>
+                    <div className="mt-6 space-y-4">
+                      <div className="space-y-1.5">
+                        <Label>Status</Label>
+                        <Select value={statusFilter} onValueChange={setStatusFilter}>
+                          <SelectTrigger className="min-h-11 w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All statuses</SelectItem>
+                            <SelectItem value="open">open</SelectItem>
+                            <SelectItem value="assigned">assigned</SelectItem>
+                            <SelectItem value="in-progress">in-progress</SelectItem>
+                            <SelectItem value="pending-review">pending-review</SelectItem>
+                            <SelectItem value="closed">closed</SelectItem>
+                            <SelectItem value="cancelled">cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Unit</Label>
+                        <Select value={unitFilter} onValueChange={setUnitFilter}>
+                          <SelectTrigger className="min-h-11 w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All units</SelectItem>
+                            {units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Sort</Label>
+                        <Select value={sortBy} onValueChange={setSortBy}>
+                          <SelectTrigger className="min-h-11 w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="updated">Recently updated</SelectItem>
+                            <SelectItem value="priority">Highest priority</SelectItem>
+                            <SelectItem value="status">Status A-Z</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Date range</Label>
+                        <DateRangePresets value={dateRange} onChange={(r) => { setDateRange(r); setPage(1); }} className="items-start" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setStatusFilter("all");
+                            setUnitFilter("all");
+                            setSortBy("updated");
+                            setDateRange({ from: null, to: null });
+                            setPage(1);
+                          }}
+                        >
+                          Reset
+                        </Button>
+                        <Button onClick={() => setFiltersOpen(false)}>Apply</Button>
+                      </div>
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              </>
             ) : (
               <div className="space-y-2">
                 <div className="flex items-center gap-3 flex-wrap">

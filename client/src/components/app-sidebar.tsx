@@ -150,6 +150,10 @@ function canAccess(item: NavLink, role?: AdminRole | null) {
   return item.roles.includes(role);
 }
 
+function isSingleAssociationBoardExperience(adminRole: AdminRole | null | undefined, associationCount: number) {
+  return adminRole === "board-admin" && associationCount <= 1;
+}
+
 function filterModules(modules: NavModule[], adminRole?: AdminRole | null): NavModule[] {
   return modules
     .filter((m) => canAccess(m, adminRole) && canAccessWipRoute(m.url, adminRole))
@@ -161,8 +165,14 @@ function filterModules(modules: NavModule[], adminRole?: AdminRole | null): NavM
 
 export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
   const [location] = useLocation();
-  const { activeAssociationId, activeAssociationName } = useActiveAssociation();
-  const visibleOverview = filterModules(overviewModules, adminRole);
+  const { associations, activeAssociationId, activeAssociationName } = useActiveAssociation();
+  const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
+  const visibleOverview = filterModules(
+    singleAssociationBoardExperience
+      ? overviewModules.filter((module) => module.url !== "/app/portfolio" && module.url !== "/app/associations")
+      : overviewModules,
+    adminRole,
+  );
   const visibleAssociation = filterModules(associationModules, adminRole);
   const visiblePlatform = filterModules(platformModules, adminRole);
 
@@ -182,17 +192,30 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
         </div>
         <div className="px-3 pb-3 group-data-[collapsible=icon]:hidden">
           {activeAssociationId ? (
-            <Link
-              href="/app/association-context"
-              className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/60"
-              data-testid="link-selected-association-overview"
-            >
-              <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-              <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Association</div>
-                <div className="text-xs font-semibold truncate">{activeAssociationName}</div>
+            singleAssociationBoardExperience ? (
+              <div
+                className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm"
+                data-testid="text-selected-association-overview"
+              >
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Association</div>
+                  <div className="text-xs font-semibold truncate">{activeAssociationName}</div>
+                </div>
               </div>
-            </Link>
+            ) : (
+              <Link
+                href="/app/association-context"
+                className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/60"
+                data-testid="link-selected-association-overview"
+              >
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Association</div>
+                  <div className="text-xs font-semibold truncate">{activeAssociationName}</div>
+                </div>
+              </Link>
+            )
           ) : (
             <Link
               href="/app/association-context"

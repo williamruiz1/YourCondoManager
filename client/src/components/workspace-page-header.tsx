@@ -40,8 +40,8 @@ export function WorkspacePageHeader({
   const crumbs = breadcrumbs ?? [{ label: title }];
 
   return (
-    <div className="space-y-4 pb-5 border-b border-border">
-      <Breadcrumb>
+    <div className="space-y-4 border-b border-border pb-5">
+      <Breadcrumb className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <BreadcrumbList>
           {crumbs.map((crumb, index) => (
             <BreadcrumbItem key={`${crumb.label}-${index}`}>
@@ -58,8 +58,8 @@ export function WorkspacePageHeader({
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="space-y-2">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 space-y-2">
           {eyebrow ? (
             <div className="flex items-center gap-1.5">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary/70" />
@@ -67,18 +67,18 @@ export function WorkspacePageHeader({
             </div>
           ) : null}
           <div>
-            <h1 className="text-[1.75rem] font-semibold tracking-[-0.025em] leading-tight">{title}</h1>
+            <h1 className="text-[1.65rem] font-semibold leading-tight tracking-[-0.025em] sm:text-[1.75rem]">{title}</h1>
             <p className="text-sm text-muted-foreground max-w-3xl mt-0.5">{summary}</p>
           </div>
           {shortcuts?.length ? (
-            <div className="flex gap-2 flex-wrap">
+            <div className="grid gap-2 sm:flex sm:flex-wrap">
               {shortcuts.map((shortcut, i) =>
                 shortcut.onClick ? (
-                  <Button key={i} size="sm" variant="outline" onClick={shortcut.onClick}>
+                  <Button key={i} size="sm" variant="outline" onClick={shortcut.onClick} className="min-h-11 justify-center sm:min-h-9">
                     {shortcut.label}
                   </Button>
                 ) : (
-                  <Button key={shortcut.href} asChild size="sm" variant="outline">
+                  <Button key={shortcut.href} asChild size="sm" variant="outline" className="min-h-11 justify-center sm:min-h-9">
                     <Link href={shortcut.href!}>{shortcut.label}</Link>
                   </Button>
                 )
@@ -86,7 +86,7 @@ export function WorkspacePageHeader({
             </div>
           ) : null}
         </div>
-        {actions ? <div className="flex items-center gap-2 flex-wrap">{actions}</div> : null}
+        {actions ? <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">{actions}</div> : null}
       </div>
     </div>
   );

@@ -20,6 +20,13 @@ Refresh the manifest when:
 - `AGENTS.md` working rules change
 - the roadmap backbone or active bootstrap projects change materially
 
+## Roadmap Status Contract
+- If a task is being executed under an Admin roadmap project, update the live roadmap task status as the work is built and validated.
+- Do not treat roadmap status updates as optional closeout polish. They are part of the implementation chunk.
+- `done` means the slice is implemented and validated.
+- `in-progress` means the slice materially advanced but still has an explicit remaining gap.
+- If roadmap status changed, refresh the bootstrap artifacts so generated startup context reflects reality.
+
 ## Separation Rule
 - Put stable, repeatedly useful facts in `durable-memory.json`.
 - Keep task-specific discoveries, debugging trails, and speculative notes out of durable memory unless they are promoted into roadmap/backbone artifacts.

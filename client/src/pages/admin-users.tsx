@@ -32,6 +32,8 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Shield } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { MobileSectionShell } from "@/components/mobile-section-shell";
 
 const roleOptions = ["platform-admin", "board-admin", "manager", "viewer"] as const;
 
@@ -104,15 +106,28 @@ export default function AdminUsersPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Admin Users</h1>
-          <p className="text-muted-foreground">Manage admin access and roles.</p>
-        </div>
+    <div className="space-y-6 p-4 sm:p-6">
+      <WorkspacePageHeader
+        title="Admin Users"
+        summary="Manage operator access, role changes, and activation state in a mobile-safe admin workflow."
+        eyebrow="Admin"
+        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Admin Users" }]}
+        shortcuts={[
+          { label: "Admin Roadmap", href: "/app/admin/roadmap" },
+        ]}
+        actions={
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">Users: {sortedUsers.length}</Badge>
+              <Badge variant="outline">Active: {sortedUsers.filter((user) => user.isActive).length}</Badge>
+            </div>
+          </>
+        }
+      />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="min-h-11 w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" />
               Add Admin User
             </Button>
@@ -123,7 +138,7 @@ export default function AdminUsersPage() {
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <p className="text-sm font-medium mb-2">Email</p>
+                <p className="mb-2 text-sm font-medium">Email</p>
                 <Input
                   placeholder="admin@example.com"
                   value={newEmail}
@@ -131,7 +146,7 @@ export default function AdminUsersPage() {
                 />
               </div>
               <div>
-                <p className="text-sm font-medium mb-2">Role</p>
+                <p className="mb-2 text-sm font-medium">Role</p>
                 <Select value={newRole} onValueChange={(v) => setNewRole(v as (typeof roleOptions)[number])}>
                   <SelectTrigger>
                     <SelectValue />
@@ -146,7 +161,7 @@ export default function AdminUsersPage() {
                 </Select>
               </div>
               <div>
-                <p className="text-sm font-medium mb-2">Active</p>
+                <p className="mb-2 text-sm font-medium">Active</p>
                 <Select value={newActive} onValueChange={setNewActive}>
                   <SelectTrigger>
                     <SelectValue />
@@ -165,7 +180,7 @@ export default function AdminUsersPage() {
         </Dialog>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
@@ -254,55 +269,66 @@ export default function AdminUsersPage() {
                 {sortedUsers.map((user) => {
                   const update = roleUpdates[user.id] || { role: user.role, reason: "" };
                   return (
-                    <div key={user.id} className="rounded-xl border p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium break-all">{user.email}</div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <Badge variant="secondary">{user.role}</Badge>
-                            {user.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
-                          </div>
+                    <MobileSectionShell
+                      key={user.id}
+                      eyebrow="Access Record"
+                      title={user.email}
+                      summary="Review the current role, record the reason for any change, and apply the update without leaving the list."
+                      meta={(
+                        <>
+                          <Badge variant="secondary">{user.role}</Badge>
+                          {user.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                        </>
+                      )}
+                    >
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">New role</div>
+                          <Select
+                            value={update.role}
+                            onValueChange={(value) => {
+                              setRoleUpdates((prev) => ({
+                                ...prev,
+                                [user.id]: { ...update, role: value },
+                              }));
+                            }}
+                          >
+                            <SelectTrigger className="min-h-11">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {roleOptions.map((role) => (
+                                <SelectItem key={role} value={role}>
+                                  {role}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Reason</div>
+                          <Input
+                            className="min-h-11"
+                            placeholder="Reason for role change"
+                            value={update.reason}
+                            onChange={(e) => {
+                              setRoleUpdates((prev) => ({
+                                ...prev,
+                                [user.id]: { ...update, reason: e.target.value },
+                              }));
+                            }}
+                          />
+                        </div>
+                        <Button
+                          className="min-h-11 w-full"
+                          size="sm"
+                          onClick={() => handleApplyRole(user)}
+                          disabled={updateRoleMutation.isPending}
+                        >
+                          Apply role change
+                        </Button>
                       </div>
-                      <Select
-                        value={update.role}
-                        onValueChange={(value) => {
-                          setRoleUpdates((prev) => ({
-                            ...prev,
-                            [user.id]: { ...update, role: value },
-                          }));
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {roleOptions.map((role) => (
-                            <SelectItem key={role} value={role}>
-                              {role}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        placeholder="Reason for role change"
-                        value={update.reason}
-                        onChange={(e) => {
-                          setRoleUpdates((prev) => ({
-                            ...prev,
-                            [user.id]: { ...update, reason: e.target.value },
-                          }));
-                        }}
-                      />
-                      <Button
-                        className="w-full"
-                        size="sm"
-                        onClick={() => handleApplyRole(user)}
-                        disabled={updateRoleMutation.isPending}
-                      >
-                        Apply
-                      </Button>
-                    </div>
+                    </MobileSectionShell>
                   );
                 })}
               </div>

@@ -121,8 +121,13 @@ Implementation should follow the project in chunks.
 Per chunk:
 - implement one coherent slice
 - verify it
-- update roadmap task status
+- update live roadmap task status in the Admin roadmap, not just docs or notes
 - note remaining gaps honestly
+
+Working clarification:
+- built and validated work must be reflected in the live roadmap task records before closeout
+- partial delivery should move the task to `in-progress` with remaining gaps left explicit
+- completed delivery should move the task to `done`
 
 ## Agent Bootstrap Backbone
 Repeated agent setup work should be treated as product debt and operationalized, not re-done manually forever.

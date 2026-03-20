@@ -56,6 +56,10 @@ function canAccess(item: CommandLink, role?: AdminRole | null) {
   return item.roles.includes(role);
 }
 
+function isSingleAssociationBoardExperience(adminRole: AdminRole | null | undefined, associationCount: number) {
+  return adminRole === "board-admin" && associationCount <= 1;
+}
+
 type SearchResult = { type: string; id: string; label: string; href: string };
 
 const SEARCH_ICON: Record<string, typeof Search> = {
@@ -75,6 +79,7 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, navigate] = useLocation();
   const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
+  const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -121,10 +126,13 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
     return current
       .map((href) => navigationLinks.find((item) => item.href === href))
       .filter((item): item is CommandLink => Boolean(item))
+      .filter((item) => !singleAssociationBoardExperience || (item.href !== "/app/associations" && item.href !== "/app/portfolio"))
       .filter((item) => canAccess(item, adminRole));
-  }, [adminRole, open]);
+  }, [adminRole, open, singleAssociationBoardExperience]);
 
-  const filteredNavigation = navigationLinks.filter((item) => canAccess(item, adminRole));
+  const filteredNavigation = navigationLinks
+    .filter((item) => !singleAssociationBoardExperience || (item.href !== "/app/associations" && item.href !== "/app/portfolio"))
+    .filter((item) => canAccess(item, adminRole));
   const filteredCreate = createLinks.filter((item) => canAccess(item, adminRole));
 
   const contextualCreateLinks = useMemo(() => {
@@ -268,24 +276,28 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
             ))}
           </CommandGroup>
 
-          <CommandSeparator />
+          {!singleAssociationBoardExperience && (
+            <>
+              <CommandSeparator />
 
-          <CommandGroup heading="Association Scope">
-            {associations.map((association) => (
-              <CommandItem
-                key={association.id}
-                onSelect={() => {
-                  setActiveAssociationId(association.id);
-                  setOpen(false);
-                }}
-                value={`${association.name} association scope ${association.city || ""} ${association.state || ""}`}
-              >
-                <Building2 />
-                <span>{association.name}</span>
-                <CommandShortcut>{association.id === activeAssociationId ? "Active" : "Switch"}</CommandShortcut>
-              </CommandItem>
-            ))}
-          </CommandGroup>
+              <CommandGroup heading="Association Scope">
+                {associations.map((association) => (
+                  <CommandItem
+                    key={association.id}
+                    onSelect={() => {
+                      setActiveAssociationId(association.id);
+                      setOpen(false);
+                    }}
+                    value={`${association.name} association scope ${association.city || ""} ${association.state || ""}`}
+                  >
+                    <Building2 />
+                    <span>{association.name}</span>
+                    <CommandShortcut>{association.id === activeAssociationId ? "Active" : "Switch"}</CommandShortcut>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </>
+          )}
         </CommandList>
       </CommandDialog>
     </>

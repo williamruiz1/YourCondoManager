@@ -182,10 +182,10 @@ export default function FinancialFoundationPage() {
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                       </div>
-                      <FormField control={accountForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={accountForm.control} name="accountCode" render={({ field }) => (<FormItem><FormLabel>Code</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={accountForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={accountForm.control} name="accountCode" render={({ field }) => (<FormItem><FormLabel>Code</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} {...field} /></FormControl><FormMessage /></FormItem>)} />
                       <FormField control={accountForm.control} name="accountType" render={({ field }) => (
-                        <FormItem><FormLabel>Type</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="expense">expense</SelectItem><SelectItem value="income">income</SelectItem><SelectItem value="asset">asset</SelectItem><SelectItem value="liability">liability</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                        <FormItem><FormLabel>Type</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="expense">expense</SelectItem><SelectItem value="income">income</SelectItem><SelectItem value="asset">asset</SelectItem><SelectItem value="liability">liability</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                       )} />
                       <Button className="w-full" type="submit" disabled={createAccount.isPending}>Save</Button>
                     </form>
@@ -196,6 +196,16 @@ export default function FinancialFoundationPage() {
             {(accounts ?? []).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <p className="text-sm">No accounts yet. Add your first account to begin.</p>
+              </div>
+            ) : isMobile ? (
+              <div className="space-y-3">
+                {(accounts ?? []).map((a) => (
+                  <div key={a.id} className="rounded-xl border p-4 space-y-2">
+                    <div className="text-sm font-medium">{a.name}</div>
+                    <div className="text-xs text-muted-foreground">Code: {a.accountCode || "-"}</div>
+                    <Badge variant="secondary">{a.accountType}</Badge>
+                  </div>
+                ))}
               </div>
             ) : (
               <Table>
@@ -223,9 +233,9 @@ export default function FinancialFoundationPage() {
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                       </div>
-                      <FormField control={categoryForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={categoryForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} {...field} /></FormControl><FormMessage /></FormItem>)} />
                       <FormField control={categoryForm.control} name="categoryType" render={({ field }) => (
-                        <FormItem><FormLabel>Type</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="expense">expense</SelectItem><SelectItem value="income">income</SelectItem><SelectItem value="charge">charge</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                        <FormItem><FormLabel>Type</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="expense">expense</SelectItem><SelectItem value="income">income</SelectItem><SelectItem value="charge">charge</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                       )} />
                       <Button className="w-full" type="submit" disabled={createCategory.isPending}>Save</Button>
                     </form>
@@ -236,6 +246,15 @@ export default function FinancialFoundationPage() {
             {(categories ?? []).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <p className="text-sm">No categories yet. Add your first category to begin.</p>
+              </div>
+            ) : isMobile ? (
+              <div className="space-y-3">
+                {(categories ?? []).map((c) => (
+                  <div key={c.id} className="rounded-xl border p-4 space-y-2">
+                    <div className="text-sm font-medium">{c.name}</div>
+                    <Badge variant="secondary">{c.categoryType}</Badge>
+                  </div>
+                ))}
               </div>
             ) : (
               <Table>
@@ -277,7 +296,7 @@ export default function FinancialFoundationPage() {
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Change type</label>
                       <Select value={approvalForm.changeType} onValueChange={(v) => setApprovalForm((f) => ({ ...f, changeType: v }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="budget-amendment">Budget amendment</SelectItem>
                           <SelectItem value="large-disbursement">Large disbursement</SelectItem>
@@ -290,15 +309,15 @@ export default function FinancialFoundationPage() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Description *</label>
-                      <Textarea placeholder="Describe the financial change being proposed..." value={approvalForm.changeDescription} onChange={(e) => setApprovalForm((f) => ({ ...f, changeDescription: e.target.value }))} rows={3} />
+                      <Textarea className={isMobile ? "min-h-28" : undefined} placeholder="Describe the financial change being proposed..." value={approvalForm.changeDescription} onChange={(e) => setApprovalForm((f) => ({ ...f, changeDescription: e.target.value }))} rows={3} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Amount ($)</label>
-                      <Input type="number" placeholder="0.00" value={approvalForm.changeAmount} onChange={(e) => setApprovalForm((f) => ({ ...f, changeAmount: e.target.value }))} />
+                      <Input className={isMobile ? "min-h-11" : undefined} type="number" placeholder="0.00" value={approvalForm.changeAmount} onChange={(e) => setApprovalForm((f) => ({ ...f, changeAmount: e.target.value }))} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Additional notes</label>
-                      <Input placeholder="Optional context..." value={approvalForm.notes} onChange={(e) => setApprovalForm((f) => ({ ...f, notes: e.target.value }))} />
+                      <Input className={isMobile ? "min-h-11" : undefined} placeholder="Optional context..." value={approvalForm.notes} onChange={(e) => setApprovalForm((f) => ({ ...f, notes: e.target.value }))} />
                     </div>
                     <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
                       <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
@@ -309,6 +328,33 @@ export default function FinancialFoundationPage() {
               </Dialog>
             </div>
           </div>
+          {isMobile ? (
+            <div className="space-y-3">
+              {approvals.map((approval) => (
+                <div key={approval.id} className="rounded-xl border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <Badge variant="outline">{approval.changeType}</Badge>
+                    <Badge variant={approval.status === "pending" ? "secondary" : approval.status === "approved" ? "outline" : "destructive"}>{approval.status}</Badge>
+                  </div>
+                  <div className="text-sm">{approval.changeDescription}</div>
+                  {approval.resolverNotes ? <div className="text-xs text-muted-foreground">Note: {approval.resolverNotes}</div> : null}
+                  <div className="grid gap-2 text-xs text-muted-foreground">
+                    <div>Amount: {approval.changeAmount != null ? `$${approval.changeAmount.toFixed(2)}` : "-"}</div>
+                    <div>Requested by: {approval.requestedBy}</div>
+                  </div>
+                  {approval.status === "pending" ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button size="sm" variant="outline" onClick={() => resolveApproval.mutate({ id: approval.id, status: "approved" })} disabled={resolveApproval.isPending}>Approve</Button>
+                      <Button size="sm" variant="outline" onClick={() => resolveApproval.mutate({ id: approval.id, status: "rejected" })} disabled={resolveApproval.isPending}>Reject</Button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {approvals.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">No {approvalStatusFilter === "pending" ? "pending" : ""} approval requests.</div>
+              ) : null}
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -348,6 +394,7 @@ export default function FinancialFoundationPage() {
               )}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 

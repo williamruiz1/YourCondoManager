@@ -7,6 +7,7 @@ import type { AuditLog } from "@shared/schema";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileSectionShell } from "@/components/mobile-section-shell";
 
 type OperationsDashboardData = {
   totals: {
@@ -88,7 +89,7 @@ export default function OperationsDashboardPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-4 sm:p-6">
       <WorkspacePageHeader
         title="Operations Dashboard"
         summary="Monitor active work, preventive maintenance pressure, vendor risk, and inspection follow-up from one operations view."
@@ -99,13 +100,13 @@ export default function OperationsDashboardPage() {
           { label: "Open Vendors", href: "/app/vendors" },
         ]}
       />
-      <div className="flex gap-2 flex-wrap">
-        <Button className="min-h-10" variant="outline" onClick={() => downloadReport("vendors")}>Export Vendor Report</Button>
-        <Button className="min-h-10" variant="outline" onClick={() => downloadReport("work-orders")}>Export Work Orders</Button>
-        <Button className="min-h-10" variant="outline" onClick={() => downloadReport("maintenance")}>Export Maintenance</Button>
+      <div className="grid gap-2 sm:flex sm:flex-wrap">
+        <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("vendors")}>Export Vendor Report</Button>
+        <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("work-orders")}>Export Work Orders</Button>
+        <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("maintenance")}>Export Maintenance</Button>
       </div>
 
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
         {[
           ["Open Work Orders", totals.openWorkOrders],
           ["Due Maintenance", totals.dueMaintenance],
@@ -131,9 +132,12 @@ export default function OperationsDashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         {isMobile ? (
-          <Card>
-            <CardHeader><CardTitle className="text-base">Operational Snapshot</CardTitle></CardHeader>
-            <CardContent className="space-y-4 text-sm">
+          <MobileSectionShell
+            eyebrow="Snapshot"
+            title="Operational Snapshot"
+            summary="Use this condensed view to decide whether the next move is dispatch, vendor follow-up, or preventive maintenance triage."
+          >
+            <div className="space-y-4 text-sm">
               <div className="space-y-2">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Work Orders</div>
                 <div className="space-y-2">
@@ -151,8 +155,8 @@ export default function OperationsDashboardPage() {
                   <div className="flex items-center justify-between"><span>Pending Renewal</span><Badge variant="outline">{data?.vendorStatus.pendingRenewal ?? 0}</Badge></div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </MobileSectionShell>
         ) : (
           <>
             <Card>
@@ -205,9 +209,12 @@ export default function OperationsDashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Recent Work Orders</CardTitle></CardHeader>
-          <CardContent className="space-y-3 text-sm">
+        {isMobile ? (
+          <MobileSectionShell
+            eyebrow="Queue"
+            title="Recent Work Orders"
+            summary="Recent operational work stays in a stacked queue with status visible on the first line."
+          >
             {(data?.recentWorkOrders ?? []).slice(0, 8).map((order) => (
               <div key={order.id} className="rounded border p-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -220,12 +227,33 @@ export default function OperationsDashboardPage() {
               </div>
             ))}
             {(data?.recentWorkOrders ?? []).length === 0 ? <div className="text-muted-foreground">No work orders yet.</div> : null}
-          </CardContent>
-        </Card>
+          </MobileSectionShell>
+        ) : (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Recent Work Orders</CardTitle></CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {(data?.recentWorkOrders ?? []).slice(0, 8).map((order) => (
+                <div key={order.id} className="rounded border p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="font-medium">{order.title}</div>
+                      <div className="text-muted-foreground">{order.locationText || "No location"}</div>
+                    </div>
+                    <Badge variant="outline">{order.status}</Badge>
+                  </div>
+                </div>
+              ))}
+              {(data?.recentWorkOrders ?? []).length === 0 ? <div className="text-muted-foreground">No work orders yet.</div> : null}
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Due Maintenance Instances</CardTitle></CardHeader>
-          <CardContent className="space-y-3 text-sm">
+        {isMobile ? (
+          <MobileSectionShell
+            eyebrow="Maintenance"
+            title="Due Maintenance Instances"
+            summary="Preventive work due now is stacked into a phone-readable queue with due date and linkage state visible."
+          >
             {(data?.dueInstances ?? []).slice(0, 8).map((instance) => (
               <div key={instance.id} className="rounded border p-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -238,27 +266,68 @@ export default function OperationsDashboardPage() {
               </div>
             ))}
             {(data?.dueInstances ?? []).length === 0 ? <div className="text-muted-foreground">No due maintenance instances.</div> : null}
-          </CardContent>
-        </Card>
+          </MobileSectionShell>
+        ) : (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Due Maintenance Instances</CardTitle></CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {(data?.dueInstances ?? []).slice(0, 8).map((instance) => (
+                <div key={instance.id} className="rounded border p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="font-medium">{instance.title}</div>
+                      <div className="text-muted-foreground">{new Date(instance.dueAt).toLocaleDateString()} · {instance.locationText}</div>
+                    </div>
+                    <Badge variant="outline">{instance.workOrderId ? "linked" : instance.status}</Badge>
+                  </div>
+                </div>
+              ))}
+              {(data?.dueInstances ?? []).length === 0 ? <div className="text-muted-foreground">No due maintenance instances.</div> : null}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Operations Audit Trail</CardTitle></CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          {(data?.recentAudit ?? []).map((entry) => (
-            <div key={entry.id} className="rounded border p-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-              <div className="min-w-0">
-                <div className="font-medium">{entry.entityType}</div>
-                <div className="text-muted-foreground">{entry.action} · {entry.actorEmail || "system"}</div>
+      {isMobile ? (
+        <MobileSectionShell
+          eyebrow="Audit"
+          title="Operations Audit Trail"
+          summary="Recent operational actions remain readable on phones without forcing a dense table or split pane."
+        >
+          <div className="space-y-3 text-sm">
+            {(data?.recentAudit ?? []).map((entry) => (
+              <div key={entry.id} className="rounded border p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{entry.entityType}</div>
+                    <div className="text-muted-foreground">{entry.action} · {entry.actorEmail || "system"}</div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
+            ))}
+            {(data?.recentAudit ?? []).length === 0 ? <div className="text-muted-foreground">No operations audit entries yet.</div> : null}
+          </div>
+        </MobileSectionShell>
+      ) : (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Operations Audit Trail</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {(data?.recentAudit ?? []).map((entry) => (
+              <div key={entry.id} className="rounded border p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{entry.entityType}</div>
+                    <div className="text-muted-foreground">{entry.action} · {entry.actorEmail || "system"}</div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
+                </div>
               </div>
-            </div>
-          ))}
-          {(data?.recentAudit ?? []).length === 0 ? <div className="text-muted-foreground">No operations audit entries yet.</div> : null}
-        </CardContent>
-      </Card>
+            ))}
+            {(data?.recentAudit ?? []).length === 0 ? <div className="text-muted-foreground">No operations audit entries yet.</div> : null}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

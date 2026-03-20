@@ -201,6 +201,10 @@ function formatAdminRole(role: AdminRole) {
     .join(" ");
 }
 
+function isSingleAssociationBoardExperience(adminRole: AdminRole | null, associationCount: number) {
+  return adminRole === "board-admin" && associationCount <= 1;
+}
+
 function getUserInitials(email?: string | null) {
   const source = email?.split("@")[0]?.trim();
   if (!source) return "CM";
@@ -232,13 +236,21 @@ function RouteRedirect({ to }: { to: string }) {
   return <RouteFallback />;
 }
 
-function WorkspaceRouter({ adminRole }: { adminRole: AdminRole | null }) {
+function WorkspaceRouter({
+  adminRole,
+  singleAssociationBoardExperience,
+}: {
+  adminRole: AdminRole | null;
+  singleAssociationBoardExperience: boolean;
+}) {
   return (
     <Suspense fallback={<RouteFallback />}>
       <Switch>
         <Route path="/app" component={DashboardPage} />
         <Route path="/app/operations/dashboard" component={OperationsDashboardPage} />
-        <Route path="/app/associations" component={AssociationsPage} />
+        <Route path="/app/associations">
+          {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <AssociationsPage />}
+        </Route>
         <Route path="/app/association-context" component={AssociationContextPage} />
         <Route path="/app/units" component={UnitsPage} />
         <Route path="/app/persons" component={PersonsPage} />
@@ -283,7 +295,9 @@ function WorkspaceRouter({ adminRole }: { adminRole: AdminRole | null }) {
           {adminRole === "platform-admin" ? <PlatformControlsPage /> : <NotFound />}
         </Route>
         <Route path="/app/insurance" component={InsurancePage} />
-        <Route path="/app/portfolio" component={PortfolioPage} />
+        <Route path="/app/portfolio">
+          {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <PortfolioPage />}
+        </Route>
         <Route path="/app/announcements" component={AnnouncementsPage} />
         <Route component={NotFound} />
       </Switch>
@@ -427,24 +441,34 @@ function HeaderActions({
 }) {
   const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
   const accountEmail = authSession?.user?.email || authSession?.admin?.email || null;
+  const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
   const activeAssociationName =
     associations.find((association) => association.id === activeAssociationId)?.name ?? "Select association";
 
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
       <GlobalCommandPalette adminRole={adminRole} />
-      <Select value={activeAssociationId ?? undefined} onValueChange={setActiveAssociationId}>
-        <SelectTrigger className="h-10 w-full max-w-full sm:h-8 sm:w-[220px] lg:w-64" data-testid="select-active-association">
-          <SelectValue placeholder="Select association" />
-        </SelectTrigger>
-        <SelectContent>
-          {associations.map((association) => (
-            <SelectItem key={association.id} value={association.id}>
-              {association.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {singleAssociationBoardExperience ? (
+        <div
+          className="hidden h-8 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium text-foreground sm:flex"
+          data-testid="text-active-association"
+        >
+          {activeAssociationName}
+        </div>
+      ) : (
+        <Select value={activeAssociationId ?? undefined} onValueChange={setActiveAssociationId}>
+          <SelectTrigger className="h-10 w-full max-w-full sm:h-8 sm:w-[220px] lg:w-64" data-testid="select-active-association">
+            <SelectValue placeholder="Select association" />
+          </SelectTrigger>
+          <SelectContent>
+            {associations.map((association) => (
+              <SelectItem key={association.id} value={association.id}>
+                {association.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       {authSession?.authenticated ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -534,6 +558,8 @@ function WorkspaceSectionTabs({ adminRole }: { adminRole: AdminRole | null }) {
 function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
   const [location] = useLocation();
   const mainRef = useRef<HTMLElement | null>(null);
+  const { associations } = useAssociationContext();
+  const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
 
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, behavior: "auto" });
@@ -543,7 +569,10 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
     <>
       <WorkspaceSectionTabs adminRole={adminRole} />
       <main ref={mainRef} className="flex-1 overflow-auto pb-[max(env(safe-area-inset-bottom),1rem)]">
-        <WorkspaceRouter adminRole={adminRole} />
+        <WorkspaceRouter
+          adminRole={adminRole}
+          singleAssociationBoardExperience={singleAssociationBoardExperience}
+        />
       </main>
     </>
   );

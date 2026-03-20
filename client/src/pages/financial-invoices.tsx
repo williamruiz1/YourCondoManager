@@ -323,7 +323,7 @@ export default function FinancialInvoicesPage() {
                           }}
                         >
                           <FormControl>
-                            <SelectTrigger><SelectValue placeholder="Select vendor" /></SelectTrigger>
+                            <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Select vendor" /></SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="none">select vendor</SelectItem>
@@ -343,23 +343,23 @@ export default function FinancialInvoicesPage() {
                     Invoices are filed under the selected association's vendor registry. Create the vendor in `/app/vendors` first if it does not exist yet.
                   </div>
                   <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
-                    <FormField control={form.control} name="invoiceNumber" render={({ field }) => (<FormItem><FormLabel>Invoice #</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="invoiceNumber" render={({ field }) => (<FormItem><FormLabel>Invoice #</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   </div>
                   <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
-                    <FormField control={form.control} name="invoiceDate" render={({ field }) => (<FormItem><FormLabel>Invoice Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="invoiceDate" render={({ field }) => (<FormItem><FormLabel>Invoice Date</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   </div>
                   <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                     <FormField control={form.control} name="accountId" render={({ field }) => (
-                      <FormItem><FormLabel>Account</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{accounts?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Account</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{accounts?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="categoryId" render={({ field }) => (
-                      <FormItem><FormLabel>Category</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{categories?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Category</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{categories?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                     )} />
                   </div>
                   <FormField control={form.control} name="status" render={({ field }) => (
-                    <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="draft">draft</SelectItem><SelectItem value="received">received</SelectItem><SelectItem value="approved">approved</SelectItem><SelectItem value="paid">paid</SelectItem><SelectItem value="void">void</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                    <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="draft">draft</SelectItem><SelectItem value="received">received</SelectItem><SelectItem value="approved">approved</SelectItem><SelectItem value="paid">paid</SelectItem><SelectItem value="void">void</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />
                   <Button className="w-full" type="submit" disabled={createInvoice.isPending}>Save</Button>
                 </form>
@@ -615,18 +615,18 @@ export default function FinancialInvoicesPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <Select value={attachmentInvoiceId || "none"} onValueChange={(v) => { const id = v === "none" ? "" : v; setAttachmentInvoiceId(id); const inv = (invoices ?? []).find((i) => i.id === id); setAttachmentAssocId(inv?.associationId || ""); }}>
-                <SelectTrigger><SelectValue placeholder="Invoice" /></SelectTrigger>
+                <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Invoice" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">select invoice</SelectItem>
                   {(invoices ?? []).map((i) => <SelectItem key={i.id} value={i.id}>{i.vendorName} {i.invoiceNumber || i.id.slice(0, 6)}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input placeholder="Attachment title" value={attachmentTitle} onChange={(e) => setAttachmentTitle(e.target.value)} />
+              <Input className={isMobile ? "min-h-11" : undefined} placeholder="Attachment title" value={attachmentTitle} onChange={(e) => setAttachmentTitle(e.target.value)} />
               <div className="border rounded-md p-2 text-sm cursor-pointer" onClick={() => fileRef.current?.click()}>
                 {attachmentFile?.name || "Choose file"}
                 <input ref={fileRef} type="file" className="hidden" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} />
               </div>
-              <Button onClick={() => uploadAttachment.mutate()} disabled={uploadAttachment.isPending}>Upload</Button>
+              <Button className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => uploadAttachment.mutate()} disabled={uploadAttachment.isPending}>Upload</Button>
             </div>
 
             <DataTableShell

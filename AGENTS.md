@@ -18,6 +18,11 @@ Default startup order:
 Refresh command:
 - Run `npm run bootstrap:agent` after meaningful route, schema, backbone, or roadmap-context changes
 
+Roadmap execution rule:
+- When work is being done against an Admin roadmap project, agents must update the live roadmap task records in the Admin roadmap as implementation chunks are built and validated.
+- Do not leave completed, validated work reflected only in code or docs; sync the corresponding roadmap task status before closeout.
+- If a chunk improves a task materially but does not fully complete it, update the task to `in-progress` and leave the remaining gap explicit.
+
 Backbone analysis commands:
 - `npm run backbone:friction -- --summary="..." --category="..." --repeatable="yes|no" --couldPrecompute="yes|no"`
 - `npm run backbone:closeout`

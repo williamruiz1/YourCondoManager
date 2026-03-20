@@ -100,6 +100,15 @@ const calendarSchema = z.object({
   endsAt: z.string().optional(),
 });
 
+function MobileDesktopHandoff({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+      <div className="font-medium">{title}</div>
+      <div className="mt-1 text-xs leading-5 text-amber-800">{body}</div>
+    </div>
+  );
+}
+
 export default function GovernanceCompliancePage() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -594,6 +603,12 @@ export default function GovernanceCompliancePage() {
               <DialogHeader><DialogTitle>Create Compliance Template</DialogTitle></DialogHeader>
               <Form {...templateForm}>
                 <form className="space-y-4" onSubmit={templateForm.handleSubmit((v) => createTemplate.mutate(v))}>
+                  {isMobile ? (
+                    <MobileDesktopHandoff
+                      title="Desktop preferred for library-scale regulatory authoring"
+                      body="Mobile works for review, publication status changes, and light edits. Large source-library composition and dense regulatory maintenance still belong on desktop."
+                    />
+                  ) : null}
                   <FormField control={templateForm.control} name="scope" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Scope</FormLabel>
@@ -1159,12 +1174,26 @@ export default function GovernanceCompliancePage() {
             <div>
               <h3 className="text-sm font-medium mb-2">Template Items</h3>
               <Form {...itemForm}>
-                <form className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-3" onSubmit={itemForm.handleSubmit((v) => createTemplateItem.mutate(v))}>
-                  <Input placeholder="Title" value={itemForm.watch("title")} onChange={(e) => itemForm.setValue("title", e.target.value)} />
-                  <Input placeholder="Month" type="number" value={itemForm.watch("dueMonth")} onChange={(e) => itemForm.setValue("dueMonth", Number(e.target.value))} />
-                  <Input placeholder="Day" type="number" value={itemForm.watch("dueDay")} onChange={(e) => itemForm.setValue("dueDay", Number(e.target.value))} />
-                  <Input placeholder="Order" type="number" value={itemForm.watch("orderIndex")} onChange={(e) => itemForm.setValue("orderIndex", Number(e.target.value))} />
-                  <Button type="submit" disabled={createTemplateItem.isPending || !selectedTemplateId}>Add</Button>
+                <form className={`mb-3 grid gap-2 ${isMobile ? "grid-cols-1" : "grid-cols-1 md:grid-cols-5"}`} onSubmit={itemForm.handleSubmit((v) => createTemplateItem.mutate(v))}>
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Title</div>
+                    <Input className={isMobile ? "min-h-11" : undefined} placeholder="Title" value={itemForm.watch("title")} onChange={(e) => itemForm.setValue("title", e.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 md:contents">
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Month</div>
+                      <Input className={isMobile ? "min-h-11" : undefined} placeholder="Month" type="number" value={itemForm.watch("dueMonth")} onChange={(e) => itemForm.setValue("dueMonth", Number(e.target.value))} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Day</div>
+                      <Input className={isMobile ? "min-h-11" : undefined} placeholder="Day" type="number" value={itemForm.watch("dueDay")} onChange={(e) => itemForm.setValue("dueDay", Number(e.target.value))} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Order</div>
+                      <Input className={isMobile ? "min-h-11" : undefined} placeholder="Order" type="number" value={itemForm.watch("orderIndex")} onChange={(e) => itemForm.setValue("orderIndex", Number(e.target.value))} />
+                    </div>
+                  </div>
+                  <Button className={isMobile ? "w-full min-h-11" : undefined} type="submit" disabled={createTemplateItem.isPending || !selectedTemplateId}>Add</Button>
                 </form>
               </Form>
               <div className="hidden md:block">
