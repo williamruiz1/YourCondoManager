@@ -15,6 +15,8 @@ import { AlertTriangle, Download, Info, Printer } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 
 type LedgerSummaryRow = {
   personId: string;
@@ -197,6 +199,22 @@ export default function FinancialReportsPage() {
     return { reserveLines, totalReservePlanned, totalBudgeted, reservePercent, estimatedReserveBalance, budgetComparison };
   }, [budgetLinesQuery.data, ledgerQuery.data]);
 
+  const reportsLoading = ledgerQuery.isLoading
+    || summaryQuery.isLoading
+    || budgetsQuery.isLoading
+    || budgetVersionsQuery.isLoading
+    || budgetLinesQuery.isLoading;
+  const reportItems = ([
+    "pl",
+    "collection",
+    "ar-aging",
+    "reserve",
+    "board",
+  ] as ReportType[]).map((r) => ({
+    id: r,
+    label: REPORT_DESCRIPTIONS[r].label,
+  }));
+
   function exportPlCsv() {
     const rows: string[][] = [
       ["Type", "Amount"],
@@ -295,57 +313,96 @@ export default function FinancialReportsPage() {
       />
 
       {/* Controls */}
-      <TooltipProvider>
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex rounded-md border overflow-hidden">
-            {(["pl", "collection", "ar-aging", "reserve", "board"] as ReportType[]).map((r) => {
-              const def = REPORT_DESCRIPTIONS[r];
-              return (
-                <Tooltip key={r}>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => setReport(r)}
-                      className={cn(
-                        "flex items-center gap-1 px-3 py-1.5 text-sm font-medium transition-colors",
-                        report === r ? "bg-primary text-primary-foreground" : "hover:bg-accent",
-                      )}
-                    >
-                      {def.label}
-                      <Info className="h-3 w-3 opacity-60" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs text-xs">
-                    {def.description}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
+      <div className="space-y-3">
+        {isMobile ? (
+          <MobileTabBar
+            items={reportItems}
+            value={report}
+            onChange={(value) => setReport(value)}
+            fullWidth
+          />
+        ) : (
+          <TooltipProvider>
+            <div className="flex flex-wrap gap-3 items-center">
+              <div className="flex rounded-md border overflow-hidden">
+                {(["pl", "collection", "ar-aging", "reserve", "board"] as ReportType[]).map((r) => {
+                  const def = REPORT_DESCRIPTIONS[r];
+                  return (
+                    <Tooltip key={r}>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => setReport(r)}
+                          className={cn(
+                            "flex items-center gap-1 px-3 py-1.5 text-sm font-medium transition-colors",
+                            report === r ? "bg-primary text-primary-foreground" : "hover:bg-accent",
+                          )}
+                        >
+                          {def.label}
+                          <Info className="h-3 w-3 opacity-60" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-xs text-xs">
+                        {def.description}
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+
+              <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v))}>
+                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PERIODS.map((p) => (
+                    <SelectItem key={p.days} value={String(p.days)}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 ml-auto"
+                onClick={report === "pl" ? exportPlCsv : report === "collection" ? exportCollectionCsv : report === "reserve" ? exportReserveCsv : report === "board" ? exportBoardReportCsv : exportAgingCsv}
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => window.print()}>
+                <Printer className="h-4 w-4" />
+                Print
+              </Button>
+            </div>
+          </TooltipProvider>
+        )}
+        {isMobile ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v))}>
+              <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PERIODS.map((p) => (
+                  <SelectItem key={p.days} value={String(p.days)}>{p.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="grid grid-cols-2 gap-2 sm:ml-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 min-h-11 w-full"
+                onClick={report === "pl" ? exportPlCsv : report === "collection" ? exportCollectionCsv : report === "reserve" ? exportReserveCsv : report === "board" ? exportBoardReportCsv : exportAgingCsv}
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1 min-h-11 w-full" onClick={() => window.print()}>
+                <Printer className="h-4 w-4" />
+                Print
+              </Button>
+            </div>
           </div>
-
-          <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v))}>
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {PERIODS.map((p) => (
-                <SelectItem key={p.days} value={String(p.days)}>{p.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1 ml-auto"
-            onClick={report === "pl" ? exportPlCsv : report === "collection" ? exportCollectionCsv : report === "reserve" ? exportReserveCsv : report === "board" ? exportBoardReportCsv : exportAgingCsv}
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </Button>
-          <Button variant="outline" size="sm" className="gap-1" onClick={() => window.print()}>
-            <Printer className="h-4 w-4" />
-            Print
-          </Button>
-        </div>
-      </TooltipProvider>
+        ) : null}
+      </div>
 
       {periodDays === 0 && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
@@ -356,6 +413,30 @@ export default function FinancialReportsPage() {
         </div>
       )}
 
+      {reportsLoading ? (
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Card key={index}>
+                <CardContent className="space-y-3 pt-6">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-32" />
+                  <Skeleton className="h-3 w-40" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <Card>
+            <CardContent className="space-y-3 p-6">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+      <>
       {/* P&L Report */}
       {report === "pl" && (
         <div className="space-y-4">
@@ -732,6 +813,8 @@ export default function FinancialReportsPage() {
             </Card>
           </div>
         </div>
+      )}
+      </>
       )}
       </div>
     </div>

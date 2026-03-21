@@ -27,6 +27,7 @@ import { Progress } from "@/components/ui/progress";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ChevronDown, ChevronUp, AlertTriangle, Zap } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -1006,11 +1007,24 @@ export default function CommunicationsPage() {
 
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant={workspacePanel === "delivery" ? "default" : "outline"} size="sm" onClick={() => setWorkspacePanel("delivery")}>Delivery Workspace</Button>
-            <Button variant={workspacePanel === "onboarding" ? "default" : "outline"} size="sm" onClick={() => setWorkspacePanel("onboarding")}>Onboarding Workspace</Button>
-            <Button variant={workspacePanel === "operations" ? "default" : "outline"} size="sm" onClick={() => setWorkspacePanel("operations")}>Operations Workspace</Button>
-          </div>
+          {isMobile ? (
+            <MobileTabBar
+              items={[
+                { id: "delivery", label: "Delivery" },
+                { id: "onboarding", label: "Onboarding" },
+                { id: "operations", label: "Operations" },
+              ]}
+              value={workspacePanel}
+              onChange={setWorkspacePanel}
+              fullWidth
+            />
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant={workspacePanel === "delivery" ? "default" : "outline"} size="sm" onClick={() => setWorkspacePanel("delivery")}>Delivery Workspace</Button>
+              <Button variant={workspacePanel === "onboarding" ? "default" : "outline"} size="sm" onClick={() => setWorkspacePanel("onboarding")}>Onboarding Workspace</Button>
+              <Button variant={workspacePanel === "operations" ? "default" : "outline"} size="sm" onClick={() => setWorkspacePanel("operations")}>Operations Workspace</Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1062,12 +1076,13 @@ export default function CommunicationsPage() {
           {paymentInstructionForm.targetType === "selected-units" ? (
             <div className="space-y-2">
               <div className="text-sm text-muted-foreground">Select owner units</div>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                 {(units ?? []).slice(0, 24).map((unit) => (
                   <Button
                     key={unit.id}
                     type="button"
                     size="sm"
+                    className="min-h-11 w-full sm:w-auto"
                     variant={paymentInstructionForm.selectedUnitIds.includes(unit.id) ? "default" : "outline"}
                     onClick={() => toggleUnitSelection(unit.id, "payment")}
                   >
@@ -1510,12 +1525,13 @@ export default function CommunicationsPage() {
             </div>
           ) : null}
           {targetedForm.targetType === "selected-units" ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
               {(units ?? []).slice(0, 24).map((unit) => (
                 <Button
                   key={unit.id}
                   type="button"
                   size="sm"
+                  className="min-h-11 w-full sm:w-auto"
                   variant={targetedForm.selectedUnitIds.includes(unit.id) ? "default" : "outline"}
                   onClick={() => toggleUnitSelection(unit.id, "targeted")}
                 >
@@ -1570,7 +1586,7 @@ export default function CommunicationsPage() {
                   ["{{payment_zelle_handle}}", "Zelle email or phone"],
                   ["{{maintenance_request_link}}", "Portal link to maintenance request"],
                 ].map(([variable, description]) => (
-                  <div key={variable} className="grid grid-cols-[180px,1fr] gap-2">
+                  <div key={variable} className="grid grid-cols-1 gap-1 sm:grid-cols-[180px,1fr] sm:gap-2">
                     <span className="text-primary">{variable}</span>
                     <span className="text-muted-foreground font-sans">{description}</span>
                   </div>
@@ -1610,7 +1626,7 @@ export default function CommunicationsPage() {
             />
             Bypass readiness gate for this send
           </label>
-          <div className="flex gap-2 flex-wrap">
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
             <Button variant="outline" onClick={() => previewRecipients.mutate()} disabled={previewRecipients.isPending}>
               {previewRecipients.isPending ? "Loading…" : "Preview Recipients"}
             </Button>

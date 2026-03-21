@@ -27,6 +27,10 @@ type BudgetVarianceRow = {
   categoryId: string | null;
 };
 
+function formatCurrency(amount: number) {
+  return `$${amount.toFixed(2)}`;
+}
+
 function budgetStatusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
   if (status === "ratified") return "default";
   if (status === "proposed") return "secondary";
@@ -455,33 +459,62 @@ export default function FinancialBudgetsPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Line Item</TableHead>
-                  <TableHead>Planned</TableHead>
-                  <TableHead>Account</TableHead>
-                  <TableHead>Category</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(linesQuery.data ?? []).map((l) => (
-                  <TableRow key={l.id}>
-                    <TableCell className="font-medium">{l.lineItemName}</TableCell>
-                    <TableCell>${l.plannedAmount.toFixed(2)}</TableCell>
-                    <TableCell className="text-muted-foreground">{accounts?.find((a) => a.id === l.accountId)?.name || "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{categories?.find((c) => c.id === l.categoryId)?.name || "—"}</TableCell>
-                  </TableRow>
+            {isMobile ? (
+              <div className="space-y-3 p-4">
+                {(linesQuery.data ?? []).map((line) => (
+                  <div key={line.id} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold leading-5">{line.lineItemName}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {accounts?.find((a) => a.id === line.accountId)?.name || "No account linked"}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-sm font-semibold">{formatCurrency(line.plannedAmount)}</div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground">
+                      <div>
+                        <span className="uppercase tracking-wide">Category</span>
+                        <div className="mt-1 text-sm text-foreground">{categories?.find((c) => c.id === line.categoryId)?.name || "No category linked"}</div>
+                      </div>
+                    </div>
+                  </div>
                 ))}
                 {!linesQuery.data?.length ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                      No budget lines yet. Add lines to track planned spending.
-                    </TableCell>
-                  </TableRow>
+                  <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+                    No budget lines yet. Add lines to track planned spending.
+                  </div>
                 ) : null}
-              </TableBody>
-            </Table>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Line Item</TableHead>
+                    <TableHead>Planned</TableHead>
+                    <TableHead>Account</TableHead>
+                    <TableHead>Category</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(linesQuery.data ?? []).map((l) => (
+                    <TableRow key={l.id}>
+                      <TableCell className="font-medium">{l.lineItemName}</TableCell>
+                      <TableCell>{formatCurrency(l.plannedAmount)}</TableCell>
+                      <TableCell className="text-muted-foreground">{accounts?.find((a) => a.id === l.accountId)?.name || "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">{categories?.find((c) => c.id === l.categoryId)?.name || "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!linesQuery.data?.length ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                        No budget lines yet. Add lines to track planned spending.
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       )}
@@ -490,49 +523,79 @@ export default function FinancialBudgetsPage() {
       {versionId && (
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className={`gap-3 ${isMobile ? "grid grid-cols-1" : "flex items-center justify-between"}`}>
               <CardTitle className="text-base">Budget vs. Actual Variance</CardTitle>
-              <div className="flex gap-4 text-sm">
-                <span>Planned: <strong>${budgetTotals.planned.toFixed(2)}</strong></span>
-                <span>Actual: <strong>${budgetTotals.actual.toFixed(2)}</strong></span>
+              <div className={`gap-4 text-sm ${isMobile ? "grid grid-cols-1" : "flex"}`}>
+                <span>Planned: <strong>{formatCurrency(budgetTotals.planned)}</strong></span>
+                <span>Actual: <strong>{formatCurrency(budgetTotals.actual)}</strong></span>
                 <span className={cn("font-semibold", budgetTotals.variance < 0 ? "text-red-600" : "text-green-600")}>
-                  Variance: ${budgetTotals.variance.toFixed(2)}
+                  Variance: {formatCurrency(budgetTotals.variance)}
                 </span>
               </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Line Item</TableHead>
-                  <TableHead>Planned</TableHead>
-                  <TableHead>Actual</TableHead>
-                  <TableHead>Variance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            {isMobile ? (
+              <div className="space-y-3 p-4">
                 {(varianceQuery.data ?? []).map((row) => (
-                  <TableRow key={row.budgetLineId}>
-                    <TableCell>{row.lineItemName}</TableCell>
-                    <TableCell>${row.plannedAmount.toFixed(2)}</TableCell>
-                    <TableCell>${row.actualAmount.toFixed(2)}</TableCell>
-                    <TableCell>
+                  <div key={row.budgetLineId} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-sm font-semibold leading-5">{row.lineItemName}</div>
                       <Badge variant={row.varianceAmount < 0 ? "destructive" : "default"}>
-                        {row.varianceAmount < 0 ? "−" : "+"}${Math.abs(row.varianceAmount).toFixed(2)}
+                        {row.varianceAmount < 0 ? "−" : "+"}{formatCurrency(Math.abs(row.varianceAmount))}
                       </Badge>
-                    </TableCell>
-                  </TableRow>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div>
+                        <div className="uppercase tracking-wide">Planned</div>
+                        <div className="mt-1 text-sm text-foreground">{formatCurrency(row.plannedAmount)}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-wide">Actual</div>
+                        <div className="mt-1 text-sm text-foreground">{formatCurrency(row.actualAmount)}</div>
+                      </div>
+                    </div>
+                  </div>
                 ))}
                 {!varianceQuery.data?.length ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
-                      No variance data yet. Add budget lines and post expenses to see comparisons.
-                    </TableCell>
-                  </TableRow>
+                  <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                    No variance data yet. Add budget lines and post expenses to see comparisons.
+                  </div>
                 ) : null}
-              </TableBody>
-            </Table>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Line Item</TableHead>
+                    <TableHead>Planned</TableHead>
+                    <TableHead>Actual</TableHead>
+                    <TableHead>Variance</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(varianceQuery.data ?? []).map((row) => (
+                    <TableRow key={row.budgetLineId}>
+                      <TableCell>{row.lineItemName}</TableCell>
+                      <TableCell>{formatCurrency(row.plannedAmount)}</TableCell>
+                      <TableCell>{formatCurrency(row.actualAmount)}</TableCell>
+                      <TableCell>
+                        <Badge variant={row.varianceAmount < 0 ? "destructive" : "default"}>
+                          {row.varianceAmount < 0 ? "−" : "+"}{formatCurrency(Math.abs(row.varianceAmount))}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!varianceQuery.data?.length ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                        No variance data yet. Add budget lines and post expenses to see comparisons.
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       )}

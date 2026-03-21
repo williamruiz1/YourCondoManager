@@ -26,7 +26,7 @@ export function FinanceTabBar() {
 
   return (
     <div className="border-b border-border bg-background">
-      <div className="px-6 overflow-x-auto">
+      <div className="px-4 sm:px-6 overflow-x-auto">
         <nav className="flex gap-0 min-w-max" aria-label="Finance sections">
           {TABS.map((tab) => {
             const isActive = location.startsWith(tab.prefix);
@@ -35,7 +35,7 @@ export function FinanceTabBar() {
                 key={tab.href}
                 href={tab.href}
                 className={cn(
-                  "inline-flex items-center px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                  "inline-flex items-center px-3 sm:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
                   isActive
                     ? "border-primary text-foreground"
                     : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"

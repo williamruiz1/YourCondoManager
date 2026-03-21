@@ -9,12 +9,18 @@ This audit reconciles the active `Mobile Optimization` roadmap project against t
   Evidence: shared standards are captured in `docs/projects/mobile-ui-rules.md`, reusable primitives exist in `client/src/components/mobile-section-shell.tsx` and `client/src/components/mobile-tab-bar.tsx`, and operator surfaces now use the same header/action spacing contract in `client/src/components/workspace-page-header.tsx`, `client/src/pages/admin-users.tsx`, and `client/src/pages/operations-dashboard.tsx`.
 - `Standardize responsive behavior for tables with list or card fallbacks on narrow screens`
   Evidence: mobile card/list fallbacks are implemented in `client/src/pages/admin-users.tsx`, `client/src/pages/board.tsx`, `client/src/pages/documents.tsx`, `client/src/pages/communications.tsx`, `client/src/pages/financial-payments.tsx`, and `client/src/pages/owner-portal.tsx`.
+- `Standardize responsive behavior for forms with single-column defaults, persistent labels, inline validation, and keyboard-safe layouts`
+  Evidence: mobile-safe single-column or stacked labeled forms with touch-sized controls now exist in `client/src/pages/admin-users.tsx`, `client/src/pages/work-orders.tsx`, `client/src/pages/vendors.tsx`, `client/src/pages/governance-compliance.tsx`, `client/src/pages/financial-utilities.tsx`, `client/src/pages/financial-invoices.tsx`, and `client/src/pages/financial-foundation.tsx`.
+- `Standardize mobile-safe patterns for filters and low-frequency controls using drawers, sheets, or expandable sections`
+  Evidence: work-order queue filters now use a dedicated bottom sheet in `client/src/pages/work-orders.tsx`; mobile sidebar navigation is sheet-based in `client/src/components/ui/sidebar.tsx`; and low-frequency record review/detail flows use mobile sheets in `client/src/pages/work-orders.tsx` and `client/src/pages/vendors.tsx`.
 
 ### Global Navigation, Authentication, And Session Flows
 - `Review mobile behavior for login, OTP, association selection, and workspace switching`
   Evidence: owner portal OTP flow and association/unit switching are mobile-shaped in `client/src/pages/owner-portal.tsx`; workspace shell behavior, tab scroll reset, and safe-area handling live in `client/src/App.tsx`; regression and checklist coverage exist in `docs/projects/mobile-test-checklist.md` and `docs/projects/mobile-regression-candidates.md`.
 - `Verify safe-area spacing and bottom-nav behavior on phone-sized screens`
   Evidence: authenticated shell safe-area padding is applied in `client/src/App.tsx`, owner portal wrappers reserve bottom-safe-area space in `client/src/pages/owner-portal.tsx`, and the bottom navigation uses safe-area-aware fixed positioning there as well.
+- `Standardize mobile navigation patterns for owner, board, manager, and admin contexts`
+  Evidence: owner context uses safe-area-aware `MobileTabBar` navigation in `client/src/pages/owner-portal.tsx`; manager/admin context uses a mobile sheet sidebar in `client/src/components/ui/sidebar.tsx` and `client/src/components/app-sidebar.tsx`; and cross-workspace in-page mobile section tab groups are standardized in `client/src/App.tsx`.
 
 ### Owner Portal Mobile Experience
 - `Optimize unit selection for touch interaction and horizontal scrolling`
@@ -31,6 +37,8 @@ This audit reconciles the active `Mobile Optimization` roadmap project against t
   Evidence: this pass reviewed and reconciled the mobile behavior of `client/src/pages/operations-dashboard.tsx`, `client/src/pages/work-orders.tsx`, `client/src/pages/communications.tsx`, `client/src/pages/financial-payments.tsx`, `client/src/pages/admin-users.tsx`, and the authenticated shell in `client/src/App.tsx`.
 - `Break large multi-panel dashboards into mobile stacks ordered by urgency`
   Evidence: `client/src/pages/operations-dashboard.tsx` now collapses the dashboard into urgency-first cards and mobile section shells rather than preserving the desktop panel structure.
+- `Ensure core operational tasks can be completed on mobile: acknowledge, assign, update status, send notice, review account, open record`
+  Evidence: work-order mobile flows support assignment, status updates, cost review, and record-detail access in `client/src/pages/work-orders.tsx`; communications mobile queues keep notice sending, approval, and dispatch review reachable in `client/src/pages/communications.tsx`; vendor registry/detail sheets keep record review and document access reachable in `client/src/pages/vendors.tsx`; and finance mobile flows keep invoice approval, payment-state updates, account/category review, and approval review reachable in `client/src/pages/financial-invoices.tsx`, `client/src/pages/financial-payments.tsx`, and `client/src/pages/financial-foundation.tsx`.
 
 ### Board Workspace Mobile Experience
 - `Audit board landing, agenda, tasks, meeting summaries, approvals, packages, and activity views on mobile`

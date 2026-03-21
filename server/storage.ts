@@ -15,6 +15,7 @@ import {
   authExternalAccounts,
   auditLogs,
   aiExtractedRecords,
+  aiIngestionExceptions,
   aiIngestionJobs,
   aiIngestionImportRuns,
   analysisRuns,
@@ -38,6 +39,7 @@ import {
   maintenanceScheduleInstances,
   maintenanceScheduleTemplates,
   maintenanceRequests,
+  associationIngestionCorrectionMemory,
   documentTags,
   documentVersions,
   emailThreads,
@@ -56,6 +58,7 @@ import {
   occupancies,
   ownerships,
   permissionChangeLogs,
+  personContactPoints,
   persons,
   roadmapProjects,
   roadmapTasks,
@@ -89,11 +92,13 @@ import {
   type AuthExternalAccount,
   type AuditLog,
   type AiExtractedRecord,
+  type AiIngestionException,
   type AiIngestionJob,
   type AiIngestionImportRun,
   type AnalysisRun,
   type AnalysisVersion,
   type Association,
+  type AssociationIngestionCorrectionMemory,
   type Building,
   type AnnualGovernanceTask,
   type BoardRole,
@@ -126,11 +131,13 @@ import {
   type InsertAuthExternalAccount,
   type InsertAuditLog,
   type InsertAiExtractedRecord,
+  type InsertAiIngestionException,
   type InsertAiIngestionJob,
   type InsertAiIngestionImportRun,
   type InsertAnalysisRun,
   type InsertAnalysisVersion,
   type InsertAssociation,
+  type InsertAssociationIngestionCorrectionMemory,
   type InsertBuilding,
   type InsertAnnualGovernanceTask,
   type InsertBoardRole,
@@ -170,6 +177,7 @@ import {
   type InsertOccupancy,
   type InsertOwnership,
   type InsertPerson,
+  type InsertPersonContactPoint,
   type InsertRoadmapProject,
   type InsertRoadmapTask,
   type InsertRoadmapWorkstream,
@@ -192,6 +200,7 @@ import {
   type Occupancy,
   type Ownership,
   type Person,
+  type PersonContactPoint,
   type HoaFeeSchedule,
   type ExpenseAttachment,
   type FinancialAccount,
@@ -725,6 +734,63 @@ type OwnerRosterUnresolvedException = {
   unitNumber: string;
   message: string;
   blocking: boolean;
+};
+
+type CanonicalIngestionEntityType =
+  | "building"
+  | "unit"
+  | "person"
+  | "contact-point"
+  | "ownership-candidate"
+  | "bank-transaction"
+  | "note"
+  | "exception";
+
+type CanonicalIngestionRouteTarget =
+  | "units"
+  | "persons"
+  | "ownerships"
+  | "contacts"
+  | "owner-ledger"
+  | "financial-invoices"
+  | "exceptions"
+  | "governance"
+  | "metadata";
+
+type CanonicalIngestionEntity = {
+  id: string;
+  entityType: CanonicalIngestionEntityType;
+  routeTarget: CanonicalIngestionRouteTarget;
+  routeStatus: "ready" | "needs-review";
+  entityKey: string;
+  relatedEntityIds: string[];
+  attributes: Record<string, unknown>;
+  sourceRefs: Array<{
+    kind: string;
+    index: number;
+    path?: string;
+  }>;
+};
+
+type CanonicalIngestionGraph = {
+  version: 1;
+  recordType: AiIngestionExtractionRecord["recordType"];
+  contextSnapshot: {
+    associationName: string | null;
+    knownUnitNumbers: string[];
+    knownBuildings: string[];
+    knownOwnerNames: string[];
+  };
+  entities: CanonicalIngestionEntity[];
+};
+
+type AssociationIngestionContext = {
+  knownUnitNumbers: string[];
+  knownBuildings: string[];
+  knownOwnerNames: string[];
+  associationName: string | null;
+  ownerRosterCorrectionHints?: AssociationOwnerRosterCorrectionHints;
+  bankStatementCorrectionHints?: AssociationBankStatementCorrectionHints;
 };
 
 type IngestionTrace = {
@@ -1815,7 +1881,22 @@ function attachIngestionTrace(payloadJson: Record<string, unknown>, trace: Inges
 function extractOwnerRosterItems(payload: unknown): OwnerRosterItem[] {
   if (!payload || typeof payload !== "object") return [];
   const items = (payload as Record<string, unknown>).items;
-  if (!Array.isArray(items)) return [];
+  if (!Array.isArray(items)) {
+    return extractCanonicalOwnerImportRows(payload).map((row) => ({
+      unitNumber: row.unitNumber,
+      firstName: row.firstName,
+      lastName: row.lastName,
+      email: row.contactPoints.find((contact) => contact.channel === "email" && contact.isPrimary)?.value
+        ?? row.contactPoints.find((contact) => contact.channel === "email")?.value
+        ?? null,
+      phone: row.contactPoints.find((contact) => contact.channel === "phone" && contact.isPrimary)?.value
+        ?? row.contactPoints.find((contact) => contact.channel === "phone")?.value
+        ?? null,
+      mailingAddress: row.mailingAddress,
+      ownershipPercentage: row.ownershipPercentage,
+      startDate: null,
+    }));
+  }
 
   return items.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
@@ -2035,10 +2116,519 @@ function extractAssociationBankStatementCorrectionHintsFromPayload(payload: unkn
   };
 }
 
+function buildOwnerRosterCorrectionMemoryEntries(
+  associationId: string,
+  extractedRecordId: string,
+  payload: unknown,
+  actorEmail?: string | null,
+): InsertAssociationIngestionCorrectionMemory[] {
+  const hints = extractAssociationOwnerRosterCorrectionHintsFromPayload(payload);
+  return [
+    ...hints.unitRemaps.map((hint) => ({
+      associationId,
+      recordType: "owner-roster" as const,
+      correctionKind: "unit-remap",
+      correctionKey: `${hint.fromUnitNumber}|${hint.toUnitNumber}|${hint.ownerText ?? ""}|${hint.buildingAddress ?? ""}`,
+      sourceExtractedRecordId: extractedRecordId,
+      payloadJson: hint,
+      createdBy: actorEmail ?? null,
+      updatedBy: actorEmail ?? null,
+    })),
+    ...hints.ownerNameFixes.map((hint) => ({
+      associationId,
+      recordType: "owner-roster" as const,
+      correctionKind: "owner-name-fix",
+      correctionKey: `${hint.unitNumber}|${hint.displayName}|${hint.firstName}|${hint.lastName}`,
+      sourceExtractedRecordId: extractedRecordId,
+      payloadJson: hint,
+      createdBy: actorEmail ?? null,
+      updatedBy: actorEmail ?? null,
+    })),
+  ];
+}
+
+function buildBankStatementCorrectionMemoryEntries(
+  associationId: string,
+  extractedRecordId: string,
+  payload: unknown,
+  actorEmail?: string | null,
+): InsertAssociationIngestionCorrectionMemory[] {
+  const hints = extractAssociationBankStatementCorrectionHintsFromPayload(payload);
+  return hints.transactionMappings.map((hint) => ({
+    associationId,
+    recordType: "bank-statement" as const,
+    correctionKind: "transaction-mapping",
+    correctionKey: `${normalizeBankTransactionDescription(hint.description)}|${hint.unitNumber ?? ""}|${hint.ownerEmail ?? ""}|${hint.ownerName ?? ""}`,
+    sourceExtractedRecordId: extractedRecordId,
+    payloadJson: hint,
+    createdBy: actorEmail ?? null,
+    updatedBy: actorEmail ?? null,
+  }));
+}
+
+function buildAiIngestionExceptionRowsFromPayload(params: {
+  ingestionJobId: string;
+  extractedRecordId: string;
+  associationId: string | null;
+  recordType: string;
+  payload: unknown;
+  bankHints?: BankStatementResolutionHint[];
+}): InsertAiIngestionException[] {
+  const payloadRow = (params.payload && typeof params.payload === "object" && !Array.isArray(params.payload))
+    ? params.payload as Record<string, unknown>
+    : {};
+  const canonicalGraph = extractCanonicalIngestionGraph(params.payload);
+
+  if (params.recordType === "owner-roster") {
+    const exceptions = canonicalGraph
+      ? canonicalGraph.entities
+          .filter((entity) => entity.entityType === "exception")
+          .map((entity) => ({
+            kind: String(entity.attributes.kind ?? "unit-unresolved") as OwnerRosterUnresolvedException["kind"],
+            unitNumber: String(entity.attributes.unitNumber ?? entity.entityKey),
+            message: String(entity.attributes.message ?? "Canonical exception requires review."),
+            blocking: Boolean(entity.attributes.blocking),
+          }))
+      : buildOwnerRosterUnresolvedExceptions(extractNormalizedOwnerRosterEntries(params.payload));
+    return exceptions.map((exception) => ({
+      ingestionJobId: params.ingestionJobId,
+      extractedRecordId: params.extractedRecordId,
+      associationId: params.associationId,
+      recordType: params.recordType,
+      exceptionKind: exception.kind,
+      severity: exception.blocking ? "blocking" : "warning",
+      status: "open",
+      entityKey: exception.unitNumber,
+      message: exception.message,
+      contextJson: {
+        unitNumber: exception.unitNumber,
+        blocking: exception.blocking,
+      },
+      suggestionsJson: null,
+      resolutionJson: null,
+      resolvedBy: null,
+    }));
+  }
+
+  if (params.recordType === "bank-statement") {
+    const hints = params.bankHints ?? [];
+    return hints.map((hint) => ({
+      ingestionJobId: params.ingestionJobId,
+      extractedRecordId: params.extractedRecordId,
+      associationId: params.associationId,
+      recordType: params.recordType,
+      exceptionKind: hint.reason,
+      severity: hint.reason === "missing-amount" || hint.reason === "invalid-date" ? "blocking" : "warning",
+      status: "open",
+      entityKey: `${hint.txIndex}`,
+      message: `Transaction ${hint.txIndex + 1} requires resolution: ${hint.reason.replace(/-/g, " ")}.`,
+      contextJson: {
+        txIndex: hint.txIndex,
+        transaction: hint.transaction,
+        routeReason: payloadRow.destinationPlan,
+      },
+      suggestionsJson: {
+        unitCandidates: hint.unitCandidates,
+        personCandidates: hint.personCandidates,
+      },
+      resolutionJson: null,
+      resolvedBy: null,
+    }));
+  }
+
+  return [];
+}
+
+function buildCanonicalContextSnapshot(context?: AssociationIngestionContext): CanonicalIngestionGraph["contextSnapshot"] {
+  return {
+    associationName: context?.associationName ?? null,
+    knownUnitNumbers: context?.knownUnitNumbers?.slice(0, 200) ?? [],
+    knownBuildings: context?.knownBuildings?.slice(0, 50) ?? [],
+    knownOwnerNames: context?.knownOwnerNames?.slice(0, 100) ?? [],
+  };
+}
+
+function buildCanonicalOwnerRosterGraph(
+  payload: unknown,
+  context?: AssociationIngestionContext,
+): CanonicalIngestionGraph {
+  const entries = extractNormalizedOwnerRosterEntries(payload);
+  const items = entries.length > 0 ? buildOwnerRosterItemsFromNormalizedEntries(entries) : extractOwnerRosterItems(payload);
+  const ownerEntries = entries.length > 0
+    ? entries
+    : items.map((item) => ({
+        buildingAddress: item.mailingAddress,
+        unitNumber: item.unitNumber,
+        ownerText: `${item.firstName} ${item.lastName}`,
+        ownerCandidates: [{
+          displayName: `${item.firstName} ${item.lastName}`,
+          firstName: item.firstName,
+          lastName: item.lastName,
+          email: item.email,
+          phone: item.phone,
+        }],
+        emails: item.email ? [item.email] : [],
+        phones: item.phone ? [item.phone] : [],
+        notes: [],
+      }));
+  const unresolvedExceptions = buildOwnerRosterUnresolvedExceptions(ownerEntries, context?.knownUnitNumbers ?? []);
+  const entities: CanonicalIngestionEntity[] = [];
+  const buildingByAddress = new Map<string, string>();
+
+  ownerEntries.forEach((entry, entryIndex) => {
+    let buildingEntityId: string | null = null;
+    if (entry.buildingAddress) {
+      const addressKey = canonicalizeAddress(entry.buildingAddress) ?? entry.buildingAddress;
+      if (!buildingByAddress.has(addressKey)) {
+        const id = `building-${buildingByAddress.size + 1}`;
+        buildingByAddress.set(addressKey, id);
+        entities.push({
+          id,
+          entityType: "building",
+          routeTarget: "units",
+          routeStatus: "ready",
+          entityKey: addressKey,
+          relatedEntityIds: [],
+          attributes: {
+            address: entry.buildingAddress,
+            knownBuildingMatch: (context?.knownBuildings ?? []).find((value) => value.toLowerCase() === entry.buildingAddress?.toLowerCase()) ?? null,
+          },
+          sourceRefs: [{ kind: "normalized-entry", index: entryIndex, path: "buildingAddress" }],
+        });
+      }
+      buildingEntityId = buildingByAddress.get(addressKey) ?? null;
+    }
+
+    const unitEntityId = `unit-${entryIndex + 1}`;
+    const unitKnown = (context?.knownUnitNumbers ?? []).includes(entry.unitNumber.toUpperCase());
+    entities.push({
+      id: unitEntityId,
+      entityType: "unit",
+      routeTarget: "units",
+      routeStatus: unitKnown ? "ready" : "needs-review",
+      entityKey: entry.unitNumber.toUpperCase(),
+      relatedEntityIds: buildingEntityId ? [buildingEntityId] : [],
+      attributes: {
+        unitNumber: entry.unitNumber,
+        buildingAddress: entry.buildingAddress,
+        knownUnit: unitKnown,
+      },
+      sourceRefs: [{ kind: "normalized-entry", index: entryIndex, path: "unitNumber" }],
+    });
+
+    entry.notes.forEach((note, noteIndex) => {
+      entities.push({
+        id: `note-${entryIndex + 1}-${noteIndex + 1}`,
+        entityType: "note",
+        routeTarget: "ownerships",
+        routeStatus: "ready",
+        entityKey: `${entry.unitNumber}|${note}`,
+        relatedEntityIds: [unitEntityId],
+        attributes: {
+          unitNumber: entry.unitNumber,
+          note,
+        },
+        sourceRefs: [{ kind: "normalized-entry", index: entryIndex, path: `notes.${noteIndex}` }],
+      });
+    });
+
+    entry.ownerCandidates.forEach((candidate, candidateIndex) => {
+      const personEntityId = `person-${entryIndex + 1}-${candidateIndex + 1}`;
+      entities.push({
+        id: personEntityId,
+        entityType: "person",
+        routeTarget: "persons",
+        routeStatus: "ready",
+        entityKey: `${candidate.firstName.toLowerCase()}|${candidate.lastName.toLowerCase()}|${entry.unitNumber}`,
+        relatedEntityIds: [unitEntityId],
+        attributes: {
+          firstName: candidate.firstName,
+          lastName: candidate.lastName,
+          displayName: candidate.displayName,
+          mailingAddress: entry.buildingAddress,
+          knownOwnerNameMatch: (context?.knownOwnerNames ?? []).find((value) => value.toLowerCase() === candidate.displayName.toLowerCase()) ?? null,
+        },
+        sourceRefs: [{ kind: "normalized-entry", index: entryIndex, path: `ownerCandidates.${candidateIndex}` }],
+      });
+
+      const candidateEmails = dedupeBy(
+        [
+          candidate.email,
+          entry.emails[candidateIndex],
+          ...(entry.ownerCandidates.length === 1 ? entry.emails : []),
+        ]
+          .filter((value): value is string => Boolean(value)),
+        (value) => value.toLowerCase(),
+      );
+      const candidatePhones = dedupeBy(
+        [
+          candidate.phone,
+          entry.phones[candidateIndex],
+          ...(entry.ownerCandidates.length === 1 ? entry.phones : []),
+        ]
+          .filter((value): value is string => Boolean(value)),
+        (value) => value,
+      );
+
+      candidateEmails.forEach((email, emailIndex) => {
+        entities.push({
+          id: `contact-email-${entryIndex + 1}-${candidateIndex + 1}-${emailIndex + 1}`,
+          entityType: "contact-point",
+          routeTarget: "contacts",
+          routeStatus: "ready",
+          entityKey: `email|${email}`,
+          relatedEntityIds: [personEntityId, unitEntityId],
+          attributes: {
+            channel: "email",
+            value: email,
+            isPrimary: emailIndex === 0,
+            ownerUnitNumber: entry.unitNumber,
+          },
+          sourceRefs: [{ kind: "normalized-entry", index: entryIndex, path: "emails" }],
+        });
+      });
+
+      candidatePhones.forEach((phone, phoneIndex) => {
+        entities.push({
+          id: `contact-phone-${entryIndex + 1}-${candidateIndex + 1}-${phoneIndex + 1}`,
+          entityType: "contact-point",
+          routeTarget: "contacts",
+          routeStatus: "ready",
+          entityKey: `phone|${phone}`,
+          relatedEntityIds: [personEntityId, unitEntityId],
+          attributes: {
+            channel: "phone",
+            value: phone,
+            isPrimary: phoneIndex === 0,
+            ownerUnitNumber: entry.unitNumber,
+          },
+          sourceRefs: [{ kind: "normalized-entry", index: entryIndex, path: "phones" }],
+        });
+      });
+
+      const noteIds = entities
+        .filter((entity) => entity.entityType === "note" && entity.attributes.unitNumber === entry.unitNumber)
+        .map((entity) => entity.id);
+      entities.push({
+        id: `ownership-${entryIndex + 1}-${candidateIndex + 1}`,
+        entityType: "ownership-candidate",
+        routeTarget: "ownerships",
+        routeStatus: candidateEmails.length > 1 || candidatePhones.length > 1 || !unitKnown ? "needs-review" : "ready",
+        entityKey: `${entry.unitNumber}|${candidate.firstName.toLowerCase()}|${candidate.lastName.toLowerCase()}`,
+        relatedEntityIds: [unitEntityId, personEntityId, ...noteIds],
+        attributes: {
+          unitNumber: entry.unitNumber,
+          ownershipPercentage: entry.ownerCandidates.length > 1 ? Number((100 / entry.ownerCandidates.length).toFixed(2)) : 100,
+          buildingAddress: entry.buildingAddress,
+          relationshipNotes: entry.notes,
+          contactAssignmentNeeded: entry.ownerCandidates.length > 1 && (entry.emails.length > 0 || entry.phones.length > 0),
+        },
+        sourceRefs: [{ kind: "normalized-entry", index: entryIndex }],
+      });
+    });
+  });
+
+  unresolvedExceptions.forEach((exception, index) => {
+    entities.push({
+      id: `exception-${index + 1}`,
+      entityType: "exception",
+      routeTarget: "exceptions",
+      routeStatus: "needs-review",
+      entityKey: `${exception.kind}|${exception.unitNumber}`,
+      relatedEntityIds: entities.filter((entity) => entity.entityType === "unit" && entity.entityKey === exception.unitNumber.toUpperCase()).map((entity) => entity.id),
+      attributes: {
+        kind: exception.kind,
+        unitNumber: exception.unitNumber,
+        message: exception.message,
+        blocking: exception.blocking,
+      },
+      sourceRefs: [{ kind: "derived-exception", index }],
+    });
+  });
+
+  return {
+    version: 1,
+    recordType: "owner-roster",
+    contextSnapshot: buildCanonicalContextSnapshot(context),
+    entities,
+  };
+}
+
+function buildCanonicalContactRosterGraph(
+  payload: unknown,
+  context?: AssociationIngestionContext,
+): CanonicalIngestionGraph {
+  const items = extractContactRosterItems(payload);
+  const entities: CanonicalIngestionEntity[] = [];
+  items.forEach((item, index) => {
+    const personEntityId = `person-${index + 1}`;
+    entities.push({
+      id: personEntityId,
+      entityType: "person",
+      routeTarget: "persons",
+      routeStatus: "ready",
+      entityKey: `${item.firstName.toLowerCase()}|${item.lastName.toLowerCase()}|${item.email ?? ""}`,
+      relatedEntityIds: [],
+      attributes: {
+        firstName: item.firstName,
+        lastName: item.lastName,
+        mailingAddress: item.mailingAddress,
+        knownOwnerNameMatch: (context?.knownOwnerNames ?? []).find((value) => value.toLowerCase() === `${item.firstName} ${item.lastName}`.toLowerCase()) ?? null,
+      },
+      sourceRefs: [{ kind: "item", index }],
+    });
+    [
+      { channel: "email" as const, value: item.email },
+      { channel: "phone" as const, value: item.phone },
+    ]
+      .filter((contact) => Boolean(contact.value))
+      .forEach((contact, contactIndex) => {
+        entities.push({
+          id: `contact-${index + 1}-${contactIndex + 1}`,
+          entityType: "contact-point",
+          routeTarget: "contacts",
+          routeStatus: "ready",
+          entityKey: `${contact.channel}|${contact.value}`,
+          relatedEntityIds: [personEntityId],
+          attributes: {
+            channel: contact.channel,
+            value: contact.value,
+            isPrimary: true,
+          },
+          sourceRefs: [{ kind: "item", index, path: contact.channel }],
+        });
+      });
+  });
+  return {
+    version: 1,
+    recordType: "contact-roster",
+    contextSnapshot: buildCanonicalContextSnapshot(context),
+    entities,
+  };
+}
+
+function buildCanonicalBankStatementGraph(
+  payload: unknown,
+  context?: AssociationIngestionContext,
+): CanonicalIngestionGraph {
+  const transactions = extractBankStatementTransactions(payload);
+  const entities: CanonicalIngestionEntity[] = [];
+  transactions.forEach((transaction, index) => {
+    const unitKnown = transaction.unitNumber ? (context?.knownUnitNumbers ?? []).includes(transaction.unitNumber.toUpperCase()) : false;
+    const nameKnown = transaction.ownerName
+      ? (context?.knownOwnerNames ?? []).some((value) => value.toLowerCase() === transaction.ownerName?.toLowerCase())
+      : false;
+    entities.push({
+      id: `bank-transaction-${index + 1}`,
+      entityType: "bank-transaction",
+      routeTarget: "owner-ledger",
+      routeStatus: transaction.unitNumber && unitKnown && (transaction.ownerEmail || nameKnown) ? "ready" : "needs-review",
+      entityKey: `${index}|${normalizeBankTransactionDescription(transaction.description)}`,
+      relatedEntityIds: [],
+      attributes: {
+        txIndex: index,
+        unitNumber: transaction.unitNumber,
+        ownerEmail: transaction.ownerEmail,
+        ownerName: transaction.ownerName,
+        amount: transaction.amount,
+        postedAt: transaction.postedAt,
+        description: transaction.description,
+        entryType: transaction.entryType,
+        knownUnit: unitKnown,
+        knownOwner: nameKnown,
+      },
+      sourceRefs: [{ kind: "transaction", index }],
+    });
+  });
+  return {
+    version: 1,
+    recordType: "bank-statement",
+    contextSnapshot: buildCanonicalContextSnapshot(context),
+    entities,
+  };
+}
+
+function buildCanonicalIngestionGraph(
+  recordType: AiIngestionExtractionRecord["recordType"],
+  payload: unknown,
+  context?: AssociationIngestionContext,
+): CanonicalIngestionGraph | null {
+  switch (recordType) {
+    case "owner-roster":
+      return buildCanonicalOwnerRosterGraph(payload, context);
+    case "contact-roster":
+      return buildCanonicalContactRosterGraph(payload, context);
+    case "bank-statement":
+      return buildCanonicalBankStatementGraph(payload, context);
+    default:
+      return null;
+  }
+}
+
+function extractCanonicalIngestionGraph(payload: unknown): CanonicalIngestionGraph | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const value = (payload as Record<string, unknown>).canonicalEntities;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (row.version !== 1 || typeof row.recordType !== "string" || !Array.isArray(row.entities)) return null;
+  return row as unknown as CanonicalIngestionGraph;
+}
+
+function ensureCanonicalIngestionGraph(
+  recordType: AiIngestionExtractionRecord["recordType"],
+  payload: unknown,
+  context?: AssociationIngestionContext,
+): CanonicalIngestionGraph | null {
+  return extractCanonicalIngestionGraph(payload) ?? buildCanonicalIngestionGraph(recordType, payload, context);
+}
+
+function attachCanonicalEntities(
+  recordType: AiIngestionExtractionRecord["recordType"],
+  payloadJson: Record<string, unknown>,
+  context?: AssociationIngestionContext,
+): Record<string, unknown> {
+  const canonicalGraph = ensureCanonicalIngestionGraph(recordType, payloadJson, context);
+  if (!canonicalGraph) return payloadJson;
+  return {
+    ...payloadJson,
+    canonicalEntities: canonicalGraph,
+  };
+}
+
 function buildDestinationRoutePlan(
   recordType: AiIngestionExtractionRecord["recordType"],
   payload: unknown,
 ): DestinationRoutePlan {
+  const canonicalGraph = extractCanonicalIngestionGraph(payload);
+  if (canonicalGraph) {
+    const count = (predicate: (entity: CanonicalIngestionEntity) => boolean) => canonicalGraph.entities.filter(predicate).length;
+    const exceptionCount = count((entity) => entity.entityType === "exception");
+    return {
+      primaryModule:
+        recordType === "owner-roster"
+          ? "owners"
+          : recordType === "contact-roster"
+            ? "persons"
+            : recordType === "bank-statement"
+              ? "owner-ledger"
+              : recordType === "invoice-draft"
+                ? "financial-invoices"
+                : recordType === "meeting-notes"
+                  ? "governance"
+                  : "metadata",
+      entityCounts: {
+        units: count((entity) => entity.entityType === "unit"),
+        persons: count((entity) => entity.entityType === "person"),
+        ownerships: count((entity) => entity.entityType === "ownership-candidate"),
+        contactPoints: count((entity) => entity.entityType === "contact-point"),
+        ownerLedgerEntries: count((entity) => entity.entityType === "bank-transaction"),
+        vendorInvoices: recordType === "invoice-draft" ? 1 : 0,
+        exceptions: exceptionCount,
+      },
+      routeReason: `Canonical ${recordType} entities route deterministically to destination modules and exception review.`,
+    };
+  }
+
   if (recordType === "owner-roster") {
     const entries = extractNormalizedOwnerRosterEntries(payload);
     const items = entries.length > 0 ? buildOwnerRosterItemsFromNormalizedEntries(entries) : extractOwnerRosterItems(payload);
@@ -2180,6 +2770,119 @@ function extractDestinationRoutePlan(payload: unknown): DestinationRoutePlan | n
   };
 }
 
+function extractCanonicalOwnerImportRows(payload: unknown): Array<{
+  unitNumber: string;
+  buildingAddress: string | null;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  mailingAddress: string | null;
+  ownershipPercentage: number | null;
+  relationshipNotes: string[];
+  contactPoints: Array<{ channel: "email" | "phone"; value: string; isPrimary: boolean }>;
+}> {
+  const graph = extractCanonicalIngestionGraph(payload);
+  if (!graph) return [];
+  const entitiesById = new Map(graph.entities.map((entity) => [entity.id, entity]));
+  return graph.entities
+    .filter((entity) => entity.entityType === "ownership-candidate")
+    .flatMap((ownershipEntity) => {
+      const unitEntity = ownershipEntity.relatedEntityIds
+        .map((id) => entitiesById.get(id))
+        .find((entity) => entity?.entityType === "unit");
+      const personEntity = ownershipEntity.relatedEntityIds
+        .map((id) => entitiesById.get(id))
+        .find((entity) => entity?.entityType === "person");
+      if (!unitEntity || !personEntity) return [];
+      const contactPoints = graph.entities
+        .filter((entity) => entity.entityType === "contact-point" && entity.relatedEntityIds.includes(personEntity.id))
+        .flatMap((entity) => {
+          const channel = entity.attributes.channel;
+          const value = entity.attributes.value;
+          if ((channel !== "email" && channel !== "phone") || typeof value !== "string" || !value) return [];
+          return [{
+            channel: channel as "email" | "phone",
+            value,
+            isPrimary: Boolean(entity.attributes.isPrimary),
+          }];
+        });
+      const relationshipNotes = ownershipEntity.relatedEntityIds
+        .map((id) => entitiesById.get(id))
+        .filter((entity): entity is CanonicalIngestionEntity => Boolean(entity && entity.entityType === "note"))
+        .flatMap((entity) => typeof entity.attributes.note === "string" ? [entity.attributes.note] : []);
+      const firstName = typeof personEntity.attributes.firstName === "string" ? personEntity.attributes.firstName : "";
+      const lastName = typeof personEntity.attributes.lastName === "string" ? personEntity.attributes.lastName : "";
+      const unitNumber = typeof unitEntity.attributes.unitNumber === "string" ? unitEntity.attributes.unitNumber : "";
+      if (!firstName || !lastName || !unitNumber) return [];
+      return [{
+        unitNumber,
+        buildingAddress: typeof unitEntity.attributes.buildingAddress === "string" ? unitEntity.attributes.buildingAddress : null,
+        firstName,
+        lastName,
+        displayName: typeof personEntity.attributes.displayName === "string" ? personEntity.attributes.displayName : `${firstName} ${lastName}`,
+        mailingAddress: typeof personEntity.attributes.mailingAddress === "string" ? personEntity.attributes.mailingAddress : null,
+        ownershipPercentage: typeof ownershipEntity.attributes.ownershipPercentage === "number" ? ownershipEntity.attributes.ownershipPercentage : null,
+        relationshipNotes,
+        contactPoints,
+      }];
+    });
+}
+
+function extractCanonicalContactImportRows(payload: unknown): Array<{
+  firstName: string;
+  lastName: string;
+  mailingAddress: string | null;
+  contactPoints: Array<{ channel: "email" | "phone"; value: string; isPrimary: boolean }>;
+}> {
+  const graph = extractCanonicalIngestionGraph(payload);
+  if (!graph) return [];
+  return graph.entities
+    .filter((entity) => entity.entityType === "person")
+    .flatMap((personEntity) => {
+      const firstName = typeof personEntity.attributes.firstName === "string" ? personEntity.attributes.firstName : "";
+      const lastName = typeof personEntity.attributes.lastName === "string" ? personEntity.attributes.lastName : "";
+      if (!firstName || !lastName) return [];
+      const contactPoints = graph.entities
+        .filter((entity) => entity.entityType === "contact-point" && entity.relatedEntityIds.includes(personEntity.id))
+        .flatMap((entity) => {
+          const channel = entity.attributes.channel;
+          const value = entity.attributes.value;
+          if ((channel !== "email" && channel !== "phone") || typeof value !== "string" || !value) return [];
+          return [{
+            channel: channel as "email" | "phone",
+            value,
+            isPrimary: Boolean(entity.attributes.isPrimary),
+          }];
+        });
+      return [{
+        firstName,
+        lastName,
+        mailingAddress: typeof personEntity.attributes.mailingAddress === "string" ? personEntity.attributes.mailingAddress : null,
+        contactPoints,
+      }];
+    });
+}
+
+function extractCanonicalBankTransactions(payload: unknown): BankStatementTransaction[] {
+  const graph = extractCanonicalIngestionGraph(payload);
+  if (!graph) return [];
+  return graph.entities
+    .filter((entity) => entity.entityType === "bank-transaction")
+    .flatMap((entity) => {
+      const entryType = entity.attributes.entryType;
+      if (entryType !== "payment" && entryType !== "charge" && entryType !== "credit" && entryType !== "adjustment") return [];
+      return [{
+        unitNumber: typeof entity.attributes.unitNumber === "string" ? entity.attributes.unitNumber : null,
+        ownerEmail: typeof entity.attributes.ownerEmail === "string" ? entity.attributes.ownerEmail : null,
+        ownerName: typeof entity.attributes.ownerName === "string" ? entity.attributes.ownerName : null,
+        amount: typeof entity.attributes.amount === "number" ? entity.attributes.amount : toNumber(entity.attributes.amount),
+        postedAt: typeof entity.attributes.postedAt === "string" ? entity.attributes.postedAt : null,
+        description: typeof entity.attributes.description === "string" ? entity.attributes.description : null,
+        entryType,
+      }];
+    });
+}
+
 function dedupeBy<T>(items: T[], keyFn: (item: T) => string): T[] {
   const seen = new Set<string>();
   const result: T[] = [];
@@ -2190,6 +2893,10 @@ function dedupeBy<T>(items: T[], keyFn: (item: T) => string): T[] {
     result.push(item);
   }
   return result;
+}
+
+function normalizePersonContactPointValue(channel: "email" | "phone", value: string | null | undefined): string | null {
+  return channel === "email" ? canonicalizeEmail(value) : canonicalizePhone(value);
 }
 
 async function mapInBatches<T, R>(
@@ -2211,7 +2918,19 @@ async function mapInBatches<T, R>(
 function extractContactRosterItems(payload: unknown): ContactRosterItem[] {
   if (!payload || typeof payload !== "object") return [];
   const items = (payload as Record<string, unknown>).items;
-  if (!Array.isArray(items)) return [];
+  if (!Array.isArray(items)) {
+    return extractCanonicalContactImportRows(payload).map((row) => ({
+      firstName: row.firstName,
+      lastName: row.lastName,
+      email: row.contactPoints.find((contact) => contact.channel === "email" && contact.isPrimary)?.value
+        ?? row.contactPoints.find((contact) => contact.channel === "email")?.value
+        ?? null,
+      phone: row.contactPoints.find((contact) => contact.channel === "phone" && contact.isPrimary)?.value
+        ?? row.contactPoints.find((contact) => contact.channel === "phone")?.value
+        ?? null,
+      mailingAddress: row.mailingAddress,
+    }));
+  }
 
   return items.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
@@ -2258,7 +2977,7 @@ type BankStatementTransaction = {
 function extractBankStatementTransactions(payload: unknown): BankStatementTransaction[] {
   if (!payload || typeof payload !== "object") return [];
   const transactions = (payload as Record<string, unknown>).transactions;
-  if (!Array.isArray(transactions)) return [];
+  if (!Array.isArray(transactions)) return extractCanonicalBankTransactions(payload);
 
   return transactions.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
@@ -2453,10 +3172,14 @@ function enrichExtractionWithFallback(
   job: AiIngestionJob,
   sourceText: string,
   extraction: AiIngestionExtractionResult,
-  ownerRosterCorrectionHints?: AssociationOwnerRosterCorrectionHints,
-  bankStatementCorrectionHints?: AssociationBankStatementCorrectionHints,
+  associationContext?: AssociationIngestionContext,
 ): AiIngestionExtractionResult {
-  const fallback = buildFallbackIngestionExtraction(job, sourceText, ownerRosterCorrectionHints, bankStatementCorrectionHints);
+  const fallback = buildFallbackIngestionExtraction(
+    job,
+    sourceText,
+    associationContext?.ownerRosterCorrectionHints,
+    associationContext?.bankStatementCorrectionHints,
+  );
   const baseExtraction = (extraction.records.length === 0 && extraction.clauses.length === 0)
     ? fallback
     : extraction;
@@ -2464,12 +3187,12 @@ function enrichExtractionWithFallback(
     if (record.recordType === "owner-roster") {
       const basePayload = (record.payloadJson && typeof record.payloadJson === "object" ? record.payloadJson : {}) as Record<string, unknown>;
       const baseItems = extractOwnerRosterItems(basePayload);
-      const selection = chooseBestOwnerRosterItems(sourceText, baseItems, ownerRosterCorrectionHints);
+      const selection = chooseBestOwnerRosterItems(sourceText, baseItems, associationContext?.ownerRosterCorrectionHints);
       const unresolvedExceptions = buildOwnerRosterUnresolvedExceptions(selection.normalizedEntries);
       if (selection.items.length === 0) return record;
       return {
         ...record,
-        payloadJson: attachDestinationRouting("owner-roster", {
+        payloadJson: attachCanonicalEntities("owner-roster", attachDestinationRouting("owner-roster", {
           ...basePayload,
           title: typeof basePayload.title === "string" && basePayload.title.trim() ? basePayload.title : "Extracted Owner Roster",
           itemCount: selection.items.length,
@@ -2477,12 +3200,12 @@ function enrichExtractionWithFallback(
           normalizedEntries: selection.normalizedEntries,
           unresolvedExceptions,
           feedbackSignals: {
-            priorUnitRemaps: ownerRosterCorrectionHints?.unitRemaps.length ?? 0,
-            priorOwnerNameFixes: ownerRosterCorrectionHints?.ownerNameFixes.length ?? 0,
+            priorUnitRemaps: associationContext?.ownerRosterCorrectionHints?.unitRemaps.length ?? 0,
+            priorOwnerNameFixes: associationContext?.ownerRosterCorrectionHints?.ownerNameFixes.length ?? 0,
           },
           extractionStrategy: selection.strategy,
           extractionQuality: selection.quality,
-        }),
+        }), associationContext),
       };
     }
 
@@ -2494,23 +3217,23 @@ function enrichExtractionWithFallback(
         const mergedItems = mergeContactRosterItems(baseItems, parsedItems);
         return {
           ...record,
-          payloadJson: attachDestinationRouting("contact-roster", {
+          payloadJson: attachCanonicalEntities("contact-roster", attachDestinationRouting("contact-roster", {
             ...basePayload,
             title: typeof basePayload.title === "string" && basePayload.title.trim() ? basePayload.title : "Extracted Contact Roster",
             itemCount: mergedItems.length,
             items: mergedItems,
-          }),
+          }), associationContext),
         };
       }
       if (parsedItems.length === 0) return record;
       return {
         ...record,
-        payloadJson: attachDestinationRouting("contact-roster", {
+        payloadJson: attachCanonicalEntities("contact-roster", attachDestinationRouting("contact-roster", {
           ...basePayload,
           title: typeof basePayload.title === "string" && basePayload.title.trim() ? basePayload.title : "Extracted Contact Roster",
           itemCount: parsedItems.length,
           items: parsedItems,
-        }),
+        }), associationContext),
       };
     }
 
@@ -2533,14 +3256,14 @@ function enrichExtractionWithFallback(
       const basePayload = (record.payloadJson && typeof record.payloadJson === "object" ? record.payloadJson : {}) as Record<string, unknown>;
       const normalizedBase = normalizeBankStatementTransactions(basePayload);
       const parsedBank = parseBankStatementText(sourceText);
-      const hintedBaseTransactions = applyBankStatementCorrectionHints(normalizedBase.transactions, bankStatementCorrectionHints);
+      const hintedBaseTransactions = applyBankStatementCorrectionHints(normalizedBase.transactions, associationContext?.bankStatementCorrectionHints);
       const parsedNormalized = normalizeBankStatementTransactions({
-        transactions: applyBankStatementCorrectionHints(parsedBank.transactions, bankStatementCorrectionHints),
+        transactions: applyBankStatementCorrectionHints(parsedBank.transactions, associationContext?.bankStatementCorrectionHints),
       });
       const transactions = hintedBaseTransactions.length > 0 ? hintedBaseTransactions : parsedNormalized.transactions;
       return {
         ...record,
-        payloadJson: attachDestinationRouting("bank-statement", {
+        payloadJson: attachCanonicalEntities("bank-statement", attachDestinationRouting("bank-statement", {
           ...basePayload,
           statementPeriod:
             (typeof basePayload.statementPeriod === "string" && basePayload.statementPeriod.trim())
@@ -2548,9 +3271,9 @@ function enrichExtractionWithFallback(
               : parsedBank.statementPeriod,
           transactions,
           feedbackSignals: {
-            priorBankTransactionMappings: bankStatementCorrectionHints?.transactionMappings.length ?? 0,
+            priorBankTransactionMappings: associationContext?.bankStatementCorrectionHints?.transactionMappings.length ?? 0,
           },
-        }),
+        }), associationContext),
       };
     }
 
@@ -4188,8 +4911,63 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(persons).where(inArray(persons.id, personIds));
   }
 
+  private async syncPersonContactPoints(
+    personId: string,
+    associationId: string | null | undefined,
+    contacts: Array<{ channel: "email" | "phone"; value: string | null | undefined; isPrimary?: boolean; source?: string; sourceRecordId?: string | null; notes?: string | null }>,
+  ): Promise<void> {
+    const normalizedRows = contacts.flatMap((contact) => {
+      const normalizedValue = normalizePersonContactPointValue(contact.channel, contact.value);
+      if (!normalizedValue) return [];
+      return [{
+        personId,
+        associationId: associationId ?? null,
+        channel: contact.channel,
+        value: normalizedValue,
+        normalizedValue,
+        isPrimary: contact.isPrimary ? 1 : 0,
+        source: contact.source ?? "manual",
+        sourceRecordId: contact.sourceRecordId ?? null,
+        notes: contact.notes ?? null,
+      } satisfies InsertPersonContactPoint];
+    });
+
+    for (const row of dedupeBy(normalizedRows, (item) => `${item.channel}|${item.normalizedValue}`)) {
+      const [existing] = await db
+        .select()
+        .from(personContactPoints)
+        .where(and(
+          eq(personContactPoints.personId, row.personId),
+          eq(personContactPoints.channel, row.channel),
+          eq(personContactPoints.normalizedValue, row.normalizedValue),
+        ))
+        .limit(1);
+
+      if (existing) {
+        await db
+          .update(personContactPoints)
+          .set({
+            associationId: row.associationId ?? existing.associationId,
+            isPrimary: row.isPrimary || existing.isPrimary,
+            source: row.source || existing.source,
+            sourceRecordId: row.sourceRecordId ?? existing.sourceRecordId,
+            notes: row.notes ?? existing.notes,
+            updatedAt: new Date(),
+          })
+          .where(eq(personContactPoints.id, existing.id));
+        continue;
+      }
+
+      await db.insert(personContactPoints).values(row);
+    }
+  }
+
   async createPerson(data: InsertPerson, actorEmail?: string): Promise<Person> {
     const [result] = await db.insert(persons).values(data).returning();
+    await this.syncPersonContactPoints(result.id, result.associationId, [
+      { channel: "email", value: result.email, isPrimary: true, source: "person-record" },
+      { channel: "phone", value: result.phone, isPrimary: true, source: "person-record" },
+    ]);
     await this.recordAuditEvent({
       actorEmail: actorEmail || "system",
       action: "create",
@@ -4207,6 +4985,10 @@ export class DatabaseStorage implements IStorage {
     if (!before) return undefined;
     const [result] = await db.update(persons).set(data).where(eq(persons.id, id)).returning();
     if (result) {
+      await this.syncPersonContactPoints(result.id, result.associationId, [
+        { channel: "email", value: result.email, isPrimary: true, source: "person-record" },
+        { channel: "phone", value: result.phone, isPrimary: true, source: "person-record" },
+      ]);
       await this.recordAuditEvent({
         actorEmail: actorEmail || "system",
         action: "update",
@@ -8025,30 +8807,58 @@ export class DatabaseStorage implements IStorage {
         updatedAt: now,
       })
       .where(and(eq(aiExtractedRecords.jobId, jobId), isNull(aiExtractedRecords.supersededAt)));
+
+    await db
+      .update(aiIngestionExceptions)
+      .set({
+        supersededAt: now,
+        updatedAt: now,
+      })
+      .where(and(eq(aiIngestionExceptions.ingestionJobId, jobId), isNull(aiIngestionExceptions.supersededAt)));
   }
 
   private async getAssociationOwnerRosterCorrectionHints(associationId: string): Promise<AssociationOwnerRosterCorrectionHints> {
-    const records = await db
-      .select({
-        payloadJson: aiExtractedRecords.payloadJson,
-      })
-      .from(aiExtractedRecords)
+    const rows = await db
+      .select({ correctionKind: associationIngestionCorrectionMemory.correctionKind, payloadJson: associationIngestionCorrectionMemory.payloadJson })
+      .from(associationIngestionCorrectionMemory)
       .where(and(
-        eq(aiExtractedRecords.associationId, associationId),
-        eq(aiExtractedRecords.recordType, "owner-roster"),
+        eq(associationIngestionCorrectionMemory.associationId, associationId),
+        eq(associationIngestionCorrectionMemory.recordType, "owner-roster"),
       ))
-      .orderBy(desc(aiExtractedRecords.reviewedAt), desc(aiExtractedRecords.updatedAt))
-      .limit(25);
+      .orderBy(desc(associationIngestionCorrectionMemory.updatedAt))
+      .limit(60);
 
-    const combined: AssociationOwnerRosterCorrectionHints = {
-      unitRemaps: [],
-      ownerNameFixes: [],
-    };
+    if (rows.length === 0) {
+      const records = await db
+        .select({ payloadJson: aiExtractedRecords.payloadJson })
+        .from(aiExtractedRecords)
+        .where(and(
+          eq(aiExtractedRecords.associationId, associationId),
+          eq(aiExtractedRecords.recordType, "owner-roster"),
+        ))
+        .orderBy(desc(aiExtractedRecords.reviewedAt), desc(aiExtractedRecords.updatedAt))
+        .limit(25);
 
-    for (const record of records) {
-      const hints = extractAssociationOwnerRosterCorrectionHintsFromPayload(record.payloadJson);
-      combined.unitRemaps.push(...hints.unitRemaps);
-      combined.ownerNameFixes.push(...hints.ownerNameFixes);
+      const fallbackCombined: AssociationOwnerRosterCorrectionHints = { unitRemaps: [], ownerNameFixes: [] };
+      for (const record of records) {
+        const hints = extractAssociationOwnerRosterCorrectionHintsFromPayload(record.payloadJson);
+        fallbackCombined.unitRemaps.push(...hints.unitRemaps);
+        fallbackCombined.ownerNameFixes.push(...hints.ownerNameFixes);
+      }
+      return {
+        unitRemaps: dedupeBy(fallbackCombined.unitRemaps, (item) => `${item.fromUnitNumber}|${item.toUnitNumber}|${item.ownerText ?? ""}|${item.buildingAddress ?? ""}`).slice(0, 20),
+        ownerNameFixes: dedupeBy(fallbackCombined.ownerNameFixes, (item) => `${item.unitNumber}|${item.displayName}|${item.firstName}|${item.lastName}`).slice(0, 30),
+      };
+    }
+
+    const combined: AssociationOwnerRosterCorrectionHints = { unitRemaps: [], ownerNameFixes: [] };
+    for (const row of rows) {
+      if (row.correctionKind === "unit-remap" && row.payloadJson && typeof row.payloadJson === "object" && !Array.isArray(row.payloadJson)) {
+        combined.unitRemaps.push(row.payloadJson as AssociationOwnerRosterCorrectionHints["unitRemaps"][number]);
+      }
+      if (row.correctionKind === "owner-name-fix" && row.payloadJson && typeof row.payloadJson === "object" && !Array.isArray(row.payloadJson)) {
+        combined.ownerNameFixes.push(row.payloadJson as AssociationOwnerRosterCorrectionHints["ownerNameFixes"][number]);
+      }
     }
 
     return {
@@ -8058,21 +8868,149 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async getAssociationBankStatementCorrectionHints(associationId: string): Promise<AssociationBankStatementCorrectionHints> {
-    const records = await db
-      .select({
-        payloadJson: aiExtractedRecords.payloadJson,
-      })
-      .from(aiExtractedRecords)
+    const rows = await db
+      .select({ payloadJson: associationIngestionCorrectionMemory.payloadJson })
+      .from(associationIngestionCorrectionMemory)
       .where(and(
-        eq(aiExtractedRecords.associationId, associationId),
-        eq(aiExtractedRecords.recordType, "bank-statement"),
+        eq(associationIngestionCorrectionMemory.associationId, associationId),
+        eq(associationIngestionCorrectionMemory.recordType, "bank-statement"),
       ))
-      .orderBy(desc(aiExtractedRecords.reviewedAt), desc(aiExtractedRecords.updatedAt))
-      .limit(25);
+      .orderBy(desc(associationIngestionCorrectionMemory.updatedAt))
+      .limit(40);
 
-    const mappings = records.flatMap((record) => extractAssociationBankStatementCorrectionHintsFromPayload(record.payloadJson).transactionMappings);
+    if (rows.length === 0) {
+      const records = await db
+        .select({ payloadJson: aiExtractedRecords.payloadJson })
+        .from(aiExtractedRecords)
+        .where(and(
+          eq(aiExtractedRecords.associationId, associationId),
+          eq(aiExtractedRecords.recordType, "bank-statement"),
+        ))
+        .orderBy(desc(aiExtractedRecords.reviewedAt), desc(aiExtractedRecords.updatedAt))
+        .limit(25);
+      const fallbackMappings = records.flatMap((record) => extractAssociationBankStatementCorrectionHintsFromPayload(record.payloadJson).transactionMappings);
+      return {
+        transactionMappings: dedupeBy(fallbackMappings, (item) => `${normalizeBankTransactionDescription(item.description)}|${item.unitNumber ?? ""}|${item.ownerEmail ?? ""}|${item.ownerName ?? ""}`).slice(0, 40),
+      };
+    }
+
+    const mappings = rows.flatMap((row) => {
+      if (!row.payloadJson || typeof row.payloadJson !== "object" || Array.isArray(row.payloadJson)) return [];
+      return [row.payloadJson as AssociationBankStatementCorrectionHints["transactionMappings"][number]];
+    });
     return {
       transactionMappings: dedupeBy(mappings, (item) => `${normalizeBankTransactionDescription(item.description)}|${item.unitNumber ?? ""}|${item.ownerEmail ?? ""}|${item.ownerName ?? ""}`).slice(0, 40),
+    };
+  }
+
+  private async upsertAssociationIngestionCorrectionMemoryRows(rows: InsertAssociationIngestionCorrectionMemory[]): Promise<void> {
+    for (const row of rows) {
+      const [existing] = await db
+        .select()
+        .from(associationIngestionCorrectionMemory)
+        .where(and(
+          eq(associationIngestionCorrectionMemory.associationId, row.associationId),
+          eq(associationIngestionCorrectionMemory.recordType, row.recordType),
+          eq(associationIngestionCorrectionMemory.correctionKey, row.correctionKey),
+        ))
+        .limit(1);
+
+      if (existing) {
+        await db
+          .update(associationIngestionCorrectionMemory)
+          .set({
+            correctionKind: row.correctionKind,
+            sourceExtractedRecordId: row.sourceExtractedRecordId ?? existing.sourceExtractedRecordId,
+            payloadJson: row.payloadJson,
+            updatedBy: row.updatedBy ?? existing.updatedBy,
+            updatedAt: new Date(),
+          })
+          .where(eq(associationIngestionCorrectionMemory.id, existing.id));
+        continue;
+      }
+
+      await db.insert(associationIngestionCorrectionMemory).values(row);
+    }
+  }
+
+  private async syncCorrectionMemoryForExtractedRecord(record: AiExtractedRecord, payload: unknown, actorEmail?: string | null): Promise<void> {
+    if (!record.associationId) return;
+    const rows = [
+      ...buildOwnerRosterCorrectionMemoryEntries(record.associationId, record.id, payload, actorEmail),
+      ...buildBankStatementCorrectionMemoryEntries(record.associationId, record.id, payload, actorEmail),
+    ];
+    if (rows.length === 0) return;
+    await this.upsertAssociationIngestionCorrectionMemoryRows(rows);
+  }
+
+  private async syncAiIngestionExceptionsForRecord(record: AiExtractedRecord, payload: unknown): Promise<void> {
+    if (!record.associationId) return;
+    const bankHints = record.recordType === "bank-statement"
+      ? await this.getBankStatementResolutionHints(record.id)
+      : [];
+    const rows = buildAiIngestionExceptionRowsFromPayload({
+      ingestionJobId: record.jobId,
+      extractedRecordId: record.id,
+      associationId: record.associationId,
+      recordType: record.recordType,
+      payload,
+      bankHints,
+    });
+    const now = new Date();
+    await db
+      .update(aiIngestionExceptions)
+      .set({ supersededAt: now, updatedAt: now })
+      .where(and(eq(aiIngestionExceptions.extractedRecordId, record.id), isNull(aiIngestionExceptions.supersededAt)));
+    if (rows.length > 0) {
+      await db.insert(aiIngestionExceptions).values(rows);
+    }
+  }
+
+  private async buildAssociationIngestionContext(associationId: string): Promise<AssociationIngestionContext> {
+    const [associationRecord, associationUnits, associationBuildings, associationPersons, activeOwnerships, contacts] = await Promise.all([
+      db.select({ name: associations.name }).from(associations).where(eq(associations.id, associationId)).limit(1),
+      this.getUnits(associationId),
+      this.getBuildings(associationId),
+      this.getPersons(associationId),
+      db.select().from(ownerships).where(eq(ownerships.endDate, null as any)),
+      db.select().from(personContactPoints).where(eq(personContactPoints.associationId, associationId)),
+    ]);
+
+    const unitIdSet = new Set(associationUnits.map((unit) => unit.id));
+    const personById = new Map(associationPersons.map((person) => [person.id, person]));
+    const missingOwnedPersonIds = activeOwnerships
+      .filter((ownership) => unitIdSet.has(ownership.unitId) && !personById.has(ownership.personId))
+      .map((ownership) => ownership.personId);
+    if (missingOwnedPersonIds.length > 0) {
+      const additionalPersons = await db.select().from(persons).where(inArray(persons.id, Array.from(new Set(missingOwnedPersonIds))));
+      additionalPersons.forEach((person) => personById.set(person.id, person));
+    }
+    const ownerNames = new Set<string>();
+
+    activeOwnerships
+      .filter((ownership) => unitIdSet.has(ownership.unitId))
+      .forEach((ownership) => {
+        const person = personById.get(ownership.personId);
+        if (!person) return;
+        ownerNames.add(`${person.firstName} ${person.lastName}`);
+      });
+
+    contacts.forEach((contact) => {
+      const person = personById.get(contact.personId);
+      if (!person) return;
+      ownerNames.add(`${person.firstName} ${person.lastName}`);
+    });
+
+    return {
+      knownUnitNumbers: associationUnits.map((unit) => unit.unitNumber.toUpperCase()).slice(0, 200),
+      knownBuildings: associationBuildings
+        .map((building) => building.name || building.address)
+        .filter((value): value is string => Boolean(value))
+        .slice(0, 50),
+      knownOwnerNames: Array.from(ownerNames).slice(0, 100),
+      associationName: associationRecord[0]?.name ?? null,
+      ownerRosterCorrectionHints: await this.getAssociationOwnerRosterCorrectionHints(associationId),
+      bankStatementCorrectionHints: await this.getAssociationBankStatementCorrectionHints(associationId),
     };
   }
 
@@ -8080,12 +9018,7 @@ export class DatabaseStorage implements IStorage {
     job: AiIngestionJob,
     sourceText: string,
     classification: IngestionClassification,
-    associationContext?: {
-      knownUnitNumbers: string[];
-      associationName: string | null;
-      ownerRosterCorrectionHints?: AssociationOwnerRosterCorrectionHints;
-      bankStatementCorrectionHints?: AssociationBankStatementCorrectionHints;
-    },
+    associationContext?: AssociationIngestionContext,
   ): Promise<AiIngestionExtractionResult | null> {
     const apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
     if (!apiKey || !sourceText.trim()) return null;
@@ -8368,21 +9301,16 @@ export class DatabaseStorage implements IStorage {
         throw new Error("No parsable source text found. Provide pasted text or upload a pdf/docx/xlsx/txt/md/csv/tsv/json/log/html/xml/eml file.");
       }
       const classification = classifyIngestionSource(job, sourceText);
-      const associationUnits = job.associationId ? await this.getUnits(job.associationId) : [];
-      const ownerRosterCorrectionHints = job.associationId
-        ? await this.getAssociationOwnerRosterCorrectionHints(job.associationId)
-        : { unitRemaps: [], ownerNameFixes: [] };
-      const bankStatementCorrectionHints = job.associationId
-        ? await this.getAssociationBankStatementCorrectionHints(job.associationId)
-        : { transactionMappings: [] };
-      const associationContext = {
-        knownUnitNumbers: associationUnits.map((unit) => unit.unitNumber.toUpperCase()).slice(0, 200),
-        associationName: job.associationId
-          ? ((await db.select({ name: associations.name }).from(associations).where(eq(associations.id, job.associationId)).limit(1))[0]?.name ?? null)
-          : null,
-        ownerRosterCorrectionHints,
-        bankStatementCorrectionHints,
-      };
+      const associationContext = job.associationId
+        ? await this.buildAssociationIngestionContext(job.associationId)
+        : {
+            knownUnitNumbers: [],
+            knownBuildings: [],
+            knownOwnerNames: [],
+            associationName: null,
+            ownerRosterCorrectionHints: { unitRemaps: [], ownerNameFixes: [] },
+            bankStatementCorrectionHints: { transactionMappings: [] },
+          };
       let extraction = null as AiIngestionExtractionResult | null;
       const aiConfigured = Boolean(process.env.OPENAI_API_KEY || process.env.AI_API_KEY);
       const aiModel = aiConfigured ? (process.env.OPENAI_INGESTION_MODEL || "gpt-4o-mini") : null;
@@ -8411,13 +9339,19 @@ export class DatabaseStorage implements IStorage {
       }
 
       const resolvedExtractionBase = applyClassificationGuardrails(
-        enrichExtractionWithFallback(job, sourceText, extraction ?? { records: [], clauses: [] }, ownerRosterCorrectionHints, bankStatementCorrectionHints),
+        enrichExtractionWithFallback(job, sourceText, extraction ?? { records: [], clauses: [] }, associationContext),
         classification,
       );
       const resolvedExtraction: AiIngestionExtractionResult = {
         records: resolvedExtractionBase.records.map((record) => ({
           ...record,
-          payloadJson: attachIngestionTrace(attachDestinationRouting(record.recordType, record.payloadJson), trace),
+          payloadJson: attachIngestionTrace(
+            attachDestinationRouting(
+              record.recordType,
+              attachCanonicalEntities(record.recordType, record.payloadJson, associationContext),
+            ),
+            trace,
+          ),
         })),
         clauses: resolvedExtractionBase.clauses,
       };
@@ -8436,6 +9370,11 @@ export class DatabaseStorage implements IStorage {
         const bucket = createdRecordsByType.get(record.recordType) ?? [];
         bucket.push(created);
         createdRecordsByType.set(record.recordType, bucket);
+        await this.syncCorrectionMemoryForExtractedRecord(created, record.payloadJson, job.submittedBy ?? null);
+      }
+
+      for (const record of createdExtractedRecords) {
+        await this.syncAiIngestionExceptionsForRecord(record, record.payloadJson);
       }
 
       if (resolvedExtraction.clauses.length > 0 && createdExtractedRecords.length === 0) {
@@ -8500,17 +9439,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async reviewAiExtractedRecord(id: string, payload: { reviewStatus: "approved" | "rejected"; payloadJson?: unknown; reviewedBy?: string | null }): Promise<AiExtractedRecord | undefined> {
+    const [existing] = await db.select().from(aiExtractedRecords).where(eq(aiExtractedRecords.id, id));
+    if (!existing) return undefined;
+    const reviewContext = existing.associationId ? await this.buildAssociationIngestionContext(existing.associationId) : undefined;
+    const nextPayload = payload.payloadJson && typeof payload.payloadJson === "object" && !Array.isArray(payload.payloadJson)
+      ? attachDestinationRouting(
+          existing.recordType as AiIngestionExtractionRecord["recordType"],
+          attachCanonicalEntities(existing.recordType as AiIngestionExtractionRecord["recordType"], payload.payloadJson as Record<string, unknown>, reviewContext),
+        )
+      : payload.payloadJson;
     const [result] = await db
       .update(aiExtractedRecords)
       .set({
         reviewStatus: payload.reviewStatus,
-        payloadJson: payload.payloadJson ?? undefined,
+        payloadJson: nextPayload ?? undefined,
         reviewedBy: payload.reviewedBy ?? null,
         reviewedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(aiExtractedRecords.id, id))
       .returning();
+    if (result) {
+      await this.syncCorrectionMemoryForExtractedRecord(result, nextPayload ?? result.payloadJson, payload.reviewedBy ?? null);
+      await this.syncAiIngestionExceptionsForRecord(result, nextPayload ?? result.payloadJson);
+    }
     return result;
   }
 
@@ -8548,40 +9500,67 @@ export class DatabaseStorage implements IStorage {
     mode: "preview" | "commit" = "commit",
   ): Promise<AiIngestionImportSummary> {
     const dryRun = mode === "preview";
+    const canonicalRows = extractCanonicalOwnerImportRows(payloadJson);
     const normalizedEntries = extractNormalizedOwnerRosterEntries(payloadJson);
     const items = normalizedEntries.length > 0
       ? buildOwnerRosterItemsFromNormalizedEntries(normalizedEntries)
       : extractOwnerRosterItems(payloadJson);
-    if (!items.length && !normalizedEntries.length) {
+    const ownerRows = canonicalRows.length > 0
+      ? canonicalRows
+      : items.map((item) => ({
+          unitNumber: item.unitNumber,
+          buildingAddress: item.mailingAddress,
+          firstName: item.firstName,
+          lastName: item.lastName,
+          displayName: `${item.firstName} ${item.lastName}`,
+          mailingAddress: item.mailingAddress,
+          ownershipPercentage: item.ownershipPercentage,
+          relationshipNotes: [] as string[],
+          contactPoints: dedupeBy([
+            item.email ? { channel: "email" as const, value: item.email, isPrimary: true } : null,
+            item.phone ? { channel: "phone" as const, value: item.phone, isPrimary: true } : null,
+          ].filter((value): value is { channel: "email" | "phone"; value: string; isPrimary: boolean } => Boolean(value)), (value) => `${value.channel}|${value.value}`),
+        }));
+    if (!ownerRows.length && !normalizedEntries.length) {
       return this.emptyImportSummary("owners", "No owner roster rows were eligible for import.", dryRun);
     }
 
-    const [associationUnits, allPersons] = await Promise.all([
+    const [associationUnits, allPersons, allContactPoints, activeOwnerships] = await Promise.all([
       this.getUnits(associationId),
-      db.select().from(persons),
+      this.getPersons(associationId),
+      db.select().from(personContactPoints).where(eq(personContactPoints.associationId, associationId)),
+      db.select().from(ownerships).where(eq(ownerships.endDate, null as any)),
     ]);
 
-    const ownerEntries = normalizedEntries.length > 0
-      ? normalizedEntries
-      : items.map((item) => ({
-          buildingAddress: item.mailingAddress,
-          unitNumber: item.unitNumber,
-          ownerText: `${item.firstName} ${item.lastName}`,
-          ownerCandidates: [{
-            displayName: `${item.firstName} ${item.lastName}`,
-            firstName: item.firstName,
-            lastName: item.lastName,
-            email: item.email,
-            phone: item.phone,
-          }],
-          emails: item.email ? [item.email] : [],
-          phones: item.phone ? [item.phone] : [],
-          notes: [],
-        }));
-    const unresolvedExceptions = buildOwnerRosterUnresolvedExceptions(
-      ownerEntries,
-      associationUnits.map((unit) => unit.unitNumber),
-    );
+    const unitIdSet = new Set(associationUnits.map((unit) => unit.id));
+    const scopedOwnerships = activeOwnerships.filter((ownership) => unitIdSet.has(ownership.unitId));
+    const unresolvedExceptions = extractCanonicalIngestionGraph(payloadJson)
+      ? extractCanonicalIngestionGraph(payloadJson)!.entities
+          .filter((entity) => entity.entityType === "exception")
+          .map((entity) => ({
+            kind: String(entity.attributes.kind ?? "unit-unresolved") as OwnerRosterUnresolvedException["kind"],
+            unitNumber: String(entity.attributes.unitNumber ?? entity.entityKey),
+            message: String(entity.attributes.message ?? "Canonical exception requires review."),
+            blocking: Boolean(entity.attributes.blocking),
+          }))
+      : buildOwnerRosterUnresolvedExceptions(
+          normalizedEntries.length > 0
+            ? normalizedEntries
+            : ownerRows.map((row) => ({
+                buildingAddress: row.buildingAddress,
+                unitNumber: row.unitNumber,
+                ownerText: row.displayName,
+                ownerCandidates: [{
+                  displayName: row.displayName,
+                  firstName: row.firstName,
+                  lastName: row.lastName,
+                }],
+                emails: row.contactPoints.filter((contact) => contact.channel === "email").map((contact) => contact.value),
+                phones: row.contactPoints.filter((contact) => contact.channel === "phone").map((contact) => contact.value),
+                notes: row.relationshipNotes,
+              })),
+          associationUnits.map((unit) => unit.unitNumber),
+        );
     if (unresolvedExceptions.some((exception) => exception.blocking) && !dryRun) {
       return {
         ...this.emptyImportSummary("owners", `Owner roster import blocked by unresolved exceptions. ${unresolvedExceptions.map((item) => item.message).join(" ")}`, false),
@@ -8613,27 +9592,14 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    for (const entry of ownerEntries) {
-      const candidateCount = entry.ownerCandidates.length;
-      for (let candidateIndex = 0; candidateIndex < entry.ownerCandidates.length; candidateIndex += 1) {
-        const candidate = entry.ownerCandidates[candidateIndex];
-        const item: OwnerRosterItem = {
-          unitNumber: entry.unitNumber,
-          firstName: candidate.firstName,
-          lastName: candidate.lastName,
-          email: candidate.email ?? entry.emails[candidateIndex] ?? (candidateCount === 1 ? entry.emails[0] ?? null : null),
-          phone: candidate.phone ?? entry.phones[candidateIndex] ?? (candidateCount === 1 ? entry.phones[0] ?? null : null),
-          mailingAddress: entry.buildingAddress,
-          ownershipPercentage: candidateCount > 1 ? Number((100 / candidateCount).toFixed(2)) : null,
-          startDate: null,
-        };
+    for (const row of ownerRows) {
       try {
-        let unit = associationUnits.find((row) => row.unitNumber.toUpperCase() === item.unitNumber);
+        let unit = associationUnits.find((existingUnit) => existingUnit.unitNumber.toUpperCase() === row.unitNumber.toUpperCase());
         if (!unit) {
           if (!dryRun) {
             unit = await this.createUnit({
               associationId,
-              unitNumber: item.unitNumber,
+              unitNumber: row.unitNumber,
               building: null,
               squareFootage: null,
             }, actorEmail);
@@ -8645,7 +9611,7 @@ export class DatabaseStorage implements IStorage {
             details.push({
               module: "owners",
               action: "skip",
-              entityKey: `${item.unitNumber}:${item.firstName} ${item.lastName}`,
+              entityKey: `${row.unitNumber}:${row.firstName} ${row.lastName}`,
               reason: "Unit creation required in commit mode; preview cannot provide unit id.",
             });
             continue;
@@ -8653,32 +9619,51 @@ export class DatabaseStorage implements IStorage {
       details.push({
         module: "units",
         action: "create",
-        entityKey: item.unitNumber,
+        entityKey: row.unitNumber,
         reason: dryRun ? "Unit would be created." : "Unit created.",
         beforeJson: null,
-        afterJson: { associationId, unitNumber: item.unitNumber },
+        afterJson: { associationId, unitNumber: row.unitNumber },
       });
         }
 
-        const lowerFirst = item.firstName.toLowerCase();
-        const lowerLast = item.lastName.toLowerCase();
-        const exactNameMatch = allPersons.find((row) => row.firstName.toLowerCase() === lowerFirst && row.lastName.toLowerCase() === lowerLast);
-        const exactEmailAndNameMatch = item.email
-          ? allPersons.find((row) => row.email?.toLowerCase() === item.email && row.firstName.toLowerCase() === lowerFirst && row.lastName.toLowerCase() === lowerLast)
+        const lowerFirst = row.firstName.toLowerCase();
+        const lowerLast = row.lastName.toLowerCase();
+        const candidateEmails = dedupeBy(
+          row.contactPoints.filter((contact) => contact.channel === "email").map((contact) => contact.value),
+          (value) => value.toLowerCase(),
+        );
+        const candidatePhones = dedupeBy(
+          row.contactPoints.filter((contact) => contact.channel === "phone").map((contact) => contact.value),
+          (value) => value,
+        );
+        const unitOwnershipMatches = unit
+          ? scopedOwnerships
+              .filter((ownership) => ownership.unitId === unit.id)
+              .map((ownership) => allPersons.find((personRow) => personRow.id === ownership.personId))
+              .filter((value): value is Person => Boolean(value))
+          : [];
+        const exactNameMatch = allPersons.find((personRow) => personRow.firstName.toLowerCase() === lowerFirst && personRow.lastName.toLowerCase() === lowerLast);
+        const exactEmailAndNameMatch = candidateEmails.length > 0
+          ? allPersons.find((personRow) => candidateEmails.includes(personRow.email?.toLowerCase() ?? "") && personRow.firstName.toLowerCase() === lowerFirst && personRow.lastName.toLowerCase() === lowerLast)
           : undefined;
-        const emailOnlyMatch = candidateCount === 1 && item.email
-          ? allPersons.find((row) => row.email?.toLowerCase() === item.email)
-          : undefined;
-
-        let person = exactEmailAndNameMatch ?? exactNameMatch ?? emailOnlyMatch;
+        const contactPointMatch = allContactPoints.find((contact) => (
+          (contact.channel === "email" && candidateEmails.includes(contact.normalizedValue))
+          || (contact.channel === "phone" && candidatePhones.includes(contact.normalizedValue))
+        ));
+        const unitOwnerNameMatch = unitOwnershipMatches.find((personRow) => personRow.firstName.toLowerCase() === lowerFirst && personRow.lastName.toLowerCase() === lowerLast);
+        let person = exactEmailAndNameMatch
+          ?? unitOwnerNameMatch
+          ?? (contactPointMatch ? allPersons.find((personRow) => personRow.id === contactPointMatch.personId) : undefined)
+          ?? exactNameMatch;
         if (!person) {
           if (!dryRun) {
             person = await this.createPerson({
-              firstName: item.firstName,
-              lastName: item.lastName,
-              email: item.email,
-              phone: item.phone,
-              mailingAddress: item.mailingAddress,
+              associationId,
+              firstName: row.firstName,
+              lastName: row.lastName,
+              email: candidateEmails[0] ?? null,
+              phone: candidatePhones[0] ?? null,
+              mailingAddress: row.mailingAddress,
             }, actorEmail);
             allPersons.push(person);
           }
@@ -8688,31 +9673,49 @@ export class DatabaseStorage implements IStorage {
             details.push({
               module: "persons",
               action: "skip",
-              entityKey: `${item.firstName} ${item.lastName}`,
+              entityKey: `${row.firstName} ${row.lastName}`,
               reason: "Person creation required in commit mode; preview cannot provide person id.",
             });
             continue;
           }
+          if (!dryRun) {
+            await this.syncPersonContactPoints(person.id, associationId, [
+              ...candidateEmails.map((value, index) => ({
+                channel: "email" as const,
+                value,
+                isPrimary: index === 0,
+                source: "ai-ingestion-owner-roster",
+                notes: row.relationshipNotes.join(" ") || null,
+              })),
+              ...candidatePhones.map((value, index) => ({
+                channel: "phone" as const,
+                value,
+                isPrimary: index === 0,
+                source: "ai-ingestion-owner-roster",
+                notes: row.relationshipNotes.join(" ") || null,
+              })),
+            ]);
+          }
           details.push({
             module: "persons",
             action: "create",
-            entityKey: `${item.firstName} ${item.lastName}`,
+            entityKey: `${row.firstName} ${row.lastName}`,
             reason: dryRun ? "Person would be created." : "Person created.",
             beforeJson: null,
             afterJson: {
-              firstName: item.firstName,
-              lastName: item.lastName,
-              email: item.email,
-              phone: item.phone,
-              mailingAddress: item.mailingAddress,
-              notes: entry.notes.length ? entry.notes : undefined,
+              firstName: row.firstName,
+              lastName: row.lastName,
+              email: candidateEmails[0] ?? null,
+              phone: candidatePhones[0] ?? null,
+              mailingAddress: row.mailingAddress,
+              notes: row.relationshipNotes.length ? row.relationshipNotes : undefined,
             },
           });
         } else {
           const patch: Partial<InsertPerson> = {};
-          if (!person.email && item.email) patch.email = item.email;
-          if (!person.phone && item.phone) patch.phone = item.phone;
-          if (!person.mailingAddress && item.mailingAddress) patch.mailingAddress = item.mailingAddress;
+          if (!person.email && candidateEmails[0]) patch.email = candidateEmails[0];
+          if (!person.phone && candidatePhones[0]) patch.phone = candidatePhones[0];
+          if (!person.mailingAddress && row.mailingAddress) patch.mailingAddress = row.mailingAddress;
           if (Object.keys(patch).length > 0) {
             if (!dryRun) {
               person = (await this.updatePerson(person.id, patch, actorEmail)) ?? person;
@@ -8721,7 +9724,7 @@ export class DatabaseStorage implements IStorage {
             details.push({
               module: "persons",
               action: "update",
-              entityKey: `${item.firstName} ${item.lastName}`,
+              entityKey: `${row.firstName} ${row.lastName}`,
               reason: dryRun ? "Person would be updated with missing fields." : "Person updated with missing fields.",
               beforeJson: {
                 email: person.email,
@@ -8735,6 +9738,37 @@ export class DatabaseStorage implements IStorage {
               },
             });
           }
+          if (!dryRun) {
+            const primaryEmail = patch.email ?? person?.email ?? candidateEmails[0] ?? null;
+            const primaryPhone = patch.phone ?? person?.phone ?? candidatePhones[0] ?? null;
+            await this.syncPersonContactPoints(person.id, associationId, [
+              ...candidateEmails.map((value, index) => ({
+                channel: "email" as const,
+                value,
+                isPrimary: value === primaryEmail,
+                source: "ai-ingestion-owner-roster",
+                notes: row.relationshipNotes.join(" ") || null,
+              })),
+              ...candidatePhones.map((value, index) => ({
+                channel: "phone" as const,
+                value,
+                isPrimary: value === primaryPhone,
+                source: "ai-ingestion-owner-roster",
+                notes: row.relationshipNotes.join(" ") || null,
+              })),
+            ]);
+          }
+        }
+
+        if (!person) {
+          skippedRows += 1;
+          details.push({
+            module: "owners",
+            action: "skip",
+            entityKey: `${row.unitNumber}:${row.firstName} ${row.lastName}`,
+            reason: "Person was not available after import processing.",
+          });
+          continue;
         }
 
         const existingOwnerships = await db
@@ -8746,9 +9780,9 @@ export class DatabaseStorage implements IStorage {
           details.push({
             module: "owners",
             action: "skip",
-            entityKey: `${item.unitNumber}:${item.firstName} ${item.lastName}`,
+            entityKey: `${row.unitNumber}:${row.firstName} ${row.lastName}`,
             reason: "Active ownership already exists for unit/person.",
-            suggestions: entry.notes.length ? entry.notes : undefined,
+            suggestions: row.relationshipNotes.length ? row.relationshipNotes : undefined,
           });
           continue;
         }
@@ -8757,22 +9791,23 @@ export class DatabaseStorage implements IStorage {
           await this.createOwnership({
             unitId: unit.id,
             personId: person.id,
-            ownershipPercentage: item.ownershipPercentage ?? 100,
-            startDate: item.startDate ? new Date(item.startDate) : new Date(),
+            ownershipPercentage: row.ownershipPercentage ?? 100,
+            startDate: new Date(),
             endDate: null,
+            relationshipNotesJson: row.relationshipNotes.length > 0 ? row.relationshipNotes : null,
           }, actorEmail);
         }
         createdOwnerships += 1;
         details.push({
           module: "owners",
           action: "create",
-          entityKey: `${item.unitNumber}:${item.firstName} ${item.lastName}`,
+          entityKey: `${row.unitNumber}:${row.firstName} ${row.lastName}`,
           reason: dryRun ? "Ownership would be created." : "Ownership created.",
           beforeJson: null,
           afterJson: {
-            ownershipPercentage: item.ownershipPercentage ?? 100,
-            startDate: item.startDate ?? null,
-            notes: entry.notes.length ? entry.notes : undefined,
+            ownershipPercentage: row.ownershipPercentage ?? 100,
+            startDate: null,
+            notes: row.relationshipNotes.length ? row.relationshipNotes : undefined,
           },
         });
       } catch {
@@ -8780,10 +9815,9 @@ export class DatabaseStorage implements IStorage {
         details.push({
           module: "owners",
           action: "skip",
-          entityKey: `${item.unitNumber}:${item.firstName} ${item.lastName}`,
+          entityKey: `${row.unitNumber}:${row.firstName} ${row.lastName}`,
           reason: "Row failed validation or import execution.",
         });
-      }
       }
     }
 
@@ -8812,71 +9846,117 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async importContactRosterRecord(
+    associationId: string | null,
     payloadJson: unknown,
     actorEmail?: string,
     mode: "preview" | "commit" = "commit",
   ): Promise<AiIngestionImportSummary> {
     const dryRun = mode === "preview";
+    const canonicalRows = extractCanonicalContactImportRows(payloadJson);
     const items = extractContactRosterItems(payloadJson);
-    if (!items.length) {
+    const rows = canonicalRows.length > 0
+      ? canonicalRows
+      : items.map((item) => ({
+          firstName: item.firstName,
+          lastName: item.lastName,
+          mailingAddress: item.mailingAddress,
+          contactPoints: dedupeBy([
+            item.email ? { channel: "email" as const, value: item.email, isPrimary: true } : null,
+            item.phone ? { channel: "phone" as const, value: item.phone, isPrimary: true } : null,
+          ].filter((value): value is { channel: "email" | "phone"; value: string; isPrimary: boolean } => Boolean(value)), (value) => `${value.channel}|${value.value}`),
+        }));
+    if (!rows.length) {
       return this.emptyImportSummary("persons", "No contact rows were eligible for import.", dryRun);
     }
 
-    const allPersons = await db.select().from(persons);
+    const [allPersons, allContactPoints] = await Promise.all([
+      associationId ? this.getPersons(associationId) : db.select().from(persons),
+      associationId ? db.select().from(personContactPoints).where(eq(personContactPoints.associationId, associationId)) : db.select().from(personContactPoints),
+    ]);
     let createdPersons = 0;
     let updatedPersons = 0;
     let skippedRows = 0;
     const details: AiIngestionImportSummary["details"] = [];
 
-    for (const item of items) {
+    for (const row of rows) {
       try {
-        const personMatch = allPersons.find((row) => {
-          if (item.email && row.email?.toLowerCase() === item.email) return true;
-          return row.firstName.toLowerCase() === item.firstName.toLowerCase() && row.lastName.toLowerCase() === item.lastName.toLowerCase();
-        });
+        const emails = row.contactPoints.filter((contact) => contact.channel === "email").map((contact) => contact.value);
+        const phones = row.contactPoints.filter((contact) => contact.channel === "phone").map((contact) => contact.value);
+        const contactPointMatch = allContactPoints.find((contact) => (
+          (contact.channel === "email" && emails.includes(contact.normalizedValue))
+          || (contact.channel === "phone" && phones.includes(contact.normalizedValue))
+        ));
+        const personMatch = (contactPointMatch
+          ? allPersons.find((person) => person.id === contactPointMatch.personId)
+          : undefined)
+          ?? allPersons.find((person) => {
+            if (emails.length > 0 && emails.includes(person.email?.toLowerCase() ?? "")) return true;
+            return person.firstName.toLowerCase() === row.firstName.toLowerCase() && person.lastName.toLowerCase() === row.lastName.toLowerCase();
+          });
 
         if (!personMatch) {
           if (!dryRun) {
             const created = await this.createPerson({
-              firstName: item.firstName,
-              lastName: item.lastName,
-              email: item.email,
-              phone: item.phone,
-              mailingAddress: item.mailingAddress,
+              associationId,
+              firstName: row.firstName,
+              lastName: row.lastName,
+              email: emails[0] ?? null,
+              phone: phones[0] ?? null,
+              mailingAddress: row.mailingAddress,
             }, actorEmail);
             allPersons.push(created);
+            await this.syncPersonContactPoints(
+              created.id,
+              associationId,
+              row.contactPoints.map((contact) => ({
+                channel: contact.channel,
+                value: contact.value,
+                isPrimary: contact.isPrimary,
+                source: "ai-ingestion-contact-roster",
+              })),
+            );
           }
           createdPersons += 1;
           details.push({
             module: "persons",
             action: "create",
-            entityKey: `${item.firstName} ${item.lastName}`,
+            entityKey: `${row.firstName} ${row.lastName}`,
             reason: dryRun ? "Person would be created." : "Person created.",
             beforeJson: null,
             afterJson: {
-              firstName: item.firstName,
-              lastName: item.lastName,
-              email: item.email,
-              phone: item.phone,
-              mailingAddress: item.mailingAddress,
+              firstName: row.firstName,
+              lastName: row.lastName,
+              email: emails[0] ?? null,
+              phone: phones[0] ?? null,
+              mailingAddress: row.mailingAddress,
             },
           });
           continue;
         }
 
         const patch: Partial<InsertPerson> = {};
-        if (!personMatch.email && item.email) patch.email = item.email;
-        if (!personMatch.phone && item.phone) patch.phone = item.phone;
-        if (!personMatch.mailingAddress && item.mailingAddress) patch.mailingAddress = item.mailingAddress;
+        if (!personMatch.email && emails[0]) patch.email = emails[0];
+        if (!personMatch.phone && phones[0]) patch.phone = phones[0];
+        if (!personMatch.mailingAddress && row.mailingAddress) patch.mailingAddress = row.mailingAddress;
         if (Object.keys(patch).length > 0) {
           if (!dryRun) {
             await this.updatePerson(personMatch.id, patch, actorEmail);
+            await this.syncPersonContactPoints(
+              personMatch.id,
+              associationId,
+              row.contactPoints.map((contact) => ({
+                channel: contact.channel,
+                value: contact.value,
+                isPrimary: contact.isPrimary,
+                source: "ai-ingestion-contact-roster",
+              })),
+            );
           }
           updatedPersons += 1;
           details.push({
             module: "persons",
             action: "update",
-            entityKey: `${item.firstName} ${item.lastName}`,
+            entityKey: `${row.firstName} ${row.lastName}`,
             reason: dryRun ? "Person would be updated with missing fields." : "Person updated with missing fields.",
             beforeJson: {
               email: personMatch.email,
@@ -8890,11 +9970,23 @@ export class DatabaseStorage implements IStorage {
             },
           });
         } else {
+          if (!dryRun) {
+            await this.syncPersonContactPoints(
+              personMatch.id,
+              associationId,
+              row.contactPoints.map((contact) => ({
+                channel: contact.channel,
+                value: contact.value,
+                isPrimary: contact.isPrimary,
+                source: "ai-ingestion-contact-roster",
+              })),
+            );
+          }
           skippedRows += 1;
           details.push({
             module: "persons",
             action: "skip",
-            entityKey: `${item.firstName} ${item.lastName}`,
+            entityKey: `${row.firstName} ${row.lastName}`,
             reason: "No changes required.",
           });
         }
@@ -8903,7 +9995,7 @@ export class DatabaseStorage implements IStorage {
         details.push({
           module: "persons",
           action: "skip",
-          entityKey: `${item.firstName} ${item.lastName}`,
+          entityKey: `${row.firstName} ${row.lastName}`,
           reason: "Row failed validation or import execution.",
         });
       }
@@ -9057,15 +10149,22 @@ export class DatabaseStorage implements IStorage {
     if (!record.associationId) {
       return this.emptyImportSummary("owner-ledger", "Association is required for bank statement import.", dryRun);
     }
-    const { transactions, invalidCount } = normalizeBankStatementTransactions(record.payloadJson);
+    const canonicalTransactions = extractCanonicalBankTransactions(record.payloadJson);
+    const { transactions, invalidCount } = normalizeBankStatementTransactions(
+      canonicalTransactions.length > 0 ? { transactions: canonicalTransactions } : record.payloadJson,
+    );
     if (!transactions.length) {
       return this.emptyImportSummary("owner-ledger", "No valid bank statement transactions found in payload.", dryRun);
     }
 
-    const [associationUnits, allPersons] = await Promise.all([
+    const [associationUnits, allPersons, allContactPoints, activeOwnerships] = await Promise.all([
       this.getUnits(record.associationId),
-      db.select().from(persons),
+      this.getPersons(record.associationId),
+      db.select().from(personContactPoints).where(eq(personContactPoints.associationId, record.associationId)),
+      db.select().from(ownerships).where(eq(ownerships.endDate, null as any)),
     ]);
+    const unitIdSet = new Set(associationUnits.map((unit) => unit.id));
+    const scopedOwnerships = activeOwnerships.filter((ownership) => unitIdSet.has(ownership.unitId));
 
     let createdOwnerLedgerEntries = 0;
     const createdOwnerLedgerEntryIds: string[] = [];
@@ -9106,10 +10205,14 @@ export class DatabaseStorage implements IStorage {
 
       const person = allPersons.find((row) => {
         if (txn.ownerEmail && row.email?.toLowerCase() === txn.ownerEmail) return true;
+        if (txn.ownerEmail && allContactPoints.some((contact) => contact.personId === row.id && contact.channel === "email" && contact.normalizedValue === txn.ownerEmail)) return true;
         if (!txn.ownerName) return false;
         const parsed = parseName(txn.ownerName);
         if (!parsed) return false;
-        return row.firstName.toLowerCase() === parsed.firstName.toLowerCase() && row.lastName.toLowerCase() === parsed.lastName.toLowerCase();
+        const sameName = row.firstName.toLowerCase() === parsed.firstName.toLowerCase() && row.lastName.toLowerCase() === parsed.lastName.toLowerCase();
+        if (!sameName) return false;
+        if (!unit) return true;
+        return scopedOwnerships.some((ownership) => ownership.unitId === unit.id && ownership.personId === row.id);
       });
       if (!person) {
         skippedRows += 1;
@@ -9494,7 +10597,17 @@ export class DatabaseStorage implements IStorage {
     if (!record.associationId) {
       return this.emptyImportSummary("none", "Association is required for import.", mode === "preview");
     }
-    const payload = options?.payloadOverride ?? record.payloadJson;
+    const overridePayload = options?.payloadOverride;
+    const payload = overridePayload && typeof overridePayload === "object" && !Array.isArray(overridePayload)
+      ? attachDestinationRouting(
+          record.recordType as AiIngestionExtractionRecord["recordType"],
+          attachCanonicalEntities(
+            record.recordType as AiIngestionExtractionRecord["recordType"],
+            overridePayload as Record<string, unknown>,
+            await this.buildAssociationIngestionContext(record.associationId),
+          ),
+        )
+      : (overridePayload ?? record.payloadJson);
     const destinationPlan = extractDestinationRoutePlan(payload);
     if (record.recordType === "owner-roster" && mode === "commit") {
       const quality = getOwnerRosterQuality(payload);
@@ -9515,7 +10628,7 @@ export class DatabaseStorage implements IStorage {
         break;
       case "persons":
       case "contact-roster":
-        summary = await this.importContactRosterRecord(payload, actorEmail, mode);
+        summary = await this.importContactRosterRecord(record.associationId, payload, actorEmail, mode);
         break;
       case "financial-invoices":
       case "invoice-draft":

@@ -37,7 +37,7 @@ export function RecommendedActionsPanel({
                 {action.tone === "warning" ? "Attention" : action.tone === "neutral" ? "Queued" : "Ready"}
               </Badge>
             </div>
-            <Button asChild size="sm" variant="outline" className="mt-3">
+            <Button asChild size="sm" variant="outline" className="mt-3 min-h-11 w-full sm:w-auto">
               <Link href={action.href}>{action.cta}</Link>
             </Button>
           </div>

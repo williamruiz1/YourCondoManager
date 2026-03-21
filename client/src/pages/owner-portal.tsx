@@ -885,6 +885,8 @@ export default function OwnerPortalPage() {
     if (!me) return "Portal User";
     return `${me.email} (${me.effectiveRole})`;
   }, [me]);
+  const portalRoleLabel = me?.effectiveRole ? formatStatusLabel(me.effectiveRole) : "Portal user";
+  const hasBoardAccess = Boolean(me?.hasBoardAccess);
 
   const maintenanceUpdates = useMemo(
     () => (notices ?? []).filter((notice) => (notice.relatedType || "").startsWith("maintenance") || (notice.relatedType || "").startsWith("work-order")),
@@ -2086,6 +2088,7 @@ export default function OwnerPortalPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-muted-foreground">{ownerDisplayName}</span>
                 {(me as any)?.email && <span className="text-xs text-muted-foreground">· {(me as any).email}</span>}
+                {hasBoardAccess ? <Badge variant="secondary" className="text-[10px] uppercase tracking-[0.18em]">Board access</Badge> : null}
               </div>
             </div>
           </div>
@@ -2148,66 +2151,221 @@ export default function OwnerPortalPage() {
 
         {workspaceMode === "owner" && (
           <div className="border-t bg-gradient-to-br from-slate-800 to-slate-700 px-4 py-5 text-white sm:px-6">
-            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-              <div className="space-y-1">
-                <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Your Association</div>
-                <h2 className="text-2xl md:text-3xl font-bold leading-tight">
-                  {portalAssociation?.name ?? associationName}
-                </h2>
-                {portalAssociation && (
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-300 pt-1">
-                    {portalAssociation.associationType && (
-                      <span className="capitalize">{portalAssociation.associationType.replace(/-/g, " ")}</span>
-                    )}
-                    {portalAssociation.address && (
-                      <span>
-                        {[portalAssociation.address, portalAssociation.city, portalAssociation.state]
-                          .filter(Boolean).join(", ")}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              {hasMultipleUnits ? (
-                <div className="shrink-0 space-y-2 rounded-xl bg-white/10 px-4 py-3 text-sm md:max-w-sm">
-                  <div className="text-slate-400 text-xs uppercase tracking-wide">Your Units ({siblingUnits.length})</div>
-                  <div className="flex flex-wrap gap-2">
-                    {siblingUnits.map((u) => {
-                      const lbl = u.unitNumber
-                        ? [u.building ? `Bldg ${u.building}` : null, `Unit ${u.unitNumber}`].filter(Boolean).join(" · ")
-                        : "Unit";
-                      const isCurrent = u.portalAccessId === portalAccessId;
-                      return (
-                        <button
-                          key={u.portalAccessId}
-                          onClick={() => {
-                            if (!isCurrent) {
-                              switchOwnerUnit(u.portalAccessId, u.unitId);
-                              setActiveTab("overview");
-                            }
-                          }}
-                          className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-                            isCurrent
-                              ? "bg-white text-slate-800"
-                              : "bg-white/20 text-white hover:bg-white/30"
-                          }`}
+            {hasBoardAccess ? (
+              <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <Card className="border-white/10 bg-white/5 text-white shadow-none">
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Board-first landing</div>
+                        <h2 className="text-2xl md:text-3xl font-bold leading-tight">
+                          {portalAssociation?.name ?? associationName}
+                        </h2>
+                        <p className="mt-1 max-w-2xl text-sm text-slate-300">
+                          {portalRoleLabel} access surfaces board context first, while the owner tabs stay available for self-service and unit-level follow-up.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="secondary" className="bg-white text-slate-800">{portalRoleLabel}</Badge>
+                        <Badge variant="outline" className="border-white/20 text-slate-100">{boardRoleTitle}</Badge>
+                        <Badge variant="outline" className="border-white/20 text-slate-100">1 association scope</Badge>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {boardAttentionItems.slice(0, 4).map((item) => (
+                        <div key={item.key} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-medium">{item.label}</div>
+                            <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>
+                              {item.tone}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-slate-300">{item.detail}</div>
+                        </div>
+                      ))}
+                      {boardAttentionItems.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-white/20 bg-white/5 p-4 text-sm text-slate-300">
+                          No urgent board actions are currently surfaced. Review the decision queue below if you need the next step.
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4 space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Board context</div>
+                        <div className="text-sm text-slate-300">
+                          {nextBoardMeeting
+                            ? `Next meeting: ${nextBoardMeeting.title} on ${new Date(nextBoardMeeting.scheduledAt).toLocaleDateString()}.`
+                            : "No board meeting is scheduled yet. Use the board workspace for decisions and scheduling."}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {boardRoleFocus}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4 space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Board workspace</div>
+                        <div className="text-sm text-slate-300">
+                          Open the board workspace when you need decisions, meetings, or audit history instead of owner self-service.
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="border-white/20 bg-white text-slate-900 hover:bg-slate-100"
+                          onClick={() => setWorkspaceMode("board")}
                         >
-                          {lbl}
-                          {isCurrent && <span className="ml-1 opacity-60">↗</span>}
-                        </button>
-                      );
-                    })}
+                          Open Board Workspace
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="space-y-4">
+                  <Card className="border-white/10 bg-white/5 text-white shadow-none">
+                    <CardContent className="p-5 space-y-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Owner self-service</div>
+                      <div className="text-lg font-semibold">Your units and balances stay one tap away</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg bg-white/10 p-3">
+                          <div className="text-xs text-slate-400">Units in portal</div>
+                          <div className="mt-1 text-xl font-semibold">{myUnits.length || (me?.unitId ? 1 : 0)}</div>
+                        </div>
+                        <div className="rounded-lg bg-white/10 p-3">
+                          <div className="text-xs text-slate-400">Open balance</div>
+                          <div className="mt-1 text-xl font-semibold">
+                            {totalPortfolioBalance > 0
+                              ? `$${totalPortfolioBalance.toFixed(2)}`
+                              : totalPortfolioBalance < 0
+                              ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
+                              : "$0.00"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-white/10 p-3 text-sm text-slate-200">
+                        {focusedUnitLabel}
+                        <div className="mt-1 text-xs text-slate-400">
+                          {focusedUnitOpenMaintenanceCount} active maintenance item{focusedUnitOpenMaintenanceCount === 1 ? "" : "s"} and {recentOwnerNotices.length} recent notice{recentOwnerNotices.length === 1 ? "" : "s"}.
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          className="bg-white text-slate-900 hover:bg-slate-100"
+                          onClick={() => setActiveTab("financials")}
+                        >
+                          Open Financials
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white/10" onClick={() => setActiveTab("documents")}>
+                          Browse Documents
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white/10" onClick={() => setActiveTab("maintenance")}>
+                          Review Maintenance
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {hasMultipleUnits ? (
+                    <div className="shrink-0 space-y-2 rounded-xl bg-white/10 px-4 py-3 text-sm">
+                      <div className="text-slate-400 text-xs uppercase tracking-wide">Your Units ({siblingUnits.length})</div>
+                      <div className="flex flex-wrap gap-2">
+                        {siblingUnits.map((u) => {
+                          const lbl = u.unitNumber
+                            ? [u.building ? `Bldg ${u.building}` : null, `Unit ${u.unitNumber}`].filter(Boolean).join(" · ")
+                            : "Unit";
+                          const isCurrent = u.portalAccessId === portalAccessId;
+                          return (
+                            <button
+                              key={u.portalAccessId}
+                              onClick={() => {
+                                if (!isCurrent) {
+                                  switchOwnerUnit(u.portalAccessId, u.unitId);
+                                  setActiveTab("overview");
+                                }
+                              }}
+                              className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+                                isCurrent
+                                  ? "bg-white text-slate-800"
+                                  : "bg-white/20 text-white hover:bg-white/30"
+                              }`}
+                            >
+                              {lbl}
+                              {isCurrent && <span className="ml-1 opacity-60">↗</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="text-slate-300 text-xs capitalize">{portalRoleLabel}</div>
+                    </div>
+                  ) : unitLabel ? (
+                    <div className="shrink-0 rounded-xl bg-white/10 px-4 py-3 text-sm">
+                      <div className="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Your Unit</div>
+                      <div className="font-semibold text-white">{unitLabel}</div>
+                      <div className="text-slate-300 text-xs capitalize mt-0.5">{portalRoleLabel}</div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Your Association</div>
+                  <h2 className="text-2xl md:text-3xl font-bold leading-tight">
+                    {portalAssociation?.name ?? associationName}
+                  </h2>
+                  {portalAssociation && (
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-300 pt-1">
+                      {portalAssociation.associationType && (
+                        <span className="capitalize">{portalAssociation.associationType.replace(/-/g, " ")}</span>
+                      )}
+                      {portalAssociation.address && (
+                        <span>
+                          {[portalAssociation.address, portalAssociation.city, portalAssociation.state]
+                            .filter(Boolean).join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {hasMultipleUnits ? (
+                  <div className="shrink-0 space-y-2 rounded-xl bg-white/10 px-4 py-3 text-sm md:max-w-sm">
+                    <div className="text-slate-400 text-xs uppercase tracking-wide">Your Units ({siblingUnits.length})</div>
+                    <div className="flex flex-wrap gap-2">
+                      {siblingUnits.map((u) => {
+                        const lbl = u.unitNumber
+                          ? [u.building ? `Bldg ${u.building}` : null, `Unit ${u.unitNumber}`].filter(Boolean).join(" · ")
+                          : "Unit";
+                        const isCurrent = u.portalAccessId === portalAccessId;
+                        return (
+                          <button
+                            key={u.portalAccessId}
+                            onClick={() => {
+                              if (!isCurrent) {
+                                switchOwnerUnit(u.portalAccessId, u.unitId);
+                                setActiveTab("overview");
+                              }
+                            }}
+                            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+                              isCurrent
+                                ? "bg-white text-slate-800"
+                                : "bg-white/20 text-white hover:bg-white/30"
+                            }`}
+                          >
+                            {lbl}
+                            {isCurrent && <span className="ml-1 opacity-60">↗</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="text-slate-300 text-xs capitalize">{portalRoleLabel}</div>
                   </div>
-                  <div className="text-slate-300 text-xs capitalize">{me?.effectiveRole}</div>
-                </div>
-              ) : unitLabel ? (
-                <div className="shrink-0 rounded-xl bg-white/10 px-4 py-3 text-sm">
-                  <div className="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Your Unit</div>
-                  <div className="font-semibold text-white">{unitLabel}</div>
-                  <div className="text-slate-300 text-xs capitalize mt-0.5">{me?.effectiveRole}</div>
-                </div>
-              ) : null}
-            </div>
+                ) : unitLabel ? (
+                  <div className="shrink-0 rounded-xl bg-white/10 px-4 py-3 text-sm">
+                    <div className="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Your Unit</div>
+                    <div className="font-semibold text-white">{unitLabel}</div>
+                    <div className="text-slate-300 text-xs capitalize mt-0.5">{portalRoleLabel}</div>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         )}
 
@@ -2286,203 +2444,406 @@ export default function OwnerPortalPage() {
 
           {overviewSubtab === "summary" && (
             <>
-          <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-            <Card>
-              <CardContent className="p-6 space-y-5">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Owner Agenda</div>
-                    <div className="font-semibold text-xl mt-1">What needs your attention next</div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {hasMultipleUnits
-                        ? "Start with the highest-priority account and unit tasks across your portfolio."
-                        : "Start with the next owner task that matters for your account."}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    <Badge variant={totalPortfolioBalance > 0 ? "destructive" : "secondary"}>
-                      {totalPortfolioBalance > 0
-                        ? `$${totalPortfolioBalance.toFixed(2)} due`
-                        : totalPortfolioBalance < 0
-                        ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
-                        : "Account current"}
-                    </Badge>
-                    <Badge variant={openMaintenanceRequests.length > 0 ? "default" : "outline"}>
-                      {openMaintenanceRequests.length} open maintenance
-                    </Badge>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  {prioritizedOwnerActions.map((item, index) => (
-                    <div key={item.id} className={`rounded-xl border p-4 gap-4 ${isMobile ? "space-y-3" : "flex items-start justify-between"}`}>
-                      <div className="flex items-start gap-3 min-w-0">
-                        <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                          item.tone === "high"
-                            ? "bg-red-50 text-red-700"
-                            : item.tone === "medium"
-                            ? "bg-amber-50 text-amber-700"
-                            : "bg-slate-100 text-slate-700"
-                        }`}>
-                          {index + 1}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <div className="font-medium">{item.label}</div>
-                            <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>
-                              {item.tone === "high" ? "Action needed" : item.tone === "medium" ? "Review" : "Keep current"}
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">{item.detail}</div>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        className={isMobile ? "min-h-11 w-full" : undefined}
-                        variant={item.tone === "high" ? "default" : "outline"}
-                        onClick={() => openOwnerView(item.tab, "overviewSubtab" in item ? item.overviewSubtab : undefined)}
-                      >
-                        {item.cta}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="space-y-6">
+          {hasBoardAccess ? (
+            <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
               <Card>
-                <CardContent className="p-6 space-y-4">
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Portfolio Snapshot</div>
-                    <div className="font-semibold text-lg mt-1">{hasMultipleUnits ? "Across all your units" : "Current unit snapshot"}</div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-lg bg-slate-50 p-4">
-                      <div className="text-xs text-muted-foreground">Amount due</div>
-                      <div className={`text-xl font-semibold mt-1 ${totalPortfolioBalance > 0 ? "text-red-600" : "text-green-600"}`}>
-                        {totalPortfolioBalance > 0
-                          ? `$${totalPortfolioBalance.toFixed(2)}`
-                          : totalPortfolioBalance < 0
-                          ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
-                          : "$0.00"}
+                <CardContent className="p-6 space-y-5">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Board first</div>
+                      <div className="font-semibold text-xl mt-1">What the board needs to see next</div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {boardAttentionItems.length > 0
+                          ? "Start with the board attention queue, meeting readiness, and the next decision that needs action."
+                          : "Start with the board decision queue, even when the immediate action list is quiet."}
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-50 p-4">
-                      <div className="text-xs text-muted-foreground">Units in portal</div>
-                      <div className="text-xl font-semibold mt-1">{myUnits.length || (me?.unitId ? 1 : 0)}</div>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 p-4">
-                      <div className="text-xs text-muted-foreground">Open maintenance</div>
-                      <div className="text-xl font-semibold mt-1">{openMaintenanceRequests.length}</div>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 p-4">
-                      <div className="text-xs text-muted-foreground">Recent notices</div>
-                      <div className="text-xl font-semibold mt-1">{recentOwnerNotices.length}</div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Badge variant={nextBoardMeeting ? "default" : "outline"}>
+                        {nextBoardMeeting ? `Next meeting ${new Date(nextBoardMeeting.scheduledAt).toLocaleDateString()}` : "No meeting scheduled"}
+                      </Badge>
+                      <Badge variant={boardOpenTasks.length > 0 ? "default" : "outline"}>
+                        {boardOpenTasks.length} open board task{boardOpenTasks.length === 1 ? "" : "s"}
+                      </Badge>
                     </div>
                   </div>
-                  {financialDashboard?.nextDueDate ? (
-                    <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
-                      Next charge due on {new Date(financialDashboard.nextDueDate).toLocaleDateString()}.
-                    </div>
-                  ) : null}
-                  <div className={`rounded-xl border bg-white/80 p-4 ${isMobile ? "space-y-4" : "grid gap-4 md:grid-cols-[1.1fr_0.9fr]"}`}>
-                    <div className="space-y-3">
-                      <div>
-                        <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">Current Unit</div>
-                        <div className="mt-1 text-lg font-semibold">{focusedUnitLabel}</div>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          {focusedUnitOpenMaintenanceCount} active maintenance item{focusedUnitOpenMaintenanceCount === 1 ? "" : "s"} and
-                          {" "}
-                          {focusedOccupancyStatus === "rented"
-                            ? "tenant occupancy"
-                            : focusedOccupancyStatus === "owner-occupied"
-                            ? "owner occupancy"
-                            : "occupancy not confirmed"}.
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-lg bg-slate-50 p-3">
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Owner</div>
-                          <div className="mt-1 text-sm font-medium">{focusedOwnerName}</div>
-                        </div>
-                        <div className="rounded-lg bg-slate-50 p-3">
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Occupancy</div>
-                          <div className="mt-1 text-sm font-medium">
-                            {focusedOccupancyStatus === "rented" ? "Rented" : focusedOccupancyStatus === "owner-occupied" ? "Owner Occupied" : "Unknown"}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3">
-                      <Button
-                        variant="outline"
-                        className={isMobile ? "min-h-11 w-full" : "justify-between"}
-                        onClick={() => openOwnerView("overview", "owner-info")}
-                      >
-                        Review contact details
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className={isMobile ? "min-h-11 w-full" : "justify-between"}
-                        onClick={() => openOwnerView("overview", "occupancy")}
-                      >
-                        Review occupancy
-                      </Button>
-                      <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                        {focusedTenantName ? `Current tenant: ${focusedTenantName}` : "No tenant details are currently stored for this unit."}
-                      </div>
-                    </div>
-                  </div>
-                  {unitsBalance.length > 0 ? (
-                    <div className="space-y-2">
-                      {unitsBalance.map((unit) => {
-                        const label = formatUnitContextLabel(unit.building, unit.unitNumber);
-                        const isCurrent = unit.portalAccessId === portalAccessId;
-                        const openCount = maintenanceCountsByUnitId.get(unit.unitId) ?? 0;
-                        return (
-                          <button
-                            key={unit.unitId}
-                            className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/30 ${isCurrent ? "border-primary/40 bg-primary/5" : ""}`}
-                            onClick={() => {
-                              if (unit.portalAccessId && unit.portalAccessId !== portalAccessId) {
-                                switchOwnerUnit(unit.portalAccessId, unit.unitId);
-                              }
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-medium">{label}</div>
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {openCount} active maintenance item{openCount === 1 ? "" : "s"}
-                                </div>
+                  <div className="space-y-3">
+                    {boardDecisionCards.length > 0 ? (
+                      boardDecisionCards.slice(0, 3).map((item, index) => (
+                        <div key={item.key} className={`rounded-xl border p-4 gap-4 ${isMobile ? "space-y-3" : "flex items-start justify-between"}`}>
+                          <div className="flex items-start gap-3 min-w-0">
+                            <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                              item.tone === "high"
+                                ? "bg-red-50 text-red-700"
+                                : item.tone === "medium"
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-slate-100 text-slate-700"
+                            }`}>
+                              {index + 1}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className="font-medium">{item.title}</div>
+                                <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>
+                                  {item.tone === "high" ? "Needs decision" : "Review"}
+                                </Badge>
                               </div>
-                              <div className="text-right">
-                                <div className={`text-sm font-semibold ${unit.balance > 0 ? "text-red-600" : "text-green-600"}`}>
-                                  {unit.balance > 0 ? `$${unit.balance.toFixed(2)} due` : unit.balance < 0 ? `Credit $${Math.abs(unit.balance).toFixed(2)}` : "$0.00"}
-                                </div>
-                                {isCurrent ? <div className="text-xs text-primary mt-1">Viewing now</div> : null}
+                              <div className="text-sm text-muted-foreground mt-1">{item.recommendation}</div>
+                              <div className="text-xs text-muted-foreground mt-2">
+                                {item.evidence} · {item.auditLabel}
                               </div>
                             </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+                          </div>
+                          <Button
+                            size="sm"
+                            className={isMobile ? "min-h-11 w-full" : undefined}
+                            variant={item.tone === "high" ? "default" : "outline"}
+                            onClick={() => setWorkspaceMode("board")}
+                          >
+                            Open board workspace
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                        Board decision data is still loading. Use the board workspace button above when you need the full oversight view.
+                      </div>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
 
-              {me?.hasBoardAccess ? (
+              <div className="space-y-6">
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Owner self-service</div>
+                      <div className="font-semibold text-lg mt-1">{hasMultipleUnits ? "Across all your units" : "Current unit snapshot"}</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-slate-50 p-4">
+                        <div className="text-xs text-muted-foreground">Amount due</div>
+                        <div className={`text-xl font-semibold mt-1 ${totalPortfolioBalance > 0 ? "text-red-600" : "text-green-600"}`}>
+                          {totalPortfolioBalance > 0
+                            ? `$${totalPortfolioBalance.toFixed(2)}`
+                            : totalPortfolioBalance < 0
+                            ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
+                            : "$0.00"}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-4">
+                        <div className="text-xs text-muted-foreground">Units in portal</div>
+                        <div className="text-xl font-semibold mt-1">{myUnits.length || (me?.unitId ? 1 : 0)}</div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-4">
+                        <div className="text-xs text-muted-foreground">Open maintenance</div>
+                        <div className="text-xl font-semibold mt-1">{openMaintenanceRequests.length}</div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-4">
+                        <div className="text-xs text-muted-foreground">Recent notices</div>
+                        <div className="text-xl font-semibold mt-1">{recentOwnerNotices.length}</div>
+                      </div>
+                    </div>
+                    {financialDashboard?.nextDueDate ? (
+                      <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
+                        Next charge due on {new Date(financialDashboard.nextDueDate).toLocaleDateString()}.
+                      </div>
+                    ) : null}
+                    <div className={`rounded-xl border bg-white/80 p-4 ${isMobile ? "space-y-4" : "grid gap-4 md:grid-cols-[1.1fr_0.9fr]"}`}>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">Current Unit</div>
+                          <div className="mt-1 text-lg font-semibold">{focusedUnitLabel}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            {focusedUnitOpenMaintenanceCount} active maintenance item{focusedUnitOpenMaintenanceCount === 1 ? "" : "s"} and
+                            {" "}
+                            {focusedOccupancyStatus === "rented"
+                              ? "tenant occupancy"
+                              : focusedOccupancyStatus === "owner-occupied"
+                              ? "owner occupancy"
+                              : "occupancy not confirmed"}.
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-lg bg-slate-50 p-3">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Owner</div>
+                            <div className="mt-1 text-sm font-medium">{focusedOwnerName}</div>
+                          </div>
+                          <div className="rounded-lg bg-slate-50 p-3">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Occupancy</div>
+                            <div className="mt-1 text-sm font-medium">
+                              {focusedOccupancyStatus === "rented" ? "Rented" : focusedOccupancyStatus === "owner-occupied" ? "Owner Occupied" : "Unknown"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        <Button
+                          variant="outline"
+                          className={isMobile ? "min-h-11 w-full" : "justify-between"}
+                          onClick={() => openOwnerView("overview", "owner-info")}
+                        >
+                          Review contact details
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className={isMobile ? "min-h-11 w-full" : "justify-between"}
+                          onClick={() => openOwnerView("overview", "occupancy")}
+                        >
+                          Review occupancy
+                        </Button>
+                        <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                          {focusedTenantName ? `Current tenant: ${focusedTenantName}` : "No tenant details are currently stored for this unit."}
+                        </div>
+                      </div>
+                    </div>
+                    {unitsBalance.length > 0 ? (
+                      <div className="space-y-2">
+                        {unitsBalance.map((unit) => {
+                          const label = formatUnitContextLabel(unit.building, unit.unitNumber);
+                          const isCurrent = unit.portalAccessId === portalAccessId;
+                          const openCount = maintenanceCountsByUnitId.get(unit.unitId) ?? 0;
+                          return (
+                            <button
+                              key={unit.unitId}
+                              className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/30 ${isCurrent ? "border-primary/40 bg-primary/5" : ""}`}
+                              onClick={() => {
+                                if (unit.portalAccessId && unit.portalAccessId !== portalAccessId) {
+                                  switchOwnerUnit(unit.portalAccessId, unit.unitId);
+                                }
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-sm font-medium">{label}</div>
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    {openCount} active maintenance item{openCount === 1 ? "" : "s"}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className={`text-sm font-semibold ${unit.balance > 0 ? "text-red-600" : "text-green-600"}`}>
+                                    {unit.balance > 0 ? `$${unit.balance.toFixed(2)} due` : unit.balance < 0 ? `Credit $${Math.abs(unit.balance).toFixed(2)}` : "$0.00"}
+                                  </div>
+                                  {isCurrent ? <div className="text-xs text-primary mt-1">Viewing now</div> : null}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
                 <Card>
                   <CardContent className="p-6 space-y-3">
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Board Mode</div>
+                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Board mode</div>
                     <div className="font-semibold text-lg">Association board workspace is available</div>
-                    <div className="text-sm text-muted-foreground">Switch deliberately when you need to work in board context for meetings, finances, or association decisions.</div>
+                    <div className="text-sm text-muted-foreground">Switch deliberately when you need meetings, board decisions, or association oversight instead of owner self-service.</div>
                     <Button variant="outline" onClick={() => setWorkspaceMode("board")}>Open Board Workspace</Button>
                   </CardContent>
                 </Card>
-              ) : null}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+              <Card>
+                <CardContent className="p-6 space-y-5">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Owner Agenda</div>
+                      <div className="font-semibold text-xl mt-1">What needs your attention next</div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {hasMultipleUnits
+                          ? "Start with the highest-priority account and unit tasks across your portfolio."
+                          : "Start with the next owner task that matters for your account."}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Badge variant={totalPortfolioBalance > 0 ? "destructive" : "secondary"}>
+                        {totalPortfolioBalance > 0
+                          ? `$${totalPortfolioBalance.toFixed(2)} due`
+                          : totalPortfolioBalance < 0
+                          ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
+                          : "Account current"}
+                      </Badge>
+                      <Badge variant={openMaintenanceRequests.length > 0 ? "default" : "outline"}>
+                        {openMaintenanceRequests.length} open maintenance
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {prioritizedOwnerActions.map((item, index) => (
+                      <div key={item.id} className={`rounded-xl border p-4 gap-4 ${isMobile ? "space-y-3" : "flex items-start justify-between"}`}>
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                            item.tone === "high"
+                              ? "bg-red-50 text-red-700"
+                              : item.tone === "medium"
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-slate-100 text-slate-700"
+                          }`}>
+                            {index + 1}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="font-medium">{item.label}</div>
+                              <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>
+                                {item.tone === "high" ? "Action needed" : item.tone === "medium" ? "Review" : "Keep current"}
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground mt-1">{item.detail}</div>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className={isMobile ? "min-h-11 w-full" : undefined}
+                          variant={item.tone === "high" ? "default" : "outline"}
+                          onClick={() => openOwnerView(item.tab, "overviewSubtab" in item ? item.overviewSubtab : undefined)}
+                        >
+                          {item.cta}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-6">
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Portfolio Snapshot</div>
+                      <div className="font-semibold text-lg mt-1">{hasMultipleUnits ? "Across all your units" : "Current unit snapshot"}</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-slate-50 p-4">
+                        <div className="text-xs text-muted-foreground">Amount due</div>
+                        <div className={`text-xl font-semibold mt-1 ${totalPortfolioBalance > 0 ? "text-red-600" : "text-green-600"}`}>
+                          {totalPortfolioBalance > 0
+                            ? `$${totalPortfolioBalance.toFixed(2)}`
+                            : totalPortfolioBalance < 0
+                            ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
+                            : "$0.00"}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-4">
+                        <div className="text-xs text-muted-foreground">Units in portal</div>
+                        <div className="text-xl font-semibold mt-1">{myUnits.length || (me?.unitId ? 1 : 0)}</div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-4">
+                        <div className="text-xs text-muted-foreground">Open maintenance</div>
+                        <div className="text-xl font-semibold mt-1">{openMaintenanceRequests.length}</div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-4">
+                        <div className="text-xs text-muted-foreground">Recent notices</div>
+                        <div className="text-xl font-semibold mt-1">{recentOwnerNotices.length}</div>
+                      </div>
+                    </div>
+                    {financialDashboard?.nextDueDate ? (
+                      <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
+                        Next charge due on {new Date(financialDashboard.nextDueDate).toLocaleDateString()}.
+                      </div>
+                    ) : null}
+                    <div className={`rounded-xl border bg-white/80 p-4 ${isMobile ? "space-y-4" : "grid gap-4 md:grid-cols-[1.1fr_0.9fr]"}`}>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">Current Unit</div>
+                          <div className="mt-1 text-lg font-semibold">{focusedUnitLabel}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            {focusedUnitOpenMaintenanceCount} active maintenance item{focusedUnitOpenMaintenanceCount === 1 ? "" : "s"} and
+                            {" "}
+                            {focusedOccupancyStatus === "rented"
+                              ? "tenant occupancy"
+                              : focusedOccupancyStatus === "owner-occupied"
+                              ? "owner occupancy"
+                              : "occupancy not confirmed"}.
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-lg bg-slate-50 p-3">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Owner</div>
+                            <div className="mt-1 text-sm font-medium">{focusedOwnerName}</div>
+                          </div>
+                          <div className="rounded-lg bg-slate-50 p-3">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Occupancy</div>
+                            <div className="mt-1 text-sm font-medium">
+                              {focusedOccupancyStatus === "rented" ? "Rented" : focusedOccupancyStatus === "owner-occupied" ? "Owner Occupied" : "Unknown"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        <Button
+                          variant="outline"
+                          className={isMobile ? "min-h-11 w-full" : "justify-between"}
+                          onClick={() => openOwnerView("overview", "owner-info")}
+                        >
+                          Review contact details
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className={isMobile ? "min-h-11 w-full" : "justify-between"}
+                          onClick={() => openOwnerView("overview", "occupancy")}
+                        >
+                          Review occupancy
+                        </Button>
+                        <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                          {focusedTenantName ? `Current tenant: ${focusedTenantName}` : "No tenant details are currently stored for this unit."}
+                        </div>
+                      </div>
+                    </div>
+                    {unitsBalance.length > 0 ? (
+                      <div className="space-y-2">
+                        {unitsBalance.map((unit) => {
+                          const label = formatUnitContextLabel(unit.building, unit.unitNumber);
+                          const isCurrent = unit.portalAccessId === portalAccessId;
+                          const openCount = maintenanceCountsByUnitId.get(unit.unitId) ?? 0;
+                          return (
+                            <button
+                              key={unit.unitId}
+                              className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/30 ${isCurrent ? "border-primary/40 bg-primary/5" : ""}`}
+                              onClick={() => {
+                                if (unit.portalAccessId && unit.portalAccessId !== portalAccessId) {
+                                  switchOwnerUnit(unit.portalAccessId, unit.unitId);
+                                }
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-sm font-medium">{label}</div>
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    {openCount} active maintenance item{openCount === 1 ? "" : "s"}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className={`text-sm font-semibold ${unit.balance > 0 ? "text-red-600" : "text-green-600"}`}>
+                                    {unit.balance > 0 ? `$${unit.balance.toFixed(2)} due` : unit.balance < 0 ? `Credit $${Math.abs(unit.balance).toFixed(2)}` : "$0.00"}
+                                  </div>
+                                  {isCurrent ? <div className="text-xs text-primary mt-1">Viewing now</div> : null}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                {hasBoardAccess ? (
+                  <Card>
+                    <CardContent className="p-6 space-y-3">
+                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Board mode</div>
+                      <div className="font-semibold text-lg">Association board workspace is available</div>
+                      <div className="text-sm text-muted-foreground">Switch deliberately when you need meetings, board decisions, or association oversight instead of owner self-service.</div>
+                      <Button variant="outline" onClick={() => setWorkspaceMode("board")}>Open Board Workspace</Button>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </div>
+            </div>
+          )}
 
           {!onboardingDismissed && !me?.hasBoardAccess && (
             <Card className="border-primary/20 bg-primary/5">

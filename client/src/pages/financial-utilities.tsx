@@ -17,6 +17,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const utilitySchema = z.object({
   associationId: z.string().min(1),
@@ -49,7 +52,7 @@ export default function FinancialUtilitiesPage() {
   const { data: associations } = useQuery<Association[]>({ queryKey: ["/api/associations"] });
   const { data: accounts } = useQuery<FinancialAccount[]>({ queryKey: ["/api/financial/accounts"] });
   const { data: categories } = useQuery<FinancialCategory[]>({ queryKey: ["/api/financial/categories"] });
-  const { data: utilities } = useQuery<UtilityPayment[]>({
+  const { data: utilities, isLoading: utilitiesLoading } = useQuery<UtilityPayment[]>({
     queryKey: ["/api/financial/utilities", activeAssociationId],
     queryFn: async () => {
       const params = activeAssociationId ? `?associationId=${activeAssociationId}` : "";
@@ -57,7 +60,7 @@ export default function FinancialUtilitiesPage() {
       return res.json();
     },
   });
-  const { data: attachments } = useQuery<ExpenseAttachment[]>({ queryKey: ["/api/financial/expense-attachments"] });
+  const { data: attachments, isLoading: attachmentsLoading } = useQuery<ExpenseAttachment[]>({ queryKey: ["/api/financial/expense-attachments"] });
 
   const form = useForm<z.infer<typeof utilitySchema>>({
     resolver: zodResolver(utilitySchema),
@@ -152,13 +155,22 @@ export default function FinancialUtilitiesPage() {
     <div className="flex flex-col min-h-0">
       <FinanceTabBar />
       <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Utility Payments"
+        summary="Track utility bills, status changes, and supporting files for the active association without losing finance context."
+        eyebrow="Finance"
+        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Utility Payments" }]}
+      />
+      <AssociationScopeBanner
+        activeAssociationId={activeAssociationId}
+        activeAssociationName={activeAssociationName}
+        explanation="Utility bills and utility attachments are scoped to the active association. Select one before recording or uploading payments."
+      />
+
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Utility Payments</h1>
-          <p className="text-muted-foreground">Track utility bills, statuses, and attachments for the current association context.</p>
-        </div>
+        <div />
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Utility Payment</Button></DialogTrigger>
+          <DialogTrigger asChild><Button className={isMobile ? "min-h-11 w-full" : undefined} disabled={!activeAssociationId}>Add Utility Payment</Button></DialogTrigger>
           <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Create Utility Payment</DialogTitle></DialogHeader>
             <Form {...form}>
@@ -201,7 +213,26 @@ export default function FinancialUtilitiesPage() {
               </SelectContent>
             </Select>
           </div>
-          {(utilities ?? []).filter(r => statusFilter === "all" || r.status === statusFilter).length === 0 ? (
+          {utilitiesLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="rounded-xl border p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                    <Skeleton className="h-5 w-16" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                  </div>
+                  <Skeleton className="h-11 w-full" />
+                </div>
+              ))}
+            </div>
+          ) : (utilities ?? []).filter(r => statusFilter === "all" || r.status === statusFilter).length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
               <p className="text-sm">{statusFilter === "all" ? "No utility bills recorded yet." : `No ${statusFilter} utility bills.`}</p>
             </div>
@@ -298,7 +329,17 @@ export default function FinancialUtilitiesPage() {
             <div className="border rounded-md p-2 text-sm cursor-pointer" onClick={() => fileRef.current?.click()}>{attachmentFile?.name || "Choose file"}<input ref={fileRef} type="file" className="hidden" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} /></div>
             <Button className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => uploadAttachment.mutate()} disabled={uploadAttachment.isPending}>Upload</Button>
           </div>
-          {isMobile ? (
+          {attachmentsLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="rounded-xl border p-4 space-y-3">
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-3 w-2/3" />
+                  <Skeleton className="h-11 w-full" />
+                </div>
+              ))}
+            </div>
+          ) : isMobile ? (
             <div className="space-y-3">
               {(attachments ?? []).filter((a) => a.expenseType === "utility-payment").map((a) => {
                 const utility = (utilities ?? []).find(u => u.id === a.expenseId);

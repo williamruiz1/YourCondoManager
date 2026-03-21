@@ -610,10 +610,11 @@ export default function MeetingsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Meetings</h1>
           <p className="text-muted-foreground">Schedule meeting records, capture notes, and publish summaries in the current association context.</p>
         </div>
-        <div className="flex gap-2">
+        <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex"}`}>
           {(meetings?.length ?? 0) === 0 ? (
             <Button
               variant="outline"
+              className={isMobile ? "w-full min-h-11" : undefined}
               disabled={!activeAssociationId || seedSampleData.isPending}
               onClick={() => seedSampleData.mutate()}
             >
@@ -621,7 +622,7 @@ export default function MeetingsPage() {
             </Button>
           ) : null}
           <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild><Button disabled={!activeAssociationId}>Schedule Meeting</Button></DialogTrigger>
+            <DialogTrigger asChild><Button className={isMobile ? "w-full min-h-11" : undefined} disabled={!activeAssociationId}>Schedule Meeting</Button></DialogTrigger>
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader><DialogTitle>Schedule Meeting</DialogTitle></DialogHeader>
               <Form {...form}>
@@ -652,7 +653,7 @@ export default function MeetingsPage() {
                   <FormField control={form.control} name="title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="location" render={({ field }) => (<FormItem><FormLabel>Location</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="agenda" render={({ field }) => (<FormItem><FormLabel>Agenda</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <Button className="w-full" type="submit" disabled={createMeeting.isPending}>Save</Button>
+                  <Button className={isMobile ? "w-full min-h-11" : "w-full"} type="submit" disabled={createMeeting.isPending}>Save</Button>
                 </form>
               </Form>
             </DialogContent>
@@ -681,7 +682,7 @@ export default function MeetingsPage() {
                     <Input type="number" placeholder="Agenda order" value={agendaForm.watch("orderIndex")} onChange={(e) => agendaForm.setValue("orderIndex", Number(e.target.value))} />
                     <div className="text-xs text-muted-foreground">Use 0 for the first item, 1 for the second, and so on.</div>
                   </div>
-                  <Button type="submit" disabled={!selectedMeeting || addAgendaItem.isPending}>Add Agenda Item</Button>
+                  <Button className={isMobile ? "w-full min-h-11" : undefined} type="submit" disabled={!selectedMeeting || addAgendaItem.isPending}>Add Agenda Item</Button>
                 </form>
               </Form>
               <div className="space-y-1">
@@ -795,7 +796,7 @@ export default function MeetingsPage() {
                   <Badge variant={m.summaryStatus === "published" ? "default" : "outline"}>{m.summaryStatus}</Badge>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     {activeAssociationId && (
                       <MeetingNoticeDialog
                         meeting={m}
@@ -804,17 +805,18 @@ export default function MeetingsPage() {
                       />
                     )}
                     <QuorumDialog meeting={m} persons={persons ?? []} />
-                    <Button size="sm" variant="outline" onClick={() => openNoteEditor(m)}>Edit Notes</Button>
+                    <Button className="min-h-11 w-full" size="sm" variant="outline" onClick={() => openNoteEditor(m)}>Edit Notes</Button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { status: m.status === "completed" ? "in-progress" : "completed" } })}>
+                  <div className="grid grid-cols-1 gap-2">
+                    <Button className="min-h-11 w-full" size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { status: m.status === "completed" ? "in-progress" : "completed" } })}>
                       {m.status === "completed" ? "Reopen" : "Complete"}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { summaryStatus: m.summaryStatus === "published" ? "draft" : "published" } })}>
+                    <Button className="min-h-11 w-full" size="sm" variant="outline" onClick={() => updateMeeting.mutate({ id: m.id, payload: { summaryStatus: m.summaryStatus === "published" ? "draft" : "published" } })}>
                       {m.summaryStatus === "published" ? "Unpublish" : "Publish Summary"}
                     </Button>
                   </div>
                   <Button
+                    className="min-h-11 w-full"
                     size="sm"
                     variant={selectedMeeting?.id === m.id ? "default" : "secondary"}
                     onClick={() => setSelectedMeeting(m)}
@@ -974,7 +976,7 @@ export default function MeetingsPage() {
               </SelectContent>
             </Select>
             <Input className={isMobile ? "min-h-11" : undefined} type="number" step="0.1" value={voteForm.watch("voteWeight")} onChange={(e) => voteForm.setValue("voteWeight", Number(e.target.value))} />
-            <Button className={isMobile ? "min-h-11" : undefined} disabled={!selectedResolutionId || addVote.isPending} onClick={voteForm.handleSubmit((v) => addVote.mutate(v))}>Record Vote</Button>
+            <Button className={isMobile ? "min-h-11 w-full" : undefined} disabled={!selectedResolutionId || addVote.isPending} onClick={voteForm.handleSubmit((v) => addVote.mutate(v))}>Record Vote</Button>
           </div>
         </CardContent>
       </Card>
@@ -1067,7 +1069,7 @@ export default function MeetingsPage() {
             </div>
             <Dialog open={reminderOpen} onOpenChange={setReminderOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" disabled={!activeAssociationId}>Add Rule</Button>
+                <Button size="sm" className={isMobile ? "w-full min-h-11" : undefined} disabled={!activeAssociationId}>Add Rule</Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto sm:max-h-[85vh]">
                 <DialogHeader><DialogTitle>New Reminder Rule</DialogTitle></DialogHeader>
@@ -1105,9 +1107,9 @@ export default function MeetingsPage() {
                   </div>
                   <Input placeholder="Subject template *" value={reminderForm.subjectTemplate} onChange={(e) => setReminderForm((f) => ({ ...f, subjectTemplate: e.target.value }))} />
                   <Textarea placeholder="Body template *" rows={4} value={reminderForm.bodyTemplate} onChange={(e) => setReminderForm((f) => ({ ...f, bodyTemplate: e.target.value }))} />
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setReminderOpen(false)}>Cancel</Button>
-                    <Button onClick={() => createReminderRule.mutate()} disabled={!reminderForm.name || !reminderForm.subjectTemplate || !reminderForm.bodyTemplate || createReminderRule.isPending}>
+                <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+                    <Button className={isMobile ? "w-full min-h-11" : undefined} variant="outline" onClick={() => setReminderOpen(false)}>Cancel</Button>
+                    <Button className={isMobile ? "w-full min-h-11" : undefined} onClick={() => createReminderRule.mutate()} disabled={!reminderForm.name || !reminderForm.subjectTemplate || !reminderForm.bodyTemplate || createReminderRule.isPending}>
                       Create
                     </Button>
                   </div>
@@ -1168,8 +1170,8 @@ export default function MeetingsPage() {
                 </div>
                 <div className="text-xs text-muted-foreground">Last run: {rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "—"}</div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={!rule.isActive || runReminderRule.isPending}>Run</Button>
-                  <Button size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}>
+                  <Button className="min-h-11 w-full" size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={!rule.isActive || runReminderRule.isPending}>Run</Button>
+                  <Button className="min-h-11 w-full" size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}>
                     {rule.isActive ? "Pause" : "Resume"}
                   </Button>
                 </div>

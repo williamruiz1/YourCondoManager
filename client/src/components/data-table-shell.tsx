@@ -34,7 +34,7 @@ export function DataTableShell({
 }) {
   return (
     <div className="space-y-4">
-      <div className="flex items-end justify-between gap-4 flex-wrap">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div>
           <h2 className="text-lg font-semibold">{title}</h2>
           {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
@@ -42,9 +42,9 @@ export function DataTableShell({
         {summary ? <div className="text-sm text-muted-foreground">{summary}</div> : null}
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Input
-          className="w-full md:max-w-sm"
+          className="min-h-11 w-full sm:max-w-sm"
           placeholder={searchPlaceholder}
           value={searchValue}
           onChange={(event) => onSearchChange(event.target.value)}

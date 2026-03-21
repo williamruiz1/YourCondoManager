@@ -135,7 +135,7 @@ export default function BoardPage() {
         </div>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) form.reset(); }}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-board-role" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />Assign Role</Button>
+            <Button className={isMobile ? "w-full min-h-11" : undefined} data-testid="button-add-board-role" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />Assign Role</Button>
           </DialogTrigger>
           <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Assign Board Role</DialogTitle></DialogHeader>

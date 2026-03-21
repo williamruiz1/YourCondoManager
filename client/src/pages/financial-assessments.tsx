@@ -279,6 +279,63 @@ export default function FinancialAssessmentsPage() {
               <h3 className="text-lg font-medium">No assessments</h3>
               <p className="text-sm text-muted-foreground mt-1">Create the first special assessment.</p>
             </div>
+          ) : isMobile ? (
+            <div className="space-y-3 p-4">
+              {rows.map((row) => {
+                const perInstallment = row.installmentCount > 0 ? row.totalAmount / row.installmentCount : 0;
+                return (
+                  <div key={row.id} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold leading-5">{row.name}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {activeAssociationName || row.associationId.slice(0, 8)}
+                        </div>
+                      </div>
+                      {row.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div>
+                        <div className="uppercase tracking-wide">Total</div>
+                        <div className="mt-1 text-sm font-medium text-foreground">${row.totalAmount.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-wide">Installments</div>
+                        <div className="mt-1 text-sm text-foreground">{row.installmentCount}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <div className="uppercase tracking-wide">Per Installment</div>
+                        <div className="mt-1 text-sm font-medium text-foreground">${perInstallment.toFixed(2)}</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {row.isActive ? (
+                        <ConfirmDialog
+                          trigger={
+                            <Button className="min-h-11 w-full" variant="outline" disabled={toggleMutation.isPending}>
+                              Deactivate
+                            </Button>
+                          }
+                          title="Deactivate Assessment?"
+                          description={`Deactivating "${row.name}" will stop future installments from being posted. If installments have already been partially posted, this may create accounting inconsistencies. This action can be reversed by reactivating the assessment.`}
+                          confirmLabel="Deactivate"
+                          onConfirm={() => toggleMutation.mutate(row)}
+                        />
+                      ) : (
+                        <Button
+                          className="min-h-11 w-full"
+                          variant="outline"
+                          onClick={() => toggleMutation.mutate(row)}
+                          disabled={toggleMutation.isPending}
+                        >
+                          Activate
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <Table>
               <TableHeader>

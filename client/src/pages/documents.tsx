@@ -157,7 +157,7 @@ export default function DocumentsPage() {
   }, [versionFile, watchedVersionTitle]);
 
   const createMutation = useMutation({
-    mutationFn: async (data: z.infer<typeof formSchema>) => {
+    mutationFn: async (data: z.infer<typeof formSchema> & { fileName: string }) => {
       const formData = new FormData();
       formData.append("associationId", data.associationId);
       formData.append("title", data.title);
@@ -178,10 +178,13 @@ export default function DocumentsPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Document uploaded successfully" });
+      toast({
+        title: "Document uploaded",
+        description: variables.fileName,
+      });
       setUploadStage("complete");
       setOpen(false);
       form.reset({ associationId: activeAssociationId, title: "", documentType: "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner" });
@@ -206,7 +209,7 @@ export default function DocumentsPage() {
   });
 
   const createVersionMutation = useMutation({
-    mutationFn: async (data: z.infer<typeof addVersionSchema>) => {
+    mutationFn: async (data: z.infer<typeof addVersionSchema> & { fileName: string }) => {
       if (!selectedDocument) throw new Error("No document selected");
       if (!versionFile) throw new Error("File is required");
 
@@ -226,13 +229,16 @@ export default function DocumentsPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       if (!selectedDocument) return;
       queryClient.invalidateQueries({ queryKey: ["/api/documents", selectedDocument.id, "versions"] });
       versionForm.reset({ title: "", uploadedBy: "" });
       setVersionFile(null);
       setVersionStage("complete");
-      toast({ title: "Version uploaded" });
+      toast({
+        title: "Version uploaded",
+        description: variables.fileName,
+      });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
@@ -255,7 +261,7 @@ export default function DocumentsPage() {
       return;
     }
     setUploadStage("uploading");
-    createMutation.mutate(values);
+    createMutation.mutate({ ...values, fileName: selectedFile.name });
   }
 
   function onSubmitTag(values: z.infer<typeof addTagSchema>) {
@@ -264,7 +270,7 @@ export default function DocumentsPage() {
 
   function onSubmitVersion(values: z.infer<typeof addVersionSchema>) {
     setVersionStage("uploading");
-    createVersionMutation.mutate(values);
+    createVersionMutation.mutate({ ...values, fileName: versionFile?.name || "Document version" });
   }
 
   const getAssocName = (id: string) => associations?.find((a) => a.id === id)?.name ?? "Unknown";
@@ -448,7 +454,7 @@ export default function DocumentsPage() {
         isLoading={isLoading}
         isEmpty={!isLoading && !documents?.length}
         emptyTitle="No documents yet"
-        emptyMessage="Store CC&Rs, bylaws, meeting minutes, and insurance certificates here. Click 'Upload Document' to add the first file — you can tag it by type and make it visible in the owner portal."
+        emptyMessage="Store CC&Rs, bylaws, minutes, and insurance records here. Upload the first file to start the library."
       >
         <DataTableShell
           title="Document Repository"

@@ -47,10 +47,12 @@ const METHOD_TYPE_OPTIONS = [
 function PaymentMethodsTab({
   associationId,
   paymentMethods,
+  isLoading,
   onSaved,
 }: {
   associationId: string | null;
   paymentMethods: PaymentMethodConfig[];
+  isLoading: boolean;
   onSaved: () => void;
 }) {
   const { toast } = useToast();
@@ -134,17 +136,30 @@ function PaymentMethodsTab({
       </div>
 
       {/* Existing methods */}
-      {paymentMethods.length > 0 && (
+      {isLoading ? (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Configured methods</p>
+          <div className="space-y-2">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div key={index} className="rounded-lg border p-3">
+                <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+                <div className="mt-2 h-4 w-full animate-pulse rounded bg-muted" />
+                <div className="mt-2 h-4 w-32 animate-pulse rounded bg-muted" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : paymentMethods.length > 0 && (
         <div className="space-y-2">
           <p className="text-sm font-medium">Configured methods ({paymentMethods.length})</p>
           {paymentMethods.map((m) => (
-            <div key={m.id} className="flex items-start gap-3 rounded-lg border p-3">
-              <Badge variant="secondary" className="mt-0.5 shrink-0">{m.methodType}</Badge>
+            <div key={m.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-start">
+              <Badge variant="secondary" className="shrink-0 self-start">{m.methodType}</Badge>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">{m.displayName}</p>
                 <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{m.instructions}</p>
               </div>
-              <Badge variant={m.isActive === 1 ? "default" : "secondary"} className="shrink-0">
+              <Badge variant={m.isActive === 1 ? "default" : "secondary"} className="shrink-0 self-start">
                 {m.isActive === 1 ? "Active" : "Inactive"}
               </Badge>
             </div>
@@ -258,10 +273,12 @@ function PaymentMethodsTab({
 function GatewayTab({
   associationId,
   gatewayConnections,
+  isLoading,
   onSaved,
 }: {
   associationId: string | null;
   gatewayConnections: PaymentGatewayConnection[];
+  isLoading: boolean;
   onSaved: () => void;
 }) {
   const { toast } = useToast();
@@ -316,13 +333,25 @@ function GatewayTab({
         </div>
       </div>
 
-      {activeConnections.length > 0 && (
+      {isLoading ? (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Active connections</p>
+          <div className="space-y-2">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div key={index} className="rounded-lg border p-3">
+                <div className="h-4 w-28 animate-pulse rounded bg-muted" />
+                <div className="mt-2 h-4 w-40 animate-pulse rounded bg-muted" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : activeConnections.length > 0 && (
         <div className="space-y-2">
           <p className="text-sm font-medium">Active connections ({activeConnections.length})</p>
           {activeConnections.map((c) => (
-            <div key={c.id} className="flex items-center gap-3 rounded-lg border p-3">
+            <div key={c.id} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center">
               <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium capitalize">{c.provider}</p>
                 {c.providerAccountId && (
                   <p className="text-xs text-muted-foreground">Account: {c.providerAccountId}</p>
@@ -426,10 +455,14 @@ function PaymentLinksTab({
   associationId,
   persons,
   units,
+  isLoadingPeople,
+  isLoadingUnits,
 }: {
   associationId: string | null;
   persons: Person[];
   units: Unit[];
+  isLoadingPeople: boolean;
+  isLoadingUnits: boolean;
 }) {
   const { toast } = useToast();
   const [form, setForm] = useState({
@@ -508,7 +541,7 @@ function PaymentLinksTab({
             <div className="space-y-1.5">
               <Label>Unit</Label>
               <Select value={form.unitId || "_"} onValueChange={(v) => setForm((p) => ({ ...p, unitId: v === "_" ? "" : v }))}>
-                <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
+                <SelectTrigger disabled={isLoadingUnits}><SelectValue placeholder={isLoadingUnits ? "Loading units..." : "Select unit"} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_">Select unit</SelectItem>
                   {filteredUnits.map((u) => (
@@ -520,7 +553,7 @@ function PaymentLinksTab({
             <div className="space-y-1.5">
               <Label>Owner</Label>
               <Select value={form.personId || "_"} onValueChange={(v) => setForm((p) => ({ ...p, personId: v === "_" ? "" : v }))}>
-                <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
+                <SelectTrigger disabled={isLoadingPeople}><SelectValue placeholder={isLoadingPeople ? "Loading owners..." : "Select owner"} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_">Select owner</SelectItem>
                   {persons.map((p) => (
@@ -579,10 +612,15 @@ function PaymentLinksTab({
 
           <Button
             onClick={() => generateMutation.mutate()}
-            disabled={generateMutation.isPending || !associationId}
+            disabled={generateMutation.isPending || !associationId || isLoadingPeople || isLoadingUnits}
           >
             {generateMutation.isPending ? "Generating…" : "Generate Payment Link"}
           </Button>
+          {(isLoadingPeople || isLoadingUnits) ? (
+            <div className="text-xs text-muted-foreground">
+              Loading owner and unit options for the selected association.
+            </div>
+          ) : null}
 
           {lastLink && (
             <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
@@ -845,8 +883,8 @@ function WebhookSecurityCard({ associationId }: { associationId: string | null }
             ))}
           </div>
         )}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="col-span-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="sm:col-span-2">
             <Input
               type="password"
               placeholder="New signing secret (min 16 chars)"
@@ -1007,9 +1045,9 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
                 ))}
               </div>
             )}
-            <div className={`gap-2 ${events.length > 0 ? "grid grid-cols-1 md:grid-cols-[144px_minmax(0,1fr)_auto]" : "flex"}`}>
+            <div className={`gap-2 ${events.length > 0 ? "grid grid-cols-1 sm:grid-cols-[144px_minmax(0,1fr)_auto]" : "flex flex-col sm:flex-row"}`}>
               <Select value={newStatus} onValueChange={v => setNewStatus(v as typeof newStatus)}>
-                <SelectTrigger className={events.length > 0 ? "min-h-11 md:w-36" : "min-h-11"}><SelectValue /></SelectTrigger>
+                <SelectTrigger className={events.length > 0 ? "min-h-11 sm:w-36" : "min-h-11"}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="received">received</SelectItem>
                   <SelectItem value="processed">processed</SelectItem>
@@ -1226,16 +1264,16 @@ export default function FinancialPaymentsPage() {
 
   const selectedAssociationId = activeAssociationId;
 
-  const { data: persons = [] } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
-  const { data: units = [] } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
+  const { data: persons = [], isLoading: personsLoading } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
+  const { data: units = [], isLoading: unitsLoading } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
 
-  const { data: gatewayConnections = [], refetch: refetchGateway } = useQuery<PaymentGatewayConnection[]>({
+  const { data: gatewayConnections = [], isLoading: gatewayLoading, refetch: refetchGateway } = useQuery<PaymentGatewayConnection[]>({
     queryKey: [selectedAssociationId
       ? `/api/financial/payment-gateway/connections?associationId=${selectedAssociationId}`
       : "/api/financial/payment-gateway/connections"],
   });
 
-  const { data: paymentMethods = [], refetch: refetchMethods } = useQuery<PaymentMethodConfig[]>({
+  const { data: paymentMethods = [], isLoading: paymentMethodsLoading, refetch: refetchMethods } = useQuery<PaymentMethodConfig[]>({
     queryKey: [selectedAssociationId
       ? `/api/financial/payment-methods?associationId=${selectedAssociationId}`
       : "/api/financial/payment-methods"],
@@ -1320,15 +1358,15 @@ export default function FinancialPaymentsPage() {
             onChange={setActiveTab}
           />
         ) : (
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="methods" className="gap-1.5">
+          <TabsList className="flex w-full overflow-x-auto">
+            <TabsTrigger value="methods" className="gap-1.5 shrink-0">
               <CreditCard className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Methods</span>
               {paymentMethods.length > 0 && (
                 <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">{paymentMethods.length}</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="gateway" className="gap-1.5">
+            <TabsTrigger value="gateway" className="gap-1.5 shrink-0">
               <Zap className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Gateway</span>
               {gatewayConnections.filter((c) => c.isActive === 1).length > 0 && (
@@ -1337,19 +1375,19 @@ export default function FinancialPaymentsPage() {
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="links" className="gap-1.5">
+            <TabsTrigger value="links" className="gap-1.5 shrink-0">
               <Link2 className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Links</span>
             </TabsTrigger>
-            <TabsTrigger value="webhooks" className="gap-1.5">
+            <TabsTrigger value="webhooks" className="gap-1.5 shrink-0">
               <Webhook className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Webhooks</span>
             </TabsTrigger>
-            <TabsTrigger value="activity" className="gap-1.5">
+            <TabsTrigger value="activity" className="gap-1.5 shrink-0">
               <Info className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Activity</span>
             </TabsTrigger>
-            <TabsTrigger value="exceptions" className="gap-1.5">
+            <TabsTrigger value="exceptions" className="gap-1.5 shrink-0">
               <AlertCircle className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Exceptions</span>
             </TabsTrigger>
@@ -1360,6 +1398,7 @@ export default function FinancialPaymentsPage() {
           <PaymentMethodsTab
             associationId={selectedAssociationId}
             paymentMethods={paymentMethods}
+            isLoading={paymentMethodsLoading}
             onSaved={() => refetchMethods()}
           />
         </TabsContent>
@@ -1368,6 +1407,7 @@ export default function FinancialPaymentsPage() {
           <GatewayTab
             associationId={selectedAssociationId}
             gatewayConnections={gatewayConnections}
+            isLoading={gatewayLoading}
             onSaved={() => refetchGateway()}
           />
         </TabsContent>
@@ -1377,6 +1417,8 @@ export default function FinancialPaymentsPage() {
             associationId={selectedAssociationId}
             persons={persons}
             units={units}
+            isLoadingPeople={personsLoading}
+            isLoadingUnits={unitsLoading}
           />
         </TabsContent>
 

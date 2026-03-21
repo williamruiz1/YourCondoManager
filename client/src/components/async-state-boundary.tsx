@@ -62,9 +62,9 @@ export function AsyncStateBoundary({
   if (isEmpty) {
     return (
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="font-medium">{emptyTitle}</div>
-          <div className="text-sm text-muted-foreground mt-1">{emptyMessage}</div>
+          <div className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">{emptyMessage}</div>
         </CardContent>
       </Card>
     );

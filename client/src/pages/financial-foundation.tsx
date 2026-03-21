@@ -22,6 +22,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const accountSchema = z.object({
   associationId: z.string().min(1),
@@ -48,7 +49,7 @@ export default function FinancialFoundationPage() {
   const [approvalForm, setApprovalForm] = useState({ changeType: "budget-amendment", changeDescription: "", changeAmount: "", notes: "" });
   const [approvalStatusFilter, setApprovalStatusFilter] = useState<"pending" | "all">("pending");
 
-  const { data: accounts } = useQuery<FinancialAccount[]>({
+  const { data: accounts, isLoading: accountsLoading } = useQuery<FinancialAccount[]>({
     queryKey: ["/api/financial/accounts", activeAssociationId],
     queryFn: async () => {
       const params = activeAssociationId ? `?associationId=${activeAssociationId}` : "";
@@ -56,7 +57,7 @@ export default function FinancialFoundationPage() {
       return res.json();
     },
   });
-  const { data: categories } = useQuery<FinancialCategory[]>({
+  const { data: categories, isLoading: categoriesLoading } = useQuery<FinancialCategory[]>({
     queryKey: ["/api/financial/categories", activeAssociationId],
     queryFn: async () => {
       const params = activeAssociationId ? `?associationId=${activeAssociationId}` : "";
@@ -65,7 +66,7 @@ export default function FinancialFoundationPage() {
     },
   });
 
-  const { data: approvals = [], refetch: refetchApprovals } = useQuery<FinancialApproval[]>({
+  const { data: approvals = [], refetch: refetchApprovals, isLoading: approvalsLoading } = useQuery<FinancialApproval[]>({
     queryKey: ["/api/financial/approvals", activeAssociationId, approvalStatusFilter],
     queryFn: async () => {
       if (!activeAssociationId) return [];
@@ -193,7 +194,17 @@ export default function FinancialFoundationPage() {
                 </DialogContent>
               </Dialog>
             </div>
-            {(accounts ?? []).length === 0 ? (
+            {accountsLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="rounded-xl border p-4 space-y-3">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-3 w-1/3" />
+                    <Skeleton className="h-5 w-20" />
+                  </div>
+                ))}
+              </div>
+            ) : (accounts ?? []).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <p className="text-sm">No accounts yet. Add your first account to begin.</p>
               </div>
@@ -243,7 +254,16 @@ export default function FinancialFoundationPage() {
                 </DialogContent>
               </Dialog>
             </div>
-            {(categories ?? []).length === 0 ? (
+            {categoriesLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="rounded-xl border p-4 space-y-3">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-5 w-20" />
+                  </div>
+                ))}
+              </div>
+            ) : (categories ?? []).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <p className="text-sm">No categories yet. Add your first category to begin.</p>
               </div>
@@ -278,17 +298,23 @@ export default function FinancialFoundationPage() {
               <h2 className="text-base font-semibold">Financial Change Approvals</h2>
               <p className="text-sm text-muted-foreground">Two-person approval required for material financial changes (budget amendments, large disbursements, reserve transfers).</p>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1">
+            <div className={`gap-2 ${isMobile ? "grid w-full grid-cols-1" : "flex items-center"}`}>
+              <div className={`gap-1 ${isMobile ? "grid grid-cols-2" : "flex"}`}>
                 {(["pending", "all"] as const).map((f) => (
-                  <Button key={f} size="sm" variant={approvalStatusFilter === f ? "default" : "outline"} className="h-7 text-xs" onClick={() => setApprovalStatusFilter(f)}>
+                  <Button
+                    key={f}
+                    size="sm"
+                    variant={approvalStatusFilter === f ? "default" : "outline"}
+                    className={isMobile ? "min-h-11 text-sm" : "h-7 text-xs"}
+                    onClick={() => setApprovalStatusFilter(f)}
+                  >
                     {f === "pending" ? "Pending" : "All"}
                   </Button>
                 ))}
               </div>
               <Dialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm" disabled={!activeAssociationId}>Request Approval</Button>
+                  <Button size="sm" className={isMobile ? "min-h-11 w-full" : undefined} disabled={!activeAssociationId}>Request Approval</Button>
                 </DialogTrigger>
                 <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
                   <DialogHeader><DialogTitle>Submit Financial Change for Approval</DialogTitle></DialogHeader>
@@ -328,7 +354,24 @@ export default function FinancialFoundationPage() {
               </Dialog>
             </div>
           </div>
-          {isMobile ? (
+          {approvalsLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="rounded-xl border p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <Skeleton className="h-5 w-24" />
+                    <Skeleton className="h-5 w-20" />
+                  </div>
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : isMobile ? (
             <div className="space-y-3">
               {approvals.map((approval) => (
                 <div key={approval.id} className="rounded-xl border p-4 space-y-3">

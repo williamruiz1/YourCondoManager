@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-20T00:40:20.885Z",
+  "generatedAt": "2026-03-21T17:24:53.868Z",
   "purpose": "Durable working memory for stable repo facts and repeatable operating knowledge.",
   "sourceArtifacts": {
     "workspaceManifest": "docs/agent-bootstrap/workspace-manifest.json",

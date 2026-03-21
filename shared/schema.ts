@@ -57,6 +57,24 @@ export const persons = pgTable("persons", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const personContactPointChannelEnum = pgEnum("person_contact_point_channel", ["email", "phone"]);
+export const personContactPoints = pgTable("person_contact_points", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  associationId: varchar("association_id").references(() => associations.id),
+  channel: personContactPointChannelEnum("channel").notNull(),
+  value: text("value").notNull(),
+  normalizedValue: text("normalized_value").notNull(),
+  isPrimary: integer("is_primary").notNull().default(0),
+  source: text("source").notNull().default("manual"),
+  sourceRecordId: varchar("source_record_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniquePersonChannelValue: uniqueIndex("person_contact_points_person_channel_value_uq").on(table.personId, table.channel, table.normalizedValue),
+}));
+
 export const ownerships = pgTable("ownerships", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   unitId: varchar("unit_id").notNull().references(() => units.id),
@@ -64,6 +82,7 @@ export const ownerships = pgTable("ownerships", {
   ownershipPercentage: real("ownership_percentage").notNull().default(100),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date"),
+  relationshipNotesJson: jsonb("relationship_notes_json"),
 });
 
 export const occupancyTypeEnum = pgEnum("occupancy_type", ["OWNER_OCCUPIED", "TENANT"]);
@@ -745,6 +764,45 @@ export const aiExtractedRecords = pgTable("ai_extracted_records", {
   reviewStatus: extractionReviewStatusEnum("review_status").notNull().default("pending-review"),
   reviewedBy: text("reviewed_by"),
   reviewedAt: timestamp("reviewed_at"),
+  supersededAt: timestamp("superseded_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const ingestionCorrectionFamilyEnum = pgEnum("ingestion_correction_family", ["owner-roster", "bank-statement"]);
+export const associationIngestionCorrectionMemory = pgTable("association_ingestion_correction_memory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  recordType: ingestionCorrectionFamilyEnum("record_type").notNull(),
+  correctionKind: text("correction_kind").notNull(),
+  correctionKey: text("correction_key").notNull(),
+  sourceExtractedRecordId: varchar("source_extracted_record_id").references(() => aiExtractedRecords.id),
+  payloadJson: jsonb("payload_json").notNull(),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAssociationCorrectionKey: uniqueIndex("assoc_ingestion_correction_memory_uq").on(table.associationId, table.recordType, table.correctionKey),
+}));
+
+export const ingestionExceptionStatusEnum = pgEnum("ingestion_exception_status", ["open", "resolved", "dismissed"]);
+export const aiIngestionExceptions = pgTable("ai_ingestion_exceptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ingestionJobId: varchar("ingestion_job_id").notNull().references(() => aiIngestionJobs.id),
+  extractedRecordId: varchar("extracted_record_id").notNull().references(() => aiExtractedRecords.id),
+  associationId: varchar("association_id").references(() => associations.id),
+  recordType: text("record_type").notNull(),
+  exceptionKind: text("exception_kind").notNull(),
+  severity: text("severity").notNull().default("warning"),
+  status: ingestionExceptionStatusEnum("status").notNull().default("open"),
+  entityKey: text("entity_key"),
+  message: text("message").notNull(),
+  contextJson: jsonb("context_json"),
+  suggestionsJson: jsonb("suggestions_json"),
+  resolutionJson: jsonb("resolution_json"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
   supersededAt: timestamp("superseded_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1567,6 +1625,7 @@ export const insertAssociationSchema = createInsertSchema(associations).omit({ i
 export const insertBuildingSchema = createInsertSchema(buildings).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUnitSchema = createInsertSchema(units).omit({ id: true, createdAt: true });
 export const insertPersonSchema = createInsertSchema(persons).omit({ id: true, createdAt: true });
+export const insertPersonContactPointSchema = createInsertSchema(personContactPoints).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertOwnershipSchema = createInsertSchema(ownerships).omit({ id: true });
 export const insertOccupancySchema = createInsertSchema(occupancies).omit({ id: true });
 export const insertBoardRoleSchema = createInsertSchema(boardRoles).omit({ id: true });
@@ -1611,6 +1670,8 @@ export const insertAnnualGovernanceTaskSchema = createInsertSchema(annualGoverna
 export const insertComplianceAlertOverrideSchema = createInsertSchema(complianceAlertOverrides).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAiIngestionJobSchema = createInsertSchema(aiIngestionJobs).omit({ id: true, createdAt: true, updatedAt: true, startedAt: true, completedAt: true, errorMessage: true, status: true });
 export const insertAiExtractedRecordSchema = createInsertSchema(aiExtractedRecords).omit({ id: true, createdAt: true, updatedAt: true, reviewedBy: true, reviewedAt: true, reviewStatus: true, supersededAt: true });
+export const insertAssociationIngestionCorrectionMemorySchema = createInsertSchema(associationIngestionCorrectionMemory).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertAiIngestionExceptionSchema = createInsertSchema(aiIngestionExceptions).omit({ id: true, createdAt: true, updatedAt: true, resolvedAt: true, supersededAt: true });
 export const insertAiIngestionImportRunSchema = createInsertSchema(aiIngestionImportRuns).omit({ id: true, createdAt: true, updatedAt: true, rolledBackAt: true });
 export const insertClauseRecordSchema = createInsertSchema(clauseRecords).omit({ id: true, createdAt: true, updatedAt: true, reviewedBy: true, reviewedAt: true, reviewStatus: true, supersededAt: true });
 export const insertClauseTagSchema = createInsertSchema(clauseTags).omit({ id: true, createdAt: true });
@@ -1734,6 +1795,8 @@ export type Unit = typeof units.$inferSelect;
 export type InsertUnit = z.infer<typeof insertUnitSchema>;
 export type Person = typeof persons.$inferSelect;
 export type InsertPerson = z.infer<typeof insertPersonSchema>;
+export type PersonContactPoint = typeof personContactPoints.$inferSelect;
+export type InsertPersonContactPoint = z.infer<typeof insertPersonContactPointSchema>;
 export type Ownership = typeof ownerships.$inferSelect;
 export type InsertOwnership = z.infer<typeof insertOwnershipSchema>;
 export type Occupancy = typeof occupancies.$inferSelect;
@@ -1816,6 +1879,10 @@ export type AiIngestionJob = typeof aiIngestionJobs.$inferSelect;
 export type InsertAiIngestionJob = z.infer<typeof insertAiIngestionJobSchema>;
 export type AiExtractedRecord = typeof aiExtractedRecords.$inferSelect;
 export type InsertAiExtractedRecord = z.infer<typeof insertAiExtractedRecordSchema>;
+export type AssociationIngestionCorrectionMemory = typeof associationIngestionCorrectionMemory.$inferSelect;
+export type InsertAssociationIngestionCorrectionMemory = z.infer<typeof insertAssociationIngestionCorrectionMemorySchema>;
+export type AiIngestionException = typeof aiIngestionExceptions.$inferSelect;
+export type InsertAiIngestionException = z.infer<typeof insertAiIngestionExceptionSchema>;
 export type AiIngestionImportRun = typeof aiIngestionImportRuns.$inferSelect;
 export type InsertAiIngestionImportRun = z.infer<typeof insertAiIngestionImportRunSchema>;
 export type ClauseRecord = typeof clauseRecords.$inferSelect;

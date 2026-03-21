@@ -21,6 +21,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FileUp, Send, AlertTriangle, RefreshCw, X } from "lucide-react";
 import { ExportCsvButton } from "@/components/export-csv-button";
 import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
@@ -186,7 +187,11 @@ export default function FinancialLedgerPage() {
     enabled: Boolean(assocFilter),
   });
 
-  const { data: financialAlertsList = [], refetch: refetchAlerts } = useQuery<FinancialAlert[]>({
+  const {
+    data: financialAlertsList = [],
+    isLoading: financialAlertsLoading,
+    refetch: refetchAlerts,
+  } = useQuery<FinancialAlert[]>({
     queryKey: ["/api/financial/alerts", assocFilter],
     queryFn: async () => {
       if (!assocFilter) return [];
@@ -283,6 +288,20 @@ export default function FinancialLedgerPage() {
     return map;
   }, [units]);
 
+  const summaryRows = summaryQuery.data ?? [];
+  const delinquentRows = useMemo(() => summaryRows.filter((s) => s.balance > 0), [summaryRows]);
+  const filteredAuditRows = useMemo(
+    () =>
+      (auditLogsQuery.data ?? [])
+        .filter((log) => ["owner_ledger_entry", "invoice", "late_fee_event", "budget", "assessment"].includes(log.entityType))
+        .slice(0, 50),
+    [auditLogsQuery.data],
+  );
+  const criticalAlertCount = useMemo(
+    () => financialAlertsList.filter((alert) => alert.severity === "critical").length,
+    [financialAlertsList],
+  );
+
   const filteredEntries = useMemo(() => {
     const all = entriesQuery.data ?? [];
     if (!dateRange.from && !dateRange.to) return all;
@@ -368,41 +387,36 @@ export default function FinancialLedgerPage() {
         isLoading={summaryQuery.isLoading}
         error={summaryQuery.error}
         onRetry={() => summaryQuery.refetch()}
-        isEmpty={!summaryQuery.isLoading && (summaryQuery.data?.length ?? 0) === 0}
+        isEmpty={!summaryQuery.isLoading && summaryRows.length === 0}
         emptyTitle="No ledger balances yet"
         emptyMessage="Post owner-ledger entries in the active association to generate balance visibility."
       >
         <Card>
-          <CardContent className="p-6 space-y-3">
-            <div className="flex items-center justify-between">
+          <CardContent className="p-4 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Balance Summary</h2>
-              {(summaryQuery.data ?? []).filter((s) => s.balance > 0).length > 0 && (
+              {delinquentRows.length > 0 && (
                 <Badge variant="destructive">
-                  {(summaryQuery.data ?? []).filter((s) => s.balance > 0).length} delinquent
+                  {delinquentRows.length} delinquent
                 </Badge>
               )}
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Owner</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead>Balance</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(summaryQuery.data ?? []).map((s) => (
-                  <TableRow key={`${s.personId}-${s.unitId}`}>
-                    <TableCell>{personName.get(s.personId) || s.personId}</TableCell>
-                    <TableCell>{unitName.get(s.unitId) || s.unitId}</TableCell>
-                    <TableCell>
-                      <Badge variant={s.balance > 0 ? "destructive" : "default"}>
-                        ${s.balance.toFixed(2)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {s.balance > 0 && assocFilter && (
+            {isMobile ? (
+              <div className="space-y-3">
+                {summaryRows.map((s) => (
+                  <div key={`${s.personId}-${s.unitId}`} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium">{personName.get(s.personId) || s.personId}</div>
+                        <div className="text-xs text-muted-foreground">Unit {unitName.get(s.unitId) || s.unitId}</div>
+                      </div>
+                      <Badge variant={s.balance > 0 ? "destructive" : "default"}>${s.balance.toFixed(2)}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs text-muted-foreground">
+                        {s.balance > 0 ? "Delinquent balance requires follow-up." : "Account is current."}
+                      </div>
+                      {s.balance > 0 && assocFilter ? (
                         <SendNoticeDialog
                           associationId={assocFilter}
                           personId={s.personId}
@@ -411,84 +425,153 @@ export default function FinancialLedgerPage() {
                           ownerName={personName.get(s.personId) || "Owner"}
                           unitNumber={unitName.get(s.unitId) || s.unitId}
                         />
-                      )}
-                    </TableCell>
-                  </TableRow>
+                      ) : null}
+                    </div>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Owner</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead>Balance</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summaryRows.map((s) => (
+                    <TableRow key={`${s.personId}-${s.unitId}`}>
+                      <TableCell>{personName.get(s.personId) || s.personId}</TableCell>
+                      <TableCell>{unitName.get(s.unitId) || s.unitId}</TableCell>
+                      <TableCell>
+                        <Badge variant={s.balance > 0 ? "destructive" : "default"}>
+                          ${s.balance.toFixed(2)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {s.balance > 0 && assocFilter && (
+                          <SendNoticeDialog
+                            associationId={assocFilter}
+                            personId={s.personId}
+                            unitId={s.unitId}
+                            balance={s.balance}
+                            ownerName={personName.get(s.personId) || "Owner"}
+                            unitNumber={unitName.get(s.unitId) || s.unitId}
+                          />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </AsyncStateBoundary>
 
-      <div className="grid gap-4 lg:grid-cols-[0.95fr,1.05fr]">
-        <Card>
-          <CardContent className="p-6 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">Dues Collection Rate Analytics</h2>
-              <p className="text-sm text-muted-foreground">
-                Scope: <span className="font-medium text-foreground">{activeAssociationName || "All associations"}</span> over the last 30 days of posted owner-ledger activity.
-              </p>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">Charges Posted</div>
-                <div className="text-xl font-semibold">${(analyticsQuery.data?.collectionMetrics.totalCharges ?? 0).toFixed(2)}</div>
+      {analyticsQuery.isLoading ? (
+        <div className="grid gap-4 lg:grid-cols-[0.95fr,1.05fr]">
+          <Card>
+            <CardContent className="p-6 space-y-3">
+              <Skeleton className="h-5 w-56" />
+              <Skeleton className="h-4 w-72" />
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="rounded-md border p-3 space-y-2">
+                    <Skeleton className="h-3 w-24" />
+                    <Skeleton className="h-6 w-28" />
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-md border p-3 space-y-2">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-8 w-32" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6 space-y-3">
+              <Skeleton className="h-5 w-44" />
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <Skeleton key={index} className="h-16 w-full" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[0.95fr,1.05fr]">
+          <Card>
+            <CardContent className="p-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">Dues Collection Rate Analytics</h2>
+                <p className="text-sm text-muted-foreground">
+                  Scope: <span className="font-medium text-foreground">{activeAssociationName || "All associations"}</span> over the last 30 days of posted owner-ledger activity.
+                </p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">Charges Posted</div>
+                  <div className="text-xl font-semibold">${(analyticsQuery.data?.collectionMetrics.totalCharges ?? 0).toFixed(2)}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">Payments Posted</div>
+                  <div className="text-xl font-semibold">${(analyticsQuery.data?.collectionMetrics.totalPayments ?? 0).toFixed(2)}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">Credits / Adjustments</div>
+                  <div className="text-xl font-semibold">${(analyticsQuery.data?.collectionMetrics.totalCredits ?? 0).toFixed(2)}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">Collection Rate</div>
+                  <div className="text-xl font-semibold">{analyticsQuery.data?.collectionMetrics.collectionRate ?? 0}%</div>
+                </div>
               </div>
               <div className="rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">Payments Posted</div>
-                <div className="text-xl font-semibold">${(analyticsQuery.data?.collectionMetrics.totalPayments ?? 0).toFixed(2)}</div>
+                <div className="text-xs text-muted-foreground">Open Balance</div>
+                <div className="text-2xl font-semibold">${(analyticsQuery.data?.collectionMetrics.openBalance ?? 0).toFixed(2)}</div>
               </div>
-              <div className="rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">Credits / Adjustments</div>
-                <div className="text-xl font-semibold">${(analyticsQuery.data?.collectionMetrics.totalCredits ?? 0).toFixed(2)}</div>
-              </div>
-              <div className="rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">Collection Rate</div>
-                <div className="text-xl font-semibold">{analyticsQuery.data?.collectionMetrics.collectionRate ?? 0}%</div>
-              </div>
-            </div>
-            <div className="rounded-md border p-3">
-              <div className="text-xs text-muted-foreground">Open Balance</div>
-              <div className="text-2xl font-semibold">${(analyticsQuery.data?.collectionMetrics.openBalance ?? 0).toFixed(2)}</div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <h2 className="text-lg font-semibold">Recent Collection Trend</h2>
-            <div className="mt-4 space-y-2">
-              {(analyticsQuery.data?.collectionMetrics.monthlyTrend ?? []).map((row) => (
-                <div key={row.period} className="grid grid-cols-[110px,1fr,1fr,1fr,90px] gap-3 rounded-md border p-3 text-sm">
-                  <div className="font-medium">{row.period}</div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Charges</div>
-                    <div>${row.charges.toFixed(2)}</div>
+          <Card>
+            <CardContent className="p-6">
+              <h2 className="text-lg font-semibold">Recent Collection Trend</h2>
+              <div className="mt-4 space-y-2">
+                {(analyticsQuery.data?.collectionMetrics.monthlyTrend ?? []).map((row) => (
+                  <div key={row.period} className="grid grid-cols-[110px,1fr,1fr,1fr,90px] gap-3 rounded-md border p-3 text-sm">
+                    <div className="font-medium">{row.period}</div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Charges</div>
+                      <div>${row.charges.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Payments</div>
+                      <div>${row.payments.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Credits</div>
+                      <div>${row.credits.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Rate</div>
+                      <div className="font-medium">{row.collectionRate}%</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Payments</div>
-                    <div>${row.payments.toFixed(2)}</div>
+                ))}
+                {(analyticsQuery.data?.collectionMetrics.monthlyTrend ?? []).length === 0 ? (
+                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                    No owner-ledger activity found for the selected window.
                   </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Credits</div>
-                    <div>${row.credits.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Rate</div>
-                    <div className="font-medium">{row.collectionRate}%</div>
-                  </div>
-                </div>
-              ))}
-              {(analyticsQuery.data?.collectionMetrics.monthlyTrend ?? []).length === 0 ? (
-                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  No owner-ledger activity found for the selected window.
-                </div>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[0.95fr,1.05fr]">
         <Card>
@@ -562,21 +645,71 @@ export default function FinancialLedgerPage() {
           <DateRangePresets value={dateRange} onChange={setDateRange} />
         </div>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Description</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {filteredEntries.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell>{new Date(e.postedAt).toLocaleDateString()}</TableCell>
-                  <TableCell>{personName.get(e.personId) || e.personId}</TableCell>
-                  <TableCell>{unitName.get(e.unitId) || e.unitId}</TableCell>
-                  <TableCell><Badge variant="secondary">{e.entryType}</Badge></TableCell>
-                  <TableCell>${e.amount.toFixed(2)}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground max-w-xs truncate" title={e.description || ""}>{e.description || "—"}</TableCell>
-                </TableRow>
+          {entriesQuery.isLoading ? (
+            <div className="space-y-3 p-4 sm:p-6">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="rounded-lg border p-4 space-y-3">
+                  <Skeleton className="h-4 w-28" />
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
+                  </div>
+                  <Skeleton className="h-4 w-40" />
+                </div>
               ))}
-            </TableBody>
-          </Table>
+            </div>
+          ) : isMobile ? (
+            <div className="space-y-3 p-4 sm:p-6">
+              {filteredEntries.map((e) => (
+                <div key={e.id} className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium">{personName.get(e.personId) || e.personId}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(e.postedAt).toLocaleDateString()} · Unit {unitName.get(e.unitId) || e.unitId}
+                      </div>
+                    </div>
+                    <Badge variant="secondary">{e.entryType}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold">${e.amount.toFixed(2)}</div>
+                    <div className="max-w-[55%] truncate text-xs text-muted-foreground" title={e.description || ""}>
+                      {e.description || "No description"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {filteredEntries.length === 0 && (
+                <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                  No ledger entries found for the selected period.
+                </div>
+              )}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Description</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {filteredEntries.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell>{new Date(e.postedAt).toLocaleDateString()}</TableCell>
+                    <TableCell>{personName.get(e.personId) || e.personId}</TableCell>
+                    <TableCell>{unitName.get(e.unitId) || e.unitId}</TableCell>
+                    <TableCell><Badge variant="secondary">{e.entryType}</Badge></TableCell>
+                    <TableCell>${e.amount.toFixed(2)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-xs truncate" title={e.description || ""}>{e.description || "—"}</TableCell>
+                  </TableRow>
+                ))}
+                {filteredEntries.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      No ledger entries found for the selected period.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -587,21 +720,56 @@ export default function FinancialLedgerPage() {
             <p className="text-sm text-muted-foreground mt-0.5">Audit trail of all financial record changes and user actions.</p>
           </div>
           <CardContent className="p-0 mt-3">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Actor</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Entity</TableHead>
-                  <TableHead>Details</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(auditLogsQuery.data ?? [])
-                  .filter((log) => ["owner_ledger_entry", "invoice", "late_fee_event", "budget", "assessment"].includes(log.entityType))
-                  .slice(0, 50)
-                  .map((log) => (
+            {auditLogsQuery.isLoading ? (
+              <div className="space-y-3 p-4 sm:p-6">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="rounded-lg border p-4 space-y-2">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-full" />
+                  </div>
+                ))}
+              </div>
+            ) : isMobile ? (
+              <div className="space-y-3 p-4 sm:p-6">
+                {filteredAuditRows.map((log) => (
+                  <div key={log.id} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{log.actorEmail}</div>
+                        <div className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</div>
+                      </div>
+                      <Badge variant="outline" className="font-mono text-[11px]">
+                        {log.action}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge variant="secondary" className="capitalize">
+                        {log.entityType.replace(/_/g, " ")}
+                      </Badge>
+                      <span className="text-muted-foreground">{formatAuditDetails(log.afterJson) || log.entityId || "—"}</span>
+                    </div>
+                  </div>
+                ))}
+                {filteredAuditRows.length === 0 && (
+                  <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                    No financial change history recorded yet.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Actor</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead>Entity</TableHead>
+                    <TableHead>Details</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAuditRows.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {new Date(log.createdAt).toLocaleString()}
@@ -614,17 +782,16 @@ export default function FinancialLedgerPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                {(auditLogsQuery.data ?? []).filter((log) =>
-                  ["owner_ledger_entry", "invoice", "late_fee_event", "budget", "assessment"].includes(log.entityType)
-                ).length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                      No financial change history recorded yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                  {filteredAuditRows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        No financial change history recorded yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       )}
@@ -637,17 +804,27 @@ export default function FinancialLedgerPage() {
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-orange-500" />
                 <div className="font-semibold text-sm">Finance-Grade Alerts</div>
-                {financialAlertsList.filter(a => a.severity === "critical").length > 0 && (
-                  <Badge variant="destructive">{financialAlertsList.filter(a => a.severity === "critical").length} critical</Badge>
+                {criticalAlertCount > 0 && (
+                  <Badge variant="destructive">{criticalAlertCount} critical</Badge>
                 )}
               </div>
-              <Button size="sm" variant="outline" onClick={() => generateAlerts.mutate()} disabled={generateAlerts.isPending || !assocFilter} className="gap-1.5">
+              <Button size="sm" variant="outline" onClick={() => generateAlerts.mutate()} disabled={generateAlerts.isPending || !assocFilter || financialAlertsLoading} className="gap-1.5 min-h-11">
                 <RefreshCw className={`h-3.5 w-3.5 ${generateAlerts.isPending ? "animate-spin" : ""}`} />
                 Run Scan
               </Button>
             </div>
 
-            {financialAlertsList.length === 0 ? (
+            {financialAlertsLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 2 }).map((_, index) => (
+                  <div key={index} className="rounded-md border p-3 space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                ))}
+              </div>
+            ) : financialAlertsList.length === 0 ? (
               <div className="text-sm text-muted-foreground py-2">No active alerts. Run a scan to detect anomalies.</div>
             ) : (
               <div className="space-y-2">
@@ -659,7 +836,7 @@ export default function FinancialLedgerPage() {
                       <div className="text-xs text-muted-foreground">{alert.message}</div>
                       <div className="text-xs text-muted-foreground mt-0.5">{new Date(alert.createdAt).toLocaleDateString()}</div>
                     </div>
-                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 shrink-0" onClick={() => dismissAlert.mutate(alert.id)}>
+                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0 shrink-0" onClick={() => dismissAlert.mutate(alert.id)}>
                       <X className="h-3.5 w-3.5" />
                     </Button>
                   </div>

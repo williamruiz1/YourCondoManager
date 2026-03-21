@@ -52,6 +52,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 
 const feeTypeOptions = ["flat", "percent"] as const;
 
@@ -78,10 +79,15 @@ const calcSchema = z.object({
 type LedgerSummaryRow = { personId: string; unitId: string; balance: number };
 type BulkPreviewRow = LedgerSummaryRow & { daysLate: number; calculatedFee: number; selected: boolean };
 
+function formatCurrency(amount: number) {
+  return `$${amount.toFixed(2)}`;
+}
+
 export default function FinancialLateFeesPage() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"rules" | "activity" | "recovery">("rules");
   const [calcResult, setCalcResult] = useState<{ calculatedFee: number; daysLate: number; appliedEventId: string | null } | null>(null);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
 
@@ -453,12 +459,24 @@ export default function FinancialLateFeesPage() {
         explanation="Late fee rules, events, and recovery actions are scoped to the active association."
       />
 
-      <Tabs defaultValue="rules" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="rules">Rules &amp; Calculator</TabsTrigger>
-          <TabsTrigger value="activity">Fee Activity</TabsTrigger>
-          <TabsTrigger value="recovery">Recovery</TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rules" | "activity" | "recovery")} className="space-y-6">
+        {isMobile ? (
+          <MobileTabBar
+            items={[
+              { id: "rules", label: "Rules" },
+              { id: "activity", label: "Activity" },
+              { id: "recovery", label: "Recovery" },
+            ]}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
+        ) : (
+          <TabsList className="flex w-full overflow-x-auto">
+            <TabsTrigger value="rules" className="shrink-0">Rules &amp; Calculator</TabsTrigger>
+            <TabsTrigger value="activity" className="shrink-0">Fee Activity</TabsTrigger>
+            <TabsTrigger value="recovery" className="shrink-0">Recovery</TabsTrigger>
+          </TabsList>
+        )}
 
         {/* ── Tab 1: Rules & Calculator ── */}
         <TabsContent value="rules" className="space-y-6">
@@ -526,6 +544,38 @@ export default function FinancialLateFeesPage() {
               <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium">No late fee rules</h3>
               <p className="text-sm text-muted-foreground mt-1">Create a rule to begin calculating late fees.</p>
+            </div>
+          ) : isMobile ? (
+            <div className="space-y-3 p-4">
+              {rules.map((row) => (
+                <div key={row.id} className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold leading-5">{row.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {assocNameById.get(row.associationId) ?? "Unknown"}
+                      </div>
+                    </div>
+                    {row.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                    <div>
+                      <div className="uppercase tracking-wide">Type</div>
+                      <div className="mt-1"><Badge variant="secondary">{row.feeType}</Badge></div>
+                    </div>
+                    <div>
+                      <div className="uppercase tracking-wide">Amount</div>
+                      <div className="mt-1 text-sm text-foreground">
+                        {row.feeType === "percent" ? `${row.feeAmount}%` : formatCurrency(row.feeAmount)}
+                      </div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="uppercase tracking-wide">Grace Period</div>
+                      <div className="mt-1 text-sm text-foreground">{row.graceDays} days</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <Table>
@@ -689,42 +739,80 @@ export default function FinancialLateFeesPage() {
           </div>
 
           {previewRows.length > 0 && (
-            <div className="rounded-md border overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-8">
+            isMobile ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2">
+                  <Checkbox
+                    checked={previewRows.every((r) => r.selected)}
+                    onCheckedChange={(checked) => setPreviewRows((prev) => prev.map((r) => ({ ...r, selected: Boolean(checked) })))}
+                  />
+                  <span className="text-sm text-muted-foreground">Select all accounts in this preview run</span>
+                </div>
+                {previewRows.map((row, i) => (
+                  <div key={row.unitId} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Unit {row.unitId.slice(0, 8)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{row.daysLate} days late</div>
+                      </div>
                       <Checkbox
-                        checked={previewRows.every((r) => r.selected)}
-                        onCheckedChange={(checked) => setPreviewRows((prev) => prev.map((r) => ({ ...r, selected: Boolean(checked) })))}
+                        checked={row.selected}
+                        onCheckedChange={(checked) =>
+                          setPreviewRows((prev) => prev.map((r, j) => j === i ? { ...r, selected: Boolean(checked) } : r))
+                        }
                       />
-                    </TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Balance Owed</TableHead>
-                    <TableHead>Days Late</TableHead>
-                    <TableHead>Late Fee</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {previewRows.map((row, i) => (
-                    <TableRow key={row.unitId}>
-                      <TableCell>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div>
+                        <div className="uppercase tracking-wide">Balance Owed</div>
+                        <div className="mt-1 text-sm text-red-600">{formatCurrency(Math.abs(row.balance))}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-wide">Late Fee</div>
+                        <div className="mt-1 text-sm font-semibold text-foreground">{formatCurrency(row.calculatedFee)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-md border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8">
                         <Checkbox
-                          checked={row.selected}
-                          onCheckedChange={(checked) =>
-                            setPreviewRows((prev) => prev.map((r, j) => j === i ? { ...r, selected: Boolean(checked) } : r))
-                          }
+                          checked={previewRows.every((r) => r.selected)}
+                          onCheckedChange={(checked) => setPreviewRows((prev) => prev.map((r) => ({ ...r, selected: Boolean(checked) })))}
                         />
-                      </TableCell>
-                      <TableCell className="font-medium font-mono text-xs">{row.unitId.slice(0, 8)}</TableCell>
-                      <TableCell className="text-red-600">${Math.abs(row.balance).toFixed(2)}</TableCell>
-                      <TableCell>{row.daysLate}</TableCell>
-                      <TableCell className="font-semibold">${row.calculatedFee.toFixed(2)}</TableCell>
+                      </TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Balance Owed</TableHead>
+                      <TableHead>Days Late</TableHead>
+                      <TableHead>Late Fee</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {previewRows.map((row, i) => (
+                      <TableRow key={row.unitId}>
+                        <TableCell>
+                          <Checkbox
+                            checked={row.selected}
+                            onCheckedChange={(checked) =>
+                              setPreviewRows((prev) => prev.map((r, j) => j === i ? { ...r, selected: Boolean(checked) } : r))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium font-mono text-xs">{row.unitId.slice(0, 8)}</TableCell>
+                        <TableCell className="text-red-600">{formatCurrency(Math.abs(row.balance))}</TableCell>
+                        <TableCell>{row.daysLate}</TableCell>
+                        <TableCell className="font-semibold">{formatCurrency(row.calculatedFee)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )
           )}
         </CardContent>
       </Card>
@@ -739,6 +827,33 @@ export default function FinancialLateFeesPage() {
               <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium">No fee events yet</h3>
               <p className="text-sm text-muted-foreground mt-1">Use the Rules &amp; Calculator tab to apply late fees.</p>
+            </div>
+          ) : isMobile ? (
+            <div className="space-y-3 p-4">
+              {(events ?? []).slice(0, 50).map((event) => (
+                <div key={event.id} className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-sm font-semibold leading-5">
+                      {rules?.find((r) => r.id === event.ruleId)?.name ?? event.ruleId}
+                    </div>
+                    <div className="text-sm font-semibold">{formatCurrency(event.calculatedFee)}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                    <div>
+                      <div className="uppercase tracking-wide">Balance</div>
+                      <div className="mt-1 text-sm text-foreground">{formatCurrency(event.balanceAmount)}</div>
+                    </div>
+                    <div>
+                      <div className="uppercase tracking-wide">Due Date</div>
+                      <div className="mt-1 text-sm text-foreground">{new Date(event.dueDate).toLocaleDateString()}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="uppercase tracking-wide">As Of</div>
+                      <div className="mt-1 text-sm text-foreground">{new Date(event.asOfDate).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
           <Table>
@@ -849,42 +964,80 @@ export default function FinancialLateFeesPage() {
           {escalations.length > 0 && (
             <div className="space-y-2">
               <div className="text-sm font-medium">Active Escalations ({escalations.filter((e) => e.status === "active").length})</div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Unit ID</TableHead>
-                    <TableHead>Person ID</TableHead>
-                    <TableHead>Stage</TableHead>
-                    <TableHead>Balance</TableHead>
-                    <TableHead>Days Overdue</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              {isMobile ? (
+                <div className="space-y-3">
                   {escalations.map((esc) => (
-                    <TableRow key={esc.id}>
-                      <TableCell className="font-mono text-sm">{esc.unitId.slice(0, 8)}</TableCell>
-                      <TableCell className="font-mono text-sm">{esc.personId.slice(0, 8)}</TableCell>
-                      <TableCell><Badge variant="outline">Stage {esc.currentStage}</Badge></TableCell>
-                      <TableCell className="text-red-600 font-medium">${Math.abs(esc.balance).toFixed(2)}</TableCell>
-                      <TableCell>{esc.daysPastDue}d</TableCell>
-                      <TableCell><Badge variant={esc.status === "active" ? "destructive" : esc.status === "resolved" ? "default" : "secondary"}>{esc.status}</Badge></TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {esc.status === "active" && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "on_payment_plan" })}>Plan</Button>
-                              <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "referred" })}>Refer</Button>
-                              <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "resolved" })}>Resolve</Button>
-                            </>
-                          )}
+                    <div key={esc.id} className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold">Unit {esc.unitId.slice(0, 8)}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">Person {esc.personId.slice(0, 8)}</div>
                         </div>
-                      </TableCell>
-                    </TableRow>
+                        <Badge variant={esc.status === "active" ? "destructive" : esc.status === "resolved" ? "default" : "secondary"}>
+                          {esc.status}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline">Stage {esc.currentStage}</Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                        <div>
+                          <div className="uppercase tracking-wide">Balance</div>
+                          <div className="mt-1 text-sm font-medium text-red-600">{formatCurrency(Math.abs(esc.balance))}</div>
+                        </div>
+                        <div>
+                          <div className="uppercase tracking-wide">Days Overdue</div>
+                          <div className="mt-1 text-sm text-foreground">{esc.daysPastDue}d</div>
+                        </div>
+                      </div>
+                      {esc.status === "active" && (
+                        <div className="grid grid-cols-1 gap-2">
+                          <Button className="min-h-11 w-full" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "on_payment_plan" })}>Move To Plan</Button>
+                          <Button className="min-h-11 w-full" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "referred" })}>Refer To Collections</Button>
+                          <Button className="min-h-11 w-full" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "resolved" })}>Resolve Escalation</Button>
+                        </div>
+                      )}
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Unit ID</TableHead>
+                      <TableHead>Person ID</TableHead>
+                      <TableHead>Stage</TableHead>
+                      <TableHead>Balance</TableHead>
+                      <TableHead>Days Overdue</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {escalations.map((esc) => (
+                      <TableRow key={esc.id}>
+                        <TableCell className="font-mono text-sm">{esc.unitId.slice(0, 8)}</TableCell>
+                        <TableCell className="font-mono text-sm">{esc.personId.slice(0, 8)}</TableCell>
+                        <TableCell><Badge variant="outline">Stage {esc.currentStage}</Badge></TableCell>
+                        <TableCell className="text-red-600 font-medium">{formatCurrency(Math.abs(esc.balance))}</TableCell>
+                        <TableCell>{esc.daysPastDue}d</TableCell>
+                        <TableCell><Badge variant={esc.status === "active" ? "destructive" : esc.status === "resolved" ? "default" : "secondary"}>{esc.status}</Badge></TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            {esc.status === "active" && (
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "on_payment_plan" })}>Plan</Button>
+                                <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "referred" })}>Refer</Button>
+                                <Button size="sm" variant="outline" onClick={() => updateEscalation.mutate({ id: esc.id, status: "resolved" })}>Resolve</Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </div>
           )}
         </CardContent>

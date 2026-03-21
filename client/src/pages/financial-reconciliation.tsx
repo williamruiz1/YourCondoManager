@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, CheckCircle2, RefreshCw, Plus, GitMerge, Lock, LockOpen, CheckSquare, FileUp } from "lucide-react";
 import type { BankStatementImport, BankStatementTransaction, OwnerLedgerEntry, ReconciliationPeriod } from "@shared/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -97,7 +98,7 @@ export default function FinancialReconciliationPage() {
     reader.readAsText(file);
   }
 
-  const { data: imports = [], refetch: refetchImports } = useQuery<BankStatementImport[]>({
+  const { data: imports = [], refetch: refetchImports, isLoading: importsLoading } = useQuery<BankStatementImport[]>({
     queryKey: ["/api/financial/reconciliation/imports", activeAssociationId],
     queryFn: async () => {
       if (!activeAssociationId) return [];
@@ -107,7 +108,7 @@ export default function FinancialReconciliationPage() {
     enabled: Boolean(activeAssociationId),
   });
 
-  const { data: transactions = [], refetch: refetchTransactions } = useQuery<BankStatementTransaction[]>({
+  const { data: transactions = [], refetch: refetchTransactions, isLoading: transactionsLoading } = useQuery<BankStatementTransaction[]>({
     queryKey: ["/api/financial/reconciliation/transactions", activeAssociationId, selectedImportId],
     queryFn: async () => {
       if (!activeAssociationId) return [];
@@ -124,6 +125,16 @@ export default function FinancialReconciliationPage() {
     queryFn: async () => {
       if (!activeAssociationId) return [];
       const res = await apiRequest("GET", `/api/financial/owner-ledger/entries?associationId=${activeAssociationId}`);
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+
+  const { data: periods = [], refetch: refetchPeriods, isLoading: periodsLoading } = useQuery<ReconciliationPeriod[]>({
+    queryKey: ["/api/financial/reconciliation/periods", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) return [];
+      const res = await apiRequest("GET", `/api/financial/reconciliation/periods?associationId=${activeAssociationId}`);
       return res.json();
     },
     enabled: Boolean(activeAssociationId),
@@ -205,16 +216,6 @@ export default function FinancialReconciliationPage() {
   // Period close controls
   const [periodDialogOpen, setPeriodDialogOpen] = useState(false);
   const [periodForm, setPeriodForm] = useState({ periodLabel: "", startDate: "", endDate: "", notes: "" });
-
-  const { data: periods = [], refetch: refetchPeriods } = useQuery<ReconciliationPeriod[]>({
-    queryKey: ["/api/financial/reconciliation/periods", activeAssociationId],
-    queryFn: async () => {
-      if (!activeAssociationId) return [];
-      const res = await apiRequest("GET", `/api/financial/reconciliation/periods?associationId=${activeAssociationId}`);
-      return res.json();
-    },
-    enabled: Boolean(activeAssociationId),
-  });
 
   const createPeriod = useMutation({
     mutationFn: async () => {
@@ -298,9 +299,9 @@ export default function FinancialReconciliationPage() {
       <Card>
         <CardContent className="pt-6 space-y-3">
           <div className={`gap-3 ${isMobile ? "grid grid-cols-1" : "flex items-center flex-wrap"}`}>
-            <Select value={selectedImportId} onValueChange={setSelectedImportId}>
+            <Select value={selectedImportId} onValueChange={setSelectedImportId} disabled={importsLoading}>
               <SelectTrigger className={isMobile ? "min-h-11 w-full" : "w-72"}>
-                <SelectValue placeholder="Select a statement import" />
+                <SelectValue placeholder={importsLoading ? "Loading imports..." : "Select a statement import"} />
               </SelectTrigger>
               <SelectContent>
                 {imports.map((imp) => (
@@ -322,7 +323,16 @@ export default function FinancialReconciliationPage() {
             )}
           </div>
 
-          {transactions.length > 0 && (
+          {transactionsLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={index} className="rounded-md border p-3 space-y-2">
+                  <Skeleton className="h-7 w-12 mx-auto" />
+                  <Skeleton className="h-3 w-16 mx-auto" />
+                </div>
+              ))}
+            </div>
+          ) : transactions.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">
               {[
                 { label: "Total", value: stats.total, color: "" },
@@ -337,12 +347,12 @@ export default function FinancialReconciliationPage() {
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
       {/* Match Queue */}
-      {transactions.length > 0 && (
+      {(transactionsLoading || transactions.length > 0) && (
         <Card>
           <CardHeader className="pb-2">
             <div className={`gap-3 ${isMobile ? "grid grid-cols-1" : "flex items-center justify-between"}`}>
@@ -352,7 +362,7 @@ export default function FinancialReconciliationPage() {
                 </CardTitle>
                 <CardDescription>Review and match bank transactions to ledger entries</CardDescription>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={setStatusFilter} disabled={transactionsLoading}>
                 <SelectTrigger className={isMobile ? "min-h-11 w-full text-sm" : "w-36 h-8 text-xs"}>
                   <SelectValue />
                 </SelectTrigger>
@@ -367,7 +377,23 @@ export default function FinancialReconciliationPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {isMobile ? (
+            {transactionsLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: isMobile ? 3 : 4 }).map((_, index) => (
+                  <div key={index} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-2">
+                        <Skeleton className="h-4 w-40 max-w-full" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                      <Skeleton className="h-5 w-16 shrink-0" />
+                    </div>
+                    <Skeleton className="h-8 w-28" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                ))}
+              </div>
+            ) : isMobile ? (
               <div className="space-y-3">
                 {filteredTransactions.map((tx) => {
                   const matchedEntry = tx.matchedLedgerEntryId ? ledgerEntries.find(e => e.id === tx.matchedLedgerEntryId) : null;
@@ -499,13 +525,29 @@ export default function FinancialReconciliationPage() {
               </CardTitle>
               <CardDescription>Create, close, and lock reconciliation periods to prevent edits to matched transactions.</CardDescription>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setPeriodDialogOpen(true)} disabled={!activeAssociationId}>
+            <Button size="sm" variant="outline" className={isMobile ? "min-h-11" : undefined} onClick={() => setPeriodDialogOpen(true)} disabled={!activeAssociationId}>
               <Plus className="h-4 w-4 mr-1" /> New Period
             </Button>
           </div>
         </CardHeader>
           <CardContent>
-            {periods.length === 0 ? (
+            {periodsLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: isMobile ? 2 : 3 }).map((_, index) => (
+                  <div key={index} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="h-3 w-52 max-w-full" />
+                      </div>
+                      <Skeleton className="h-5 w-16 shrink-0" />
+                    </div>
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                ))}
+              </div>
+            ) : periods.length === 0 ? (
               <div className="text-sm text-muted-foreground py-4 text-center">No reconciliation periods defined. Create one to track close status.</div>
             ) : (
               isMobile ? (

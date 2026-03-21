@@ -359,10 +359,11 @@ export default function BoardPackagesPage() {
             Configure recurring board packet templates, generate draft packages by period, and schedule auto-generation relative to upcoming meetings.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex"}`}>
           <Button
             variant="outline"
             disabled={!activeAssociationId}
+            className={isMobile ? "w-full min-h-11" : undefined}
             onClick={() => runScheduledGeneration.mutate()}
             title="Checks auto-generate templates for the active association and creates any package due before upcoming meetings."
           >
@@ -370,7 +371,7 @@ export default function BoardPackagesPage() {
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button disabled={!activeAssociationId} onClick={openCreate}>New Template</Button>
+              <Button className={isMobile ? "w-full min-h-11" : undefined} disabled={!activeAssociationId} onClick={openCreate}>New Template</Button>
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader>
@@ -462,9 +463,9 @@ export default function BoardPackagesPage() {
                 onChange={(event) => setTemplateForm((current) => ({ ...current, notes: event.target.value }))}
               />
               <div className={`flex justify-end gap-2 ${isMobile ? "flex-col" : ""}`}>
-                <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button className={isMobile ? "w-full min-h-11" : undefined} variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
                 <Button
-                  className={isMobile ? "w-full" : undefined}
+                  className={isMobile ? "w-full min-h-11" : undefined}
                   onClick={() => saveTemplate.mutate()}
                   disabled={!templateForm.title.trim() || templateForm.sections.length === 0}
                 >
@@ -602,8 +603,8 @@ export default function BoardPackagesPage() {
                       onChange={(event) => setPeriodLabelByTemplate((current) => ({ ...current, [template.id]: event.target.value }))}
                     />
                     <div className="grid grid-cols-2 gap-2">
-                      <Button size="sm" variant="outline" onClick={() => openEdit(template)}>Edit</Button>
-                      <Button size="sm" onClick={() => generatePackage.mutate(template.id)}>Generate</Button>
+                      <Button size="sm" variant="outline" className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => openEdit(template)}>Edit</Button>
+                      <Button size="sm" className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => generatePackage.mutate(template.id)}>Generate</Button>
                     </div>
                     {template.notes ? <div className="text-xs text-muted-foreground">{template.notes}</div> : null}
                   </div>
@@ -673,6 +674,7 @@ export default function BoardPackagesPage() {
                     <Button
                       size="sm"
                       variant="outline"
+                      className={isMobile ? "w-full min-h-11" : undefined}
                       disabled={selectedPackage.status === "approved"}
                       onClick={() => updatePackage.mutate({ id: selectedPackage.id, payload: { status: "approved" } })}
                     >
@@ -681,6 +683,7 @@ export default function BoardPackagesPage() {
                     <Button
                       size="sm"
                       variant="outline"
+                      className={isMobile ? "w-full min-h-11" : undefined}
                       disabled={selectedPackage.status !== "approved"}
                       onClick={submitDistribution}
                     >
@@ -689,6 +692,7 @@ export default function BoardPackagesPage() {
                     <Button
                       size="sm"
                       variant="ghost"
+                      className={isMobile ? "w-full min-h-11" : undefined}
                       disabled={selectedPackage.status === "draft"}
                       onClick={() => updatePackage.mutate({ id: selectedPackage.id, payload: { status: "draft" } })}
                     >
@@ -755,7 +759,7 @@ export default function BoardPackagesPage() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="text-xs h-7"
+                        className={isMobile ? "text-xs h-7 w-full min-h-11" : "text-xs h-7"}
                         onClick={() => setDistributionEmails(boardMemberEmails.join(", "))}
                       >
                         Use Board Member Emails
@@ -776,6 +780,7 @@ export default function BoardPackagesPage() {
                   />
                   <div className={`flex justify-end ${isMobile ? "flex-col" : ""}`}>
                     <Button
+                      className={isMobile ? "w-full min-h-11" : undefined}
                       onClick={submitDistribution}
                       disabled={selectedPackage.status !== "approved" || distributePackage.isPending}
                     >
@@ -840,7 +845,7 @@ export default function BoardPackagesPage() {
                       value={annotationDraft}
                       onChange={(event) => setAnnotationDraft(event.target.value)}
                     />
-                    <Button onClick={addAnnotation} disabled={!annotationDraft.trim()}>Add Note</Button>
+                    <Button className={isMobile ? "min-h-11 w-full" : undefined} onClick={addAnnotation} disabled={!annotationDraft.trim()}>Add Note</Button>
                   </div>
                   <div className="space-y-2">
                     {selectedPackageAnnotations.map((annotation) => (
@@ -892,9 +897,9 @@ export default function BoardPackagesPage() {
             {distributionHistory?.autoScheduleStats && distributionHistory.autoScheduleStats.length > 0 && (
               <div className="space-y-2">
                 <div className="text-sm font-medium">Auto-Schedule Configuration</div>
-                <div className="flex flex-wrap gap-2">
+                <div className={isMobile ? "space-y-2" : "flex flex-wrap gap-2"}>
                   {distributionHistory.autoScheduleStats.map((t) => (
-                    <div key={t.id} className={`rounded-md border px-3 py-2 text-sm ${t.autoGenerate ? "bg-green-50 dark:bg-green-950/20 border-green-300" : "bg-muted"}`}>
+                    <div key={t.id} className={`rounded-md border px-3 py-2 text-sm ${isMobile ? "w-full" : ""} ${t.autoGenerate ? "bg-green-50 dark:bg-green-950/20 border-green-300" : "bg-muted"}`}>
                       <span className="font-medium">{t.title}</span>
                       <span className="text-muted-foreground ml-2">{t.frequency}</span>
                       {t.autoGenerate ? (

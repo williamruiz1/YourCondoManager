@@ -35,6 +35,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 
 type AssociationOverview = {
   associationId: string;
@@ -74,6 +75,7 @@ const profileFormSchema = z.object({
 
 export default function AssociationContextPage() {
   const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState<"overview" | "onboarding" | "records">("overview");
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     unitId: "",
@@ -559,12 +561,24 @@ export default function AssociationContextPage() {
         ]}
       />
 
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
-          <TabsTrigger value="records">Records</TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "overview" | "onboarding" | "records")} className="space-y-4">
+        {isMobile ? (
+          <MobileTabBar
+            items={[
+              { id: "overview", label: "Overview" },
+              { id: "onboarding", label: "Onboarding" },
+              { id: "records", label: "Records" },
+            ]}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
+        ) : (
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+            <TabsTrigger value="records">Records</TabsTrigger>
+          </TabsList>
+        )}
 
         <TabsContent value="overview">
           <AsyncStateBoundary
@@ -573,15 +587,16 @@ export default function AssociationContextPage() {
             emptyTitle="Association overview unavailable"
             emptyMessage="Refresh the page or confirm the active association still exists."
           >
-            <Card>
+          <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-4">
             <CardTitle>Association Profile</CardTitle>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:flex">
               {isEditingProfile ? (
                 <>
                   <Button
                     type="button"
                     size="sm"
+                    className="w-full sm:w-auto"
                     variant="outline"
                     onClick={() => {
                       profileForm.reset({
@@ -603,6 +618,7 @@ export default function AssociationContextPage() {
                   <Button
                     type="button"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={profileForm.handleSubmit((values) => updateProfileMutation.mutate(values))}
                     disabled={updateProfileMutation.isPending}
                   >
@@ -610,7 +626,7 @@ export default function AssociationContextPage() {
                   </Button>
                 </>
               ) : (
-                <Button type="button" size="sm" onClick={() => setIsEditingProfile(true)}>
+                <Button type="button" size="sm" className="w-full sm:w-auto" onClick={() => setIsEditingProfile(true)}>
                   Edit
                 </Button>
               )}

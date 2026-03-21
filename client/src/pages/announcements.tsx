@@ -4,6 +4,7 @@ import type { CommunityAnnouncement } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ const emptyForm = {
 };
 
 export default function AnnouncementsPage() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId } = useActiveAssociation();
   const [open, setOpen] = useState(false);
@@ -67,7 +69,15 @@ export default function AnnouncementsPage() {
       setOpen(false);
       setEditing(null);
       setForm(emptyForm);
-      toast({ title: editing ? "Announcement updated" : "Announcement created" });
+      const published = Boolean(form.isPublished);
+      toast({
+        title: editing
+          ? "Announcement updated"
+          : published
+            ? "Announcement published"
+            : "Draft saved",
+        description: published ? "Visible in the owner portal." : "Not visible yet.",
+      });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -93,6 +103,7 @@ export default function AnnouncementsPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/announcements", activeAssociationId] });
+      toast({ title: "Announcement visibility updated" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -185,53 +196,102 @@ export default function AnnouncementsPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Audience</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Expires</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          {isMobile ? (
+            <div className="space-y-3">
               {announcements.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {a.isPinned ? <Badge variant="outline" className="text-xs">📌</Badge> : null}
-                      <div>
-                        <div className="font-medium">{a.title}</div>
-                        <div className="text-xs text-muted-foreground line-clamp-1">{a.body}</div>
+                <div key={a.id} className="rounded-xl border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        {a.isPinned ? <Badge variant="outline" className="text-xs">Pinned</Badge> : null}
+                        <div className="text-sm font-semibold leading-5">{a.title}</div>
+                      </div>
+                      <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{a.body}</div>
+                    </div>
+                    <Badge variant={a.isPublished ? "secondary" : "outline"}>{a.isPublished ? "Live" : "Draft"}</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                    <div>
+                      <div className="uppercase tracking-wide">Priority</div>
+                      <div className="mt-1">
+                        <Badge variant={a.priority === "urgent" ? "destructive" : a.priority === "important" ? "secondary" : "outline"}>
+                          {a.priority}
+                        </Badge>
                       </div>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={a.priority === "urgent" ? "destructive" : a.priority === "important" ? "secondary" : "outline"}>{a.priority}</Badge>
-                  </TableCell>
-                  <TableCell>{a.targetAudience}</TableCell>
-                  <TableCell>
-                    <Badge variant={a.isPublished ? "secondary" : "outline"}>{a.isPublished ? "Published" : "Draft"}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">{a.expiresAt ? new Date(a.expiresAt).toLocaleDateString() : "-"}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="outline" onClick={() => togglePublish.mutate({ id: a.id, isPublished: a.isPublished ? 0 : 1 })} disabled={togglePublish.isPending}>
-                        {a.isPublished ? "Unpublish" : "Publish"}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => openEdit(a)}>Edit</Button>
-                      <Button size="sm" variant="outline" onClick={() => deleteAnnouncement.mutate(a.id)} disabled={deleteAnnouncement.isPending}>Delete</Button>
+                    <div>
+                      <div className="uppercase tracking-wide">Audience</div>
+                      <div className="mt-1 text-sm text-foreground">{a.targetAudience}</div>
                     </div>
-                  </TableCell>
-                </TableRow>
+                    <div className="col-span-2">
+                      <div className="uppercase tracking-wide">Expires</div>
+                      <div className="mt-1 text-sm text-foreground">{a.expiresAt ? new Date(a.expiresAt).toLocaleDateString() : "No expiry"}</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <Button className="min-h-11 w-full" variant="outline" onClick={() => togglePublish.mutate({ id: a.id, isPublished: a.isPublished ? 0 : 1 })} disabled={togglePublish.isPending}>
+                      {a.isPublished ? "Unpublish" : "Publish"}
+                    </Button>
+                    <Button className="min-h-11 w-full" variant="outline" onClick={() => openEdit(a)}>Edit</Button>
+                    <Button className="min-h-11 w-full" variant="outline" onClick={() => deleteAnnouncement.mutate(a.id)} disabled={deleteAnnouncement.isPending}>Delete</Button>
+                  </div>
+                </div>
               ))}
               {announcements.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="h-16 text-center text-muted-foreground">No announcements yet.</TableCell></TableRow>
+                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                  No announcements yet. Publish one to show it in the owner portal.
+                </div>
               )}
-            </TableBody>
-          </Table>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Audience</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {announcements.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {a.isPinned ? <Badge variant="outline" className="text-xs">📌</Badge> : null}
+                        <div>
+                          <div className="font-medium">{a.title}</div>
+                          <div className="text-xs text-muted-foreground line-clamp-1">{a.body}</div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={a.priority === "urgent" ? "destructive" : a.priority === "important" ? "secondary" : "outline"}>{a.priority}</Badge>
+                    </TableCell>
+                    <TableCell>{a.targetAudience}</TableCell>
+                    <TableCell>
+                      <Badge variant={a.isPublished ? "secondary" : "outline"}>{a.isPublished ? "Published" : "Draft"}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">{a.expiresAt ? new Date(a.expiresAt).toLocaleDateString() : "-"}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="outline" onClick={() => togglePublish.mutate({ id: a.id, isPublished: a.isPublished ? 0 : 1 })} disabled={togglePublish.isPending}>
+                          {a.isPublished ? "Unpublish" : "Publish"}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => openEdit(a)}>Edit</Button>
+                        <Button size="sm" variant="outline" onClick={() => deleteAnnouncement.mutate(a.id)} disabled={deleteAnnouncement.isPending}>Delete</Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {announcements.length === 0 && (
+                  <TableRow><TableCell colSpan={6} className="h-16 text-center text-muted-foreground">No announcements yet.</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
