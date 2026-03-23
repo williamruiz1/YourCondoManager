@@ -46,12 +46,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { DataTableShell } from "@/components/data-table-shell";
 import { TaskFlowChecklist } from "@/components/task-flow-checklist";
 
-const documentTypes = ["Meeting Minutes", "Bylaws", "Financial Report", "Insurance", "Legal", "Maintenance", "Other"];
+const documentTypes = ["Meeting Minutes", "Bylaws", "Financial Report", "Insurance", "Legal", "Maintenance", "Operations", "Other"];
 
 const formSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -73,7 +72,7 @@ const addVersionSchema = z.object({
 });
 
 
-export default function DocumentsPage() {
+export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = {}) {
   const [open, setOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
@@ -120,7 +119,7 @@ export default function DocumentsPage() {
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { associationId: "", title: "", documentType: "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner" },
+    defaultValues: { associationId: "", title: "", documentType: typeFilter ?? "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner" },
   });
 
   const tagForm = useForm<z.infer<typeof addTagSchema>>({
@@ -277,6 +276,7 @@ export default function DocumentsPage() {
   const filteredDocuments = useMemo(() => {
     const term = search.trim().toLowerCase();
     const rows = [...(documents ?? [])].filter((document) => {
+      if (typeFilter && document.documentType !== typeFilter) return false;
       if (!term) return true;
       return [
         document.title,
@@ -438,16 +438,6 @@ export default function DocumentsPage() {
             </div>
           </DialogContent>
         </Dialog>}
-      />
-
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation={
-          activeAssociationId
-            ? "Uploads, metadata changes, and document versions are applied to the active association context."
-            : "Select an association before uploading or organizing documents."
-        }
       />
 
       <AsyncStateBoundary

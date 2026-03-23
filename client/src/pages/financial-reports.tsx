@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import type { Budget, BudgetLine, BudgetVersion, OwnerLedgerEntry } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { AlertTriangle, Download, Info, Printer } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
@@ -297,19 +295,12 @@ export default function FinancialReportsPage() {
   return (
     <div className="flex flex-col min-h-0">
       <style>{`@media print { .no-print { display: none; } }`}</style>
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Financial Reports"
         eyebrow="Finance"
         summary="Income & expense summary, collection rates, and accounts receivable aging for the active association."
         breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Reports" }]}
-      />
-
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation="Reports are computed from ledger data scoped to the active association. Select an association to generate reports."
       />
 
       {/* Controls */}
@@ -319,7 +310,7 @@ export default function FinancialReportsPage() {
             items={reportItems}
             value={report}
             onChange={(value) => setReport(value)}
-            fullWidth
+            variant="tabular"
           />
         ) : (
           <TooltipProvider>
@@ -621,7 +612,7 @@ export default function FinancialReportsPage() {
                       <div key={`${row.unitId}-${row.personId}`} className="rounded-lg border p-4 space-y-2">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="font-medium">Unit {row.unitId.slice(0, 8)}</div>
+                            <div className="font-medium">{row.unitId.slice(0, 8)}</div>
                             <div className="text-xs text-muted-foreground">Person {row.personId.slice(0, 8)}</div>
                           </div>
                           <Badge variant={row.balance < 0 ? "destructive" : "default"}>
@@ -789,7 +780,7 @@ export default function FinancialReportsPage() {
                   <div className="space-y-3">
                     {agingData.delinquent.slice(0, 8).map((r) => (
                       <div key={`${r.unitId}-${r.personId}`} className="rounded-lg border p-4 flex items-start justify-between gap-3">
-                        <div className="font-medium">Unit {r.unitId.slice(0, 8)}</div>
+                        <div className="font-medium">{r.unitId.slice(0, 8)}</div>
                         <div className="text-sm font-semibold text-red-600">{formatCurrency(Math.abs(r.balance))}</div>
                       </div>
                     ))}

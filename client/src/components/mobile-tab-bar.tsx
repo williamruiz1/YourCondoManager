@@ -13,13 +13,43 @@ export function MobileTabBar<T extends string>({
   onChange,
   className,
   fullWidth = false,
+  variant = "pill",
 }: {
   items: TabItem<T>[];
   value: T;
   onChange: (value: T) => void;
   className?: string;
   fullWidth?: boolean;
+  variant?: "pill" | "tabular";
 }) {
+  if (variant === "tabular") {
+    return (
+      <div className={cn("overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", className)}>
+        <nav className="flex min-w-max gap-0">
+          {items.map((item) => {
+            const active = item.id === value;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onChange(item.id)}
+                className={cn(
+                  "inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
+                  active
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
+                )}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+    );
+  }
+
   return (
     <div className={cn("overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", className)}>
       <div

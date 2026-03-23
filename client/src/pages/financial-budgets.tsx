@@ -13,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { ChevronRight, Plus, CheckCircle2, FileText } from "lucide-react";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -229,7 +228,6 @@ export default function FinancialBudgetsPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Budgets"

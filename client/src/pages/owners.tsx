@@ -364,7 +364,7 @@ export default function OwnersPage() {
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl><SelectTrigger data-testid="select-ownership-unit"><SelectValue placeholder="Select unit" /></SelectTrigger></FormControl>
                         <SelectContent>
-                          {units.map((u) => <SelectItem key={u.id} value={u.id}>Unit {u.unitNumber} {u.building ? `(${u.building})` : ""}</SelectItem>)}
+                          {units.map((u) => <SelectItem key={u.id} value={u.id}>{u.unitNumber} {u.building ? `(${u.building})` : ""}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <FormMessage />

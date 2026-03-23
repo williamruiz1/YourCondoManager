@@ -18,8 +18,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FileUp, Send, AlertTriangle, RefreshCw, X } from "lucide-react";
@@ -116,7 +114,7 @@ function SendNoticeDialog({
         <DialogHeader>
           <DialogTitle>Send Payment Notice</DialogTitle>
           <DialogDescription>
-            This notice will be emailed to <strong>{ownerName}</strong> (Unit {unitNumber}).
+            This notice will be emailed to <strong>{ownerName}</strong> ({unitNumber}).
             Edit the message below before sending.
           </DialogDescription>
         </DialogHeader>
@@ -324,7 +322,6 @@ export default function FinancialLedgerPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Owner Ledger"
@@ -373,16 +370,6 @@ export default function FinancialLedgerPage() {
         </Dialog></div>}
       />
 
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation={
-          activeAssociationId
-            ? "Summary, analytics, and new ledger entries are tied to the active association and should be reviewed in that operating context."
-            : "Select an association to review balances or post new owner-ledger entries."
-        }
-      />
-
       <AsyncStateBoundary
         isLoading={summaryQuery.isLoading}
         error={summaryQuery.error}
@@ -408,7 +395,7 @@ export default function FinancialLedgerPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-medium">{personName.get(s.personId) || s.personId}</div>
-                        <div className="text-xs text-muted-foreground">Unit {unitName.get(s.unitId) || s.unitId}</div>
+                        <div className="text-xs text-muted-foreground">{unitName.get(s.unitId) || s.unitId}</div>
                       </div>
                       <Badge variant={s.balance > 0 ? "destructive" : "default"}>${s.balance.toFixed(2)}</Badge>
                     </div>
@@ -667,7 +654,7 @@ export default function FinancialLedgerPage() {
                     <div className="min-w-0">
                       <div className="font-medium">{personName.get(e.personId) || e.personId}</div>
                       <div className="text-xs text-muted-foreground">
-                        {new Date(e.postedAt).toLocaleDateString()} · Unit {unitName.get(e.unitId) || e.unitId}
+                        {new Date(e.postedAt).toLocaleDateString()} · {unitName.get(e.unitId) || e.unitId}
                       </div>
                     </div>
                     <Badge variant="secondary">{e.entryType}</Badge>

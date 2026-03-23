@@ -44,9 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Calculator, Plus } from "lucide-react";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { Textarea } from "@/components/ui/textarea";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -151,7 +149,6 @@ export default function FinancialAssessmentsPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Special Assessments"
@@ -263,12 +260,6 @@ export default function FinancialAssessmentsPage() {
           </Dialog>
         }
       />
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation="Assessments are scoped to the active association. Select one to view and create assessments."
-      />
-
       <Card>
         <CardContent className="p-0">
           {isLoading ? (

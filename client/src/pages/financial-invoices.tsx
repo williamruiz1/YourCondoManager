@@ -16,9 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { DataTableShell } from "@/components/data-table-shell";
 import { AlertTriangle, Ban, CheckCircle2, Clock, DollarSign, FileText } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -286,7 +284,6 @@ export default function FinancialInvoicesPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Vendor Invoices"
@@ -366,16 +363,6 @@ export default function FinancialInvoicesPage() {
               </Form>
             </DialogContent>
           </Dialog>
-        }
-      />
-
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation={
-          activeAssociationId
-            ? "New invoices and supporting files will be filed under the active association."
-            : "Select an association before creating invoices or uploading supporting files."
         }
       />
 

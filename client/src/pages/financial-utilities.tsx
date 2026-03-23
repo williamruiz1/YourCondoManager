@@ -15,10 +15,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const utilitySchema = z.object({
@@ -153,7 +151,6 @@ export default function FinancialUtilitiesPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Utility Payments"
@@ -161,12 +158,6 @@ export default function FinancialUtilitiesPage() {
         eyebrow="Finance"
         breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Utility Payments" }]}
       />
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation="Utility bills and utility attachments are scoped to the active association. Select one before recording or uploading payments."
-      />
-
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div />
         <Dialog open={open} onOpenChange={setOpen}>

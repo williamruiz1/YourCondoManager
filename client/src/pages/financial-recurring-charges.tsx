@@ -5,8 +5,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -256,7 +254,6 @@ export default function FinancialRecurringChargesPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Recurring Charges"
@@ -264,12 +261,6 @@ export default function FinancialRecurringChargesPage() {
           eyebrow="Finance"
           breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Recurring Charges" }]}
         />
-
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation="Recurring charges are scoped per association. Select one to manage its charge schedules."
-      />
 
       {/* Summary KPIs */}
         {activeAssociationId && (

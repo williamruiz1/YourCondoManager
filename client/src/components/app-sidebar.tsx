@@ -99,6 +99,7 @@ const associationModules: NavModule[] = [
       { title: "Board Packages", url: "/app/governance/board-packages", icon: PackageOpen, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { title: "Meetings", url: "/app/governance/meetings", icon: CalendarDays, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { title: "Compliance", url: "/app/governance/compliance", icon: ClipboardCheck, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Communications", url: "/app/communications", icon: MessageSquare, activePrefix: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
   },
   {
@@ -117,7 +118,6 @@ const associationModules: NavModule[] = [
     children: [
       { title: "Work Orders", url: "/app/work-orders", icon: ClipboardList, activePrefix: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { title: "Vendors", url: "/app/vendors", icon: BriefcaseBusiness, activePrefix: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Communications", url: "/app/communications", icon: MessageSquare, activePrefix: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
   },
 ];
@@ -179,7 +179,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
-        <div className="p-4 flex items-center gap-2.5">
+        <Link href="/" className="p-4 flex items-center gap-2.5 hover:opacity-80 transition-opacity">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm flex-shrink-0">
             <Building2 className="h-4 w-4" />
           </div>
@@ -189,7 +189,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
             </h2>
             <p className="text-[11px] text-muted-foreground leading-tight">Property Platform</p>
           </div>
-        </div>
+        </Link>
         <div className="px-3 pb-3 group-data-[collapsible=icon]:hidden">
           {activeAssociationId ? (
             singleAssociationBoardExperience ? (

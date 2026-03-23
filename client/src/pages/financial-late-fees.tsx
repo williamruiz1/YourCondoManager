@@ -45,12 +45,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, Plus, Play, Loader2, HandCoins } from "lucide-react";
 import { useActiveAssociation } from "@/hooks/use-active-association";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { HelpTooltip } from "@/components/help-tooltip";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 
@@ -445,7 +443,6 @@ export default function FinancialLateFeesPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Late Fees"
@@ -453,12 +450,6 @@ export default function FinancialLateFeesPage() {
         summary="Manage late fee rules, review applied fees, and recover delinquent balances through payment plans and collections handoffs."
         breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Late Fees" }]}
       />
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation="Late fee rules, events, and recovery actions are scoped to the active association."
-      />
-
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rules" | "activity" | "recovery")} className="space-y-6">
         {isMobile ? (
           <MobileTabBar
@@ -469,9 +460,10 @@ export default function FinancialLateFeesPage() {
             ]}
             value={activeTab}
             onChange={setActiveTab}
+            variant="tabular"
           />
         ) : (
-          <TabsList className="flex w-full overflow-x-auto">
+          <TabsList className="w-full overflow-x-auto">
             <TabsTrigger value="rules" className="shrink-0">Rules &amp; Calculator</TabsTrigger>
             <TabsTrigger value="activity" className="shrink-0">Fee Activity</TabsTrigger>
             <TabsTrigger value="recovery" className="shrink-0">Recovery</TabsTrigger>
@@ -752,7 +744,7 @@ export default function FinancialLateFeesPage() {
                   <div key={row.unitId} className="rounded-lg border p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold">Unit {row.unitId.slice(0, 8)}</div>
+                        <div className="text-sm font-semibold">{row.unitId.slice(0, 8)}</div>
                         <div className="mt-1 text-xs text-muted-foreground">{row.daysLate} days late</div>
                       </div>
                       <Checkbox
@@ -970,7 +962,7 @@ export default function FinancialLateFeesPage() {
                     <div key={esc.id} className="rounded-lg border p-4 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="text-sm font-semibold">Unit {esc.unitId.slice(0, 8)}</div>
+                          <div className="text-sm font-semibold">{esc.unitId.slice(0, 8)}</div>
                           <div className="mt-1 text-xs text-muted-foreground">Person {esc.personId.slice(0, 8)}</div>
                         </div>
                         <Badge variant={esc.status === "active" ? "destructive" : esc.status === "resolved" ? "default" : "secondary"}>
@@ -1123,7 +1115,7 @@ export default function FinancialLateFeesPage() {
                   <div key={plan.id} className="rounded-lg border p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-medium">Unit {plan.unitId.slice(0, 8)}...</div>
+                        <div className="font-medium">{plan.unitId.slice(0, 8)}...</div>
                         <div className="text-xs text-muted-foreground">
                           {plan.nextDueDate ? `Next due ${new Date(plan.nextDueDate).toLocaleDateString()}` : "No next due date"}
                         </div>
@@ -1284,7 +1276,7 @@ export default function FinancialLateFeesPage() {
                       <div key={h.id} className="rounded-lg border p-4 space-y-3">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="font-medium">Unit {h.unitId.slice(0, 8)}</div>
+                            <div className="font-medium">{h.unitId.slice(0, 8)}</div>
                             <div className="text-xs text-muted-foreground">
                               Referred {new Date(h.referralDate).toLocaleDateString()}
                             </div>

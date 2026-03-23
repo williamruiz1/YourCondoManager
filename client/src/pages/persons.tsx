@@ -463,7 +463,7 @@ export default function PersonsPage() {
                               if (!u) return null;
                               return (
                                 <span key={id} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
-                                  {u.building ? `${u.building}-` : ""}Unit {u.unitNumber}
+                                  {u.building ? `${u.building}-` : ""}{u.unitNumber}
                                   <button type="button" onClick={() => setSelectedOwnerUnitIds((prev) => prev.filter((x) => x !== id))}>
                                     <X className="h-3 w-3" />
                                   </button>
@@ -483,7 +483,7 @@ export default function PersonsPage() {
                                   )
                                 }
                               />
-                              Unit {unit.unitNumber}{unit.building ? ` · ${unit.building}` : ""}
+                              {unit.unitNumber}{unit.building ? ` · ${unit.building}` : ""}
                             </label>
                           ))}
                           {units.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">No units available</div>}
@@ -503,7 +503,7 @@ export default function PersonsPage() {
                               <SelectItem value="none">No unit</SelectItem>
                               {units.map((unit) => (
                                 <SelectItem key={unit.id} value={unit.id}>
-                                  Unit {unit.unitNumber}{unit.building ? ` · ${unit.building}` : ""}
+                                  {unit.unitNumber}{unit.building ? ` · ${unit.building}` : ""}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -709,7 +709,7 @@ export default function PersonsPage() {
                               <div key={i} className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Home className="h-3 w-3 shrink-0" />
                                 <span>
-                                  {unit!.building ? `${unit!.building} · ` : ""}Unit {unit!.unitNumber}
+                                  {unit!.building ? `${unit!.building} · ` : ""}{unit!.unitNumber}
                                 </span>
                               </div>
                             ))}

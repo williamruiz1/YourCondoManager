@@ -12,9 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useAssociationContext } from "@/context/association-context";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { OwnerPaymentLink, PaymentGatewayConnection, PaymentMethodConfig, PartialPaymentRule, Person, Unit } from "@shared/schema";
@@ -1148,7 +1146,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Badge variant={e.entryType === "payment" ? "default" : "secondary"} className="text-xs">{e.entryType}</Badge>
-                      <Badge variant="outline" className="font-mono text-[10px]">Unit {e.unitId.slice(0, 8)}</Badge>
+                      <Badge variant="outline" className="font-mono text-[10px]">{e.unitId.slice(0, 8)}</Badge>
                       <Badge variant="outline" className="font-mono text-[10px]">Person {e.personId.slice(0, 8)}</Badge>
                     </div>
                     {e.description ? (
@@ -1236,7 +1234,7 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>
-                    <Badge variant="outline" className="font-mono text-[10px]">Unit {ex.unitId.slice(0, 8)}</Badge>
+                    <Badge variant="outline" className="font-mono text-[10px]">{ex.unitId.slice(0, 8)}</Badge>
                     <Badge variant="outline" className="font-mono text-[10px]">Person {ex.personId.slice(0, 8)}</Badge>
                   </div>
                   <div className="mt-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
@@ -1328,19 +1326,12 @@ export default function FinancialPaymentsPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Payments"
         summary="Configure how owners pay their dues — add payment methods, optionally connect an ACH gateway, and generate owner payment links."
         eyebrow="Finance"
         breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Payments" }]}
-      />
-
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation="Payment methods and gateway connections are scoped to the selected association. Select one to manage its payment setup."
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1356,9 +1347,10 @@ export default function FinancialPaymentsPage() {
             ]}
             value={activeTab}
             onChange={setActiveTab}
+            variant="tabular"
           />
         ) : (
-          <TabsList className="flex w-full overflow-x-auto">
+          <TabsList className="w-full overflow-x-auto">
             <TabsTrigger value="methods" className="gap-1.5 shrink-0">
               <CreditCard className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Methods</span>

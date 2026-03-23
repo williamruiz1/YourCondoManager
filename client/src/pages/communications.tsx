@@ -1086,7 +1086,7 @@ export default function CommunicationsPage() {
                     variant={paymentInstructionForm.selectedUnitIds.includes(unit.id) ? "default" : "outline"}
                     onClick={() => toggleUnitSelection(unit.id, "payment")}
                   >
-                    Unit {unit.unitNumber}
+                    {unit.unitNumber}
                   </Button>
                 ))}
               </div>
@@ -1169,7 +1169,7 @@ export default function CommunicationsPage() {
               <SelectContent>
                 <SelectItem value="none">select unit</SelectItem>
                 {(units ?? []).map((unit) => (
-                  <SelectItem key={unit.id} value={unit.id}>Unit {unit.unitNumber}</SelectItem>
+                  <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1535,7 +1535,7 @@ export default function CommunicationsPage() {
                   variant={targetedForm.selectedUnitIds.includes(unit.id) ? "default" : "outline"}
                   onClick={() => toggleUnitSelection(unit.id, "targeted")}
                 >
-                  Unit {unit.unitNumber}
+                  {unit.unitNumber}
                 </Button>
               ))}
             </div>

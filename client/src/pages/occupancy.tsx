@@ -181,7 +181,7 @@ export default function OccupancyPage() {
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger data-testid="select-occupancy-unit"><SelectValue placeholder="Select unit" /></SelectTrigger></FormControl>
                       <SelectContent>
-                        {units.map((u) => <SelectItem key={u.id} value={u.id}>Unit {u.unitNumber}</SelectItem>)}
+                        {units.map((u) => <SelectItem key={u.id} value={u.id}>{u.unitNumber}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -247,7 +247,7 @@ export default function OccupancyPage() {
               </div>
               <Select value={intakeForm.unitId || "none"} onValueChange={(v) => setIntakeForm((p) => ({ ...p, unitId: v === "none" ? "" : v }))}>
                 <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
-                <SelectContent><SelectItem value="none">select unit</SelectItem>{units.map((u) => <SelectItem key={u.id} value={u.id}>Unit {u.unitNumber} {u.building ? `(${u.building})` : ""}</SelectItem>)}</SelectContent>
+                <SelectContent><SelectItem value="none">select unit</SelectItem>{units.map((u) => <SelectItem key={u.id} value={u.id}>{u.unitNumber} {u.building ? `(${u.building})` : ""}</SelectItem>)}</SelectContent>
               </Select>
               <Select value={intakeForm.occupancyType} onValueChange={(v) => setIntakeForm((p) => ({ ...p, occupancyType: v as "OWNER_OCCUPIED" | "TENANT" }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -308,7 +308,7 @@ export default function OccupancyPage() {
                     {occupancies.map((o) => (
                       <TableRow key={o.id} data-testid={`row-occupancy-${o.id}`}>
                         <TableCell className="font-medium">{getPersonName(o.personId)}</TableCell>
-                        <TableCell>Unit {getUnitLabel(o.unitId)}</TableCell>
+                        <TableCell>{getUnitLabel(o.unitId)}</TableCell>
                         <TableCell>
                           <Badge variant={o.occupancyType === "OWNER_OCCUPIED" ? "default" : "secondary"}>
                             {o.occupancyType === "OWNER_OCCUPIED" ? "Owner" : "Tenant"}
@@ -327,7 +327,7 @@ export default function OccupancyPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-medium">{getPersonName(o.personId)}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">Unit {getUnitLabel(o.unitId)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{getUnitLabel(o.unitId)}</div>
                       </div>
                       <Badge variant={o.occupancyType === "OWNER_OCCUPIED" ? "default" : "secondary"}>
                         {o.occupancyType === "OWNER_OCCUPIED" ? "Owner" : "Tenant"}

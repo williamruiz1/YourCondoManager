@@ -1139,7 +1139,7 @@ export default function UnitsPage() {
                         {group.unitRows.map((row) => (
                           <div key={row.unit.id} className="border mb-2 rounded-md p-3 text-sm md:mb-0 md:rounded-none md:border-0 md:p-3">
                             <div className="grid gap-3 lg:grid-cols-[80px_110px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] lg:items-center">
-                              <div className="font-medium">Unit {row.unit.unitNumber}</div>
+                              <div className="font-medium">{row.unit.unitNumber}</div>
 
                               <div className="min-w-0">
                                 <Badge

@@ -866,321 +866,6 @@ export default function AssociationContextPage() {
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="coverage-tools" className="rounded-xl border px-4">
-              <AccordionTrigger className="text-sm font-semibold">Coverage & Invite Tools</AccordionTrigger>
-              <AccordionContent className="pb-4">
-                <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-                  <div className="rounded-xl border p-4 space-y-4">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <div>
-                        <div className="text-sm font-semibold">Unit Coverage</div>
-                        <div className="text-xs text-muted-foreground">
-                          Identify unclaimed units, invite status, and intake review status at the unit level.
-                        </div>
-                      </div>
-                      <Button asChild size="sm" variant="outline">
-                        <Link href="/app/communications">Open Communications</Link>
-                      </Button>
-                    </div>
-                    <div className="hidden md:block">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Unit</TableHead>
-                            <TableHead>Coverage</TableHead>
-                            <TableHead>Invites</TableHead>
-                            <TableHead>Submission</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {unitCoverageRows.slice(0, 25).map((row) => (
-                          <TableRow key={row.unitId}>
-                              <TableCell>
-                                <div className="font-medium">Unit {row.unitNumber}</div>
-                                <div className="text-xs text-muted-foreground">{row.building}</div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={row.coverageStatus === "claimed" ? "default" : row.coverageStatus === "pending-review" ? "secondary" : "outline"}>
-                                  {row.coverageStatus.replace("-", " ")}
-                                </Badge>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  {formatOccupancyStatus(row.occupancyStatus)} · Owners {row.ownerCount} · Tenants {row.tenantCount}
-                                  {row.lastOccupancyUpdate ? ` · Updated ${new Date(row.lastOccupancyUpdate).toLocaleDateString()}` : ""}
-                                </div>
-                              </TableCell>
-                              <TableCell>{row.inviteCount}</TableCell>
-                              <TableCell>
-                                {row.latestSubmission ? (
-                                  <div className="text-xs">
-                                    <div>{row.latestSubmission.firstName} {row.latestSubmission.lastName}</div>
-                                    <div className="text-muted-foreground">{row.latestSubmission.status}</div>
-                                  </div>
-                                ) : <span className="text-xs text-muted-foreground">No submission</span>}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-2">
-                                  <Button size="sm" variant="outline" onClick={() => openManualIntake({ unitId: row.unitId, ownerCount: row.ownerCount, occupantCount: row.occupantCount })}>
-                                    Manual Entry
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "owner" })}
-                                    disabled={unitLinkMutation.isPending}
-                                  >
-                                    Owner Link
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "tenant" })}
-                                    disabled={unitLinkMutation.isPending}
-                                  >
-                                    Tenant Link
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          {unitCoverageRows.length === 0 ? (
-                            <TableRow><TableCell colSpan={5} className="text-muted-foreground">No units available for onboarding coverage.</TableCell></TableRow>
-                          ) : null}
-                        </TableBody>
-                      </Table>
-                    </div>
-                    <div className="space-y-3 md:hidden">
-                      {unitCoverageRows.slice(0, 25).map((row) => (
-                        <div key={row.unitId} className="rounded-xl border p-4 space-y-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium">Unit {row.unitNumber}</div>
-                              <div className="mt-1 text-xs text-muted-foreground">{row.building}</div>
-                            </div>
-                            <Badge variant={row.coverageStatus === "claimed" ? "default" : row.coverageStatus === "pending-review" ? "secondary" : "outline"}>
-                              {row.coverageStatus.replace("-", " ")}
-                            </Badge>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatOccupancyStatus(row.occupancyStatus)} · Owners {row.ownerCount} · Tenants {row.tenantCount}
-                            {row.lastOccupancyUpdate ? ` · Updated ${new Date(row.lastOccupancyUpdate).toLocaleDateString()}` : ""}
-                          </div>
-                          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                            <span>{row.inviteCount} invite{row.inviteCount === 1 ? "" : "s"}</span>
-                            <span>
-                              {row.latestSubmission
-                                ? `${row.latestSubmission.firstName} ${row.latestSubmission.lastName} · ${row.latestSubmission.status}`
-                                : "No submission"}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                            <Button size="sm" variant="outline" onClick={() => openManualIntake({ unitId: row.unitId, ownerCount: row.ownerCount, occupantCount: row.occupantCount })}>
-                              Manual Entry
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "owner" })}
-                              disabled={unitLinkMutation.isPending}
-                            >
-                              Owner Link
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => unitLinkMutation.mutate({ unitId: row.unitId, residentType: "tenant" })}
-                              disabled={unitLinkMutation.isPending}
-                            >
-                              Tenant Link
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                      {unitCoverageRows.length === 0 ? (
-                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No units available for onboarding coverage.</div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border p-4 space-y-4">
-                    <div>
-                      <div className="text-sm font-semibold">Create Invite</div>
-                      <div className="text-xs text-muted-foreground">
-                        Generate an owner or tenant intake link for a specific unit.
-                      </div>
-                    </div>
-                    <div className="grid gap-3">
-                      {inviteQuickPickUnits.length > 0 ? (
-                        <div className="space-y-2">
-                          <div className="text-xs text-muted-foreground">Quick pick a unit</div>
-                          <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                            <div className="flex min-w-max gap-2">
-                              {inviteQuickPickUnits.map((row) => (
-                                <Button
-                                  key={row.unitId}
-                                  type="button"
-                                  size="sm"
-                                  variant={inviteForm.unitId === row.unitId ? "default" : "outline"}
-                                  className="h-auto min-h-10 rounded-full px-3 py-2 text-left"
-                                  onClick={() => setInviteForm((prev) => ({ ...prev, unitId: row.unitId }))}
-                                >
-                                  <span className="font-medium">Unit {row.unitNumber}</span>
-                                  <span className="ml-1 text-xs opacity-80">{row.building}</span>
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                      {selectedInviteUnit ? (
-                        <div className="rounded-lg border bg-muted/20 px-3 py-2 text-sm">
-                          <div className="font-medium">Selected unit: {selectedInviteUnit.building} · Unit {selectedInviteUnit.unitNumber}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {formatOccupancyStatus(selectedInviteUnit.occupancyStatus)} · Owners {selectedInviteUnit.ownerCount} · Tenants {selectedInviteUnit.tenantCount}
-                          </div>
-                        </div>
-                      ) : null}
-                      <Select value={inviteForm.unitId || "none"} onValueChange={(value) => setInviteForm((prev) => ({ ...prev, unitId: value === "none" ? "" : value }))}>
-                        <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Select unit" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">select unit</SelectItem>
-                          {(residentialDataset?.units ?? []).map((unit) => (
-                            <SelectItem key={unit.id} value={unit.id}>Unit {unit.unitNumber}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={inviteForm.residentType} onValueChange={(value) => setInviteForm((prev) => ({ ...prev, residentType: value as "owner" | "tenant" }))}>
-                        <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Resident type" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="owner">Owner</SelectItem>
-                          <SelectItem value="tenant">Tenant</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input className={isMobile ? "min-h-11" : undefined} placeholder="Email (optional)" value={inviteForm.email} onChange={(event) => setInviteForm((prev) => ({ ...prev, email: event.target.value }))} />
-                      <Input className={isMobile ? "min-h-11" : undefined} placeholder="Phone (optional)" value={inviteForm.phone} onChange={(event) => setInviteForm((prev) => ({ ...prev, phone: event.target.value }))} />
-                      <Input className={isMobile ? "min-h-11" : undefined} type="datetime-local" value={inviteForm.expiresAt} onChange={(event) => setInviteForm((prev) => ({ ...prev, expiresAt: event.target.value }))} />
-                      <Button onClick={() => createInviteMutation.mutate()} disabled={createInviteMutation.isPending}>
-                        Create Onboarding Invite
-                      </Button>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner" })}
-                          disabled={unitLinkMutation.isPending || !inviteForm.unitId}
-                        >
-                          Copy Owner Link
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "tenant" })}
-                          disabled={unitLinkMutation.isPending || !inviteForm.unitId}
-                        >
-                          Copy Tenant Link
-                        </Button>
-                      </div>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "owner", regenerate: true })}
-                          disabled={unitLinkMutation.isPending || !inviteForm.unitId}
-                        >
-                          Regenerate Owner
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => inviteForm.unitId && unitLinkMutation.mutate({ unitId: inviteForm.unitId, residentType: "tenant", regenerate: true })}
-                          disabled={unitLinkMutation.isPending || !inviteForm.unitId}
-                        >
-                          Regenerate Tenant
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="border-t pt-4 space-y-3">
-                      <div className="text-sm font-semibold">Reminder Sweep</div>
-                      <div className="flex gap-2">
-                        <Input type="number" min="0" value={reminderSweepHours} onChange={(event) => setReminderSweepHours(event.target.value)} />
-                        <Button variant="outline" onClick={() => reminderSweepMutation.mutate()} disabled={reminderSweepMutation.isPending}>
-                          Run Sweep
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="invites" className="rounded-xl border px-4">
-              <AccordionTrigger className="text-sm font-semibold">Invites</AccordionTrigger>
-              <AccordionContent className="pb-4">
-                <div className="rounded-xl border p-4 space-y-4">
-                  <div className="text-sm font-semibold">Recent Invites</div>
-                  <div className="hidden md:block">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Unit</TableHead>
-                          <TableHead>Resident</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {onboardingInvites.slice(0, 12).map((invite) => (
-                          <TableRow key={invite.id}>
-                            <TableCell>Unit {invite.unitLabel || invite.unitId}</TableCell>
-                            <TableCell className="capitalize">{invite.residentType}</TableCell>
-                            <TableCell><Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge></TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => sendInviteMutation.mutate(invite.id)}
-                                disabled={sendInviteMutation.isPending || !invite.email}
-                              >
-                                {invite.lastSentAt ? "Resend" : "Send"}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {onboardingInvites.length === 0 ? (
-                          <TableRow><TableCell colSpan={4} className="text-muted-foreground">No onboarding invites yet.</TableCell></TableRow>
-                        ) : null}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <div className="space-y-3 md:hidden">
-                    {onboardingInvites.slice(0, 12).map((invite) => (
-                      <div key={invite.id} className="rounded-xl border p-4 space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium">Unit {invite.unitLabel || invite.unitId}</div>
-                            <div className="mt-1 text-xs text-muted-foreground capitalize">{invite.residentType}</div>
-                          </div>
-                          <Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {invite.email || invite.phone || "No delivery target set"}
-                          {invite.lastSentAt ? ` · Last sent ${new Date(invite.lastSentAt).toLocaleString()}` : ""}
-                        </div>
-                        <Button
-                          className="w-full"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => sendInviteMutation.mutate(invite.id)}
-                          disabled={sendInviteMutation.isPending || !invite.email}
-                        >
-                          {invite.lastSentAt ? "Resend" : "Send"}
-                        </Button>
-                      </div>
-                    ))}
-                    {onboardingInvites.length === 0 ? (
-                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No onboarding invites yet.</div>
-                    ) : null}
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
             <AccordionItem value="review-queue" className="rounded-xl border px-4">
               <AccordionTrigger className="text-sm font-semibold">Review Queue</AccordionTrigger>
               <AccordionContent className="pb-4">
@@ -1199,7 +884,7 @@ export default function AssociationContextPage() {
                       <TableBody>
                         {onboardingSubmissions.slice(0, 12).map((submission) => (
                           <TableRow key={submission.id}>
-                            <TableCell>Unit {submission.unitLabel || submission.unitId}</TableCell>
+                            <TableCell>{submission.unitLabel || submission.unitId}</TableCell>
                             <TableCell>
                               <div>{submission.firstName} {submission.lastName}</div>
                               {submission.reviewNotes?.length ? (
@@ -1272,7 +957,7 @@ export default function AssociationContextPage() {
                       <div key={submission.id} className="rounded-xl border p-4 space-y-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="text-sm font-medium">Unit {submission.unitLabel || submission.unitId}</div>
+                            <div className="text-sm font-medium">{submission.unitLabel || submission.unitId}</div>
                             <div className="mt-1 text-xs text-muted-foreground">{submission.firstName} {submission.lastName}</div>
                           </div>
                           <Badge variant={submission.status === "pending" ? "secondary" : "outline"}>{submission.status}</Badge>
@@ -1404,7 +1089,7 @@ export default function AssociationContextPage() {
               </div>
               <div className="rounded-md border p-3 text-sm">
                 <div className="font-medium">Unit and Submission</div>
-                <div className="mt-1">Unit {selectedSubmission.unitLabel || selectedSubmission.unitId}</div>
+                <div className="mt-1">{selectedSubmission.unitLabel || selectedSubmission.unitId}</div>
                 <div className="text-muted-foreground capitalize">{selectedSubmission.residentType} · {selectedSubmission.status}</div>
                 <div className="text-muted-foreground">Submitted {new Date(selectedSubmission.submittedAt).toLocaleString()}</div>
               </div>
@@ -1470,7 +1155,7 @@ export default function AssociationContextPage() {
               <SelectContent>
                 <SelectItem value="none">select unit</SelectItem>
                 {(residentialDataset?.units ?? []).map((unit) => (
-                  <SelectItem key={unit.id} value={unit.id}>Unit {unit.unitNumber}</SelectItem>
+                  <SelectItem key={unit.id} value={unit.id}>{unit.unitNumber}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

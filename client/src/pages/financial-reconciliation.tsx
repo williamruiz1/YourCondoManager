@@ -4,8 +4,6 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { AssociationScopeBanner } from "@/components/association-scope-banner";
-import { FinanceTabBar } from "@/components/finance-tab-bar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -262,19 +260,12 @@ export default function FinancialReconciliationPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <FinanceTabBar />
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Bank Reconciliation"
         summary="Import bank statements, auto-match transactions to ledger entries, and manually review unmatched items."
         eyebrow="Finance"
         breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Reconciliation" }]}
-      />
-
-      <AssociationScopeBanner
-        activeAssociationId={activeAssociationId}
-        activeAssociationName={activeAssociationName}
-        explanation="Reconciliation is scoped per association. Select one to manage its bank statement imports."
       />
 
       {/* Workflow Step Indicator */}
