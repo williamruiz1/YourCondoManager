@@ -25,6 +25,7 @@ import { canAccessWipRoute } from "@/lib/wip-features";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
+const SolutionsPage = lazy(() => import("@/pages/solutions"));
 const WorkspacePreviewPage = lazy(() => import("@/pages/workspace-preview"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const OperationsDashboardPage = lazy(() => import("@/pages/operations-dashboard"));
@@ -66,6 +67,7 @@ const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
 const InsurancePage = lazy(() => import("@/pages/insurance"));
 const PortfolioPage = lazy(() => import("@/pages/portfolio"));
 const AnnouncementsPage = lazy(() => import("@/pages/announcements"));
+const PricingPage = lazy(() => import("@/pages/pricing"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
@@ -108,13 +110,14 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
   },
   {
     id: "governance",
-    matchPrefixes: ["/app/board", "/app/governance/board-packages", "/app/governance/meetings", "/app/governance/compliance"],
+    matchPrefixes: ["/app/board", "/app/governance/board-packages", "/app/governance/meetings", "/app/governance/compliance", "/app/communications"],
     testId: "tabs-governance-inpage",
     tabs: [
       { label: "Board Members", href: "/app/board", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Board Packages", href: "/app/governance/board-packages", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Meetings", href: "/app/governance/meetings", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Compliance", href: "/app/governance/compliance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Communications", href: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
   },
   {
@@ -170,10 +173,9 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
   },
   {
     id: "resident-communications",
-    matchPrefixes: ["/app/communications", "/app/announcements", "/app/resident-feedback", "/app/ai/ingestion"],
+    matchPrefixes: ["/app/announcements", "/app/resident-feedback", "/app/ai/ingestion"],
     testId: "tabs-resident-communications-inpage",
     tabs: [
-      { label: "Communications", href: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Announcements", href: "/app/announcements", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Resident Feedback", href: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "AI Ingestion", href: "/app/ai/ingestion", roles: ["platform-admin", "board-admin", "manager"] },
@@ -248,6 +250,9 @@ function WorkspaceRouter({
       <Switch>
         <Route path="/app" component={DashboardPage} />
         <Route path="/app/operations/dashboard" component={OperationsDashboardPage} />
+        <Route path="/app/operations/records">
+          <DocumentsPage typeFilter="Operations" />
+        </Route>
         <Route path="/app/associations">
           {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <AssociationsPage />}
         </Route>
@@ -317,6 +322,18 @@ function PublicRouter({
       <Switch>
         <Route path="/">
           <LandingPage
+            hasWorkspaceAccess={hasWorkspaceAccess}
+            onStartGoogleSignIn={onStartGoogleSignIn}
+          />
+        </Route>
+        <Route path="/pricing">
+          <PricingPage
+            hasWorkspaceAccess={hasWorkspaceAccess}
+            onStartGoogleSignIn={onStartGoogleSignIn}
+          />
+        </Route>
+        <Route path="/solutions">
+          <SolutionsPage
             hasWorkspaceAccess={hasWorkspaceAccess}
             onStartGoogleSignIn={onStartGoogleSignIn}
           />
@@ -545,11 +562,107 @@ function WorkspaceSectionTabs({ adminRole }: { adminRole: AdminRole | null }) {
   if (visibleTabs.length <= 1) return null;
 
   return (
-    <div className="sticky top-0 z-10 border-b bg-background/95 px-3 py-3 backdrop-blur" data-testid={activeGroup.testId}>
+    <div className="border-b bg-background/95 px-3 backdrop-blur" data-testid={activeGroup.testId}>
       <MobileTabBar
         items={visibleTabs.map((tab) => ({ id: tab.href, label: tab.label }))}
         value={visibleTabs.find((tab) => (tab.matchPrefixes ?? [tab.href]).some((prefix) => isTabActive(location, prefix)))?.href ?? visibleTabs[0].href}
         onChange={navigate}
+        variant="tabular"
+      />
+    </div>
+  );
+}
+
+const FINANCE_PARENT_TABS = [
+  {
+    label: "Setup",
+    href: "/app/financial/foundation",
+    prefixes: [
+      "/app/financial/foundation",
+      "/app/financial/recurring-charges",
+      "/app/financial/assessments",
+      "/app/financial/late-fees",
+      "/app/financial/utilities",
+    ],
+  },
+  {
+    label: "Accounts",
+    href: "/app/financial/ledger",
+    prefixes: ["/app/financial/ledger", "/app/financial/invoices", "/app/financial/payments"],
+  },
+  {
+    label: "Reporting",
+    href: "/app/financial/budgets",
+    prefixes: ["/app/financial/budgets", "/app/financial/reports", "/app/financial/reconciliation"],
+  },
+];
+
+const ALL_FINANCE_PREFIXES = FINANCE_PARENT_TABS.flatMap((t) => t.prefixes);
+
+function FinanceParentTabBar() {
+  const [location, navigate] = useLocation();
+  const isFinancePage = ALL_FINANCE_PREFIXES.some((p) => location === p || location.startsWith(`${p}/`));
+
+  if (!isFinancePage) return null;
+
+  const activeParent =
+    FINANCE_PARENT_TABS.find((tab) => tab.prefixes.some((p) => location === p || location.startsWith(`${p}/`)))
+      ?.href ?? FINANCE_PARENT_TABS[0].href;
+
+  return (
+    <div className="sticky top-0 z-20 border-b bg-background/95 px-3 backdrop-blur">
+      <MobileTabBar
+        items={FINANCE_PARENT_TABS.map((tab) => ({ id: tab.href, label: tab.label }))}
+        value={activeParent}
+        onChange={navigate}
+        variant="tabular"
+      />
+    </div>
+  );
+}
+
+const OPERATIONS_PARENT_TABS = [
+  {
+    label: "Overview",
+    href: "/app/operations/dashboard",
+    prefixes: ["/app/operations/dashboard"],
+  },
+  {
+    label: "Service Delivery",
+    href: "/app/work-orders",
+    prefixes: ["/app/work-orders", "/app/maintenance-schedules", "/app/inspections"],
+  },
+  {
+    label: "Vendors & Risk",
+    href: "/app/vendors",
+    prefixes: ["/app/vendors", "/app/insurance"],
+  },
+  {
+    label: "Records",
+    href: "/app/operations/records",
+    prefixes: ["/app/operations/records"],
+  },
+];
+
+const ALL_OPERATIONS_PREFIXES = OPERATIONS_PARENT_TABS.flatMap((t) => t.prefixes);
+
+function OperationsParentTabBar() {
+  const [location, navigate] = useLocation();
+  const isOperationsPage = ALL_OPERATIONS_PREFIXES.some((p) => location === p || location.startsWith(`${p}/`));
+
+  if (!isOperationsPage) return null;
+
+  const activeParent =
+    OPERATIONS_PARENT_TABS.find((tab) => tab.prefixes.some((p) => location === p || location.startsWith(`${p}/`)))
+      ?.href ?? OPERATIONS_PARENT_TABS[0].href;
+
+  return (
+    <div className="sticky top-0 z-20 border-b bg-background/95 px-3 backdrop-blur">
+      <MobileTabBar
+        items={OPERATIONS_PARENT_TABS.map((tab) => ({ id: tab.href, label: tab.label }))}
+        value={activeParent}
+        onChange={navigate}
+        variant="tabular"
       />
     </div>
   );
@@ -567,6 +680,8 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
 
   return (
     <>
+      <FinanceParentTabBar />
+      <OperationsParentTabBar />
       <WorkspaceSectionTabs adminRole={adminRole} />
       <main ref={mainRef} className="flex-1 overflow-auto pb-[max(env(safe-area-inset-bottom),1rem)]">
         <WorkspaceRouter
