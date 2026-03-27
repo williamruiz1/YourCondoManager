@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut } from "lucide-react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -20,9 +20,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AssociationProvider, useAssociationContext } from "@/context/association-context";
+import { BoardPortal } from "@/pages/board-portal";
 import { GlobalCommandPalette } from "@/components/global-command-palette";
 import { canAccessWipRoute } from "@/lib/wip-features";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
+import { CookieConsentBanner } from "@/components/cookie-consent-banner";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useUserSettings, applyTheme, setAdminIdForSettings, formatSettingsDate } from "@/hooks/use-user-settings";
+import { TrialBanner } from "@/components/trial-banner";
+import { SubscriptionLockScreen } from "@/components/subscription-lock-screen";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const SolutionsPage = lazy(() => import("@/pages/solutions"));
@@ -31,6 +37,7 @@ const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const OperationsDashboardPage = lazy(() => import("@/pages/operations-dashboard"));
 const AssociationsPage = lazy(() => import("@/pages/associations"));
 const AssociationContextPage = lazy(() => import("@/pages/association-context"));
+const NewAssociationPage = lazy(() => import("@/pages/new-association"));
 const UnitsPage = lazy(() => import("@/pages/units"));
 const PersonsPage = lazy(() => import("@/pages/persons"));
 const BoardPage = lazy(() => import("@/pages/board"));
@@ -50,6 +57,9 @@ const FinancialPaymentsPage = lazy(() => import("@/pages/financial-payments"));
 const FinancialReportsPage = lazy(() => import("@/pages/financial-reports"));
 const FinancialReconciliationPage = lazy(() => import("@/pages/financial-reconciliation"));
 const FinancialRecurringChargesPage = lazy(() => import("@/pages/financial-recurring-charges"));
+const FinancialBillingPage = lazy(() => import("@/pages/financial-billing"));
+const FinancialExpensesPage = lazy(() => import("@/pages/financial-expenses"));
+const GovernancePage = lazy(() => import("@/pages/governance"));
 const VendorsPage = lazy(() => import("@/pages/vendors"));
 const WorkOrdersPage = lazy(() => import("@/pages/work-orders"));
 const MaintenanceSchedulesPage = lazy(() => import("@/pages/maintenance-schedules"));
@@ -58,17 +68,27 @@ const InspectionsPage = lazy(() => import("@/pages/inspections"));
 const BoardPackagesPage = lazy(() => import("@/pages/board-packages"));
 const MeetingsPage = lazy(() => import("@/pages/meetings"));
 const GovernanceCompliancePage = lazy(() => import("@/pages/governance-compliance"));
+const ElectionsPage = lazy(() => import("@/pages/elections"));
+const ElectionDetailPage = lazy(() => import("@/pages/election-detail"));
+const ElectionBallotPage = lazy(() => import("@/pages/election-ballot"));
 const AiIngestionPage = lazy(() => import("@/pages/ai-ingestion"));
 const CommunicationsPage = lazy(() => import("@/pages/communications"));
 const PlatformControlsPage = lazy(() => import("@/pages/platform-controls"));
 const FeatureFlagsPage = lazy(() => import("@/pages/feature-flags"));
 const OwnerPortalPage = lazy(() => import("@/pages/owner-portal"));
+const VendorPortalPage = lazy(() => import("@/pages/vendor-portal"));
 const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
 const InsurancePage = lazy(() => import("@/pages/insurance"));
 const PortfolioPage = lazy(() => import("@/pages/portfolio"));
 const AnnouncementsPage = lazy(() => import("@/pages/announcements"));
 const PricingPage = lazy(() => import("@/pages/pricing"));
+const PlanSignupPage = lazy(() => import("@/pages/plan-signup"));
+const PlanSignupSuccessPage = lazy(() => import("@/pages/plan-signup-success"));
+const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
+const TermsOfServicePage = lazy(() => import("@/pages/terms-of-service"));
+const UserSettingsPage = lazy(() => import("@/pages/user-settings"));
 const NotFound = lazy(() => import("@/pages/not-found"));
+const AdminContextualFeedbackWidget = lazy(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })));
 
 type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
 
@@ -110,56 +130,34 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
   },
   {
     id: "governance",
-    matchPrefixes: ["/app/board", "/app/governance/board-packages", "/app/governance/meetings", "/app/governance/compliance", "/app/communications"],
+    matchPrefixes: ["/app/board", "/app/governance", "/app/communications"],
     testId: "tabs-governance-inpage",
     tabs: [
       { label: "Board Members", href: "/app/board", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Board Packages", href: "/app/governance/board-packages", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Meetings", href: "/app/governance/meetings", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Compliance", href: "/app/governance/compliance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Governance", href: "/app/governance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Communications", href: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
   },
   {
-    id: "finance-setup",
-    matchPrefixes: ["/app/financial/foundation", "/app/financial/recurring-charges", "/app/financial/assessments", "/app/financial/late-fees", "/app/financial/utilities"],
-    testId: "tabs-finance-setup-inpage",
+    id: "finance",
+    matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports"],
+    testId: "tabs-finance-inpage",
     tabs: [
-      { label: "Setup", href: "/app/financial/foundation", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "Fee Schedules", href: "/app/financial/recurring-charges", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "Assessments", href: "/app/financial/assessments", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "Late Fees", href: "/app/financial/late-fees", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "Utilities", href: "/app/financial/utilities", roles: ["platform-admin", "board-admin", "manager"] },
-    ],
-  },
-  {
-    id: "owner-accounts",
-    matchPrefixes: ["/app/financial/ledger", "/app/financial/invoices", "/app/financial/payments"],
-    testId: "tabs-owner-accounts-inpage",
-    tabs: [
-      { label: "Owner Ledger", href: "/app/financial/ledger", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Invoices", href: "/app/financial/invoices", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Chart of Accounts", href: "/app/financial/foundation", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Billing", href: "/app/financial/billing", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Payments", href: "/app/financial/payments", roles: ["platform-admin", "board-admin", "manager"] },
-    ],
-  },
-  {
-    id: "oversight-reporting",
-    matchPrefixes: ["/app/financial/budgets", "/app/financial/reports", "/app/financial/reconciliation"],
-    testId: "tabs-oversight-reporting-inpage",
-    tabs: [
-      { label: "Budgets", href: "/app/financial/budgets", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Expenses", href: "/app/financial/expenses", roles: ["platform-admin", "board-admin", "manager"] },
       { label: "Reports", href: "/app/financial/reports", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Reconciliation", href: "/app/financial/reconciliation", roles: ["platform-admin", "board-admin", "manager"] },
     ],
   },
   {
-    id: "service-delivery",
-    matchPrefixes: ["/app/work-orders", "/app/maintenance-schedules", "/app/inspections"],
-    testId: "tabs-service-delivery-inpage",
+    id: "operations",
+    matchPrefixes: ["/app/work-orders", "/app/vendors", "/app/resident-feedback"],
+    testId: "tabs-operations-inpage",
     tabs: [
       { label: "Work Orders", href: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Maintenance Schedules", href: "/app/maintenance-schedules", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Inspections", href: "/app/inspections", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Vendors", href: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Feedback", href: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
   },
   {
@@ -169,16 +167,6 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
     tabs: [
       { label: "Vendors", href: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Insurance Policies", href: "/app/insurance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-    ],
-  },
-  {
-    id: "resident-communications",
-    matchPrefixes: ["/app/announcements", "/app/resident-feedback", "/app/ai/ingestion"],
-    testId: "tabs-resident-communications-inpage",
-    tabs: [
-      { label: "Announcements", href: "/app/announcements", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Resident Feedback", href: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "AI Ingestion", href: "/app/ai/ingestion", roles: ["platform-admin", "board-admin", "manager"] },
     ],
   },
   {
@@ -257,6 +245,7 @@ function WorkspaceRouter({
           {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <AssociationsPage />}
         </Route>
         <Route path="/app/association-context" component={AssociationContextPage} />
+        <Route path="/app/new-association" component={NewAssociationPage} />
         <Route path="/app/units" component={UnitsPage} />
         <Route path="/app/persons" component={PersonsPage} />
         <Route path="/app/owners">
@@ -272,26 +261,35 @@ function WorkspaceRouter({
         <Route path="/app/admin/users" component={AdminUsersPage} />
         <Route path="/app/admin/feature-flags" component={FeatureFlagsPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
-        <Route path="/app/financial/fees"><RouteRedirect to="/app/financial/recurring-charges" /></Route>
-        <Route path="/app/financial/assessments" component={FinancialAssessmentsPage} />
-        <Route path="/app/financial/late-fees" component={FinancialLateFeesPage} />
+        {/* Finance — consolidated routes */}
         <Route path="/app/financial/foundation" component={FinancialFoundationPage} />
-        <Route path="/app/financial/invoices" component={FinancialInvoicesPage} />
-        <Route path="/app/financial/utilities" component={FinancialUtilitiesPage} />
-        <Route path="/app/financial/ledger" component={FinancialLedgerPage} />
-        <Route path="/app/financial/budgets" component={FinancialBudgetsPage} />
+        <Route path="/app/financial/billing" component={FinancialBillingPage} />
         <Route path="/app/financial/payments" component={FinancialPaymentsPage} />
+        <Route path="/app/financial/expenses" component={FinancialExpensesPage} />
         <Route path="/app/financial/reports" component={FinancialReportsPage} />
-        <Route path="/app/financial/reconciliation" component={FinancialReconciliationPage} />
-        <Route path="/app/financial/recurring-charges" component={FinancialRecurringChargesPage} />
+        {/* Finance — legacy redirects */}
+        <Route path="/app/financial/fees"><RouteRedirect to="/app/financial/foundation" /></Route>
+        <Route path="/app/financial/recurring-charges"><RouteRedirect to="/app/financial/foundation" /></Route>
+        <Route path="/app/financial/ledger"><RouteRedirect to="/app/financial/billing" /></Route>
+        <Route path="/app/financial/assessments"><RouteRedirect to="/app/financial/billing" /></Route>
+        <Route path="/app/financial/late-fees"><RouteRedirect to="/app/financial/billing" /></Route>
+        <Route path="/app/financial/invoices"><RouteRedirect to="/app/financial/expenses" /></Route>
+        <Route path="/app/financial/utilities"><RouteRedirect to="/app/financial/expenses" /></Route>
+        <Route path="/app/financial/budgets"><RouteRedirect to="/app/financial/expenses" /></Route>
+        <Route path="/app/financial/reconciliation"><RouteRedirect to="/app/financial/reports" /></Route>
+        {/* Operations — consolidated routes */}
         <Route path="/app/vendors" component={VendorsPage} />
         <Route path="/app/work-orders" component={WorkOrdersPage} />
-        <Route path="/app/maintenance-schedules" component={MaintenanceSchedulesPage} />
         <Route path="/app/resident-feedback" component={ResidentFeedbackPage} />
-        <Route path="/app/inspections" component={InspectionsPage} />
-        <Route path="/app/governance/board-packages" component={BoardPackagesPage} />
-        <Route path="/app/governance/meetings" component={MeetingsPage} />
-        <Route path="/app/governance/compliance" component={GovernanceCompliancePage} />
+        <Route path="/app/maintenance-schedules"><RouteRedirect to="/app/work-orders" /></Route>
+        <Route path="/app/inspections"><RouteRedirect to="/app/vendors" /></Route>
+        {/* Board & Governance — consolidated routes */}
+        <Route path="/app/governance" component={GovernancePage} />
+        <Route path="/app/governance/elections/:id">{(params) => <ElectionDetailPage id={params.id ?? ""} />}</Route>
+        <Route path="/app/governance/board-packages"><RouteRedirect to="/app/governance" /></Route>
+        <Route path="/app/governance/meetings"><RouteRedirect to="/app/governance" /></Route>
+        <Route path="/app/governance/compliance"><RouteRedirect to="/app/governance" /></Route>
+        <Route path="/app/governance/elections"><RouteRedirect to="/app/governance" /></Route>
         <Route path="/app/ai/ingestion">
           {canAccessWipRoute("/app/ai/ingestion", adminRole) ? <AiIngestionPage /> : <NotFound />}
         </Route>
@@ -303,7 +301,8 @@ function WorkspaceRouter({
         <Route path="/app/portfolio">
           {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <PortfolioPage />}
         </Route>
-        <Route path="/app/announcements" component={AnnouncementsPage} />
+        <Route path="/app/announcements"><RouteRedirect to="/app/communications" /></Route>
+        <Route path="/app/settings" component={UserSettingsPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
@@ -338,7 +337,25 @@ function PublicRouter({
             onStartGoogleSignIn={onStartGoogleSignIn}
           />
         </Route>
+        <Route path="/privacy-policy">
+          <PrivacyPolicyPage
+            hasWorkspaceAccess={hasWorkspaceAccess}
+            onStartGoogleSignIn={onStartGoogleSignIn}
+          />
+        </Route>
+        <Route path="/terms-of-service">
+          <TermsOfServicePage
+            hasWorkspaceAccess={hasWorkspaceAccess}
+            onStartGoogleSignIn={onStartGoogleSignIn}
+          />
+        </Route>
+        <Route path="/signup/success" component={PlanSignupSuccessPage} />
+        <Route path="/signup" component={PlanSignupPage} />
         <Route path="/portal" component={OwnerPortalPage} />
+        <Route path="/vendor-portal" component={VendorPortalPage} />
+        <Route path="/vote/:token">
+          {(params) => <ElectionBallotPage token={params.token ?? ""} />}
+        </Route>
         <Route path="/onboarding/:token" component={OnboardingInvitePage} />
         <Route path="/associations">
           <RouteRedirect to="/app/associations" />
@@ -383,7 +400,7 @@ function PublicRouter({
           <RouteRedirect to="/app/admin/executive" />
         </Route>
         <Route path="/financial/fees">
-          <RouteRedirect to="/app/financial/fees" />
+          <RouteRedirect to="/app/financial/recurring-charges" />
         </Route>
         <Route path="/financial/assessments">
           <RouteRedirect to="/app/financial/assessments" />
@@ -462,9 +479,102 @@ function HeaderActions({
   const activeAssociationName =
     associations.find((association) => association.id === activeAssociationId)?.name ?? "Select association";
 
+  const [, navigate] = useLocation();
+  const userSettings = useUserSettings();
+  const displayLabel = userSettings.displayName || accountEmail || "Signed in";
+  const { data: thresholdAlerts = [] } = useQuery<{
+    id: string;
+    associationId: string;
+    associationName: string;
+    alertType: string;
+    severity: "critical" | "warning" | "info";
+    message: string;
+    value: number;
+    threshold: number;
+  }[]>({
+    queryKey: ["/api/portfolio/threshold-alerts"],
+    enabled: !!authSession?.authenticated,
+  });
+
+  const criticalCount = thresholdAlerts.filter((a) => a.severity === "critical").length;
+  const alertCount = thresholdAlerts.length;
+
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
       <GlobalCommandPalette adminRole={adminRole} />
+      {/* Notifications popover */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <button className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Notifications">
+            <span className="material-symbols-outlined text-[20px] text-slate-600 dark:text-slate-400">notifications</span>
+            {alertCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900 text-[10px] font-bold text-white flex items-center justify-center">
+                {alertCount > 9 ? "9+" : alertCount}
+              </span>
+            )}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80 p-0">
+          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <h4 className="text-sm font-semibold">Notifications</h4>
+            {criticalCount > 0 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                {criticalCount} critical
+              </span>
+            )}
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            {alertCount === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                <span className="material-symbols-outlined text-[28px] block mb-1 opacity-40">check_circle</span>
+                No active alerts
+              </div>
+            ) : (
+              thresholdAlerts.slice(0, 8).map((alert) => (
+                <div
+                  key={alert.id}
+                  className="px-4 py-2.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
+                  onClick={() => navigate("/app/portfolio")}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className={`material-symbols-outlined text-[16px] mt-0.5 shrink-0 ${
+                        alert.severity === "critical" ? "text-red-500" : alert.severity === "warning" ? "text-amber-500" : "text-blue-500"
+                      }`}
+                      style={{ fontVariationSettings: "'FILL' 1" }}
+                    >
+                      {alert.severity === "critical" ? "error" : alert.severity === "warning" ? "warning" : "info"}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground truncate">{alert.associationName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{alert.message}</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          {alertCount > 0 && (
+            <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-800">
+              <button
+                onClick={() => navigate("/app/portfolio")}
+                className="text-xs font-semibold text-primary hover:underline w-full text-center"
+              >
+                View all in Portfolio
+              </button>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+      {/* Settings — navigates to user settings */}
+      <button
+        className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        aria-label="Settings"
+        onClick={() => navigate("/app/settings")}
+      >
+        <span className="material-symbols-outlined text-[20px] text-slate-600 dark:text-slate-400">settings</span>
+      </button>
+      <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block" />
       {singleAssociationBoardExperience ? (
         <div
           className="hidden h-8 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium text-foreground sm:flex"
@@ -489,31 +599,23 @@ function HeaderActions({
       {authSession?.authenticated ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-10 min-w-0 max-w-full justify-start gap-2 px-2 sm:min-h-8 sm:max-w-[260px]"
+            <button
+              className="h-8 w-8 rounded-full hover:ring-2 hover:ring-primary/20 transition-all"
               data-testid="button-account-menu"
             >
-              <Avatar className="h-6 w-6">
-                <AvatarFallback className="text-[10px] font-semibold">
-                  {getUserInitials(accountEmail)}
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="text-[11px] font-semibold bg-primary text-on-primary">
+                  {getUserInitials(userSettings.displayName || accountEmail)}
                 </AvatarFallback>
               </Avatar>
-              <span className="hidden min-w-0 flex-1 text-left sm:flex sm:flex-col">
-                <span className="truncate text-xs font-medium leading-tight">
-                  {accountEmail || "Signed in"}
-                </span>
-                <span className="truncate text-[11px] font-normal leading-tight text-muted-foreground">
-                  {adminRole ? formatAdminRole(adminRole) : activeAssociationName}
-                </span>
-              </span>
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </Button>
+            </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel className="space-y-1">
-              <div className="truncate text-sm">{accountEmail || "Signed in"}</div>
+              <div className="truncate text-sm">{displayLabel}</div>
+              {accountEmail && userSettings.displayName ? (
+                <div className="text-xs font-normal text-muted-foreground truncate">{accountEmail}</div>
+              ) : null}
               {adminRole ? (
                 <div className="text-xs font-normal text-muted-foreground">
                   {formatAdminRole(adminRole)}
@@ -575,25 +677,29 @@ function WorkspaceSectionTabs({ adminRole }: { adminRole: AdminRole | null }) {
 
 const FINANCE_PARENT_TABS = [
   {
-    label: "Setup",
+    label: "Chart of Accounts",
     href: "/app/financial/foundation",
-    prefixes: [
-      "/app/financial/foundation",
-      "/app/financial/recurring-charges",
-      "/app/financial/assessments",
-      "/app/financial/late-fees",
-      "/app/financial/utilities",
-    ],
+    prefixes: ["/app/financial/foundation"],
   },
   {
-    label: "Accounts",
-    href: "/app/financial/ledger",
-    prefixes: ["/app/financial/ledger", "/app/financial/invoices", "/app/financial/payments"],
+    label: "Billing",
+    href: "/app/financial/billing",
+    prefixes: ["/app/financial/billing"],
   },
   {
-    label: "Reporting",
-    href: "/app/financial/budgets",
-    prefixes: ["/app/financial/budgets", "/app/financial/reports", "/app/financial/reconciliation"],
+    label: "Payments",
+    href: "/app/financial/payments",
+    prefixes: ["/app/financial/payments"],
+  },
+  {
+    label: "Expenses",
+    href: "/app/financial/expenses",
+    prefixes: ["/app/financial/expenses"],
+  },
+  {
+    label: "Reports",
+    href: "/app/financial/reports",
+    prefixes: ["/app/financial/reports"],
   },
 ];
 
@@ -623,24 +729,24 @@ function FinanceParentTabBar() {
 
 const OPERATIONS_PARENT_TABS = [
   {
-    label: "Overview",
+    label: "Dashboard",
     href: "/app/operations/dashboard",
     prefixes: ["/app/operations/dashboard"],
   },
   {
-    label: "Service Delivery",
+    label: "Work Orders",
     href: "/app/work-orders",
-    prefixes: ["/app/work-orders", "/app/maintenance-schedules", "/app/inspections"],
+    prefixes: ["/app/work-orders"],
   },
   {
-    label: "Vendors & Risk",
+    label: "Vendors",
     href: "/app/vendors",
-    prefixes: ["/app/vendors", "/app/insurance"],
+    prefixes: ["/app/vendors"],
   },
   {
-    label: "Records",
-    href: "/app/operations/records",
-    prefixes: ["/app/operations/records"],
+    label: "Feedback",
+    href: "/app/resident-feedback",
+    prefixes: ["/app/resident-feedback"],
   },
 ];
 
@@ -680,9 +786,6 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
 
   return (
     <>
-      <FinanceParentTabBar />
-      <OperationsParentTabBar />
-      <WorkspaceSectionTabs adminRole={adminRole} />
       <main ref={mainRef} className="flex-1 overflow-auto pb-[max(env(safe-area-inset-bottom),1rem)]">
         <WorkspaceRouter
           adminRole={adminRole}
@@ -692,6 +795,12 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
     </>
   );
 }
+
+type BillingSubscription = {
+  status: string;
+  plan: string;
+  trialEndsAt?: string | null;
+};
 
 function WorkspaceShell({
   authSession,
@@ -709,13 +818,38 @@ function WorkspaceShell({
     "--sidebar-width-icon": "3rem",
   };
 
+  const { data: billingData } = useQuery<BillingSubscription | { status: "none" }>({
+    queryKey: ["/api/admin/billing/subscription"],
+    enabled: !!authSession?.authenticated,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const subscription = billingData && "plan" in billingData ? billingData : null;
+
+  async function openBillingPortal() {
+    try {
+      const res = await fetch("/api/admin/billing/portal-session", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.ok) {
+        const { url } = await res.json();
+        if (url) window.location.assign(url);
+      }
+    } catch { /* ignore */ }
+  }
+
+  const isLocked =
+    subscription?.status === "canceled" ||
+    subscription?.status === "unpaid";
+
   return (
     <AssociationProvider>
       <SidebarProvider style={style as CSSProperties}>
         <div className="flex h-screen w-full">
           <AppSidebar adminRole={adminRole} />
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur">
+            <header className="sticky top-0 z-40 flex h-16 min-h-14 flex-wrap items-center gap-2 border-b border-slate-200/50 dark:border-slate-800/50 glass-nav px-3 py-2 shadow-sm">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
               <HeaderActions
                 authSession={authSession}
@@ -724,7 +858,22 @@ function WorkspaceShell({
                 onLogoutGoogleSession={onLogoutGoogleSession}
               />
             </header>
+            {subscription?.status === "trialing" && (
+              <TrialBanner
+                trialEndsAt={subscription.trialEndsAt ?? null}
+                plan={subscription.plan}
+                onUpgrade={openBillingPortal}
+              />
+            )}
             <MainContent adminRole={adminRole} />
+            {isLocked && (
+              <SubscriptionLockScreen
+                status={subscription!.status as "canceled" | "unpaid" | "past_due"}
+                plan={subscription!.plan}
+                trialEndsAt={subscription?.trialEndsAt}
+                onManageBilling={openBillingPortal}
+              />
+            )}
           </div>
         </div>
       </SidebarProvider>
@@ -752,8 +901,12 @@ function AuthAwareApp() {
       credentials: "include",
     });
     if (!response.ok) {
+      let detail = "";
+      try { detail = await response.text(); } catch { /* ignore */ }
+      console.warn(`[auth][restore] failed status=${response.status} body=${detail}`);
       throw new Error("restore-failed");
     }
+    console.log("[auth][restore] session restored successfully");
     await refetchAuthSession();
     queryClient.invalidateQueries();
   }
@@ -844,12 +997,42 @@ function AuthAwareApp() {
     }
   }
 
+  // ── User settings: sync admin id + apply theme on mount/change/navigation ──
+  const userSettings = useUserSettings();
+  useEffect(() => {
+    if (authSession?.admin?.id) {
+      setAdminIdForSettings(authSession.admin.id);
+    }
+  }, [authSession?.admin?.id]);
+  // Re-apply theme whenever preference or route changes (dark mode is workspace-only)
+  useEffect(() => {
+    applyTheme(userSettings.theme);
+  }, [userSettings.theme, location]);
+  // Listen for system theme changes when set to "system"
+  useEffect(() => {
+    if (userSettings.theme !== "system") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => applyTheme("system");
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [userSettings.theme]);
+
   const adminRole = authSession?.admin?.role ?? null;
   const hasWorkspaceAccess = Boolean(authSession?.authenticated && authSession.admin);
+  const isBoardAdmin = adminRole === "board-admin";
   const isWorkspaceRoute = location === "/app" || location.startsWith("/app/");
 
   if (isWorkspaceRoute && authSessionLoading) {
     return <RouteFallback />;
+  }
+
+  // Board-admin Google sign-in → show BoardPortal with session-based auth
+  if (hasWorkspaceAccess && isBoardAdmin) {
+    return (
+      <AssociationProvider>
+        <BoardAdminPortalShell onLogout={logoutGoogleSession} />
+      </AssociationProvider>
+    );
   }
 
   return (
@@ -870,12 +1053,40 @@ function AuthAwareApp() {
           </Suspense>
         )
       ) : (
-        <PublicRouter
+          <PublicRouter
           hasWorkspaceAccess={hasWorkspaceAccess}
           onStartGoogleSignIn={() => startGoogleSignIn(true)}
         />
       )}
+      {authSession?.admin?.role === "platform-admin" ? (
+        <Suspense fallback={null}>
+          <AdminContextualFeedbackWidget
+            admin={{
+              id: authSession.admin.id,
+              email: authSession.admin.email,
+            }}
+          />
+        </Suspense>
+      ) : null}
     </>
+  );
+}
+
+function BoardAdminPortalShell({ onLogout }: { onLogout: () => Promise<void> }) {
+  const { activeAssociationId, associationResolved, associations } = useAssociationContext();
+
+  if (!associationResolved || !activeAssociationId) {
+    return <RouteFallback />;
+  }
+
+  const associationName = associations.find((a) => a.id === activeAssociationId)?.name;
+
+  return (
+    <BoardPortal
+      associationId={activeAssociationId}
+      associationName={associationName}
+      onLogout={onLogout}
+    />
   );
 }
 
@@ -885,6 +1096,7 @@ export default function App() {
       <TooltipProvider>
         <AuthAwareApp />
         <Toaster />
+        <CookieConsentBanner />
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -164,8 +164,8 @@ export default function OccupancyPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Occupancy</h1>
-          <p className="text-muted-foreground">Track occupancy for {activeAssociationName || "the current association"} and require tenant details for renter-occupied units.</p>
+          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">Occupancy</h1>
+          <p className="text-sm text-on-surface/60 mt-1">Track occupancy for {activeAssociationName || "the current association"} and require tenant details for renter-occupied units.</p>
         </div>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) form.reset(); }}>
           <DialogTrigger asChild>

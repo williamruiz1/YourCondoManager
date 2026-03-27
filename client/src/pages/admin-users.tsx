@@ -33,6 +33,7 @@ import { Plus, Shield } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { platformSubPages } from "@/lib/sub-page-nav";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
 
 const roleOptions = ["platform-admin", "board-admin", "manager", "viewer"] as const;
@@ -112,6 +113,7 @@ export default function AdminUsersPage() {
         summary="Manage operator access, role changes, and activation state in a mobile-safe admin workflow."
         eyebrow="Admin"
         breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Admin Users" }]}
+        subPages={platformSubPages}
         shortcuts={[
           { label: "Admin Roadmap", href: "/app/admin/roadmap" },
         ]}

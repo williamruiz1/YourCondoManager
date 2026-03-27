@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { financeSubPages } from "@/lib/sub-page-nav";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const utilitySchema = z.object({
@@ -35,7 +36,7 @@ const utilitySchema = z.object({
 });
 
 
-export default function FinancialUtilitiesPage() {
+export function FinancialUtilitiesContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -150,14 +151,7 @@ export default function FinancialUtilitiesPage() {
   });
 
   return (
-    <div className="flex flex-col min-h-0">
-      <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Utility Payments"
-        summary="Track utility bills, status changes, and supporting files for the active association without losing finance context."
-        eyebrow="Finance"
-        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Utility Payments" }]}
-      />
+    <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div />
         <Dialog open={open} onOpenChange={setOpen}>
@@ -364,6 +358,22 @@ export default function FinancialUtilitiesPage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+export default function FinancialUtilitiesPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Utility Payments"
+          summary="Track utility bills, status changes, and supporting files for the active association without losing finance context."
+          eyebrow="Finance"
+          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Utility Payments" }]}
+          subPages={financeSubPages}
+        />
+        <FinancialUtilitiesContent />
       </div>
     </div>
   );

@@ -16,6 +16,8 @@ import type {
   TenantConfig,
   Unit,
 } from "@shared/schema";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { platformSubPages } from "@/lib/sub-page-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,11 +27,387 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+// ── Twilio Config Card ────────────────────────────────────────────────────────
+
+function TwilioConfigCard({ smsProviderStatus }: { smsProviderStatus: any }) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ accountSid: "", authToken: "", fromNumber: "", statusCallbackUrl: "" });
+  const [showToken, setShowToken] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, string> = {};
+      if (form.accountSid.trim()) body.accountSid = form.accountSid.trim();
+      if (form.authToken.trim()) body.authToken = form.authToken.trim();
+      if (form.fromNumber.trim()) body.fromNumber = form.fromNumber.trim();
+      if (form.statusCallbackUrl.trim()) body.statusCallbackUrl = form.statusCallbackUrl.trim();
+      if (!Object.keys(body).length) throw new Error("Enter at least one field to save.");
+      const res = await apiRequest("POST", "/api/platform/sms/configure", body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/platform/sms/provider-status"] });
+      setForm({ accountSid: "", authToken: "", fromNumber: "", statusCallbackUrl: "" });
+      toast({ title: "Twilio credentials saved" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const configured = smsProviderStatus?.configured;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-lg">Twilio SMS Configuration</CardTitle>
+            <CardDescription>Enable SMS notifications for residents. Sign up at twilio.com to get your credentials.</CardDescription>
+          </div>
+          <Badge variant={configured ? "default" : "outline"}>{configured ? "Configured" : "Not Configured"}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* Current status */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-lg border p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Account SID</div>
+            <div className="mt-1 text-sm font-medium">{smsProviderStatus?.accountSidSet ? "Set" : <span className="text-destructive">Not set</span>}</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Auth Token</div>
+            <div className="mt-1 text-sm font-medium">{smsProviderStatus?.authTokenSet ? "Set" : <span className="text-destructive">Not set</span>}</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">From Number</div>
+            <div className="mt-1 text-sm font-medium">{smsProviderStatus?.fromNumber || <span className="text-destructive">Not set</span>}</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Status Callback</div>
+            <div className="mt-1 text-sm font-medium">{smsProviderStatus?.statusCallbackConfigured ? "Configured" : "Optional"}</div>
+          </div>
+        </div>
+
+        {/* Config form */}
+        <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Enter credentials to save — leave blank to keep existing values</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Account SID</label>
+              <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value={form.accountSid} onChange={(e) => setForm((p) => ({ ...p, accountSid: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Auth Token</label>
+              <div className="relative">
+                <Input
+                  type={showToken ? "text" : "password"}
+                  placeholder="Your Twilio auth token"
+                  value={form.authToken}
+                  onChange={(e) => setForm((p) => ({ ...p, authToken: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowToken((s) => !s)}
+                >
+                  {showToken ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">From Number (E.164)</label>
+              <Input placeholder="+15005550006" value={form.fromNumber} onChange={(e) => setForm((p) => ({ ...p, fromNumber: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Status Callback URL <span className="text-muted-foreground">(optional)</span></label>
+              <Input placeholder="https://yourdomain.com/api/webhooks/twilio/sms-delivery" value={form.statusCallbackUrl} onChange={(e) => setForm((p) => ({ ...p, statusCallbackUrl: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              Save Credentials
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Env vars (TWILIO_ACCOUNT_SID etc.) always take precedence over saved credentials.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 space-y-1">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-400">How to get Twilio credentials</p>
+          <ol className="text-xs text-amber-700 dark:text-amber-500 space-y-0.5 list-decimal list-inside">
+            <li>Sign up at <strong>twilio.com</strong> and verify your account</li>
+            <li>From the Console Dashboard, copy your <strong>Account SID</strong> and <strong>Auth Token</strong></li>
+            <li>Go to Phone Numbers → Buy a Number, purchase a number (~$1/month)</li>
+            <li>Enter the number above in E.164 format (e.g. +15005550006)</li>
+            <li>Optionally set the Status Callback URL to receive delivery receipts</li>
+          </ol>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── VAPID Config Card ─────────────────────────────────────────────────────────
+
+function VapidConfigCard({ pushProviderStatus }: { pushProviderStatus: any }) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ vapidPublicKey: "", vapidPrivateKey: "", vapidSubject: "" });
+  const [showPrivate, setShowPrivate] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, string> = {};
+      if (form.vapidPublicKey.trim()) body.vapidPublicKey = form.vapidPublicKey.trim();
+      if (form.vapidPrivateKey.trim()) body.vapidPrivateKey = form.vapidPrivateKey.trim();
+      if (form.vapidSubject.trim()) body.vapidSubject = form.vapidSubject.trim();
+      if (!Object.keys(body).length) throw new Error("Enter at least one field to save.");
+      const res = await apiRequest("POST", "/api/platform/push/configure", body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/platform/push/provider-status"] });
+      setForm({ vapidPublicKey: "", vapidPrivateKey: "", vapidSubject: "" });
+      toast({ title: "VAPID keys saved" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const configured = pushProviderStatus?.configured;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-lg">Web Push (VAPID) Configuration</CardTitle>
+            <CardDescription>Enable browser push notifications for owner portal residents. No third-party account required — generate keys locally.</CardDescription>
+          </div>
+          <Badge variant={configured ? "default" : "outline"}>{configured ? "Configured" : "Not Configured"}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* Current status */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg border p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Public Key</div>
+            <div className="mt-1 text-sm font-medium">{pushProviderStatus?.vapidPublicKeySet ? "Set" : <span className="text-destructive">Not set</span>}</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Private Key</div>
+            <div className="mt-1 text-sm font-medium">{pushProviderStatus?.vapidPrivateKeySet ? "Set" : <span className="text-destructive">Not set</span>}</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Subject</div>
+            <div className="mt-1 text-sm font-medium truncate">{pushProviderStatus?.subject || "default"}</div>
+          </div>
+        </div>
+
+        {/* Config form */}
+        <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Enter keys to save — leave blank to keep existing values</p>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">VAPID Public Key</label>
+              <Input placeholder="Base64url-encoded public key" value={form.vapidPublicKey} onChange={(e) => setForm((p) => ({ ...p, vapidPublicKey: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">VAPID Private Key</label>
+              <div className="relative">
+                <Input
+                  type={showPrivate ? "text" : "password"}
+                  placeholder="Base64url-encoded private key"
+                  value={form.vapidPrivateKey}
+                  onChange={(e) => setForm((p) => ({ ...p, vapidPrivateKey: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPrivate((s) => !s)}
+                >
+                  {showPrivate ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Subject <span className="text-muted-foreground">(mailto: or https: URI)</span></label>
+              <Input placeholder="mailto:admin@yourdomain.com" value={form.vapidSubject} onChange={(e) => setForm((p) => ({ ...p, vapidSubject: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              Save Keys
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Env vars (VAPID_PUBLIC_KEY etc.) always take precedence over saved keys.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-3 space-y-1">
+          <p className="text-xs font-semibold text-blue-800 dark:text-blue-400">How to generate VAPID keys (one-time setup, free)</p>
+          <ol className="text-xs text-blue-700 dark:text-blue-500 space-y-0.5 list-decimal list-inside">
+            <li>In your terminal, run: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">npx web-push generate-vapid-keys</code></li>
+            <li>Copy the <strong>Public Key</strong> and <strong>Private Key</strong> from the output</li>
+            <li>Set <strong>Subject</strong> to your contact email (e.g. mailto:admin@yourdomain.com)</li>
+            <li>Paste both keys above and click Save Keys</li>
+            <li>Keys are generated once and never need to change — store them safely</li>
+          </ol>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Stripe Billing Config Card ────────────────────────────────────────────────
+
+function PlatformStripeConfigCard() {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ secretKey: "", publishableKey: "", webhookSecret: "" });
+  const [showSecret, setShowSecret] = useState(false);
+  const [showWebhook, setShowWebhook] = useState(false);
+
+  const { data: billingSummary } = useQuery<{
+    activeSubscriptions: number;
+    trialingSubscriptions: number;
+    canceledSubscriptions: number;
+    totalMrr: number;
+    byPlan: Record<string, { count: number; mrr: number }>;
+  }>({ queryKey: ["/api/platform/billing/summary"] });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, string> = {};
+      if (form.secretKey.trim()) body.secretKey = form.secretKey.trim();
+      if (form.publishableKey.trim()) body.publishableKey = form.publishableKey.trim();
+      if (form.webhookSecret.trim()) body.webhookSecret = form.webhookSecret.trim();
+      if (!Object.keys(body).length) throw new Error("Enter at least one field to save.");
+      const res = await apiRequest("POST", "/api/platform/billing/configure", body);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/platform/billing/summary"] });
+      setForm({ secretKey: "", publishableKey: "", webhookSecret: "" });
+      toast({ title: "Stripe credentials saved" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const isConfigured = !!billingSummary;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-lg">Stripe Subscription Billing</CardTitle>
+            <CardDescription>Connect your platform Stripe account to enable subscription sign-ups, checkout, and the customer billing portal.</CardDescription>
+          </div>
+          <Badge variant={isConfigured ? "default" : "outline"}>{isConfigured ? "Connected" : "Not Configured"}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* MRR Summary */}
+        {billingSummary && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Monthly Revenue</div>
+              <div className="mt-1 text-sm font-bold">${(billingSummary.totalMrr / 100).toFixed(2)}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Active</div>
+              <div className="mt-1 text-sm font-bold">{billingSummary.activeSubscriptions}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Trialing</div>
+              <div className="mt-1 text-sm font-bold">{billingSummary.trialingSubscriptions}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Canceled</div>
+              <div className="mt-1 text-sm font-bold">{billingSummary.canceledSubscriptions}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Config form */}
+        <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Enter keys to save — leave blank to keep existing values</p>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Secret Key <span className="text-muted-foreground">(sk_live_… or sk_test_…)</span></label>
+              <div className="relative">
+                <Input
+                  type={showSecret ? "text" : "password"}
+                  placeholder="sk_live_…"
+                  value={form.secretKey}
+                  onChange={(e) => setForm((p) => ({ ...p, secretKey: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowSecret((s) => !s)}
+                >
+                  {showSecret ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Publishable Key</label>
+              <Input
+                placeholder="pk_live_…"
+                value={form.publishableKey}
+                onChange={(e) => setForm((p) => ({ ...p, publishableKey: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Webhook Signing Secret</label>
+              <div className="relative">
+                <Input
+                  type={showWebhook ? "text" : "password"}
+                  placeholder="whsec_…"
+                  value={form.webhookSecret}
+                  onChange={(e) => setForm((p) => ({ ...p, webhookSecret: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowWebhook((s) => !s)}
+                >
+                  {showWebhook ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              Save Stripe Keys
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-3 space-y-1">
+          <p className="text-xs font-semibold text-blue-800 dark:text-blue-400">Setup checklist</p>
+          <ol className="text-xs text-blue-700 dark:text-blue-500 space-y-0.5 list-decimal list-inside">
+            <li>Create your platform Stripe account at stripe.com and copy your API keys above.</li>
+            <li>Set up a webhook endpoint in Stripe pointing to <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">/api/webhooks/platform/stripe</code>.</li>
+            <li>Enable events: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">checkout.session.completed</code>, <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">customer.subscription.*</code>, <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">invoice.payment_failed</code>.</li>
+            <li>Create products in Stripe for Self-Managed and Property Manager plans with monthly prices.</li>
+            <li>Set <strong>STRIPE_SELF_MANAGED_PRICE_ID</strong> and <strong>STRIPE_PM_PRICE_ID</strong> env vars (or store via secrets store).</li>
+          </ol>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PlatformControlsPage() {
   const { toast } = useToast();
   const [envelopeForm, setEnvelopeForm] = useState({ associationId: "", name: "", audience: "owner-self-service", permissionsJson: "{\n  \"documents\": true,\n  \"notices\": true,\n  \"contactUpdate\": true\n}" });
   const [scopeForm, setScopeForm] = useState({ adminUserId: "", associationId: "", scope: "read-write" });
-  const [tenantForm, setTenantForm] = useState({ associationId: "", portalName: "Owner Portal", supportEmail: "", allowContactUpdates: 1, ownerDocumentVisibility: "owner-safe", gmailIntegrationStatus: "not-configured", defaultNoticeFooter: "" });
+  const [tenantForm, setTenantForm] = useState({ associationId: "", portalName: "Owner Portal", supportEmail: "", allowContactUpdates: 1, ownerDocumentVisibility: "owner-safe", gmailIntegrationStatus: "not-configured", defaultNoticeFooter: "", smsFromNumber: "" });
   const [emailTestForm, setEmailTestForm] = useState({ associationId: "", to: "", subject: "Platform Email Integration Test", body: "This is a test email from the platform." });
   const [portalAccessForm, setPortalAccessForm] = useState({ associationId: "", personId: "", unitId: "", email: "", role: "owner", status: "active" });
   const [membershipForm, setMembershipForm] = useState({ associationId: "", personId: "", unitId: "", membershipType: "owner", status: "active", isPrimary: 1 });
@@ -85,6 +463,20 @@ export default function PlatformControlsPage() {
     sender: string | null;
     trackingEnabled: boolean;
   }>({ queryKey: ["/api/platform/email/provider-status"] });
+  const { data: smsProviderStatus } = useQuery<{
+    configured: boolean;
+    provider: string;
+    fromNumber: string | null;
+    accountSidSet: boolean;
+    authTokenSet: boolean;
+    statusCallbackConfigured: boolean;
+  }>({ queryKey: ["/api/platform/sms/provider-status"] });
+  const { data: pushProviderStatus } = useQuery<{
+    configured: boolean;
+    vapidPublicKeySet: boolean;
+    vapidPrivateKeySet: boolean;
+    subject: string;
+  }>({ queryKey: ["/api/platform/push/provider-status"] });
   const { data: googleAuthStatus } = useQuery<{
     enabled: boolean;
     clientConfigured: boolean;
@@ -255,10 +647,77 @@ export default function PlatformControlsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Platform Controls</h1>
-        <p className="text-muted-foreground">Self-service permission envelopes and multi-association isolation scopes.</p>
-      </div>
+      <WorkspacePageHeader
+        title="Platform Controls"
+        summary="Self-service permission envelopes and multi-association isolation scopes."
+        eyebrow="Platform"
+        breadcrumbs={[{ label: "Platform", href: "/app/platform/controls" }, { label: "Platform Controls" }]}
+        subPages={platformSubPages}
+      />
+
+      {/* Billing */}
+      <PlatformStripeConfigCard />
+
+      {/* Marketing Write-Up */}
+      <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-background">
+        <CardHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <Badge variant="secondary" className="text-xs font-medium uppercase tracking-wide">About CondoManager</Badge>
+          </div>
+          <CardTitle className="text-2xl font-bold leading-snug">
+            The All-in-One Platform Built for Condo &amp; HOA Management
+          </CardTitle>
+          <CardDescription className="text-base text-foreground/70 leading-relaxed mt-1">
+            CondoManager gives property managers, boards, and residents one connected platform — eliminating spreadsheets, disconnected tools, and costly manual work.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Managing a condominium association shouldn't require a dozen different tools. CondoManager unifies every aspect of association operations — from financial ledgers and automated billing to owner portals and board governance — into a single, audit-ready platform. Whether you oversee one building or a portfolio of hundreds of properties, CondoManager scales with your business and keeps every stakeholder informed.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="rounded-lg border bg-background p-4 space-y-1">
+              <div className="text-sm font-semibold">Financial Management</div>
+              <p className="text-xs text-muted-foreground">Assessments, recurring charges, late fees, utility billing, reconciliation, and full audit-ready ledgers — all automated and association-isolated.</p>
+            </div>
+            <div className="rounded-lg border bg-background p-4 space-y-1">
+              <div className="text-sm font-semibold">Owner &amp; Resident Portal</div>
+              <p className="text-xs text-muted-foreground">Give owners 24/7 access to their account balance, documents, maintenance requests, and contact updates through a branded self-service portal.</p>
+            </div>
+            <div className="rounded-lg border bg-background p-4 space-y-1">
+              <div className="text-sm font-semibold">Board &amp; Governance Tools</div>
+              <p className="text-xs text-muted-foreground">Prepare board packages, run meetings, track votes, and maintain governance compliance — all in one place, with a full audit trail.</p>
+            </div>
+            <div className="rounded-lg border bg-background p-4 space-y-1">
+              <div className="text-sm font-semibold">Maintenance &amp; Work Orders</div>
+              <p className="text-xs text-muted-foreground">Log, assign, and track work orders from submission to completion. Schedule recurring maintenance and manage vendor relationships effortlessly.</p>
+            </div>
+            <div className="rounded-lg border bg-background p-4 space-y-1">
+              <div className="text-sm font-semibold">Communications Hub</div>
+              <p className="text-xs text-muted-foreground">Send notices, announcements, and targeted messages directly from the platform. Full email threading and delivery history included.</p>
+            </div>
+            <div className="rounded-lg border bg-background p-4 space-y-1">
+              <div className="text-sm font-semibold">Portfolio &amp; Reporting</div>
+              <p className="text-xs text-muted-foreground">Executive dashboards and cross-portfolio reporting give management companies real-time visibility across every association they manage.</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-background p-4 space-y-2">
+            <div className="text-sm font-semibold">Why CondoManager?</div>
+            <ul className="text-xs text-muted-foreground space-y-1.5 list-none">
+              <li className="flex items-start gap-2"><span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-1.5" /><span><strong className="text-foreground/80">Built for scale:</strong> Multi-association isolation ensures data, permissions, and billing are always clean across every property in your portfolio.</span></li>
+              <li className="flex items-start gap-2"><span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-1.5" /><span><strong className="text-foreground/80">Reduce admin overhead:</strong> Automate the repeatable work — assessments, late fee runs, recurring charges, and reminders — so your team focuses on residents, not spreadsheets.</span></li>
+              <li className="flex items-start gap-2"><span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-1.5" /><span><strong className="text-foreground/80">Resident satisfaction:</strong> A polished, always-on owner portal improves transparency and reduces inbound support calls by giving residents the answers they need instantly.</span></li>
+              <li className="flex items-start gap-2"><span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-1.5" /><span><strong className="text-foreground/80">Audit-ready by default:</strong> Every financial transaction, document, approval, and communication is logged — so you're always prepared for board reviews, audits, or disputes.</span></li>
+            </ul>
+          </div>
+
+          <p className="text-xs text-muted-foreground italic">
+            CondoManager is trusted by property management companies to operate with confidence, consistency, and complete control — from the first unit to the full portfolio.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-6 space-y-4">
@@ -384,6 +843,9 @@ export default function PlatformControlsPage() {
         </CardContent>
       </Card>
 
+      <TwilioConfigCard smsProviderStatus={smsProviderStatus} />
+      <VapidConfigCard pushProviderStatus={pushProviderStatus} />
+
       <Card>
         <CardContent className="p-6 space-y-4">
           <h2 className="text-lg font-semibold">Tenant Config and Email Threads</h2>
@@ -404,6 +866,7 @@ export default function PlatformControlsPage() {
             </Select>
           </div>
           <Textarea value={tenantForm.defaultNoticeFooter} onChange={(e) => setTenantForm((p) => ({ ...p, defaultNoticeFooter: e.target.value }))} placeholder="Default notice footer" />
+          <Input value={tenantForm.smsFromNumber} onChange={(e) => setTenantForm((p) => ({ ...p, smsFromNumber: e.target.value }))} placeholder="SMS sending number (E.164, e.g. +15005550006)" />
           <div className="flex gap-2">
             <Button onClick={() => saveTenantConfig.mutate()} disabled={saveTenantConfig.isPending}>Save Tenant Config</Button>
             {tenantConfig ? <Badge variant="secondary">{tenantConfig.portalName}</Badge> : null}

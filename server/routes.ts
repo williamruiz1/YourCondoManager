@@ -8,8 +8,14 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
+import {
+  sendAssociationAdminEmailNotification,
+  sendDirectAdminEmailNotification,
+  sendPlatformAdminEmailNotification,
+} from "./admin-notification-service";
+import { processSpecialAssessmentInstallments } from "./assessment-installments";
 import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
-import { and, eq, gte, ilike, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import {
   getEmailLog,
   getEmailLogs,
@@ -23,6 +29,9 @@ import {
   sendPlatformEmail,
   verifyEmailConnection,
 } from "./email-provider";
+import { getSmsProviderStatus, isSmsProviderConfigured, normalizePhoneNumber, sendSms } from "./sms-provider";
+import { getVapidPublicKey, getPushProviderStatus, sendPushNotification, isPushProviderConfigured } from "./push-provider";
+import { getSecret, setSecret, deleteSecret, invalidateSecretsCache } from "./platform-secrets-store";
 import {
   insertAdminUserSchema,
   insertAdminAssociationScopeSchema,
@@ -86,6 +95,11 @@ import {
   insertVendorSchema,
   insertVendorInvoiceSchema,
   insertVoteRecordSchema,
+  insertElectionSchema,
+  insertElectionOptionSchema,
+  insertElectionProxyDesignationSchema,
+  insertElectionProxyDocumentSchema,
+  elections,
   boardRoles,
   resolutions,
   documents,
@@ -152,7 +166,32 @@ import {
   portalLoginTokens,
   occupancies,
   associations,
+  vendorPortalCredentials,
+  vendorPortalLoginTokens,
+  vendorWorkOrderActivity,
+  insertVendorPortalCredentialSchema,
+  vendorInvoices,
+  communicationHistory,
+  portalAccess,
+  smsDeliveryLogs,
+  pushSubscriptions,
+  auditLogs,
+  adminUserPreferences,
+  platformSubscriptions,
+  platformWebhookEvents,
+  roadmapProjects,
+  roadmapWorkstreams,
+  tenantConfigs,
+  adminUsers,
+  meetingNotes,
+  electionBallotTokens,
 } from "@shared/schema";
+import {
+  ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE,
+  ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_ID,
+  ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_TITLE,
+} from "@shared/admin-contextual-feedback";
+import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 
 const uploadDir = path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -190,6 +229,91 @@ const DIRECT_INGEST_PARSEABLE_EXTENSIONS = new Set([
   ".xlsx",
 ]);
 
+const adminContextualFeedbackSchema = z.object({
+  title: z.string().min(1).max(160),
+  description: z.string().min(1).max(4000),
+  feedbackType: z.enum(["bug", "enhancement"]),
+  priority: z.enum(["low", "medium", "high", "critical"]).default("high"),
+  context: z.object({
+    route: z.string().min(1),
+    selector: z.string().min(1).max(1000),
+    domPath: z.string().min(1).max(2000),
+    bounds: z.object({
+      top: z.number(),
+      left: z.number(),
+      width: z.number(),
+      height: z.number(),
+      right: z.number(),
+      bottom: z.number(),
+    }),
+    scroll: z.object({
+      x: z.number(),
+      y: z.number(),
+    }),
+    viewport: z.object({
+      width: z.number(),
+      height: z.number(),
+    }),
+    timestamp: z.string().min(1),
+    componentName: z.string().nullable(),
+    nodeName: z.string().min(1),
+    className: z.string(),
+    elementLabel: z.string().min(1),
+    textPreview: z.string().nullable(),
+  }),
+});
+
+const ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_DESCRIPTION =
+  "Platform-admin-only contextual feedback widget for inspecting live UI, capturing route and DOM context, and writing findings into the existing Admin roadmap.";
+const ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_DESCRIPTION =
+  "Inbox for contextual feedback tickets captured from the live app before they are refined or moved into other implementation workstreams.";
+const ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_ORDER_INDEX = 3;
+
+async function ensureAdminContextualFeedbackRoadmapTarget() {
+  let project =
+    await storage.getRoadmapProject(ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_ID) ??
+    (await db
+      .select()
+      .from(roadmapProjects)
+      .where(eq(roadmapProjects.title, ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_TITLE))
+      .limit(1))[0];
+
+  if (!project) {
+    [project] = await db
+      .insert(roadmapProjects)
+      .values({
+        id: ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_ID,
+        title: ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_TITLE,
+        description: ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_DESCRIPTION,
+        status: "active",
+      })
+      .returning();
+  }
+
+  let workstream = (await db
+    .select()
+    .from(roadmapWorkstreams)
+    .where(and(
+      eq(roadmapWorkstreams.projectId, project.id),
+      eq(roadmapWorkstreams.title, ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE),
+    ))
+    .limit(1))[0];
+
+  if (!workstream) {
+    [workstream] = await db
+      .insert(roadmapWorkstreams)
+      .values({
+        projectId: project.id,
+        title: ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE,
+        description: ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_DESCRIPTION,
+        orderIndex: ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_ORDER_INDEX,
+      })
+      .returning();
+  }
+
+  return { project, workstream };
+}
+
 const isPublishedState = process.env.NODE_ENV === "production";
 const portalOtpSecretRaw = process.env.PORTAL_OTP_SECRET?.trim() || process.env.SESSION_SECRET?.trim() || "";
 const portalOtpSecret = portalOtpSecretRaw;
@@ -209,6 +333,7 @@ function escapeHtml(value: string | null | undefined): string {
     .replaceAll("'", "&#39;");
 }
 
+
 function isValidEmailAddress(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
@@ -227,6 +352,16 @@ function formatCurrency(amount: number, currency = "USD"): string {
 function shouldReturnJson(req: Request): boolean {
   const accept = (req.headers.accept || "").toLowerCase();
   return req.query.format === "json" || accept.includes("application/json");
+}
+
+/**
+ * Build a standardized error response payload.
+ * All error responses should use this helper so the shape is consistent:
+ *   { message: string, code?: string }
+ */
+function errorPayload(error: unknown, code?: string): { message: string; code?: string } {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "Internal server error";
+  return code ? { message, code } : { message };
 }
 
 function parseStripeSignature(headerValue: string): { timestamp: string | null; signature: string | null } {
@@ -1009,7 +1144,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         recentAuthUsers: authResult.rows,
       });
     } catch (err: any) {
-      res.status(500).json({ status: "error", message: err.message });
+      res.status(500).json(errorPayload(err));
     }
   });
 
@@ -1413,9 +1548,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error: any) {
       const message = String(error?.message || "");
       if (message.startsWith("Cannot delete association with linked")) {
-        return res.status(409).json({ message, code: "ASSOCIATION_DELETE_BLOCKED" });
+        return res.status(409).json(errorPayload(message, "ASSOCIATION_DELETE_BLOCKED"));
       }
-      res.status(400).json({ message: error.message });
+      res.status(400).json(errorPayload(error));
     }
   });
 
@@ -1468,6 +1603,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertAssociationInsurancePolicySchema.parse({ ...req.body, associationId });
       const [result] = await db.insert(associationInsurancePolicies).values(parsed).returning();
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId,
+        category: "insurance",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Insurance policy added: ${result.policyType}`,
+          html: `<p>An insurance policy has been added.</p>
+            <p><strong>Policy type:</strong> ${escapeHtml(result.policyType)}</p>
+            <p><strong>Carrier:</strong> ${escapeHtml(result.carrier)}</p>`,
+          text: `An insurance policy has been added.\nPolicy type: ${result.policyType}\nCarrier: ${result.carrier}`,
+          templateKey: "insurance-policy-added-admin",
+          metadata: { policyId: result.id, associationId },
+        },
+      }).catch((error) => console.error("[insurance] Failed to send insurance notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -1485,6 +1636,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .returning();
       if (!result) return res.status(404).json({ message: "Not found" });
       res.json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId,
+        category: "insurance",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Insurance policy updated: ${result.policyType}`,
+          html: `<p>An insurance policy has been updated.</p>
+            <p><strong>Policy type:</strong> ${escapeHtml(result.policyType)}</p>
+            <p><strong>Carrier:</strong> ${escapeHtml(result.carrier)}</p>`,
+          text: `An insurance policy has been updated.\nPolicy type: ${result.policyType}\nCarrier: ${result.carrier}`,
+          templateKey: "insurance-policy-updated-admin",
+          metadata: { policyId: result.id, associationId },
+        },
+      }).catch((error) => console.error("[insurance] Failed to send insurance update notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -1656,6 +1823,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/persons", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertPersonSchema.parse(req.body);
+      if (parsed.phone) parsed.phone = normalizePhoneNumber(parsed.phone) || null;
+      if (parsed.emergencyContactPhone) parsed.emergencyContactPhone = normalizePhoneNumber(parsed.emergencyContactPhone) || null;
       const result = await storage.createPerson(parsed, req.adminUserEmail);
       res.status(201).json(result);
     } catch (error: any) {
@@ -1904,6 +2073,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       const result = await storage.createOccupancy(parsed, req.adminUserEmail);
       res.status(201).json(result);
+
+      const [unit] = await db.select({ associationId: units.associationId, unitNumber: units.unitNumber }).from(units).where(eq(units.id, result.unitId)).limit(1);
+      if (unit) {
+        sendAssociationAdminEmailNotification({
+          associationId: unit.associationId,
+          category: "occupancy",
+          priority: "realtime",
+          excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+          email: {
+            subject: `Occupancy recorded for unit ${unit.unitNumber}`,
+            html: `<p>A new occupancy record has been created.</p>
+              <p><strong>Unit:</strong> ${escapeHtml(unit.unitNumber)}</p>
+              <p><strong>Occupancy type:</strong> ${escapeHtml(result.occupancyType)}</p>`,
+            text: `A new occupancy record has been created.\nUnit: ${unit.unitNumber}\nOccupancy type: ${result.occupancyType}`,
+            templateKey: "occupancy-created-admin",
+            metadata: { occupancyId: result.id, associationId: unit.associationId, unitId: result.unitId },
+          },
+        }).catch((error) => console.error("[occupancy] Failed to send occupancy notification:", error));
+      }
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -1920,6 +2108,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const endDate = req.body?.endDate ? new Date(req.body.endDate) : null;
       const [result] = await db.update(occupancies).set({ endDate }).where(eq(occupancies.id, id)).returning();
       res.json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: unit.associationId,
+        category: "occupancy",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Occupancy updated for unit record ${result.id}`,
+          html: `<p>An occupancy record has been updated.</p>
+            <p><strong>Unit association:</strong> ${escapeHtml(unit.associationId)}</p>
+            <p><strong>End date:</strong> ${result.endDate ? escapeHtml(new Date(result.endDate).toLocaleDateString()) : "Active"}</p>`,
+          text: `An occupancy record has been updated.\nAssociation: ${unit.associationId}\nEnd date: ${result.endDate ? new Date(result.endDate).toLocaleDateString() : "Active"}`,
+          templateKey: "occupancy-updated-admin",
+          metadata: { occupancyId: result.id, associationId: unit.associationId, unitId: result.unitId },
+        },
+      }).catch((error) => console.error("[occupancy] Failed to send occupancy update notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -2007,7 +2211,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getDocuments(getAssociationIdQuery(req));
-      res.json(result);
+      // Enrich with version count and current version info
+      const versionCounts = await db
+        .select({ documentId: documentVersions.documentId, count: sql<number>`count(*)`, currentVersionNumber: sql<number>`max(case when ${documentVersions.isCurrent} = 1 then ${documentVersions.versionNumber} else null end)` })
+        .from(documentVersions)
+        .groupBy(documentVersions.documentId);
+      const versionMap = new Map(versionCounts.map(v => [v.documentId, { count: Number(v.count), currentVersionNumber: v.currentVersionNumber }]));
+      res.json(result.map(d => ({ ...d, versionCount: versionMap.get(d.id)?.count ?? 0, currentVersionNumber: versionMap.get(d.id)?.currentVersionNumber ?? null })));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -2043,6 +2253,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       assertAssociationScope(req, String(req.body.associationId || ""));
+
+      const parentDocumentId = req.body.parentDocumentId?.trim() || null;
+      let versionNumber = 1;
+
+      if (parentDocumentId) {
+        // Validate the parent document belongs to the same association and scoped to admin
+        await assertResourceScope(req, "document", parentDocumentId);
+        // Find the root of the version chain — walk up to the document with no parentDocumentId
+        let rootId = parentDocumentId;
+        let chainDoc = await db.select().from(documents).where(eq(documents.id, parentDocumentId));
+        while (chainDoc[0]?.parentDocumentId) {
+          rootId = chainDoc[0].parentDocumentId;
+          chainDoc = await db.select().from(documents).where(eq(documents.id, rootId));
+        }
+        // Fetch all documents in the chain (root + direct children) to get version numbers and ids
+        const allInChain = await db.select({ id: documents.id, versionNumber: documents.versionNumber })
+          .from(documents)
+          .where(or(eq(documents.id, rootId), eq(documents.parentDocumentId, rootId)));
+        const maxVersion = allInChain.reduce((max, d) => Math.max(max, d.versionNumber), 0);
+        versionNumber = maxVersion + 1;
+        const chainIds = allInChain.map((d) => d.id);
+        // Mark all documents in the version chain as no longer current
+        await db.update(documents).set({ isCurrentVersion: 0 })
+          .where(or(eq(documents.id, rootId), eq(documents.parentDocumentId, rootId)));
+        // Also clear isCurrent on all documentVersions entries for the chain documents
+        if (chainIds.length > 0) {
+          await db.update(documentVersions).set({ isCurrent: 0 })
+            .where(inArray(documentVersions.documentId, chainIds));
+        }
+      }
+
+      const effectiveDate = req.body.effectiveDate ? new Date(req.body.effectiveDate) : null;
+      const amendmentNotes = req.body.amendmentNotes?.trim() || null;
+
       const result = await storage.createDocument({
         associationId: req.body.associationId,
         title: req.body.title,
@@ -2051,8 +2295,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         fileUrl: `/api/uploads/${file.filename}`,
         isPortalVisible: req.body.isPortalVisible === "1" || req.body.isPortalVisible === "true" ? 1 : 0,
         portalAudience: typeof req.body.portalAudience === "string" && req.body.portalAudience ? req.body.portalAudience : "owner",
+        parentDocumentId,
+        versionNumber,
+        isCurrentVersion: 1,
       }, req.adminUserEmail);
+
+      // Also add a documentVersions entry capturing effective date and amendment notes
+      if (parentDocumentId && (effectiveDate || amendmentNotes)) {
+        const existingVersions = await storage.getDocumentVersions(result.id);
+        if (existingVersions.length > 0) {
+          await db.update(documentVersions)
+            .set({ effectiveDate, amendmentNotes })
+            .where(eq(documentVersions.id, existingVersions[0].id));
+        }
+      }
+
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "documents",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Document added: ${result.title}`,
+          html: `<p>A document has been added to the workspace.</p>
+            <p><strong>Title:</strong> ${escapeHtml(result.title)}</p>
+            <p><strong>Type:</strong> ${escapeHtml(result.documentType)}</p>
+            <p><strong>Uploaded by:</strong> ${escapeHtml(req.adminUserEmail || "system")}</p>`,
+          text: `A document has been added to the workspace.\nTitle: ${result.title}\nType: ${result.documentType}\nUploaded by: ${req.adminUserEmail || "system"}`,
+          templateKey: "document-added-admin",
+          metadata: {
+            documentId: result.id,
+            associationId: result.associationId,
+            parentDocumentId: result.parentDocumentId,
+          },
+        },
+      }).catch((error) => console.error("[documents] Failed to send document admin notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -2131,16 +2410,118 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!file || !title) {
         return res.status(400).json({ message: "File and title are required" });
       }
+      const effectiveDate = req.body.effectiveDate ? new Date(req.body.effectiveDate) : null;
+      const amendmentNotes = req.body.amendmentNotes?.trim() || null;
       const result = await storage.createDocumentVersion({
         documentId,
         versionNumber: (existingVersions[0]?.versionNumber ?? 0) + 1,
         title,
         fileUrl: `/api/uploads/${file.filename}`,
+        effectiveDate,
+        amendmentNotes,
+        isCurrent: 1,
         uploadedBy: req.body.uploadedBy || req.adminUserEmail || null,
       }, req.adminUserEmail);
+      // Mark all other versions as not current
+      await db.update(documentVersions)
+        .set({ isCurrent: 0 })
+        .where(and(eq(documentVersions.documentId, documentId), ne(documentVersions.id, result.id)));
       res.status(201).json(result);
+
+      const [documentRow] = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1);
+      if (documentRow) {
+        sendAssociationAdminEmailNotification({
+          associationId: documentRow.associationId,
+          category: "documents",
+          priority: "realtime",
+          excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+          email: {
+            subject: `New document version: ${documentRow.title}`,
+            html: `<p>A new version of a document has been uploaded.</p>
+              <p><strong>Title:</strong> ${escapeHtml(documentRow.title)}</p>
+              <p><strong>Version:</strong> ${result.versionNumber}</p>
+              <p><strong>Uploaded by:</strong> ${escapeHtml(req.adminUserEmail || "system")}</p>`,
+            text: `A new version of a document has been uploaded.\nTitle: ${documentRow.title}\nVersion: ${result.versionNumber}\nUploaded by: ${req.adminUserEmail || "system"}`,
+            templateKey: "document-version-added-admin",
+            metadata: {
+              documentId,
+              documentVersionId: result.id,
+              associationId: documentRow.associationId,
+            },
+          },
+        }).catch((error) => console.error("[documents] Failed to send document version admin notification:", error));
+      }
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/documents/:id/versions/:versionId/set-current", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const documentId = getParam(req.params.id);
+      const versionId = getParam(req.params.versionId);
+      await assertResourceScope(req, "document", documentId);
+      const [doc] = await db.select().from(documents).where(eq(documents.id, documentId));
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      const [version] = await db.select().from(documentVersions)
+        .where(and(eq(documentVersions.id, versionId), eq(documentVersions.documentId, documentId)));
+      if (!version) return res.status(404).json({ message: "Version not found" });
+      // Find the previously current version for the audit log
+      const [prevCurrent] = await db.select().from(documentVersions)
+        .where(and(eq(documentVersions.documentId, documentId), eq(documentVersions.isCurrent, 1)));
+      // Clear current flag on all versions for this document
+      await db.update(documentVersions).set({ isCurrent: 0 }).where(eq(documentVersions.documentId, documentId));
+      // Set this version as current
+      const [updated] = await db.update(documentVersions)
+        .set({ isCurrent: 1 })
+        .where(eq(documentVersions.id, versionId))
+        .returning();
+      // Log the rollback event in the audit trail
+      const reason = req.body?.reason?.trim() || null;
+      await db.insert(auditLogs).values({
+        actorEmail: req.adminUserEmail || "system",
+        action: "rollback",
+        entityType: "document",
+        entityId: documentId,
+        associationId: doc.associationId,
+        beforeJson: prevCurrent ? { versionId: prevCurrent.id, versionNumber: prevCurrent.versionNumber } : null,
+        afterJson: { versionId: updated.id, versionNumber: updated.versionNumber, reason },
+      });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/documents/:id/versions/export", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const documentId = getParam(req.params.id);
+      await assertResourceScope(req, "document", documentId);
+      const [doc] = await db.select().from(documents).where(eq(documents.id, documentId));
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      const versions = await storage.getDocumentVersions(documentId);
+      const format = req.query.format === "csv" ? "csv" : "json";
+      if (format === "csv") {
+        const lines = [
+          ["Version", "Title", "Effective Date", "Amendment Notes", "Uploaded By", "Created At", "Is Current", "File URL"].join(","),
+          ...versions.map(v => [
+            v.versionNumber,
+            `"${(v.title || "").replace(/"/g, '""')}"`,
+            v.effectiveDate ? new Date(v.effectiveDate).toISOString().split("T")[0] : "",
+            `"${(v.amendmentNotes || "").replace(/"/g, '""')}"`,
+            `"${(v.uploadedBy || "").replace(/"/g, '""')}"`,
+            new Date(v.createdAt).toISOString(),
+            v.isCurrent ? "Yes" : "No",
+            v.fileUrl,
+          ].join(",")),
+        ];
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", `attachment; filename="amendment-history-${documentId}.csv"`);
+        return res.send(lines.join("\n"));
+      }
+      res.json({ document: { id: doc.id, title: doc.title, documentType: doc.documentType }, versions });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -2394,7 +2775,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertSpecialAssessmentSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createSpecialAssessment(parsed);
+      if (result.isActive === 1 && result.autoPostEnabled === 1) {
+        await processSpecialAssessmentInstallments(result.associationId, { assessmentId: result.id });
+      }
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "assessments",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Assessment created: ${result.name}`,
+          html: `<p>A special assessment has been created.</p><p><strong>Name:</strong> ${escapeHtml(result.name)}</p><p><strong>Total amount:</strong> $${Number(result.totalAmount).toFixed(2)}</p>`,
+          text: `A special assessment has been created.\nName: ${result.name}\nTotal amount: $${Number(result.totalAmount).toFixed(2)}`,
+          templateKey: "assessment-created-admin",
+          metadata: { assessmentId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[assessments] Failed to send assessment notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -2409,7 +2807,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const result = await storage.updateSpecialAssessment(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Assessment not found" });
+      if (result.isActive === 1 && result.autoPostEnabled === 1) {
+        await processSpecialAssessmentInstallments(result.associationId, { assessmentId: result.id });
+      }
       res.json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "assessments",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Assessment updated: ${result.name}`,
+          html: `<p>A special assessment has been updated.</p><p><strong>Name:</strong> ${escapeHtml(result.name)}</p><p><strong>Total amount:</strong> $${Number(result.totalAmount).toFixed(2)}</p>`,
+          text: `A special assessment has been updated.\nName: ${result.name}\nTotal amount: $${Number(result.totalAmount).toFixed(2)}`,
+          templateKey: "assessment-updated-admin",
+          metadata: { assessmentId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[assessments] Failed to send assessment update notification:", error));
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/financial/assessments/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = typeof req.body?.associationId === "string" ? req.body.associationId : "";
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationInputScope(req, associationId);
+      const summary = await processSpecialAssessmentInstallments(associationId);
+      res.json(summary);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -2430,6 +2857,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createLateFeeRule(parsed);
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "lateFees",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Late fee rule created: ${result.name}`,
+          html: `<p>A late fee rule has been created.</p><p><strong>Name:</strong> ${escapeHtml(result.name)}</p>`,
+          text: `A late fee rule has been created.\nName: ${result.name}`,
+          templateKey: "late-fee-rule-created-admin",
+          metadata: { lateFeeRuleId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[late-fees] Failed to send late fee rule notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -2445,6 +2886,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.updateLateFeeRule(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Late fee rule not found" });
       res.json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "lateFees",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Late fee rule updated: ${result.name}`,
+          html: `<p>A late fee rule has been updated.</p><p><strong>Name:</strong> ${escapeHtml(result.name)}</p>`,
+          text: `A late fee rule has been updated.\nName: ${result.name}`,
+          templateKey: "late-fee-rule-updated-admin",
+          metadata: { lateFeeRuleId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[late-fees] Failed to send late fee rule update notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -2482,6 +2937,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         apply,
       });
       res.json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId,
+        category: "lateFees",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Late fee ${apply ? "applied" : "calculated"} for balance event`,
+          html: `<p>A late fee has been ${apply ? "applied" : "calculated"}.</p><p><strong>Calculated fee:</strong> $${Number(result.calculatedFee).toFixed(2)}</p>`,
+          text: `A late fee has been ${apply ? "applied" : "calculated"}.\nCalculated fee: $${Number(result.calculatedFee).toFixed(2)}`,
+          templateKey: "late-fee-calculated-admin",
+          metadata: { associationId, ruleId, apply, calculatedFee: result.calculatedFee },
+        },
+      }).catch((error) => console.error("[late-fees] Failed to send late fee calculation notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -3124,21 +3593,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         template = tpl;
       }
 
-      // Create mock sends for each delinquent account
+      // Resolve real person emails for delivery
+      const allPersons = await storage.getPersons(rule.associationId);
+      const personEmailMap = new Map(allPersons.filter(p => p.email).map(p => [p.id, p.email!]));
+      const emailProviderReady = isEmailProviderConfigured();
+
       const sends: Array<{ personId: string; unitId: string; balance: number; sent: boolean }> = [];
+      const campaignKey = `payment-reminder-${rule.id}-${Date.now()}`;
       for (const account of delinquent) {
         const subject = template ? template.subjectTemplate : `Payment Reminder - Balance Due`;
         const body = template ? template.bodyTemplate : `This is a reminder that your account has an outstanding balance of $${Math.abs(account.balance).toFixed(2)}.`;
+        const recipientEmail = personEmailMap.get(account.personId) ?? `owner-${account.personId}@placeholder.local`;
+
+        let sendStatus = "simulated";
+        let provider = "simulation";
+        let providerMessageId: string | null = null;
+
+        if (personEmailMap.has(account.personId) && emailProviderReady) {
+          try {
+            const result = await sendPlatformEmail({
+              to: recipientEmail,
+              subject,
+              html: body,
+              associationId: rule.associationId,
+            });
+            sendStatus = result.status === "sent" ? "sent" : result.status;
+            provider = result.provider;
+            providerMessageId = result.messageId;
+          } catch (_err) {
+            sendStatus = "failed";
+          }
+        }
+
         await db.insert(noticeSends).values({
           associationId: rule.associationId,
           templateId: rule.templateId,
-          campaignKey: `payment-reminder-${rule.id}-${Date.now()}`,
-          recipientEmail: `owner-${account.personId}@example.com`,
+          campaignKey,
+          recipientEmail,
           recipientPersonId: account.personId,
           subjectRendered: subject,
           bodyRendered: body,
-          status: "sent",
-          provider: "internal-mock",
+          status: sendStatus,
+          provider,
+          providerMessageId,
           sentBy: req.adminUserEmail || "system",
           metadataJson: { ruleId: rule.id, balance: account.balance, unitId: account.unitId },
         });
@@ -3479,6 +3976,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createVendorInvoice(parsed);
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "invoices",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Invoice created: ${result.invoiceNumber || result.id}`,
+          html: `<p>A vendor invoice has been created.</p><p><strong>Invoice number:</strong> ${escapeHtml(result.invoiceNumber || result.id)}</p><p><strong>Amount:</strong> $${Number(result.amount).toFixed(2)}</p>`,
+          text: `A vendor invoice has been created.\nInvoice number: ${result.invoiceNumber || result.id}\nAmount: $${Number(result.amount).toFixed(2)}`,
+          templateKey: "invoice-created-admin",
+          metadata: { invoiceId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[invoices] Failed to send invoice notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -3494,6 +4005,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.updateVendorInvoice(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Invoice not found" });
       res.json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "invoices",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Invoice updated: ${result.invoiceNumber || result.id}`,
+          html: `<p>A vendor invoice has been updated.</p><p><strong>Invoice number:</strong> ${escapeHtml(result.invoiceNumber || result.id)}</p><p><strong>Amount:</strong> $${Number(result.amount).toFixed(2)}</p>`,
+          text: `A vendor invoice has been updated.\nInvoice number: ${result.invoiceNumber || result.id}\nAmount: $${Number(result.amount).toFixed(2)}`,
+          templateKey: "invoice-updated-admin",
+          metadata: { invoiceId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[invoices] Failed to send invoice update notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -3549,6 +4074,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createPaymentMethodConfig(parsed);
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "payments",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Payment method configured: ${result.displayName}`,
+          html: `<p>A payment method configuration has been created.</p><p><strong>Display name:</strong> ${escapeHtml(result.displayName)}</p><p><strong>Method type:</strong> ${escapeHtml(result.methodType)}</p>`,
+          text: `A payment method configuration has been created.\nDisplay name: ${result.displayName}\nMethod type: ${result.methodType}`,
+          templateKey: "payment-method-created-admin",
+          metadata: { paymentMethodConfigId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[payments] Failed to send payment method notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -3564,6 +4103,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.updatePaymentMethodConfig(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Payment method config not found" });
       res.json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "payments",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Payment method updated: ${result.displayName}`,
+          html: `<p>A payment method configuration has been updated.</p><p><strong>Display name:</strong> ${escapeHtml(result.displayName)}</p><p><strong>Method type:</strong> ${escapeHtml(result.methodType)}</p>`,
+          text: `A payment method configuration has been updated.\nDisplay name: ${result.displayName}\nMethod type: ${result.methodType}`,
+          templateKey: "payment-method-updated-admin",
+          metadata: { paymentMethodConfigId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[payments] Failed to send payment method update notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -4198,6 +4751,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       res.status(201).json(newImport);
+
+      sendAssociationAdminEmailNotification({
+        associationId,
+        category: "reconciliation",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Bank statement import created: ${newImport.filename}`,
+          html: `<p>A bank statement import has been created.</p><p><strong>Filename:</strong> ${escapeHtml(newImport.filename)}</p><p><strong>Transactions:</strong> ${newImport.transactionCount}</p>`,
+          text: `A bank statement import has been created.\nFilename: ${newImport.filename}\nTransactions: ${newImport.transactionCount}`,
+          templateKey: "reconciliation-import-created-admin",
+          metadata: { importId: newImport.id, associationId },
+        },
+      }).catch((error) => console.error("[reconciliation] Failed to send import notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -4281,6 +4848,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationInputScope(req, parsed.associationId);
       const [result] = await db.insert(reconciliationPeriods).values(parsed).returning();
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "reconciliation",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Reconciliation period opened`,
+          html: `<p>A reconciliation period has been created.</p><p><strong>Start date:</strong> ${escapeHtml(new Date(result.startDate).toLocaleDateString())}</p><p><strong>End date:</strong> ${escapeHtml(new Date(result.endDate).toLocaleDateString())}</p>`,
+          text: `A reconciliation period has been created.\nStart date: ${new Date(result.startDate).toLocaleDateString()}\nEnd date: ${new Date(result.endDate).toLocaleDateString()}`,
+          templateKey: "reconciliation-period-created-admin",
+          metadata: { periodId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[reconciliation] Failed to send period notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -4316,6 +4897,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const [updated] = await db.update(reconciliationPeriods).set(updates).where(eq(reconciliationPeriods.id, id)).returning();
       res.json(updated);
+
+      sendAssociationAdminEmailNotification({
+        associationId: updated.associationId,
+        category: "reconciliation",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Reconciliation period ${String(updates.status || updated.status)}`,
+          html: `<p>A reconciliation period has been updated.</p><p><strong>Status:</strong> ${escapeHtml(String(updates.status || updated.status))}</p><p><strong>Notes:</strong> ${escapeHtml(String((updates.notes as string | null) || updated.notes || "None"))}</p>`,
+          text: `A reconciliation period has been updated.\nStatus: ${String(updates.status || updated.status)}\nNotes: ${String((updates.notes as string | null) || updated.notes || "None")}`,
+          templateKey: "reconciliation-period-updated-admin",
+          metadata: { periodId: updated.id, associationId: updated.associationId, action: action || null },
+        },
+      }).catch((error) => console.error("[reconciliation] Failed to send period update notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -4630,6 +5225,1221 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ─── Elections ─────────────────────────────────────────────────────────────
+
+  app.get("/api/elections", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const meetingId = typeof req.query.meetingId === "string" ? req.query.meetingId : undefined;
+      const result = await storage.getElections(getAssociationIdQuery(req), meetingId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/elections", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const parsed = insertElectionSchema.parse({ ...req.body, createdBy: req.adminUserEmail || null });
+      assertAssociationScope(req as AdminRequest, parsed.associationId);
+      // Date validation: closesAt must be after opensAt
+      if (parsed.opensAt && parsed.closesAt && new Date(parsed.closesAt) <= new Date(parsed.opensAt)) {
+        return res.status(400).json({ message: "Closing date must be after opening date." });
+      }
+      const result = await storage.createElection(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // 11.3: Election compliance summary for governance page
+  app.get("/api/elections/compliance-summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      const result = await storage.getElectionComplianceSummary(associationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/elections/active-summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getActiveElectionsSummary(getAssociationIdQuery(req));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Cross-election participation analytics
+  app.get("/api/elections/analytics", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId query parameter is required" });
+      const analytics = await storage.getElectionAnalytics(associationId);
+      res.json(analytics);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getElection(getParam(req.params.id));
+      if (!result) return res.status(404).json({ message: "Election not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const parsed = insertElectionSchema.partial().parse(req.body);
+      const electionId = getParam(req.params.id);
+
+      // Date validation: closesAt must be after opensAt when both are provided
+      if (parsed.opensAt && parsed.closesAt && new Date(parsed.closesAt) <= new Date(parsed.opensAt)) {
+        return res.status(400).json({ message: "Closing date must be after opening date." });
+      }
+      // Also check against existing values when only one date is being updated
+      if (parsed.opensAt || parsed.closesAt) {
+        const existing = await storage.getElection(electionId);
+        if (existing) {
+          const effectiveOpensAt = parsed.opensAt ? new Date(parsed.opensAt) : (existing.opensAt ? new Date(existing.opensAt) : null);
+          const effectiveClosesAt = parsed.closesAt ? new Date(parsed.closesAt) : (existing.closesAt ? new Date(existing.closesAt) : null);
+          if (effectiveOpensAt && effectiveClosesAt && effectiveClosesAt <= effectiveOpensAt) {
+            return res.status(400).json({ message: "Closing date must be after opening date." });
+          }
+        }
+      }
+
+      // Guard: draft->open requires at least 1 ballot option
+      // Also capture whether this is a draft->open transition for post-update side effects
+      let isDraftToOpen = false;
+      if (parsed.status === "open") {
+        const existing = await storage.getElection(electionId);
+        if (existing && existing.status === "draft") {
+          const opts = await storage.getElectionOptions(electionId);
+          if (opts.length === 0) {
+            return res.status(400).json({ message: "At least one ballot option is required before opening voting." });
+          }
+          isDraftToOpen = true;
+        }
+      }
+
+      // If cancelling an open election, revoke all pending tokens
+      if (parsed.status === "cancelled") {
+        const existing = await storage.getElection(electionId);
+        if (existing && existing.status === "open") {
+          await storage.revokeAllPendingTokens(existing.id);
+        }
+      }
+      const result = await storage.updateElection(electionId, parsed);
+      if (!result) return res.status(404).json({ message: "Election not found" });
+
+      // WS6.4: If closesAt was extended on an open election, notify pending voters
+      if (!isDraftToOpen && result && result.status === "open" && parsed.closesAt) {
+        const appBaseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+        (async () => {
+          try {
+            const pendingVoters = await storage.getPendingVoterEmailsForElection(result.id);
+            const newClosesAtStr = result.closesAt ? new Date(result.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
+            for (const voter of pendingVoters) {
+              const voteUrl = `${appBaseUrl}/vote/${voter.token}`;
+              await sendPlatformEmail({
+                to: voter.email,
+                subject: `${result.title} — Deadline Extended`,
+                html: `
+                  <h2>${result.title} — Deadline Extended</h2>
+                  <p>The voting deadline has been extended to <strong>${newClosesAtStr}</strong>.</p>
+                  <p>If you haven't voted yet, there's still time.</p>
+                  <p style="margin:24px 0">
+                    <a href="${voteUrl}" style="display:inline-block;padding:12px 24px;background-color:#4f46e5;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600">
+                      Cast Your Vote
+                    </a>
+                  </p>
+                  <p style="font-size:12px;color:#6b7280">If the button doesn't work, copy this link: ${voteUrl}</p>
+                `,
+                associationId: result.associationId,
+                templateKey: "election-deadline-extended",
+              });
+            }
+            console.log(`[elections] Sent ${pendingVoters.length} deadline extension emails for election ${result.id}`);
+          } catch (err) {
+            console.error("[elections] Failed to send deadline extension emails:", err);
+          }
+        })();
+      }
+
+      // Side effects on draft->open transition (fire-and-forget)
+      if (isDraftToOpen && result) {
+        const appBaseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+
+        // 9.1: Auto-send ballot invitation emails
+        (async () => {
+          try {
+            const voters = await storage.getVoterEmailsForElection(result.id);
+            const closesAtStr = result.closesAt ? new Date(result.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
+            const tokenIds: string[] = [];
+            for (const voter of voters) {
+              const voteUrl = `${appBaseUrl}/vote/${voter.token}`;
+              await sendPlatformEmail({
+                to: voter.email,
+                subject: `${result.title} — Your Vote`,
+                html: `
+                  <h2>${result.title}</h2>
+                  ${result.description ? `<p>${result.description}</p>` : ""}
+                  <p>Voting is now open and closes on <strong>${closesAtStr}</strong>.</p>
+                  <p style="margin:24px 0">
+                    <a href="${voteUrl}" style="display:inline-block;padding:12px 24px;background-color:#4f46e5;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600">
+                      Cast Your Vote
+                    </a>
+                  </p>
+                  <p style="font-size:12px;color:#6b7280">If the button doesn't work, copy this link: ${voteUrl}</p>
+                `,
+                associationId: result.associationId,
+                templateKey: "election-ballot-invitation",
+              });
+              tokenIds.push(voter.tokenId);
+            }
+            if (tokenIds.length > 0) {
+              await storage.markBallotTokensSent(tokenIds);
+            }
+            console.log(`[elections] Sent ${tokenIds.length} ballot invitation emails for election ${result.id}`);
+          } catch (err) {
+            console.error("[elections] Failed to send ballot invitation emails:", err);
+          }
+        })();
+
+        // 9.3: Auto-create community announcement
+        (async () => {
+          try {
+            const closesAtStr = result.closesAt ? new Date(result.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
+            await db.insert(communityAnnouncements).values({
+              associationId: result.associationId,
+              title: `${result.title} — Voting Now Open`,
+              body: `${result.description || "A new election has been opened for your community."}\n\nVoting closes on ${closesAtStr}. All eligible voters will receive ballot instructions by email.`,
+              priority: "important",
+              isPublished: 1,
+              publishedAt: new Date(),
+              targetAudience: "all",
+              createdBy: "system",
+            });
+            console.log(`[elections] Created community announcement for election ${result.id}`);
+          } catch (err) {
+            console.error("[elections] Failed to create community announcement:", err);
+          }
+        })();
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      await storage.deleteElection(getParam(req.params.id));
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/elections/:id/tokens-detail", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getBallotTokensWithNames(getParam(req.params.id));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/elections/:id/options", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getElectionOptions(getParam(req.params.id));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/elections/:id/options", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const parsed = insertElectionOptionSchema.parse({ ...req.body, electionId: getParam(req.params.id) });
+      const result = await storage.createElectionOption(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/elections/:id/options/:optionId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      await storage.deleteElectionOption(getParam(req.params.optionId));
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Nomination management (admin) ──────────────────────────────────────────
+  app.get("/api/elections/:id/nominations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const nominations = await storage.getNominationsForElection(getParam(req.params.id));
+      res.json(nominations);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/elections/:id/nominations/:optionId/approve", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const result = await storage.approveNomination(getParam(req.params.optionId));
+      if (!result) return res.status(404).json({ message: "Nomination not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/elections/:id/nominations/:optionId/reject", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const result = await storage.rejectNomination(getParam(req.params.optionId));
+      if (!result) return res.status(404).json({ message: "Nomination not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/elections/:id/generate-tokens", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const result = await storage.generateBallotTokens(getParam(req.params.id), req.adminUserEmail || undefined);
+      if (result.created === 0) {
+        return res.json({ created: 0, warning: "No eligible voters found for the selected voting rule." });
+      }
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/elections/:id/tokens", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getBallotTokens(getParam(req.params.id));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/elections/:id/casts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getBallotCasts(getParam(req.params.id));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/elections/:id/tally", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getElectionTally(getParam(req.params.id));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/elections/:id/certify", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const election = await storage.getElection(getParam(req.params.id));
+      if (!election) return res.status(404).json({ message: "Election not found" });
+      if (election.status !== "closed") return res.status(400).json({ message: "Election must be closed before certification" });
+      const tally = await storage.getElectionTally(getParam(req.params.id));
+      if (!tally.quorumMet) return res.status(400).json({ message: `Quorum not met — ${tally.participationPercent}% participation, ${tally.quorumPercent}% required` });
+
+      // Generate certification summary
+      const winners = tally.optionTallies.length > 0
+        ? [...tally.optionTallies].sort((a, b) => b.votes - a.votes)
+        : [];
+      const topVotes = winners.length > 0 ? winners[0].votes : 0;
+      const winnerLabels = winners.filter((w) => w.votes === topVotes && w.votes > 0).map((w) => w.label);
+      const optionLines = tally.optionTallies.map((o) => `  ${o.label}: ${o.votes} votes (${o.percent}%)`).join("\n");
+      const certificationSummary = [
+        `ELECTION CERTIFICATION SUMMARY`,
+        `==============================`,
+        `Title: ${election.title}`,
+        `Vote Type: ${election.voteType}`,
+        `Voting Rule: ${election.votingRule}`,
+        ``,
+        `Participation`,
+        `  Eligible Voters: ${tally.eligibleCount}`,
+        `  Ballots Cast: ${tally.castCount}`,
+        `  Participation: ${tally.participationPercent}%`,
+        `  Quorum Required: ${tally.quorumPercent}%`,
+        `  Quorum Status: MET`,
+        ``,
+        ...(tally.optionTallies.length > 0 ? [
+          `Results by Option`,
+          optionLines,
+          ``,
+        ] : []),
+        ...(winnerLabels.length > 0 ? [`Winner(s): ${winnerLabels.join(", ")}`, ``] : []),
+        `Certified by: ${req.adminUserEmail || "unknown"}`,
+        `Certified at: ${new Date().toISOString()}`,
+      ].join("\n");
+
+      const result = await storage.certifyElection(getParam(req.params.id), req.adminUserEmail || "unknown", certificationSummary);
+
+      // 11.1: Auto-create result certificate document in the documents table
+      (async () => {
+        try {
+          const certDate = result.certifiedAt ? new Date(result.certifiedAt).toLocaleDateString("en-US", { dateStyle: "long" }) : new Date().toLocaleDateString("en-US", { dateStyle: "long" });
+          const docTitle = `Election Results: ${result.title} — ${certDate}`;
+          // Store the certification summary as a text-based data URI so it has a resolvable fileUrl
+          const textContent = certificationSummary;
+          const dataUri = `data:text/plain;base64,${Buffer.from(textContent).toString("base64")}`;
+          const doc = await storage.createDocument({
+            associationId: result.associationId,
+            title: docTitle,
+            fileUrl: dataUri,
+            documentType: "Governance > Elections",
+            isPortalVisible: 0,
+            portalAudience: "owner",
+            priorVersionsPortalVisible: 0,
+            uploadedBy: req.adminUserEmail || "system",
+            versionNumber: 1,
+            isCurrentVersion: 1,
+          }, req.adminUserEmail || "system");
+          // Update election with the resultDocumentId
+          await db.update(elections).set({ resultDocumentId: doc.id }).where(eq(elections.id, result.id));
+          console.log(`[elections] Created result certificate document ${doc.id} for election ${result.id}`);
+        } catch (err) {
+          console.error("[elections] Failed to create result certificate document:", err);
+        }
+      })();
+
+      // 9.4: Send results email on certification when resultVisibility is public (fire-and-forget)
+      if (result.resultVisibility === "public") {
+        (async () => {
+          try {
+            const voters = await storage.getVoterEmailsForElection(result.id);
+            const isSecret = Boolean(result.isSecretBallot);
+            const resultRows = tally.optionTallies
+              .map((o) => `<tr><td style="padding:4px 12px;border:1px solid #e5e7eb">${o.label}</td><td style="padding:4px 12px;border:1px solid #e5e7eb;text-align:right">${isSecret ? "—" : o.votes}</td><td style="padding:4px 12px;border:1px solid #e5e7eb;text-align:right">${o.percent}%</td></tr>`)
+              .join("");
+            const resultsTable = tally.optionTallies.length > 0
+              ? `<table style="border-collapse:collapse;margin:16px 0;width:100%">
+                  <thead><tr style="background:#f9fafb"><th style="padding:6px 12px;border:1px solid #e5e7eb;text-align:left">Option</th><th style="padding:6px 12px;border:1px solid #e5e7eb;text-align:right">${isSecret ? "" : "Votes"}</th><th style="padding:6px 12px;border:1px solid #e5e7eb;text-align:right">%</th></tr></thead>
+                  <tbody>${resultRows}</tbody>
+                </table>`
+              : "";
+            for (const voter of voters) {
+              await sendPlatformEmail({
+                to: voter.email,
+                subject: `${result.title} — Election Results`,
+                html: `
+                  <h2>${result.title} — Results</h2>
+                  <p>The election has been certified. Here are the official results:</p>
+                  <p><strong>Participation:</strong> ${tally.participationPercent}% (${tally.castCount} of ${tally.eligibleCount} eligible voters)</p>
+                  ${isSecret ? "<p><em>This was a secret ballot — only aggregate percentages are shown.</em></p>" : ""}
+                  ${resultsTable}
+                  <p style="font-size:12px;color:#6b7280;margin-top:16px">Certified by ${result.certifiedBy || "administration"} on ${result.certifiedAt ? new Date(result.certifiedAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "today"}.</p>
+                `,
+                associationId: result.associationId,
+                templateKey: "election-results-announcement",
+              });
+            }
+            console.log(`[elections] Sent ${voters.length} results emails for election ${result.id}`);
+          } catch (err) {
+            console.error("[elections] Failed to send results emails:", err);
+          }
+        })();
+      }
+
+      // WS4.2: Append election results to linked meeting minutes (fire-and-forget)
+      if (result.meetingId) {
+        (async () => {
+          try {
+            const meetingId = result.meetingId!;
+            const [meeting] = await db.select().from(governanceMeetings).where(eq(governanceMeetings.id, meetingId));
+            if (!meeting) {
+              console.warn(`[elections] Meeting ${meetingId} not found for election ${result.id}, skipping minutes integration`);
+              return;
+            }
+
+            const optionLines = tally.optionTallies.map((o) => `  - ${o.label}: ${o.votes} votes (${o.percent}%)`).join("\n");
+            const noteContent = [
+              `ELECTION RESULTS: ${result.title}`,
+              `─────────────────────────────────`,
+              `Vote Type: ${result.voteType}`,
+              `Voting Rule: ${result.votingRule}`,
+              ``,
+              `Participation:`,
+              `  Eligible Voters: ${tally.eligibleCount}`,
+              `  Ballots Cast: ${tally.castCount}`,
+              `  Participation Rate: ${tally.participationPercent}%`,
+              `  Quorum Required: ${tally.quorumPercent}%`,
+              `  Quorum Status: ${tally.quorumMet ? "MET" : "NOT MET"}`,
+              ``,
+              ...(tally.optionTallies.length > 0 ? [
+                `Vote Totals:`,
+                optionLines,
+                ``,
+              ] : []),
+              `Certified by: ${req.adminUserEmail || "unknown"}`,
+              `Certified at: ${new Date().toISOString()}`,
+            ].join("\n");
+
+            await storage.createMeetingNote({
+              meetingId,
+              noteType: "election-results",
+              content: noteContent,
+              createdBy: req.adminUserEmail || "system",
+            });
+            console.log(`[elections] Appended election results to meeting ${meetingId} for election ${result.id}`);
+          } catch (err) {
+            console.error("[elections] Failed to append election results to meeting minutes:", err);
+          }
+        })();
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // 9.2: Send reminders to pending voters
+  app.post("/api/elections/:id/send-reminders", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const election = await storage.getElection(getParam(req.params.id));
+      if (!election) return res.status(404).json({ message: "Election not found" });
+      if (election.status !== "open") return res.status(400).json({ message: "Reminders can only be sent for open elections" });
+
+      const pendingVoters = await storage.getPendingVoterEmailsForElection(election.id);
+      const tally = await storage.getElectionTally(election.id);
+      const appBaseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+      const closesAtStr = election.closesAt ? new Date(election.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
+
+      // Fire-and-forget email sending
+      (async () => {
+        try {
+          for (const voter of pendingVoters) {
+            const voteUrl = `${appBaseUrl}/vote/${voter.token}`;
+            await sendPlatformEmail({
+              to: voter.email,
+              subject: `Reminder: ${election.title} — Your Vote`,
+              html: `
+                <h2>Reminder: ${election.title}</h2>
+                ${election.description ? `<p>${election.description}</p>` : ""}
+                <p>Voting closes on <strong>${closesAtStr}</strong>. So far, <strong>${tally.participationPercent}%</strong> of eligible voters have participated.</p>
+                <p>Your vote matters — don't miss your chance to have a say.</p>
+                <p style="margin:24px 0">
+                  <a href="${voteUrl}" style="display:inline-block;padding:12px 24px;background-color:#4f46e5;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600">
+                    Cast Your Vote
+                  </a>
+                </p>
+                <p style="font-size:12px;color:#6b7280">If the button doesn't work, copy this link: ${voteUrl}</p>
+              `,
+              associationId: election.associationId,
+              templateKey: "election-voting-reminder",
+            });
+          }
+          console.log(`[elections] Sent ${pendingVoters.length} reminder emails for election ${election.id}`);
+        } catch (err) {
+          console.error("[elections] Failed to send reminder emails:", err);
+        }
+      })();
+
+      res.json({ sent: pendingVoters.length, message: `Sending reminders to ${pendingVoters.length} pending voter(s).` });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // WS1.3: Per-token ballot resend
+  app.post("/api/elections/:id/tokens/:tokenId/resend", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const electionId = getParam(req.params.id);
+      const tokenId = getParam(req.params.tokenId);
+
+      const election = await storage.getElection(electionId);
+      if (!election) return res.status(404).json({ message: "Election not found" });
+      if (election.status !== "open") return res.status(400).json({ message: "Ballots can only be resent for open elections" });
+
+      const tokenData = await storage.resendBallotToken(tokenId);
+      if (!tokenData) return res.status(404).json({ message: "Token not found or not in pending status" });
+      if (tokenData.electionId !== electionId) return res.status(400).json({ message: "Token does not belong to this election" });
+
+      const appBaseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+      const voteUrl = `${appBaseUrl}/vote/${tokenData.token}`;
+      const closesAtStr = election.closesAt ? new Date(election.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
+
+      // Fire-and-forget email sending
+      (async () => {
+        try {
+          await sendPlatformEmail({
+            to: tokenData.email,
+            subject: `${election.title} — Your Vote`,
+            html: `
+              <h2>${election.title}</h2>
+              ${election.description ? `<p>${election.description}</p>` : ""}
+              <p>Voting is now open and closes on <strong>${closesAtStr}</strong>.</p>
+              <p style="margin:24px 0">
+                <a href="${voteUrl}" style="display:inline-block;padding:12px 24px;background-color:#4f46e5;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600">
+                  Cast Your Vote
+                </a>
+              </p>
+              <p style="font-size:12px;color:#6b7280">If the button doesn't work, copy this link: ${voteUrl}</p>
+            `,
+            associationId: election.associationId,
+            templateKey: "election-ballot-invitation",
+          });
+          console.log(`[elections] Resent ballot email for token ${tokenId} in election ${electionId}`);
+        } catch (err) {
+          console.error("[elections] Failed to resend ballot email:", err);
+        }
+      })();
+
+      res.json({ ok: true, message: "Ballot resent" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/elections/:id/proxies", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getProxyDesignations(getParam(req.params.id));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/elections/:id/proxies", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const parsed = insertElectionProxyDesignationSchema.parse({ ...req.body, electionId: getParam(req.params.id) });
+      const result = await storage.createProxyDesignation(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/elections/proxies/:proxyId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const result = await storage.revokeProxyDesignation(getParam(req.params.proxyId));
+      if (!result) return res.status(404).json({ message: "Proxy designation not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/elections/:id/proxy-documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getProxyDocuments(getParam(req.params.id));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/elections/:id/proxy-documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "File is required" });
+      const fileUrl = `/uploads/${req.file.filename}`;
+      const parsed = insertElectionProxyDocumentSchema.parse({
+        electionId: getParam(req.params.id),
+        ownerPersonId: req.body.ownerPersonId || null,
+        ownerUnitId: req.body.ownerUnitId || null,
+        title: req.body.title || req.file.originalname,
+        fileUrl,
+        uploadedBy: req.adminUserEmail || null,
+      });
+      const result = await storage.createProxyDocument(parsed);
+
+      // 11.2: Mirror proxy document into the documents table for governance record-keeping
+      (async () => {
+        try {
+          const election = await storage.getElection(getParam(req.params.id));
+          if (election) {
+            await storage.createDocument({
+              associationId: election.associationId,
+              title: `Proxy Form: ${parsed.title}`,
+              fileUrl: parsed.fileUrl,
+              documentType: "Governance > Proxy Forms",
+              isPortalVisible: 0,
+              portalAudience: "owner",
+              priorVersionsPortalVisible: 0,
+              uploadedBy: parsed.uploadedBy || "system",
+              versionNumber: 1,
+              isCurrentVersion: 1,
+            }, parsed.uploadedBy || "system");
+            console.log(`[elections] Mirrored proxy document to documents table for election ${election.id}`);
+          }
+        } catch (err) {
+          console.error("[elections] Failed to mirror proxy document:", err);
+        }
+      })();
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Portal ballot endpoint (no admin auth — uses ballot token)
+  app.get("/api/elections/ballot/:token", async (req, res) => {
+    try {
+      const token = getParam(req.params.token);
+      const ballotToken = await storage.getBallotTokenByToken(token);
+      if (!ballotToken) return res.status(404).json({ message: "Invalid ballot token" });
+
+      const election = await storage.getElection(ballotToken.electionId);
+      if (!election) return res.status(404).json({ message: "Election not found" });
+
+      const options = await storage.getElectionOptions(ballotToken.electionId);
+      res.json({
+        election: {
+          id: election.id,
+          title: election.title,
+          description: election.description,
+          voteType: election.voteType,
+          isSecretBallot: election.isSecretBallot,
+          closesAt: election.closesAt,
+          status: election.status,
+          maxChoices: election.maxChoices,
+        },
+        options,
+        ballotToken: { id: ballotToken.id, status: ballotToken.status, electionId: ballotToken.electionId },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/elections/ballot/:token/cast", async (req, res) => {
+    try {
+      const token = getParam(req.params.token);
+      const choices: string[] = Array.isArray(req.body.choices) ? req.body.choices : [];
+      const result = await storage.castBallot({ token, choicesJson: choices });
+      res.status(201).json({ confirmationRef: result.confirmationRef, castAt: result.castAt });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Portal proxy designation (requires portal auth)
+  app.get("/api/portal/elections", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const history = await storage.getOwnerElectionHistory(req.portalAccessId!);
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/elections/:id/proxy", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const electionId = getParam(req.params.id);
+      const resolved = await storage.resolvePortalAccessContext(req.portalAccessId!);
+      if (!resolved) return res.status(403).json({ message: "Portal access not found" });
+
+      const { access } = resolved;
+      if (!access.personId) return res.status(400).json({ message: "No person linked to portal access" });
+
+      const parsed = insertElectionProxyDesignationSchema.parse({
+        electionId,
+        ownerPersonId: access.personId,
+        ownerUnitId: access.unitId ?? null,
+        proxyPersonId: req.body.proxyPersonId,
+        notes: req.body.notes ?? null,
+      });
+      const result = await storage.createProxyDesignation(parsed);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Portal nomination routes ───────────────────────────────────────────────
+  app.get("/api/portal/elections/:id/nominations", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const nominations = await storage.getPortalNominationsForElection(req.portalAccessId!, getParam(req.params.id));
+      res.json(nominations);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/portal/elections/:id/nominate", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const electionId = getParam(req.params.id);
+      const election = await storage.getElection(electionId);
+      if (!election) return res.status(404).json({ message: "Election not found" });
+
+      // Verify nomination window is open
+      const now = new Date();
+      if (!election.nominationsOpenAt || !election.nominationsCloseAt) {
+        return res.status(400).json({ message: "This election does not accept nominations" });
+      }
+      if (now < new Date(election.nominationsOpenAt)) {
+        return res.status(400).json({ message: "Nominations have not opened yet" });
+      }
+      if (now > new Date(election.nominationsCloseAt)) {
+        return res.status(400).json({ message: "Nominations have closed" });
+      }
+
+      const resolved = await storage.resolvePortalAccessContext(req.portalAccessId!);
+      if (!resolved) return res.status(403).json({ message: "Portal access not found" });
+      const { access } = resolved;
+      if (!access.personId) return res.status(400).json({ message: "No person linked to portal access" });
+
+      const result = await storage.submitNomination({
+        electionId,
+        label: req.body.label,
+        bio: req.body.bio,
+        photoUrl: req.body.photoUrl,
+        currentRole: req.body.currentRole,
+        nominationStatement: req.body.nominationStatement,
+        nominatedByPersonId: access.personId,
+      });
+
+      // Fire-and-forget email notification to preference-eligible admins
+      sendAssociationAdminEmailNotification({
+        associationId: election.associationId,
+        category: "elections",
+        priority: "realtime",
+        email: {
+          subject: `New Nomination: ${result.label} for ${election.title}`,
+          html: `<p>A new self-nomination has been submitted for <strong>${election.title}</strong>.</p>
+               <p>Candidate: ${result.label}</p>
+               ${result.nominationStatement ? `<p>Statement: ${result.nominationStatement}</p>` : ""}
+               <p>Please review and approve or reject this nomination in the admin panel.</p>`,
+          templateKey: "election-nomination-submitted",
+          metadata: {
+            electionId: election.id,
+            electionTitle: election.title,
+            nominationId: result.id,
+          },
+        },
+      }).catch((err) => console.error("[elections] Failed to send nomination notification email:", err));
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Board-only elections with pending ballot tokens for the logged-in board member
+  app.get("/api/portal/elections/board-pending", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const pending = await storage.getBoardPendingElections(req.portalAccessId!);
+      res.json(pending);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Certified election archive for the association
+  app.get("/api/portal/elections/archive", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAssociationId) return res.status(400).json({ message: "No association context" });
+      const archive = await storage.getCertifiedElections(req.portalAssociationId);
+      res.json(archive);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Recently certified board elections (for roster update prompt)
+  app.get("/api/portal/elections/board-certified", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAssociationId) return res.status(400).json({ message: "No association context" });
+      const certified = await storage.getRecentlyCertifiedBoardElections(req.portalAssociationId);
+      res.json(certified);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Active elections with pending ballot for the logged-in owner
+  app.get("/api/portal/elections/active", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const active = await storage.getOwnerActiveElections(req.portalAccessId!);
+      res.json(active);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Election detail for portal
+  app.get("/api/portal/elections/:id/detail", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const electionId = getParam(req.params.id);
+      const detail = await storage.getElectionDetailForPortal(req.portalAccessId!, electionId);
+      if (!detail) return res.status(404).json({ message: "Election not found" });
+      res.json(detail);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get association owners for proxy designation picker
+  app.get("/api/portal/elections/:id/proxy-candidates", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const electionId = getParam(req.params.id);
+      const owners = await storage.getAssociationOwnersForProxy(req.portalAccessId!, electionId);
+      res.json(owners);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Revoke proxy designation from portal
+  app.post("/api/portal/elections/proxy/:designationId/revoke", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const designationId = getParam(req.params.designationId);
+      const success = await storage.revokeProxyDesignationForPortal(req.portalAccessId!, designationId);
+      if (!success) return res.status(404).json({ message: "Proxy designation not found or not yours" });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // HTML result report export (print as PDF via browser)
+  app.get("/api/elections/:id/result-report", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const election = await storage.getElection(getParam(req.params.id));
+      if (!election) return res.status(404).json({ message: "Election not found" });
+      const tally = await storage.getElectionTally(election.id);
+
+      // Fetch association name
+      const allAssociations = await storage.getAssociations({ includeArchived: true });
+      const association = allAssociations.find((a: any) => a.id === election.associationId);
+      const associationName = association?.name || "Unknown Association";
+
+      // Determine winner(s) — option(s) with the highest vote count
+      const maxVotes = Math.max(...tally.optionTallies.map((o: any) => o.votes), 0);
+      const winnerIds = new Set(
+        tally.optionTallies.filter((o: any) => o.votes === maxVotes && maxVotes > 0).map((o: any) => o.optionId),
+      );
+
+      const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+      const optionRows = election.isSecretBallot
+        ? `<tr><td colspan="4" style="text-align:center;font-style:italic;">Secret ballot &mdash; individual choices are anonymized. Total votes cast: ${tally.castCount}</td></tr>`
+        : tally.optionTallies
+            .map((opt: any) => {
+              const isWinner = winnerIds.has(opt.optionId);
+              const rowStyle = isWinner ? ' style="background:#e6ffe6;font-weight:bold;"' : "";
+              return `<tr${rowStyle}>
+                <td>${escHtml(opt.label)}${isWinner ? ' <span style="color:#16a34a;">&#9733; Winner</span>' : ""}</td>
+                <td style="text-align:right;">${opt.votes}</td>
+                <td style="text-align:right;">${opt.percent}%</td>
+                <td style="width:40%;"><div style="background:#e5e7eb;border-radius:4px;overflow:hidden;height:20px;"><div style="background:#2563eb;height:100%;width:${opt.percent}%;min-width:${opt.percent > 0 ? "2px" : "0"};"></div></div></td>
+              </tr>`;
+            })
+            .join("\n");
+
+      let certificationHtml: string;
+      if (election.status === "certified") {
+        certificationHtml = `
+          <p><strong>Status:</strong> <span style="color:#16a34a;font-weight:bold;">CERTIFIED</span></p>
+          <p><strong>Certified by:</strong> ${escHtml(election.certifiedBy || "N/A")}</p>
+          <p><strong>Certified at:</strong> ${election.certifiedAt ? new Date(election.certifiedAt).toLocaleString() : "N/A"}</p>
+          ${election.certificationSummary ? `<p><strong>Summary:</strong> ${escHtml(election.certificationSummary)}</p>` : ""}`;
+      } else {
+        certificationHtml = `<p style="color:#b91c1c;">Not yet certified.</p>`;
+      }
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Election Result Report - ${escHtml(election.title)}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a1a; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.5; }
+    h1 { font-size: 24px; margin-bottom: 4px; }
+    h2 { font-size: 18px; margin-top: 28px; margin-bottom: 12px; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+    .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin-bottom: 16px; }
+    .meta-grid dt { font-weight: 600; color: #374151; }
+    .meta-grid dd { color: #4b5563; margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 8px 12px; border: 1px solid #e5e7eb; font-size: 14px; }
+    th { background: #f9fafb; text-align: left; font-weight: 600; }
+    .quorum-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-weight: 600; font-size: 13px; }
+    .quorum-met { background: #dcfce7; color: #16a34a; }
+    .quorum-not-met { background: #fee2e2; color: #b91c1c; }
+    .print-btn { background: #2563eb; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; margin-top: 24px; }
+    .print-btn:hover { background: #1d4ed8; }
+    @media print {
+      .print-btn { display: none !important; }
+      body { padding: 20px; }
+      h2 { break-after: avoid; }
+      table { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Election Result Report</h1>
+  <p class="subtitle">${escHtml(associationName)}</p>
+
+  <h2>Election Details</h2>
+  <dl class="meta-grid">
+    <dt>Title</dt><dd>${escHtml(election.title)}</dd>
+    <dt>Type</dt><dd>${escHtml(election.voteType)}</dd>
+    <dt>Voting Rule</dt><dd>${escHtml(election.votingRule)}</dd>
+    <dt>Status</dt><dd>${escHtml(election.status)}</dd>
+    <dt>Opens</dt><dd>${election.opensAt ? new Date(election.opensAt).toLocaleString() : "N/A"}</dd>
+    <dt>Closes</dt><dd>${election.closesAt ? new Date(election.closesAt).toLocaleString() : "N/A"}</dd>
+  </dl>
+
+  <h2>Participation</h2>
+  <dl class="meta-grid">
+    <dt>Eligible Voters</dt><dd>${tally.eligibleCount}</dd>
+    <dt>Ballots Cast</dt><dd>${tally.castCount}</dd>
+    <dt>Participation</dt><dd>${tally.participationPercent}%</dd>
+    <dt>Quorum Required</dt><dd>${tally.quorumPercent}%</dd>
+    <dt>Quorum Status</dt><dd><span class="quorum-badge ${tally.quorumMet ? "quorum-met" : "quorum-not-met"}">${tally.quorumMet ? "MET" : "NOT MET"}</span></dd>
+  </dl>
+
+  <h2>Vote Totals</h2>
+  <table>
+    <thead><tr><th>Option</th><th style="text-align:right;">Votes</th><th style="text-align:right;">%</th><th>Distribution</th></tr></thead>
+    <tbody>
+      ${optionRows}
+    </tbody>
+  </table>
+
+  <h2>Certification</h2>
+  ${certificationHtml}
+
+  <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+
+  <p style="margin-top:32px;font-size:12px;color:#9ca3af;text-align:center;">Generated on ${new Date().toLocaleString()}</p>
+</body>
+</html>`;
+
+      res.setHeader("Content-Type", "text/html");
+      res.send(html);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Voter eligibility audit report (HTML, printable)
+  app.get("/api/elections/:id/eligibility-report", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const election = await storage.getElection(getParam(req.params.id));
+      if (!election) return res.status(404).json({ message: "Election not found" });
+
+      const tokens = await storage.getBallotTokensWithNames(election.id);
+      const proxies = await storage.getProxyDesignations(election.id);
+
+      // Build proxy lookup: personId -> proxy info (active = not revoked)
+      const proxyMap = new Map<string, { proxyName: string }>();
+      for (const p of proxies) {
+        if (!p.revokedAt) {
+          proxyMap.set(p.ownerPersonId, { proxyName: p.proxyName });
+        }
+      }
+
+      const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+      const voterRows = tokens.map((t: any) => {
+        const hasVoted = t.status === "cast";
+        const proxyInfo = t.personId ? proxyMap.get(t.personId) : null;
+        let votingStatus: string;
+        let statusClass: string;
+        if (hasVoted && proxyInfo) {
+          votingStatus = `Voted by Proxy (${escHtml(proxyInfo.proxyName)})`;
+          statusClass = "status-proxy";
+        } else if (hasVoted) {
+          votingStatus = "Voted";
+          statusClass = "status-voted";
+        } else if (proxyInfo) {
+          votingStatus = `Proxy Designated (${escHtml(proxyInfo.proxyName)})`;
+          statusClass = "status-proxy";
+        } else {
+          votingStatus = "Has Not Voted";
+          statusClass = "status-not-voted";
+        }
+
+        return `<tr>
+          <td>${escHtml(t.voterName)}</td>
+          <td>${escHtml(t.unitNumber)}</td>
+          <td class="${statusClass}">${votingStatus}</td>
+          <td>${t.castAt ? new Date(t.castAt).toLocaleString() : "&mdash;"}</td>
+        </tr>`;
+      }).join("\n");
+
+      const votedCount = tokens.filter((t: any) => t.status === "cast").length;
+      const proxyCount = tokens.filter((t: any) => t.personId && proxyMap.has(t.personId)).length;
+      const notVotedCount = tokens.filter((t: any) => t.status !== "cast").length;
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voter Eligibility Report - ${escHtml(election.title)}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a1a; padding: 40px; max-width: 900px; margin: 0 auto; line-height: 1.5; }
+    h1 { font-size: 24px; margin-bottom: 4px; }
+    h2 { font-size: 18px; margin-top: 28px; margin-bottom: 12px; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+    .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+    .summary-bar { display: flex; gap: 24px; margin-bottom: 20px; }
+    .summary-item { padding: 12px 20px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+    .summary-item .label { font-size: 12px; color: #6b7280; text-transform: uppercase; }
+    .summary-item .value { font-size: 22px; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 8px 12px; border: 1px solid #e5e7eb; font-size: 14px; }
+    th { background: #f9fafb; text-align: left; font-weight: 600; }
+    .status-voted { color: #16a34a; font-weight: 600; }
+    .status-proxy { color: #2563eb; font-weight: 600; }
+    .status-not-voted { color: #b91c1c; font-weight: 600; }
+    .print-btn { background: #2563eb; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; margin-top: 24px; }
+    .print-btn:hover { background: #1d4ed8; }
+    @media print {
+      .print-btn { display: none !important; }
+      body { padding: 20px; }
+      h2 { break-after: avoid; }
+      table { break-inside: auto; }
+      tr { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Voter Eligibility Audit Report</h1>
+  <p class="subtitle">${escHtml(election.title)} &mdash; Voting Rule: ${escHtml(election.votingRule)}</p>
+
+  <div class="summary-bar">
+    <div class="summary-item"><div class="label">Eligible</div><div class="value">${tokens.length}</div></div>
+    <div class="summary-item"><div class="label">Voted</div><div class="value status-voted">${votedCount}</div></div>
+    <div class="summary-item"><div class="label">Proxies</div><div class="value status-proxy">${proxyCount}</div></div>
+    <div class="summary-item"><div class="label">Not Voted</div><div class="value status-not-voted">${notVotedCount}</div></div>
+  </div>
+
+  <h2>Voter Detail</h2>
+  <table>
+    <thead>
+      <tr><th>Voter Name</th><th>Unit</th><th>Status</th><th>Vote Timestamp</th></tr>
+    </thead>
+    <tbody>
+      ${voterRows}
+    </tbody>
+  </table>
+
+  <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+
+  <p style="margin-top:32px;font-size:12px;color:#9ca3af;text-align:center;">Generated on ${new Date().toLocaleString()}</p>
+</body>
+</html>`;
+
+      res.setHeader("Content-Type", "text/html");
+      res.send(html);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Audit trail export
+  app.get("/api/elections/:id/audit-export", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+    try {
+      const election = await storage.getElection(getParam(req.params.id));
+      if (!election) return res.status(404).json({ message: "Election not found" });
+
+      const tokens = await storage.getBallotTokens(election.id);
+      const casts = await storage.getBallotCasts(election.id);
+      const proxies = await storage.getProxyDesignations(election.id);
+      const proxyDocs = await storage.getProxyDocuments(election.id);
+
+      const rows: string[][] = [
+        ["Election ID", "Title", "Vote Type", "Voting Rule", "Status", "Opens At", "Closes At", "Secret Ballot"],
+        [
+          election.id,
+          election.title,
+          election.voteType,
+          election.votingRule,
+          election.status,
+          election.opensAt ? new Date(election.opensAt).toISOString() : "",
+          election.closesAt ? new Date(election.closesAt).toISOString() : "",
+          election.isSecretBallot ? "YES" : "NO",
+        ],
+        [],
+        ["--- Ballot Tokens ---"],
+        ["Token ID", "Person ID", "Unit ID", "Status", "Sent At", "Cast At"],
+        ...tokens.map((t) => [
+          t.id,
+          t.personId ?? "",
+          t.unitId ?? "",
+          t.status,
+          t.sentAt ? new Date(t.sentAt).toISOString() : "",
+          t.castAt ? new Date(t.castAt).toISOString() : "",
+        ]),
+        [],
+        ["--- Ballots Cast ---"],
+        ["Cast ID", "Person ID", "Unit ID", "Is Proxy", "Proxy For Person", "Proxy For Unit", "Confirmation Ref", "Cast At"],
+        ...casts.map((c) => [
+          c.id,
+          c.personId ?? "",
+          c.unitId ?? "",
+          c.isProxy ? "YES" : "NO",
+          c.proxyForPersonId ?? "",
+          c.proxyForUnitId ?? "",
+          c.confirmationRef,
+          new Date(c.castAt).toISOString(),
+        ]),
+        [],
+        ["--- Proxy Designations ---"],
+        ["Proxy ID", "Owner Person ID", "Owner Unit ID", "Proxy Person ID", "Designated At", "Revoked At"],
+        ...proxies.map((p) => [
+          p.id,
+          p.ownerPersonId,
+          p.ownerUnitId ?? "",
+          p.proxyPersonId,
+          new Date(p.designatedAt).toISOString(),
+          p.revokedAt ? new Date(p.revokedAt).toISOString() : "",
+        ]),
+        [],
+        ["--- Proxy Documents ---"],
+        ["Document ID", "Owner Person ID", "Owner Unit ID", "Title", "Uploaded By", "Created At"],
+        ...proxyDocs.map((d) => [
+          d.id,
+          d.ownerPersonId ?? "",
+          d.ownerUnitId ?? "",
+          d.title,
+          d.uploadedBy ?? "",
+          new Date(d.createdAt).toISOString(),
+        ]),
+      ];
+
+      const csv = rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const filename = `election-audit-${election.id}.csv`;
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Type", "text/csv");
+      res.send(csv);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+
   app.get("/api/governance/templates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getGovernanceComplianceTemplates(getAssociationIdQuery(req));
@@ -4851,6 +6661,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createAnnualGovernanceTask(parsed);
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "compliance",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Governance task created: ${result.title}`,
+          html: `<p>A governance compliance task has been created.</p><p><strong>Title:</strong> ${escapeHtml(result.title)}</p><p><strong>Status:</strong> ${escapeHtml(result.status)}</p>`,
+          text: `A governance compliance task has been created.\nTitle: ${result.title}\nStatus: ${result.status}`,
+          templateKey: "governance-task-created-admin",
+          metadata: { taskId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[compliance] Failed to send governance task notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -4869,6 +6693,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.updateAnnualGovernanceTask(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Governance task not found" });
       res.json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "compliance",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Governance task updated: ${result.title}`,
+          html: `<p>A governance compliance task has been updated.</p><p><strong>Title:</strong> ${escapeHtml(result.title)}</p><p><strong>Status:</strong> ${escapeHtml(result.status)}</p>`,
+          text: `A governance compliance task has been updated.\nTitle: ${result.title}\nStatus: ${result.status}`,
+          templateKey: "governance-task-updated-admin",
+          metadata: { taskId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[compliance] Failed to send governance task update notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -5412,6 +7250,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req, parsed.associationId);
       const result = await storage.upsertComplianceAlertOverride(parsed);
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "compliance",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Compliance alert override saved`,
+          html: `<p>A compliance alert override has been saved.</p><p><strong>Association:</strong> ${escapeHtml(result.associationId)}</p>`,
+          text: `A compliance alert override has been saved.\nAssociation: ${result.associationId}`,
+          templateKey: "compliance-alert-override-admin",
+          metadata: { complianceAlertOverrideId: result.id, associationId: result.associationId },
+        },
+      }).catch((error) => console.error("[compliance] Failed to send compliance override notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -5507,16 +7359,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const subject = rule.subjectTemplate;
       const body = rule.bodyTemplate;
       const campaignKey = `gov-reminder-${rule.id}-${Date.now()}`;
+      const emailProviderReadyGov = isEmailProviderConfigured();
 
       for (const email of recipientEmails.slice(0, 50)) {
+        let sendStatus = "simulated";
+        let provider = "simulation";
+        let providerMessageId: string | null = null;
+
+        if (emailProviderReadyGov) {
+          try {
+            const result = await sendPlatformEmail({
+              to: email,
+              subject,
+              html: body,
+              associationId: rule.associationId,
+            });
+            sendStatus = result.status === "sent" ? "sent" : result.status;
+            provider = result.provider;
+            providerMessageId = result.messageId;
+          } catch (_err) {
+            sendStatus = "failed";
+          }
+        }
+
         const [send] = await db.insert(noticeSends).values({
           associationId: rule.associationId,
           campaignKey,
           recipientEmail: email,
           subjectRendered: subject,
           bodyRendered: body,
-          status: "sent",
-          provider: "internal-mock",
+          status: sendStatus,
+          provider,
+          providerMessageId,
           sentBy: req.adminUserEmail || "system",
         }).returning();
         sends.push(send);
@@ -5785,6 +7659,217 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // SMS broadcast — send to all opted-in residents of an association
+  app.post("/api/communications/send-sms", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.body.associationId);
+      assertAssociationScope(req, associationId);
+      const body: string = typeof req.body.body === "string" ? req.body.body.trim() : "";
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      if (!body) return res.status(400).json({ message: "body is required" });
+
+      // Per-dispatch cap and 24h daily limit per association
+      const SMS_DISPATCH_LIMIT = 100;
+      const SMS_DAILY_LIMIT = 500;
+
+      // 24h daily rate limit check
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const recentSmsRows = await db.select().from(communicationHistory).where(
+        and(
+          eq(communicationHistory.associationId, associationId),
+          eq(communicationHistory.channel, "sms"),
+          eq(communicationHistory.direction, "outbound"),
+          gte(communicationHistory.createdAt, since24h),
+        )
+      );
+      if (recentSmsRows.length >= SMS_DAILY_LIMIT) {
+        return res.status(429).json({
+          message: `Daily SMS limit reached (${SMS_DAILY_LIMIT} messages per 24 hours). Try again later.`,
+          dailyLimit: SMS_DAILY_LIMIT,
+          sentLast24h: recentSmsRows.length,
+        });
+      }
+      const remainingDaily = SMS_DAILY_LIMIT - recentSmsRows.length;
+
+      // Resolve the association sending number (per-assoc override or global)
+      const tenantCfg = await storage.getTenantConfig(associationId);
+      const fromNumber = tenantCfg?.smsFromNumber || null;
+
+      // Resolve association name for SMS template
+      const [assocRow] = await db.select({ name: associations.name }).from(associations).where(eq(associations.id, associationId));
+      const associationName = assocRow?.name ?? "Your Association";
+
+      // Collect opted-in portal access records with phone numbers
+      const accesses = await storage.getPortalAccesses(associationId);
+      const allPersons = await storage.getPersons(associationId);
+      const personPhoneMap = new Map<string, string>();
+      const personNameMap = new Map<string, string>();
+      for (const p of allPersons) {
+        if (p.phone) personPhoneMap.set(p.id, p.phone);
+        personNameMap.set(p.id, `${p.firstName} ${p.lastName}`.trim());
+      }
+
+      const optedInCount = accesses.filter((a) => a.smsOptIn === 1 && a.status === "active").length;
+
+      // Apply both per-dispatch and remaining-daily caps
+      const effectiveLimit = Math.min(SMS_DISPATCH_LIMIT, remainingDaily);
+      const candidates = accesses.filter((a) =>
+        a.smsOptIn === 1 &&
+        a.status === "active" &&
+        personPhoneMap.has(a.personId),
+      ).slice(0, effectiveLimit);
+
+      const eligibleCount = candidates.length;
+
+      // Campaign key groups all history records for this dispatch (for delivery receipt drill-down)
+      const campaignKey = `sms-broadcast-${associationId}-${Date.now()}`;
+
+      const results: Array<{ personId: string; phone: string; status: string }> = [];
+      for (const access of candidates) {
+        // Final per-send opt-out guard (TCPA compliance: re-verify before each send)
+        const [freshAccess] = await db.select({ smsOptIn: portalAccess.smsOptIn })
+          .from(portalAccess)
+          .where(eq(portalAccess.id, access.id))
+          .limit(1);
+        if (!freshAccess || freshAccess.smsOptIn !== 1) {
+          results.push({ personId: access.personId, phone: personPhoneMap.get(access.personId)!, status: "opted-out" });
+          continue;
+        }
+
+        const rawPhone = personPhoneMap.get(access.personId)!;
+        const toNumber = normalizePhoneNumber(rawPhone);
+        if (!toNumber) {
+          results.push({ personId: access.personId, phone: rawPhone, status: "invalid-phone" });
+          continue;
+        }
+        const ownerName = personNameMap.get(access.personId) || "Resident";
+        const formattedBody = `Your CondoManager on behalf of ${associationName} to ${ownerName}\n${body}`;
+        const result = await sendSms({ to: toNumber, body: formattedBody, from: fromNumber, associationId });
+        await db.insert(communicationHistory).values({
+          associationId,
+          channel: "sms",
+          direction: "outbound",
+          subject: body.slice(0, 80),
+          bodySnippet: body.slice(0, 200),
+          recipientEmail: access.email,
+          recipientPersonId: access.personId,
+          relatedType: "sms-broadcast",
+          relatedId: campaignKey,
+          deliveryStatus: result.status,
+          metadataJson: { messageSid: result.messageSid, provider: result.provider, status: result.status, fromNumber, toNumber },
+        });
+        results.push({ personId: access.personId, phone: toNumber, status: result.status });
+      }
+
+      const sent = results.filter((r) => r.status === "sent" || r.status === "simulated").length;
+      const failed = results.filter((r) => r.status === "failed").length;
+      // Count total eligible (opted-in + has phone) before the slice cap was applied
+      const totalEligible = accesses.filter((a) =>
+        a.smsOptIn === 1 &&
+        a.status === "active" &&
+        personPhoneMap.has(a.personId),
+      ).length;
+      res.status(201).json({
+        sent,
+        failed,
+        optedInCount,
+        eligibleCount,
+        campaignKey,
+        rateLimitApplied: totalEligible > SMS_DISPATCH_LIMIT,
+        dailyLimitApplied: remainingDaily < totalEligible,
+        sentLast24h: recentSmsRows.length,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Web Push broadcast — send to all active push subscriptions of an association
+  app.post("/api/communications/send-push", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.body.associationId);
+      assertAssociationScope(req, associationId);
+      const title: string = typeof req.body.title === "string" ? req.body.title.trim() : "";
+      const body: string = typeof req.body.body === "string" ? req.body.body.trim() : "";
+      const url: string = typeof req.body.url === "string" ? req.body.url.trim() : "/";
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      if (!title || !body) return res.status(400).json({ message: "title and body are required" });
+
+      const subs = await db.select().from(pushSubscriptions)
+        .where(and(eq(pushSubscriptions.associationId, associationId), eq(pushSubscriptions.isActive, 1)));
+
+      let sent = 0;
+      let failed = 0;
+      let expired = 0;
+
+      for (const sub of subs) {
+        const result = await sendPushNotification(
+          { endpoint: sub.endpoint, p256dhKey: sub.p256dhKey, authKey: sub.authKey },
+          { title, body, url, icon: "/favicon.png", tag: `announcement-${Date.now()}` },
+        );
+        if (result.status === "sent" || result.status === "simulated") {
+          sent++;
+          await db.insert(communicationHistory).values({
+            associationId,
+            channel: "push",
+            direction: "outbound",
+            subject: title,
+            bodySnippet: body.slice(0, 200),
+            recipientPersonId: sub.personId,
+            relatedType: "push-broadcast",
+            relatedId: null,
+            metadataJson: { endpoint: sub.endpoint.slice(0, 80), status: result.status },
+            deliveryStatus: result.status === "sent" ? "delivered" : "simulated",
+          });
+        } else if (result.status === "expired") {
+          expired++;
+          // Mark subscription inactive
+          await db.update(pushSubscriptions).set({ isActive: 0, updatedAt: new Date() }).where(eq(pushSubscriptions.endpoint, sub.endpoint));
+        } else {
+          failed++;
+        }
+      }
+
+      res.status(201).json({ sent, failed, expired, total: subs.length });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Preview push subscription count for an association
+  app.get("/api/communications/push-subscriber-count", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      assertAssociationInputScope(req, associationId || null);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      const subs = await db.select().from(pushSubscriptions)
+        .where(and(eq(pushSubscriptions.associationId, associationId), eq(pushSubscriptions.isActive, 1)));
+      res.json({ count: subs.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Preview SMS recipient count (opted-in with phone numbers)
+  app.get("/api/communications/sms-recipient-count", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      assertAssociationInputScope(req, associationId || null);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      const accesses = await storage.getPortalAccesses(associationId);
+      const allPersons = await storage.getPersons(associationId);
+      const personPhoneMap = new Map<string, string>();
+      for (const p of allPersons) {
+        if (p.phone) personPhoneMap.set(p.id, p.phone);
+      }
+      const optedIn = accesses.filter((a) => a.smsOptIn === 1 && a.status === "active").length;
+      const eligible = accesses.filter((a) => a.smsOptIn === 1 && a.status === "active" && personPhoneMap.has(a.personId)).length;
+      res.json({ optedIn, eligible });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.get("/api/communications/readiness", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
@@ -5837,7 +7922,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const parsed = insertOnboardingInviteSchema.parse({
         associationId: req.body.associationId,
-        unitId: req.body.unitId,
+        unitId: req.body.unitId || null,
         residentType: req.body.residentType,
         email: req.body.email || null,
         phone: req.body.phone || null,
@@ -6007,6 +8092,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!invite) return res.status(404).json({ message: "Invite not found" });
       const submissions = await storage.getOnboardingSubmissions(invite.associationId);
       const latestSubmission = submissions.find((submission) => submission.inviteId === invite.id) || null;
+      let availableUnits: Array<{ id: string; unitNumber: string; building: string | null }> | null = null;
+      if (!invite.unitId) {
+        const allUnits = await storage.getUnits(invite.associationId);
+        availableUnits = allUnits
+          .map((u) => ({ id: u.id, unitNumber: u.unitNumber, building: u.building }))
+          .sort((a, b) => {
+            if ((a.building || "") !== (b.building || "")) return (a.building || "").localeCompare(b.building || "");
+            return a.unitNumber.localeCompare(b.unitNumber);
+          });
+      }
       res.json({
         id: invite.id,
         associationId: invite.associationId,
@@ -6015,9 +8110,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         associationCity: invite.associationCity,
         associationState: invite.associationState,
         associationCountry: invite.associationCountry,
-        unitId: invite.unitId,
-        unitLabel: invite.unitLabel,
-        unitBuilding: invite.unitBuilding,
+        unitId: invite.unitId ?? null,
+        unitLabel: invite.unitLabel ?? null,
+        unitBuilding: invite.unitBuilding ?? null,
         residentType: invite.residentType,
         status: invite.status,
         email: invite.email,
@@ -6025,6 +8120,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         expiresAt: invite.expiresAt,
         latestSubmissionStatus: latestSubmission?.status ?? null,
         latestSubmissionRejectionReason: latestSubmission?.rejectionReason ?? null,
+        availableUnits,
       });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -6045,10 +8141,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         firstName,
         lastName,
         email: typeof req.body?.email === "string" ? req.body.email.trim() || null : null,
-        phone: typeof req.body?.phone === "string" ? req.body.phone.trim() || null : null,
+        phone: typeof req.body?.phone === "string" ? normalizePhoneNumber(req.body.phone.trim()) || null : null,
+        unitId: typeof req.body?.unitId === "string" ? req.body.unitId.trim() || null : null,
         mailingAddress: typeof req.body?.mailingAddress === "string" ? req.body.mailingAddress.trim() || null : null,
         emergencyContactName: typeof req.body?.emergencyContactName === "string" ? req.body.emergencyContactName.trim() || null : null,
-        emergencyContactPhone: typeof req.body?.emergencyContactPhone === "string" ? req.body.emergencyContactPhone.trim() || null : null,
+        emergencyContactPhone: typeof req.body?.emergencyContactPhone === "string" ? normalizePhoneNumber(req.body.emergencyContactPhone.trim()) || null : null,
         contactPreference: typeof req.body?.contactPreference === "string" ? req.body.contactPreference.trim() || "email" : "email",
         startDate,
         occupancyIntent: typeof req.body?.occupancyIntent === "string" ? req.body.occupancyIntent.trim() || null : null,
@@ -6072,6 +8169,63 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/public/demo-request", async (req, res) => {
+    try {
+      const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+      const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+      const company = typeof req.body?.company === "string" ? req.body.company.trim() : "";
+      const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+
+      if (!name || !email) {
+        return res.status(400).json({ message: "name and email are required" });
+      }
+
+      // Validate email format
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ message: "Invalid email format" });
+      }
+
+      // Send email to admin
+      const emailBody = `
+Demo Request from CondoManager Website
+
+Name: ${name}
+Email: ${email}
+Company: ${company || "Not provided"}
+
+Message:
+${message || "No message provided"}
+
+---
+This is an automated demo request from the CondoManager website.
+      `.trim();
+
+      const notification = await sendPlatformAdminEmailNotification({
+        category: "platformOps",
+        priority: "realtime",
+        email: {
+          subject: `New Demo Request: ${name}`,
+          text: emailBody,
+          replyTo: email,
+        },
+      });
+
+      if (notification.recipients.length === 0) {
+        await sendPlatformEmail({
+          to: "yourcondomanager@gmail.com",
+          subject: `New Demo Request: ${name}`,
+          text: emailBody,
+          replyTo: email,
+        });
+      }
+
+      res.json({ success: true, message: "Demo request submitted successfully" });
+    } catch (error: any) {
+      console.error("Demo request error:", error);
+      res.status(500).json({ message: error.message || "Failed to submit demo request" });
     }
   });
 
@@ -6436,6 +8590,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req, parsed.associationId);
       const result = await storage.createInspectionRecord(parsed, req.adminUserEmail);
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "inspections",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Inspection logged: ${result.inspectionType}`,
+          html: `<p>A new inspection record has been created.</p>
+            <p><strong>Inspection type:</strong> ${escapeHtml(result.inspectionType)}</p>
+            <p><strong>Inspected at:</strong> ${result.inspectedAt ? escapeHtml(new Date(result.inspectedAt).toLocaleString()) : "Not recorded"}</p>
+            <p><strong>Created by:</strong> ${escapeHtml(req.adminUserEmail || "system")}</p>`,
+          text: `A new inspection record has been created.\nInspection type: ${result.inspectionType}\nInspected at: ${result.inspectedAt ? new Date(result.inspectedAt).toLocaleString() : "Not recorded"}\nCreated by: ${req.adminUserEmail || "system"}`,
+          templateKey: "inspection-created-admin",
+          metadata: {
+            inspectionId: result.id,
+            associationId: result.associationId,
+          },
+        },
+      }).catch((error) => console.error("[inspections] Failed to send inspection admin notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -6712,6 +8886,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationInputScope(req, parsed.associationId);
       const [result] = await db.insert(communityAnnouncements).values(parsed).returning();
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "announcements",
+        priority: "realtime",
+        excludeEmails: req.adminUserEmail ? [req.adminUserEmail] : [],
+        email: {
+          subject: `Announcement published: ${result.title}`,
+          html: `<p>A community announcement has been published.</p>
+            <p><strong>Title:</strong> ${escapeHtml(result.title)}</p>
+            <p><strong>Created by:</strong> ${escapeHtml(req.adminUserEmail || "system")}</p>`,
+          text: `A community announcement has been published.\nTitle: ${result.title}\nCreated by: ${req.adminUserEmail || "system"}`,
+          templateKey: "announcement-published-admin",
+          metadata: {
+            announcementId: result.id,
+            associationId: result.associationId,
+          },
+        },
+      }).catch((error) => console.error("[announcements] Failed to send announcement admin notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -6832,6 +9025,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.upsertTenantConfig(parsed);
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "associationContext",
+        priority: "realtime",
+        excludeEmails: (req as AdminRequest).adminUserEmail ? [(req as AdminRequest).adminUserEmail!] : [],
+        email: {
+          subject: `Association settings updated`,
+          html: `<p>Association-level tenant configuration has been updated.</p><p><strong>Portal name:</strong> ${escapeHtml(result.portalName || "Owner Portal")}</p><p><strong>Support email:</strong> ${escapeHtml(result.supportEmail || "Not set")}</p>`,
+          text: `Association-level tenant configuration has been updated.\nPortal name: ${result.portalName || "Owner Portal"}\nSupport email: ${result.supportEmail || "Not set"}`,
+          templateKey: "association-context-updated-admin",
+          metadata: { associationId: result.associationId, tenantConfigId: result.id },
+        },
+      }).catch((error) => console.error("[association-context] Failed to send tenant config notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -7384,6 +9591,120 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/platform/sms/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
+    try {
+      res.json(await getSmsProviderStatus());
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/platform/sms/configure", requireAdmin, requireAdminRole(["platform-admin"]), async (req, res) => {
+    try {
+      const { accountSid, authToken, fromNumber, statusCallbackUrl } = req.body ?? {};
+      if (accountSid !== undefined) {
+        accountSid ? await setSecret("twilio.accountSid", accountSid, req.adminUser?.email) : await deleteSecret("twilio.accountSid");
+      }
+      if (authToken !== undefined) {
+        authToken ? await setSecret("twilio.authToken", authToken, req.adminUser?.email) : await deleteSecret("twilio.authToken");
+      }
+      if (fromNumber !== undefined) {
+        fromNumber ? await setSecret("twilio.fromNumber", fromNumber, req.adminUser?.email) : await deleteSecret("twilio.fromNumber");
+      }
+      if (statusCallbackUrl !== undefined) {
+        statusCallbackUrl ? await setSecret("twilio.statusCallbackUrl", statusCallbackUrl, req.adminUser?.email) : await deleteSecret("twilio.statusCallbackUrl");
+      }
+      invalidateSecretsCache();
+      res.json({ message: "SMS credentials saved", status: await getSmsProviderStatus() });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/platform/push/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
+    try {
+      res.json(await getPushProviderStatus());
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/platform/push/configure", requireAdmin, requireAdminRole(["platform-admin"]), async (req, res) => {
+    try {
+      const { vapidPublicKey, vapidPrivateKey, vapidSubject } = req.body ?? {};
+      if (vapidPublicKey !== undefined) {
+        vapidPublicKey ? await setSecret("vapid.publicKey", vapidPublicKey, req.adminUser?.email) : await deleteSecret("vapid.publicKey");
+      }
+      if (vapidPrivateKey !== undefined) {
+        vapidPrivateKey ? await setSecret("vapid.privateKey", vapidPrivateKey, req.adminUser?.email) : await deleteSecret("vapid.privateKey");
+      }
+      if (vapidSubject !== undefined) {
+        vapidSubject ? await setSecret("vapid.subject", vapidSubject, req.adminUser?.email) : await deleteSecret("vapid.subject");
+      }
+      invalidateSecretsCache();
+      res.json({ message: "Push credentials saved", status: await getPushProviderStatus() });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Web Push VAPID public key — served to portal clients so they can subscribe
+  app.get("/api/portal/push/vapid-public-key", async (_req, res) => {
+    const key = await getVapidPublicKey();
+    if (!key) return res.json({ configured: false, publicKey: null });
+    res.json({ configured: true, publicKey: key });
+  });
+
+  // Register a push subscription from the portal client
+  app.post("/api/portal/push/subscribe", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAccessId || !req.portalAssociationId || !req.portalPersonId) {
+        return res.status(403).json({ message: "Portal context required" });
+      }
+      const { endpoint, keys } = req.body ?? {};
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        return res.status(400).json({ message: "endpoint, keys.p256dh, and keys.auth are required" });
+      }
+      const userAgent = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"].slice(0, 300) : null;
+
+      // Upsert subscription by endpoint
+      const existing = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)).limit(1);
+      if (existing.length > 0) {
+        await db.update(pushSubscriptions)
+          .set({ portalAccessId: req.portalAccessId, associationId: req.portalAssociationId, personId: req.portalPersonId, p256dhKey: keys.p256dh, authKey: keys.auth, isActive: 1, updatedAt: new Date() })
+          .where(eq(pushSubscriptions.endpoint, endpoint));
+      } else {
+        await db.insert(pushSubscriptions).values({
+          portalAccessId: req.portalAccessId,
+          associationId: req.portalAssociationId,
+          personId: req.portalPersonId,
+          endpoint,
+          p256dhKey: keys.p256dh,
+          authKey: keys.auth,
+          userAgent,
+          isActive: 1,
+        });
+      }
+      res.status(201).json({ subscribed: true });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Unregister a push subscription
+  app.post("/api/portal/push/unsubscribe", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const { endpoint } = req.body ?? {};
+      if (!endpoint) return res.status(400).json({ message: "endpoint is required" });
+      await db.update(pushSubscriptions)
+        .set({ isActive: 0, updatedAt: new Date() })
+        .where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.portalAccessId, req.portalAccessId || "")));
+      res.json({ unsubscribed: true });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.get("/api/platform/auth/google-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
     try {
       res.json(getGoogleOAuthStatus(req));
@@ -7930,18 +10251,168 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(403).json({ message: "Portal person context required" });
       }
       const payload = req.body ?? {};
-      const patch = {
-        phone: typeof payload.phone === "string" ? payload.phone.trim() || null : null,
-        mailingAddress: typeof payload.mailingAddress === "string" ? payload.mailingAddress.trim() || null : null,
-        emergencyContactName: typeof payload.emergencyContactName === "string" ? payload.emergencyContactName.trim() || null : null,
-        emergencyContactPhone: typeof payload.emergencyContactPhone === "string" ? payload.emergencyContactPhone.trim() || null : null,
-        contactPreference: typeof payload.contactPreference === "string" ? payload.contactPreference.trim() || null : null,
-      };
+      const patch: Record<string, string | null> = {};
+      if ("phone" in payload) patch.phone = typeof payload.phone === "string" ? normalizePhoneNumber(payload.phone.trim()) || null : null;
+      if ("mailingAddress" in payload) patch.mailingAddress = typeof payload.mailingAddress === "string" ? payload.mailingAddress.trim() || null : null;
+      if ("emergencyContactName" in payload) patch.emergencyContactName = typeof payload.emergencyContactName === "string" ? payload.emergencyContactName.trim() || null : null;
+      if ("emergencyContactPhone" in payload) patch.emergencyContactPhone = typeof payload.emergencyContactPhone === "string" ? normalizePhoneNumber(payload.emergencyContactPhone.trim()) || null : null;
+      if ("contactPreference" in payload) patch.contactPreference = typeof payload.contactPreference === "string" ? payload.contactPreference.trim() || null : null;
+      if (Object.keys(patch).length === 0) {
+        const [person] = await db.select().from(persons).where(eq(persons.id, req.portalPersonId)).limit(1);
+        return res.json(person ?? {});
+      }
       const result = await storage.updatePerson(req.portalPersonId, patch, req.portalEmail || "portal-user");
       if (!result) return res.status(404).json({ message: "Person not found" });
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  // SMS opt-in / opt-out for portal residents
+  app.patch("/api/portal/me/sms-opt-in", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAccessId) return res.status(403).json({ message: "Portal access required" });
+      const optIn = req.body?.smsOptIn;
+      if (typeof optIn !== "boolean" && optIn !== 0 && optIn !== 1) {
+        return res.status(400).json({ message: "smsOptIn must be true or false" });
+      }
+      const smsOptInValue = optIn ? 1 : 0;
+      const result = await storage.updatePortalAccess(
+        req.portalAccessId,
+        { smsOptIn: smsOptInValue, smsOptInChangedAt: new Date() },
+        req.portalEmail || "portal-user",
+      );
+      if (!result) return res.status(404).json({ message: "Portal access not found" });
+      await db.insert(communicationHistory).values({
+        associationId: result.associationId,
+        channel: "sms",
+        direction: "inbound",
+        subject: smsOptInValue ? "SMS opt-in" : "SMS opt-out",
+        bodySnippet: smsOptInValue ? "Resident opted in to SMS notifications." : "Resident opted out of SMS notifications.",
+        recipientEmail: result.email,
+        recipientPersonId: result.personId,
+        relatedType: "sms-preference",
+        relatedId: result.id,
+        metadataJson: { smsOptIn: smsOptInValue, changedVia: "portal-profile" },
+      });
+      res.json({ smsOptIn: Boolean(result.smsOptIn) });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Twilio STOP/START webhook for inbound SMS opt-out/opt-in
+  app.post("/api/webhooks/twilio/sms-status", async (req, res) => {
+    try {
+      const body = req.body ?? {};
+      const from: string = body.From ?? "";
+      const msgBody: string = (body.Body ?? "").trim().toUpperCase();
+      if (!from) return res.status(200).send("ok");
+      const normalized = normalizePhoneNumber(from);
+      if (!normalized) return res.status(200).send("ok");
+      const allPersons = await db.select().from(persons).where(eq(persons.phone, normalized)).limit(5);
+      const personIds = allPersons.map((p) => p.id);
+      if (personIds.length > 0) {
+        const accesses = await db.select().from(portalAccess).where(inArray(portalAccess.personId, personIds));
+        const isOptOut = ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"].includes(msgBody);
+        const isOptIn = ["START", "UNSTOP", "YES"].includes(msgBody);
+        if (isOptOut || isOptIn) {
+          const smsOptInValue = isOptIn ? 1 : 0;
+          for (const access of accesses) {
+            await storage.updatePortalAccess(access.id, { smsOptIn: smsOptInValue, smsOptInChangedAt: new Date() }, "twilio-webhook");
+            await db.insert(communicationHistory).values({
+              associationId: access.associationId,
+              channel: "sms",
+              direction: "inbound",
+              subject: isOptIn ? "SMS opt-in via STOP/START" : "SMS opt-out via STOP/START",
+              bodySnippet: `Inbound keyword: ${msgBody}`,
+              recipientEmail: access.email,
+              recipientPersonId: access.personId,
+              relatedType: "sms-preference",
+              relatedId: access.id,
+              metadataJson: { smsOptIn: smsOptInValue, keyword: msgBody, fromNumber: from, tcpa: true },
+            });
+          }
+        }
+      }
+      res.status(200).send("ok");
+    } catch (error: any) {
+      console.error("[twilio-sms-webhook]", error.message);
+      res.status(200).send("ok");
+    }
+  });
+
+  // Twilio Delivery Receipt (DLR) webhook — receives MessageStatus updates
+  app.post("/api/webhooks/twilio/sms-delivery", async (req, res) => {
+    try {
+      const body = req.body ?? {};
+      const messageSid: string = body.MessageSid ?? "";
+      const messageStatus: string = body.MessageStatus ?? "";
+      const toNumber: string = body.To ?? "";
+      const fromNumber: string = body.From ?? "";
+      const errorCode: string | null = body.ErrorCode ?? null;
+      if (!messageSid || !messageStatus) return res.status(200).send("ok");
+
+      const existingLogs = await db.select().from(smsDeliveryLogs).where(eq(smsDeliveryLogs.messageSid, messageSid)).limit(1);
+      if (existingLogs.length > 0) {
+        await db.update(smsDeliveryLogs)
+          .set({ messageStatus, errorCode, rawPayloadJson: body, updatedAt: new Date() })
+          .where(eq(smsDeliveryLogs.messageSid, messageSid));
+      } else {
+        // Resolve associationId from the matching communicationHistory row so
+        // admin-scoped DLR queries (which filter by associationId) can find these logs.
+        const [matchingHistory] = await db.select({ associationId: communicationHistory.associationId, recipientPersonId: communicationHistory.recipientPersonId })
+          .from(communicationHistory)
+          .where(
+            and(
+              eq(communicationHistory.channel, "sms"),
+              sql`metadata_json->>'messageSid' = ${messageSid}`,
+            ),
+          )
+          .limit(1);
+        await db.insert(smsDeliveryLogs).values({
+          messageSid,
+          toNumber,
+          fromNumber: fromNumber || null,
+          messageStatus,
+          errorCode,
+          rawPayloadJson: body,
+          associationId: matchingHistory?.associationId ?? null,
+          recipientPersonId: matchingHistory?.recipientPersonId ?? null,
+        });
+      }
+
+      // Update matching communication_history delivery status
+      await db.update(communicationHistory)
+        .set({ deliveryStatus: messageStatus, deliveryStatusUpdatedAt: new Date() })
+        .where(
+          and(
+            eq(communicationHistory.channel, "sms"),
+            sql`metadata_json->>'messageSid' = ${messageSid}`,
+          ),
+        );
+
+      res.status(200).send("ok");
+    } catch (error: any) {
+      console.error("[twilio-dlr-webhook]", error.message);
+      res.status(200).send("ok");
+    }
+  });
+
+  // Admin: view SMS delivery logs for an association
+  app.get("/api/communications/sms-delivery-logs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      const logs = await db.select().from(smsDeliveryLogs)
+        .where(eq(smsDeliveryLogs.associationId, associationId))
+        .orderBy(desc(smsDeliveryLogs.createdAt))
+        .limit(200);
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -7986,7 +10457,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const firstName = getParam(tenant.firstName);
       const lastName = getParam(tenant.lastName);
       const email = getParam(tenant.email).trim() || null;
-      const phone = getParam(tenant.phone).trim() || null;
+      const phone = normalizePhoneNumber(getParam(tenant.phone).trim()) || null;
       if (!firstName || !lastName) {
         return res.status(400).json({ message: "tenant firstName and lastName are required" });
       }
@@ -8226,7 +10697,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/portal/documents", requirePortal, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getPortalDocuments(req.portalAccessId || "");
-      res.json(result);
+      // For each document, resolve the current version fileUrl and optionally attach version history
+      const enriched = await Promise.all(result.map(async (doc) => {
+        const versions = await storage.getDocumentVersions(doc.id);
+        const currentVersion = versions.find((v) => v.isCurrent) ?? versions[0] ?? null;
+        const fileUrl = currentVersion?.fileUrl ?? doc.fileUrl;
+        const priorVersions = doc.priorVersionsPortalVisible
+          ? versions.map((v) => ({
+              id: v.id,
+              versionNumber: v.versionNumber,
+              title: v.title,
+              fileUrl: v.fileUrl,
+              effectiveDate: v.effectiveDate,
+              amendmentNotes: v.amendmentNotes,
+              isCurrent: v.isCurrent,
+              createdAt: v.createdAt,
+            }))
+          : undefined;
+        return { ...doc, fileUrl, currentVersionNumber: currentVersion?.versionNumber ?? null, versions: priorVersions };
+      }));
+      res.json(enriched);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -8248,7 +10738,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           noticeBodyById.set(send.id, send.bodyRendered);
         }
       }
-      res.json(result.map((row) => ({
+      const noticeRows = result.filter((row) => (row.relatedType || "").startsWith("notice"));
+      res.json(noticeRows.map((row) => ({
         ...row,
         bodyRendered: row.relatedId ? (noticeBodyById.get(row.relatedId) ?? null) : null,
       })));
@@ -8326,6 +10817,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       const result = await storage.createMaintenanceRequest(parsed);
       res.status(201).json(result);
+
+      if (result.associationId) {
+        sendAssociationAdminEmailNotification({
+          associationId: result.associationId,
+          category: "maintenance",
+          priority: "realtime",
+          email: {
+            subject: `New maintenance request: ${result.title}`,
+            html: `<p>A new maintenance request was submitted through the portal.</p>
+              <p><strong>Title:</strong> ${escapeHtml(result.title)}</p>
+              <p><strong>Priority:</strong> ${escapeHtml(result.priority)}</p>
+              <p><strong>Location:</strong> ${escapeHtml(result.locationText || "Not provided")}</p>
+              <p><strong>Submitted by:</strong> ${escapeHtml(req.portalEmail || "portal user")}</p>`,
+            text: `A new maintenance request was submitted through the portal.\nTitle: ${result.title}\nPriority: ${result.priority}\nLocation: ${result.locationText || "Not provided"}\nSubmitted by: ${req.portalEmail || "portal user"}`,
+            templateKey: "maintenance-request-admin",
+            metadata: {
+              maintenanceRequestId: result.id,
+              associationId: result.associationId,
+            },
+          },
+        }).catch((error) => console.error("[maintenance] Failed to send maintenance admin notification:", error));
+      }
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -8764,6 +11277,106 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const association = associations.find((row) => row.id === req.portalAssociationId);
       if (!association) return res.status(404).json({ message: "Association not found" });
       res.json(association);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Session-authenticated board endpoints (for Google sign-in board-admin users)
+  app.get("/api/board/overview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const result = await storage.getAssociationOverview(associationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/board/dashboard", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const classifyBoardActivity = (entityType: string, action: string) => {
+        const entity = entityType.toLowerCase();
+        const normalizedAction = action.toLowerCase();
+        if (entity.includes("portal") || entity.includes("board-role") || normalizedAction.includes("access")) return { lane: "access", laneLabel: "Access" };
+        if (entity.includes("meeting") || entity.includes("governance") || entity.includes("board-package")) return { lane: "governance", laneLabel: "Governance" };
+        if (entity.includes("ledger") || entity.includes("invoice") || entity.includes("payment") || entity.includes("budget") || entity.includes("utility")) return { lane: "financial", laneLabel: "Financial" };
+        if (entity.includes("document") || entity.includes("notice") || entity.includes("communication")) return { lane: "communications", laneLabel: "Communications" };
+        if (entity.includes("maintenance") || entity.includes("work-order") || entity.includes("inspection")) return { lane: "operations", laneLabel: "Operations" };
+        return { lane: "general", laneLabel: "General" };
+      };
+      const summarizeAuditEntry = (entry: { entityType: string; action: string; beforeJson: unknown; afterJson: unknown }) => {
+        const classification = classifyBoardActivity(entry.entityType, entry.action);
+        const before = entry.beforeJson && typeof entry.beforeJson === "object" ? entry.beforeJson as Record<string, unknown> : null;
+        const after = entry.afterJson && typeof entry.afterJson === "object" ? entry.afterJson as Record<string, unknown> : null;
+        const beforeKeys = before ? Object.keys(before) : [];
+        const afterKeys = after ? Object.keys(after) : [];
+        const changedFields = Array.from(new Set([...beforeKeys, ...afterKeys])).filter((key) => {
+          const beforeValue = before ? JSON.stringify(before[key] ?? null) : "__missing__";
+          const afterValue = after ? JSON.stringify(after[key] ?? null) : "__missing__";
+          return beforeValue !== afterValue;
+        });
+        const entityLabel = entry.entityType.replace(/[-_]/g, " ");
+        let summary = `${entry.action} ${entityLabel}`.trim();
+        if (entry.entityType === "portal-access" && after?.status) summary = `Board access ${String(after.status).replace(/-/g, " ")}`;
+        else if (entry.entityType === "board-package" && after?.status) summary = `Board package ${String(after.status).replace(/-/g, " ")}`;
+        else if (entry.entityType === "governance-meeting" && after?.title) summary = `${entry.action} meeting ${String(after.title)}`;
+        else if (entry.entityType === "document" && after?.title) summary = `${entry.action} document ${String(after.title)}`;
+        else if (entry.entityType === "maintenance-request" && after?.title) summary = `${entry.action} maintenance request ${String(after.title)}`;
+        else if (entry.entityType === "vendor-invoice" && after?.invoiceNumber) summary = `${entry.action} vendor invoice ${String(after.invoiceNumber)}`;
+        else if (entry.entityType === "annual-governance-task" && after?.title) summary = `${entry.action} governance task ${String(after.title)}`;
+        return { lane: classification.lane, laneLabel: classification.laneLabel, summary, changedFields: changedFields.slice(0, 6) };
+      };
+      const [overview, budgets, ledgerEntries, vendorInvoices, utilityPayments, governanceMeetings, governanceTasks, auditEntries, documents, maintenanceRequests, noticeSends, boardPackages] = await Promise.all([
+        storage.getAssociationOverview(associationId),
+        storage.getBudgets(associationId),
+        storage.getOwnerLedgerEntries(associationId),
+        storage.getVendorInvoices(associationId),
+        storage.getUtilityPayments(associationId),
+        storage.getGovernanceMeetings(associationId),
+        storage.getAnnualGovernanceTasks(associationId),
+        storage.getAuditLogs(associationId),
+        storage.getDocuments(associationId),
+        storage.getMaintenanceRequests({ associationId }),
+        storage.getNoticeSends(associationId),
+        storage.getBoardPackages(associationId),
+      ]);
+      const totalCharges = ledgerEntries.filter((e) => e.entryType === "charge" || e.entryType === "assessment" || e.entryType === "late-fee").reduce((sum, e) => sum + e.amount, 0);
+      const totalPayments = ledgerEntries.filter((e) => e.entryType === "payment" || e.entryType === "credit").reduce((sum, e) => sum + Math.abs(e.amount), 0);
+      const openBalance = Math.max(0, totalCharges - totalPayments);
+      const totalInvoices = vendorInvoices.reduce((sum, i) => sum + i.amount, 0);
+      const totalUtilities = utilityPayments.reduce((sum, p) => sum + p.amount, 0);
+      const openTasks = governanceTasks.filter((t) => t.status !== "done");
+      const upcomingMeetings = governanceMeetings.filter((m) => new Date(m.scheduledAt) >= new Date()).slice(0, 5);
+      const draftMeetings = governanceMeetings.filter((m) => m.summaryStatus === "draft");
+      const unpublishedDocuments = documents.filter((d) => d.isPortalVisible !== 1).slice(0, 10);
+      const recentMaintenanceRequests = maintenanceRequests.slice(0, 8);
+      const urgentOpenMaintenanceCount = maintenanceRequests.filter((r) => (r.priority === "urgent" || r.priority === "high") && r.status !== "resolved" && r.status !== "closed" && r.status !== "rejected").length;
+      const attentionItems = [
+        ...(overview.maintenanceOverdue > 0 ? [{ key: "maintenance-overdue", label: "Overdue maintenance requires action", detail: `${overview.maintenanceOverdue} maintenance items are overdue.`, tone: "high" }] : []),
+        ...(openTasks.filter((t) => t.dueDate && new Date(t.dueDate) < new Date()).length > 0 ? [{ key: "governance-overdue", label: "Governance tasks are overdue", detail: `${openTasks.filter((t) => t.dueDate && new Date(t.dueDate) < new Date()).length} governance tasks are past due.`, tone: "high" }] : []),
+        ...(upcomingMeetings.length > 0 ? [{ key: "upcoming-meetings", label: "Meetings need preparation", detail: `${upcomingMeetings.length} upcoming meetings are on the calendar.`, tone: "medium" }] : []),
+        ...(draftMeetings.length > 0 ? [{ key: "draft-meetings", label: "Meeting summaries remain in draft", detail: `${draftMeetings.length} meeting records have not been published.`, tone: "medium" }] : []),
+        ...(openBalance > 0 ? [{ key: "open-balance", label: "Owner balance exposure is still open", detail: `$${openBalance.toFixed(2)} remains outstanding on the owner ledger.`, tone: "medium" }] : []),
+        ...(unpublishedDocuments.length > 0 ? [{ key: "document-visibility", label: "Documents may need board review or publication", detail: `${unpublishedDocuments.length} documents are not portal-visible.`, tone: "low" }] : []),
+      ];
+      res.json({
+        attention: { items: attentionItems, maintenanceOverdue: overview.maintenanceOverdue, overdueGovernanceTasks: openTasks.filter((t) => t.dueDate && new Date(t.dueDate) < new Date()).length, upcomingMeetingCount: upcomingMeetings.length, draftMeetingCount: draftMeetings.length, unpublishedDocumentCount: unpublishedDocuments.length },
+        financial: { budgetCount: budgets.length, ledgerEntryCount: ledgerEntries.length, totalCharges, totalPayments, openBalance: Number((totalCharges - totalPayments).toFixed(2)), totalInvoices: Number(totalInvoices.toFixed(2)), totalUtilities: Number(totalUtilities.toFixed(2)), recentLedgerEntries: ledgerEntries.slice(0, 10), recentInvoices: vendorInvoices.slice(0, 10) },
+        governance: { meetingCount: governanceMeetings.length, upcomingMeetings: upcomingMeetings.map((m) => ({ id: m.id, title: m.title, scheduledAt: m.scheduledAt.toISOString(), meetingType: m.meetingType, status: m.status, summaryStatus: m.summaryStatus })), taskCount: governanceTasks.length, openTaskCount: openTasks.length, openTasks: openTasks.slice(0, 10).map((t) => ({ id: t.id, title: t.title, dueDate: t.dueDate ? t.dueDate.toISOString() : null, status: t.status })) },
+        workflowStates: {
+          access: { status: "active", effectiveRole: "board-admin", boardRole: null, boardTerm: null },
+          governance: { meetingsByStatus: { scheduled: governanceMeetings.filter((m) => m.status === "scheduled").length, "in-progress": governanceMeetings.filter((m) => m.status === "in-progress").length, completed: governanceMeetings.filter((m) => m.status === "completed").length, cancelled: governanceMeetings.filter((m) => m.status === "cancelled").length }, summariesByStatus: { draft: draftMeetings.length, published: governanceMeetings.filter((m) => m.summaryStatus === "published").length }, tasksByStatus: { todo: governanceTasks.filter((t) => t.status === "todo").length, "in-progress": governanceTasks.filter((t) => t.status === "in-progress").length, done: governanceTasks.filter((t) => t.status === "done").length } },
+          maintenance: { requestsByStatus: { submitted: maintenanceRequests.filter((r) => r.status === "submitted").length, triaged: maintenanceRequests.filter((r) => r.status === "triaged").length, "in-progress": maintenanceRequests.filter((r) => r.status === "in-progress").length, resolved: maintenanceRequests.filter((r) => r.status === "resolved").length, closed: maintenanceRequests.filter((r) => r.status === "closed").length, rejected: maintenanceRequests.filter((r) => r.status === "rejected").length }, urgentOpenCount: urgentOpenMaintenanceCount, recent: recentMaintenanceRequests.map((r) => ({ id: r.id, title: r.title, priority: r.priority, status: r.status, responseDueAt: r.responseDueAt ? r.responseDueAt.toISOString() : null, locationText: r.locationText, createdAt: r.createdAt.toISOString() })) },
+          communications: { noticesByStatus: noticeSends.reduce<Record<string, number>>((acc, s) => { acc[s.status] = (acc[s.status] ?? 0) + 1; return acc; }, {}), documentsPortalVisible: documents.filter((d) => d.isPortalVisible === 1).length, documentsInternalOnly: documents.filter((d) => d.isPortalVisible !== 1).length, boardPackagesByStatus: { draft: boardPackages.filter((b) => b.status === "draft").length, approved: boardPackages.filter((b) => b.status === "approved").length, distributed: boardPackages.filter((b) => b.status === "distributed").length } },
+        },
+        activity: { recent: auditEntries.slice(0, 20).map((entry) => ({ id: entry.id, entityType: entry.entityType, action: entry.action, actorEmail: entry.actorEmail, createdAt: entry.createdAt, ...summarizeAuditEntry(entry) })) },
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -9224,20 +11837,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/admin/users/:id/active", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
     try {
+      const targetAdminUserId = getParam(req.params.id);
       const isActive = req.body?.isActive;
       if (typeof isActive !== "boolean") {
         return res.status(400).json({ message: "isActive must be a boolean" });
       }
-      if (req.adminUserId === getParam(req.params.id)) {
+      if (req.adminUserId === targetAdminUserId) {
         return res.status(400).json({ message: "Cannot change your own active status" });
       }
       const result = await storage.setAdminUserActive(
-        getParam(req.params.id),
+        targetAdminUserId,
         isActive,
         req.adminUserEmail || "system",
       );
       if (!result) return res.status(404).json({ message: "Admin user not found" });
       res.json(result);
+
+      sendDirectAdminEmailNotification({
+        adminUserId: result.id,
+        category: "adminAccess",
+        priority: "realtime",
+        email: {
+          subject: `Your CondoManager admin access has been ${isActive ? "enabled" : "disabled"}`,
+          html: `<p>Your CondoManager admin account access has been <strong>${isActive ? "enabled" : "disabled"}</strong>.</p>
+            <p>Changed by: ${req.adminUserEmail || "system"}</p>`,
+          text: `Your CondoManager admin account access has been ${isActive ? "enabled" : "disabled"}.\nChanged by: ${req.adminUserEmail || "system"}`,
+        },
+      }).catch((error) => console.error("[admin-access] Failed to send active status notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -9245,6 +11871,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/admin/users/:id/role", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
     try {
+      const targetAdminUserId = getParam(req.params.id);
       const role = req.body?.role;
       const allowedRoles = ["platform-admin", "board-admin", "manager", "viewer"];
       if (!allowedRoles.includes(role)) {
@@ -9252,15 +11879,115 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const reason = req.body?.reason;
       const result = await storage.updateAdminUserRole(
-        getParam(req.params.id),
+        targetAdminUserId,
         role as "platform-admin" | "board-admin" | "manager" | "viewer",
         req.adminUserEmail || "system",
         reason,
       );
       if (!result) return res.status(404).json({ message: "Admin user not found" });
       res.json(result);
+
+      sendDirectAdminEmailNotification({
+        adminUserId: result.id,
+        category: "adminAccess",
+        priority: "realtime",
+        email: {
+          subject: `Your CondoManager admin role is now ${role}`,
+          html: `<p>Your CondoManager admin role has been updated to <strong>${role}</strong>.</p>
+            <p>Changed by: ${req.adminUserEmail || "system"}</p>
+            <p>Reason: ${typeof reason === "string" && reason.trim() ? reason.trim() : "No reason provided"}</p>`,
+          text: `Your CondoManager admin role has been updated to ${role}.\nChanged by: ${req.adminUserEmail || "system"}\nReason: ${typeof reason === "string" && reason.trim() ? reason.trim() : "No reason provided"}`,
+        },
+      }).catch((error) => console.error("[admin-access] Failed to send role change notification:", error));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Admin notification preferences (per-user) ───────────────────────────────
+
+  app.get("/api/admin/me/preferences", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const adminUserId = req.adminUserId;
+      if (!adminUserId) return res.status(401).json({ message: "Not authenticated" });
+      const [prefs] = await db.select().from(adminUserPreferences).where(eq(adminUserPreferences.adminUserId, adminUserId)).limit(1);
+      if (!prefs) {
+        return res.json(normalizeAdminNotificationPreferences(undefined));
+      }
+      res.json(normalizeAdminNotificationPreferences({
+        emailNotifications: prefs.emailNotifications,
+        pushNotifications: prefs.pushNotifications,
+        desktopNotifications: prefs.desktopNotifications,
+        alertDigest: prefs.alertDigest as any,
+        quietHoursEnabled: prefs.quietHoursEnabled,
+        quietHoursStart: prefs.quietHoursStart,
+        quietHoursEnd: prefs.quietHoursEnd,
+        notificationCategoryPreferences: (prefs.notificationCategoryPreferencesJson ?? {}) as Record<string, boolean>,
+      }));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/admin/me/preferences", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const adminUserId = req.adminUserId;
+      if (!adminUserId) return res.status(401).json({ message: "Not authenticated" });
+      const normalized = normalizeAdminNotificationPreferences(req.body ?? {});
+      const updatePayload = {
+        emailNotifications: normalized.emailNotifications ? 1 : 0,
+        pushNotifications: normalized.pushNotifications ? 1 : 0,
+        desktopNotifications: normalized.desktopNotifications ? 1 : 0,
+        alertDigest: normalized.alertDigest,
+        quietHoursEnabled: normalized.quietHoursEnabled ? 1 : 0,
+        quietHoursStart: normalized.quietHoursStart,
+        quietHoursEnd: normalized.quietHoursEnd,
+        notificationCategoryPreferencesJson: normalized.notificationCategoryPreferences,
+        updatedAt: new Date(),
+      };
+
+      const [existing] = await db.select().from(adminUserPreferences).where(eq(adminUserPreferences.adminUserId, adminUserId)).limit(1);
+      if (existing) {
+        const [updated] = await db.update(adminUserPreferences)
+          .set(updatePayload)
+          .where(eq(adminUserPreferences.id, existing.id))
+          .returning();
+        return res.json(normalizeAdminNotificationPreferences({
+          emailNotifications: updated.emailNotifications,
+          pushNotifications: updated.pushNotifications,
+          desktopNotifications: updated.desktopNotifications,
+          alertDigest: updated.alertDigest as any,
+          quietHoursEnabled: updated.quietHoursEnabled,
+          quietHoursStart: updated.quietHoursStart,
+          quietHoursEnd: updated.quietHoursEnd,
+          notificationCategoryPreferences: (updated.notificationCategoryPreferencesJson ?? {}) as Record<string, boolean>,
+        }));
+      }
+      const [created] = await db.insert(adminUserPreferences)
+        .values({
+          adminUserId,
+          emailNotifications: updatePayload.emailNotifications,
+          pushNotifications: updatePayload.pushNotifications,
+          desktopNotifications: updatePayload.desktopNotifications,
+          alertDigest: updatePayload.alertDigest,
+          quietHoursEnabled: updatePayload.quietHoursEnabled,
+          quietHoursStart: updatePayload.quietHoursStart,
+          quietHoursEnd: updatePayload.quietHoursEnd,
+          notificationCategoryPreferencesJson: updatePayload.notificationCategoryPreferencesJson,
+        })
+        .returning();
+      res.status(201).json(normalizeAdminNotificationPreferences({
+        emailNotifications: created.emailNotifications,
+        pushNotifications: created.pushNotifications,
+        desktopNotifications: created.desktopNotifications,
+        alertDigest: created.alertDigest as any,
+        quietHoursEnabled: created.quietHoursEnabled,
+        quietHoursStart: created.quietHoursStart,
+        quietHoursEnd: created.quietHoursEnd,
+        notificationCategoryPreferences: (created.notificationCategoryPreferencesJson ?? {}) as Record<string, boolean>,
+      }));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -9330,12 +12057,367 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ── Platform Billing / Subscription Routes ──────────────────────────────────
+
+  // Helper: make a Stripe API call using the platform secret key
+  async function stripeRequest(method: string, path: string, body?: URLSearchParams): Promise<Record<string, unknown>> {
+    const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+    if (!secretKey) throw new Error("Platform Stripe key not configured");
+    const resp = await fetch(`https://api.stripe.com/v1${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body?.toString(),
+    });
+    const data = await resp.json().catch(() => ({})) as Record<string, unknown>;
+    if (!resp.ok) {
+      const errMsg = (data.error as any)?.message ?? `Stripe error ${resp.status}`;
+      throw new Error(errMsg);
+    }
+    return data;
+  }
+
+  // Provision a new workspace after successful checkout
+  async function provisionWorkspace(sessionData: Record<string, unknown>): Promise<void> {
+    const meta = (sessionData.metadata ?? {}) as Record<string, string>;
+    const associationId = meta.associationId;
+    const adminUserId = meta.adminUserId;
+    const plan = (meta.plan ?? "self-managed") as "self-managed" | "property-manager" | "enterprise";
+    if (!associationId || !adminUserId) return;
+
+    // Idempotency: skip if already provisioned
+    const existing = await storage.getPlatformSubscription(associationId);
+    if (existing) return;
+
+    const customerId = typeof sessionData.customer === "string" ? sessionData.customer : "";
+    const subscription = sessionData.subscription as Record<string, unknown> | null;
+    const subId = typeof subscription?.id === "string" ? subscription.id : null;
+    const trialEnd = typeof subscription?.trial_end === "number" ? new Date(subscription.trial_end * 1000) : null;
+    const periodEnd = typeof subscription?.current_period_end === "number" ? new Date(subscription.current_period_end * 1000) : null;
+    const status = trialEnd ? "trialing" : "active";
+
+    const adminUser = await db.select().from(adminUsers).where(eq(adminUsers.id, adminUserId)).then(r => r[0]);
+    if (!adminUser) return;
+
+    await db.update(adminUsers).set({ isActive: 1 }).where(eq(adminUsers.id, adminUserId));
+
+    await storage.createPlatformSubscription({
+      associationId,
+      plan,
+      status: status as any,
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subId,
+      currentPeriodEnd: periodEnd,
+      trialEndsAt: trialEnd,
+      adminEmail: adminUser.email,
+    });
+
+    // Create TenantConfig if missing
+    const existingConfig = await db.select().from(tenantConfigs).where(eq(tenantConfigs.associationId, associationId)).then(r => r[0]);
+    if (!existingConfig) {
+      await db.insert(tenantConfigs).values({ associationId, portalName: "Owner Portal", supportEmail: adminUser.email }).catch(() => {});
+    }
+  }
+
+  // GET /api/admin/billing/subscription — current subscription for the active association
+  app.get("/api/admin/billing/subscription", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const associationId = (req.adminScopedAssociationIds?.[0]) ?? req.query.associationId as string;
+      if (!associationId) return res.json({ status: "none" });
+      const sub = await storage.getPlatformSubscription(associationId);
+      if (!sub) return res.json({ status: "none" });
+      res.json(sub);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // POST /api/admin/billing/portal-session — Stripe Customer Portal redirect
+  app.post("/api/admin/billing/portal-session", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const associationId = req.adminScopedAssociationIds?.[0];
+      if (!associationId) return res.status(400).json({ message: "No association context" });
+      const sub = await storage.getPlatformSubscription(associationId);
+      if (!sub?.stripeCustomerId) return res.status(400).json({ message: "No billing account found" });
+      const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.condomanager.com";
+      const params = new URLSearchParams({ customer: sub.stripeCustomerId, return_url: `${baseUrl}/app/platform/controls` });
+      const session = await stripeRequest("POST", "/billing_portal/sessions", params);
+      res.json({ url: session.url });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET /api/platform/billing/summary — platform-admin MRR dashboard
+  app.get("/api/platform/billing/summary", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
+    try {
+      const subs = await storage.listPlatformSubscriptions();
+      const planPrice: Record<string, number> = { "self-managed": 99, "property-manager": 449, "enterprise": 0 };
+      const active = subs.filter(s => s.status === "active").length;
+      const trialing = subs.filter(s => s.status === "trialing").length;
+      const pastDue = subs.filter(s => s.status === "past_due").length;
+      const canceled = subs.filter(s => s.status === "canceled").length;
+      const mrr = subs.filter(s => ["active", "past_due"].includes(s.status)).reduce((n, s) => n + (planPrice[s.plan] ?? 0), 0);
+      const byPlan = {
+        selfManaged: subs.filter(s => s.plan === "self-managed").length,
+        propertyManager: subs.filter(s => s.plan === "property-manager").length,
+        enterprise: subs.filter(s => s.plan === "enterprise").length,
+      };
+      res.json({ total: subs.length, active, trialing, pastDue, canceled, mrr, byPlan });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // POST /api/platform/billing/configure — save platform Stripe config to secrets store
+  app.post("/api/platform/billing/configure", requireAdmin, requireAdminRole(["platform-admin"]), async (req, res) => {
+    try {
+      const { secretKey, publishableKey, webhookSecret, planPriceIdsJson, appBaseUrl } = req.body as Record<string, string>;
+      if (secretKey?.trim()) await setSecret("platform_stripe_secret_key", secretKey.trim());
+      if (publishableKey?.trim()) await setSecret("platform_stripe_publishable_key", publishableKey.trim());
+      if (webhookSecret?.trim()) await setSecret("platform_stripe_webhook_secret", webhookSecret.trim());
+      if (planPriceIdsJson?.trim()) await setSecret("stripe_plan_price_ids", planPriceIdsJson.trim());
+      if (appBaseUrl?.trim()) await setSecret("app_base_url", appBaseUrl.trim());
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // POST /api/public/signup/start — create Stripe customer + checkout session
+  app.post("/api/public/signup/start", async (req, res) => {
+    try {
+      const { name, email, organizationName, associationType, unitCount, plan } = req.body as Record<string, string>;
+      if (!name || !email || !organizationName || !plan) return res.status(400).json({ message: "name, email, organizationName, and plan are required" });
+
+      // Enterprise → contact sales
+      if (plan === "enterprise") return res.json({ enterpriseContact: true });
+
+      const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+      if (!secretKey) return res.status(503).json({ message: "Billing not configured" });
+
+      const priceIdsRaw = await getSecret("STRIPE_PLAN_PRICE_IDS", "stripe_plan_price_ids");
+      const priceIds = priceIdsRaw ? JSON.parse(priceIdsRaw) as Record<string, string> : {};
+      const priceId = priceIds[plan];
+      if (!priceId) return res.status(503).json({ message: "Plan pricing not configured" });
+
+      // Check for existing account
+      const existingUser = await db.select().from(adminUsers).where(eq(adminUsers.email, email.toLowerCase().trim())).then(r => r[0]);
+      if (existingUser) return res.status(409).json({ message: "An account with this email already exists." });
+
+      // Create Stripe customer
+      const customerParams = new URLSearchParams({ email: email.trim(), name: name.trim() });
+      customerParams.set("metadata[organizationName]", organizationName);
+      customerParams.set("metadata[plan]", plan);
+      const customer = await stripeRequest("POST", "/customers", customerParams);
+      const customerId = customer.id as string;
+
+      // Create stub association + admin user
+      const [assoc] = await db.insert(associations).values({ name: organizationName, associationType: associationType || "HOA", address: "TBD", city: "TBD", state: "TBD", country: "USA" }).returning();
+      const [adminUser] = await db.insert(adminUsers).values({ email: email.toLowerCase().trim(), role: "platform-admin", isActive: 0 }).returning();
+
+      // Create Stripe Checkout Session
+      const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.condomanager.com";
+      const sessionParams = new URLSearchParams({
+        mode: "subscription",
+        payment_method_collection: "if_required",
+        customer: customerId,
+        "line_items[0][price]": priceId,
+        "line_items[0][quantity]": "1",
+        "subscription_data[trial_period_days]": "14",
+        success_url: `${baseUrl}/signup/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/pricing`,
+      });
+      sessionParams.set("subscription_data[metadata][associationId]", assoc.id);
+      sessionParams.set("subscription_data[metadata][adminUserId]", adminUser.id);
+      sessionParams.set("subscription_data[metadata][plan]", plan);
+      sessionParams.set("metadata[associationId]", assoc.id);
+      sessionParams.set("metadata[adminUserId]", adminUser.id);
+      sessionParams.set("metadata[plan]", plan);
+
+      const session = await stripeRequest("POST", "/checkout/sessions", sessionParams);
+      res.json({ checkoutUrl: session.url, sessionId: session.id });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET /api/public/signup/complete — provision workspace after checkout
+  app.get("/api/public/signup/complete", async (req, res) => {
+    try {
+      const sessionId = req.query.session_id as string;
+      if (!sessionId) return res.status(400).json({ message: "session_id required" });
+      const session = await stripeRequest("GET", `/checkout/sessions/${sessionId}?expand[]=subscription`);
+      if (session.status !== "complete" && (session as any).payment_status !== "no_payment_required" && (session as any).payment_status !== "paid") {
+        return res.status(400).json({ message: "Checkout not completed" });
+      }
+      await provisionWorkspace(session);
+      const meta = (session.metadata ?? {}) as Record<string, string>;
+      const adminUser = meta.adminUserId ? await db.select().from(adminUsers).where(eq(adminUsers.id, meta.adminUserId)).then(r => r[0]) : null;
+      res.json({ success: true, email: adminUser?.email ?? null, associationId: meta.associationId });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // POST /api/webhooks/platform/stripe — Stripe lifecycle events
+  app.post("/api/webhooks/platform/stripe", async (req, res) => {
+    try {
+      const stripeSignature = req.header("stripe-signature");
+      const webhookSecret = await getSecret("PLATFORM_STRIPE_WEBHOOK_SECRET", "platform_stripe_webhook_secret");
+
+      if (stripeSignature && webhookSecret) {
+        const rawBody = Buffer.isBuffer((req as any).rawBody) ? (req as any).rawBody.toString("utf8") : JSON.stringify(req.body);
+        const { timestamp, signature } = parseStripeSignature(stripeSignature);
+        if (timestamp && signature) {
+          const expected = createHmac("sha256", webhookSecret).update(`${timestamp}.${rawBody}`).digest("hex");
+          const expectedBuf = Buffer.from(expected, "utf8");
+          const providedBuf = Buffer.from(signature, "utf8");
+          if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
+            return res.status(403).json({ message: "Invalid webhook signature" });
+          }
+        }
+      }
+
+      const event = req.body as Record<string, unknown>;
+      const eventId = event.id as string;
+      const eventType = event.type as string;
+      const eventObj = (event.data && typeof event.data === "object" ? (event.data as any).object : {}) as Record<string, unknown>;
+
+      // Upsert webhook event record (idempotent)
+      await db.insert(platformWebhookEvents).values({
+        providerEventId: eventId,
+        eventType,
+        status: "received",
+        rawPayloadJson: JSON.stringify(event),
+      }).onConflictDoNothing();
+
+      let processed = false;
+
+      if (eventType === "checkout.session.completed") {
+        await provisionWorkspace(eventObj);
+        processed = true;
+      } else if (eventType === "customer.subscription.updated" || eventType === "customer.subscription.deleted") {
+        const subId = eventObj.id as string;
+        const sub = await storage.getPlatformSubscriptionByStripeId(subId);
+        if (sub) {
+          const statusMap: Record<string, string> = { active: "active", trialing: "trialing", past_due: "past_due", canceled: "canceled", unpaid: "unpaid", incomplete: "incomplete" };
+          const newStatus = eventType === "customer.subscription.deleted" ? "canceled" : (statusMap[eventObj.status as string] ?? sub.status);
+          const periodEnd = typeof eventObj.current_period_end === "number" ? new Date(eventObj.current_period_end * 1000) : undefined;
+          const trialEnd = typeof eventObj.trial_end === "number" ? new Date(eventObj.trial_end * 1000) : undefined;
+          const cancelAtEnd = (eventObj.cancel_at_period_end as boolean) ? 1 : 0;
+          await storage.updatePlatformSubscription(sub.id, { status: newStatus as any, currentPeriodEnd: periodEnd, trialEndsAt: trialEnd, cancelAtPeriodEnd: cancelAtEnd });
+        }
+        processed = true;
+      } else if (eventType === "invoice.payment_succeeded") {
+        const subId = (eventObj.subscription as string) ?? null;
+        if (subId) {
+          const sub = await storage.getPlatformSubscriptionByStripeId(subId);
+          if (sub) await storage.updatePlatformSubscription(sub.id, { status: "active" });
+        }
+        processed = true;
+      } else if (eventType === "invoice.payment_failed") {
+        const subId = (eventObj.subscription as string) ?? null;
+        if (subId) {
+          const sub = await storage.getPlatformSubscriptionByStripeId(subId);
+          if (sub) {
+            await storage.updatePlatformSubscription(sub.id, { status: "past_due" });
+            // Send dunning email
+            const assocAdminEmail = sub.adminEmail;
+            if (assocAdminEmail) {
+              await sendPlatformEmail({
+                to: assocAdminEmail,
+                subject: "Action required: payment failed for your CondoManager subscription",
+                html: `<p>Hi,</p><p>We were unable to process your payment for your <strong>${sub.plan}</strong> CondoManager subscription.</p><p>Please update your payment method to continue using CondoManager without interruption.</p><p><a href="https://app.condomanager.com/app/platform/controls">Update payment method →</a></p>`,
+                text: `Your CondoManager ${sub.plan} subscription payment failed. Please update your payment method at https://app.condomanager.com/app/platform/controls`,
+              }).catch(() => {});
+            }
+          }
+        }
+        processed = true;
+      }
+
+      await db.update(platformWebhookEvents)
+        .set({ status: processed ? "processed" : "ignored", processedAt: new Date() })
+        .where(eq(platformWebhookEvents.providerEventId, eventId));
+
+      res.json({ received: true });
+    } catch (e: any) {
+      console.error("Platform webhook error:", e.message);
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.get("/api/admin/roadmap", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (_req, res) => {
     try {
       const result = await storage.getRoadmap();
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/contextual-feedback", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
+    try {
+      const parsed = adminContextualFeedbackSchema.parse(req.body);
+      const { project, workstream } = await ensureAdminContextualFeedbackRoadmapTarget();
+
+      const adminIdentity = [req.adminUserEmail || null, req.adminUserId ? `id:${req.adminUserId}` : null].filter(Boolean).join(" · ");
+      const titlePrefix = parsed.feedbackType === "bug" ? "[Feedback Bug]" : "[Feedback Enhancement]";
+      const routeLabel = parsed.context.route.length > 48 ? `${parsed.context.route.slice(0, 45)}...` : parsed.context.route;
+      const description = [
+        parsed.description.trim(),
+        "",
+        "Context",
+        `- route: ${parsed.context.route}`,
+        `- selector: ${parsed.context.selector}`,
+        `- domPath: ${parsed.context.domPath}`,
+        `- elementLabel: ${parsed.context.elementLabel}`,
+        `- componentName: ${parsed.context.componentName || "unknown"}`,
+        `- nodeName: ${parsed.context.nodeName}`,
+        `- className: ${parsed.context.className || "none"}`,
+        `- bounds: top=${parsed.context.bounds.top}, left=${parsed.context.bounds.left}, width=${parsed.context.bounds.width}, height=${parsed.context.bounds.height}`,
+        `- scroll: x=${parsed.context.scroll.x}, y=${parsed.context.scroll.y}`,
+        `- viewport: width=${parsed.context.viewport.width}, height=${parsed.context.viewport.height}`,
+        `- timestamp: ${parsed.context.timestamp}`,
+        `- admin: ${adminIdentity || "unknown"}`,
+        ...(parsed.context.textPreview ? [`- textPreview: ${parsed.context.textPreview}`] : []),
+      ].join("\n");
+
+      const task = await storage.createRoadmapTask({
+        projectId: project.id,
+        workstreamId: workstream.id,
+        title: `${titlePrefix} ${routeLabel} - ${parsed.title.trim()}`.slice(0, 200),
+        description,
+        status: "todo",
+        priority: parsed.priority,
+        effort: null,
+        dependencyTaskIds: [],
+        targetStartDate: null,
+        targetEndDate: null,
+      });
+
+      res.status(201).json({
+        task: {
+          id: task.id,
+          title: task.title,
+          status: task.status,
+          projectId: task.projectId,
+          workstreamId: task.workstreamId,
+        },
+        targetProject: {
+          id: project.id,
+          title: project.title,
+        },
+        targetWorkstream: {
+          id: workstream.id,
+          title: workstream.title,
+        },
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
     }
   });
 
@@ -9408,6 +12490,69 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/projects/:projectId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const result = await storage.getRoadmapProject(getParam(req.params.projectId));
+      if (!result) return res.status(404).json({ message: "Project not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/workstreams/:workstreamId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const result = await storage.getRoadmapWorkstream(getParam(req.params.workstreamId));
+      if (!result) return res.status(404).json({ message: "Workstream not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/tasks/:taskId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const result = await storage.getRoadmapTask(getParam(req.params.taskId));
+      if (!result) return res.status(404).json({ message: "Task not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/projects/:projectId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const result = await storage.getRoadmapProject(getParam(req.params.projectId));
+      if (!result) return res.status(404).json({ message: "Project not found" });
+      await storage.deleteRoadmapProject(getParam(req.params.projectId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/workstreams/:workstreamId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const result = await storage.getRoadmapWorkstream(getParam(req.params.workstreamId));
+      if (!result) return res.status(404).json({ message: "Workstream not found" });
+      await storage.deleteRoadmapWorkstream(getParam(req.params.workstreamId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/tasks/:taskId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const result = await storage.getRoadmapTask(getParam(req.params.taskId));
+      if (!result) return res.status(404).json({ message: "Task not found" });
+      await storage.deleteRoadmapTask(getParam(req.params.taskId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -9617,6 +12762,867 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", result.contentType);
       res.setHeader("Content-Disposition", `attachment; filename=\"${result.filename}\"`);
       res.send(result.body);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+
+  // ── Vendor Portal ─────────────────────────────────────────────────────────
+
+  const vendorPortalOtpSecret = process.env.PORTAL_OTP_SECRET || "vendor-portal-dev-secret";
+
+  type VendorPortalRequest = Request & {
+    vendorPortalCredentialId?: string;
+    vendorId?: string;
+    vendorAssociationIds?: string[];
+  };
+
+  async function requireVendorPortal(req: VendorPortalRequest, res: Response, next: NextFunction) {
+    const credentialId = req.header("x-vendor-portal-credential-id") || "";
+    if (!credentialId) return res.status(403).json({ message: "Vendor portal access required" });
+    const [credential] = await db
+      .select()
+      .from(vendorPortalCredentials)
+      .where(eq(vendorPortalCredentials.id, credentialId))
+      .limit(1);
+    if (!credential || credential.status !== "accepted") {
+      return res.status(403).json({ message: "Invalid or inactive vendor portal credential" });
+    }
+    await db
+      .update(vendorPortalCredentials)
+      .set({ lastLoginAt: new Date(), updatedAt: new Date() })
+      .where(eq(vendorPortalCredentials.id, credentialId));
+    req.vendorPortalCredentialId = credentialId;
+    req.vendorId = credential.vendorId;
+    req.vendorAssociationIds = [credential.associationId];
+    return next();
+  }
+
+  // Manager: invite vendor to portal
+  app.post(
+    "/api/vendors/:id/portal-invite",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-admin", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const vendorId = getParam(req.params.id);
+        await assertResourceScope(req, "vendor", vendorId);
+        const { email } = req.body as { email: string };
+        if (!email) return res.status(400).json({ message: "email is required" });
+        const [vendor] = await db.select().from(vendors).where(eq(vendors.id, vendorId)).limit(1);
+        if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+
+        const cleanEmail = email.toLowerCase().trim();
+        await db
+          .delete(vendorPortalCredentials)
+          .where(and(eq(vendorPortalCredentials.vendorId, vendorId), eq(vendorPortalCredentials.email, cleanEmail)));
+        const [credential] = await db
+          .insert(vendorPortalCredentials)
+          .values({
+            vendorId,
+            associationId: vendor.associationId,
+            email: cleanEmail,
+            status: "pending",
+            invitedBy: req.adminUserEmail || "manager",
+            invitedAt: new Date(),
+          })
+          .returning();
+
+        const emailReady = isEmailProviderConfigured();
+        if (emailReady) {
+          try {
+            const portalUrl = `${process.env.APP_BASE_URL || "http://localhost:5000"}/vendor-portal`;
+            await sendPlatformEmail({
+              to: credential.email,
+              subject: `You've been invited to the Vendor Portal — ${vendor.name}`,
+              html: `<p>Hello,</p><p>You have been invited to the vendor portal for <strong>${vendor.name}</strong>.</p><p>Visit <a href="${portalUrl}">${portalUrl}</a> to sign in.</p>`,
+              text: `You have been invited to the vendor portal for ${vendor.name}. Visit ${portalUrl} to sign in.`,
+            });
+          } catch (e: any) {
+            console.error("[vendor-portal-invite][email-error]", e.message);
+          }
+        } else {
+          console.warn("[vendor-portal-invite][simulation-mode]", { email: credential.email });
+        }
+
+        res.json(credential);
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  // Manager: get portal credential status for a vendor
+  app.get(
+    "/api/vendors/:id/portal-credential",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const vendorId = getParam(req.params.id);
+        await assertResourceScope(req, "vendor", vendorId);
+        const rows = await db.select().from(vendorPortalCredentials).where(eq(vendorPortalCredentials.vendorId, vendorId));
+        res.json(rows);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  // Manager: revoke vendor portal credential
+  app.patch(
+    "/api/vendors/:id/portal-credential/:credentialId/revoke",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-admin", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const vendorId = getParam(req.params.id);
+        const credentialId = getParam(req.params.credentialId);
+        await assertResourceScope(req, "vendor", vendorId);
+        const [updated] = await db
+          .update(vendorPortalCredentials)
+          .set({ status: "revoked", updatedAt: new Date() })
+          .where(and(eq(vendorPortalCredentials.id, credentialId), eq(vendorPortalCredentials.vendorId, vendorId)))
+          .returning();
+        if (!updated) return res.status(404).json({ message: "Credential not found" });
+        res.json(updated);
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  // Vendor Portal OTP login — step 1: request code
+  app.post("/api/vendor-portal/request-login", async (req, res) => {
+    try {
+      const email = getParam(req.body?.email).trim().toLowerCase();
+      if (!email) return res.status(400).json({ message: "email is required" });
+
+      const allCredentials = await db
+        .select()
+        .from(vendorPortalCredentials)
+        .where(
+          and(
+            eq(vendorPortalCredentials.email, email),
+            or(eq(vendorPortalCredentials.status, "pending"), eq(vendorPortalCredentials.status, "accepted")),
+          ),
+        );
+
+      if (allCredentials.length === 0) {
+        return res.json({ message: "If an account exists for this email, a login code has been sent." });
+      }
+
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otpHash = createHmac("sha256", vendorPortalOtpSecret).update(otp).digest("hex");
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      const vendorId = allCredentials[0].vendorId;
+
+      await db
+        .delete(vendorPortalLoginTokens)
+        .where(and(eq(vendorPortalLoginTokens.email, email), eq(vendorPortalLoginTokens.vendorId, vendorId)));
+      await db.insert(vendorPortalLoginTokens).values({ vendorId, email, otpHash, expiresAt });
+
+      const emailReady = isEmailProviderConfigured();
+      if (emailReady) {
+        try {
+          await sendPlatformEmail({
+            to: email,
+            subject: "Your Vendor Portal Login Code",
+            html: `<p>Your login code is: <strong style="font-size:24px;letter-spacing:0.2em;">${otp}</strong></p><p>This code expires in 15 minutes.</p>`,
+            text: `Your vendor portal login code is: ${otp}\n\nThis code expires in 15 minutes.`,
+          });
+        } catch (e: any) {
+          console.error("[vendor-portal-otp][email-error]", e.message);
+        }
+      } else {
+        console.warn("[vendor-portal-otp][simulation-mode]", { email, otp });
+      }
+
+      const response: Record<string, unknown> = { message: "If an account exists for this email, a login code has been sent." };
+      if (!emailReady) {
+        response.simulatedOtp = otp;
+        response.simulationMode = true;
+      }
+      res.json(response);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Vendor Portal OTP login — step 2: verify code
+  app.post("/api/vendor-portal/verify-login", async (req, res) => {
+    try {
+      const email = getParam(req.body?.email).trim().toLowerCase();
+      const otp = getParam(req.body?.otp).trim();
+      if (!email || !otp) return res.status(400).json({ message: "email and otp are required" });
+
+      const allCredentials = await db
+        .select()
+        .from(vendorPortalCredentials)
+        .where(
+          and(
+            eq(vendorPortalCredentials.email, email),
+            or(eq(vendorPortalCredentials.status, "pending"), eq(vendorPortalCredentials.status, "accepted")),
+          ),
+        );
+      if (allCredentials.length === 0) return res.status(404).json({ message: "No active vendor portal access found" });
+
+      const vendorId = allCredentials[0].vendorId;
+      const [token] = await db
+        .select()
+        .from(vendorPortalLoginTokens)
+        .where(and(eq(vendorPortalLoginTokens.email, email), eq(vendorPortalLoginTokens.vendorId, vendorId)))
+        .limit(1);
+
+      if (!token) return res.status(400).json({ message: "No pending login code. Request a new one." });
+      if (token.usedAt) return res.status(400).json({ message: "Login code already used. Request a new one." });
+      if (new Date() > token.expiresAt) return res.status(400).json({ message: "Login code expired. Request a new one." });
+      if (token.attempts >= 5) return res.status(429).json({ message: "Too many attempts. Request a new login code." });
+
+      await db.update(vendorPortalLoginTokens).set({ attempts: token.attempts + 1 }).where(eq(vendorPortalLoginTokens.id, token.id));
+
+      const expectedHash = createHmac("sha256", vendorPortalOtpSecret).update(otp).digest("hex");
+      const match = timingSafeEqual(Buffer.from(expectedHash, "hex"), Buffer.from(token.otpHash, "hex"));
+      if (!match) return res.status(400).json({ message: "Invalid login code." });
+
+      await db.update(vendorPortalLoginTokens).set({ usedAt: new Date() }).where(eq(vendorPortalLoginTokens.id, token.id));
+
+      for (const cred of allCredentials.filter((c) => c.status === "pending")) {
+        await db
+          .update(vendorPortalCredentials)
+          .set({ status: "accepted", acceptedAt: new Date(), updatedAt: new Date() })
+          .where(eq(vendorPortalCredentials.id, cred.id));
+      }
+
+      const [finalCred] = await db
+        .select()
+        .from(vendorPortalCredentials)
+        .where(and(eq(vendorPortalCredentials.email, email), eq(vendorPortalCredentials.vendorId, vendorId)))
+        .limit(1);
+
+      res.json({
+        vendorPortalCredentialId: finalCred.id,
+        vendorId: finalCred.vendorId,
+        associationId: finalCred.associationId,
+        email: finalCred.email,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Vendor Portal: get current vendor info
+  app.get("/api/vendor-portal/me", requireVendorPortal, async (req: VendorPortalRequest, res) => {
+    try {
+      const [vendor] = await db.select().from(vendors).where(eq(vendors.id, req.vendorId!)).limit(1);
+      if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+      const [credential] = await db
+        .select()
+        .from(vendorPortalCredentials)
+        .where(eq(vendorPortalCredentials.id, req.vendorPortalCredentialId!))
+        .limit(1);
+      res.json({ vendor, credential });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Vendor Portal: list work orders scoped to this vendor
+  app.get("/api/vendor-portal/work-orders", requireVendorPortal, async (req: VendorPortalRequest, res) => {
+    try {
+      const rows = await db
+        .select()
+        .from(workOrders)
+        .where(and(eq(workOrders.vendorId, req.vendorId!), inArray(workOrders.associationId, req.vendorAssociationIds!)))
+        .orderBy(workOrders.updatedAt);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Vendor Portal: get single work order with activity log (scoped)
+  app.get("/api/vendor-portal/work-orders/:id", requireVendorPortal, async (req: VendorPortalRequest, res) => {
+    try {
+      const workOrderId = getParam(req.params.id);
+      const [wo] = await db
+        .select()
+        .from(workOrders)
+        .where(
+          and(
+            eq(workOrders.id, workOrderId),
+            eq(workOrders.vendorId, req.vendorId!),
+            inArray(workOrders.associationId, req.vendorAssociationIds!),
+          ),
+        )
+        .limit(1);
+      if (!wo) return res.status(404).json({ message: "Work order not found" });
+
+      const activity = await db
+        .select()
+        .from(vendorWorkOrderActivity)
+        .where(eq(vendorWorkOrderActivity.workOrderId, workOrderId))
+        .orderBy(vendorWorkOrderActivity.createdAt);
+
+      let unit = null;
+      if (wo.unitId) {
+        const unitRows = await db.select().from(units).where(eq(units.id, wo.unitId)).limit(1);
+        unit = unitRows[0] ?? null;
+      }
+
+      res.json({ ...wo, activity, unit });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Vendor Portal: update work order status
+  app.patch("/api/vendor-portal/work-orders/:id/status", requireVendorPortal, async (req: VendorPortalRequest, res) => {
+    try {
+      const workOrderId = getParam(req.params.id);
+      const { status, note } = req.body as { status: string; note: string };
+      if (!status) return res.status(400).json({ message: "status is required" });
+      if (!note || !note.trim()) return res.status(400).json({ message: "note is required when updating status" });
+
+      const validVendorStatuses = ["assigned", "in-progress", "pending-review", "closed"];
+      if (!validVendorStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${validVendorStatuses.join(", ")}` });
+      }
+
+      const [existing] = await db
+        .select()
+        .from(workOrders)
+        .where(
+          and(
+            eq(workOrders.id, workOrderId),
+            eq(workOrders.vendorId, req.vendorId!),
+            inArray(workOrders.associationId, req.vendorAssociationIds!),
+          ),
+        )
+        .limit(1);
+      if (!existing) return res.status(404).json({ message: "Work order not found" });
+
+      const previousStatus = existing.status;
+      const now = new Date();
+      const statusUpdates: Record<string, unknown> = { status, updatedAt: now };
+      if (status === "in-progress" && !existing.startedAt) statusUpdates.startedAt = now;
+      if ((status === "closed" || status === "pending-review") && !existing.completedAt) statusUpdates.completedAt = now;
+
+      const [updated] = await db.update(workOrders).set(statusUpdates).where(eq(workOrders.id, workOrderId)).returning();
+
+      await db.insert(vendorWorkOrderActivity).values({
+        workOrderId,
+        vendorId: req.vendorId!,
+        associationId: req.vendorAssociationIds![0],
+        activityType: "status_change",
+        previousStatus,
+        newStatus: status,
+        note: note.trim(),
+      });
+
+      if ((status === "pending-review" || status === "closed") && isEmailProviderConfigured()) {
+        const [vendor] = await db.select().from(vendors).where(eq(vendors.id, req.vendorId!)).limit(1);
+        console.log(`[vendor-portal] Job marked complete: workOrder=${workOrderId}, vendor=${vendor?.name}`);
+      }
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Vendor Portal: add note to work order
+  app.post("/api/vendor-portal/work-orders/:id/notes", requireVendorPortal, async (req: VendorPortalRequest, res) => {
+    try {
+      const workOrderId = getParam(req.params.id);
+      const { note } = req.body as { note: string };
+      if (!note || !note.trim()) return res.status(400).json({ message: "note is required" });
+
+      const [existing] = await db
+        .select()
+        .from(workOrders)
+        .where(
+          and(
+            eq(workOrders.id, workOrderId),
+            eq(workOrders.vendorId, req.vendorId!),
+            inArray(workOrders.associationId, req.vendorAssociationIds!),
+          ),
+        )
+        .limit(1);
+      if (!existing) return res.status(404).json({ message: "Work order not found" });
+
+      const [activity] = await db
+        .insert(vendorWorkOrderActivity)
+        .values({
+          workOrderId,
+          vendorId: req.vendorId!,
+          associationId: req.vendorAssociationIds![0],
+          activityType: "note_added",
+          note: note.trim(),
+        })
+        .returning();
+
+      const combinedNotes = [existing.vendorNotes, note.trim()].filter(Boolean).join("\n---\n");
+      await db.update(workOrders).set({ vendorNotes: combinedNotes, updatedAt: new Date() }).where(eq(workOrders.id, workOrderId));
+
+      res.json(activity);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Vendor Portal: set estimated completion date
+  app.patch("/api/vendor-portal/work-orders/:id/estimated-completion", requireVendorPortal, async (req: VendorPortalRequest, res) => {
+    try {
+      const workOrderId = getParam(req.params.id);
+      const { estimatedCompletionDate } = req.body as { estimatedCompletionDate: string };
+      if (!estimatedCompletionDate) return res.status(400).json({ message: "estimatedCompletionDate is required" });
+
+      const [existing] = await db
+        .select()
+        .from(workOrders)
+        .where(
+          and(
+            eq(workOrders.id, workOrderId),
+            eq(workOrders.vendorId, req.vendorId!),
+            inArray(workOrders.associationId, req.vendorAssociationIds!),
+          ),
+        )
+        .limit(1);
+      if (!existing) return res.status(404).json({ message: "Work order not found" });
+
+      const completionDate = new Date(estimatedCompletionDate);
+      const [updated] = await db
+        .update(workOrders)
+        .set({ vendorEstimatedCompletionDate: completionDate, updatedAt: new Date() })
+        .where(eq(workOrders.id, workOrderId))
+        .returning();
+
+      await db.insert(vendorWorkOrderActivity).values({
+        workOrderId,
+        vendorId: req.vendorId!,
+        associationId: req.vendorAssociationIds![0],
+        activityType: "estimated_completion_set",
+        note: `Estimated completion set to ${completionDate.toLocaleDateString()}`,
+      });
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Vendor Portal: upload completion photo
+  app.post(
+    "/api/vendor-portal/work-orders/:id/photos",
+    requireVendorPortal,
+    upload.single("file"),
+    async (req: VendorPortalRequest, res) => {
+      try {
+        const workOrderId = getParam(req.params.id);
+        const file = req.file;
+        if (!file) return res.status(400).json({ message: "file is required" });
+        const { label } = req.body as { label?: string };
+
+        const [existing] = await db
+          .select()
+          .from(workOrders)
+          .where(
+            and(
+              eq(workOrders.id, workOrderId),
+              eq(workOrders.vendorId, req.vendorId!),
+              inArray(workOrders.associationId, req.vendorAssociationIds!),
+            ),
+          )
+          .limit(1);
+        if (!existing) return res.status(404).json({ message: "Work order not found" });
+
+        const fileUrl = `/uploads/${file.filename}`;
+        const currentPhotos = (existing.photosJson as any[]) || [];
+        const newPhoto = { url: fileUrl, label: label || "Completion photo", type: "completion", uploadedAt: new Date().toISOString(), uploadedByVendor: true };
+        await db
+          .update(workOrders)
+          .set({ photosJson: [...currentPhotos, newPhoto], updatedAt: new Date() })
+          .where(eq(workOrders.id, workOrderId));
+
+        await db.insert(vendorWorkOrderActivity).values({
+          workOrderId,
+          vendorId: req.vendorId!,
+          associationId: req.vendorAssociationIds![0],
+          activityType: "photo_uploaded",
+          note: label || "Completion photo uploaded",
+          fileUrl,
+          fileType: "photo",
+        });
+
+        res.json({ url: fileUrl, label: newPhoto.label });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  // Vendor Portal: upload invoice (creates record in financial module flagged for manager review)
+  app.post(
+    "/api/vendor-portal/work-orders/:id/invoice",
+    requireVendorPortal,
+    upload.single("file"),
+    async (req: VendorPortalRequest, res) => {
+      try {
+        const workOrderId = getParam(req.params.id);
+        const file = req.file;
+        if (!file) return res.status(400).json({ message: "file is required" });
+        const { invoiceNumber, amount, invoiceDate } = req.body as { invoiceNumber?: string; amount?: string; invoiceDate?: string };
+
+        const [existing] = await db
+          .select()
+          .from(workOrders)
+          .where(
+            and(
+              eq(workOrders.id, workOrderId),
+              eq(workOrders.vendorId, req.vendorId!),
+              inArray(workOrders.associationId, req.vendorAssociationIds!),
+            ),
+          )
+          .limit(1);
+        if (!existing) return res.status(404).json({ message: "Work order not found" });
+
+        const [vendor] = await db.select().from(vendors).where(eq(vendors.id, req.vendorId!)).limit(1);
+        const fileUrl = `/uploads/${file.filename}`;
+        const parsedAmount = amount ? parseFloat(amount) : 0;
+        const parsedDate = invoiceDate ? new Date(invoiceDate) : new Date();
+
+        const [invoice] = await db
+          .insert(vendorInvoices)
+          .values({
+            associationId: req.vendorAssociationIds![0],
+            vendorId: req.vendorId!,
+            vendorName: vendor?.name || "Unknown Vendor",
+            invoiceNumber: invoiceNumber || null,
+            invoiceDate: parsedDate,
+            amount: parsedAmount,
+            status: "received",
+            notes: `Submitted via vendor portal for work order: ${existing.title}. File: ${fileUrl}`,
+          })
+          .returning();
+
+        await db.update(workOrders).set({ vendorInvoiceId: invoice.id, updatedAt: new Date() }).where(eq(workOrders.id, workOrderId));
+
+        await db.insert(vendorWorkOrderActivity).values({
+          workOrderId,
+          vendorId: req.vendorId!,
+          associationId: req.vendorAssociationIds![0],
+          activityType: "invoice_uploaded",
+          note: `Invoice uploaded${invoiceNumber ? ` (#${invoiceNumber})` : ""}${parsedAmount ? ` for $${parsedAmount.toFixed(2)}` : ""}`,
+          fileUrl,
+          fileType: "invoice",
+        });
+
+        res.json({ invoice, fileUrl });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  // Manager-facing: vendor activity feed for a work order
+  app.get(
+    "/api/work-orders/:id/vendor-activity",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const workOrderId = getParam(req.params.id);
+        const activity = await db
+          .select()
+          .from(vendorWorkOrderActivity)
+          .where(eq(vendorWorkOrderActivity.workOrderId, workOrderId))
+          .orderBy(vendorWorkOrderActivity.createdAt);
+        res.json(activity);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  // ── Workstream 5: Enhanced Portfolio & Association Workspace APIs ──────────
+
+  // 1. GET /api/admin/portfolio/summary — Portfolio-level financial aggregation
+  app.get("/api/admin/portfolio/summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const allAssociations = await storage.getAssociations({ includeArchived: false });
+      const visibleAssociations = req.adminRole === "platform-admin"
+        ? allAssociations
+        : allAssociations.filter((a) => (req.adminScopedAssociationIds ?? []).includes(a.id));
+
+      let totalOperatingFunds = 0;
+      let totalReserveFunds = 0;
+      let totalDelinquentAccounts = 0;
+      let totalOwnerAccounts = 0;
+
+      await Promise.all(visibleAssociations.map(async (assoc) => {
+        const [accounts, ledgerSummary] = await Promise.all([
+          storage.getFinancialAccounts(assoc.id),
+          storage.getOwnerLedgerSummary(assoc.id),
+        ]);
+
+        for (const acct of accounts) {
+          if (acct.accountType === "reserve" || acct.name.toLowerCase().includes("reserve")) {
+            totalReserveFunds += 0; // balances aren't stored on account rows; use placeholder
+          }
+        }
+
+        const delinquent = ledgerSummary.filter((e) => e.balance > 0);
+        totalDelinquentAccounts += delinquent.length;
+        totalOwnerAccounts += ledgerSummary.length;
+      }));
+
+      const delinquencyRate = totalOwnerAccounts > 0
+        ? Math.round((totalDelinquentAccounts / totalOwnerAccounts) * 100 * 10) / 10
+        : 0;
+
+      res.json({
+        totalAssociations: visibleAssociations.length,
+        totalOperatingFunds,
+        totalReserveFunds,
+        delinquencyRate,
+        portfolioYield: 0, // placeholder — no revenue data available
+        totalDelinquentAccounts,
+        totalOwnerAccounts,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 2. GET /api/admin/portfolio/associations — Enhanced association list with computed health
+  app.get("/api/admin/portfolio/associations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const allAssociations = await storage.getAssociations({ includeArchived: false });
+      const visibleAssociations = req.adminRole === "platform-admin"
+        ? allAssociations
+        : allAssociations.filter((a) => (req.adminScopedAssociationIds ?? []).includes(a.id));
+
+      const results = await Promise.all(visibleAssociations.map(async (assoc) => {
+        const [unitsList, ledgerSummary, wos] = await Promise.all([
+          storage.getUnits(assoc.id),
+          storage.getOwnerLedgerSummary(assoc.id),
+          storage.getWorkOrders({ associationId: assoc.id }),
+        ]);
+
+        const delinquentCount = ledgerSummary.filter((e) => e.balance > 0).length;
+        const delinquencyPct = ledgerSummary.length > 0 ? (delinquentCount / ledgerSummary.length) * 100 : 0;
+        const openWOs = wos.filter((wo) => wo.status !== "closed" && wo.status !== "cancelled").length;
+
+        // Age check — "Transitioning" if created < 6 months ago
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        const isNew = assoc.createdAt && new Date(assoc.createdAt) > sixMonthsAgo;
+
+        let status: "Stable" | "Critical" | "Transitioning" = "Stable";
+        if (delinquencyPct > 10) status = "Critical";
+        else if (isNew) status = "Transitioning";
+
+        return {
+          associationId: assoc.id,
+          name: assoc.name,
+          city: assoc.city || null,
+          state: assoc.state || null,
+          unitCount: unitsList.length,
+          operatingBalance: 0,
+          reserveBalance: 0,
+          delinquencyPct: Math.round(delinquencyPct * 10) / 10,
+          openWorkOrders: openWOs,
+          status,
+        };
+      }));
+
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 3. GET /api/admin/portfolio/alerts — Critical alerts aggregation
+  app.get("/api/admin/portfolio/alerts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const allAssociations = await storage.getAssociations({ includeArchived: false });
+      const visibleAssociations = req.adminRole === "platform-admin"
+        ? allAssociations
+        : allAssociations.filter((a) => (req.adminScopedAssociationIds ?? []).includes(a.id));
+
+      const alerts: Array<{
+        associationId: string;
+        associationName: string;
+        type: string;
+        severity: "critical" | "warning" | "info";
+        description: string;
+      }> = [];
+
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      await Promise.all(visibleAssociations.map(async (assoc) => {
+        const [wos, ledgerSummary] = await Promise.all([
+          storage.getWorkOrders({ associationId: assoc.id }),
+          storage.getOwnerLedgerSummary(assoc.id),
+        ]);
+
+        // Overdue high-priority work orders (high/urgent, open > 7 days)
+        const overdueHighPriority = wos.filter((wo) =>
+          (wo.priority === "high" || wo.priority === "urgent") &&
+          wo.status !== "closed" && wo.status !== "cancelled" &&
+          new Date(wo.createdAt) < sevenDaysAgo
+        );
+        if (overdueHighPriority.length > 0) {
+          alerts.push({
+            associationId: assoc.id,
+            associationName: assoc.name,
+            type: "overdue_work_orders",
+            severity: overdueHighPriority.length >= 3 ? "critical" : "warning",
+            description: `${overdueHighPriority.length} high-priority work order${overdueHighPriority.length === 1 ? "" : "s"} overdue (>7 days)`,
+          });
+        }
+
+        // Delinquency spikes
+        const delinquentCount = ledgerSummary.filter((e) => e.balance > 0).length;
+        const delinquencyPct = ledgerSummary.length > 0 ? (delinquentCount / ledgerSummary.length) * 100 : 0;
+        if (delinquencyPct > 15) {
+          alerts.push({
+            associationId: assoc.id,
+            associationName: assoc.name,
+            type: "delinquency_spike",
+            severity: "critical",
+            description: `Delinquency rate at ${Math.round(delinquencyPct)}% (${delinquentCount} accounts)`,
+          });
+        } else if (delinquencyPct > 8) {
+          alerts.push({
+            associationId: assoc.id,
+            associationName: assoc.name,
+            type: "delinquency_spike",
+            severity: "warning",
+            description: `Delinquency rate at ${Math.round(delinquencyPct)}% (${delinquentCount} accounts)`,
+          });
+        }
+      }));
+
+      // Sort by severity
+      const severityOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+      alerts.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+      res.json(alerts);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 4. GET /api/admin/associations/:id/workspace — Single-request workspace data
+  app.get("/api/admin/associations/:id/workspace", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      const [assocRows, overview, onboardingState, wos] = await Promise.all([
+        db.select().from(associations).where(eq(associations.id, associationId)),
+        storage.getAssociationOverview(associationId),
+        storage.getAssociationOnboardingState(associationId),
+        storage.getWorkOrders({ associationId }),
+      ]);
+
+      const assoc = assocRows[0];
+      if (!assoc) {
+        return res.status(404).json({ message: "Association not found" });
+      }
+
+      const highPriorityOpen = wos.filter(
+        (wo) => (wo.priority === "high" || wo.priority === "urgent") && wo.status !== "closed" && wo.status !== "cancelled"
+      ).length;
+
+      res.json({
+        associationId: assoc.id,
+        name: assoc.name,
+        address: assoc.address,
+        city: assoc.city,
+        state: assoc.state,
+        country: assoc.country,
+        units: overview.units,
+        occupancyRatePercent: overview.occupancyRatePercent,
+        activeOwners: overview.activeOwners,
+        activeOccupants: overview.activeOccupants,
+        reserveFund: 0, // placeholder — no reserve balance table
+        openTickets: overview.maintenanceOpen,
+        highPriorityTickets: highPriorityOpen,
+        maintenanceOverdue: overview.maintenanceOverdue,
+        onboardingScorePercent: onboardingState.scorePercent,
+        onboardingState: onboardingState.state,
+        onboardingComponents: onboardingState.components,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 5. GET /api/admin/associations/:id/activity — Recent activity feed
+  app.get("/api/admin/associations/:id/activity", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      const events: Array<{
+        type: string;
+        title: string;
+        description: string;
+        actor: string;
+        timestamp: string;
+        icon: string;
+      }> = [];
+
+      // Get recent work orders
+      const wos = await storage.getWorkOrders({ associationId });
+      const recentWOs = wos
+        .sort((a, b) => new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime())
+        .slice(0, 4);
+      for (const wo of recentWOs) {
+        events.push({
+          type: "work_order",
+          title: wo.status === "closed" ? "Work order closed" : wo.status === "open" ? "Work order created" : `Work order ${wo.status}`,
+          description: wo.title,
+          actor: wo.assignedTo || "System",
+          timestamp: (wo.updatedAt ?? wo.createdAt).toISOString(),
+          icon: "build",
+        });
+      }
+
+      // Get recent ledger entries
+      const ledger = await storage.getOwnerLedgerEntries(associationId);
+      const recentLedger = ledger
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 3);
+      for (const entry of recentLedger) {
+        events.push({
+          type: "financial",
+          title: entry.entryType === "payment" ? "Payment received" : `Ledger ${entry.entryType}`,
+          description: `${entry.description || entry.entryType} — $${Math.abs(entry.amount).toFixed(2)}`,
+          actor: "System",
+          timestamp: entry.createdAt.toISOString(),
+          icon: entry.entryType === "payment" ? "payments" : "receipt_long",
+        });
+      }
+
+      // Get recent documents
+      const docs = await db.select().from(documents).where(eq(documents.associationId, associationId)).orderBy(desc(documents.createdAt)).limit(3);
+      for (const doc of docs) {
+        events.push({
+          type: "document",
+          title: "Document uploaded",
+          description: doc.title,
+          actor: "System",
+          timestamp: doc.createdAt.toISOString(),
+          icon: "description",
+        });
+      }
+
+      // Sort all events by timestamp descending, limit to 10
+      events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      res.json(events.slice(0, 10));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

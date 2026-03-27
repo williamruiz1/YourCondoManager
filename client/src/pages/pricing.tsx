@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  Building2,
   Check,
   CheckCircle2,
   Menu,
@@ -9,7 +8,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +52,7 @@ const comparisonRows: { capability: string; values: [ComparisonCell, ComparisonC
 ];
 
 export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }: PricingPageProps) {
+  const [, setLocation] = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -66,41 +66,37 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
     <div className="min-h-screen bg-background">
 
       {/* ── NAVIGATION ── */}
-      <header
-        className={cn(
-          "sticky top-0 z-50 transition-all duration-200",
-          scrolled
-            ? "bg-background/90 backdrop-blur-md border-b border-border/60 shadow-sm"
-            : "bg-background/80 backdrop-blur-md border-b border-border/40"
-        )}
-      >
+      <header className="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm dark:shadow-none">
         <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 h-16 flex items-center justify-between gap-6">
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-              <Building2 className="h-4 w-4" />
-            </div>
-            <span className="font-semibold text-sm tracking-tight">CondoManager</span>
+          {/* Logo */}
+          <Link href="/" className="shrink-0">
+            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">CondoManager</span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-0.5">
+          {/* Nav links — desktop */}
+          <nav className="hidden md:flex items-center gap-6">
             <Link
               href="/"
-              className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground rounded-lg hover:bg-accent transition-colors"
+              className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
             >
               Platform
             </Link>
-            <button className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground rounded-lg hover:bg-accent transition-colors">
+            <Link
+              href="/solutions"
+              className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
+            >
               Solutions
-            </button>
+            </Link>
             <Link
               href="/pricing"
-              className="px-3 py-1.5 text-sm font-semibold text-primary border-b-2 border-primary rounded-none"
+              className="text-blue-700 dark:text-blue-400 font-bold border-b-2 border-blue-700 dark:border-blue-400 pb-1"
             >
               Pricing
             </Link>
           </nav>
 
-          <div className="hidden md:flex items-center gap-2">
+          {/* CTAs — desktop */}
+          <div className="hidden md:flex items-center gap-4">
             {hasWorkspaceAccess ? (
               <Button asChild>
                 <Link href="/app">
@@ -109,12 +105,17 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               </Button>
             ) : (
               <>
-                <Button variant="ghost" size="sm" onClick={onStartGoogleSignIn}>Sign in</Button>
-                <Button size="sm" onClick={onStartGoogleSignIn}>Get started free</Button>
+                <button className="text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>
+                  Sign In
+                </button>
+                <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-5 py-2 rounded font-semibold scale-95 active:opacity-80 transition-all" onClick={onStartGoogleSignIn}>
+                  Open Workspace
+                </button>
               </>
             )}
           </div>
 
+          {/* Hamburger — mobile */}
           <button
             className="md:hidden p-2 -mr-1 rounded-lg hover:bg-accent transition-colors"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -124,32 +125,38 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           </button>
         </div>
 
+        {/* Mobile dropdown */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-border/60 bg-background/95 backdrop-blur-md px-6 py-4 space-y-1">
+          <div className="md:hidden border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-6 py-4 space-y-1">
             <Link
               href="/"
-              className="block px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground rounded-lg hover:bg-accent transition-colors"
+              className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               Platform
             </Link>
-            <button className="w-full text-left px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground rounded-lg hover:bg-accent transition-colors">
+            <Link
+              href="/solutions"
+              className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
               Solutions
-            </button>
+            </Link>
             <Link
               href="/pricing"
-              className="block px-3 py-2.5 text-sm font-semibold text-primary rounded-lg"
+              className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               Pricing
             </Link>
-            <div className="pt-3 border-t border-border/60 flex flex-col gap-2">
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
               {hasWorkspaceAccess ? (
                 <Button asChild>
-                  <Link href="/app">Open Workspace <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link>
+                  <Link href="/app">
+                    Open Workspace <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  </Link>
                 </Button>
               ) : (
                 <>
-                  <Button variant="outline" onClick={onStartGoogleSignIn}>Sign in</Button>
-                  <Button onClick={onStartGoogleSignIn}>Get started free</Button>
+                  <button className="px-4 py-2 text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>Sign In</button>
+                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all" onClick={onStartGoogleSignIn}>Open Workspace</button>
                 </>
               )}
             </div>
@@ -157,7 +164,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         )}
       </header>
 
-      <main className="pb-24">
+      <main className="pt-16 pb-24">
 
         {/* ── HERO ── */}
         <header className="max-w-4xl mx-auto text-center px-6 pt-20 pb-20">
@@ -206,8 +213,8 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                   </li>
                 ))}
               </ul>
-              <Button variant="outline" className="w-full py-6" onClick={onStartGoogleSignIn}>
-                Start Self-Managing
+              <Button variant="outline" className="w-full py-6" onClick={() => setLocation("/signup?plan=self-managed")}>
+                Start Free Trial
               </Button>
             </div>
 
@@ -236,8 +243,8 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                   </li>
                 ))}
               </ul>
-              <Button className="w-full py-6 gap-2" onClick={onStartGoogleSignIn}>
-                Get Started <ArrowRight className="h-4 w-4" />
+              <Button className="w-full py-6 gap-2" onClick={() => setLocation("/signup?plan=property-manager")}>
+                Start Free Trial <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
 
@@ -258,8 +265,8 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                   </li>
                 ))}
               </ul>
-              <Button variant="outline" className="w-full py-6" onClick={onStartGoogleSignIn}>
-                Contact Sales
+              <Button variant="outline" className="w-full py-6" asChild>
+                <a href="mailto:sales@condomanager.com">Contact Sales</a>
               </Button>
             </div>
           </div>
@@ -378,8 +385,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                   Ready to elevate your management?
                 </h2>
                 <p className="text-muted-foreground max-w-2xl mx-auto">
-                  Join over 1,500 property managers who have transitioned to the modern estate
-                  architecture.
+                  Built for property managers who want a modern, all-in-one platform for every association they manage.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -391,11 +397,11 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                   </Button>
                 ) : (
                   <>
-                    <Button size="lg" onClick={onStartGoogleSignIn}>
+                    <Button size="lg" onClick={() => setLocation("/signup?plan=property-manager")}>
                       Start 14-Day Free Trial
                     </Button>
-                    <Button size="lg" variant="outline" onClick={onStartGoogleSignIn}>
-                      Schedule a Demo
+                    <Button size="lg" variant="outline" asChild>
+                      <a href="mailto:sales@condomanager.com">Schedule a Demo</a>
                     </Button>
                   </>
                 )}
@@ -405,31 +411,104 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         </section>
       </main>
 
-      {/* ── FOOTER ── */}
-      <footer className="border-t border-border/60 bg-muted/30">
-        <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 py-14 flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="text-center md:text-left">
-            <div className="flex items-center gap-2.5 justify-center md:justify-start mb-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Building2 className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-sm font-semibold text-foreground">CondoManager</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} CondoManager. The Modern Estate Architecture.
+      {/* Footer */}
+      <footer className="bg-slate-50 dark:bg-slate-900 w-full border-t border-slate-200 dark:border-slate-800" role="contentinfo">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-12 px-12 py-16 w-full max-w-screen-2xl mx-auto">
+          <div className="space-y-6">
+            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">CondoManager</div>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed">
+              Setting the standard for architectural excellence in property management software.
+              Trusted by over 5,000 associations globally.
             </p>
           </div>
-          <div className="flex flex-wrap justify-center gap-6">
-            {["Terms", "Privacy", "Support", "LinkedIn", "Twitter"].map((item) => (
-              <a
-                key={item}
-                href="#"
-                className="text-sm text-muted-foreground hover:text-foreground hover:-translate-y-px transition-all duration-200"
-              >
-                {item}
-              </a>
-            ))}
+          <nav aria-label="Solutions">
+            <h3 className="uppercase tracking-widest text-[10px] font-bold text-slate-900 dark:text-slate-100 mb-6">
+              Solutions
+            </h3>
+            <ul className="space-y-4 text-sm">
+              {["Self-Managed Boards", "Enterprise Firms", "Resident Experience", "Developer API"].map(
+                (item, idx) => (
+                  <li key={idx}>
+                    <a
+                      href="#"
+                      className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
+                    >
+                      {item}
+                    </a>
+                  </li>
+                ),
+              )}
+            </ul>
+          </nav>
+          <nav aria-label="Company">
+            <h3 className="uppercase tracking-widest text-[10px] font-bold text-slate-900 dark:text-slate-100 mb-6">
+              Company
+            </h3>
+            <ul className="space-y-4 text-sm">
+              {["About Us", "Careers", "Legal Resources", "Contact Us"].map((item, idx) => (
+                <li key={idx}>
+                  <a
+                    href="#"
+                    className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
+                  >
+                    {item}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <div className="flex flex-col justify-between">
+            <div>
+              <h3 className="uppercase tracking-widest text-[10px] font-bold text-slate-900 dark:text-slate-100 mb-6">
+                Social
+              </h3>
+              <div className="flex gap-4">
+                {[
+                  { icon: "share", label: "Share" },
+                  { icon: "podcasts", label: "Podcasts" },
+                  { icon: "alternate_email", label: "Email" },
+                ].map((item, idx) => (
+                  <a
+                    key={idx}
+                    href="#"
+                    aria-label={`Visit us on ${item.label}`}
+                    className="w-8 h-8 rounded bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:bg-primary dark:hover:bg-primary hover:text-white transition-all focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <span className="material-symbols-outlined text-sm" aria-hidden="true">
+                      {item.icon}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+            <div className="mt-8 md:mt-0">
+              <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                © {new Date().getFullYear()} CondoManager. The Modern Estate Excellence.
+              </p>
+            </div>
           </div>
+        </div>
+        <div className="px-12 py-6 border-t border-slate-200/50 dark:border-slate-800/50 flex flex-wrap gap-8">
+          <Link href="/privacy-policy">
+            <a
+              className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-primary dark:hover:text-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
+            >
+              Privacy Policy
+            </a>
+          </Link>
+          <Link href="/terms-of-service">
+            <a
+              className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-primary dark:hover:text-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
+            >
+              Terms of Service
+            </a>
+          </Link>
+          <a
+            href="#"
+            className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-primary dark:hover:text-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
+          >
+            Cookie Settings
+          </a>
         </div>
       </footer>
     </div>

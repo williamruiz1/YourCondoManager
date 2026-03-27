@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 
 type ReviewAnnotation = {
   id: string;
@@ -65,7 +67,7 @@ function MobileDesktopHandoff({ title, body }: { title: string; body: string }) 
   );
 }
 
-export default function BoardPackagesPage() {
+export function BoardPackagesContent() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -351,14 +353,9 @@ export default function BoardPackagesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <>
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Board Packages</h1>
-          <p className="text-muted-foreground">
-            Configure recurring board packet templates, generate draft packages by period, and schedule auto-generation relative to upcoming meetings.
-          </p>
-        </div>
+        <div />
         <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex"}`}>
           <Button
             variant="outline"
@@ -960,6 +957,21 @@ export default function BoardPackagesPage() {
           </CardContent>
         </Card>
       )}
+    </>
+  );
+}
+
+export default function BoardPackagesPage() {
+  return (
+    <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Board Packages"
+        summary="Configure recurring board packet templates, generate draft packages by period, and schedule auto-generation relative to upcoming meetings."
+        eyebrow="Board & Governance"
+        breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Board Packages" }]}
+        subPages={boardGovernanceSubPages}
+      />
+      <BoardPackagesContent />
     </div>
   );
 }

@@ -17,6 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Toggle } from "@/components/ui/toggle";
 import { RefreshCw, ChevronDown, ChevronRight, Plus, Calendar, Link2, GitBranch, Bookmark, BookmarkCheck, Layers3 } from "lucide-react";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { platformSubPages } from "@/lib/sub-page-nav";
 
 type TaskStatus = "todo" | "in-progress" | "done";
 type ProjectStatus = "active" | "complete" | "archived";
@@ -631,44 +633,47 @@ export default function RoadmapPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Unified Roadmap</h1>
-          <p className="text-muted-foreground">Cross-project planning, execution, dependencies, and timeline audit.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setProjectModalOpen(true)} data-testid="button-create-project">
-            <Plus className="h-4 w-4 mr-2" />
-            New Project
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setWorkstreamForm((prev) => ({
-                ...prev,
-                projectId: prev.projectId || projects[0]?.id || "",
-              }));
-              setWorkstreamModalOpen(true);
-            }}
-            data-testid="button-create-workstream"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Workstream
-          </Button>
-          <Button variant="outline" onClick={() => setShowTimeline((v) => !v)} data-testid="button-toggle-timeline">
-            <GitBranch className="h-4 w-4 mr-2" />
-            {showTimeline ? "Hide Timeline" : "Show Timeline"}
-          </Button>
-          <Button variant="outline" onClick={refreshRoadmap} disabled={isFetching} data-testid="button-refresh-roadmap">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-          <Button onClick={() => openTaskCreate()} data-testid="button-create-task" disabled={workstreams.length === 0}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Task
-          </Button>
-        </div>
-      </div>
+      <WorkspacePageHeader
+        title="Unified Roadmap"
+        summary="Cross-project planning, execution, dependencies, and timeline audit."
+        eyebrow="Platform"
+        breadcrumbs={[{ label: "Platform", href: "/app/platform/controls" }, { label: "Unified Roadmap" }]}
+        subPages={platformSubPages}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setProjectModalOpen(true)} data-testid="button-create-project">
+              <Plus className="h-4 w-4 mr-2" />
+              New Project
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setWorkstreamForm((prev) => ({
+                  ...prev,
+                  projectId: prev.projectId || projects[0]?.id || "",
+                }));
+                setWorkstreamModalOpen(true);
+              }}
+              data-testid="button-create-workstream"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Workstream
+            </Button>
+            <Button variant="outline" onClick={() => setShowTimeline((v) => !v)} data-testid="button-toggle-timeline">
+              <GitBranch className="h-4 w-4 mr-2" />
+              {showTimeline ? "Hide Timeline" : "Show Timeline"}
+            </Button>
+            <Button variant="outline" onClick={refreshRoadmap} disabled={isFetching} data-testid="button-refresh-roadmap">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+            <Button onClick={() => openTaskCreate()} data-testid="button-create-task" disabled={workstreams.length === 0}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Task
+            </Button>
+          </div>
+        }
+      />
 
       <Tabs defaultValue="roadmap" className="space-y-6">
         <TabsList>

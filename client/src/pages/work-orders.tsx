@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { operationsSubPages } from "@/lib/sub-page-nav";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { DataTableShell } from "@/components/data-table-shell";
@@ -21,6 +22,8 @@ import { AlertTriangle, Camera, ChevronDown, ChevronUp, Clock, Minus, Upload, X 
 import { DateRangePresets, type DateRange } from "@/components/date-range-presets";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MaintenanceSchedulesContent } from "./maintenance-schedules";
 
 type WorkOrderStatus = "open" | "assigned" | "in-progress" | "pending-review" | "closed" | "cancelled";
 type WorkOrderPriority = "low" | "medium" | "high" | "urgent";
@@ -43,7 +46,7 @@ const emptyForm = {
   resolutionNotes: "",
 };
 
-export default function WorkOrdersPage() {
+export function WorkOrdersContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -89,6 +92,24 @@ export default function WorkOrdersPage() {
   const { data: units = [] } = useQuery<Unit[]>({
     queryKey: ["/api/units"],
     enabled: Boolean(activeAssociationId),
+  });
+  type VendorActivity = {
+    id: string;
+    activityType: string;
+    note: string | null;
+    previousStatus: string | null;
+    newStatus: string | null;
+    fileUrl: string | null;
+    fileType: string | null;
+    createdAt: string;
+  };
+  const { data: vendorActivity = [] } = useQuery<VendorActivity[]>({
+    queryKey: ["/api/work-orders", selectedOrderId, "vendor-activity"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/work-orders/${selectedOrderId}/vendor-activity`);
+      return res.json();
+    },
+    enabled: Boolean(selectedOrderId),
   });
 
   const convertibleRequests = useMemo(
@@ -167,15 +188,7 @@ export default function WorkOrdersPage() {
       fd.append("file", file);
       fd.append("label", label);
       fd.append("type", type);
-      const res = await fetch(`/api/work-orders/${selectedOrderId}/photos`, {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Upload failed" }));
-        throw new Error(err.message);
-      }
+      const res = await apiRequest("POST", `/api/work-orders/${selectedOrderId}/photos`, fd);
       return res.json();
     },
     onSuccess: () => {
@@ -271,18 +284,8 @@ export default function WorkOrdersPage() {
   }, [page, totalPages]);
 
   return (
-    <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Work Orders"
-        summary="Track maintenance execution, vendor assignment, and cost linkage without leaving the operations workspace."
-        eyebrow="Operations"
-        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Work Orders" }]}
-        shortcuts={[
-          { label: "Open Vendors", href: "/app/vendors" },
-          { label: "Open Maintenance", href: "/app/maintenance" },
-        ]}
-        actions={
-          <Dialog open={open} onOpenChange={setOpen}>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button disabled={!activeAssociationId} onClick={openCreate}>New Work Order</Button>
             </DialogTrigger>
@@ -408,8 +411,6 @@ export default function WorkOrdersPage() {
               </div>
             </DialogContent>
           </Dialog>
-        }
-      />
 
       <AssociationScopeBanner
         activeAssociationId={activeAssociationId}
@@ -838,7 +839,7 @@ export default function WorkOrdersPage() {
                       <div>
                         <Label className="text-xs">Type</Label>
                         <Select value={photoType} onValueChange={setPhotoType}>
-                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-10 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="before">Before</SelectItem>
                             <SelectItem value="after">After</SelectItem>
@@ -848,7 +849,7 @@ export default function WorkOrdersPage() {
                       </div>
                       <div>
                         <Label className="text-xs">Label (optional)</Label>
-                        <Input className="h-8 text-xs" placeholder="e.g. front door" value={photoLabel} onChange={(e) => setPhotoLabel(e.target.value)} />
+                        <Input className="h-10 text-xs" placeholder="e.g. front door" value={photoLabel} onChange={(e) => setPhotoLabel(e.target.value)} />
                       </div>
                     </div>
                     <input
@@ -874,10 +875,70 @@ export default function WorkOrdersPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {((selectedOrder as any).vendorNotes || (selectedOrder as any).vendorEstimatedCompletionDate || vendorActivity.length > 0) && (
+                <Card>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="font-medium text-sm flex items-center gap-2">
+                      Vendor Activity
+                      {vendorActivity.length > 0 && <Badge variant="outline" className="text-xs">{vendorActivity.length}</Badge>}
+                    </div>
+                    {(selectedOrder as any).vendorEstimatedCompletionDate && (
+                      <div className="text-sm text-muted-foreground">
+                        Est. completion (vendor): <span className="font-medium text-foreground">{new Date((selectedOrder as any).vendorEstimatedCompletionDate).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    {(selectedOrder as any).vendorNotes && (
+                      <div className="text-sm">
+                        <div className="text-xs text-muted-foreground mb-1">Vendor notes</div>
+                        <div className="whitespace-pre-wrap">{(selectedOrder as any).vendorNotes}</div>
+                      </div>
+                    )}
+                    {vendorActivity.length > 0 && (
+                      <ol className="space-y-2 border-t pt-3">
+                        {[...vendorActivity].reverse().map((item) => (
+                          <li key={item.id} className="flex gap-2 text-sm">
+                            <div className="flex-shrink-0 w-2 h-2 mt-1.5 rounded-full bg-primary/40" />
+                            <div className="min-w-0">
+                              <span className="font-medium capitalize">{item.activityType.replace(/_/g, " ")}</span>
+                              {item.note && <span className="text-muted-foreground"> — {item.note}</span>}
+                              <div className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</div>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </div>
           ) : null}
         </SheetContent>
       </Sheet>
+    </>
+  );
+}
+
+export default function WorkOrdersPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Work Orders"
+          summary="Manage work orders and preventive maintenance schedules."
+          eyebrow="Operations"
+          breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Work Orders" }]}
+          subPages={operationsSubPages}
+        />
+        <Tabs defaultValue="work-orders" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="work-orders">Work Orders</TabsTrigger>
+            <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
+          </TabsList>
+          <TabsContent value="work-orders" className="mt-0"><WorkOrdersContent /></TabsContent>
+          <TabsContent value="maintenance" className="mt-0"><MaintenanceSchedulesContent /></TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

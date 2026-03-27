@@ -83,6 +83,8 @@ export const ownerships = pgTable("ownerships", {
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date"),
   relationshipNotesJson: jsonb("relationship_notes_json"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const occupancyTypeEnum = pgEnum("occupancy_type", ["OWNER_OCCUPIED", "TENANT"]);
@@ -113,7 +115,11 @@ export const documents = pgTable("documents", {
   documentType: text("document_type").notNull(),
   isPortalVisible: integer("is_portal_visible").notNull().default(0),
   portalAudience: text("portal_audience").notNull().default("owner"),
+  priorVersionsPortalVisible: integer("prior_versions_portal_visible").notNull().default(0),
   uploadedBy: text("uploaded_by"),
+  parentDocumentId: varchar("parent_document_id"),
+  versionNumber: integer("version_number").notNull().default(1),
+  isCurrentVersion: integer("is_current_version").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -143,6 +149,9 @@ export const documentVersions = pgTable("document_versions", {
   versionNumber: integer("version_number").notNull(),
   title: text("title").notNull(),
   fileUrl: text("file_url").notNull(),
+  effectiveDate: timestamp("effective_date"),
+  amendmentNotes: text("amendment_notes"),
+  isCurrent: integer("is_current").notNull().default(0),
   uploadedBy: text("uploaded_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
@@ -159,6 +168,23 @@ export const adminUsers = pgTable("admin_users", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueEmail: uniqueIndex("admin_users_email_uq").on(table.email),
+}));
+
+export const adminUserPreferences = pgTable("admin_user_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  adminUserId: varchar("admin_user_id").notNull().references(() => adminUsers.id),
+  emailNotifications: integer("email_notifications").notNull().default(1),
+  pushNotifications: integer("push_notifications").notNull().default(1),
+  desktopNotifications: integer("desktop_notifications").notNull().default(1),
+  alertDigest: text("alert_digest").notNull().default("daily"),
+  quietHoursEnabled: integer("quiet_hours_enabled").notNull().default(0),
+  quietHoursStart: text("quiet_hours_start").notNull().default("22:00"),
+  quietHoursEnd: text("quiet_hours_end").notNull().default("07:00"),
+  notificationCategoryPreferencesJson: jsonb("notification_category_preferences_json").notNull().default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAdmin: uniqueIndex("admin_user_prefs_admin_uq").on(table.adminUserId),
 }));
 
 export const userSessions = pgTable("user_sessions", {
@@ -244,6 +270,8 @@ export const specialAssessments = pgTable("special_assessments", {
   installmentCount: integer("installment_count").notNull().default(1),
   notes: text("notes"),
   isActive: integer("is_active").notNull().default(1),
+  autoPostEnabled: integer("auto_post_enabled").notNull().default(0),
+  excludedUnitIdsJson: jsonb("excluded_unit_ids_json").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -644,6 +672,59 @@ export const voteRecords = pgTable("vote_records", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ── Digital Voting / Election Campaigns ──────────────────────────────────────
+export const voteCampaigns = pgTable("vote_campaigns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  voteType: text("vote_type").notNull().default("resolution"), // 'election' | 'resolution' | 'poll'
+  weightingRule: text("weighting_rule").notNull().default("unit"), // 'unit' | 'person' | 'board'
+  isSecretBallot: integer("is_secret_ballot").notNull().default(0),
+  quorumPercent: real("quorum_percent"),
+  openAt: timestamp("open_at"),
+  closeAt: timestamp("close_at"),
+  status: text("status").notNull().default("draft"), // 'draft' | 'open' | 'closed' | 'certified'
+  certifiedAt: timestamp("certified_at"),
+  certifiedBy: text("certified_by"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const voteQuestions = pgTable("vote_questions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => voteCampaigns.id),
+  questionText: text("question_text").notNull(),
+  choiceType: text("choice_type").notNull().default("yes-no"), // 'yes-no' | 'single' | 'multi'
+  options: jsonb("options").$type<string[]>().default([]),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const voteBallots = pgTable("vote_ballots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => voteCampaigns.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  tokenHash: text("token_hash").notNull(),
+  status: text("status").notNull().default("pending"), // 'pending' | 'cast' | 'proxy'
+  proxyPersonId: varchar("proxy_person_id").references(() => persons.id),
+  proxyDocumentUrl: text("proxy_document_url"),
+  castAt: timestamp("cast_at"),
+  castIp: text("cast_ip"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const voteAnswers = pgTable("vote_answers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ballotId: varchar("ballot_id").notNull().references(() => voteBallots.id),
+  questionId: varchar("question_id").notNull().references(() => voteQuestions.id),
+  selectedOptions: jsonb("selected_options").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const calendarEvents = pgTable("calendar_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -914,8 +995,41 @@ export const communicationHistory = pgTable("communication_history", {
   relatedType: text("related_type"),
   relatedId: text("related_id"),
   metadataJson: jsonb("metadata_json"),
+  deliveryStatus: text("delivery_status"),
+  deliveryStatusUpdatedAt: timestamp("delivery_status_updated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const smsDeliveryLogs = pgTable("sms_delivery_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageSid: text("message_sid").notNull(),
+  associationId: varchar("association_id").references(() => associations.id),
+  recipientPersonId: varchar("recipient_person_id").references(() => persons.id),
+  toNumber: text("to_number").notNull(),
+  fromNumber: text("from_number"),
+  messageStatus: text("message_status").notNull(),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  rawPayloadJson: jsonb("raw_payload_json"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  portalAccessId: varchar("portal_access_id").notNull().references(() => portalAccess.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  endpoint: text("endpoint").notNull(),
+  p256dhKey: text("p256dh_key").notNull(),
+  authKey: text("auth_key").notNull(),
+  userAgent: text("user_agent"),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniquePushEndpoint: uniqueIndex("push_subscriptions_endpoint_uq").on(table.endpoint),
+}));
 
 export const emailLogs = pgTable("email_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -984,10 +1098,12 @@ export const portalAccess = pgTable("portal_access", {
   suspendedAt: timestamp("suspended_at"),
   revokedAt: timestamp("revoked_at"),
   lastLoginAt: timestamp("last_login_at"),
+  smsOptIn: integer("sms_opt_in").notNull().default(0),
+  smsOptInChangedAt: timestamp("sms_opt_in_changed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
-  uniquePortalAccessPerAssociationEmailUnit: uniqueIndex("portal_access_assoc_email_unit_uq").on(table.associationId, table.email, table.unitId),
+  uniquePortalAccessPerAssociationEmailUnit: uniqueIndex("portal_access_assoc_email_unit_uq").on(table.associationId, table.email, sql`COALESCE(${table.unitId}, '')`),
 }));
 
 export const associationMemberships = pgTable("association_memberships", {
@@ -1009,7 +1125,7 @@ export const onboardingSubmissionStatusEnum = pgEnum("onboarding_submission_stat
 export const onboardingInvites = pgTable("onboarding_invites", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
-  unitId: varchar("unit_id").notNull().references(() => units.id),
+  unitId: varchar("unit_id").references(() => units.id),
   residentType: onboardingResidentTypeEnum("resident_type").notNull(),
   email: text("email"),
   phone: text("phone"),
@@ -1075,6 +1191,7 @@ export const tenantConfigs = pgTable("tenant_configs", {
   aiIngestionRolloutMode: text("ai_ingestion_rollout_mode").notNull().default("full"),
   aiIngestionCanaryPercent: integer("ai_ingestion_canary_percent").notNull().default(100),
   aiIngestionRolloutNotes: text("ai_ingestion_rollout_notes"),
+  smsFromNumber: text("sms_from_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
@@ -1198,6 +1315,8 @@ export const workOrders = pgTable("work_orders", {
   completedAt: timestamp("completed_at"),
   resolutionNotes: text("resolution_notes"),
   photosJson: jsonb("photos_json").notNull().default(sql`'[]'::jsonb`),
+  vendorEstimatedCompletionDate: timestamp("vendor_estimated_completion_date"),
+  vendorNotes: text("vendor_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
@@ -1504,6 +1623,11 @@ export const roadmapTaskStatusEnum = pgEnum("roadmap_task_status", ["todo", "in-
 export const roadmapEffortEnum = pgEnum("roadmap_effort", ["small", "medium", "large"]);
 export const roadmapPriorityEnum = pgEnum("roadmap_priority", ["low", "medium", "high", "critical"]);
 
+/**
+ * Roadmap tables (roadmapProjects, roadmapWorkstreams, roadmapTasks) are intentionally
+ * global/admin-scoped and do NOT have an associationId column. They track platform-wide
+ * development work visible only to admin users, not tenant-specific data.
+ */
 export const roadmapProjects = pgTable("admin_roadmap_projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
@@ -1626,7 +1750,7 @@ export const insertBuildingSchema = createInsertSchema(buildings).omit({ id: tru
 export const insertUnitSchema = createInsertSchema(units).omit({ id: true, createdAt: true });
 export const insertPersonSchema = createInsertSchema(persons).omit({ id: true, createdAt: true });
 export const insertPersonContactPointSchema = createInsertSchema(personContactPoints).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertOwnershipSchema = createInsertSchema(ownerships).omit({ id: true });
+export const insertOwnershipSchema = createInsertSchema(ownerships).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertOccupancySchema = createInsertSchema(occupancies).omit({ id: true });
 export const insertBoardRoleSchema = createInsertSchema(boardRoles).omit({ id: true });
 export const insertDocumentSchema = createInsertSchema(documents).omit({ id: true, createdAt: true });
@@ -1640,7 +1764,9 @@ export const insertHoaFeeScheduleSchema = createInsertSchema(hoaFeeSchedules, {
   startDate: z.coerce.date(),
   endDate: z.coerce.date().nullable().optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertSpecialAssessmentSchema = createInsertSchema(specialAssessments).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSpecialAssessmentSchema = createInsertSchema(specialAssessments, {
+  excludedUnitIdsJson: z.array(z.string()).default([]),
+}).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertLateFeeRuleSchema = createInsertSchema(lateFeeRules).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertLateFeeEventSchema = createInsertSchema(lateFeeEvents).omit({ id: true, createdAt: true });
 export const insertFinancialAccountSchema = createInsertSchema(financialAccounts).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1679,6 +1805,8 @@ export const insertSuggestedLinkSchema = createInsertSchema(suggestedLinks).omit
 export const insertNoticeTemplateSchema = createInsertSchema(noticeTemplates).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertNoticeSendSchema = createInsertSchema(noticeSends).omit({ id: true, sentAt: true });
 export const insertCommunicationHistorySchema = createInsertSchema(communicationHistory).omit({ id: true, createdAt: true });
+export const insertSmsDeliveryLogSchema = createInsertSchema(smsDeliveryLogs).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEmailLogSchema = createInsertSchema(emailLogs).omit({ id: true, sentAt: true, createdAt: true, updatedAt: true });
 export const insertEmailEventSchema = createInsertSchema(emailEvents).omit({ id: true, occurredAt: true });
 export const insertPermissionEnvelopeSchema = createInsertSchema(permissionEnvelopes).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1865,6 +1993,16 @@ export type Resolution = typeof resolutions.$inferSelect;
 export type InsertResolution = z.infer<typeof insertResolutionSchema>;
 export type VoteRecord = typeof voteRecords.$inferSelect;
 export type InsertVoteRecord = z.infer<typeof insertVoteRecordSchema>;
+export const insertVoteCampaignSchema = createInsertSchema(voteCampaigns).omit({ id: true, createdAt: true, updatedAt: true, certifiedAt: true });
+export const insertVoteQuestionSchema = createInsertSchema(voteQuestions).omit({ id: true, createdAt: true });
+export const insertVoteBallotSchema = createInsertSchema(voteBallots).omit({ id: true, createdAt: true, castAt: true });
+export const insertVoteAnswerSchema = createInsertSchema(voteAnswers).omit({ id: true, createdAt: true });
+export type VoteCampaign = typeof voteCampaigns.$inferSelect;
+export type VoteQuestion = typeof voteQuestions.$inferSelect;
+export type VoteBallot = typeof voteBallots.$inferSelect;
+export type VoteAnswer = typeof voteAnswers.$inferSelect;
+export type InsertVoteCampaign = z.infer<typeof insertVoteCampaignSchema>;
+export type InsertVoteQuestion = z.infer<typeof insertVoteQuestionSchema>;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 export type GovernanceComplianceTemplate = typeof governanceComplianceTemplates.$inferSelect;
@@ -1897,6 +2035,10 @@ export type NoticeSend = typeof noticeSends.$inferSelect;
 export type InsertNoticeSend = z.infer<typeof insertNoticeSendSchema>;
 export type CommunicationHistory = typeof communicationHistory.$inferSelect;
 export type InsertCommunicationHistory = z.infer<typeof insertCommunicationHistorySchema>;
+export type SmsDeliveryLog = typeof smsDeliveryLogs.$inferSelect;
+export type InsertSmsDeliveryLog = z.infer<typeof insertSmsDeliveryLogSchema>;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
 export type EmailLog = typeof emailLogs.$inferSelect;
 export type InsertEmailLog = z.infer<typeof insertEmailLogSchema>;
 export type EmailEvent = typeof emailEvents.$inferSelect;
@@ -2189,6 +2331,139 @@ export const insertCollectionsHandoffSchema = createInsertSchema(collectionsHand
 export type CollectionsHandoff = typeof collectionsHandoffs.$inferSelect;
 export type InsertCollectionsHandoff = z.infer<typeof insertCollectionsHandoffSchema>;
 
+// ─── Full Digital Voting & Elections ─────────────────────────────────────────
+
+export const electionVoteTypeEnum = pgEnum("election_vote_type", ["board-election", "resolution", "community-referendum", "amendment-ratification"]);
+export const electionVotingRuleEnum = pgEnum("election_voting_rule", ["unit-weighted", "person-weighted", "board-only"]);
+export const electionStatusEnum = pgEnum("election_status", ["draft", "open", "closed", "certified", "cancelled"]);
+export const electionResultVisibilityEnum = pgEnum("election_result_visibility", ["public", "admin-only"]);
+
+export const elections = pgTable("elections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  meetingId: varchar("meeting_id").references(() => governanceMeetings.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  voteType: electionVoteTypeEnum("vote_type").notNull().default("resolution"),
+  votingRule: electionVotingRuleEnum("voting_rule").notNull().default("unit-weighted"),
+  isSecretBallot: integer("is_secret_ballot").notNull().default(0),
+  resultVisibility: electionResultVisibilityEnum("result_visibility").notNull().default("public"),
+  status: electionStatusEnum("status").notNull().default("draft"),
+  opensAt: timestamp("opens_at"),
+  closesAt: timestamp("closes_at"),
+  nominationsOpenAt: timestamp("nominations_open_at"),
+  nominationsCloseAt: timestamp("nominations_close_at"),
+  quorumPercent: real("quorum_percent").notNull().default(50),
+  maxChoices: integer("max_choices"),
+  eligibleVoterCount: integer("eligible_voter_count").notNull().default(0),
+  certifiedBy: text("certified_by"),
+  certifiedAt: timestamp("certified_at"),
+  certificationSummary: text("certification_summary"),
+  resultDocumentId: varchar("result_document_id"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertElectionSchema = createInsertSchema(elections).omit({ id: true, createdAt: true, updatedAt: true, certifiedAt: true, certificationSummary: true, resultDocumentId: true });
+export type Election = typeof elections.$inferSelect;
+export type InsertElection = z.infer<typeof insertElectionSchema>;
+
+// Candidates/options for an election
+export const electionOptions = pgTable("election_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  electionId: varchar("election_id").notNull().references(() => elections.id),
+  label: text("label").notNull(),
+  description: text("description"),
+  bio: text("bio"),
+  photoUrl: text("photo_url"),
+  currentRole: text("current_role"),
+  nominationStatement: text("nomination_statement"),
+  nominatedByPersonId: varchar("nominated_by_person_id").references(() => persons.id),
+  nominationStatus: text("nomination_status").default("approved"),
+  orderIndex: integer("order_index").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertElectionOptionSchema = createInsertSchema(electionOptions).omit({ id: true, createdAt: true });
+export type ElectionOption = typeof electionOptions.$inferSelect;
+export type InsertElectionOption = z.infer<typeof insertElectionOptionSchema>;
+
+// Unique ballot token per eligible voter per election
+export const electionBallotTokenStatusEnum = pgEnum("election_ballot_token_status", ["pending", "cast", "consumed-by-proxy", "revoked"]);
+export const electionBallotTokens = pgTable("election_ballot_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  electionId: varchar("election_id").notNull().references(() => elections.id),
+  token: text("token").notNull(),
+  personId: varchar("person_id").references(() => persons.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  status: electionBallotTokenStatusEnum("status").notNull().default("pending"),
+  sentAt: timestamp("sent_at"),
+  castAt: timestamp("cast_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueTokenPerElection: uniqueIndex("election_ballot_tokens_election_token_uq").on(table.electionId, table.token),
+  uniqueVoterPerElection: uniqueIndex("election_ballot_tokens_election_person_uq").on(table.electionId, table.personId),
+}));
+export const insertElectionBallotTokenSchema = createInsertSchema(electionBallotTokens).omit({ id: true, createdAt: true, castAt: true, sentAt: true });
+export type ElectionBallotToken = typeof electionBallotTokens.$inferSelect;
+export type InsertElectionBallotToken = z.infer<typeof insertElectionBallotTokenSchema>;
+
+// Actual ballot cast by a voter
+export const electionBallotCasts = pgTable("election_ballot_casts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  electionId: varchar("election_id").notNull().references(() => elections.id),
+  ballotTokenId: varchar("ballot_token_id").notNull().references(() => electionBallotTokens.id),
+  personId: varchar("person_id").references(() => persons.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  // JSON array of selected option IDs; null when secret ballot anonymization is applied
+  choicesJson: jsonb("choices_json"),
+  voteWeight: real("vote_weight").notNull().default(1),
+  isProxy: integer("is_proxy").notNull().default(0),
+  proxyForPersonId: varchar("proxy_for_person_id").references(() => persons.id),
+  proxyForUnitId: varchar("proxy_for_unit_id").references(() => units.id),
+  confirmationRef: text("confirmation_ref").notNull(),
+  castAt: timestamp("cast_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueBallotPerToken: uniqueIndex("election_ballot_casts_token_uq").on(table.ballotTokenId),
+}));
+export const insertElectionBallotCastSchema = createInsertSchema(electionBallotCasts).omit({ id: true, castAt: true });
+export type ElectionBallotCast = typeof electionBallotCasts.$inferSelect;
+export type InsertElectionBallotCast = z.infer<typeof insertElectionBallotCastSchema>;
+
+// Proxy designations — owner designates another person to vote on their behalf
+export const electionProxyDesignations = pgTable("election_proxy_designations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  electionId: varchar("election_id").notNull().references(() => elections.id),
+  ownerPersonId: varchar("owner_person_id").notNull().references(() => persons.id),
+  ownerUnitId: varchar("owner_unit_id").references(() => units.id),
+  proxyPersonId: varchar("proxy_person_id").notNull().references(() => persons.id),
+  designatedAt: timestamp("designated_at").defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueProxyPerOwnerElection: uniqueIndex("election_proxy_designations_election_owner_uq").on(table.electionId, table.ownerPersonId),
+}));
+export const insertElectionProxyDesignationSchema = createInsertSchema(electionProxyDesignations).omit({ id: true, createdAt: true, designatedAt: true });
+export type ElectionProxyDesignation = typeof electionProxyDesignations.$inferSelect;
+export type InsertElectionProxyDesignation = z.infer<typeof insertElectionProxyDesignationSchema>;
+
+// Proxy document uploads — scanned physical proxy forms
+export const electionProxyDocuments = pgTable("election_proxy_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  electionId: varchar("election_id").notNull().references(() => elections.id),
+  ownerPersonId: varchar("owner_person_id").references(() => persons.id),
+  ownerUnitId: varchar("owner_unit_id").references(() => units.id),
+  fileUrl: text("file_url").notNull(),
+  title: text("title").notNull(),
+  uploadedBy: text("uploaded_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertElectionProxyDocumentSchema = createInsertSchema(electionProxyDocuments).omit({ id: true, createdAt: true });
+export type ElectionProxyDocument = typeof electionProxyDocuments.$inferSelect;
+export type InsertElectionProxyDocument = z.infer<typeof insertElectionProxyDocumentSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Portal login OTP tokens for verifiable authentication
 // associationId is nullable — OTP is now issued per-email across all associations
 export const portalLoginTokens = pgTable("portal_login_tokens", {
@@ -2202,3 +2477,118 @@ export const portalLoginTokens = pgTable("portal_login_tokens", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type PortalLoginToken = typeof portalLoginTokens.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vendor Portal — invitation-based auth scoped to a vendor record
+
+export const vendorPortalInvitationStatusEnum = pgEnum("vendor_portal_invitation_status", ["pending", "accepted", "revoked", "expired"]);
+
+export const vendorPortalCredentials = pgTable("vendor_portal_credentials", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vendorId: varchar("vendor_id").notNull().references(() => vendors.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  email: text("email").notNull(),
+  status: vendorPortalInvitationStatusEnum("status").notNull().default("pending"),
+  invitedBy: text("invited_by"),
+  invitedAt: timestamp("invited_at").defaultNow().notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueVendorEmail: uniqueIndex("vendor_portal_credentials_vendor_email_uq").on(table.vendorId, table.email),
+}));
+
+export const insertVendorPortalCredentialSchema = createInsertSchema(vendorPortalCredentials).omit({ id: true, createdAt: true, updatedAt: true, invitedAt: true, acceptedAt: true, lastLoginAt: true });
+export type VendorPortalCredential = typeof vendorPortalCredentials.$inferSelect;
+export type InsertVendorPortalCredential = z.infer<typeof insertVendorPortalCredentialSchema>;
+
+export const vendorPortalLoginTokens = pgTable("vendor_portal_login_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vendorId: varchar("vendor_id").notNull().references(() => vendors.id),
+  email: text("email").notNull(),
+  otpHash: text("otp_hash").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type VendorPortalLoginToken = typeof vendorPortalLoginTokens.$inferSelect;
+
+// Vendor work order activity log — tracks all vendor actions for the audit trail
+export const vendorWorkOrderActivityTypeEnum = pgEnum("vendor_work_order_activity_type", ["status_change", "note_added", "photo_uploaded", "invoice_uploaded", "estimated_completion_set"]);
+
+export const vendorWorkOrderActivity = pgTable("vendor_work_order_activity", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workOrderId: varchar("work_order_id").notNull().references(() => workOrders.id),
+  vendorId: varchar("vendor_id").notNull().references(() => vendors.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  activityType: vendorWorkOrderActivityTypeEnum("activity_type").notNull(),
+  note: text("note"),
+  previousStatus: text("previous_status"),
+  newStatus: text("new_status"),
+  fileUrl: text("file_url"),
+  fileType: text("file_type"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type VendorWorkOrderActivity = typeof vendorWorkOrderActivity.$inferSelect;
+
+// ── Platform Secrets ─────────────────────────────────────────────────────────
+// Stores runtime-configurable credentials (Twilio, VAPID, etc.) in the DB.
+// Values are stored encrypted at rest. Env vars always take precedence.
+export const platformSecrets = pgTable("platform_secrets", {
+  key: varchar("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedBy: text("updated_by"),
+});
+export type PlatformSecret = typeof platformSecrets.$inferSelect;
+
+// ── Platform Subscription Billing ────────────────────────────────────────────
+
+export const platformSubscriptionStatusEnum = pgEnum("platform_subscription_status", [
+  "trialing", "active", "past_due", "canceled", "unpaid", "incomplete",
+]);
+
+export const platformPlanEnum = pgEnum("platform_plan", [
+  "self-managed", "property-manager", "enterprise",
+]);
+
+export const platformSubscriptions = pgTable("platform_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  plan: platformPlanEnum("plan").notNull(),
+  status: platformSubscriptionStatusEnum("status").notNull().default("trialing"),
+  stripeCustomerId: text("stripe_customer_id").notNull(),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  trialEndsAt: timestamp("trial_ends_at"),
+  cancelAtPeriodEnd: integer("cancel_at_period_end").notNull().default(0),
+  unitTier: integer("unit_tier"),
+  adminEmail: text("admin_email").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAssociation: uniqueIndex("platform_subscriptions_association_uq").on(table.associationId),
+}));
+
+export type PlatformSubscription = typeof platformSubscriptions.$inferSelect;
+export type InsertPlatformSubscription = typeof platformSubscriptions.$inferInsert;
+export const insertPlatformSubscriptionSchema = createInsertSchema(platformSubscriptions);
+
+export const platformWebhookEvents = pgTable("platform_webhook_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull().default("stripe"),
+  providerEventId: text("provider_event_id").notNull(),
+  eventType: text("event_type").notNull(),
+  status: text("status").notNull().default("received"),
+  rawPayloadJson: text("raw_payload_json"),
+  errorMessage: text("error_message"),
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueProviderEvent: uniqueIndex("platform_webhook_events_provider_event_uq").on(table.provider, table.providerEventId),
+}));
+
+export type PlatformWebhookEvent = typeof platformWebhookEvents.$inferSelect;

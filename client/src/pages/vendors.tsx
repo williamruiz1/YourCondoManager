@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import type { Document, Vendor } from "@shared/schema";
+import type { Document, Vendor, VendorPortalCredential } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { operationsSubPages } from "@/lib/sub-page-nav";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { DataTableShell } from "@/components/data-table-shell";
@@ -25,6 +26,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { AlertTriangle } from "lucide-react";
 import { ExportCsvButton } from "@/components/export-csv-button";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { InspectionsContent } from "./inspections";
 
 const vendorDocumentTypes = ["Insurance", "Contract", "W-9", "License", "Compliance", "Other"];
 
@@ -72,7 +75,7 @@ function toPayload(values: VendorFormValues) {
 }
 
 
-export default function VendorsPage() {
+export function VendorsContent() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -88,6 +91,8 @@ export default function VendorsPage() {
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentUploadStage, setDocumentUploadStage] = useState<"select" | "details" | "uploading" | "complete">("select");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const { data: vendors = [] } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
@@ -210,6 +215,47 @@ export default function VendorsPage() {
     },
   });
 
+  const { data: vendorPortalCredentials = [] } = useQuery<VendorPortalCredential[]>({
+    queryKey: ["/api/vendors", selectedVendorId, "portal-credential"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/vendors/${selectedVendorId}/portal-credential`);
+      return res.json();
+    },
+    enabled: Boolean(selectedVendorId),
+  });
+
+  const inviteVendorToPortal = useMutation({
+    mutationFn: async ({ vendorId, email }: { vendorId: string; email: string }) => {
+      const res = await apiRequest("POST", `/api/vendors/${vendorId}/portal-invite`, { email });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+      return res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendors", selectedVendorId, "portal-credential"] });
+      setInviteEmail("");
+      setInviteOpen(false);
+      toast({ title: "Portal invitation sent" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const revokePortalCredential = useMutation({
+    mutationFn: async ({ vendorId, credentialId }: { vendorId: string; credentialId: string }) => {
+      const res = await apiRequest("PATCH", `/api/vendors/${vendorId}/portal-credential/${credentialId}/revoke`, {});
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+      return res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendors", selectedVendorId, "portal-credential"] });
+      toast({ title: "Portal access revoked" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const visibleVendors = useMemo(() => {
     const term = search.trim().toLowerCase();
     const rows = vendors.filter((vendor) => {
@@ -271,18 +317,8 @@ export default function VendorsPage() {
   }, [page, totalPages]);
 
   return (
-    <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Vendor Registry"
-        summary="Manage vendors, compliance exposure, and supporting documents in one operations surface."
-        eyebrow="Operations"
-        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Vendor Registry" }]}
-        shortcuts={[
-          { label: "Open Work Orders", href: "/app/work-orders" },
-          { label: "Open Vendor Invoices", href: "/app/financial-invoices" },
-        ]}
-        actions={
-          <Dialog
+    <>
+      <Dialog
             open={open}
             onOpenChange={(nextOpen) => {
               setOpen(nextOpen);
@@ -431,8 +467,6 @@ export default function VendorsPage() {
               </Form>
             </DialogContent>
           </Dialog>
-        }
-      />
 
       <AssociationScopeBanner
         activeAssociationId={activeAssociationId}
@@ -863,6 +897,76 @@ export default function VendorsPage() {
               <Card>
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium">Vendor Portal Access</div>
+                    {vendorPortalCredentials.length > 0 && (
+                      <Badge variant={vendorPortalCredentials[0].status === "accepted" ? "default" : "secondary"}>
+                        {vendorPortalCredentials[0].status}
+                      </Badge>
+                    )}
+                  </div>
+                  {vendorPortalCredentials.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No portal invitation sent yet. Invite this vendor to log in and manage their work orders directly.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {vendorPortalCredentials.map((cred) => (
+                        <div key={cred.id} className="rounded-md border p-3 text-sm space-y-1">
+                          <div className="font-medium">{cred.email}</div>
+                          <div className="text-xs text-muted-foreground flex gap-3 flex-wrap">
+                            <span>Status: {cred.status}</span>
+                            {cred.lastLoginAt && <span>Last login: {new Date(cred.lastLoginAt).toLocaleDateString()}</span>}
+                            {cred.invitedAt && <span>Invited: {new Date(cred.invitedAt).toLocaleDateString()}</span>}
+                          </div>
+                          {(cred.status === "accepted" || cred.status === "pending") && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="mt-1 h-7 text-xs"
+                              onClick={() => revokePortalCredential.mutate({ vendorId: selectedVendor!.id, credentialId: cred.id })}
+                              disabled={revokePortalCredential.isPending}
+                            >
+                              {cred.status === "pending" ? "Cancel Invite" : "Revoke Access"}
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {inviteOpen ? (
+                    <div className="space-y-2">
+                      <Input
+                        type="email"
+                        placeholder={selectedVendor?.primaryEmail || "vendor@example.com"}
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        className="h-9 text-sm"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => inviteVendorToPortal.mutate({ vendorId: selectedVendor!.id, email: inviteEmail || selectedVendor?.primaryEmail || "" })}
+                          disabled={inviteVendorToPortal.isPending || !inviteEmail && !selectedVendor?.primaryEmail}
+                        >
+                          {inviteVendorToPortal.isPending ? "Sending..." : "Send Invitation"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setInviteOpen(false)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={() => { setInviteEmail(selectedVendor?.primaryEmail || ""); setInviteOpen(true); }}
+                    >
+                      {vendorPortalCredentials.length > 0 ? "Re-invite to Portal" : "Invite to Portal"}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="font-medium">Filed Documents</div>
                     <Badge variant="outline">{vendorDocuments.length}</Badge>
                   </div>
@@ -880,6 +984,30 @@ export default function VendorsPage() {
           ) : null}
         </SheetContent>
       </Sheet>
+    </>
+  );
+}
+
+export default function VendorsPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Vendors"
+          summary="Manage vendors, compliance tracking, and inspection records."
+          eyebrow="Operations"
+          breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Vendors" }]}
+          subPages={operationsSubPages}
+        />
+        <Tabs defaultValue="vendors" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="vendors">Vendors</TabsTrigger>
+            <TabsTrigger value="inspections">Inspections</TabsTrigger>
+          </TabsList>
+          <TabsContent value="vendors" className="mt-0"><VendorsContent /></TabsContent>
+          <TabsContent value="inspections" className="mt-0"><InspectionsContent /></TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

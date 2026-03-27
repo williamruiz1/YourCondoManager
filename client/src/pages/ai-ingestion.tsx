@@ -1201,8 +1201,8 @@ export default function AiIngestionPage() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">AI Ingestion</h1>
-        <p className="text-muted-foreground">Upload raw files or paste text, then review extracted records before approval.</p>
+        <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface">AI Ingestion</h1>
+        <p className="text-sm text-on-surface/60 mt-1">Upload raw files or paste text, then review extracted records before approval.</p>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           <Badge variant={runtimeStatus?.aiConfigured ? "default" : "outline"}>
             {runtimeStatus?.aiConfigured ? `AI enabled: ${runtimeStatus.model}` : "Fallback extraction mode"}

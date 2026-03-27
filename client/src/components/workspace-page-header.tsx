@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -22,6 +22,12 @@ type Shortcut = {
   onClick?: () => void;
 };
 
+export type SubPage = {
+  label: string;
+  href: string;
+  icon?: string;
+};
+
 export function WorkspacePageHeader({
   title,
   summary,
@@ -29,6 +35,7 @@ export function WorkspacePageHeader({
   breadcrumbs,
   shortcuts,
   actions,
+  subPages,
 }: {
   title: string;
   summary: string;
@@ -36,23 +43,25 @@ export function WorkspacePageHeader({
   breadcrumbs?: BreadcrumbCrumb[];
   shortcuts?: Shortcut[];
   actions?: ReactNode;
+  subPages?: SubPage[];
 }) {
   const crumbs = breadcrumbs ?? [{ label: title }];
+  const [location] = useLocation();
 
   return (
-    <div className="space-y-4 border-b border-border pb-5">
+    <div className="space-y-3 border-b border-outline-variant/40 pb-6">
       <Breadcrumb className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <BreadcrumbList>
           {crumbs.map((crumb, index) => (
             <BreadcrumbItem key={`${crumb.label}-${index}`}>
               {crumb.href ? (
                 <BreadcrumbLink asChild>
-                  <Link href={crumb.href}>{crumb.label}</Link>
+                  <Link href={crumb.href} className="text-xs text-on-surface/50 hover:text-on-surface transition-colors">{crumb.label}</Link>
                 </BreadcrumbLink>
               ) : (
-                <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                <BreadcrumbPage className="text-xs text-on-surface/70">{crumb.label}</BreadcrumbPage>
               )}
-              {index < crumbs.length - 1 ? <BreadcrumbSeparator /> : null}
+              {index < crumbs.length - 1 ? <BreadcrumbSeparator className="text-on-surface/30" /> : null}
             </BreadcrumbItem>
           ))}
         </BreadcrumbList>
@@ -62,23 +71,23 @@ export function WorkspacePageHeader({
         <div className="min-w-0 space-y-2">
           {eyebrow ? (
             <div className="flex items-center gap-1.5">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary/70" />
-              <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{eyebrow}</span>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary/60" />
+              <span className="text-[10px] font-label font-semibold uppercase tracking-[0.2em] text-on-surface/50">{eyebrow}</span>
             </div>
           ) : null}
           <div>
-            <h1 className="text-[1.65rem] font-semibold leading-tight tracking-[-0.025em] sm:text-[1.75rem]">{title}</h1>
-            <p className="text-sm text-muted-foreground max-w-3xl mt-0.5">{summary}</p>
+            <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface sm:text-[1.85rem]">{title}</h1>
+            <p className="text-sm text-on-surface/60 max-w-3xl mt-1 leading-relaxed">{summary}</p>
           </div>
           {shortcuts?.length ? (
             <div className="grid gap-2 sm:flex sm:flex-wrap">
               {shortcuts.map((shortcut, i) =>
                 shortcut.onClick ? (
-                  <Button key={i} size="sm" variant="outline" onClick={shortcut.onClick} className="min-h-11 justify-center sm:min-h-9">
+                  <Button key={i} size="sm" variant="outline" onClick={shortcut.onClick} className="min-h-11 justify-center sm:min-h-9 border-outline-variant/60 text-on-surface/70 hover:text-primary hover:border-primary/40">
                     {shortcut.label}
                   </Button>
                 ) : (
-                  <Button key={shortcut.href} asChild size="sm" variant="outline" className="min-h-11 justify-center sm:min-h-9">
+                  <Button key={shortcut.href} asChild size="sm" variant="outline" className="min-h-11 justify-center sm:min-h-9 border-outline-variant/60 text-on-surface/70 hover:text-primary hover:border-primary/40">
                     <Link href={shortcut.href!}>{shortcut.label}</Link>
                   </Button>
                 )
@@ -88,6 +97,30 @@ export function WorkspacePageHeader({
         </div>
         {actions ? <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">{actions}</div> : null}
       </div>
+
+      {subPages?.length ? (
+        <nav className="flex gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap">
+          {subPages.map((page) => {
+            const active = location === page.href;
+            return (
+              <Link
+                key={page.href}
+                href={page.href}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-body font-medium transition-all ${
+                  active
+                    ? "bg-primary text-on-primary shadow-sm"
+                    : "text-on-surface/60 hover:bg-surface-variant/50 hover:text-on-surface"
+                }`}
+              >
+                {page.icon ? (
+                  <span className="material-symbols-outlined text-[14px]">{page.icon}</span>
+                ) : null}
+                {page.label}
+              </Link>
+            );
+          })}
+        </nav>
+      ) : null}
     </div>
   );
 }

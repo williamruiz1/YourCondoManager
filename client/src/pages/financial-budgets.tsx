@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { ChevronRight, Plus, CheckCircle2, FileText } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { financeSubPages } from "@/lib/sub-page-nav";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type BudgetVarianceRow = {
@@ -37,7 +38,7 @@ function budgetStatusVariant(status: string): "default" | "secondary" | "outline
   return "secondary"; // draft
 }
 
-export default function FinancialBudgetsPage() {
+export function FinancialBudgetsContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -227,15 +228,7 @@ export default function FinancialBudgetsPage() {
   const selectedVersion = (versionsQuery.data ?? []).find((v) => v.id === versionId);
 
   return (
-    <div className="flex flex-col min-h-0">
-      <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Budgets"
-        summary="Create and manage association budgets, track versions, and monitor budget vs. actual variance."
-        eyebrow="Finance"
-        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Budgets" }]}
-      />
-
+    <div className="space-y-6">
       {/* Association context breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="font-medium text-foreground">{activeAssociationName || "No association selected"}</span>
@@ -683,6 +676,22 @@ export default function FinancialBudgetsPage() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+export default function FinancialBudgetsPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Budgets"
+          summary="Create and manage association budgets, track versions, and monitor budget vs. actual variance."
+          eyebrow="Finance"
+          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Budgets" }]}
+          subPages={financeSubPages}
+        />
+        <FinancialBudgetsContent />
       </div>
     </div>
   );

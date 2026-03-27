@@ -21,6 +21,7 @@ import {
   MessageCircle,
   Megaphone,
   Flag,
+  Vote,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -33,7 +34,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
+  SidebarFooter,
   SidebarRail,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
 } from "@/components/ui/sidebar";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { canAccessWipRoute } from "@/lib/wip-features";
@@ -44,6 +49,7 @@ type NavLink = {
   title: string;
   url: string;
   icon: LucideIcon;
+  materialIcon?: string;
   activePrefix?: string;
   roles?: AdminRole[];
 };
@@ -55,11 +61,12 @@ type NavModule = NavLink & {
 
 // Top-level platform overview — always visible
 const overviewModules: NavModule[] = [
-  { title: "Dashboard", url: "/app", icon: LayoutDashboard },
+  { title: "Dashboard", url: "/app", icon: LayoutDashboard, materialIcon: "dashboard" },
   {
     title: "Portfolio",
     url: "/app/portfolio",
     icon: Layers,
+    materialIcon: "layers",
     activePrefix: "/app/portfolio",
     roles: ["platform-admin", "board-admin", "manager", "viewer"],
   },
@@ -67,6 +74,7 @@ const overviewModules: NavModule[] = [
     title: "Associations",
     url: "/app/associations",
     icon: Building2,
+    materialIcon: "domain",
     activePrefix: "/app/associations",
   },
 ];
@@ -77,35 +85,43 @@ const associationModules: NavModule[] = [
     title: "Buildings & Units",
     url: "/app/units",
     icon: DoorOpen,
+    materialIcon: "door_front",
     activePrefix: "/app/units",
     roles: ["platform-admin", "board-admin", "manager"],
     children: [
-      { title: "People", url: "/app/persons", icon: Contact, roles: ["platform-admin", "board-admin", "manager"] },
+      { title: "People", url: "/app/persons", icon: Contact, materialIcon: "contacts", roles: ["platform-admin", "board-admin", "manager"] },
     ],
   },
   {
     title: "Finance",
     url: "/app/financial/foundation",
     icon: CircleDollarSign,
+    materialIcon: "payments",
     activePrefix: "/app/financial",
     roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    children: [
+      { title: "Billing", url: "/app/financial/billing", icon: CircleDollarSign, materialIcon: "receipt_long", activePrefix: "/app/financial/billing", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Payments", url: "/app/financial/payments", icon: CircleDollarSign, materialIcon: "credit_card", activePrefix: "/app/financial/payments", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Expenses", url: "/app/financial/expenses", icon: CircleDollarSign, materialIcon: "account_balance", activePrefix: "/app/financial/expenses", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Reports", url: "/app/financial/reports", icon: CircleDollarSign, materialIcon: "summarize", activePrefix: "/app/financial/reports", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+    ],
   },
   {
     title: "Board",
     url: "/app/board",
     icon: UserCheck,
+    materialIcon: "groups",
     roles: ["platform-admin", "board-admin", "manager", "viewer"],
     children: [
-      { title: "Board Packages", url: "/app/governance/board-packages", icon: PackageOpen, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Meetings", url: "/app/governance/meetings", icon: CalendarDays, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Compliance", url: "/app/governance/compliance", icon: ClipboardCheck, roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Communications", url: "/app/communications", icon: MessageSquare, activePrefix: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Governance", url: "/app/governance", icon: ClipboardCheck, materialIcon: "gavel", activePrefix: "/app/governance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Communications", url: "/app/communications", icon: MessageSquare, materialIcon: "forum", activePrefix: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
   },
   {
     title: "Documents",
     url: "/app/documents",
     icon: FileText,
+    materialIcon: "description",
     activePrefix: "/app/documents",
     roles: ["platform-admin", "board-admin", "manager", "viewer"],
   },
@@ -113,11 +129,13 @@ const associationModules: NavModule[] = [
     title: "Operations",
     url: "/app/operations/dashboard",
     icon: ClipboardList,
+    materialIcon: "engineering",
     activePrefix: "/app/operations",
     roles: ["platform-admin", "board-admin", "manager", "viewer"],
     children: [
-      { title: "Work Orders", url: "/app/work-orders", icon: ClipboardList, activePrefix: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Vendors", url: "/app/vendors", icon: BriefcaseBusiness, activePrefix: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Work Orders", url: "/app/work-orders", icon: ClipboardList, materialIcon: "build", activePrefix: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Vendors", url: "/app/vendors", icon: BriefcaseBusiness, materialIcon: "storefront", activePrefix: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Feedback", url: "/app/resident-feedback", icon: MessageCircle, materialIcon: "rate_review", activePrefix: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
   },
 ];
@@ -128,12 +146,13 @@ const platformModules: NavModule[] = [
     title: "Platform Controls",
     url: "/app/platform/controls",
     icon: SlidersHorizontal,
+    materialIcon: "tune",
     activePrefix: "/app/platform",
     roles: ["platform-admin"],
     children: [
-      { title: "Owner Portal", url: "/portal", icon: Contact, roles: ["platform-admin"] },
-      { title: "Admin Roadmap", url: "/app/admin/roadmap", icon: ListChecks, activePrefix: "/app/admin", roles: ["platform-admin"] },
-      { title: "Feature Flags", url: "/app/admin/feature-flags", icon: Flag, roles: ["platform-admin"] },
+      { title: "Owner Portal", url: "/portal", icon: Contact, materialIcon: "person", roles: ["platform-admin"] },
+      { title: "Admin Roadmap", url: "/app/admin/roadmap", icon: ListChecks, materialIcon: "checklist", activePrefix: "/app/admin", roles: ["platform-admin"] },
+      { title: "Feature Flags", url: "/app/admin/feature-flags", icon: Flag, materialIcon: "flag", roles: ["platform-admin"] },
     ],
   },
 ];
@@ -177,17 +196,17 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
   const visiblePlatform = filterModules(platformModules, adminRole);
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border">
-        <Link href="/" className="p-4 flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+    <Sidebar collapsible="icon" className="border-r border-slate-200/50 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950">
+      <SidebarHeader className="border-b border-slate-200/50 dark:border-slate-800/50">
+        <Link href="/" className="px-4 pt-4 pb-3 flex items-center gap-2.5 hover:opacity-80 transition-opacity">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm flex-shrink-0">
-            <Building2 className="h-4 w-4" />
+            <span className="material-symbols-outlined text-[18px]">apartment</span>
           </div>
           <div className="group-data-[collapsible=icon]:hidden">
-            <h2 className="text-sm font-semibold tracking-[-0.01em]" data-testid="text-app-title">
+            <h2 className="font-headline italic font-semibold text-lg tracking-tight text-slate-900 dark:text-slate-100" data-testid="text-app-title">
               CondoManager
             </h2>
-            <p className="text-[11px] text-muted-foreground leading-tight">Property Platform</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-tight font-label">Property Operations</p>
           </div>
         </Link>
         <div className="px-3 pb-3 group-data-[collapsible=icon]:hidden">
@@ -197,10 +216,10 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
                 className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm"
                 data-testid="text-selected-association-overview"
               >
-                <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                <span className="material-symbols-outlined text-[16px] text-muted-foreground flex-shrink-0">domain</span>
                 <div className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Association</div>
-                  <div className="text-xs font-semibold truncate">{activeAssociationName}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5 font-label">Association</div>
+                  <div className="text-xs font-semibold truncate font-body">{activeAssociationName}</div>
                 </div>
               </div>
             ) : (
@@ -209,10 +228,10 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
                 className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/60"
                 data-testid="link-selected-association-overview"
               >
-                <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                <span className="material-symbols-outlined text-[16px] text-muted-foreground flex-shrink-0">domain</span>
                 <div className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Association</div>
-                  <div className="text-xs font-semibold truncate">{activeAssociationName}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5 font-label">Association</div>
+                  <div className="text-xs font-semibold truncate font-body">{activeAssociationName}</div>
                 </div>
               </Link>
             )
@@ -221,8 +240,8 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
               href="/app/association-context"
               className="flex items-center gap-2 rounded-lg border border-dashed border-sidebar-border px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/30"
             >
-              <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-              <span className="text-xs text-muted-foreground">Select association</span>
+              <span className="material-symbols-outlined text-[16px] text-muted-foreground flex-shrink-0">domain_add</span>
+              <span className="text-xs text-muted-foreground font-body">Select association</span>
             </Link>
           )}
         </div>
@@ -230,24 +249,31 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
       <SidebarContent>
         {/* Overview: Dashboard, Portfolio, Associations */}
         <SidebarGroup>
-          <SidebarGroupLabel>Overview</SidebarGroupLabel>
+          <SidebarGroupLabel className="label-caps text-muted-foreground/70">Overview</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {visibleOverview.map((module) => (
-                <SidebarMenuItem key={module.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isLinkActive(location, module)}
-                    tooltip={module.title}
-                    className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
-                  >
-                    <Link href={module.url} data-testid={`link-nav-${module.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                      <module.icon className="h-4 w-4" />
-                      <span>{module.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {visibleOverview.map((module) => {
+                const active = isLinkActive(location, module);
+                return (
+                  <SidebarMenuItem key={module.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      tooltip={module.title}
+                      className={`transition-all duration-150 ${
+                        active
+                          ? "bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-400 font-bold rounded-lg"
+                          : "hover:bg-slate-200/50 dark:hover:bg-slate-800/50 hover:translate-x-1"
+                      }`}
+                    >
+                      <Link href={module.url} data-testid={`link-nav-${module.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <span className="material-symbols-outlined text-[20px]">{module.materialIcon}</span>
+                        <span className="font-body text-sm tracking-tight">{module.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -255,7 +281,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
         {/* Association workspace — scoped to selected association */}
         {visibleAssociation.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel className="truncate">
+            <SidebarGroupLabel className="truncate label-caps text-muted-foreground/70">
               {activeAssociationName || "Association"}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -269,13 +295,34 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
                         asChild
                         isActive={moduleActive}
                         tooltip={module.title}
-                        className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+                        className={`transition-all duration-150 ${
+                          moduleActive
+                            ? "bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-400 font-bold rounded-lg"
+                            : "hover:bg-slate-200/50 dark:hover:bg-slate-800/50 hover:translate-x-1"
+                        }`}
                       >
                         <Link href={module.url} data-testid={`link-nav-${module.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                          <module.icon className="h-4 w-4" />
-                          <span>{module.title}</span>
+                          <span className="material-symbols-outlined text-[20px]">{module.materialIcon}</span>
+                          <span className="font-body text-sm tracking-tight">{module.title}</span>
                         </Link>
                       </SidebarMenuButton>
+                      {moduleActive && module.children?.length ? (
+                        <SidebarMenuSub>
+                          {module.children.map((child) => (
+                            <SidebarMenuSubItem key={child.title}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={isLinkActive(location, child)}
+                              >
+                                <Link href={child.url} data-testid={`link-nav-${child.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                                  <span className="material-symbols-outlined text-[16px]">{child.materialIcon}</span>
+                                  <span className="font-body text-sm tracking-tight">{child.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      ) : null}
                     </SidebarMenuItem>
                   );
                 })}
@@ -287,7 +334,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
         {/* Platform controls — platform-admin only */}
         {visiblePlatform.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel>Platform</SidebarGroupLabel>
+            <SidebarGroupLabel className="label-caps text-muted-foreground/70">Platform</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {visiblePlatform.map((module) => {
@@ -299,13 +346,34 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
                         asChild
                         isActive={moduleActive}
                         tooltip={module.title}
-                        className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+                        className={`transition-all duration-150 ${
+                          moduleActive
+                            ? "bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-400 font-bold rounded-lg"
+                            : "hover:bg-slate-200/50 dark:hover:bg-slate-800/50 hover:translate-x-1"
+                        }`}
                       >
                         <Link href={module.url} data-testid={`link-nav-${module.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                          <module.icon className="h-4 w-4" />
-                          <span>{module.title}</span>
+                          <span className="material-symbols-outlined text-[20px]">{module.materialIcon}</span>
+                          <span className="font-body text-sm tracking-tight">{module.title}</span>
                         </Link>
                       </SidebarMenuButton>
+                      {moduleActive && module.children?.length ? (
+                        <SidebarMenuSub>
+                          {module.children.map((child) => (
+                            <SidebarMenuSubItem key={child.title}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={isLinkActive(location, child)}
+                              >
+                                <Link href={child.url} data-testid={`link-nav-${child.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                                  <span className="material-symbols-outlined text-[16px]">{child.materialIcon}</span>
+                                  <span className="font-body text-sm tracking-tight">{child.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      ) : null}
                     </SidebarMenuItem>
                   );
                 })}
@@ -314,6 +382,24 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
           </SidebarGroup>
         )}
       </SidebarContent>
+      <SidebarFooter className="border-t border-slate-200/50 dark:border-slate-800/50 group-data-[collapsible=icon]:hidden">
+        <div className="px-3 py-3 space-y-2">
+          {adminRole === "platform-admin" && (
+            <Link href="/app/new-association">
+              <button className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-bold font-body hover:bg-primary/90 active:scale-95 transition-all shadow-sm">
+                <span className="material-symbols-outlined text-[18px]">add</span>
+                New Association
+              </button>
+            </Link>
+          )}
+          <div className="flex items-center gap-4 px-1 pt-1">
+            <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-on-surface transition-colors font-body">
+              <span className="material-symbols-outlined text-[16px]">help</span>
+              Help Center
+            </button>
+          </div>
+        </div>
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );

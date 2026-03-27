@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { financeSubPages } from "@/lib/sub-page-nav";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FileUp, Send, AlertTriangle, RefreshCw, X } from "lucide-react";
@@ -151,12 +152,13 @@ function SendNoticeDialog({
   );
 }
 
-export default function FinancialLedgerPage() {
+export function FinancialLedgerContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange>({ from: null, to: null });
+  const [entriesShowLimit, setEntriesShowLimit] = useState(50);
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [assocFilter, setAssocFilter] = useState<string>(activeAssociationId);
 
@@ -321,18 +323,10 @@ export default function FinancialLedgerPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-0">
-      <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Owner Ledger"
-        summary="Post owner-ledger entries, review balances, and monitor collection risk within the active association scope."
-        eyebrow="Finance"
-        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Owner Ledger" }]}
-        shortcuts={[
-          { label: "Open Invoices", href: "/app/financial/invoices" },
-          { label: "Open Budgets", href: "/app/financial/budgets" },
-        ]}
-        actions={<div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} disabled={!activeAssociationId}><FileUp className="h-4 w-4 mr-2" />Import CSV</Button><Dialog open={open} onOpenChange={setOpen}>
+    <div className="space-y-6">
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!activeAssociationId}><FileUp className="h-4 w-4 mr-2" />Import CSV</Button>
+        <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Ledger Entry</Button></DialogTrigger>
           <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Create Ledger Entry</DialogTitle></DialogHeader>
@@ -367,8 +361,8 @@ export default function FinancialLedgerPage() {
               </form>
             </Form>
           </DialogContent>
-        </Dialog></div>}
-      />
+        </Dialog>
+      </div>
 
       <AsyncStateBoundary
         isLoading={summaryQuery.isLoading}
@@ -529,23 +523,25 @@ export default function FinancialLedgerPage() {
               <h2 className="text-lg font-semibold">Recent Collection Trend</h2>
               <div className="mt-4 space-y-2">
                 {(analyticsQuery.data?.collectionMetrics.monthlyTrend ?? []).map((row) => (
-                  <div key={row.period} className="grid grid-cols-[110px,1fr,1fr,1fr,90px] gap-3 rounded-md border p-3 text-sm">
-                    <div className="font-medium">{row.period}</div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Charges</div>
-                      <div>${row.charges.toFixed(2)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Payments</div>
-                      <div>${row.payments.toFixed(2)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Credits</div>
-                      <div>${row.credits.toFixed(2)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Rate</div>
-                      <div className="font-medium">{row.collectionRate}%</div>
+                  <div key={row.period} className="rounded-md border p-3 text-sm">
+                    <div className="font-medium mb-2">{row.period}</div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-4">
+                      <div>
+                        <div className="text-xs text-muted-foreground">Charges</div>
+                        <div>${row.charges.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Payments</div>
+                        <div>${row.payments.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Credits</div>
+                        <div>${row.credits.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Rate</div>
+                        <div className="font-medium">{row.collectionRate}%</div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -583,15 +579,17 @@ export default function FinancialLedgerPage() {
             <h2 className="text-lg font-semibold">Delinquency Movement</h2>
             <div className="mt-4 space-y-2">
               {(analyticsQuery.data?.collectionMetrics.delinquencyMovement ?? []).map((row) => (
-                <div key={row.period} className="grid grid-cols-[110px,1fr,1fr] gap-3 rounded-md border p-3 text-sm">
-                  <div className="font-medium">{row.period}</div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Delinquent Accounts</div>
-                    <div>{row.delinquentAccounts}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Balance</div>
-                    <div>${row.totalBalance.toFixed(2)}</div>
+                <div key={row.period} className="rounded-md border p-3 text-sm">
+                  <div className="font-medium mb-2">{row.period}</div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Delinquent Accounts</div>
+                      <div>{row.delinquentAccounts}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Balance</div>
+                      <div>${row.totalBalance.toFixed(2)}</div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -648,7 +646,7 @@ export default function FinancialLedgerPage() {
             </div>
           ) : isMobile ? (
             <div className="space-y-3 p-4 sm:p-6">
-              {filteredEntries.map((e) => (
+              {filteredEntries.slice(0, entriesShowLimit).map((e) => (
                 <div key={e.id} className="rounded-lg border p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -667,6 +665,14 @@ export default function FinancialLedgerPage() {
                   </div>
                 </div>
               ))}
+              {filteredEntries.length > entriesShowLimit && (
+                <button
+                  className="w-full py-3 text-sm text-primary font-medium hover:underline"
+                  onClick={() => setEntriesShowLimit(n => n + 50)}
+                >
+                  Show more ({filteredEntries.length - entriesShowLimit} remaining)
+                </button>
+              )}
               {filteredEntries.length === 0 && (
                 <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
                   No ledger entries found for the selected period.
@@ -677,7 +683,7 @@ export default function FinancialLedgerPage() {
             <Table>
               <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Description</TableHead></TableRow></TableHeader>
               <TableBody>
-                {filteredEntries.map((e) => (
+                {filteredEntries.slice(0, entriesShowLimit).map((e) => (
                   <TableRow key={e.id}>
                     <TableCell>{new Date(e.postedAt).toLocaleDateString()}</TableCell>
                     <TableCell>{personName.get(e.personId) || e.personId}</TableCell>
@@ -696,6 +702,16 @@ export default function FinancialLedgerPage() {
                 )}
               </TableBody>
             </Table>
+          )}
+          {!entriesQuery.isLoading && filteredEntries.length > entriesShowLimit && !isMobile && (
+            <div className="px-6 py-3 border-t">
+              <button
+                className="text-sm text-primary font-medium hover:underline"
+                onClick={() => setEntriesShowLimit(n => n + 50)}
+              >
+                Show more ({filteredEntries.length - entriesShowLimit} remaining)
+              </button>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -853,6 +869,26 @@ export default function FinancialLedgerPage() {
         ]}
         onImport={handleLedgerImport}
       />
+    </div>
+  );
+}
+
+export default function FinancialLedgerPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Owner Ledger"
+          summary="Post owner-ledger entries, review balances, and monitor collection risk within the active association scope."
+          eyebrow="Finance"
+          breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Owner Ledger" }]}
+          shortcuts={[
+            { label: "Open Invoices", href: "/app/financial/invoices" },
+            { label: "Open Budgets", href: "/app/financial/budgets" },
+          ]}
+          subPages={financeSubPages}
+        />
+        <FinancialLedgerContent />
       </div>
     </div>
   );

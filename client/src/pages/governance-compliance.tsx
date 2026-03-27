@@ -17,7 +17,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Paperclip, Upload, Download, ClipboardCheck } from "lucide-react";
+import { Paperclip, Upload, Download, ClipboardCheck, Vote } from "lucide-react";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 
 function downloadCsv(rows: string[][], filename: string) {
   const csv = rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -109,7 +111,7 @@ function MobileDesktopHandoff({ title, body }: { title: string; body: string }) 
   );
 }
 
-export default function GovernanceCompliancePage() {
+export function GovernanceComplianceContent() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -173,6 +175,21 @@ export default function GovernanceCompliancePage() {
     enabled: Boolean(selectedTemplateId),
   });
   const { data: tasks } = useQuery<AnnualGovernanceTask[]>({ queryKey: ["/api/governance/tasks"] });
+
+  // 11.3: Election compliance summary
+  type ElectionComplianceSummary = {
+    totalElections: number;
+    byYear: Array<{ year: number; count: number; quorumMet: number; quorumFailed: number; avgParticipation: number }>;
+    overallAvgParticipation: number;
+  };
+  const { data: electionCompliance } = useQuery<ElectionComplianceSummary>({
+    queryKey: ["/api/elections/compliance-summary", associationFilter],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/elections/compliance-summary?associationId=${associationFilter}`);
+      return res.json();
+    },
+    enabled: Boolean(associationFilter),
+  });
 
   const templateForm = useForm<z.infer<typeof templateSchema>>({
     resolver: zodResolver(templateSchema),
@@ -518,7 +535,7 @@ export default function GovernanceCompliancePage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <>
       {/* Suppression dialog */}
       <Dialog open={Boolean(suppressDialogAlert)} onOpenChange={(open) => { if (!open) setSuppressDialogAlert(null); }}>
         <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
@@ -581,10 +598,7 @@ export default function GovernanceCompliancePage() {
       </Dialog>
 
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Governance & Compliance</h1>
-          <p className="text-muted-foreground">Manage source-backed regulatory records, association overlays, and annual governance tasks.</p>
-        </div>
+        <div />
         <div className="flex gap-2">
           <Button variant="outline" disabled={!associationFilter} onClick={() => extractComplianceRules.mutate()}>
             Extract Compliance Rules
@@ -1441,6 +1455,86 @@ export default function GovernanceCompliancePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* 11.3: Election Compliance Section */}
+      {associationFilter && electionCompliance && (
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Vote className="h-5 w-5 text-indigo-600" />
+              <h2 className="text-lg font-semibold">Election Compliance</h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="rounded-lg border p-4 text-center">
+                <div className="text-2xl font-bold">{electionCompliance.totalElections}</div>
+                <div className="text-sm text-muted-foreground">Total Elections</div>
+              </div>
+              <div className="rounded-lg border p-4 text-center">
+                <div className="text-2xl font-bold">{electionCompliance.overallAvgParticipation}%</div>
+                <div className="text-sm text-muted-foreground">Avg Participation</div>
+              </div>
+              <div className="rounded-lg border p-4 text-center">
+                <div className="text-2xl font-bold text-green-600">
+                  {electionCompliance.byYear.reduce((s, y) => s + y.quorumMet, 0)}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Quorum Met ({electionCompliance.byYear.reduce((s, y) => s + y.quorumFailed, 0)} failed)
+                </div>
+              </div>
+            </div>
+
+            {electionCompliance.byYear.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium mb-2">Elections by Year</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Year</TableHead>
+                      <TableHead className="text-right">Elections</TableHead>
+                      <TableHead className="text-right">Quorum Met</TableHead>
+                      <TableHead className="text-right">Quorum Failed</TableHead>
+                      <TableHead className="text-right">Avg Participation</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {electionCompliance.byYear.map((row) => (
+                      <TableRow key={row.year}>
+                        <TableCell className="font-medium">{row.year}</TableCell>
+                        <TableCell className="text-right">{row.count}</TableCell>
+                        <TableCell className="text-right text-green-600">{row.quorumMet}</TableCell>
+                        <TableCell className="text-right text-red-600">{row.quorumFailed}</TableCell>
+                        <TableCell className="text-right">{row.avgParticipation}%</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {electionCompliance.totalElections === 0 && (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                No closed or certified elections found for this association.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+}
+
+export default function GovernanceCompliancePage() {
+  return (
+    <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Governance & Compliance"
+        summary="Manage source-backed regulatory records, association overlays, and annual governance tasks."
+        eyebrow="Board & Governance"
+        breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Compliance" }]}
+        subPages={boardGovernanceSubPages}
+      />
+      <GovernanceComplianceContent />
     </div>
   );
 }

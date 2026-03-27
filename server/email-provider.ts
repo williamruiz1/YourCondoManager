@@ -18,7 +18,7 @@ export type SendEmailPayload = {
   to: EmailAddressLike;
   cc?: EmailAddressLike;
   bcc?: EmailAddressLike;
-  subject: string;
+  subject?: string;
   html?: string | null;
   text?: string | null;
   attachments?: EmailAttachment[];
@@ -26,6 +26,8 @@ export type SendEmailPayload = {
   metadata?: Record<string, unknown> | null;
   templateKey?: string | null;
   enableTracking?: boolean | null;
+  /** When true, suppresses HTML auto-generation and portal footer — use for SMS gateway sends */
+  disableHtml?: boolean;
 };
 
 export type SendEmailResult = {
@@ -267,7 +269,7 @@ async function createEmailLog(payload: SendEmailPayload, trackingToken: string |
       toAddress: normalizeAddressList(payload.to).join(", "),
       ccAddresses: normalizeAddressList(payload.cc),
       bccAddresses: normalizeAddressList(payload.bcc),
-      subject: payload.subject,
+      subject: payload.subject ?? "",
       templateKey: payload.templateKey ?? null,
       status: "queued",
       provider: isSmtpConfigured() ? "smtp" : "simulation",
@@ -366,8 +368,12 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
     : "";
   const portalFooterText = portalUrl ? `\n\n---\nAccess your owner portal: ${portalUrl}` : "";
 
-  let html = payload.html?.trim() || (payload.text?.trim() ? textToHtml(payload.text.trim()) : "");
-  const text = (payload.text?.trim() || "") + (payload.text?.trim() ? portalFooterText : "");
+  let html = payload.disableHtml
+    ? ""
+    : (payload.html?.trim() || (payload.text?.trim() ? textToHtml(payload.text.trim()) : ""));
+  const text = payload.disableHtml
+    ? (payload.text?.trim() || "")
+    : ((payload.text?.trim() || "") + (payload.text?.trim() ? portalFooterText : ""));
   if (!html && !text) {
     await updateEmailLog(emailLog.id, { status: "failed", errorMessage: "Email body is required" });
     return {

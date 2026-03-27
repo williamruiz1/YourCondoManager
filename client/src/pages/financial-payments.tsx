@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { financeSubPages } from "@/lib/sub-page-nav";
 import { useAssociationContext } from "@/context/association-context";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -1332,6 +1333,7 @@ export default function FinancialPaymentsPage() {
         summary="Configure how owners pay their dues — add payment methods, optionally connect an ACH gateway, and generate owner payment links."
         eyebrow="Finance"
         breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Payments" }]}
+        subPages={financeSubPages}
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

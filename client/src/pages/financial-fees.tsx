@@ -150,8 +150,8 @@ export default function FinancialFeesPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">HOA Fee Schedules</h1>
-          <p className="text-muted-foreground">Configure recurring HOA/common charge rules for the current association context.</p>
+          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface">HOA Fee Schedules</h1>
+          <p className="text-sm text-on-surface/60 mt-1">Configure recurring HOA/common charge rules for the current association context.</p>
         </div>
         <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) form.reset(); }}>
           <DialogTrigger asChild>

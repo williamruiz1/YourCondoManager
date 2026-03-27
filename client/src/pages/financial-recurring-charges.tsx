@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { financeSubPages } from "@/lib/sub-page-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +33,7 @@ function statusBadge(status: string) {
   return <Badge variant={m.variant}>{m.label}</Badge>;
 }
 
-export default function FinancialRecurringChargesPage() {
+export function FinancialRecurringChargesContent() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -253,15 +254,7 @@ export default function FinancialRecurringChargesPage() {
   ));
 
   return (
-    <div className="flex flex-col min-h-0">
-      <div className="p-6 space-y-6">
-        <WorkspacePageHeader
-          title="Recurring Charges"
-          summary="Define automatic charge schedules, run them on demand, and manage failed charge retries."
-          eyebrow="Finance"
-          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Recurring Charges" }]}
-        />
-
+    <div className="space-y-6">
       {/* Summary KPIs */}
         {activeAssociationId && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -289,7 +282,7 @@ export default function FinancialRecurringChargesPage() {
                 <CardTitle className="text-base">Charge Schedules</CardTitle>
                 <CardDescription>Recurring charges applied to units on a defined cadence</CardDescription>
               </div>
-            <div className="grid grid-cols-1 gap-2 sm:flex">
+            <div className="grid grid-cols-2 gap-2 sm:flex">
               <ConfirmDialog
                 trigger={
                   <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled={runNow.isPending || !activeAssociationId}>
@@ -544,6 +537,22 @@ export default function FinancialRecurringChargesPage() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+export default function FinancialRecurringChargesPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Recurring Charges"
+          summary="Define automatic charge schedules, run them on demand, and manage failed charge retries."
+          eyebrow="Finance"
+          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Recurring Charges" }]}
+          subPages={financeSubPages}
+        />
+        <FinancialRecurringChargesContent />
       </div>
     </div>
   );

@@ -13,6 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { operationsSubPages } from "@/lib/sub-page-nav";
 
 type FeedbackAnalytics = {
   total: number;
@@ -86,12 +88,13 @@ export default function ResidentFeedbackPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Resident Feedback</h1>
-          <p className="text-muted-foreground">Monitor satisfaction scores, track feedback themes, and follow up with residents.</p>
-        </div>
-      </div>
+      <WorkspacePageHeader
+        title="Resident Feedback"
+        summary="Monitor satisfaction scores, track feedback themes, and follow up with residents."
+        eyebrow="Operations"
+        breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Resident Feedback" }]}
+        subPages={operationsSubPages}
+      />
 
       {!activeAssociationId ? (
         <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground text-center">Select an association to view feedback analytics.</div>

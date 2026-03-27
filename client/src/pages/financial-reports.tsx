@@ -12,8 +12,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { AlertTriangle, Download, Info, Printer } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { financeSubPages } from "@/lib/sub-page-nav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FinancialReconciliationContent } from "./financial-reconciliation";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 
 type LedgerSummaryRow = {
@@ -62,7 +65,7 @@ function downloadCsv(rows: string[][], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function FinancialReportsPage() {
+export function FinancialReportsContent() {
   const isMobile = useIsMobile();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [report, setReport] = useState<ReportType>("pl");
@@ -293,15 +296,8 @@ export default function FinancialReportsPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="space-y-6">
       <style>{`@media print { .no-print { display: none; } }`}</style>
-      <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Financial Reports"
-        eyebrow="Finance"
-        summary="Income & expense summary, collection rates, and accounts receivable aging for the active association."
-        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Reports" }]}
-      />
 
       {/* Controls */}
       <div className="space-y-3">
@@ -807,6 +803,33 @@ export default function FinancialReportsPage() {
       )}
       </>
       )}
+    </div>
+  );
+}
+
+export default function FinancialReportsPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Reports"
+          eyebrow="Finance"
+          summary="Financial reports, accounts receivable aging, and bank reconciliation for the active association."
+          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Reports" }]}
+          subPages={financeSubPages}
+        />
+        <Tabs defaultValue="reports" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="reports">Reports</TabsTrigger>
+            <TabsTrigger value="reconciliation">Reconciliation</TabsTrigger>
+          </TabsList>
+          <TabsContent value="reports" className="mt-0">
+            <FinancialReportsContent />
+          </TabsContent>
+          <TabsContent value="reconciliation" className="mt-0">
+            <FinancialReconciliationContent />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

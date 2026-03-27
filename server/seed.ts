@@ -2,8 +2,10 @@ import { db } from "./db";
 import { and, eq, ilike, sql } from "drizzle-orm";
 import {
   adminUsers, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
+  elections, electionOptions, electionBallotTokens, electionBallotCasts, electionProxyDesignations, electionProxyDocuments,
 } from "@shared/schema";
 import { log } from "./logger";
+import { randomBytes } from "crypto";
 
 // All associations from the dev environment. These are inserted by exact ID on every
 // server start using ON CONFLICT DO NOTHING — safe to run repeatedly, never overwrites.
@@ -18,32 +20,6 @@ const KNOWN_ASSOCIATIONS: (typeof associations.$inferInsert)[] = [
   { id: "5d4488b7-c229-4412-8762-d822e4f150f3", name: "QA Communications Foundation 364067", address: "100 Verification Way", city: "New Haven", state: "CT", country: "USA" },
   { id: "f61e4b10-01a3-4670-87b3-c2a7749b2958", name: "Building First Verify A 092492", address: "100 Verify Way", city: "Austin", state: "TX", country: "USA" },
   { id: "8c579997-ec38-4389-9e78-dbf34ba80947", name: "Building First Verify B 092492", address: "200 Verify Way", city: "Austin", state: "TX", country: "USA" },
-  { id: "2d2c9b21-99cd-4a41-b04b-d52a59c90adf", name: "M1 Verify 03c6c06b-3e4f-40b4-847b-cb9d18b8bedb", address: "1 Audit Way", city: "New Haven", state: "CT", country: "USA" },
-  { id: "6b88913f-a682-4885-b965-2227238ca1a7", name: "M2 Verify cfb8fdae-4d21-489d-bbb3-003fa7de6937", address: "2 Budget Lane", city: "New Haven", state: "CT", country: "USA" },
-  { id: "8a54bd02-ce91-43e5-9025-9727e51dd81a", name: "M3 Verify 87248c5d-343a-42ec-99d6-cbe04fe32d6f", address: "3 Governance Ave", city: "New Haven", state: "CT", country: "USA" },
-  { id: "1487980c-c1fe-4c63-b0af-519c0a6b0df3", name: "M3 Verify fdff42d9-c271-4753-9ce6-29abcffbfe07", address: "3 Governance Ave", city: "New Haven", state: "CT", country: "USA" },
-  { id: "824957e1-af38-43ec-af76-328d92556945", name: "M4 Verify 01560bd0", address: "4 Intelligence Way", city: "Cambridge", state: "MA", country: "USA" },
-  { id: "1f6dc2f6-8910-48c0-a6c3-16542a2bd72a", name: "M5 A 771782db", address: "500 A Street", city: "Boston", state: "MA", country: "USA" },
-  { id: "b6bfa018-b74e-4731-aa57-da96552e2278", name: "M5 B 771782db", address: "501 B Street", city: "Boston", state: "MA", country: "USA" },
-  { id: "5f8d45b1-a6f7-4396-8657-1b814d757c72", name: "M5 A 144ac799", address: "500 A Street", city: "Boston", state: "MA", country: "USA" },
-  { id: "db729561-9dfc-457e-a4b8-ee75e723f65c", name: "M5 B 144ac799", address: "501 B Street", city: "Boston", state: "MA", country: "USA" },
-  { id: "a913c7ae-3f37-441e-9ed5-4d7ef10c3b21", name: "M2 Verify 80b04465-bc8b-4ec8-b65d-42cb833102f2", address: "2 Budget Lane", city: "New Haven", state: "CT", country: "USA" },
-  { id: "7f04cf6b-03c3-4ad8-984e-cb5f8c0ec7f2", name: "M3 Verify 1903372c-1ffb-4545-92a0-d00e9f2b11a7", address: "3 Governance Ave", city: "New Haven", state: "CT", country: "USA" },
-  { id: "7e2f8aac-bc06-4f94-9cbd-008394f47f9b", name: "M4 Verify a2ccb5de", address: "4 Intelligence Way", city: "Cambridge", state: "MA", country: "USA" },
-  { id: "341eef63-da08-45dc-bcd5-b814a22f951d", name: "M5 A 5b429e33", address: "500 A Street", city: "Boston", state: "MA", country: "USA" },
-  { id: "ac273593-4859-4d12-a893-fc590759a1e0", name: "M5 B 5b429e33", address: "501 B Street", city: "Boston", state: "MA", country: "USA" },
-  { id: "767ae794-3b7c-4c81-aa24-257018e4366c", name: "AI Ingestion Verify 546983", address: "100 Test Way", city: "Austin", state: "TX", country: "USA" },
-  { id: "8b3a1209-6a15-4905-ba11-1f2e281e542b", name: "AI Ingestion Benchmark 705630", address: "1 Benchmark Plaza", city: "Austin", state: "TX", country: "USA" },
-  { id: "03bf6db8-4f11-46ce-b407-55fb1608bb1a", name: "AI Ingestion Benchmark 724980", address: "1 Benchmark Plaza", city: "Austin", state: "TX", country: "USA" },
-  { id: "13437a4d-4e3e-43fd-9f3f-8363795611da", name: "AI Ingestion Benchmark 747307", address: "1 Benchmark Plaza", city: "Austin", state: "TX", country: "USA" },
-  { id: "2de5f8cb-cc8b-4869-88a4-2a899202f226", name: "AI Ingestion Benchmark 773059", address: "1 Benchmark Plaza", city: "Austin", state: "TX", country: "USA" },
-  { id: "ba806fad-1586-4013-ab62-18cbb360b007", name: "Dbg Assoc", address: "1", city: "x", state: "TX", country: "USA" },
-  { id: "698f44b6-785f-412a-8ce9-f66ba590e943", name: "AI Ingestion Verify 831011", address: "100 Test Way", city: "Austin", state: "TX", country: "USA" },
-  { id: "acb54c9d-163e-4417-b668-b8e5e96f9341", name: "AI Ingestion Benchmark 831011", address: "1 Benchmark Plaza", city: "Austin", state: "TX", country: "USA" },
-  { id: "a6edd39e-1e6d-400f-8a41-18d693b3116f", name: "AI Ingestion Benchmark 377049", address: "1 Benchmark Plaza", city: "Austin", state: "TX", country: "USA" },
-  { id: "1aed21af-1a0f-4a88-9876-38ef412e71cd", name: "AI Ingestion Verify 377141", address: "100 Test Way", city: "Austin", state: "TX", country: "USA" },
-  { id: "0c191726-f468-4fab-9700-4d9518b283f6", name: "AI Ingestion Benchmark 530772", address: "1 Benchmark Plaza", city: "Austin", state: "TX", country: "USA" },
-  { id: "1d80ac65-beb0-4008-84f9-a51ade5702a5", name: "AI Ingestion Benchmark 603122", address: "1 Benchmark Plaza", city: "Austin", state: "TX", country: "USA" },
 ];
 
 export async function seedDatabase() {
@@ -1439,6 +1415,274 @@ export async function seedDatabase() {
     }
 
     log("[seed] created roadmap project: Mobile Optimization", "seed");
+  }
+
+  // ── Election Seed Data ──────────────────────────────────────────────────────
+  // Seeds three elections for Sunset Towers: a certified board election, an open
+  // community referendum, and a draft amendment. Plus proxy data on the board election.
+  // Idempotent — checks by title before inserting.
+
+  const SUNSET_TOWERS_ID = "e60c349e-b14e-48fa-a72e-8af3c2180c74";
+
+  // Look up Sunset Towers persons and units for ballot token generation
+  const stUnits = await db.select().from(units).where(eq(units.associationId, SUNSET_TOWERS_ID));
+  const stOwnerships = await db.select().from(ownerships).where(
+    sql`${ownerships.unitId} IN (SELECT id FROM units WHERE association_id = ${SUNSET_TOWERS_ID})`
+  );
+  // Deduplicate person IDs from ownerships
+  const stOwnerPersonIds = Array.from(new Set(stOwnerships.map(o => o.personId)));
+  const stPersons = stOwnerPersonIds.length > 0
+    ? await db.select().from(persons).where(
+        sql`${persons.id} IN (${sql.join(stOwnerPersonIds.map(id => sql`${id}`), sql`, `)})`
+      )
+    : [];
+
+  // Build a unit-to-owner map for ballot tokens
+  const unitOwnerMap: { unitId: string; personId: string }[] = stOwnerships.map(o => ({
+    unitId: o.unitId, personId: o.personId,
+  }));
+
+  // ── 4.1: Certified Board Election ──
+  const [existingBoardElection] = await db.select().from(elections)
+    .where(and(eq(elections.associationId, SUNSET_TOWERS_ID), eq(elections.title, "2025 Annual Board Election")));
+
+  if (!existingBoardElection && stPersons.length > 0 && stUnits.length > 0) {
+    const boardElectionOpensAt = new Date("2025-11-01T09:00:00Z");
+    const boardElectionClosesAt = new Date("2025-11-15T17:00:00Z");
+    const boardElectionCertifiedAt = new Date("2025-11-16T10:00:00Z");
+
+    const [boardElection] = await db.insert(elections).values({
+      associationId: SUNSET_TOWERS_ID,
+      title: "2025 Annual Board Election",
+      description: "Annual election to fill three open seats on the Sunset Towers Board of Directors. Candidates were nominated at the October general meeting.",
+      voteType: "board-election",
+      votingRule: "unit-weighted",
+      isSecretBallot: 0,
+      resultVisibility: "public",
+      status: "certified",
+      opensAt: boardElectionOpensAt,
+      closesAt: boardElectionClosesAt,
+      quorumPercent: 50,
+      maxChoices: 3,
+      eligibleVoterCount: unitOwnerMap.length,
+      certifiedBy: "Board Secretary",
+      certifiedAt: boardElectionCertifiedAt,
+      createdBy: "seed",
+    }).returning();
+
+    // 4 candidate options
+    const boardCandidates = await db.insert(electionOptions).values([
+      { electionId: boardElection.id, label: "Maria Gonzalez", description: "Current Board President, running for re-election. 5 years of service.", orderIndex: 0 },
+      { electionId: boardElection.id, label: "James Chen", description: "Current Treasurer, seeking a second term. CPA with 15 years experience.", orderIndex: 1 },
+      { electionId: boardElection.id, label: "David Kim", description: "Unit 102 tenant representative. Active in community events for 3 years.", orderIndex: 2 },
+      { electionId: boardElection.id, label: "Angela Torres", description: "New candidate. Former property manager with 10 years industry experience.", orderIndex: 3 },
+    ]).returning();
+
+    // Ballot tokens for all unit owners — ~70% cast
+    const boardTokens: (typeof electionBallotTokens.$inferInsert)[] = [];
+    for (const ownership of unitOwnerMap) {
+      const token = randomBytes(32).toString("hex");
+      boardTokens.push({
+        electionId: boardElection.id,
+        token,
+        personId: String(ownership.personId),
+        unitId: String(ownership.unitId),
+        status: "pending",
+      });
+    }
+    const insertedBoardTokens = await db.insert(electionBallotTokens).values(boardTokens).returning();
+
+    // Cast ~70% of ballots with realistic vote distribution
+    const castCount = Math.max(1, Math.round(insertedBoardTokens.length * 0.7));
+    const boardCasts: (typeof electionBallotCasts.$inferInsert)[] = [];
+    for (let i = 0; i < castCount; i++) {
+      const tok = insertedBoardTokens[i];
+      // Vary choices: first voter picks candidates 0,1,3; second picks 0,2; third picks 1,2,3; etc.
+      const choicePatterns = [
+        [boardCandidates[0].id, boardCandidates[1].id, boardCandidates[3].id],
+        [boardCandidates[0].id, boardCandidates[2].id],
+        [boardCandidates[1].id, boardCandidates[2].id, boardCandidates[3].id],
+        [boardCandidates[0].id, boardCandidates[1].id, boardCandidates[2].id],
+      ];
+      const choices = choicePatterns[i % choicePatterns.length];
+      const stUnit = stUnits.find(u => String(u.id) === String(tok.unitId));
+      const weight = stUnit?.squareFootage ? stUnit.squareFootage / 1000 : 1;
+
+      boardCasts.push({
+        electionId: boardElection.id,
+        ballotTokenId: tok.id,
+        personId: tok.personId,
+        unitId: tok.unitId,
+        choicesJson: choices,
+        voteWeight: weight,
+        isProxy: 0,
+        confirmationRef: randomBytes(8).toString("hex").toUpperCase(),
+      });
+
+      // Update token status to cast
+      await db.update(electionBallotTokens)
+        .set({ status: "cast" as const, castAt: new Date(boardElectionOpensAt.getTime() + (i + 1) * 3600000) })
+        .where(eq(electionBallotTokens.id, tok.id));
+    }
+    if (boardCasts.length > 0) {
+      await db.insert(electionBallotCasts).values(boardCasts);
+    }
+
+    // ── 4.4: Proxy seed data on board election ──
+    if (stPersons.length >= 2 && unitOwnerMap.length >= 2) {
+      // Active proxy: second person designated first person as proxy (and proxy voted)
+      const proxyOwner = stPersons[1]; // James Chen
+      const proxyHolder = stPersons[0]; // Maria Gonzalez
+      const proxyOwnerUnit = unitOwnerMap.find(o => String(o.personId) === String(proxyOwner.id));
+
+      await db.insert(electionProxyDesignations).values({
+        electionId: boardElection.id,
+        ownerPersonId: String(proxyOwner.id),
+        ownerUnitId: proxyOwnerUnit ? String(proxyOwnerUnit.unitId) : null,
+        proxyPersonId: String(proxyHolder.id),
+        designatedAt: new Date("2025-10-28T14:00:00Z"),
+        notes: "Proxy designated via email authorization prior to voting period.",
+      }).onConflictDoNothing();
+
+      // Revoked proxy: if we have a third person, designate then revoke
+      if (stPersons.length >= 3) {
+        const revokedOwner = stPersons[2]; // e.g. Sarah Williams (cross-association but valid person)
+        const revokedOwnerUnit = unitOwnerMap.find(o => String(o.personId) === String(revokedOwner.id));
+        await db.insert(electionProxyDesignations).values({
+          electionId: boardElection.id,
+          ownerPersonId: String(revokedOwner.id),
+          ownerUnitId: revokedOwnerUnit ? String(revokedOwnerUnit.unitId) : null,
+          proxyPersonId: String(proxyHolder.id),
+          designatedAt: new Date("2025-10-25T10:00:00Z"),
+          revokedAt: new Date("2025-10-30T16:00:00Z"),
+          notes: "Owner revoked proxy designation before voting opened.",
+        }).onConflictDoNothing();
+      }
+
+      // Proxy document
+      await db.insert(electionProxyDocuments).values({
+        electionId: boardElection.id,
+        ownerPersonId: String(proxyOwner.id),
+        ownerUnitId: proxyOwnerUnit ? String(proxyOwnerUnit.unitId) : null,
+        fileUrl: "/documents/proxy-forms/2025-board-election-chen-proxy.pdf",
+        title: "Proxy Authorization — James Chen for 2025 Board Election",
+        uploadedBy: "seed",
+      });
+    }
+
+    log(`[seed] elections :: board election created with ${insertedBoardTokens.length} tokens, ${boardCasts.length} cast, proxy data seeded`, "seed");
+  } else if (existingBoardElection) {
+    log("[seed] elections :: board election already exists, skipping", "seed");
+  }
+
+  // ── 4.2: Open Community Referendum ──
+  const [existingReferendum] = await db.select().from(elections)
+    .where(and(eq(elections.associationId, SUNSET_TOWERS_ID), eq(elections.title, "Pool Renovation Budget Approval")));
+
+  if (!existingReferendum && stPersons.length > 0 && stUnits.length > 0) {
+    const refOpensAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+    const refClosesAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+
+    const [referendum] = await db.insert(elections).values({
+      associationId: SUNSET_TOWERS_ID,
+      title: "Pool Renovation Budget Approval",
+      description: "Community vote to approve the $85,000 pool renovation budget. Funding would come from the reserve fund with a special assessment of $500 per unit to cover the shortfall.",
+      voteType: "community-referendum",
+      votingRule: "unit-weighted",
+      isSecretBallot: 1,
+      resultVisibility: "public",
+      status: "open",
+      opensAt: refOpensAt,
+      closesAt: refClosesAt,
+      quorumPercent: 50,
+      maxChoices: 1,
+      eligibleVoterCount: unitOwnerMap.length,
+      createdBy: "seed",
+    }).returning();
+
+    // 3 options
+    const refOptions = await db.insert(electionOptions).values([
+      { electionId: referendum.id, label: "Approve Full Budget ($85,000)", description: "Approve the complete renovation plan including new filtration system, resurfacing, and deck expansion.", orderIndex: 0 },
+      { electionId: referendum.id, label: "Approve Reduced Scope ($52,000)", description: "Approve only essential repairs: filtration replacement and basic resurfacing. No deck expansion.", orderIndex: 1 },
+      { electionId: referendum.id, label: "Reject — Defer to Next Year", description: "Reject the renovation proposal and revisit during the 2026 budget cycle.", orderIndex: 2 },
+    ]).returning();
+
+    // Ballot tokens for all unit owners
+    const refTokens: (typeof electionBallotTokens.$inferInsert)[] = [];
+    for (const ownership of unitOwnerMap) {
+      refTokens.push({
+        electionId: referendum.id,
+        token: randomBytes(32).toString("hex"),
+        personId: String(ownership.personId),
+        unitId: String(ownership.unitId),
+        status: "pending",
+      });
+    }
+    const insertedRefTokens = await db.insert(electionBallotTokens).values(refTokens).returning();
+
+    // ~40% cast
+    const refCastCount = Math.max(1, Math.round(insertedRefTokens.length * 0.4));
+    const refCasts: (typeof electionBallotCasts.$inferInsert)[] = [];
+    for (let i = 0; i < refCastCount; i++) {
+      const tok = insertedRefTokens[i];
+      // Secret ballot: choicesJson is null for anonymization, but we store it for seed demo visibility
+      const optionIdx = i % refOptions.length;
+      const stUnit = stUnits.find(u => String(u.id) === String(tok.unitId));
+      const weight = stUnit?.squareFootage ? stUnit.squareFootage / 1000 : 1;
+
+      refCasts.push({
+        electionId: referendum.id,
+        ballotTokenId: tok.id,
+        personId: null, // secret ballot — anonymized
+        unitId: null,   // secret ballot — anonymized
+        choicesJson: [refOptions[optionIdx].id],
+        voteWeight: weight,
+        isProxy: 0,
+        confirmationRef: randomBytes(8).toString("hex").toUpperCase(),
+      });
+
+      await db.update(electionBallotTokens)
+        .set({ status: "cast" as const, castAt: new Date(refOpensAt.getTime() + (i + 1) * 7200000) })
+        .where(eq(electionBallotTokens.id, tok.id));
+    }
+    if (refCasts.length > 0) {
+      await db.insert(electionBallotCasts).values(refCasts);
+    }
+
+    log(`[seed] elections :: referendum created with ${insertedRefTokens.length} tokens, ${refCasts.length} cast`, "seed");
+  } else if (existingReferendum) {
+    log("[seed] elections :: referendum already exists, skipping", "seed");
+  }
+
+  // ── 4.3: Draft Amendment ──
+  const [existingAmendment] = await db.select().from(elections)
+    .where(and(eq(elections.associationId, SUNSET_TOWERS_ID), eq(elections.title, "Amendment to Pet Policy — Section 4.2")));
+
+  if (!existingAmendment) {
+    const [amendment] = await db.insert(elections).values({
+      associationId: SUNSET_TOWERS_ID,
+      title: "Amendment to Pet Policy — Section 4.2",
+      description: "Proposed amendment to allow up to two pets per unit (currently limited to one) and remove the breed-specific restrictions in Section 4.2 of the community bylaws.",
+      voteType: "amendment-ratification",
+      votingRule: "person-weighted",
+      isSecretBallot: 0,
+      resultVisibility: "public",
+      status: "draft",
+      quorumPercent: 67,
+      maxChoices: 1,
+      eligibleVoterCount: 0, // not yet determined
+      createdBy: "seed",
+    }).returning();
+
+    // 2 options — no tokens generated for draft
+    await db.insert(electionOptions).values([
+      { electionId: amendment.id, label: "Approve", description: "Ratify the proposed amendment to Section 4.2, effective 30 days after certification.", orderIndex: 0 },
+      { electionId: amendment.id, label: "Reject", description: "Reject the proposed amendment. Current pet policy remains unchanged.", orderIndex: 1 },
+    ]);
+
+    log("[seed] elections :: draft amendment created (no tokens for draft status)", "seed");
+  } else {
+    log("[seed] elections :: draft amendment already exists, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one

@@ -19,9 +19,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { financeSubPages } from "@/lib/sub-page-nav";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FinancialRecurringChargesContent } from "./financial-recurring-charges";
 
 const accountSchema = z.object({
   associationId: z.string().min(1),
@@ -36,7 +39,7 @@ const categorySchema = z.object({
   categoryType: z.string().min(1),
 });
 
-export default function FinancialFoundationPage() {
+export function FinancialFoundationContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [openAccount, setOpenAccount] = useState(false);
@@ -153,14 +156,7 @@ export default function FinancialFoundationPage() {
   });
 
   return (
-    <div className="flex flex-col min-h-0">
-      <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Chart of Accounts"
-        summary="Configure financial accounts and categories for the active association. Complete this step before setting up fee schedules and assessments."
-        eyebrow="Finance"
-        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Chart of Accounts" }]}
-      />
+    <div className="space-y-6">
       <AssociationScopeBanner
         activeAssociationId={activeAssociationId}
         activeAssociationName={activeAssociationName}
@@ -458,6 +454,33 @@ export default function FinancialFoundationPage() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+export default function FinancialFoundationPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Chart of Accounts"
+          summary="Configure financial accounts, categories, and recurring charge schedules for the active association."
+          eyebrow="Finance"
+          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Chart of Accounts" }]}
+          subPages={financeSubPages}
+        />
+        <Tabs defaultValue="accounts" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="accounts">Accounts</TabsTrigger>
+            <TabsTrigger value="recurring-charges">Recurring Charges</TabsTrigger>
+          </TabsList>
+          <TabsContent value="accounts" className="mt-0">
+            <FinancialFoundationContent />
+          </TabsContent>
+          <TabsContent value="recurring-charges" className="mt-0">
+            <FinancialRecurringChargesContent />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

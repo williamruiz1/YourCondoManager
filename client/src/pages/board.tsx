@@ -27,6 +27,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 
 const boardRoleOptions = ["President", "Vice President", "Treasurer", "Secretary", "Board Member"];
 
@@ -128,11 +130,15 @@ export default function BoardPage() {
           <span><strong>{expiringRoles.length} board term{expiringRoles.length !== 1 ? "s" : ""}</strong> expiring within 90 days: {expiringRoles.map((br) => `${getPersonName(br.personId)} (${new Date(br.endDate!).toLocaleDateString()})`).join(", ")}</span>
         </div>
       )}
+      <WorkspacePageHeader
+        title="Board Members"
+        summary="Manage board positions for the current association context."
+        eyebrow="Board & Governance"
+        breadcrumbs={[{ label: "Board" }]}
+        subPages={boardGovernanceSubPages}
+      />
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Board Members</h1>
-          <p className="text-muted-foreground">Manage board positions for the current association context.</p>
-        </div>
+        <div />
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) form.reset(); }}>
           <DialogTrigger asChild>
             <Button className={isMobile ? "w-full min-h-11" : undefined} data-testid="button-add-board-role" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />Assign Role</Button>

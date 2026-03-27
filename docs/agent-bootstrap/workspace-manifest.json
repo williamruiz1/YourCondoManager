@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-21T17:24:53.297Z",
+  "generatedAt": "2026-03-27T16:57:34.753Z",
   "purpose": "Reusable startup snapshot for coding agents working in the CondoManager workspace.",
   "repository": {
     "root": "/home/runner/workspace",
@@ -27,9 +27,9 @@
     "verificationNote": "TypeScript checks currently surface an existing RegExpStringIterator issue in server/storage.ts around matchAll iteration. Treat it as a known repo issue unless that area is being changed."
   },
   "routes": {
-    "total": 77,
-    "appRoutes": 41,
-    "publicRoutes": 36,
+    "total": 93,
+    "appRoutes": 49,
+    "publicRoutes": 44,
     "entries": [
       {
         "path": "/",
@@ -98,8 +98,8 @@
       },
       {
         "path": "/app/announcements",
-        "component": "AnnouncementsPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/communications"
       },
       {
         "path": "/app/association-context",
@@ -128,18 +128,28 @@
       },
       {
         "path": "/app/financial/assessments",
-        "component": "FinancialAssessmentsPage",
+        "component": null,
+        "redirectTo": "/app/financial/billing"
+      },
+      {
+        "path": "/app/financial/billing",
+        "component": "FinancialBillingPage",
         "redirectTo": null
       },
       {
         "path": "/app/financial/budgets",
-        "component": "FinancialBudgetsPage",
+        "component": null,
+        "redirectTo": "/app/financial/expenses"
+      },
+      {
+        "path": "/app/financial/expenses",
+        "component": "FinancialExpensesPage",
         "redirectTo": null
       },
       {
         "path": "/app/financial/fees",
         "component": null,
-        "redirectTo": "/app/financial/recurring-charges"
+        "redirectTo": "/app/financial/foundation"
       },
       {
         "path": "/app/financial/foundation",
@@ -148,18 +158,18 @@
       },
       {
         "path": "/app/financial/invoices",
-        "component": "FinancialInvoicesPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/financial/expenses"
       },
       {
         "path": "/app/financial/late-fees",
-        "component": "FinancialLateFeesPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/financial/billing"
       },
       {
         "path": "/app/financial/ledger",
-        "component": "FinancialLedgerPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/financial/billing"
       },
       {
         "path": "/app/financial/payments",
@@ -168,13 +178,13 @@
       },
       {
         "path": "/app/financial/reconciliation",
-        "component": "FinancialReconciliationPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/financial/reports"
       },
       {
         "path": "/app/financial/recurring-charges",
-        "component": "FinancialRecurringChargesPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/financial/foundation"
       },
       {
         "path": "/app/financial/reports",
@@ -183,28 +193,43 @@
       },
       {
         "path": "/app/financial/utilities",
-        "component": "FinancialUtilitiesPage",
+        "component": null,
+        "redirectTo": "/app/financial/expenses"
+      },
+      {
+        "path": "/app/governance",
+        "component": "GovernancePage",
         "redirectTo": null
       },
       {
         "path": "/app/governance/board-packages",
-        "component": "BoardPackagesPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/governance"
       },
       {
         "path": "/app/governance/compliance",
-        "component": "GovernanceCompliancePage",
+        "component": null,
+        "redirectTo": "/app/governance"
+      },
+      {
+        "path": "/app/governance/elections",
+        "component": null,
+        "redirectTo": "/app/governance"
+      },
+      {
+        "path": "/app/governance/elections/:id",
+        "component": null,
         "redirectTo": null
       },
       {
         "path": "/app/governance/meetings",
-        "component": "MeetingsPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/governance"
       },
       {
         "path": "/app/inspections",
-        "component": "InspectionsPage",
-        "redirectTo": null
+        "component": null,
+        "redirectTo": "/app/vendors"
       },
       {
         "path": "/app/insurance",
@@ -213,7 +238,12 @@
       },
       {
         "path": "/app/maintenance-schedules",
-        "component": "MaintenanceSchedulesPage",
+        "component": null,
+        "redirectTo": "/app/work-orders"
+      },
+      {
+        "path": "/app/new-association",
+        "component": "NewAssociationPage",
         "redirectTo": null
       },
       {
@@ -224,6 +254,11 @@
       {
         "path": "/app/operations/dashboard",
         "component": "OperationsDashboardPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/operations/records",
+        "component": null,
         "redirectTo": null
       },
       {
@@ -249,6 +284,11 @@
       {
         "path": "/app/resident-feedback",
         "component": "ResidentFeedbackPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/app/settings",
+        "component": "UserSettingsPage",
         "redirectTo": null
       },
       {
@@ -304,7 +344,7 @@
       {
         "path": "/financial/fees",
         "component": null,
-        "redirectTo": "/app/financial/fees"
+        "redirectTo": "/app/financial/recurring-charges"
       },
       {
         "path": "/financial/foundation",
@@ -397,9 +437,39 @@
         "redirectTo": null
       },
       {
+        "path": "/pricing",
+        "component": null,
+        "redirectTo": null
+      },
+      {
+        "path": "/privacy-policy",
+        "component": null,
+        "redirectTo": null
+      },
+      {
         "path": "/roadmap",
         "component": null,
         "redirectTo": "/app/admin/roadmap"
+      },
+      {
+        "path": "/signup",
+        "component": "PlanSignupPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/signup/success",
+        "component": "PlanSignupSuccessPage",
+        "redirectTo": null
+      },
+      {
+        "path": "/solutions",
+        "component": null,
+        "redirectTo": null
+      },
+      {
+        "path": "/terms-of-service",
+        "component": null,
+        "redirectTo": null
       },
       {
         "path": "/units",
@@ -407,9 +477,19 @@
         "redirectTo": "/app/units"
       },
       {
+        "path": "/vendor-portal",
+        "component": "VendorPortalPage",
+        "redirectTo": null
+      },
+      {
         "path": "/vendors",
         "component": null,
         "redirectTo": "/app/vendors"
+      },
+      {
+        "path": "/vote/:token",
+        "component": null,
+        "redirectTo": null
       },
       {
         "path": "/work-orders",
@@ -419,7 +499,7 @@
     ]
   },
   "pages": {
-    "totalLazyPages": 43,
+    "totalLazyPages": 58,
     "entries": [
       {
         "id": "AdminUsersPage",
@@ -462,6 +542,18 @@
         "importPath": "@/pages/documents"
       },
       {
+        "id": "ElectionBallotPage",
+        "importPath": "@/pages/election-ballot"
+      },
+      {
+        "id": "ElectionDetailPage",
+        "importPath": "@/pages/election-detail"
+      },
+      {
+        "id": "ElectionsPage",
+        "importPath": "@/pages/elections"
+      },
+      {
         "id": "ExecutivePage",
         "importPath": "@/pages/executive"
       },
@@ -474,8 +566,16 @@
         "importPath": "@/pages/financial-assessments"
       },
       {
+        "id": "FinancialBillingPage",
+        "importPath": "@/pages/financial-billing"
+      },
+      {
         "id": "FinancialBudgetsPage",
         "importPath": "@/pages/financial-budgets"
+      },
+      {
+        "id": "FinancialExpensesPage",
+        "importPath": "@/pages/financial-expenses"
       },
       {
         "id": "FinancialFeesPage",
@@ -522,6 +622,10 @@
         "importPath": "@/pages/governance-compliance"
       },
       {
+        "id": "GovernancePage",
+        "importPath": "@/pages/governance"
+      },
+      {
         "id": "InspectionsPage",
         "importPath": "@/pages/inspections"
       },
@@ -540,6 +644,10 @@
       {
         "id": "MeetingsPage",
         "importPath": "@/pages/meetings"
+      },
+      {
+        "id": "NewAssociationPage",
+        "importPath": "@/pages/new-association"
       },
       {
         "id": "NotFound",
@@ -562,12 +670,28 @@
         "importPath": "@/pages/persons"
       },
       {
+        "id": "PlanSignupPage",
+        "importPath": "@/pages/plan-signup"
+      },
+      {
+        "id": "PlanSignupSuccessPage",
+        "importPath": "@/pages/plan-signup-success"
+      },
+      {
         "id": "PlatformControlsPage",
         "importPath": "@/pages/platform-controls"
       },
       {
         "id": "PortfolioPage",
         "importPath": "@/pages/portfolio"
+      },
+      {
+        "id": "PricingPage",
+        "importPath": "@/pages/pricing"
+      },
+      {
+        "id": "PrivacyPolicyPage",
+        "importPath": "@/pages/privacy-policy"
       },
       {
         "id": "ResidentFeedbackPage",
@@ -578,8 +702,24 @@
         "importPath": "@/pages/roadmap"
       },
       {
+        "id": "SolutionsPage",
+        "importPath": "@/pages/solutions"
+      },
+      {
+        "id": "TermsOfServicePage",
+        "importPath": "@/pages/terms-of-service"
+      },
+      {
         "id": "UnitsPage",
         "importPath": "@/pages/units"
+      },
+      {
+        "id": "UserSettingsPage",
+        "importPath": "@/pages/user-settings"
+      },
+      {
+        "id": "VendorPortalPage",
+        "importPath": "@/pages/vendor-portal"
       },
       {
         "id": "VendorsPage",
@@ -689,13 +829,13 @@
   "roadmapContext": [
     {
       "title": "Admin Roadmap Backbone - Agent Bootstrap and Continuous Improvement",
-      "status": "archived",
+      "status": "complete",
       "workstreamCount": 4,
       "openTaskCount": 0
     },
     {
       "title": "Platform-wide UI and UX Opportunity Analysis",
-      "status": "archived",
+      "status": "complete",
       "workstreamCount": 4,
       "openTaskCount": 0
     }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import type { AnnualGovernanceTask, Association, BoardRole, CommunicationHistory, ContactUpdateRequest, Document, GovernanceMeeting, MaintenanceRequest, NoticeSend, OwnerLedgerEntry, Person, PortalAccess, Unit, VendorInvoice } from "@shared/schema";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AnnualGovernanceTask, Association, BoardRole, CommunicationHistory, ContactUpdateRequest, Document, Election, ElectionOption, GovernanceMeeting, MaintenanceRequest, NoticeSend, OwnerLedgerEntry, Person, PortalAccess, Unit, VendorInvoice } from "@shared/schema";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +9,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { OwnerPortalLoginContainer } from "@/components/owner-portal-login-container";
+import { formatPhoneNumber, getPhoneDigits } from "@/lib/phone-formatter";
 
 const maintenanceCategories = ["general", "plumbing", "electrical", "hvac", "common-area", "security", "other"];
 const maintenancePriorities = ["low", "medium", "high", "urgent"] as const;
@@ -26,6 +30,15 @@ type PortalSession = PortalAccess & {
   boardRoleId: string | null;
   unitNumber: string | null;
   building: string | null;
+  // Person fields merged in by GET /api/portal/me
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  mailingAddress: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+  contactPreference: string | null;
+  smsOptIn: number | null;
 };
 type AssociationOverview = {
   associationId: string;
@@ -102,149 +115,111 @@ type BoardDashboard = {
       boardPackagesByStatus: Record<"draft" | "approved" | "distributed", number>;
     };
   };
-  activity: {
-    recent: Array<{
-      id: string;
-      entityType: string;
-      action: string;
-      actorEmail: string | null;
-      createdAt: string;
-      lane?: string;
-      laneLabel?: string;
-      summary?: string;
-      changedFields?: string[];
-    }>;
-  };
 };
-
-function formatStatusLabel(value: string) {
-  return value.replace(/-/g, " ");
-}
-
-function getStatusBadgeVariant(value: string): "default" | "secondary" | "destructive" | "outline" {
-  if (value === "urgent" || value === "rejected" || value === "cancelled" || value === "revoked" || value === "expired") return "destructive";
-  if (value === "in-progress" || value === "triaged" || value === "scheduled" || value === "approved" || value === "published" || value === "active") return "default";
-  if (value === "resolved" || value === "closed" || value === "done" || value === "distributed") return "secondary";
-  return "outline";
-}
-
-function sumStateCounts(counts: Record<string, number>) {
-  return Object.values(counts).reduce((sum, count) => sum + count, 0);
-}
-
-function stripHtml(html: string | null | undefined): string {
-  if (!html) return "";
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function getOwnerReadableState(status: string) {
-  switch (status) {
-    case "submitted":
-      return "Waiting on management";
-    case "triaged":
-      return "Under review";
-    case "in-progress":
-      return "In progress";
-    case "resolved":
-      return "Resolved";
-    case "closed":
-      return "Closed";
-    case "rejected":
-      return "Needs follow-up";
-    case "pending":
-      return "Waiting on management";
-    case "approved":
-      return "Completed";
-    case "todo":
-      return "Action needed";
-    case "done":
-      return "Completed";
-    default:
-      return formatStatusLabel(status);
-  }
-}
-
-function classifyBoardActivity(entry: { entityType: string; action: string }) {
-  const entity = entry.entityType.toLowerCase();
-  const action = entry.action.toLowerCase();
-  if (entity.includes("portal") || entity.includes("board-role") || action.includes("access")) {
-    return { lane: "access", label: "Access" };
-  }
-  if (entity.includes("meeting") || entity.includes("governance") || entity.includes("board-package")) {
-    return { lane: "governance", label: "Governance" };
-  }
-  if (entity.includes("ledger") || entity.includes("invoice") || entity.includes("payment") || entity.includes("budget") || entity.includes("utility")) {
-    return { lane: "financial", label: "Financial" };
-  }
-  if (entity.includes("document") || entity.includes("notice") || entity.includes("communication")) {
-    return { lane: "communications", label: "Communications" };
-  }
-  if (entity.includes("maintenance") || entity.includes("work-order") || entity.includes("inspection")) {
-    return { lane: "operations", label: "Operations" };
-  }
-  return { lane: "general", label: "General" };
-}
-
-function portalHeaders(portalAccessId: string) {
-  return {
-    "x-portal-access-id": portalAccessId,
-  };
-}
-
 type AssociationChoice = {
-  portalAccessId: string;
   associationId: string;
   associationName: string;
-  associationCity: string | null;
-  role: string;
-  email: string;
-  unitId: string | null;
-  unitNumber: string | null;
-  building: string | null;
 };
-
+type PortalAssociation = {
+  id: string;
+  name: string;
+  associationType?: string;
+};
+type PortalNoticeHistory = {
+  id: string;
+  subject: string;
+  bodyRendered: string;
+  createdAt: string;
+};
+type MyUnit = {
+  unitId: string;
+  building: string;
+  unitNumber: string;
+  balance: number;
+  portalAccessId: string | null;
+  squareFootage: string | null;
+  occupants: Array<{
+    personId: string;
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone: string | null;
+    occupancyType: string;
+  }>;
+};
 type UnitBalance = {
   unitId: string;
-  unitNumber: string | null;
-  building: string | null;
-  portalAccessId: string | null;
+  building: string;
+  unitNumber: string;
   balance: number;
 };
-
-type PortalNoticeHistory = CommunicationHistory & {
-  bodyRendered?: string | null;
+type FinancialDashboard = {
+  balance: number;
+  nextDueDate?: string;
+  lastPaymentDate?: string;
+  totalCharges: number;
+  totalPayments: number;
 };
 
-function formatUnitContextLabel(building?: string | null, unitNumber?: string | null) {
-  return [building ? `Bldg ${building}` : null, unitNumber ? `Unit ${unitNumber}` : null].filter(Boolean).join(" · ") || "Unit";
+function stripHtml(html: string): string {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return div.innerText || "";
 }
 
-function toTimestamp(value: string | Date | null | undefined) {
-  if (!value) return 0;
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
+function formatStatusLabel(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1).replace(/-/g, " ");
 }
 
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+function getStatusBadgeVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
+  if (["resolved", "closed"].includes(status)) return "secondary";
+  if (["rejected"].includes(status)) return "destructive";
+  return "default";
+}
+
+function getOwnerReadableState(status: string): string {
+  const stateMap: Record<string, string> = {
+    submitted: "Submitted",
+    triaged: "In Review",
+    "in-progress": "In Progress",
+    resolved: "Resolved",
+    closed: "Closed",
+    rejected: "Not Approved",
+  };
+  return stateMap[status] || formatStatusLabel(status);
 }
 
 export default function OwnerPortalPage() {
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
+
   const [email, setEmail] = useState("");
-  const [portalAccessId, setPortalAccessId] = useState(() => window.localStorage.getItem("portalAccessId") || "");
-  // "permanent" = localStorage, "session" = sessionStorage (remind later), false = show
+  const [portalAccessId, setPortalAccessId] = useState<string | null>(() => window.localStorage.getItem("portalAccessId"));
+
+  // Helper function for portal API calls with proper headers
+  const portalFetch = (url: string, options: RequestInit = {}) => {
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        "x-portal-access-id": portalAccessId ?? "",
+      },
+    });
+  };
+
   const [onboardingDismissed, setOnboardingDismissed] = useState<boolean>(() => {
-    const key = `portal-onboarding-dismissed-${window.localStorage.getItem("portalAccessId") || ""}`;
-    if (window.localStorage.getItem(key) === "permanent") return true;
-    if (window.sessionStorage.getItem(key) === "session") return true;
-    return false;
+    const saved = window.localStorage.getItem("portal-onboarding-dismissed");
+    return saved === "true";
   });
+
   const [requestedPhone, setRequestedPhone] = useState("");
   const [requestedMailingAddress, setRequestedMailingAddress] = useState("");
   const [requestedEmergencyContactName, setRequestedEmergencyContactName] = useState("");
   const [requestedEmergencyContactPhone, setRequestedEmergencyContactPhone] = useState("");
   const [requestedContactPreference, setRequestedContactPreference] = useState("");
+  const [smsOptInPending, setSmsOptInPending] = useState(false);
+  const [pushPromptDismissed, setPushPromptDismissed] = useState(() => window.localStorage.getItem("pushPromptDismissed") === "1");
+  const [pushSubscribed, setPushSubscribed] = useState(false);
   const [maintenanceTitle, setMaintenanceTitle] = useState("");
   const [maintenanceDescription, setMaintenanceDescription] = useState("");
   const [maintenanceLocation, setMaintenanceLocation] = useState("");
@@ -285,10 +260,21 @@ export default function OwnerPortalPage() {
   const [workspaceMode, setWorkspaceMode] = useState<"owner" | "board">("owner");
   const [workspaceDefaultAppliedForAccessId, setWorkspaceDefaultAppliedForAccessId] = useState<string | null>(null);
   const [boardActivityFilter, setBoardActivityFilter] = useState<"all" | "governance" | "financial" | "communications" | "operations" | "access">("all");
-  const [activeTab, setActiveTab] = useState<"overview" | "financials" | "maintenance" | "documents" | "notices">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "financials" | "documents" | "maintenance" | "notices" | "communications" | "elections">("overview");
   const [overviewSubtab, setOverviewSubtab] = useState<"summary" | "owner-info" | "occupancy">("summary");
   const [ownedUnitFocusId, setOwnedUnitFocusId] = useState("");
+  const [selectedElectionId, setSelectedElectionId] = useState<string | null>(null);
+  const [proxyFormOpen, setProxyFormOpen] = useState(false);
+  const [proxyPersonId, setProxyPersonId] = useState("");
+  const [proxyNotes, setProxyNotes] = useState("");
+  const [electionsSubtab, setElectionsSubtab] = useState<"active" | "upcoming" | "past" | "history">("active");
+  const [nominationFormOpen, setNominationFormOpen] = useState(false);
+  const [nominationBio, setNominationBio] = useState("");
+  const [nominationCurrentRole, setNominationCurrentRole] = useState("");
+  const [nominationStatement, setNominationStatement] = useState("");
+  const [nominationPhotoUrl, setNominationPhotoUrl] = useState("");
   const [expandedNoticeId, setExpandedNoticeId] = useState<string | null>(null);
+  const [expandedVersionDocId, setExpandedVersionDocId] = useState<string | null>(null);
   const [readNoticeIds, setReadNoticeIds] = useState<string[]>(() => {
     const portalId = window.localStorage.getItem("portalAccessId") || "";
     const saved = window.localStorage.getItem(`portal-read-notices-${portalId}`);
@@ -301,23 +287,24 @@ export default function OwnerPortalPage() {
     }
   });
   const [maintenanceSuccess, setMaintenanceSuccess] = useState(false);
-  const [contactUpdateSuccess, setContactUpdateSuccess] = useState(false);
+  const [contactUpdateSuccess, setContactUpdateSuccess] = useState<Array<{ label: string; value: string }> | null>(null);
   const [ownerInfoEditing, setOwnerInfoEditing] = useState(false);
   const overviewContentRef = useRef<HTMLDivElement | null>(null);
-  const [occupancyForm, setOccupancyForm] = useState({
-    occupancyType: "OWNER_OCCUPIED" as "OWNER_OCCUPIED" | "TENANT",
-    tenantFirstName: "",
-    tenantLastName: "",
-    tenantEmail: "",
-    tenantPhone: "",
-    notes: "",
-  });
-  const [occupancyUpdateSuccess, setOccupancyUpdateSuccess] = useState(false);
+  const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
+  const [occupancyFormByUnit, setOccupancyFormByUnit] = useState<Record<string, {
+    occupancyType: "OWNER_OCCUPIED" | "TENANT",
+    tenantFirstName: string,
+    tenantLastName: string,
+    tenantEmail: string,
+    tenantPhone: string,
+    notes: string,
+  }>>({});
+  const [occupancyUpdateSuccess, setOccupancyUpdateSuccess] = useState<string | null>(null);
   const [occupancyEditing, setOccupancyEditing] = useState(false);
 
   const requestLogin = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/portal/request-login", {
+      const res = await portalFetch("/api/portal/request-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -333,7 +320,7 @@ export default function OwnerPortalPage() {
 
   const verifyLogin = useMutation({
     mutationFn: async (chosen?: { portalAccessId?: string; associationId?: string }) => {
-      const res = await fetch("/api/portal/verify-login", {
+      const res = await portalFetch("/api/portal/verify-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -347,528 +334,580 @@ export default function OwnerPortalPage() {
       return res.json() as Promise<{ portalAccessId?: string; associations?: AssociationChoice[] }>;
     },
     onSuccess: (result) => {
-      if (result.associations && result.associations.length > 1) {
+      if (result.portalAccessId) {
+        window.localStorage.setItem("portalAccessId", result.portalAccessId);
+        setPortalAccessId(result.portalAccessId);
+        setOtpStep("email");
+        setOtp("");
+      } else if (result.associations) {
         setAssociationChoices(result.associations);
         setOtpStep("pick");
-      } else if (result.portalAccessId) {
-        setPortalAccessId(result.portalAccessId);
-        window.localStorage.setItem("portalAccessId", result.portalAccessId);
       }
     },
   });
 
-  const { data: me, refetch: refetchMe } = useQuery<PortalSession | null>({
-    queryKey: ["/api/portal/me", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+  const { data: me, refetch: refetchMe, error: meError, isError: isMeError } = useQuery<PortalSession | null>({
+    queryKey: ["portal/me", portalAccessId],
+    enabled: !!portalAccessId,
+    retry: 2,
     queryFn: async () => {
-      const res = await fetch("/api/portal/me", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) return null;
+      if (!portalAccessId) return null;
+      const res = await portalFetch(`/api/portal/me`);
+      if (!res.ok) throw new Error(`Portal session failed (${res.status})`);
       return res.json();
     },
   });
 
+  // Register service worker for push notifications
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // SW registration failures are non-fatal
+    });
+  }, []);
+
   const { data: myAssociations } = useQuery<AssociationChoice[]>({
-    queryKey: ["/api/portal/my-associations", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+    queryKey: ["portal/associations"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/my-associations", { headers: portalHeaders(portalAccessId) });
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/my-associations`);
       if (!res.ok) return [];
       return res.json();
     },
   });
 
   const { data: documents } = useQuery<Document[]>({
-    queryKey: ["/api/portal/documents", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+    queryKey: ["portal/documents"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/documents", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/documents`);
+      if (!res.ok) return [];
       return res.json();
     },
   });
 
   const { data: notices } = useQuery<PortalNoticeHistory[]>({
-    queryKey: ["/api/portal/notices", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+    queryKey: ["portal/notices"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/notices", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/notices`);
+      if (!res.ok) return [];
       return res.json();
     },
   });
 
-  const { data: requests, refetch: refetchRequests } = useQuery<ContactUpdateRequest[]>({
-    queryKey: ["/api/portal/contact-updates", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+  const { data: electionHistory = [] } = useQuery<Array<{
+    election: { id: string; title: string; description: string | null; voteType: string; status: string; opensAt: string | null; closesAt: string | null; resultVisibility: string; isSecretBallot: number };
+    participated: boolean;
+    status: "voted" | "proxy-designated" | "not-voted";
+    outcome: string | null;
+  }>>({
+    queryKey: ["portal/elections"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/contact-updates", { headers: portalHeaders(portalAccessId) });
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/elections`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Active elections with pending ballot for banner
+  const { data: activeElections = [] } = useQuery<Array<{
+    election: { id: string; title: string; description: string | null; voteType: string; status: string; opensAt: string | null; closesAt: string | null; resultVisibility: string; isSecretBallot: number };
+    token: string;
+  }>>({
+    queryKey: ["portal/elections/active"],
+    enabled: !!portalAccessId,
+    queryFn: async () => {
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/elections/active`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  type ElectionDetailData = {
+    election: { id: string; title: string; description: string | null; voteType: string; votingRule: string; status: string; opensAt: string | null; closesAt: string | null; nominationsOpenAt: string | null; nominationsCloseAt: string | null; resultVisibility: string; isSecretBallot: number; quorumPercent: number; maxChoices: number | null; eligibleVoterCount: number };
+    options: Array<{ id: string; label: string; description: string | null; orderIndex: number }>;
+    participated: boolean;
+    status: "voted" | "proxy-designated" | "not-voted";
+    ballotToken: string | null;
+    proxyDesignation: { id: string; proxyPersonId: string; proxyName: string; designatedAt: string; notes: string | null } | null;
+    tally: { eligibleCount: number; castCount: number; participationPercent: number; quorumPercent: number; quorumMet: boolean; optionTallies: Array<{ optionId: string; label: string; votes: number; percent: number }> } | null;
+  };
+
+  const { data: electionDetail, refetch: refetchElectionDetail } = useQuery<ElectionDetailData | null>({
+    queryKey: ["portal/elections/detail", selectedElectionId],
+    enabled: !!portalAccessId && !!selectedElectionId,
+    queryFn: async () => {
+      if (!portalAccessId || !selectedElectionId) return null;
+      const res = await portalFetch(`/api/portal/elections/${selectedElectionId}/detail`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  const { data: proxyCandidates = [] } = useQuery<Array<{ personId: string; firstName: string; lastName: string }>>({
+    queryKey: ["portal/elections/proxy-candidates", selectedElectionId],
+    enabled: !!portalAccessId && !!selectedElectionId && proxyFormOpen,
+    queryFn: async () => {
+      if (!portalAccessId || !selectedElectionId) return [];
+      const res = await portalFetch(`/api/portal/elections/${selectedElectionId}/proxy-candidates`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const designateProxy = useMutation({
+    mutationFn: async () => {
+      if (!portalAccessId || !selectedElectionId || !proxyPersonId) throw new Error("Missing data");
+      const res = await portalFetch(`/api/portal/elections/${selectedElectionId}/proxy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyPersonId, notes: proxyNotes || null }),
+      });
       if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      setProxyFormOpen(false);
+      setProxyPersonId("");
+      setProxyNotes("");
+      refetchElectionDetail();
+      queryClient.invalidateQueries({ queryKey: ["portal/elections"] });
+      queryClient.invalidateQueries({ queryKey: ["portal/elections/active"] });
+    },
+  });
+
+  const revokeProxy = useMutation({
+    mutationFn: async (designationId: string) => {
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch(`/api/portal/elections/proxy/${designationId}/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchElectionDetail();
+      queryClient.invalidateQueries({ queryKey: ["portal/elections"] });
+      queryClient.invalidateQueries({ queryKey: ["portal/elections/active"] });
+    },
+  });
+
+  const submitNomination = useMutation({
+    mutationFn: async () => {
+      if (!portalAccessId || !selectedElectionId) throw new Error("Missing data");
+      const res = await portalFetch(`/api/portal/elections/${selectedElectionId}/nominate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: `${me?.firstName || ""} ${me?.lastName || ""}`.trim() || "Self-Nomination",
+          bio: nominationBio || null,
+          currentRole: nominationCurrentRole || null,
+          nominationStatement: nominationStatement || null,
+          photoUrl: nominationPhotoUrl || null,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      setNominationFormOpen(false);
+      setNominationBio("");
+      setNominationCurrentRole("");
+      setNominationStatement("");
+      setNominationPhotoUrl("");
+      refetchElectionDetail();
+      queryClient.invalidateQueries({ queryKey: ["portal/elections"] });
+    },
+  });
+
+  // Categorized elections for tabs
+  const activeElectionsList = useMemo(() =>
+    electionHistory.filter(({ election, status }) =>
+      election.status === "open" && status === "not-voted"
+    ), [electionHistory]);
+
+  const upcomingElectionsList = useMemo(() =>
+    electionHistory.filter(({ election }) =>
+      election.status === "draft"
+    ), [electionHistory]);
+
+  const pastElectionsList = useMemo(() =>
+    electionHistory.filter(({ election }) =>
+      ["closed", "certified", "cancelled"].includes(election.status)
+    ), [electionHistory]);
+
+  const { data: requests, refetch: refetchRequests } = useQuery<ContactUpdateRequest[]>({
+    queryKey: ["portal/contact-requests"],
+    enabled: !!portalAccessId,
+    queryFn: async () => {
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/contact-updates`);
+      if (!res.ok) return [];
       return res.json();
     },
   });
 
   const { data: maintenanceRequests, refetch: refetchMaintenanceRequests } = useQuery<MaintenanceRequest[]>({
-    queryKey: ["/api/portal/maintenance-requests", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+    queryKey: ["portal/maintenance-requests"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/maintenance-requests", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/maintenance-requests`);
+      if (!res.ok) return [];
       return res.json();
     },
   });
 
   const { data: portalLedger, refetch: refetchPortalLedger } = useQuery<{ entries: OwnerLedgerEntry[]; balance: number }>({
-    queryKey: ["/api/portal/ledger", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+    queryKey: ["portal/ledger"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/ledger", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
+      if (!portalAccessId) return { entries: [], balance: 0 };
+      const res = await portalFetch(`/api/portal/ledger`);
+      if (!res.ok) return { entries: [], balance: 0 };
       return res.json();
     },
   });
 
-  type FinancialDashboard = {
-    balance: number;
-    totalCharged: number;
-    totalPaid: number;
-    feeSchedules: Array<{ id: string; name: string; amount: number; frequency: string }>;
-    nextDueDate: string | null;
-    paymentPlan: { id: string; totalAmount: number; amountPaid: number; installmentAmount: number; installmentFrequency: string; nextDueDate: string | null; status: string } | null;
-    recentEntries: OwnerLedgerEntry[];
-  };
-  type PortalAssociation = {
-    id: string;
-    name: string;
-    associationType: string | null;
-    address: string | null;
-    city: string | null;
-    state: string | null;
-    country: string | null;
-  };
   const { data: portalAssociation } = useQuery<PortalAssociation>({
-    queryKey: ["/api/portal/association", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+    queryKey: ["portal/association"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/association", { headers: portalHeaders(portalAccessId) });
+      if (!portalAccessId) return null;
+      const res = await portalFetch(`/api/portal/association`);
       if (!res.ok) return null;
       return res.json();
     },
   });
 
   const { data: unitsBalance = [] } = useQuery<UnitBalance[]>({
-    queryKey: ["/api/portal/units-balance", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+    queryKey: ["portal/units-balance"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/units-balance", { headers: portalHeaders(portalAccessId) });
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/units-balance`);
       if (!res.ok) return [];
       return res.json();
     },
   });
 
-  type MyUnit = {
-    unitId: string;
-    portalAccessId: string | null;
-    unitNumber: string | null;
-    building: string | null;
-    squareFootage: number | null;
-    balance: number;
-    occupants: Array<{ personId: string; firstName: string; lastName: string; email: string | null; phone: string | null; occupancyType: string }>;
-  };
   const { data: myUnits = [], refetch: refetchMyUnits } = useQuery<MyUnit[]>({
-    queryKey: ["/api/portal/my-units", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+    queryKey: ["portal/my-units"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/my-units", { headers: portalHeaders(portalAccessId) });
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/my-units`);
       if (!res.ok) return [];
       return res.json();
     },
   });
 
   const { data: financialDashboard, refetch: refetchFinancialDashboard } = useQuery<FinancialDashboard>({
-    queryKey: ["/api/portal/financial-dashboard", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId),
+    queryKey: ["portal/financial-dashboard"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
-      const res = await fetch("/api/portal/financial-dashboard", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
+      if (!portalAccessId) return { balance: 0, totalCharges: 0, totalPayments: 0 };
+      const res = await portalFetch(`/api/portal/financial-dashboard`);
+      if (!res.ok) return { balance: 0, totalCharges: 0, totalPayments: 0 };
+      return res.json();
+    },
+  });
+
+  const { data: boardDashboardData } = useQuery<BoardDashboard | null>({
+    queryKey: ["portal/board-dashboard"],
+    enabled: !!portalAccessId,
+    queryFn: async () => {
+      if (!portalAccessId) return null;
+      const res = await portalFetch(`/api/portal/board/dashboard`);
+      if (!res.ok) return null;
       return res.json();
     },
   });
 
   const submitPayment = useMutation({
     mutationFn: async () => {
-      const amt = parseFloat(paymentAmount);
-      if (!amt || amt <= 0) throw new Error("Enter a valid amount");
-      const myUnit = focusedOwnedUnit?.unitId || (me as any)?.unitId || "";
-      const res = await fetch("/api/portal/payment", {
+      if (!portalAccessId || !paymentAmount) throw new Error("Missing data");
+      const res = await portalFetch("/api/portal/submit-payment", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({ amount: amt, description: paymentDescription || "HOA dues payment", unitId: myUnit }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessId: portalAccessId,
+          amount: parseFloat(paymentAmount),
+          description: paymentDescription,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: (data: any) => {
-      const amt = parseFloat(paymentAmount);
-      const confirmation = data?.receipt?.confirmationNumber ?? null;
-      setPaymentReceipt({
-        amount: amt,
-        description: paymentDescription || "HOA dues payment",
-        date: new Date().toLocaleString(),
-        ...(confirmation ? { confirmationNumber: confirmation } : {}),
-      });
-      setPaymentFormOpen(false);
+    onSuccess: (result) => {
       setPaymentAmount("");
-      void refetchPortalLedger();
-      void refetchFinancialDashboard();
+      setPaymentDescription("HOA dues payment");
+      setPaymentFormOpen(false);
+      refetchFinancialDashboard();
+      refetchPortalLedger();
     },
   });
 
-  // Saved payment methods
-  const [addMethodOpen, setAddMethodOpen] = useState(false);
-  const [methodForm, setMethodForm] = useState({ methodType: "ach", displayName: "", last4: "", bankName: "", isDefault: false });
   const { data: savedMethods = [], refetch: refetchMethods } = useQuery<any[]>({
-    queryKey: ["/api/portal/payment-methods", portalAccessId || "none"],
+    queryKey: ["portal/payment-methods"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
       if (!portalAccessId) return [];
-      const res = await fetch("/api/portal/payment-methods", { headers: portalHeaders(portalAccessId) });
+      const res = await portalFetch(`/api/portal/payment-methods`);
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: Boolean(portalAccessId),
   });
+
   const addMethod = useMutation({
     mutationFn: async () => {
-      if (!methodForm.displayName) throw new Error("Display name required");
-      const res = await fetch("/api/portal/payment-methods", {
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch("/api/portal/add-payment-method", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          methodType: methodForm.methodType,
-          displayName: methodForm.displayName,
-          last4: methodForm.last4 || null,
-          bankName: methodForm.bankName || null,
-          isDefault: methodForm.isDefault ? 1 : 0,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...methodForm }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: () => { setAddMethodOpen(false); setMethodForm({ methodType: "ach", displayName: "", last4: "", bankName: "", isDefault: false }); void refetchMethods(); },
-    onError: (e: Error) => alert(e.message),
-  });
-  const setDefaultMethod = useMutation({
-    mutationFn: async (methodId: string) => {
-      const res = await fetch(`/api/portal/payment-methods/${methodId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({ isDefault: 1 }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
+    onSuccess: () => {
+      setMethodForm({ methodType: "ach", displayName: "", last4: "", bankName: "", isDefault: false });
+      setAddMethodOpen(false);
+      refetchMethods();
     },
-    onSuccess: () => void refetchMethods(),
-  });
-  const removeMethod = useMutation({
-    mutationFn: async (methodId: string) => {
-      const res = await fetch(`/api/portal/payment-methods/${methodId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({ isActive: 0 }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: () => void refetchMethods(),
   });
 
-  // Autopay
-  const [autopayFormOpen, setAutopayFormOpen] = useState(false);
-  const [autopayForm, setAutopayForm] = useState({ amount: "", frequency: "monthly", dayOfMonth: "1", description: "Autopay HOA dues" });
+  const setDefaultMethod = useMutation({
+    mutationFn: async (methodId: string) => {
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch("/api/portal/set-default-method", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ methodId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => refetchMethods(),
+  });
+
+  const removeMethod = useMutation({
+    mutationFn: async (methodId: string) => {
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch("/api/portal/remove-payment-method", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ methodId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => refetchMethods(),
+  });
+
   const { data: autopayEnrollments = [], refetch: refetchAutopay } = useQuery<any[]>({
-    queryKey: ["/api/portal/autopay", portalAccessId || "none"],
+    queryKey: ["portal/autopay"],
+    enabled: !!portalAccessId,
     queryFn: async () => {
       if (!portalAccessId) return [];
-      const res = await fetch("/api/portal/autopay", { headers: portalHeaders(portalAccessId) });
+      const res = await portalFetch(`/api/portal/autopay`);
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: Boolean(portalAccessId),
   });
+
   const enrollAutopay = useMutation({
     mutationFn: async () => {
-      const myUnit = focusedOwnedUnit?.unitId || (me as any)?.unitId || "";
-      const res = await fetch("/api/portal/autopay/enroll", {
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch("/api/portal/enroll-autopay", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          amount: parseFloat(autopayForm.amount),
-          frequency: autopayForm.frequency,
-          dayOfMonth: parseInt(autopayForm.dayOfMonth, 10),
-          description: autopayForm.description,
-          unitId: myUnit,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...autopayForm }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: () => { setAutopayFormOpen(false); void refetchAutopay(); },
-    onError: (e: Error) => alert(e.message),
+    onSuccess: () => {
+      setAutopayForm({ amount: "", frequency: "monthly", dayOfMonth: "1", description: "Autopay HOA dues" });
+      setAutopayFormOpen(false);
+      refetchAutopay();
+    },
   });
+
   const cancelAutopay = useMutation({
     mutationFn: async (enrollmentId: string) => {
-      const res = await fetch(`/api/portal/autopay/${enrollmentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({ status: "cancelled" }),
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch("/api/portal/cancel-autopay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enrollmentId }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: () => void refetchAutopay(),
+    onSuccess: () => refetchAutopay(),
   });
 
-  const { data: boardOverview } = useQuery<AssociationOverview>({
-    queryKey: ["/api/portal/board/overview", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/overview", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
+  const [boardOverview, setBoardOverview] = useState<AssociationOverview | null>(null);
+  const [boardAssociation, setBoardAssociation] = useState<Association | null>(null);
+  const [boardPeople, setBoardPeople] = useState<Person[]>([]);
+  const [boardUnits, setBoardUnits] = useState<Unit[]>([]);
+  const [boardRoles, setBoardRoles] = useState<BoardRole[]>([]);
+  const [boardDashboard, setBoardDashboard] = useState<BoardDashboard | null>(null);
+  const [boardMeetings, setBoardMeetings] = useState<GovernanceMeeting[]>([]);
+  const [boardGovernanceTasks, setBoardGovernanceTasks] = useState<AnnualGovernanceTask[]>([]);
+  const [boardDocuments, setBoardDocuments] = useState<Document[]>([]);
+  const [boardNoticeSends, setBoardNoticeSends] = useState<NoticeSend[]>([]);
+  const [boardCommunicationHistory, setBoardCommunicationHistory] = useState<CommunicationHistory[]>([]);
+  const [boardVendorInvoices, setBoardVendorInvoices] = useState<VendorInvoice[]>([]);
+  const [boardOwnerLedgerEntries, setBoardOwnerLedgerEntries] = useState<OwnerLedgerEntry[]>([]);
 
-  const { data: boardAssociation, refetch: refetchBoardAssociation } = useQuery<Association>({
-    queryKey: ["/api/portal/board/association", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/association", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardPeople, refetch: refetchBoardPeople } = useQuery<Person[]>({
-    queryKey: ["/api/portal/board/persons", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/persons", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardUnits, refetch: refetchBoardUnits } = useQuery<Unit[]>({
-    queryKey: ["/api/portal/board/units", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/units", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardRoles } = useQuery<BoardRole[]>({
-    queryKey: ["/api/portal/board/roles", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/roles", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardDashboard, refetch: refetchBoardDashboard } = useQuery<BoardDashboard>({
-    queryKey: ["/api/portal/board/dashboard", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/dashboard", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardMeetings, refetch: refetchBoardMeetings } = useQuery<GovernanceMeeting[]>({
-    queryKey: ["/api/portal/board/meetings", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/meetings", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardGovernanceTasks, refetch: refetchBoardGovernanceTasks } = useQuery<AnnualGovernanceTask[]>({
-    queryKey: ["/api/portal/board/governance-tasks", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/governance-tasks", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardDocuments, refetch: refetchBoardDocuments } = useQuery<Document[]>({
-    queryKey: ["/api/portal/board/documents", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/documents", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardNoticeSends, refetch: refetchBoardNoticeSends } = useQuery<NoticeSend[]>({
-    queryKey: ["/api/portal/board/communications/sends", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/communications/sends", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardCommunicationHistory, refetch: refetchBoardCommunicationHistory } = useQuery<CommunicationHistory[]>({
-    queryKey: ["/api/portal/board/communications/history", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/communications/history", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardVendorInvoices, refetch: refetchBoardVendorInvoices } = useQuery<VendorInvoice[]>({
-    queryKey: ["/api/portal/board/vendor-invoices", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/vendor-invoices", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardOwnerLedgerEntries, refetch: refetchBoardOwnerLedgerEntries } = useQuery<OwnerLedgerEntry[]>({
-    queryKey: ["/api/portal/board/owner-ledger/entries", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/owner-ledger/entries", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const { data: boardOwnerLedgerSummary, refetch: refetchBoardOwnerLedgerSummary } = useQuery<Array<{ personId: string; unitId: string; balance: number }>>({
-    queryKey: ["/api/portal/board/owner-ledger/summary", portalAccessId || "none"],
-    enabled: Boolean(portalAccessId && me?.hasBoardAccess),
-    queryFn: async () => {
-      const res = await fetch("/api/portal/board/owner-ledger/summary", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
+  const [methodForm, setMethodForm] = useState({ methodType: "ach", displayName: "", last4: "", bankName: "", isDefault: false });
+  const [addMethodOpen, setAddMethodOpen] = useState(false);
+  const [autopayFormOpen, setAutopayFormOpen] = useState(false);
+  const [autopayForm, setAutopayForm] = useState({ amount: "", frequency: "monthly", dayOfMonth: "1", description: "Autopay HOA dues" });
 
   const saveOwnerInfo = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/portal/me", {
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch("/api/portal/me", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: requestedPhone,
-          mailingAddress: requestedMailingAddress,
-          emergencyContactName: requestedEmergencyContactName,
-          emergencyContactPhone: requestedEmergencyContactPhone,
-          contactPreference: requestedContactPreference,
+          phone: getPhoneDigits(requestedPhone) || undefined,
+          mailingAddress: requestedMailingAddress || undefined,
+          emergencyContactName: requestedEmergencyContactName || undefined,
+          emergencyContactPhone: getPhoneDigits(requestedEmergencyContactPhone) || undefined,
+          contactPreference: requestedContactPreference || undefined,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: async () => {
-      setContactUpdateSuccess(true);
-      setTimeout(() => setContactUpdateSuccess(false), 5000);
+    onSuccess: () => {
       setOwnerInfoEditing(false);
-      await refetchMe();
+      const updated: Array<{ label: string; value: string }> = [];
+      if (requestedPhone) updated.push({ label: "Phone Number", value: requestedPhone });
+      if (requestedMailingAddress) updated.push({ label: "Mailing Address", value: requestedMailingAddress });
+      if (requestedEmergencyContactName) updated.push({ label: "Emergency Contact", value: requestedEmergencyContactName });
+      if (requestedEmergencyContactPhone) updated.push({ label: "Emergency Phone", value: requestedEmergencyContactPhone });
+      if (requestedContactPreference) updated.push({ label: "Preferred Contact", value: requestedContactPreference.charAt(0).toUpperCase() + requestedContactPreference.slice(1) });
+      setContactUpdateSuccess(updated.length > 0 ? updated : [{ label: "Profile", value: "No changes detected" }]);
+      refetchMe();
+      setTimeout(() => setContactUpdateSuccess(null), 6000);
     },
   });
 
+  const subscribeToPush = async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    try {
+      const vapidRes = await portalFetch("/api/portal/push/vapid-public-key");
+      const { configured, publicKey } = await vapidRes.json();
+      if (!configured || !publicKey) return;
+
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") return;
+
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: publicKey,
+      });
+      const subJson = subscription.toJSON();
+      await portalFetch("/api/portal/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys }),
+      });
+      setPushSubscribed(true);
+      setPushPromptDismissed(true);
+      window.localStorage.setItem("pushPromptDismissed", "1");
+    } catch {
+      // Non-fatal
+    }
+  };
+
+  const dismissPushPrompt = () => {
+    setPushPromptDismissed(true);
+    window.localStorage.setItem("pushPromptDismissed", "1");
+  };
+
+  const toggleSmsOptIn = async (value: boolean) => {
+    if (!portalAccessId) return;
+    setSmsOptInPending(true);
+    try {
+      await portalFetch("/api/portal/me/sms-opt-in", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ smsOptIn: value }),
+      });
+      refetchMe();
+    } finally {
+      setSmsOptInPending(false);
+    }
+  };
+
   const saveOccupancy = useMutation({
     mutationFn: async () => {
-      if (!focusedOwnedUnit) throw new Error("Select a unit first");
-      if (occupancyForm.occupancyType === "TENANT") {
-        if (!occupancyForm.tenantFirstName.trim() || !occupancyForm.tenantLastName.trim()) {
-          throw new Error("Tenant first and last name are required");
-        }
-        if (!occupancyForm.tenantEmail.trim()) {
-          throw new Error("Tenant email is required");
-        }
-        if (!isValidEmail(occupancyForm.tenantEmail)) {
-          throw new Error("Tenant email must be a valid email address");
-        }
+      if (!editingUnitId) throw new Error("No unit selected");
+      const form = occupancyFormByUnit[editingUnitId];
+      if (!form) throw new Error("Form data not found");
+      const body: any = {
+        unitId: editingUnitId,
+        occupancyType: form.occupancyType,
+      };
+      if (form.occupancyType === "TENANT") {
+        body.tenant = {
+          firstName: form.tenantFirstName,
+          lastName: form.tenantLastName,
+          email: form.tenantEmail || undefined,
+          phone: getPhoneDigits(form.tenantPhone) || undefined,
+        };
       }
-      const res = await fetch("/api/portal/occupancy", {
+      const res = await portalFetch("/api/portal/occupancy", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          unitId: focusedOwnedUnit.unitId,
-          occupancyType: occupancyForm.occupancyType,
-          notes: occupancyForm.notes,
-          ...(occupancyForm.occupancyType === "TENANT"
-            ? {
-                tenant: {
-                  firstName: occupancyForm.tenantFirstName,
-                  lastName: occupancyForm.tenantLastName,
-                  email: occupancyForm.tenantEmail,
-                  phone: occupancyForm.tenantPhone,
-                },
-              }
-            : {}),
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: async () => {
-      setOccupancyUpdateSuccess(true);
-      setTimeout(() => setOccupancyUpdateSuccess(false), 5000);
-      setOccupancyEditing(false);
-      await Promise.all([refetchMyUnits(), refetchMe()]);
+    onSuccess: () => {
+      const savedUnitId = editingUnitId;
+      setEditingUnitId(null);
+      setOccupancyUpdateSuccess(savedUnitId);
+      setTimeout(() => setOccupancyUpdateSuccess(null), 3000);
+      refetchMyUnits();
     },
   });
 
   const submitMaintenanceRequest = useMutation({
     mutationFn: async () => {
-      let attachmentUrlsJson: string[] = [];
-      if (maintenanceFiles.length > 0) {
-        const formData = new FormData();
-        for (const file of maintenanceFiles) {
-          formData.append("files", file);
-        }
-        const uploadRes = await fetch("/api/portal/maintenance-attachments", {
-          method: "POST",
-          headers: portalHeaders(portalAccessId),
-          body: formData,
-        });
-        if (!uploadRes.ok) throw new Error(await uploadRes.text());
-        const uploadJson = await uploadRes.json() as { urls: string[] };
-        attachmentUrlsJson = uploadJson.urls;
-      }
-
-      const res = await fetch("/api/portal/maintenance-requests", {
+      if (!portalAccessId || !maintenanceTitle.trim() || !maintenanceDescription.trim()) throw new Error("Missing required fields");
+      const formData = new FormData();
+      formData.append("accessId", portalAccessId);
+      formData.append("title", maintenanceTitle);
+      formData.append("description", maintenanceDescription);
+      formData.append("location", maintenanceLocation);
+      formData.append("category", maintenanceCategory);
+      formData.append("priority", maintenancePriority);
+      maintenanceFiles.forEach((file) => formData.append("attachments", file));
+      const res = await portalFetch("/api/portal/submit-maintenance-request", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          title: maintenanceTitle,
-          description: maintenanceDescription,
-          locationText: maintenanceLocation || null,
-          category: maintenanceCategory,
-          priority: maintenancePriority,
-          attachmentUrlsJson,
-        }),
+        body: formData,
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       setMaintenanceTitle("");
       setMaintenanceDescription("");
       setMaintenanceLocation("");
@@ -876,4016 +915,2236 @@ export default function OwnerPortalPage() {
       setMaintenancePriority("medium");
       setMaintenanceFiles([]);
       setMaintenanceSuccess(true);
-      setTimeout(() => setMaintenanceSuccess(false), 5000);
-      await refetchMaintenanceRequests();
+      setTimeout(() => setMaintenanceSuccess(false), 3000);
+      refetchMaintenanceRequests();
     },
   });
 
-  const displayName = useMemo(() => {
-    if (!me) return "Portal User";
-    return `${me.email} (${me.effectiveRole})`;
-  }, [me]);
-  const portalRoleLabel = me?.effectiveRole ? formatStatusLabel(me.effectiveRole) : "Portal user";
-  const hasBoardAccess = Boolean(me?.hasBoardAccess);
+  const activeAutopayEnrollment = (autopayEnrollments ?? []).find((e) => e.active);
+  const totalPortfolioBalance = portalLedger?.balance ?? 0;
+  const focusedOwnedUnit = myUnits.find((u) => u.unitId === ownedUnitFocusId) ?? myUnits[0];
+  const openMaintenanceRequests = (maintenanceRequests ?? []).filter((r) => !["resolved", "closed", "rejected"].includes(r.status)).length;
+  const focusedFinancialUnit = myUnits.find((u) => u.unitId === ownedUnitFocusId);
+  const currentUnitPayableBalance = focusedFinancialUnit?.balance ?? 0;
 
-  const maintenanceUpdates = useMemo(
-    () => (notices ?? []).filter((notice) => (notice.relatedType || "").startsWith("maintenance") || (notice.relatedType || "").startsWith("work-order")),
-    [notices],
-  );
-
-  useEffect(() => {
-    if (!boardAssociation) return;
-    setAssociationDraft({
-      name: boardAssociation.name || "",
-      associationType: boardAssociation.associationType || "",
-      dateFormed: boardAssociation.dateFormed || "",
-      ein: boardAssociation.ein || "",
-      address: boardAssociation.address || "",
-      city: boardAssociation.city || "",
-      state: boardAssociation.state || "",
-      country: boardAssociation.country || "",
-    });
-  }, [boardAssociation]);
+  const handleLogout = () => {
+    setPortalAccessId(null);
+    window.localStorage.removeItem("portalAccessId");
+  };
 
   useEffect(() => {
-    if (!selectedPersonId && boardPeople?.length) {
-      setSelectedPersonId(boardPeople[0].id);
-    }
-  }, [boardPeople, selectedPersonId]);
+    if (!portalAccessId) return;
+    window.localStorage.setItem(`portal-read-notices-${portalAccessId}`, JSON.stringify(readNoticeIds));
+  }, [readNoticeIds, portalAccessId]);
 
   useEffect(() => {
-    const person = (boardPeople ?? []).find((row) => row.id === selectedPersonId);
-    if (!person) return;
-    setPersonDraft({
-      firstName: person.firstName || "",
-      lastName: person.lastName || "",
-      email: person.email || "",
-      phone: person.phone || "",
-      mailingAddress: person.mailingAddress || "",
-      emergencyContactName: person.emergencyContactName || "",
-      emergencyContactPhone: person.emergencyContactPhone || "",
-      contactPreference: person.contactPreference || "",
-    });
-  }, [boardPeople, selectedPersonId]);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activeTab]);
 
-  useEffect(() => {
-    if (!selectedUnitId && boardUnits?.length) {
-      setSelectedUnitId(boardUnits[0].id);
-    }
-  }, [boardUnits, selectedUnitId]);
+  const markNoticeAsRead = (id: string) => {
+    setReadNoticeIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
 
-  useEffect(() => {
-    const unit = (boardUnits ?? []).find((row) => row.id === selectedUnitId);
-    if (!unit) return;
-    setUnitDraft({
-      unitNumber: unit.unitNumber || "",
-      building: unit.building || "",
-      squareFootage: unit.squareFootage ? String(unit.squareFootage) : "",
-    });
-  }, [boardUnits, selectedUnitId]);
-
-  useEffect(() => {
-    if (!selectedMeetingId && boardMeetings?.length) {
-      setSelectedMeetingId(boardMeetings[0].id);
-    }
-  }, [boardMeetings, selectedMeetingId]);
-
-  useEffect(() => {
-    const meeting = (boardMeetings ?? []).find((row) => row.id === selectedMeetingId);
-    if (!meeting) return;
-    setMeetingDraft({
-      title: meeting.title || "",
-      meetingType: meeting.meetingType || "board",
-      scheduledAt: meeting.scheduledAt ? new Date(meeting.scheduledAt).toISOString().slice(0, 16) : "",
-      location: meeting.location || "",
-      status: meeting.status,
-      agenda: meeting.agenda || "",
-      notes: meeting.notes || "",
-      summaryText: meeting.summaryText || "",
-      summaryStatus: meeting.summaryStatus,
-    });
-  }, [boardMeetings, selectedMeetingId]);
-
-  useEffect(() => {
-    if (!selectedGovernanceTaskId && boardGovernanceTasks?.length) {
-      setSelectedGovernanceTaskId(boardGovernanceTasks[0].id);
-    }
-  }, [boardGovernanceTasks, selectedGovernanceTaskId]);
-
-  useEffect(() => {
-    const task = (boardGovernanceTasks ?? []).find((row) => row.id === selectedGovernanceTaskId);
-    if (!task) return;
-    setGovernanceTaskDraft({
-      title: task.title || "",
-      description: task.description || "",
-      status: task.status,
-      ownerPersonId: task.ownerPersonId || "",
-      dueDate: task.dueDate ? new Date(task.dueDate).toISOString().slice(0, 16) : "",
-      notes: task.notes || "",
-    });
-  }, [boardGovernanceTasks, selectedGovernanceTaskId]);
-
-  useEffect(() => {
-    if (!selectedBoardDocumentId && boardDocuments?.length) {
-      setSelectedBoardDocumentId(boardDocuments[0].id);
-    }
-  }, [boardDocuments, selectedBoardDocumentId]);
-
-  useEffect(() => {
-    const document = (boardDocuments ?? []).find((row) => row.id === selectedBoardDocumentId);
-    if (!document) return;
-    setBoardDocumentDraft({
-      title: document.title || "",
-      documentType: document.documentType || "",
-      portalAudience: document.portalAudience || "owner",
-      isPortalVisible: document.isPortalVisible === 1,
-    });
-  }, [boardDocuments, selectedBoardDocumentId]);
-
-  useEffect(() => {
-    if (!selectedMaintenanceActionId && maintenanceRequests?.length) {
-      setSelectedMaintenanceActionId(maintenanceRequests[0].id);
-    }
-  }, [maintenanceRequests, selectedMaintenanceActionId]);
-
-  useEffect(() => {
-    const request = (maintenanceRequests ?? []).find((row) => row.id === selectedMaintenanceActionId);
-    if (!request) return;
-    setMaintenanceActionDraft({
-      status: request.status,
-      priority: request.priority,
-      assignedTo: request.assignedTo || "",
-      resolutionNotes: request.resolutionNotes || "",
-    });
-  }, [maintenanceRequests, selectedMaintenanceActionId]);
-
-  useEffect(() => {
-    if (!selectedVendorInvoiceId && boardVendorInvoices?.length) {
-      setSelectedVendorInvoiceId(boardVendorInvoices[0].id);
-    }
-  }, [boardVendorInvoices, selectedVendorInvoiceId]);
-
-  // Pre-populate contact update form with current values on file when me loads
-  useEffect(() => {
-    if (!me) return;
-    setRequestedPhone((me as any).phone ?? "");
-    setRequestedMailingAddress((me as any).mailingAddress ?? "");
-    setRequestedEmergencyContactName((me as any).emergencyContactName ?? "");
-    setRequestedEmergencyContactPhone((me as any).emergencyContactPhone ?? "");
-    setRequestedContactPreference((me as any).contactPreference ?? "");
-  }, [me?.personId]);
-
-  useEffect(() => {
-    if (myUnits.length === 0) {
-      if (ownedUnitFocusId) setOwnedUnitFocusId("");
-      return;
-    }
-    const preferredUnitId = myUnits.find((unit) => unit.unitId === me?.unitId)?.unitId ?? myUnits[0].unitId;
-    const focusedStillExists = myUnits.some((unit) => unit.unitId === ownedUnitFocusId);
-    if (!focusedStillExists || !ownedUnitFocusId) {
-      setOwnedUnitFocusId(preferredUnitId);
-    }
-  }, [myUnits, me?.unitId, ownedUnitFocusId]);
-
-  useEffect(() => {
-    const focusedUnit = myUnits.find((unit) => unit.unitId === ownedUnitFocusId) ?? myUnits[0] ?? null;
-    if (!focusedUnit) return;
-    const tenant = focusedUnit.occupants.find((occupant) => occupant.occupancyType === "TENANT");
-    const hasTenant = Boolean(tenant);
-    setOccupancyForm({
-      occupancyType: hasTenant ? "TENANT" : "OWNER_OCCUPIED",
-      tenantFirstName: tenant?.firstName ?? "",
-      tenantLastName: tenant?.lastName ?? "",
-      tenantEmail: tenant?.email ?? "",
-      tenantPhone: tenant?.phone ?? "",
-      notes: "",
-    });
-  }, [myUnits, ownedUnitFocusId]);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(`portal-read-notices-${portalAccessId}`);
-    if (!saved) {
-      setReadNoticeIds([]);
-      return;
-    }
+  const downloadDocument = async (doc: { fileUrl?: string | null; title?: string | null }) => {
+    if (!doc.fileUrl) return;
     try {
-      const parsed = JSON.parse(saved);
-      setReadNoticeIds(Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : []);
+      const res = await portalFetch(doc.fileUrl);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.title || "document";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch {
-      setReadNoticeIds([]);
+      // silently fail — file may not exist yet
     }
-  }, [portalAccessId]);
+  };
 
-  useEffect(() => {
-    if (!me?.hasBoardAccess && workspaceMode === "board") {
-      setWorkspaceMode("owner");
-    }
-  }, [me?.hasBoardAccess, workspaceMode]);
-
-  useEffect(() => {
-    if (!portalAccessId || !me) return;
-    if (workspaceDefaultAppliedForAccessId === portalAccessId) return;
-    setWorkspaceMode(me.hasBoardAccess ? "board" : "owner");
-    setWorkspaceDefaultAppliedForAccessId(portalAccessId);
-  }, [me, portalAccessId, workspaceDefaultAppliedForAccessId]);
-
-  useEffect(() => {
-    if (activeTab !== "overview") return;
-    overviewContentRef.current?.scrollTo({ top: 0, behavior: "auto" });
-  }, [activeTab, overviewSubtab]);
-
-  useEffect(() => {
-    const invoice = (boardVendorInvoices ?? []).find((row) => row.id === selectedVendorInvoiceId);
-    if (!invoice) return;
-    setVendorInvoiceDraft({
-      vendorName: invoice.vendorName || "",
-      invoiceNumber: invoice.invoiceNumber || "",
-      invoiceDate: invoice.invoiceDate ? new Date(invoice.invoiceDate).toISOString().slice(0, 16) : "",
-      dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().slice(0, 16) : "",
-      amount: String(invoice.amount ?? ""),
-      status: invoice.status,
-      notes: invoice.notes || "",
-    });
-  }, [boardVendorInvoices, selectedVendorInvoiceId]);
-
-  const saveAssociation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/portal/board/association", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify(associationDraft),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      await refetchBoardAssociation();
-    },
-  });
-
-  const savePerson = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/portal/board/persons/${selectedPersonId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify(personDraft),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      await refetchBoardPeople();
-    },
-  });
-
-  const saveUnit = useMutation({
-    mutationFn: async () => {
-      const payload = {
-        unitNumber: unitDraft.unitNumber,
-        building: unitDraft.building || null,
-        squareFootage: unitDraft.squareFootage.trim() ? Number(unitDraft.squareFootage) : null,
-      };
-      const res = await fetch(`/api/portal/board/units/${selectedUnitId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      await refetchBoardUnits();
-    },
-  });
-
-  const createMeeting = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/portal/board/meetings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          title: newMeetingDraft.title,
-          meetingType: newMeetingDraft.meetingType,
-          scheduledAt: newMeetingDraft.scheduledAt,
-          location: newMeetingDraft.location || null,
-          status: newMeetingDraft.status,
-          agenda: newMeetingDraft.agenda || null,
-          summaryStatus: "draft",
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<GovernanceMeeting>;
-    },
-    onSuccess: async (result) => {
-      setNewMeetingDraft({ title: "", meetingType: "board", scheduledAt: "", location: "", status: "scheduled", agenda: "" });
-      setSelectedMeetingId(result.id);
-      await Promise.all([refetchBoardMeetings(), refetchBoardGovernanceTasks(), refetchBoardDashboard()]);
-    },
-  });
-
-  const saveMeeting = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/portal/board/meetings/${selectedMeetingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          title: meetingDraft.title,
-          meetingType: meetingDraft.meetingType,
-          scheduledAt: meetingDraft.scheduledAt,
-          location: meetingDraft.location || null,
-          status: meetingDraft.status,
-          agenda: meetingDraft.agenda || null,
-          notes: meetingDraft.notes || null,
-          summaryText: meetingDraft.summaryText || null,
-          summaryStatus: meetingDraft.summaryStatus,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      await Promise.all([refetchBoardMeetings(), refetchBoardGovernanceTasks(), refetchBoardDashboard()]);
-    },
-  });
-
-  const createGovernanceTask = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/portal/board/governance-tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          title: newGovernanceTaskDraft.title,
-          description: newGovernanceTaskDraft.description || null,
-          status: newGovernanceTaskDraft.status,
-          ownerPersonId: newGovernanceTaskDraft.ownerPersonId || null,
-          dueDate: newGovernanceTaskDraft.dueDate || null,
-          notes: newGovernanceTaskDraft.notes || null,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<AnnualGovernanceTask>;
-    },
-    onSuccess: async (result) => {
-      setNewGovernanceTaskDraft({ title: "", description: "", status: "todo", ownerPersonId: "", dueDate: "", notes: "" });
-      setSelectedGovernanceTaskId(result.id);
-      await Promise.all([refetchBoardGovernanceTasks(), refetchBoardMeetings(), refetchBoardDashboard()]);
-    },
-  });
-
-  const saveGovernanceTask = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/portal/board/governance-tasks/${selectedGovernanceTaskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          title: governanceTaskDraft.title,
-          description: governanceTaskDraft.description || null,
-          status: governanceTaskDraft.status,
-          ownerPersonId: governanceTaskDraft.ownerPersonId || null,
-          dueDate: governanceTaskDraft.dueDate || null,
-          notes: governanceTaskDraft.notes || null,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      await Promise.all([refetchBoardGovernanceTasks(), refetchBoardMeetings(), refetchBoardDashboard()]);
-    },
-  });
-
-  const createBoardDocument = useMutation({
-    mutationFn: async () => {
-      if (!newBoardDocumentFile) throw new Error("File is required");
-      const formData = new FormData();
-      formData.append("file", newBoardDocumentFile);
-      formData.append("title", newBoardDocumentDraft.title);
-      formData.append("documentType", newBoardDocumentDraft.documentType);
-      formData.append("portalAudience", newBoardDocumentDraft.portalAudience);
-      formData.append("isPortalVisible", newBoardDocumentDraft.isPortalVisible ? "1" : "0");
-      const res = await fetch("/api/portal/board/documents", {
-        method: "POST",
-        headers: portalHeaders(portalAccessId),
-        body: formData,
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<Document>;
-    },
-    onSuccess: async (result) => {
-      setNewBoardDocumentDraft({ title: "", documentType: "", portalAudience: "owner", isPortalVisible: true });
-      setNewBoardDocumentFile(null);
-      setSelectedBoardDocumentId(result.id);
-      await Promise.all([refetchBoardDocuments(), refetchBoardDashboard()]);
-    },
-  });
-
-  const saveBoardDocument = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/portal/board/documents/${selectedBoardDocumentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          title: boardDocumentDraft.title,
-          documentType: boardDocumentDraft.documentType,
-          portalAudience: boardDocumentDraft.portalAudience,
-          isPortalVisible: boardDocumentDraft.isPortalVisible ? 1 : 0,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      await Promise.all([refetchBoardDocuments(), refetchBoardDashboard()]);
-    },
-  });
-
-  const sendBoardNotice = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/portal/board/communications/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          recipientEmail: boardNoticeDraft.recipientEmail,
-          subject: boardNoticeDraft.subject,
-          body: boardNoticeDraft.body,
-          scheduledFor: boardNoticeDraft.scheduledFor || null,
-          requireApproval: boardNoticeDraft.requireApproval,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      setBoardNoticeDraft({ recipientEmail: "", subject: "", body: "", scheduledFor: "", requireApproval: false });
-      await Promise.all([refetchBoardNoticeSends(), refetchBoardCommunicationHistory(), refetchBoardDashboard()]);
-    },
-  });
-
-  const saveMaintenanceAction = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/portal/board/maintenance-requests/${selectedMaintenanceActionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          status: maintenanceActionDraft.status,
-          priority: maintenanceActionDraft.priority,
-          assignedTo: maintenanceActionDraft.assignedTo || null,
-          resolutionNotes: maintenanceActionDraft.resolutionNotes || null,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      await Promise.all([refetchMaintenanceRequests(), refetchBoardDashboard()]);
-    },
-  });
-
-  const createVendorInvoice = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/portal/board/vendor-invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          vendorName: newVendorInvoiceDraft.vendorName,
-          invoiceNumber: newVendorInvoiceDraft.invoiceNumber || null,
-          invoiceDate: newVendorInvoiceDraft.invoiceDate,
-          dueDate: newVendorInvoiceDraft.dueDate || null,
-          amount: Number(newVendorInvoiceDraft.amount),
-          status: newVendorInvoiceDraft.status,
-          notes: newVendorInvoiceDraft.notes || null,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<VendorInvoice>;
-    },
-    onSuccess: async (result) => {
-      setNewVendorInvoiceDraft({ vendorName: "", invoiceNumber: "", invoiceDate: "", dueDate: "", amount: "", status: "received", notes: "" });
-      setSelectedVendorInvoiceId(result.id);
-      await Promise.all([refetchBoardVendorInvoices(), refetchBoardDashboard()]);
-    },
-  });
-
-  const saveVendorInvoice = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/portal/board/vendor-invoices/${selectedVendorInvoiceId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          vendorName: vendorInvoiceDraft.vendorName,
-          invoiceNumber: vendorInvoiceDraft.invoiceNumber || null,
-          invoiceDate: vendorInvoiceDraft.invoiceDate,
-          dueDate: vendorInvoiceDraft.dueDate || null,
-          amount: Number(vendorInvoiceDraft.amount),
-          status: vendorInvoiceDraft.status,
-          notes: vendorInvoiceDraft.notes || null,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      await Promise.all([refetchBoardVendorInvoices(), refetchBoardDashboard()]);
-    },
-  });
-
-  const createLedgerEntry = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/portal/board/owner-ledger/entries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...portalHeaders(portalAccessId) },
-        body: JSON.stringify({
-          personId: ledgerEntryDraft.personId,
-          unitId: ledgerEntryDraft.unitId,
-          entryType: ledgerEntryDraft.entryType,
-          amount: Number(ledgerEntryDraft.amount),
-          postedAt: ledgerEntryDraft.postedAt,
-          description: ledgerEntryDraft.description || null,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: async () => {
-      setLedgerEntryDraft({ personId: "", unitId: "", entryType: "charge", amount: "", postedAt: "", description: "" });
-      await Promise.all([refetchBoardOwnerLedgerEntries(), refetchBoardOwnerLedgerSummary(), refetchBoardDashboard()]);
-    },
-  });
+  const maintenanceIsUnread = (maintenanceRequests ?? []).length > 0 && !readNoticeIds.includes("__maintenance__");
+  const unreadNoticesCount = (notices ?? []).filter((n) => !readNoticeIds.includes(n.id)).length + (maintenanceIsUnread ? 1 : 0);
 
   if (!portalAccessId) {
+    return <OwnerPortalLoginContainer onLoginSuccess={(id) => {
+      setPortalAccessId(id);
+      window.localStorage.setItem("portalAccessId", id);
+    }} />;
+  }
+
+  if (isMeError) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 px-4 py-6 sm:px-6">
-        <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col justify-center space-y-5">
-          {/* Logo / Brand */}
-          <div className="text-center space-y-1">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-xl font-bold mb-2">
-              YCM
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">Your Condo Management</h1>
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Owner Portal</p>
-            <p className="text-muted-foreground text-sm">
-              {otpStep === "email"
-                ? "Sign in to manage your HOA account, view balances, and submit requests."
-                : otpStep === "pick"
-                ? "You have access to multiple associations. Select one to continue."
-                : "Check your email for a 6-digit login code. It expires in 15 minutes."}
-            </p>
+      <div className="min-h-screen flex items-center justify-center bg-surface-container-low">
+        <div className="text-center max-w-md p-8">
+          <h2 className="text-xl font-semibold text-on-surface mb-2">Unable to load portal</h2>
+          <p className="text-sm text-on-surface-variant mb-4">{meError?.message || "An unexpected error occurred. Please try again."}</p>
+          <div className="flex gap-2 justify-center">
+            <button className="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-semibold" onClick={() => refetchMe()}>Retry</button>
+            <button className="px-4 py-2 border border-outline-variant rounded-lg text-sm font-medium text-on-surface-variant" onClick={handleLogout}>Sign Out</button>
           </div>
-
-          <Card className="rounded-2xl border-white/70 shadow-md">
-            <CardContent className="space-y-4 p-5 sm:p-6">
-              {otpStep === "email" && (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Email address</label>
-                    <Input placeholder="you@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && email && requestLogin.mutate()} />
-                  </div>
-                  {requestLogin.isError && <p className="text-sm text-destructive">{(requestLogin.error as Error).message}</p>}
-                  <Button onClick={() => requestLogin.mutate()} disabled={requestLogin.isPending || !email} className="w-full">
-                    {requestLogin.isPending ? "Sending code…" : "Send Login Code"}
-                  </Button>
-                </>
-              )}
-              {otpStep === "otp" && (
-                <>
-                  <p className="text-sm text-muted-foreground">Code sent to: <strong>{email}</strong></p>
-                  {otpSimulated && (
-                    <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                      <strong>Dev mode:</strong> No email provider configured. Your code is: <strong className="font-mono text-lg">{otpSimulated}</strong>
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">6-digit code</label>
-                    <Input placeholder="000000" value={otp} onChange={(e) => setOtp(e.target.value)} maxLength={6}
-                      className="font-mono text-center text-2xl tracking-widest h-14"
-                      onKeyDown={(e) => e.key === "Enter" && otp.length >= 6 && verifyLogin.mutate(undefined)} />
-                  </div>
-                  {verifyLogin.isError && <p className="text-sm text-destructive">{(verifyLogin.error as Error).message}</p>}
-                  <Button onClick={() => verifyLogin.mutate(undefined)} disabled={verifyLogin.isPending || otp.length < 6} className="w-full">
-                    {verifyLogin.isPending ? "Verifying…" : "Verify & Sign In"}
-                  </Button>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" className="flex-1 text-xs" onClick={() => { setOtp(""); setOtpSimulated(null); requestLogin.mutate(); }} disabled={requestLogin.isPending}>
-                      {requestLogin.isPending ? "Sending…" : "Resend code"}
-                    </Button>
-                    <Button variant="ghost" size="sm" className="flex-1 text-xs" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); }}>
-                      Use a different email
-                    </Button>
-                  </div>
-                </>
-              )}
-              {otpStep === "pick" && (
-                <>
-                  <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                    Signed in as <strong>{email}</strong>
-                  </div>
-
-                  <div className="space-y-4">
-                    {(() => {
-                      const byAssoc = new Map<string, AssociationChoice[]>();
-                      for (const c of associationChoices) {
-                        if (!byAssoc.has(c.associationId)) byAssoc.set(c.associationId, []);
-                        byAssoc.get(c.associationId)!.push(c);
-                      }
-
-                      return Array.from(byAssoc.entries()).map(([assocId, choices]) => {
-                        const assocName = choices[0].associationName;
-                        const assocCity = choices[0].associationCity;
-                        const unitSummaries = Array.from(new Set(
-                          choices
-                            .map((choice) => choice.unitNumber
-                              ? [choice.building ? `Bldg ${choice.building}` : null, `Unit ${choice.unitNumber}`]
-                                .filter(Boolean)
-                                .join(" · ")
-                              : null)
-                            .filter((value): value is string => Boolean(value)),
-                        ));
-
-                        return (
-                          <div key={assocId} className="space-y-2">
-                            <button
-                              onClick={() => verifyLogin.mutate({ associationId: assocId })}
-                              disabled={verifyLogin.isPending}
-                              className="group w-full space-y-2 rounded-2xl border border-border bg-background p-4 text-left transition-all hover:border-primary hover:bg-primary/5 hover:shadow-sm disabled:opacity-50"
-                            >
-                              <div className="flex items-center justify-between gap-1">
-                                <div className="font-semibold text-sm">{assocName}</div>
-                                <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity text-xs">→</span>
-                              </div>
-                              {assocCity && <div className="text-xs text-muted-foreground">{assocCity}</div>}
-                              {unitSummaries.length > 0 && (
-                                <div className="text-xs text-muted-foreground">
-                                  {unitSummaries.length === 1 ? unitSummaries[0] : `${unitSummaries.length} units linked`}
-                                </div>
-                              )}
-                              <div className="text-xs text-muted-foreground capitalize">{choices[0].role}</div>
-                            </button>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-
-                  <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => { setOtpStep("email"); setOtp(""); setOtpSimulated(null); setAssociationChoices([]); }}>
-                    Use a different email
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <p className="text-center text-xs text-muted-foreground">
-            Need help? Contact your association management office.
-          </p>
         </div>
       </div>
     );
   }
-
-  // Block non-board accounts with no unit — portal has nothing useful to show them
-  if (me && !me.hasBoardAccess && !me.unitId) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md space-y-4 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-sm font-bold mb-2">YCM</div>
-          <h1 className="text-xl font-semibold">No Unit Linked to Your Account</h1>
-          <p className="text-muted-foreground text-sm">
-            Your account is not associated with any unit. Please contact your association management office to have your unit linked before accessing the portal.
-          </p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              window.localStorage.removeItem("portalAccessId");
-              setPortalAccessId("");
-            }}
-          >
-            Sign Out
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const currentAssociation = myAssociations?.find((a) => a.portalAccessId === portalAccessId);
-  const associationName = currentAssociation?.associationName ?? "Owner Portal";
-  const associationCity = currentAssociation?.associationCity;
-  const ownerDisplayName = [(me as any)?.firstName, (me as any)?.lastName].filter(Boolean).join(" ") || "Owner";
-
-  // Units owned by this person in the current association (for the unit switcher)
-  const siblingUnits = (myAssociations ?? []).filter(
-    (a) => a.associationId === currentAssociation?.associationId && a.unitId
-  );
-  const hasMultipleUnits = siblingUnits.length > 1;
-  const singleOwnedUnitLabel = siblingUnits.length === 1
-    ? formatUnitContextLabel(siblingUnits[0].building, siblingUnits[0].unitNumber)
-    : me?.unitNumber
-      ? [me.building ? `Bldg ${me.building}` : null, `Unit ${me.unitNumber}`].filter(Boolean).join(" · ")
-      : null;
-  const unitLabel = hasMultipleUnits
-    ? `${siblingUnits.length} units`
-    : singleOwnedUnitLabel;
-  const unitContextById = new Map<string, string>();
-  for (const unit of myUnits) {
-    unitContextById.set(unit.unitId, formatUnitContextLabel(unit.building, unit.unitNumber));
-  }
-  for (const unit of siblingUnits) {
-    if (unit.unitId) {
-      unitContextById.set(unit.unitId, formatUnitContextLabel(unit.building, unit.unitNumber));
-    }
-  }
-  const maintenanceCountsByUnitId = new Map<string, number>();
-  for (const request of maintenanceRequests ?? []) {
-    if (!request.unitId || ["resolved", "closed", "rejected"].includes(request.status)) continue;
-    maintenanceCountsByUnitId.set(request.unitId, (maintenanceCountsByUnitId.get(request.unitId) ?? 0) + 1);
-  }
-  const totalPortfolioBalance = unitsBalance.reduce((sum, unit) => sum + unit.balance, 0);
-  const unitsWithBalanceDue = unitsBalance.filter((unit) => unit.balance > 0);
-  const openMaintenanceRequests = (maintenanceRequests ?? []).filter(
-    (request) => !["resolved", "closed", "rejected"].includes(request.status),
-  );
-  const urgentMaintenanceRequests = openMaintenanceRequests.filter((request) => request.priority === "urgent" || request.priority === "high");
-  const recentOwnerNotices = (notices ?? [])
-    .filter((notice) => !(notice.relatedType || "").startsWith("maintenance") && !(notice.relatedType || "").startsWith("work-order"))
-    .sort((a, b) => toTimestamp(b.createdAt) - toTimestamp(a.createdAt));
-  const recentDocuments = [...(documents ?? [])].sort((a, b) => toTimestamp(b.createdAt) - toTimestamp(a.createdAt));
-  const ownerMessageCenterItems = [
-    ...recentOwnerNotices.map((notice) => ({
-      id: `notice-${notice.id}`,
-      title: notice.subject || "Association notice",
-      snippet: stripHtml(notice.bodyRendered || notice.bodySnippet) || "Review the latest association message.",
-      detail: notice.bodyRendered || notice.bodySnippet || "No message body available.",
-      createdAt: notice.createdAt,
-      kind: "notice" as const,
-      scopeLabel: hasMultipleUnits ? "Association-wide" : unitLabel || "Association-wide",
-      stateLabel: ((notice.subject || "").toLowerCase().includes("due") || (notice.subject || "").toLowerCase().includes("balance") || (notice.subject || "").toLowerCase().includes("payment"))
-        ? "Action needed"
-        : "For your records",
-    })),
-    ...maintenanceUpdates.map((notice) => ({
-      id: `maintenance-update-${notice.id}`,
-      title: notice.subject || "Maintenance update",
-      snippet: stripHtml(notice.bodyRendered || notice.bodySnippet) || "There is an update on your maintenance request.",
-      detail: notice.bodyRendered || notice.bodySnippet || "No message body available.",
-      createdAt: notice.createdAt,
-      kind: "maintenance" as const,
-      scopeLabel: "Unit-specific",
-      stateLabel: "Waiting on management",
-    })),
-  ].sort((a, b) => toTimestamp(b.createdAt) - toTimestamp(a.createdAt));
-  const ownerActionItems = [
-    ...(totalPortfolioBalance > 0
-      ? [{
-          id: "balance-due",
-          tone: "high" as const,
-          label: hasMultipleUnits
-            ? `Review $${totalPortfolioBalance.toFixed(2)} due across ${unitsWithBalanceDue.length || myUnits.length} unit${(unitsWithBalanceDue.length || myUnits.length) === 1 ? "" : "s"}`
-            : `Review $${totalPortfolioBalance.toFixed(2)} due`,
-          detail: financialDashboard?.nextDueDate
-            ? `Next charge due ${new Date(financialDashboard.nextDueDate).toLocaleDateString()}.`
-            : "Open your financials to confirm charges, payments, and autopay.",
-          tab: "financials" as const,
-          cta: "Open financials",
-        }]
-      : []),
-    ...(openMaintenanceRequests.length > 0
-      ? [{
-          id: "maintenance",
-          tone: urgentMaintenanceRequests.length > 0 ? "high" as const : "medium" as const,
-          label: `${openMaintenanceRequests.length} maintenance request${openMaintenanceRequests.length === 1 ? "" : "s"} ${openMaintenanceRequests.length === 1 ? "is" : "are"} still active`,
-          detail: urgentMaintenanceRequests.length > 0
-            ? `${urgentMaintenanceRequests.length} item${urgentMaintenanceRequests.length === 1 ? "" : "s"} marked high priority or urgent.`
-            : "Check current status, response timing, and any follow-up needed from you.",
-          tab: "maintenance" as const,
-          cta: "Review maintenance",
-        }]
-      : []),
-    {
-      id: "contact-check",
-      tone: "low" as const,
-      label: "Confirm your contact information",
-      detail: "Keep your phone, mailing address, and emergency contact details current.",
-      tab: "overview" as const,
-      overviewSubtab: "owner-info" as const,
-      cta: "Edit contact info",
-    },
-    ...(recentOwnerNotices.length > 0
-      ? [{
-          id: "notices",
-          tone: "medium" as const,
-          label: `${recentOwnerNotices.length} recent notice${recentOwnerNotices.length === 1 ? "" : "s"} to review`,
-          detail: recentOwnerNotices[0]?.subject
-            ? `Latest: ${recentOwnerNotices[0].subject}`
-            : "Open notices to review recent association messages.",
-          tab: "notices" as const,
-          cta: "View notices",
-        }]
-      : []),
-    ...(hasMultipleUnits
-      ? [{
-          id: "portfolio",
-          tone: unitsWithBalanceDue.length > 0 || maintenanceCountsByUnitId.size > 0 ? "medium" as const : "low" as const,
-          label: `Review your ${myUnits.length}-unit portfolio`,
-          detail: `${unitsWithBalanceDue.length} unit${unitsWithBalanceDue.length === 1 ? "" : "s"} with balance due and ${maintenanceCountsByUnitId.size} unit${maintenanceCountsByUnitId.size === 1 ? "" : "s"} with active maintenance.`,
-          tab: "overview" as const,
-          overviewSubtab: "occupancy" as const,
-          cta: "Use selector",
-        }]
-      : []),
-  ];
-  const prioritizedOwnerActions = ownerActionItems.length > 0
-    ? ownerActionItems
-    : [{
-        id: "all-clear",
-        tone: "low" as const,
-        label: "Your account looks current",
-        detail: "Use the portal to review records, keep contact details current, and stay ahead of new notices.",
-        tab: "documents" as const,
-        cta: "Browse documents",
-      }];
-  const recentOwnerUpdates = [
-    ...recentOwnerNotices.slice(0, 4).map((notice) => ({
-      id: `notice-${notice.id}`,
-      title: notice.subject || "Association notice",
-      detail: stripHtml(notice.bodySnippet) || "Review the latest message from your association.",
-      tab: "notices" as const,
-      scopeLabel: hasMultipleUnits ? "Association-wide" : unitLabel || "Association-wide",
-      kindLabel: "Notice",
-      date: notice.createdAt,
-    })),
-    ...openMaintenanceRequests.slice(0, 4).map((request) => ({
-      id: `maintenance-${request.id}`,
-      title: request.title,
-      detail: `${formatStatusLabel(request.status)}${request.locationText ? ` · ${request.locationText}` : ""}`,
-      tab: "maintenance" as const,
-      scopeLabel: request.unitId ? (unitContextById.get(request.unitId) ?? "Current unit") : "Association-wide",
-      kindLabel: "Maintenance",
-      date: request.updatedAt,
-    })),
-    ...recentDocuments.slice(0, 3).map((document) => ({
-      id: `document-${document.id}`,
-      title: document.title,
-      detail: `${formatStatusLabel(document.documentType)} document available in your portal.`,
-      tab: "documents" as const,
-      scopeLabel: "Association-wide",
-      kindLabel: "Document",
-      date: document.createdAt,
-    })),
-  ]
-    .sort((a, b) => toTimestamp(b.date) - toTimestamp(a.date))
-    .slice(0, 6);
-  const focusedOwnedUnit = myUnits.find((unit) => unit.unitId === ownedUnitFocusId) ?? myUnits[0] ?? null;
-  const focusedUnitLabel = focusedOwnedUnit ? formatUnitContextLabel(focusedOwnedUnit.building, focusedOwnedUnit.unitNumber) : (unitLabel || "Current unit");
-  const focusedOwnerOccupants = focusedOwnedUnit?.occupants.filter((occupant) => occupant.occupancyType === "OWNER_OCCUPIED") ?? [];
-  const focusedTenantOccupant = focusedOwnedUnit?.occupants.find((occupant) => occupant.occupancyType === "TENANT") ?? null;
-  const focusedOccupancyStatus = focusedOwnedUnit?.occupants.some((occupant) => occupant.occupancyType === "TENANT")
-    ? "rented"
-    : focusedOwnerOccupants.length > 0
-      ? "owner-occupied"
-      : "unknown";
-  const focusedOwnerName = focusedOwnerOccupants.length > 0
-    ? focusedOwnerOccupants.map((occupant) => [occupant.firstName, occupant.lastName].filter(Boolean).join(" ")).filter(Boolean).join(", ")
-    : [(me as any)?.firstName, (me as any)?.lastName].filter(Boolean).join(" ") || "Owner";
-  const focusedTenantName = focusedTenantOccupant
-    ? [focusedTenantOccupant.firstName, focusedTenantOccupant.lastName].filter(Boolean).join(" ") || "Tenant"
-    : "";
-  const focusedUnitOpenMaintenanceCount = focusedOwnedUnit ? (maintenanceCountsByUnitId.get(focusedOwnedUnit.unitId) ?? 0) : 0;
-  const hasSavedOwnerContactInfo = Boolean(
-    (me as any)?.phone ||
-    (me as any)?.mailingAddress ||
-    (me as any)?.emergencyContactName ||
-    (me as any)?.emergencyContactPhone ||
-    (me as any)?.contactPreference,
-  );
-  const switchOwnerUnit = (nextPortalAccessId: string, nextUnitId?: string | null) => {
-    setPortalAccessId(nextPortalAccessId);
-    window.localStorage.setItem("portalAccessId", nextPortalAccessId);
-    if (nextUnitId) {
-      setOwnedUnitFocusId(nextUnitId);
-    }
-    setWorkspaceMode("owner");
-  };
-  const resetOwnerInfoForm = () => {
-    setRequestedPhone((me as any)?.phone ?? "");
-    setRequestedMailingAddress((me as any)?.mailingAddress ?? "");
-    setRequestedEmergencyContactName((me as any)?.emergencyContactName ?? "");
-    setRequestedEmergencyContactPhone((me as any)?.emergencyContactPhone ?? "");
-    setRequestedContactPreference((me as any)?.contactPreference ?? "");
-  };
-  const resetOccupancyForm = () => {
-    const focusedUnit = myUnits.find((unit) => unit.unitId === ownedUnitFocusId) ?? myUnits[0] ?? null;
-    if (!focusedUnit) return;
-    const tenant = focusedUnit.occupants.find((occupant) => occupant.occupancyType === "TENANT");
-    const hasTenant = Boolean(tenant);
-    setOccupancyForm({
-      occupancyType: hasTenant ? "TENANT" : "OWNER_OCCUPIED",
-      tenantFirstName: tenant?.firstName ?? "",
-      tenantLastName: tenant?.lastName ?? "",
-      tenantEmail: tenant?.email ?? "",
-      tenantPhone: tenant?.phone ?? "",
-      notes: "",
-    });
-  };
-  const openOwnerView = (
-    tab: "overview" | "financials" | "maintenance" | "documents" | "notices",
-    nextOverviewSubtab?: "summary" | "owner-info" | "occupancy",
-  ) => {
-    setActiveTab(tab);
-    if (tab === "overview" && nextOverviewSubtab) {
-      setOverviewSubtab(nextOverviewSubtab);
-    }
-  };
-  const renderOwnerUnitSelector = (options: {
-    activeUnitId: string | null | undefined;
-    onSelect: (unit: typeof myUnits[number]) => void;
-  }) => (
-    <div className="space-y-3">
-      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Choose unit</div>
-      <div className="flex gap-3 overflow-x-auto pb-1">
-        {myUnits.map((unit) => {
-          const isActive = options.activeUnitId === unit.unitId;
-          return (
-            <button
-              key={unit.unitId}
-              type="button"
-              onClick={() => options.onSelect(unit)}
-              className={`min-w-[220px] rounded-xl border px-4 py-3 text-left transition-colors hover:bg-muted/30 ${
-                isActive ? "border-primary/40 bg-primary/5" : "bg-white"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-medium">{formatUnitContextLabel(unit.building, unit.unitNumber)}</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {unit.balance > 0 ? `$${unit.balance.toFixed(2)} due` : unit.balance < 0 ? `Credit $${Math.abs(unit.balance).toFixed(2)}` : "Current"}
-                  </div>
-                </div>
-                {isActive ? <Badge>Selected</Badge> : null}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-  const markNoticeRead = (noticeId: string) => {
-    setReadNoticeIds((current) => {
-      if (current.includes(noticeId)) return current;
-      const next = [...current, noticeId];
-      window.localStorage.setItem(`portal-read-notices-${portalAccessId}`, JSON.stringify(next));
-      return next;
-    });
-  };
-  const portalLedgerEntries = portalLedger?.entries ?? [];
-  const focusedFinancialUnit = focusedOwnedUnit ?? null;
-  const focusedFinancialLedgerEntries = focusedFinancialUnit
-    ? portalLedgerEntries.filter((entry) => entry.unitId === focusedFinancialUnit.unitId)
-    : portalLedgerEntries;
-  const recentPayments = portalLedgerEntries
-    .filter((entry) => entry.entryType === "payment" || entry.entryType === "credit")
-    .sort((a, b) => toTimestamp(b.postedAt) - toTimestamp(a.postedAt))
-    .slice(0, 3);
-  const currentUnitPayableBalance = Math.max(0, focusedFinancialUnit?.balance ?? 0);
-  const defaultPaymentMethod = savedMethods.find((method) => method.isDefault === 1 && method.isActive !== 0) ?? savedMethods.find((method) => method.isActive !== 0) ?? null;
-  const activeAutopayEnrollment = autopayEnrollments.find((entry) => entry.status === "active") ?? null;
-  const recentFocusedPayment = focusedFinancialLedgerEntries
-    .filter((entry) => entry.entryType === "payment" || entry.entryType === "credit")
-    .sort((a, b) => toTimestamp(b.postedAt) - toTimestamp(a.postedAt))[0] ?? null;
-  const paymentSetupStateLabel = activeAutopayEnrollment
-    ? "Autopay active"
-    : defaultPaymentMethod
-      ? "Method saved"
-      : "Setup needed";
-  const paymentSetupStateTone = activeAutopayEnrollment || defaultPaymentMethod
-    ? "bg-green-50 text-green-700"
-    : "bg-amber-50 text-amber-700";
-  const boardAttentionItems = boardDashboard?.attention.items ?? [];
-  const boardUpcomingMeetings = boardDashboard?.governance.upcomingMeetings ?? [];
-  const boardOpenTasks = boardDashboard?.governance.openTasks ?? [];
-  const boardRecentActivity = boardDashboard?.activity.recent ?? [];
-  const boardPackageStates = boardDashboard?.workflowStates.communications.boardPackagesByStatus ?? {
-    draft: 0,
-    approved: 0,
-    distributed: 0,
-  };
-  const boardRoleTitle = boardDashboard?.workflowStates.access.boardRole ?? "Board Member";
-  const boardTerm = boardDashboard?.workflowStates.access.boardTerm ?? null;
-  const nextBoardMeeting = boardUpcomingMeetings[0] ?? null;
-  const boardRoleFocus = (() => {
-    const normalizedRole = boardRoleTitle.toLowerCase();
-    if (normalizedRole.includes("president")) {
-      return "Lead on agenda decisions, escalations, and meeting readiness.";
-    }
-    if (normalizedRole.includes("treasurer")) {
-      return "Lead with cash exposure, reserve signals, delinquency, and unusual spend.";
-    }
-    if (normalizedRole.includes("secretary")) {
-      return "Lead with agendas, minutes, resolutions, and compliance acknowledgments.";
-    }
-    return "Lead with board package review, current decisions, and unresolved association risk.";
-  })();
-  const boardRiskHighlights = [
-    ...(boardDashboard?.attention.maintenanceOverdue
-      ? [{
-          key: "risk-maintenance",
-          label: `${boardDashboard.attention.maintenanceOverdue} overdue maintenance item${boardDashboard.attention.maintenanceOverdue === 1 ? "" : "s"}`,
-          detail: "Open maintenance delays can create liability and owner-trust risk.",
-          tone: "high" as const,
-        }]
-      : []),
-    ...(boardDashboard?.attention.overdueGovernanceTasks
-      ? [{
-          key: "risk-governance",
-          label: `${boardDashboard.attention.overdueGovernanceTasks} overdue governance task${boardDashboard.attention.overdueGovernanceTasks === 1 ? "" : "s"}`,
-          detail: "Board checklist items are past due and need explicit ownership.",
-          tone: "high" as const,
-        }]
-      : []),
-    ...((boardDashboard?.financial.openBalance ?? 0) > 0
-      ? [{
-          key: "risk-ledger",
-          label: `$${boardDashboard?.financial.openBalance?.toFixed(2) ?? "0.00"} outstanding owner balance`,
-          detail: "Delinquency exposure should be reviewed before the next meeting.",
-          tone: "medium" as const,
-        }]
-      : []),
-    ...((boardPackageStates.draft ?? 0) > 0
-      ? [{
-          key: "risk-packages",
-          label: `${boardPackageStates.draft} board package${boardPackageStates.draft === 1 ? "" : "s"} still in draft`,
-          detail: "Meeting materials may not be ready for board review or distribution.",
-          tone: "medium" as const,
-        }]
-      : []),
-    ...((boardDashboard?.workflowStates.communications.documentsInternalOnly ?? 0) > 0
-      ? [{
-          key: "risk-documents",
-          label: `${boardDashboard?.workflowStates.communications.documentsInternalOnly ?? 0} internal-only document${(boardDashboard?.workflowStates.communications.documentsInternalOnly ?? 0) === 1 ? "" : "s"}`,
-          detail: "Confirm whether unpublished documents should stay internal or be distributed.",
-          tone: "low" as const,
-        }]
-      : []),
-  ];
-  const boardDecisionCards = [
-    ...(nextBoardMeeting
-      ? [{
-          key: "decision-meeting",
-          title: nextBoardMeeting.title,
-          recommendation: nextBoardMeeting.summaryStatus === "draft"
-            ? "Review agenda and publish the board summary before the meeting."
-            : "Confirm the board package and decision materials are ready for review.",
-          evidence: `${new Date(nextBoardMeeting.scheduledAt).toLocaleString()}${nextBoardMeeting.meetingType ? ` · ${nextBoardMeeting.meetingType}` : ""}`,
-          dueLabel: `Meeting on ${new Date(nextBoardMeeting.scheduledAt).toLocaleDateString()}`,
-          auditLabel: `Meeting status ${formatStatusLabel(nextBoardMeeting.status)} · summary ${formatStatusLabel(nextBoardMeeting.summaryStatus)}`,
-          tone: nextBoardMeeting.summaryStatus === "draft" ? "high" as const : "medium" as const,
-        }]
-      : []),
-    ...boardOpenTasks.slice(0, 2).map((task) => ({
-      key: `decision-task-${task.id}`,
-      title: task.title,
-      recommendation: task.status === "todo"
-        ? "Assign ownership and close the task before it slips into the next board cycle."
-        : "Review progress and confirm the task has what it needs to close.",
-      evidence: task.dueDate ? `Due ${new Date(task.dueDate).toLocaleDateString()}` : "No due date is currently set.",
-      dueLabel: task.dueDate ? `Due ${new Date(task.dueDate).toLocaleDateString()}` : "Add a due date",
-      auditLabel: `Governance task status ${formatStatusLabel(task.status)}`,
-      tone: task.dueDate && new Date(task.dueDate).getTime() < Date.now() ? "high" as const : "medium" as const,
-    })),
-    ...((boardDashboard?.financial.openBalance ?? 0) > 0
-      ? [{
-          key: "decision-balance",
-          title: "Outstanding owner balance exposure",
-          recommendation: "Review delinquencies and confirm whether follow-up or payment-plan action is needed before the next meeting.",
-          evidence: `$${boardDashboard?.financial.openBalance?.toFixed(2) ?? "0.00"} remains open across the association ledger.`,
-          dueLabel: nextBoardMeeting ? `Discuss before ${new Date(nextBoardMeeting.scheduledAt).toLocaleDateString()}` : "Review this cycle",
-          auditLabel: `${boardDashboard?.financial.ledgerEntryCount ?? 0} ledger entries recorded`,
-          tone: "medium" as const,
-        }]
-      : []),
-    ...((boardPackageStates.draft ?? 0) > 0
-      ? [{
-          key: "decision-packages",
-          title: "Board package distribution readiness",
-          recommendation: "Move draft packages toward approval so directors are not reviewing stale or incomplete material.",
-          evidence: `${boardPackageStates.draft} package${boardPackageStates.draft === 1 ? "" : "s"} still sit in draft status.`,
-          dueLabel: nextBoardMeeting ? `Before ${new Date(nextBoardMeeting.scheduledAt).toLocaleDateString()}` : "Before the next board session",
-          auditLabel: `${boardPackageStates.approved ?? 0} approved · ${boardPackageStates.distributed ?? 0} distributed`,
-          tone: "medium" as const,
-        }]
-      : []),
-  ].slice(0, 4);
-  const boardRecentChangeSummary = boardRecentActivity.slice(0, 3);
-  const boardActivityItems = boardRecentActivity.map((entry) => {
-    const classification = entry.lane && entry.laneLabel
-      ? { lane: entry.lane, label: entry.laneLabel }
-      : classifyBoardActivity(entry);
-    return {
-      ...entry,
-      lane: classification.lane,
-      laneLabel: classification.label,
-      title: entry.summary || `${formatStatusLabel(entry.action)} ${formatStatusLabel(entry.entityType)}`.trim(),
-    };
-  });
-  const filteredBoardActivityItems = boardActivityItems.filter((entry) => boardActivityFilter === "all" || entry.lane === boardActivityFilter);
-  const boardScopeRules = [
-    "Board access stays limited to this association.",
-    "Platform admin controls and other associations remain hidden.",
-    "Owner and board permissions combine under one signed-in identity.",
-    "Board actions should remain attributable to the acting person.",
-  ];
-  const boardMeetingReadinessItems = [
-    {
-      key: "readiness-meeting",
-      label: nextBoardMeeting ? "Next meeting scheduled" : "Next meeting still missing",
-      detail: nextBoardMeeting
-        ? `${nextBoardMeeting.title} is set for ${new Date(nextBoardMeeting.scheduledAt).toLocaleString()}.`
-        : "Schedule the next board session so packages, decisions, and follow-up have a concrete operating date.",
-      done: Boolean(nextBoardMeeting),
-      tone: nextBoardMeeting ? "low" as const : "high" as const,
-    },
-    {
-      key: "readiness-summary",
-      label: (boardDashboard?.attention.draftMeetingCount ?? 0) === 0 ? "Meeting summaries are published" : "Meeting summaries still in draft",
-      detail: (boardDashboard?.attention.draftMeetingCount ?? 0) === 0
-        ? "No draft meeting summaries are blocking board review right now."
-        : `${boardDashboard?.attention.draftMeetingCount ?? 0} meeting summary draft${(boardDashboard?.attention.draftMeetingCount ?? 0) === 1 ? "" : "s"} should be finalized or published.`,
-      done: (boardDashboard?.attention.draftMeetingCount ?? 0) === 0,
-      tone: (boardDashboard?.attention.draftMeetingCount ?? 0) === 0 ? "low" as const : "medium" as const,
-    },
-    {
-      key: "readiness-tasks",
-      label: boardOpenTasks.length === 0 ? "No open board follow-up tasks" : "Open board follow-up remains",
-      detail: boardOpenTasks.length === 0
-        ? "The governance follow-up queue is currently clear."
-        : `${boardOpenTasks.length} open governance task${boardOpenTasks.length === 1 ? "" : "s"} still need ownership or closure.`,
-      done: boardOpenTasks.length === 0,
-      tone: boardOpenTasks.length === 0 ? "low" as const : "medium" as const,
-    },
-    {
-      key: "readiness-packages",
-      label: (boardPackageStates.draft ?? 0) === 0 ? "Board packages are out of draft" : "Board packages still need release review",
-      detail: (boardPackageStates.draft ?? 0) === 0
-        ? `${boardPackageStates.approved ?? 0} approved and ${boardPackageStates.distributed ?? 0} distributed package${(boardPackageStates.approved ?? 0) + (boardPackageStates.distributed ?? 0) === 1 ? "" : "s"} are already moving through the board loop.`
-        : `${boardPackageStates.draft ?? 0} package${(boardPackageStates.draft ?? 0) === 1 ? "" : "s"} remain in draft and may block pre-meeting review.`,
-      done: (boardPackageStates.draft ?? 0) === 0,
-      tone: (boardPackageStates.draft ?? 0) === 0 ? "low" as const : "medium" as const,
-    },
-  ];
-  const boardPackageReviewRows = [
-    {
-      key: "package-draft",
-      label: "Draft packages",
-      value: boardPackageStates.draft ?? 0,
-      detail: "Still being assembled or awaiting review.",
-      tone: (boardPackageStates.draft ?? 0) > 0 ? "medium" as const : "low" as const,
-    },
-    {
-      key: "package-approved",
-      label: "Approved packages",
-      value: boardPackageStates.approved ?? 0,
-      detail: "Ready for the board to consume or confirm.",
-      tone: (boardPackageStates.approved ?? 0) > 0 ? "low" as const : "low" as const,
-    },
-    {
-      key: "package-distributed",
-      label: "Distributed packages",
-      value: boardPackageStates.distributed ?? 0,
-      detail: "Already sent into the board review loop.",
-      tone: (boardPackageStates.distributed ?? 0) > 0 ? "low" as const : "low" as const,
-    },
-    {
-      key: "package-internal",
-      label: "Internal-only documents",
-      value: boardDashboard?.workflowStates.communications.documentsInternalOnly ?? 0,
-      detail: "Confirm whether these should remain internal or support board prep.",
-      tone: (boardDashboard?.workflowStates.communications.documentsInternalOnly ?? 0) > 0 ? "medium" as const : "low" as const,
-    },
-  ];
-
-  const scrollToBoardSection = (sectionId: string) => {
-    const target = document.getElementById(sectionId);
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  const ownerTabs = [
-    { id: "overview" as const, label: "Overview" },
-    { id: "financials" as const, label: "Financials" },
-    { id: "maintenance" as const, label: "Maintenance" },
-    { id: "documents" as const, label: "Documents" },
-    { id: "notices" as const, label: "Notices" },
-  ];
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
-      {/* Top header bar */}
-      <div className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
-        <div className="flex flex-col gap-3 px-4 py-3 sm:px-6">
-          <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">YCM</div>
-            <div className="min-w-0">
-              <div className="font-semibold text-sm truncate">Owner Portal</div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-muted-foreground">{ownerDisplayName}</span>
-                {(me as any)?.email && <span className="text-xs text-muted-foreground">· {(me as any).email}</span>}
-                {hasBoardAccess ? <Badge variant="secondary" className="text-[10px] uppercase tracking-[0.18em]">Board access</Badge> : null}
+    <div className="bg-surface-container-low min-h-screen flex flex-col">
+      {/* Push Notification Opt-In Prompt */}
+      {!pushPromptDismissed && !pushSubscribed && "Notification" in window && Notification.permission === "default" && (
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50 bg-surface-bright border border-outline-variant/20 rounded-2xl shadow-xl p-4 flex gap-3 items-start">
+          <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary" style={{ fontSize: 22 }}>notifications_active</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm text-on-surface mb-1">Enable push notifications</p>
+            <p className="text-xs text-on-surface-variant mb-3">Get instant alerts for urgent notices, water shutoffs, and emergencies. You can turn this off at any time.</p>
+            <div className="flex gap-2">
+              <button
+                className="px-4 py-2 bg-primary text-on-primary rounded-lg text-xs font-semibold"
+                onClick={subscribeToPush}
+              >
+                Enable
+              </button>
+              <button
+                className="px-4 py-2 border border-outline-variant rounded-lg text-xs font-medium text-on-surface-variant"
+                onClick={dismissPushPrompt}
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fixed Header */}
+      <header className="fixed top-0 right-0 left-0 md:left-64 z-50 bg-surface-bright/80 backdrop-blur-xl border-b border-outline-variant/10">
+        <div className="flex justify-between items-center px-4 md:px-8 py-4">
+          <div>
+            <h2 className="font-headline text-2xl text-on-surface">{myAssociations?.[0]?.associationName ? `${myAssociations[0].associationName} — Owner Portal` : "Owner Portal"}</h2>
+          </div>
+          <div className="flex items-center gap-3 md:gap-4">
+            <button className="text-on-surface-variant hover:text-primary">
+              <span className="material-symbols-outlined">notifications</span>
+            </button>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-secondary-container flex-shrink-0 flex items-center justify-center">
+                <span className="material-symbols-outlined text-sm">person</span>
+              </div>
+              <div className="text-right min-w-0 hidden sm:block">
+                <p className="text-xs font-bold text-on-surface truncate">{me?.email || "Owner"}</p>
+                <p className="text-[10px] text-on-surface-variant capitalize truncate">{me?.role || ""}</p>
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            {me?.hasBoardAccess ? (
-              <Button
-                variant={workspaceMode === "board" ? "default" : "outline"}
-                size="sm"
-                className="min-h-10"
-                onClick={() => {
-                  setWorkspaceMode(workspaceMode === "board" ? "owner" : "board");
-                  if (workspaceMode === "board") {
-                    setActiveTab("overview");
-                  }
-                }}
-              >
-                {workspaceMode === "board" ? "Return to Owner Portal" : "Open Board Workspace"}
-              </Button>
-            ) : null}
-            {/* Association switcher — shown only when owner has access to multiple distinct associations */}
-            {workspaceMode === "owner" && myAssociations && new Set(myAssociations.map((a) => a.associationId)).size > 1 && (
-              <Select
-                value={portalAccessId}
-                onValueChange={(val) => {
-                  setPortalAccessId(val);
-                  window.localStorage.setItem("portalAccessId", val);
-                  setWorkspaceMode("owner");
-                  setActiveTab("overview");
-                }}
-              >
-                <SelectTrigger className="h-10 w-full min-w-[12rem] text-xs sm:w-44">
-                  <SelectValue placeholder="Switch association" />
-                </SelectTrigger>
-                <SelectContent>
-                  {myAssociations.map((a) => (
-                    <SelectItem key={a.portalAccessId} value={a.portalAccessId}>
-                      <div>
-                        <div className="font-medium">{a.associationName}</div>
-                        {a.associationCity && <div className="text-xs text-muted-foreground">{a.associationCity}</div>}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-10"
-              onClick={() => {
-                window.localStorage.removeItem("portalAccessId");
-                setPortalAccessId("");
-              }}
-            >
-              Sign Out
-            </Button>
-          </div>
         </div>
-        </div>
+      </header>
 
-        {workspaceMode === "owner" && (
-          <div className="border-t bg-gradient-to-br from-slate-800 to-slate-700 px-4 py-5 text-white sm:px-6">
-            {hasBoardAccess ? (
-              <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-                <Card className="border-white/10 bg-white/5 text-white shadow-none">
-                  <CardContent className="p-6 space-y-4">
-                    <div className="flex items-start justify-between gap-4 flex-wrap">
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Board-first landing</div>
-                        <h2 className="text-2xl md:text-3xl font-bold leading-tight">
-                          {portalAssociation?.name ?? associationName}
-                        </h2>
-                        <p className="mt-1 max-w-2xl text-sm text-slate-300">
-                          {portalRoleLabel} access surfaces board context first, while the owner tabs stay available for self-service and unit-level follow-up.
+      {/* Sidebar */}
+      <aside className="hidden md:flex fixed left-0 top-0 h-screen w-64 border-r border-outline-variant/15 bg-surface flex-col py-8 px-4 z-40">
+        <div className="mb-10 px-4">
+          <h1 className="text-2xl font-semibold tracking-tight text-primary font-serif italic">CondoManager</h1>
+          <p className="text-[10px] text-on-surface-variant/60 italic mt-0.5">Community management, elevated.</p>
+        </div>
+        <nav className="flex-1 space-y-2">
+          <button onClick={() => setActiveTab("overview")} className={`w-full text-left rounded-lg px-4 py-3 font-bold flex items-center gap-3 transition-colors ${activeTab === "overview" ? "bg-surface-container-highest text-primary" : "text-on-surface-variant hover:text-primary"}`}>
+            <span className="material-symbols-outlined">dashboard</span>
+            <span className="font-label uppercase tracking-widest text-[11px]">Overview</span>
+          </button>
+          <button onClick={() => setActiveTab("financials")} className={`w-full text-left rounded-lg px-4 py-3 font-bold flex items-center gap-3 transition-colors ${activeTab === "financials" ? "bg-surface-container-highest text-primary" : "text-on-surface-variant hover:text-primary"}`}>
+            <span className="material-symbols-outlined">payments</span>
+            <span className="font-label uppercase tracking-widest text-[11px]">Financials</span>
+          </button>
+          <button onClick={() => setActiveTab("documents")} className={`w-full text-left rounded-lg px-4 py-3 font-bold flex items-center gap-3 transition-colors ${activeTab === "documents" ? "bg-surface-container-highest text-primary" : "text-on-surface-variant hover:text-primary"}`}>
+            <span className="material-symbols-outlined">description</span>
+            <span className="font-label uppercase tracking-widest text-[11px]">Documents</span>
+          </button>
+          <button onClick={() => setActiveTab("maintenance")} className={`w-full text-left rounded-lg px-4 py-3 font-bold flex items-center gap-3 transition-colors ${activeTab === "maintenance" ? "bg-surface-container-highest text-primary" : "text-on-surface-variant hover:text-primary"}`}>
+            <span className="material-symbols-outlined">build</span>
+            <span className="font-label uppercase tracking-widest text-[11px]">Maintenance</span>
+            {openMaintenanceRequests > 0 && <span className="ml-auto text-xs bg-destructive text-on-error px-2 py-0.5 rounded-full">{openMaintenanceRequests}</span>}
+          </button>
+          <button onClick={() => setActiveTab("notices")} className={`w-full text-left rounded-lg px-4 py-3 font-bold flex items-center gap-3 transition-colors ${activeTab === "notices" ? "bg-surface-container-highest text-primary" : "text-on-surface-variant hover:text-primary"}`}>
+            <span className="material-symbols-outlined">notifications</span>
+            <span className="font-label uppercase tracking-widest text-[11px]">Notices</span>
+            {unreadNoticesCount > 0 && <span className="ml-auto text-xs bg-primary text-on-primary px-2 py-0.5 rounded-full">{unreadNoticesCount}</span>}
+          </button>
+          <button onClick={() => setActiveTab("communications")} className={`w-full text-left rounded-lg px-4 py-3 font-bold flex items-center gap-3 transition-colors ${activeTab === "communications" ? "bg-surface-container-highest text-primary" : "text-on-surface-variant hover:text-primary"}`}>
+            <span className="material-symbols-outlined">mail</span>
+            <span className="font-label uppercase tracking-widest text-[11px]">Communications</span>
+          </button>
+          <button onClick={() => setActiveTab("elections")} className={`w-full text-left rounded-lg px-4 py-3 font-bold flex items-center gap-3 transition-colors ${activeTab === "elections" ? "bg-surface-container-highest text-primary" : "text-on-surface-variant hover:text-primary"}`}>
+            <span className="material-symbols-outlined">how_to_vote</span>
+            <span className="font-label uppercase tracking-widest text-[11px]">Voting</span>
+            {activeElections.length > 0 && <span className="ml-auto text-xs bg-primary text-on-primary px-2 py-0.5 rounded-full">{activeElections.length}</span>}
+          </button>
+        </nav>
+        <div className="mt-auto pt-6 border-t border-outline-variant/10 space-y-2">
+          <button className="w-full bg-primary text-on-primary rounded-lg py-3 px-4 text-xs font-bold uppercase">Support</button>
+          <button onClick={handleLogout} className="w-full text-center text-on-surface-variant text-[11px] uppercase tracking-widest hover:text-primary py-2 px-4 rounded-lg hover:bg-surface-container transition-colors">Logout</button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="md:ml-64 pt-20 pb-20 px-4 md:px-8 flex-1">
+        <div className="max-w-7xl mx-auto">
+
+          {/* OVERVIEW TAB */}
+          {activeTab === "overview" && (
+            <>
+              <section className="mb-12">
+                <p className="font-label text-primary uppercase tracking-widest text-[11px] mb-2">{myAssociations?.[0]?.associationName || ""}</p>
+                <h1 className="font-headline text-4xl md:text-5xl text-on-surface mb-4">{me?.firstName ? `Welcome, ${me.firstName}` : "Owner Portal"}</h1>
+                <div className="flex flex-wrap gap-4 mt-8">
+                  <div className="bg-surface-container-lowest p-6 rounded-xl flex-1 min-w-[280px] border border-outline-variant/10">
+                    {myUnits.length === 1 ? (
+                      <>
+                        <p className="font-label text-on-surface-variant uppercase tracking-widest text-[10px] mb-1">Your Unit</p>
+                        <span className="font-headline text-3xl">
+                          {[myUnits[0].building && `Bldg ${myUnits[0].building}`, myUnits[0].unitNumber && `Unit ${myUnits[0].unitNumber}`].filter(Boolean).join(" · ") || "Unit"}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-label text-on-surface-variant uppercase tracking-widest text-[10px] mb-1">Total Units</p>
+                        <span className="font-headline text-3xl">{myUnits.length}</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="bg-surface-container-lowest p-6 rounded-xl flex-1 min-w-[280px] border border-outline-variant/10">
+                    <p className="font-label text-on-surface-variant uppercase tracking-widest text-[10px] mb-1">Account Balance</p>
+                    <span className={`font-headline text-3xl ${totalPortfolioBalance > 0 ? 'text-destructive' : 'text-secondary'}`}>
+                      ${Math.abs(totalPortfolioBalance).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="bg-surface-container-lowest p-6 rounded-xl flex-1 min-w-[280px] border border-outline-variant/10">
+                    <p className="font-label text-on-surface-variant uppercase tracking-widest text-[10px] mb-1">Open Maintenance</p>
+                    <span className="font-headline text-3xl">{openMaintenanceRequests}</span>
+                  </div>
+                </div>
+              </section>
+
+              {/* Active Election Banner */}
+              {activeElections.length > 0 && (
+                <section className="mb-8 space-y-3">
+                  {activeElections.map(({ election, token }) => (
+                    <div key={election.id} className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-5 flex items-center gap-4">
+                      <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-primary" style={{ fontSize: 24 }}>how_to_vote</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-on-surface">{election.title}</p>
+                        <p className="text-xs text-on-surface-variant mt-0.5">
+                          {election.closesAt ? `Voting closes ${new Date(election.closesAt).toLocaleDateString()}` : "Open for voting"}
+                          {" "}&middot; {election.voteType.replace(/-/g, " ")}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant="secondary" className="bg-white text-slate-800">{portalRoleLabel}</Badge>
-                        <Badge variant="outline" className="border-white/20 text-slate-100">{boardRoleTitle}</Badge>
-                        <Badge variant="outline" className="border-white/20 text-slate-100">1 association scope</Badge>
-                      </div>
+                      <a
+                        href={`/vote/${token}`}
+                        className="shrink-0 px-5 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-bold uppercase tracking-wider hover:bg-primary/90 transition-colors"
+                      >
+                        Vote Now
+                      </a>
                     </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {boardAttentionItems.slice(0, 4).map((item) => (
-                        <div key={item.key} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="font-medium">{item.label}</div>
-                            <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>
-                              {item.tone}
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-slate-300">{item.detail}</div>
-                        </div>
-                      ))}
-                      {boardAttentionItems.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-white/20 bg-white/5 p-4 text-sm text-slate-300">
-                          No urgent board actions are currently surfaced. Review the decision queue below if you need the next step.
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4 space-y-2">
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Board context</div>
-                        <div className="text-sm text-slate-300">
-                          {nextBoardMeeting
-                            ? `Next meeting: ${nextBoardMeeting.title} on ${new Date(nextBoardMeeting.scheduledAt).toLocaleDateString()}.`
-                            : "No board meeting is scheduled yet. Use the board workspace for decisions and scheduling."}
-                        </div>
-                        <div className="text-xs text-slate-400">
-                          {boardRoleFocus}
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4 space-y-2">
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Board workspace</div>
-                        <div className="text-sm text-slate-300">
-                          Open the board workspace when you need decisions, meetings, or audit history instead of owner self-service.
-                        </div>
-                        <Button
-                          variant="outline"
-                          className="border-white/20 bg-white text-slate-900 hover:bg-slate-100"
-                          onClick={() => setWorkspaceMode("board")}
-                        >
-                          Open Board Workspace
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                  ))}
+                </section>
+              )}
 
-                <div className="space-y-4">
-                  <Card className="border-white/10 bg-white/5 text-white shadow-none">
-                    <CardContent className="p-5 space-y-3">
-                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Owner self-service</div>
-                      <div className="text-lg font-semibold">Your units and balances stay one tap away</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-lg bg-white/10 p-3">
-                          <div className="text-xs text-slate-400">Units in portal</div>
-                          <div className="mt-1 text-xl font-semibold">{myUnits.length || (me?.unitId ? 1 : 0)}</div>
-                        </div>
-                        <div className="rounded-lg bg-white/10 p-3">
-                          <div className="text-xs text-slate-400">Open balance</div>
-                          <div className="mt-1 text-xl font-semibold">
-                            {totalPortfolioBalance > 0
-                              ? `$${totalPortfolioBalance.toFixed(2)}`
-                              : totalPortfolioBalance < 0
-                              ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
-                              : "$0.00"}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="rounded-lg bg-white/10 p-3 text-sm text-slate-200">
-                        {focusedUnitLabel}
-                        <div className="mt-1 text-xs text-slate-400">
-                          {focusedUnitOpenMaintenanceCount} active maintenance item{focusedUnitOpenMaintenanceCount === 1 ? "" : "s"} and {recentOwnerNotices.length} recent notice{recentOwnerNotices.length === 1 ? "" : "s"}.
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          className="bg-white text-slate-900 hover:bg-slate-100"
-                          onClick={() => setActiveTab("financials")}
-                        >
-                          Open Financials
-                        </Button>
-                        <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white/10" onClick={() => setActiveTab("documents")}>
-                          Browse Documents
-                        </Button>
-                        <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white/10" onClick={() => setActiveTab("maintenance")}>
-                          Review Maintenance
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+              {/* Overview Subtabs */}
+              <div className="space-y-6">
+                <div className="flex gap-2 border-b border-outline-variant/10">
+                  <button onClick={() => setOverviewSubtab("summary")} className={`px-4 py-3 font-bold text-sm transition-colors ${overviewSubtab === "summary" ? "text-primary border-b-2 border-primary" : "text-on-surface-variant hover:text-primary"}`}>Summary</button>
+                  <button onClick={() => setOverviewSubtab("owner-info")} className={`px-4 py-3 font-bold text-sm transition-colors ${overviewSubtab === "owner-info" ? "text-primary border-b-2 border-primary" : "text-on-surface-variant hover:text-primary"}`}>Owner Info</button>
+                  <button onClick={() => setOverviewSubtab("occupancy")} className={`px-4 py-3 font-bold text-sm transition-colors ${overviewSubtab === "occupancy" ? "text-primary border-b-2 border-primary" : "text-on-surface-variant hover:text-primary"}`}>Occupancy</button>
+                </div>
 
-                  {hasMultipleUnits ? (
-                    <div className="shrink-0 space-y-2 rounded-xl bg-white/10 px-4 py-3 text-sm">
-                      <div className="text-slate-400 text-xs uppercase tracking-wide">Your Units ({siblingUnits.length})</div>
-                      <div className="flex flex-wrap gap-2">
-                        {siblingUnits.map((u) => {
-                          const lbl = u.unitNumber
-                            ? [u.building ? `Bldg ${u.building}` : null, `Unit ${u.unitNumber}`].filter(Boolean).join(" · ")
-                            : "Unit";
-                          const isCurrent = u.portalAccessId === portalAccessId;
+                {/* Summary Subtab */}
+                {overviewSubtab === "summary" && (() => {
+                  const openRequests = (maintenanceRequests ?? []).filter((r) => !["resolved", "closed", "rejected"].includes(r.status));
+                  const inProgress = openRequests.filter((r) => r.status === "in-progress").length;
+                  const underReview = openRequests.filter((r) => r.status === "triaged").length;
+                  const submitted = openRequests.filter((r) => r.status === "submitted").length;
+                  const maintenanceSummaryParts = [
+                    inProgress > 0 && `${inProgress} in progress`,
+                    underReview > 0 && `${underReview} under review`,
+                    submitted > 0 && `${submitted} awaiting response`,
+                  ].filter(Boolean).join(", ");
+
+                  return (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Notices — left */}
+                      <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10 space-y-3">
+                        <h3 className="font-headline text-lg">Notices</h3>
+
+                        {/* Aggregated maintenance notice with timeline */}
+                        {(maintenanceRequests ?? []).length > 0 && (() => {
+                          const allReqs = maintenanceRequests ?? [];
+                          const isMxExpanded = expandedNoticeId === "__maintenance__";
+                          const maintenanceRead = readNoticeIds.includes("__maintenance__");
+                          const openCount = openRequests.length;
+                          const statusCfg: Record<string, { label: string; dotColor: string; icon: string }> = {
+                            submitted:     { label: "Submitted",    dotColor: "bg-primary",         icon: "schedule" },
+                            triaged:       { label: "Under Review", dotColor: "bg-tertiary",        icon: "search" },
+                            "in-progress": { label: "In Progress",  dotColor: "bg-secondary",       icon: "construction" },
+                            resolved:      { label: "Resolved",     dotColor: "bg-green-500",       icon: "check_circle" },
+                            closed:        { label: "Closed",       dotColor: "bg-outline-variant", icon: "lock" },
+                            rejected:      { label: "Not Approved", dotColor: "bg-destructive",           icon: "cancel" },
+                          };
                           return (
-                            <button
-                              key={u.portalAccessId}
-                              onClick={() => {
-                                if (!isCurrent) {
-                                  switchOwnerUnit(u.portalAccessId, u.unitId);
-                                  setActiveTab("overview");
-                                }
-                              }}
-                              className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-                                isCurrent
-                                  ? "bg-white text-slate-800"
-                                  : "bg-white/20 text-white hover:bg-white/30"
-                              }`}
-                            >
-                              {lbl}
-                              {isCurrent && <span className="ml-1 opacity-60">↗</span>}
-                            </button>
+                            <div className={`rounded-xl border overflow-hidden ${maintenanceRead ? "bg-surface border-outline-variant/10" : "bg-surface-container border-primary/20 shadow-sm"}`}>
+                              <div
+                                className="flex items-start gap-3 p-3 cursor-pointer hover:bg-surface-container-low transition-colors"
+                                onClick={() => {
+                                  if (!isMxExpanded) markNoticeAsRead("__maintenance__");
+                                  setExpandedNoticeId(isMxExpanded ? null : "__maintenance__");
+                                }}
+                              >
+                                <div className="mt-0.5 w-8 h-8 rounded-lg bg-tertiary-container flex-shrink-0 flex items-center justify-center">
+                                  <span className="material-symbols-outlined text-tertiary" style={{ fontSize: 16 }}>build</span>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className={`font-medium text-sm ${maintenanceRead ? "text-on-surface" : "text-primary"}`}>Maintenance Updates</p>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className={`block w-2 h-2 rounded-full ${!maintenanceRead ? "bg-primary" : "bg-outline-variant/30"}`} />
+                                      {openCount > 0 && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">{openCount} open</span>}
+                                      <span className={`material-symbols-outlined text-sm text-on-surface-variant transition-transform ${isMxExpanded ? "rotate-180" : ""}`}>expand_more</span>
+                                    </div>
+                                  </div>
+                                  {!isMxExpanded && (
+                                    <p className="text-xs text-on-surface-variant mt-0.5 line-clamp-1">
+                                      {allReqs.slice(0, 2).map((r) => r.title).join(" · ")}{allReqs.length > 2 ? ` · +${allReqs.length - 2} more` : ""}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              {isMxExpanded && (
+                                <div className="border-t border-outline-variant/10 divide-y divide-outline-variant/10">
+                                  {allReqs.map((req) => {
+                                    const cfg = statusCfg[req.status] ?? statusCfg.submitted;
+                                    type Step = { label: string; date: string | null; done: boolean; active: boolean };
+                                    const steps: Step[] = [
+                                      { label: "Submitted",    date: req.createdAt,                        done: true,  active: req.status === "submitted" },
+                                      { label: "Under Review", date: (req as any).triagedAt ?? null,       done: ["triaged","in-progress","resolved","closed"].includes(req.status), active: req.status === "triaged" },
+                                      { label: "In Progress",  date: null,                                 done: ["in-progress","resolved","closed"].includes(req.status), active: req.status === "in-progress" },
+                                      { label: "Resolved",     date: (req as any).resolvedAt ?? (req as any).closedAt ?? null, done: ["resolved","closed","rejected"].includes(req.status), active: ["resolved","closed","rejected"].includes(req.status) },
+                                    ];
+                                    return (
+                                      <div key={req.id} className="px-3 py-4">
+                                        <div className="flex items-start justify-between gap-2 mb-4">
+                                          <div className="min-w-0">
+                                            <p className="font-medium text-sm text-on-surface">{req.title}</p>
+                                            {req.locationText && (
+                                              <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-0.5">
+                                                <span className="material-symbols-outlined" style={{ fontSize: 11 }}>location_on</span>
+                                                {req.locationText}
+                                              </p>
+                                            )}
+                                          </div>
+                                          <span className={`shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full text-white ${cfg.dotColor}`}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 11 }}>{cfg.icon}</span>
+                                            {cfg.label}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-start">
+                                          {steps.map((step, i) => (
+                                            <div key={step.label} className="flex-1 flex flex-col items-center relative">
+                                              {i < steps.length - 1 && (
+                                                <div className={`absolute top-2 left-1/2 w-full h-0.5 ${step.done ? "bg-primary/40" : "bg-outline-variant/20"}`} />
+                                              )}
+                                              <div className={`relative z-10 w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-surface ${
+                                                step.active ? "bg-primary" : step.done ? "bg-primary/50" : "bg-surface-container border border-outline-variant/30"
+                                              }`}>
+                                                {step.done && <span className="material-symbols-outlined text-white" style={{ fontSize: 10 }}>check</span>}
+                                              </div>
+                                              <p className={`text-[9px] font-medium mt-1 text-center leading-tight ${step.active ? "text-primary" : step.done ? "text-on-surface-variant" : "text-outline-variant"}`}>
+                                                {step.label}
+                                              </p>
+                                              {step.date && (
+                                                <p className="text-[8px] text-on-surface-variant/60 text-center">
+                                                  {new Date(step.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                                                </p>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                        {req.resolutionNotes && (
+                                          <div className="mt-3 bg-surface-container-low rounded-lg p-2.5">
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Resolution Notes</p>
+                                            <p className="text-xs text-on-surface">{req.resolutionNotes}</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
                           );
-                        })}
-                      </div>
-                      <div className="text-slate-300 text-xs capitalize">{portalRoleLabel}</div>
-                    </div>
-                  ) : unitLabel ? (
-                    <div className="shrink-0 rounded-xl bg-white/10 px-4 py-3 text-sm">
-                      <div className="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Your Unit</div>
-                      <div className="font-semibold text-white">{unitLabel}</div>
-                      <div className="text-slate-300 text-xs capitalize mt-0.5">{portalRoleLabel}</div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Your Association</div>
-                  <h2 className="text-2xl md:text-3xl font-bold leading-tight">
-                    {portalAssociation?.name ?? associationName}
-                  </h2>
-                  {portalAssociation && (
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-300 pt-1">
-                      {portalAssociation.associationType && (
-                        <span className="capitalize">{portalAssociation.associationType.replace(/-/g, " ")}</span>
-                      )}
-                      {portalAssociation.address && (
-                        <span>
-                          {[portalAssociation.address, portalAssociation.city, portalAssociation.state]
-                            .filter(Boolean).join(", ")}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {hasMultipleUnits ? (
-                  <div className="shrink-0 space-y-2 rounded-xl bg-white/10 px-4 py-3 text-sm md:max-w-sm">
-                    <div className="text-slate-400 text-xs uppercase tracking-wide">Your Units ({siblingUnits.length})</div>
-                    <div className="flex flex-wrap gap-2">
-                      {siblingUnits.map((u) => {
-                        const lbl = u.unitNumber
-                          ? [u.building ? `Bldg ${u.building}` : null, `Unit ${u.unitNumber}`].filter(Boolean).join(" · ")
-                          : "Unit";
-                        const isCurrent = u.portalAccessId === portalAccessId;
-                        return (
-                          <button
-                            key={u.portalAccessId}
-                            onClick={() => {
-                              if (!isCurrent) {
-                                switchOwnerUnit(u.portalAccessId, u.unitId);
-                                setActiveTab("overview");
-                              }
-                            }}
-                            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-                              isCurrent
-                                ? "bg-white text-slate-800"
-                                : "bg-white/20 text-white hover:bg-white/30"
-                            }`}
-                          >
-                            {lbl}
-                            {isCurrent && <span className="ml-1 opacity-60">↗</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="text-slate-300 text-xs capitalize">{portalRoleLabel}</div>
-                  </div>
-                ) : unitLabel ? (
-                  <div className="shrink-0 rounded-xl bg-white/10 px-4 py-3 text-sm">
-                    <div className="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Your Unit</div>
-                    <div className="font-semibold text-white">{unitLabel}</div>
-                    <div className="text-slate-300 text-xs capitalize mt-0.5">{portalRoleLabel}</div>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </div>
-        )}
+                        })()}
 
-        {workspaceMode === "owner" ? (
-          <div className="hidden border-t px-4 py-3 sm:px-6 md:block">
-            <MobileTabBar items={ownerTabs} value={activeTab} onChange={setActiveTab} />
-          </div>
-        ) : (
-          <div className="border-t bg-slate-50 px-4 py-3 sm:px-6">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Board Workspace</div>
-                <div className="text-sm text-muted-foreground mt-1">Board operations are separated from owner self-service for the current association.</div>
-              </div>
-              <Badge variant="outline">{boardRoleTitle}</Badge>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {workspaceMode === "owner" && (financialDashboard?.balance ?? 0) > 0 && (
-        <div className={`flex flex-col items-start justify-between gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:px-6 ${
-          (financialDashboard?.balance ?? 0) > 500
-            ? "bg-red-50 border-red-100"
-            : (financialDashboard?.balance ?? 0) > 0
-            ? "bg-amber-50 border-amber-100"
-            : "bg-green-50 border-green-100"
-        }`}>
-          <div className="flex items-center gap-3 min-w-0">
-            <div>
-              <span className="text-xs text-muted-foreground">Current Balance</span>
-              <span className={`ml-2 font-bold text-sm ${
-                (financialDashboard?.balance ?? 0) > 0 ? "text-red-700" : "text-green-700"
-              }`}>
-                ${(financialDashboard?.balance ?? 0).toFixed(2)}
-              </span>
-            </div>
-            {financialDashboard?.nextDueDate && (
-              <span className="text-xs text-muted-foreground hidden sm:inline">
-                · Due {new Date(financialDashboard.nextDueDate).toLocaleDateString()}
-              </span>
-            )}
-          </div>
-          <Button
-            size="sm"
-            variant="default"
-            className="h-9 shrink-0 px-3 text-xs sm:h-7"
-            onClick={() => setActiveTab("financials")}
-          >
-            Pay Now
-          </Button>
-        </div>
-      )}
-
-      <div className="mx-auto max-w-5xl space-y-6 px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 md:space-y-8 md:px-8 md:pb-8">
-
-      {/* Overview Tab: association hero + onboarding + balance + notices */}
-      {workspaceMode === "owner" && activeTab === "overview" && (
-        <>
-	          <div className="space-y-4">
-              <MobileTabBar
-                items={[
-                  { id: "summary" as const, label: "Summary" },
-                  { id: "owner-info" as const, label: "Owner Info" },
-                  { id: "occupancy" as const, label: "Occupancy" },
-                ]}
-                value={overviewSubtab}
-                onChange={setOverviewSubtab}
-                fullWidth
-              />
-
-	            <div
-                ref={overviewContentRef}
-                className={`space-y-6 pr-0 md:space-y-8 ${isMobile ? "" : "lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto lg:pr-1"}`}
-              >
-
-          {overviewSubtab === "summary" && (
-            <>
-          {hasBoardAccess ? (
-            <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-              <Card>
-                <CardContent className="p-6 space-y-5">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Board first</div>
-                      <div className="font-semibold text-xl mt-1">What the board needs to see next</div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {boardAttentionItems.length > 0
-                          ? "Start with the board attention queue, meeting readiness, and the next decision that needs action."
-                          : "Start with the board decision queue, even when the immediate action list is quiet."}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Badge variant={nextBoardMeeting ? "default" : "outline"}>
-                        {nextBoardMeeting ? `Next meeting ${new Date(nextBoardMeeting.scheduledAt).toLocaleDateString()}` : "No meeting scheduled"}
-                      </Badge>
-                      <Badge variant={boardOpenTasks.length > 0 ? "default" : "outline"}>
-                        {boardOpenTasks.length} open board task{boardOpenTasks.length === 1 ? "" : "s"}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {boardDecisionCards.length > 0 ? (
-                      boardDecisionCards.slice(0, 3).map((item, index) => (
-                        <div key={item.key} className={`rounded-xl border p-4 gap-4 ${isMobile ? "space-y-3" : "flex items-start justify-between"}`}>
-                          <div className="flex items-start gap-3 min-w-0">
-                            <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                              item.tone === "high"
-                                ? "bg-red-50 text-red-700"
-                                : item.tone === "medium"
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-slate-100 text-slate-700"
-                            }`}>
-                              {index + 1}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <div className="font-medium">{item.title}</div>
-                                <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>
-                                  {item.tone === "high" ? "Needs decision" : "Review"}
-                                </Badge>
+                        {/* Community notices */}
+                        {(notices ?? []).length > 0 ? (
+                          (notices ?? []).slice(0, 5).map((notice) => {
+                            const isRead = readNoticeIds.includes(notice.id);
+                            const isExpanded = expandedNoticeId === notice.id;
+                            return (
+                              <div
+                                key={notice.id}
+                                className={`rounded-xl border transition-all cursor-pointer ${isRead ? "bg-surface border-outline-variant/10" : "bg-surface border-primary/20"}`}
+                                onClick={() => {
+                                  setExpandedNoticeId(isExpanded ? null : notice.id);
+                                  markNoticeAsRead(notice.id);
+                                }}
+                              >
+                                <div className="flex items-start gap-3 p-3">
+                                  <div className="mt-1.5 flex-shrink-0">
+                                    <span className={`block w-2 h-2 rounded-full ${!isRead ? "bg-primary" : "bg-outline-variant/30"}`} />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex justify-between items-start gap-2">
+                                      <p className={`text-sm font-medium leading-snug ${!isRead ? "text-on-surface" : "text-on-surface-variant"}`}>
+                                        {notice.subject}
+                                      </p>
+                                      <span className={`material-symbols-outlined text-sm text-on-surface-variant flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
+                                    </div>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">{new Date(notice.createdAt).toLocaleDateString()}</p>
+                                    {!isExpanded && (
+                                      <p className="text-xs text-on-surface-variant mt-1 line-clamp-1">{stripHtml(notice.bodyRendered)}</p>
+                                    )}
+                                  </div>
+                                </div>
+                                {isExpanded && (
+                                  <div className="border-t border-outline-variant/10 overflow-hidden rounded-b-xl">
+                                    <iframe
+                                      srcDoc={notice.bodyRendered}
+                                      className="w-full border-0 block"
+                                      style={{ minHeight: 200 }}
+                                      onLoad={(e) => {
+                                        try {
+                                          const doc = e.currentTarget.contentDocument;
+                                          if (doc) e.currentTarget.style.height = doc.body.scrollHeight + 24 + "px";
+                                        } catch {}
+                                      }}
+                                      title={notice.subject}
+                                    />
+                                  </div>
+                                )}
                               </div>
-                              <div className="text-sm text-muted-foreground mt-1">{item.recommendation}</div>
-                              <div className="text-xs text-muted-foreground mt-2">
-                                {item.evidence} · {item.auditLabel}
-                              </div>
-                            </div>
+                            );
+                          })
+                        ) : openRequests.length === 0 ? (
+                          <div className="text-center py-8 space-y-1">
+                            <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">notifications_off</span>
+                            <p className="text-sm text-on-surface-variant">No notices</p>
                           </div>
-                          <Button
-                            size="sm"
-                            className={isMobile ? "min-h-11 w-full" : undefined}
-                            variant={item.tone === "high" ? "default" : "outline"}
-                            onClick={() => setWorkspaceMode("board")}
+                        ) : null}
+
+                        {(notices ?? []).length > 5 && (
+                          <button
+                            className="w-full text-xs text-primary font-medium pt-1 hover:underline"
+                            onClick={() => setActiveTab("notices")}
                           >
-                            Open board workspace
-                          </Button>
+                            View all notices →
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Recent Activity — right */}
+                      <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10">
+                        <h3 className="font-headline text-lg mb-4">Recent Activity</h3>
+                        <div className="space-y-3">
+                          {(portalLedger?.entries ?? []).slice(0, 5).length > 0 ? (
+                            (portalLedger?.entries ?? []).slice(0, 5).map((entry) => (
+                              <div key={entry.id} className="flex justify-between items-center p-3 bg-surface rounded-lg border border-outline-variant/10">
+                                <div>
+                                  <p className="font-medium text-sm">{entry.description}</p>
+                                  <p className="text-xs text-on-surface-variant">{new Date(entry.createdAt).toLocaleDateString()}</p>
+                                </div>
+                                <p className={`font-bold text-sm ${entry.entryType === "payment" ? "text-secondary" : "text-destructive"}`}>
+                                  {entry.entryType === "payment" ? "−" : "+"} ${Math.abs(entry.amount).toFixed(2)}
+                                </p>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center py-8 space-y-1">
+                              <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">receipt_long</span>
+                              <p className="text-sm text-on-surface-variant">No recent activity</p>
+                            </div>
+                          )}
                         </div>
-                      ))
-                    ) : (
-                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                        Board decision data is still loading. Use the board workspace button above when you need the full oversight view.
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Owner Info Subtab */}
+                {overviewSubtab === "owner-info" && (
+                  <div className="space-y-6">
+                    {/* Editorial header */}
+                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                      <div>
+                        <h2 className="font-headline text-3xl text-on-surface mb-1">Owner Profile</h2>
+                        <p className="text-on-surface-variant text-sm max-w-md">Manage your personal information, communication preferences, and emergency contacts.</p>
+                      </div>
+                      <div className="flex gap-3 shrink-0">
+                        <button
+                          className="px-5 py-2.5 text-primary font-semibold hover:bg-surface-container transition-all rounded-lg text-sm"
+                          onClick={() => {
+                            setRequestedPhone("");
+                            setRequestedMailingAddress("");
+                            setRequestedEmergencyContactName("");
+                            setRequestedEmergencyContactPhone("");
+                            setRequestedContactPreference("");
+                          }}
+                        >
+                          Discard Changes
+                        </button>
+                        <button
+                          className="px-6 py-2.5 bg-primary text-on-primary font-semibold rounded-lg text-sm flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+                          onClick={() => saveOwnerInfo.mutate()}
+                          disabled={saveOwnerInfo.isPending}
+                        >
+                          {saveOwnerInfo.isPending ? "Saving…" : "Save Profile"}
+                          {!saveOwnerInfo.isPending && <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_forward</span>}
+                        </button>
+                      </div>
+                    </div>
+
+                    {saveOwnerInfo.error && (
+                      <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3 text-red-800">
+                        <span className="material-symbols-outlined text-red-500" style={{ fontSize: 18 }}>error</span>
+                        <span className="text-sm font-medium">Failed to save: {(saveOwnerInfo.error as Error).message}</span>
                       </div>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
 
-              <div className="space-y-6">
-                <Card>
-                  <CardContent className="p-6 space-y-4">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Owner self-service</div>
-                      <div className="font-semibold text-lg mt-1">{hasMultipleUnits ? "Across all your units" : "Current unit snapshot"}</div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-lg bg-slate-50 p-4">
-                        <div className="text-xs text-muted-foreground">Amount due</div>
-                        <div className={`text-xl font-semibold mt-1 ${totalPortfolioBalance > 0 ? "text-red-600" : "text-green-600"}`}>
-                          {totalPortfolioBalance > 0
-                            ? `$${totalPortfolioBalance.toFixed(2)}`
-                            : totalPortfolioBalance < 0
-                            ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
-                            : "$0.00"}
+                    {contactUpdateSuccess && (
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-5 flex gap-4 items-start">
+                        <div className="flex-shrink-0 h-9 w-9 rounded-full bg-green-100 flex items-center justify-center">
+                          <span className="material-symbols-outlined text-green-700" style={{ fontSize: 20 }}>check_circle</span>
                         </div>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-4">
-                        <div className="text-xs text-muted-foreground">Units in portal</div>
-                        <div className="text-xl font-semibold mt-1">{myUnits.length || (me?.unitId ? 1 : 0)}</div>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-4">
-                        <div className="text-xs text-muted-foreground">Open maintenance</div>
-                        <div className="text-xl font-semibold mt-1">{openMaintenanceRequests.length}</div>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-4">
-                        <div className="text-xs text-muted-foreground">Recent notices</div>
-                        <div className="text-xl font-semibold mt-1">{recentOwnerNotices.length}</div>
-                      </div>
-                    </div>
-                    {financialDashboard?.nextDueDate ? (
-                      <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
-                        Next charge due on {new Date(financialDashboard.nextDueDate).toLocaleDateString()}.
-                      </div>
-                    ) : null}
-                    <div className={`rounded-xl border bg-white/80 p-4 ${isMobile ? "space-y-4" : "grid gap-4 md:grid-cols-[1.1fr_0.9fr]"}`}>
-                      <div className="space-y-3">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">Current Unit</div>
-                          <div className="mt-1 text-lg font-semibold">{focusedUnitLabel}</div>
-                          <div className="mt-1 text-sm text-muted-foreground">
-                            {focusedUnitOpenMaintenanceCount} active maintenance item{focusedUnitOpenMaintenanceCount === 1 ? "" : "s"} and
-                            {" "}
-                            {focusedOccupancyStatus === "rented"
-                              ? "tenant occupancy"
-                              : focusedOccupancyStatus === "owner-occupied"
-                              ? "owner occupancy"
-                              : "occupancy not confirmed"}.
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-green-800 mb-2">Profile saved successfully</p>
+                          <div className="flex flex-wrap gap-2">
+                            {contactUpdateSuccess.map(({ label, value }) => (
+                              <span key={label} className="inline-flex items-center gap-1.5 bg-white border border-green-200 text-green-800 px-3 py-1 rounded-full text-xs font-medium">
+                                <span className="text-green-500 font-bold">✓</span>
+                                {label}: <span className="font-semibold truncate max-w-[120px]">{value}</span>
+                              </span>
+                            ))}
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-lg bg-slate-50 p-3">
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Owner</div>
-                            <div className="mt-1 text-sm font-medium">{focusedOwnerName}</div>
-                          </div>
-                          <div className="rounded-lg bg-slate-50 p-3">
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Occupancy</div>
-                            <div className="mt-1 text-sm font-medium">
-                              {focusedOccupancyStatus === "rented" ? "Rented" : focusedOccupancyStatus === "owner-occupied" ? "Owner Occupied" : "Unknown"}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3">
-                        <Button
-                          variant="outline"
-                          className={isMobile ? "min-h-11 w-full" : "justify-between"}
-                          onClick={() => openOwnerView("overview", "owner-info")}
+                        <button
+                          className="flex-shrink-0 text-green-600 hover:text-green-800 transition-colors"
+                          onClick={() => setContactUpdateSuccess(null)}
                         >
-                          Review contact details
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className={isMobile ? "min-h-11 w-full" : "justify-between"}
-                          onClick={() => openOwnerView("overview", "occupancy")}
-                        >
-                          Review occupancy
-                        </Button>
-                        <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                          {focusedTenantName ? `Current tenant: ${focusedTenantName}` : "No tenant details are currently stored for this unit."}
-                        </div>
-                      </div>
-                    </div>
-                    {unitsBalance.length > 0 ? (
-                      <div className="space-y-2">
-                        {unitsBalance.map((unit) => {
-                          const label = formatUnitContextLabel(unit.building, unit.unitNumber);
-                          const isCurrent = unit.portalAccessId === portalAccessId;
-                          const openCount = maintenanceCountsByUnitId.get(unit.unitId) ?? 0;
-                          return (
-                            <button
-                              key={unit.unitId}
-                              className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/30 ${isCurrent ? "border-primary/40 bg-primary/5" : ""}`}
-                              onClick={() => {
-                                if (unit.portalAccessId && unit.portalAccessId !== portalAccessId) {
-                                  switchOwnerUnit(unit.portalAccessId, unit.unitId);
-                                }
-                              }}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <div className="text-sm font-medium">{label}</div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    {openCount} active maintenance item{openCount === 1 ? "" : "s"}
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <div className={`text-sm font-semibold ${unit.balance > 0 ? "text-red-600" : "text-green-600"}`}>
-                                    {unit.balance > 0 ? `$${unit.balance.toFixed(2)} due` : unit.balance < 0 ? `Credit $${Math.abs(unit.balance).toFixed(2)}` : "$0.00"}
-                                  </div>
-                                  {isCurrent ? <div className="text-xs text-primary mt-1">Viewing now</div> : null}
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-6 space-y-3">
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Board mode</div>
-                    <div className="font-semibold text-lg">Association board workspace is available</div>
-                    <div className="text-sm text-muted-foreground">Switch deliberately when you need meetings, board decisions, or association oversight instead of owner self-service.</div>
-                    <Button variant="outline" onClick={() => setWorkspaceMode("board")}>Open Board Workspace</Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-              <Card>
-                <CardContent className="p-6 space-y-5">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Owner Agenda</div>
-                      <div className="font-semibold text-xl mt-1">What needs your attention next</div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {hasMultipleUnits
-                          ? "Start with the highest-priority account and unit tasks across your portfolio."
-                          : "Start with the next owner task that matters for your account."}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Badge variant={totalPortfolioBalance > 0 ? "destructive" : "secondary"}>
-                        {totalPortfolioBalance > 0
-                          ? `$${totalPortfolioBalance.toFixed(2)} due`
-                          : totalPortfolioBalance < 0
-                          ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
-                          : "Account current"}
-                      </Badge>
-                      <Badge variant={openMaintenanceRequests.length > 0 ? "default" : "outline"}>
-                        {openMaintenanceRequests.length} open maintenance
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {prioritizedOwnerActions.map((item, index) => (
-                      <div key={item.id} className={`rounded-xl border p-4 gap-4 ${isMobile ? "space-y-3" : "flex items-start justify-between"}`}>
-                        <div className="flex items-start gap-3 min-w-0">
-                          <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                            item.tone === "high"
-                              ? "bg-red-50 text-red-700"
-                              : item.tone === "medium"
-                              ? "bg-amber-50 text-amber-700"
-                              : "bg-slate-100 text-slate-700"
-                          }`}>
-                            {index + 1}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <div className="font-medium">{item.label}</div>
-                              <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>
-                                {item.tone === "high" ? "Action needed" : item.tone === "medium" ? "Review" : "Keep current"}
-                              </Badge>
-                            </div>
-                            <div className="text-sm text-muted-foreground mt-1">{item.detail}</div>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          className={isMobile ? "min-h-11 w-full" : undefined}
-                          variant={item.tone === "high" ? "default" : "outline"}
-                          onClick={() => openOwnerView(item.tab, "overviewSubtab" in item ? item.overviewSubtab : undefined)}
-                        >
-                          {item.cta}
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="space-y-6">
-                <Card>
-                  <CardContent className="p-6 space-y-4">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Portfolio Snapshot</div>
-                      <div className="font-semibold text-lg mt-1">{hasMultipleUnits ? "Across all your units" : "Current unit snapshot"}</div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-lg bg-slate-50 p-4">
-                        <div className="text-xs text-muted-foreground">Amount due</div>
-                        <div className={`text-xl font-semibold mt-1 ${totalPortfolioBalance > 0 ? "text-red-600" : "text-green-600"}`}>
-                          {totalPortfolioBalance > 0
-                            ? `$${totalPortfolioBalance.toFixed(2)}`
-                            : totalPortfolioBalance < 0
-                            ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
-                            : "$0.00"}
-                        </div>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-4">
-                        <div className="text-xs text-muted-foreground">Units in portal</div>
-                        <div className="text-xl font-semibold mt-1">{myUnits.length || (me?.unitId ? 1 : 0)}</div>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-4">
-                        <div className="text-xs text-muted-foreground">Open maintenance</div>
-                        <div className="text-xl font-semibold mt-1">{openMaintenanceRequests.length}</div>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-4">
-                        <div className="text-xs text-muted-foreground">Recent notices</div>
-                        <div className="text-xl font-semibold mt-1">{recentOwnerNotices.length}</div>
-                      </div>
-                    </div>
-                    {financialDashboard?.nextDueDate ? (
-                      <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
-                        Next charge due on {new Date(financialDashboard.nextDueDate).toLocaleDateString()}.
-                      </div>
-                    ) : null}
-                    <div className={`rounded-xl border bg-white/80 p-4 ${isMobile ? "space-y-4" : "grid gap-4 md:grid-cols-[1.1fr_0.9fr]"}`}>
-                      <div className="space-y-3">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">Current Unit</div>
-                          <div className="mt-1 text-lg font-semibold">{focusedUnitLabel}</div>
-                          <div className="mt-1 text-sm text-muted-foreground">
-                            {focusedUnitOpenMaintenanceCount} active maintenance item{focusedUnitOpenMaintenanceCount === 1 ? "" : "s"} and
-                            {" "}
-                            {focusedOccupancyStatus === "rented"
-                              ? "tenant occupancy"
-                              : focusedOccupancyStatus === "owner-occupied"
-                              ? "owner occupancy"
-                              : "occupancy not confirmed"}.
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-lg bg-slate-50 p-3">
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Owner</div>
-                            <div className="mt-1 text-sm font-medium">{focusedOwnerName}</div>
-                          </div>
-                          <div className="rounded-lg bg-slate-50 p-3">
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Occupancy</div>
-                            <div className="mt-1 text-sm font-medium">
-                              {focusedOccupancyStatus === "rented" ? "Rented" : focusedOccupancyStatus === "owner-occupied" ? "Owner Occupied" : "Unknown"}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3">
-                        <Button
-                          variant="outline"
-                          className={isMobile ? "min-h-11 w-full" : "justify-between"}
-                          onClick={() => openOwnerView("overview", "owner-info")}
-                        >
-                          Review contact details
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className={isMobile ? "min-h-11 w-full" : "justify-between"}
-                          onClick={() => openOwnerView("overview", "occupancy")}
-                        >
-                          Review occupancy
-                        </Button>
-                        <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                          {focusedTenantName ? `Current tenant: ${focusedTenantName}` : "No tenant details are currently stored for this unit."}
-                        </div>
-                      </div>
-                    </div>
-                    {unitsBalance.length > 0 ? (
-                      <div className="space-y-2">
-                        {unitsBalance.map((unit) => {
-                          const label = formatUnitContextLabel(unit.building, unit.unitNumber);
-                          const isCurrent = unit.portalAccessId === portalAccessId;
-                          const openCount = maintenanceCountsByUnitId.get(unit.unitId) ?? 0;
-                          return (
-                            <button
-                              key={unit.unitId}
-                              className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/30 ${isCurrent ? "border-primary/40 bg-primary/5" : ""}`}
-                              onClick={() => {
-                                if (unit.portalAccessId && unit.portalAccessId !== portalAccessId) {
-                                  switchOwnerUnit(unit.portalAccessId, unit.unitId);
-                                }
-                              }}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <div className="text-sm font-medium">{label}</div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    {openCount} active maintenance item{openCount === 1 ? "" : "s"}
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <div className={`text-sm font-semibold ${unit.balance > 0 ? "text-red-600" : "text-green-600"}`}>
-                                    {unit.balance > 0 ? `$${unit.balance.toFixed(2)} due` : unit.balance < 0 ? `Credit $${Math.abs(unit.balance).toFixed(2)}` : "$0.00"}
-                                  </div>
-                                  {isCurrent ? <div className="text-xs text-primary mt-1">Viewing now</div> : null}
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
-
-                {hasBoardAccess ? (
-                  <Card>
-                    <CardContent className="p-6 space-y-3">
-                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Board mode</div>
-                      <div className="font-semibold text-lg">Association board workspace is available</div>
-                      <div className="text-sm text-muted-foreground">Switch deliberately when you need meetings, board decisions, or association oversight instead of owner self-service.</div>
-                      <Button variant="outline" onClick={() => setWorkspaceMode("board")}>Open Board Workspace</Button>
-                    </CardContent>
-                  </Card>
-                ) : null}
-              </div>
-            </div>
-          )}
-
-          {!onboardingDismissed && !me?.hasBoardAccess && (
-            <Card className="border-primary/20 bg-primary/5">
-              <CardContent className="p-6 space-y-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-xs uppercase tracking-widest text-primary font-semibold mb-1">Getting Started</div>
-                    <div className="font-semibold text-base">Set up your owner account</div>
-                    <div className="text-sm text-muted-foreground mt-0.5">Use this checklist once, then rely on the agenda above for day-to-day tasks.</div>
-                  </div>
-                  <div className="flex flex-col gap-1.5 shrink-0 items-end">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs h-7 px-2"
-                      onClick={() => {
-                        const key = `portal-onboarding-dismissed-${portalAccessId}`;
-                        window.sessionStorage.setItem(key, "session");
-                        setOnboardingDismissed(true);
-                      }}
-                    >
-                      Remind me later
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs h-7 px-2 text-muted-foreground"
-                      onClick={() => {
-                        const key = `portal-onboarding-dismissed-${portalAccessId}`;
-                        window.localStorage.setItem(key, "permanent");
-                        setOnboardingDismissed(true);
-                      }}
-                    >
-                      Dismiss permanently
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  {[
-                    {
-                      done: true,
-                      label: "Access your owner portal",
-                      detail: "You're signed in and your portal is ready.",
-                      tab: null,
-                    },
-                    {
-                      done: totalPortfolioBalance <= 0,
-                      label: "Review your balance",
-                      detail: totalPortfolioBalance > 0
-                        ? `You currently have $${totalPortfolioBalance.toFixed(2)} outstanding.`
-                        : "Your account is current.",
-                      tab: "financials" as const,
-                    },
-                    {
-                      done: Boolean(documents?.length),
-                      label: "Browse community documents",
-                      detail: documents?.length
-                        ? `${documents.length} document${documents.length === 1 ? "" : "s"} available in your portal`
-                        : "CC&Rs, bylaws, and community notices are shared here.",
-                      tab: "documents" as const,
-                    },
-                    {
-                      done: hasSavedOwnerContactInfo,
-                      label: "Verify your contact information",
-                      detail: "Confirm your phone, mailing address, and emergency contact are current.",
-                      tab: "overview" as const,
-                      overviewSubtab: "owner-info" as const,
-                    },
-                    {
-                      done: Boolean(maintenanceRequests?.length),
-                      label: "Submit a maintenance request if needed",
-                      detail: "Report any issue in your unit or a shared area without calling management.",
-                      tab: "maintenance" as const,
-                    },
-                  ].map((step, i) => (
-                    <div key={i} className="flex items-start gap-3">
-                      <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.done ? "bg-green-500 text-white" : "bg-white border-2 border-primary/30 text-primary"}`}>
-                        {step.done ? "✓" : i + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className={`text-sm font-medium ${step.done ? "line-through text-muted-foreground" : ""}`}>{step.label}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{step.detail}</div>
-                      </div>
-                      {!step.done && step.tab ? (
-                        <button className="text-xs text-primary hover:underline shrink-0 mt-0.5" onClick={() => openOwnerView(step.tab!, step.overviewSubtab)}>
-                          Go →
+                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
                         </button>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-	          <Card>
-	            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-base font-semibold">Recent Updates</h2>
-                  <div className="text-sm text-muted-foreground mt-1">Messages, maintenance, profile updates, and documents in one owner-facing stream.</div>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <Button size="sm" variant="outline" onClick={() => setActiveTab("notices")}>Notices</Button>
-                  <Button size="sm" variant="outline" onClick={() => setActiveTab("documents")}>Documents</Button>
-                </div>
-              </div>
-              {recentOwnerUpdates.length > 0 ? (
-                <div className="space-y-3">
-                  {recentOwnerUpdates.map((item) => (
-                    <div key={item.id} className="rounded-lg border p-4 flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="font-medium">{item.title}</div>
-                          <Badge variant="outline">{item.kindLabel}</Badge>
-                          <Badge variant="secondary">{item.scopeLabel}</Badge>
-                        </div>
-                        <div className="text-sm text-muted-foreground mt-1">{item.detail}</div>
-                        <div className="text-xs text-muted-foreground mt-2">{new Date(item.date).toLocaleString()}</div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => openOwnerView(
-                          item.tab,
-                          "overviewSubtab" in item ? (item.overviewSubtab as "summary" | "owner-info" | "occupancy" | undefined) : undefined,
-                        )}
-                      >
-                        Open
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                  No recent owner-facing updates are available yet.
-                </div>
-              )}
-		            </CardContent>
-		          </Card>
-	            </>
-	          )}
+                    )}
 
-	          {overviewSubtab === "owner-info" && (
-	          <Card>
-            <CardContent className="p-6 space-y-5">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-base font-semibold">Contact Information</h2>
-                  <div className="text-sm text-muted-foreground mt-1">Review the contact details tied to your owner profile.</div>
-                </div>
-                {ownerInfoEditing ? (
-                  <div className={`gap-2 ${isMobile ? "grid grid-cols-1 w-full" : "flex"}`}>
-                    <Button
-                      variant="outline"
-                      className={isMobile ? "min-h-11 w-full" : undefined}
-                      onClick={() => {
-                        resetOwnerInfoForm();
-                        setOwnerInfoEditing(false);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => saveOwnerInfo.mutate()} disabled={saveOwnerInfo.isPending}>
-                      {saveOwnerInfo.isPending ? "Saving..." : "Save Changes"}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className={isMobile ? "min-h-11 w-full" : undefined}
-                    onClick={() => {
-                      resetOwnerInfoForm();
-                      setOwnerInfoEditing(true);
-                    }}
-                  >
-                    Edit
-                  </Button>
-                )}
-              </div>
-
-              <div className={`gap-4 ${isMobile ? "grid grid-cols-1" : "grid md:grid-cols-3"}`}>
-                <div className="rounded-xl border bg-slate-50/80 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Unit</div>
-                  <div className="mt-1 text-sm font-semibold">{focusedUnitLabel}</div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {focusedOccupancyStatus === "rented" ? "Rented unit" : focusedOccupancyStatus === "owner-occupied" ? "Owner occupied" : "Occupancy not confirmed"}
-                  </div>
-                </div>
-                <div className="rounded-xl border bg-slate-50/80 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Preferred Contact</div>
-                  <div className="mt-1 text-sm font-semibold">{requestedContactPreference || "No preference"}</div>
-                  <div className="mt-2 text-xs text-muted-foreground">{requestedPhone || "No phone on file"}</div>
-                </div>
-                <div className="rounded-xl border bg-slate-50/80 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Emergency Contact</div>
-                  <div className="mt-1 text-sm font-semibold">{requestedEmergencyContactName || "Not provided"}</div>
-                  <div className="mt-2 text-xs text-muted-foreground">{requestedEmergencyContactPhone || "No emergency phone on file"}</div>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Name</label>
-                  <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-sm font-medium">
-                    {[(me as any)?.firstName, (me as any)?.lastName].filter(Boolean).join(" ") || "Owner"}
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Email</label>
-                  <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-sm font-medium">
-                    {(me as any)?.email || "No email on file"}
-                  </div>
-                </div>
-              </div>
-
-              {ownerInfoEditing ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Phone</label>
-                    <Input value={requestedPhone} onChange={(e) => setRequestedPhone(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Mailing Address</label>
-                    <Textarea className={isMobile ? "min-h-24" : undefined} value={requestedMailingAddress} onChange={(e) => setRequestedMailingAddress(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Emergency Contact Name</label>
-                    <Input value={requestedEmergencyContactName} onChange={(e) => setRequestedEmergencyContactName(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Emergency Contact Phone</label>
-                    <Input value={requestedEmergencyContactPhone} onChange={(e) => setRequestedEmergencyContactPhone(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Contact Preference</label>
-                    <Select value={requestedContactPreference || "none"} onValueChange={(v) => setRequestedContactPreference(v === "none" ? "" : v)}>
-                      <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue placeholder="Contact preference" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No preference</SelectItem>
-                        <SelectItem value="email">Email</SelectItem>
-                        <SelectItem value="phone">Phone</SelectItem>
-                        <SelectItem value="sms">SMS</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Phone</div>
-                    <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-sm">{requestedPhone || "Not provided"}</div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Mailing Address</div>
-                    <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-sm whitespace-pre-wrap">{requestedMailingAddress || "Not provided"}</div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Emergency Contact Name</div>
-                    <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-sm">{requestedEmergencyContactName || "Not provided"}</div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Emergency Contact Phone</div>
-                    <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-sm">{requestedEmergencyContactPhone || "Not provided"}</div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Contact Preference</div>
-                    <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-sm">{requestedContactPreference || "No preference"}</div>
-                  </div>
-                </div>
-              )}
-
-              {contactUpdateSuccess && (
-                <div className="text-sm text-green-700">Your contact information has been saved.</div>
-              )}
-              {saveOwnerInfo.isError && (
-                <p className="text-sm text-destructive">{(saveOwnerInfo.error as Error).message}</p>
-              )}
-
-              <div className="rounded-lg border bg-slate-50 p-4 text-sm text-muted-foreground">
-                Name and email stay tied to your portal identity. Contact fields above can be edited directly from this view.
-              </div>
-            </CardContent>
-          </Card>
-          )}
-
-          {overviewSubtab === "occupancy" && (
-            <div className="space-y-6">
-              <Card>
-                <CardContent className="p-6 space-y-5">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Occupancy</div>
-                      <h2 className="text-base font-semibold mt-1">{focusedUnitLabel}</h2>
-                  <div className="text-sm text-muted-foreground mt-1">
-                        Review and edit occupancy one unit at a time.
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <Badge variant={focusedOccupancyStatus === "rented" ? "default" : focusedOccupancyStatus === "owner-occupied" ? "secondary" : "outline"}>
-                        {focusedOccupancyStatus === "rented" ? "Rented" : focusedOccupancyStatus === "owner-occupied" ? "Owner Occupied" : "Occupancy Unknown"}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {myUnits.length > 1
-                    ? renderOwnerUnitSelector({
-                        activeUnitId: focusedOwnedUnit?.unitId,
-                        onSelect: (unit) => {
-                          if (unit.portalAccessId) {
-                            switchOwnerUnit(unit.portalAccessId, unit.unitId);
-                          } else {
-                            setOwnedUnitFocusId(unit.unitId);
-                          }
-                        },
-                      })
-                    : null}
-
-                  <div className={`gap-4 ${isMobile ? "grid grid-cols-1" : "grid md:grid-cols-3"}`}>
-                    <div className="rounded-xl border bg-white p-4">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Unit</div>
-                      <div className="mt-1 text-sm font-semibold">{focusedUnitLabel}</div>
-                    </div>
-                    <div className="rounded-xl border bg-white p-4">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Owner</div>
-                      <div className="mt-1 text-sm font-semibold">{focusedOwnerName}</div>
-                    </div>
-                    <div className="rounded-xl border bg-white p-4">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Tenant</div>
-                      <div className="mt-1 text-sm font-semibold">{focusedTenantName || "None on file"}</div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border bg-slate-50 p-4 space-y-4">
-                      <div className="flex items-start justify-between gap-3 flex-wrap">
-                        <div>
-                          <div className="text-sm font-semibold">Set Occupancy</div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            Review the current occupancy and edit it only when something has changed.
-                          </div>
-                        </div>
-                        {occupancyEditing ? (
-                          <div className={`gap-2 ${isMobile ? "grid grid-cols-1 w-full" : "flex"}`}>
-                            <Button
-                              variant="outline"
-                              className={isMobile ? "min-h-11 w-full" : undefined}
-                              onClick={() => {
-                                resetOccupancyForm();
-                                setOccupancyEditing(false);
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                            <Button className={isMobile ? "min-h-11 w-full" : undefined} onClick={() => saveOccupancy.mutate()} disabled={saveOccupancy.isPending || !focusedOwnedUnit}>
-                              {saveOccupancy.isPending ? "Saving..." : "Save Occupancy"}
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            className={isMobile ? "min-h-11 w-full" : undefined}
-                            onClick={() => {
-                              resetOccupancyForm();
-                              setOccupancyEditing(true);
-                            }}
-                          >
-                            Edit
-                          </Button>
-                        )}
-                      </div>
-
-                      {occupancyEditing ? (
-                        <>
-                          <div className="space-y-1">
-                            <label className="text-xs text-muted-foreground">Occupancy Type</label>
-                            <Select
-                              value={occupancyForm.occupancyType}
-                              onValueChange={(value) => setOccupancyForm((current) => ({
-                                ...current,
-                                occupancyType: value as "OWNER_OCCUPIED" | "TENANT",
-                              }))}
-                            >
-                              <SelectTrigger className={isMobile ? "min-h-11 w-full" : "max-w-xs"}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="OWNER_OCCUPIED">Owner Occupied</SelectItem>
-                                <SelectItem value="TENANT">Tenant</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {occupancyForm.occupancyType === "TENANT" ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground">Tenant First Name</label>
-                                <Input
-                                  value={occupancyForm.tenantFirstName}
-                                  onChange={(e) => setOccupancyForm((current) => ({ ...current, tenantFirstName: e.target.value }))}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground">Tenant Last Name</label>
-                                <Input
-                                  value={occupancyForm.tenantLastName}
-                                  onChange={(e) => setOccupancyForm((current) => ({ ...current, tenantLastName: e.target.value }))}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground">Tenant Email</label>
-                                <Input
-                                  type="email"
-                                  value={occupancyForm.tenantEmail}
-                                  onChange={(e) => setOccupancyForm((current) => ({ ...current, tenantEmail: e.target.value }))}
-                                  required
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground">Tenant Phone</label>
-                                <Input
-                                  value={occupancyForm.tenantPhone}
-                                  onChange={(e) => setOccupancyForm((current) => ({ ...current, tenantPhone: e.target.value }))}
-                                />
-                              </div>
+                    {/* Bento grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                      {/* Left column */}
+                      <div className="md:col-span-8 space-y-6">
+                        {/* Profile Information */}
+                        <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm">
+                          <h3 className="font-headline text-xl mb-5 text-on-surface">Profile Information</h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">First Name</label>
+                              <input
+                                className="w-full bg-surface-container border-none rounded-lg focus:ring-2 focus:ring-primary p-3 outline-none transition-all text-on-surface opacity-60 cursor-not-allowed"
+                                type="text"
+                                value={me?.firstName || ""}
+                                disabled
+                              />
                             </div>
-                          ) : null}
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Last Name</label>
+                              <input
+                                className="w-full bg-surface-container border-none rounded-lg focus:ring-2 focus:ring-primary p-3 outline-none transition-all text-on-surface opacity-60 cursor-not-allowed"
+                                type="text"
+                                value={me?.lastName || ""}
+                                disabled
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Email Address</label>
+                              <input
+                                className="w-full bg-surface-container border-none rounded-lg focus:ring-2 focus:ring-primary p-3 outline-none transition-all text-on-surface opacity-60 cursor-not-allowed"
+                                type="email"
+                                value={me?.email || ""}
+                                disabled
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Phone Number</label>
+                              <input
+                                className="w-full bg-surface-container border-none rounded-lg focus:ring-2 focus:ring-primary p-3 outline-none transition-all text-on-surface placeholder:text-on-surface-variant/50"
+                                type="tel"
+                                value={requestedPhone || formatPhoneNumber(me?.phone || "")}
+                                onChange={(e) => setRequestedPhone(formatPhoneNumber(e.target.value))}
+                                placeholder="(XXX) XXX-XXXX"
+                              />
+                            </div>
+                          </div>
+                        </div>
 
-                          <div className="space-y-1">
-                            <label className="text-xs text-muted-foreground">Note for Management</label>
-                            <Textarea
-                              className={isMobile ? "min-h-24" : undefined}
-                              value={occupancyForm.notes}
-                              onChange={(e) => setOccupancyForm((current) => ({ ...current, notes: e.target.value }))}
+                        {/* Mailing Address */}
+                        <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm overflow-hidden relative">
+                          <div className="absolute top-0 right-0 w-28 h-28 bg-primary/5 rounded-full -mr-14 -mt-14 pointer-events-none" />
+                          <h3 className="font-headline text-xl mb-5 text-on-surface">Mailing Address</h3>
+                          <div className="space-y-1.5">
+                            <label className="block text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Street Address</label>
+                            <input
+                              className="w-full bg-surface-container border-none rounded-lg focus:ring-2 focus:ring-primary p-3 outline-none transition-all text-on-surface placeholder:text-on-surface-variant/50"
+                              type="text"
+                              value={requestedMailingAddress || me?.mailingAddress || ""}
+                              onChange={(e) => setRequestedMailingAddress(e.target.value)}
+                              placeholder="Enter mailing address"
                             />
                           </div>
-                        </>
-                      ) : null}
-                      {!occupancyEditing ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Occupancy Type</div>
-                            <div className="rounded-lg border bg-white px-3 py-2.5 text-sm">
-                              {occupancyForm.occupancyType === "TENANT" ? "Tenant" : "Owner Occupied"}
+                        </div>
+                      </div>
+
+                      {/* Right column */}
+                      <div className="md:col-span-4 space-y-6">
+                        {/* Preferred Contact */}
+                        <div className="bg-surface-container-lowest rounded-xl p-6 border border-outline-variant/10 shadow-sm">
+                          <h3 className="font-headline text-xl mb-5 text-on-surface">Preferred Contact</h3>
+                          <div className="space-y-3">
+                            {([
+                              { value: "email", icon: "mail", label: "Email Communication" },
+                              { value: "phone", icon: "call", label: "Phone Calls" },
+                              { value: "sms", icon: "sms", label: "Text Messaging" },
+                            ] as const).map(({ value, icon, label }) => {
+                              const current = requestedContactPreference || me?.contactPreference || "email";
+                              return (
+                                <label key={value} className="flex items-center p-3 rounded-lg bg-surface-container-low cursor-pointer hover:bg-primary-fixed/60 transition-all group">
+                                  <input
+                                    type="radio"
+                                    name="contact_pref"
+                                    className="text-primary focus:ring-primary h-4 w-4 accent-primary"
+                                    checked={current === value}
+                                    onChange={() => setRequestedContactPreference(value)}
+                                  />
+                                  <div className="ml-3 flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-primary" style={{ fontSize: 20 }}>{icon}</span>
+                                    <span className="font-medium text-sm">{label}</span>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* SMS Opt-In */}
+                        <div className="bg-surface-container-low rounded-xl p-6 border border-outline-variant/10 shadow-sm">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="material-symbols-outlined text-primary">sms</span>
+                            <h3 className="font-headline text-xl text-on-surface">SMS Text Notifications</h3>
+                          </div>
+                          <p className="text-sm text-on-surface-variant mb-4">Receive time-sensitive alerts — like water shutoffs, emergency repairs, and parking notices — by text message. You can opt out at any time by replying STOP.</p>
+                          <label className="flex items-center gap-3 cursor-pointer select-none">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={Boolean(me?.smsOptIn)}
+                              disabled={smsOptInPending}
+                              onClick={() => toggleSmsOptIn(!me?.smsOptIn)}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${me?.smsOptIn ? "bg-primary" : "bg-outline"} disabled:opacity-50`}
+                            >
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${me?.smsOptIn ? "translate-x-6" : "translate-x-1"}`} />
+                            </button>
+                            <span className="text-sm font-medium text-on-surface">
+                              {me?.smsOptIn ? "SMS notifications enabled" : "SMS notifications disabled"}
+                            </span>
+                          </label>
+                        </div>
+
+                        {/* Emergency Contact */}
+                        <div className="bg-tertiary-fixed rounded-xl p-6 border border-tertiary/10 shadow-sm">
+                          <div className="flex items-center gap-2 mb-5">
+                            <span className="material-symbols-outlined text-tertiary">emergency</span>
+                            <h3 className="font-headline text-xl text-on-surface">Emergency Contact</h3>
+                          </div>
+                          <div className="space-y-4">
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-bold uppercase tracking-widest text-on-tertiary-fixed-variant opacity-70">Contact Name</label>
+                              <input
+                                className="w-full bg-white/50 border-none rounded-lg focus:ring-2 focus:ring-tertiary p-3 outline-none transition-all placeholder:text-on-surface-variant/50"
+                                type="text"
+                                value={requestedEmergencyContactName || me?.emergencyContactName || ""}
+                                onChange={(e) => setRequestedEmergencyContactName(e.target.value)}
+                                placeholder="Contact name"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-bold uppercase tracking-widest text-on-tertiary-fixed-variant opacity-70">Emergency Phone</label>
+                              <input
+                                className="w-full bg-white/50 border-none rounded-lg focus:ring-2 focus:ring-tertiary p-3 outline-none transition-all placeholder:text-on-surface-variant/50"
+                                type="tel"
+                                value={requestedEmergencyContactPhone || formatPhoneNumber(me?.emergencyContactPhone || "")}
+                                onChange={(e) => setRequestedEmergencyContactPhone(formatPhoneNumber(e.target.value))}
+                                placeholder="(XXX) XXX-XXXX"
+                              />
                             </div>
                           </div>
-                          {occupancyForm.occupancyType === "TENANT" ? (
-                            <>
-                              <div className="space-y-1">
-                                <div className="text-xs text-muted-foreground">Tenant Name</div>
-                                <div className="rounded-lg border bg-white px-3 py-2.5 text-sm">
-                                  {[occupancyForm.tenantFirstName, occupancyForm.tenantLastName].filter(Boolean).join(" ") || "Not provided"}
-                                </div>
-                              </div>
-                              <div className="space-y-1">
-                                <div className="text-xs text-muted-foreground">Tenant Email</div>
-                                <div className="rounded-lg border bg-white px-3 py-2.5 text-sm">
-                                  {occupancyForm.tenantEmail || "Not provided"}
-                                </div>
-                              </div>
-                              <div className="space-y-1">
-                                <div className="text-xs text-muted-foreground">Tenant Phone</div>
-                                <div className="rounded-lg border bg-white px-3 py-2.5 text-sm">
-                                  {occupancyForm.tenantPhone || "Not provided"}
-                                </div>
-                              </div>
-                            </>
-                          ) : null}
                         </div>
-                      ) : null}
-                      {occupancyForm.occupancyType === "TENANT" && occupancyForm.tenantEmail.trim() && !isValidEmail(occupancyForm.tenantEmail) ? (
-                        <p className="text-sm text-destructive">Enter a valid tenant email address.</p>
-                      ) : null}
-                      {occupancyUpdateSuccess && (
-                        <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                          Occupancy was saved successfully.
-                        </div>
-                      )}
-                      {saveOccupancy.isError && (
-                        <p className="text-sm text-destructive">{(saveOccupancy.error as Error).message}</p>
-                      )}
+                      </div>
                     </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
 
-		            </div>
-		          </div>
-	        </>
-      )}
-
-      {me?.hasBoardAccess && workspaceMode === "board" ? (
-        <>
-          <Card id="board-home">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Board Workspace</div>
-                  <h2 className="text-2xl font-semibold tracking-tight mt-1">{associationName}</h2>
-                  <p className="text-sm text-muted-foreground mt-1">Decision-first workspace for the board member serving this association.</p>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <Badge>{boardRoleTitle}</Badge>
-                  <Badge variant="outline">{me.effectiveRole}</Badge>
-                  <Badge variant="outline">1 association scope</Badge>
-                </div>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-[1.7fr_1fr]">
-                <div className="rounded-xl border bg-slate-900 text-slate-50 p-5 space-y-4">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Needs Board Action</div>
-                      <div className="text-sm text-slate-300 mt-1">
-                        {boardAttentionItems.length > 0
-                          ? `${boardAttentionItems.length} active board item${boardAttentionItems.length === 1 ? "" : "s"} require attention.`
-                          : "No urgent board actions are currently surfaced."}
-                      </div>
-                    </div>
-                    {nextBoardMeeting ? (
-                      <div className="rounded-lg bg-white/10 px-3 py-2 text-right">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Next Meeting</div>
-                        <div className="text-sm font-medium">{new Date(nextBoardMeeting.scheduledAt).toLocaleDateString()}</div>
-                        <div className="text-xs text-slate-300 truncate max-w-[12rem]">{nextBoardMeeting.title}</div>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {boardAttentionItems.slice(0, 4).map((item) => (
-                      <div key={item.key} className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium">{item.label}</div>
-                          <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>
-                            {item.tone}
-                          </Badge>
+                    {/* Bottom bento: Security + Portfolio */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-secondary-container p-6 rounded-xl flex flex-col justify-between min-h-[160px]">
+                        <span className="material-symbols-outlined text-primary" style={{ fontSize: 32 }}>family_restroom</span>
+                        <div>
+                          <h3 className="font-headline text-lg text-on-secondary-container mb-1">Occupancy</h3>
+                          <p className="text-sm text-on-secondary-container/80">Update who is currently living in your unit — owner-occupied or tenant.</p>
                         </div>
-                        <div className="text-sm text-slate-300">{item.detail}</div>
+                        <button
+                          className="mt-3 text-sm font-bold uppercase tracking-widest text-primary hover:underline self-start"
+                          onClick={() => setOverviewSubtab("occupancy")}
+                        >
+                          Update Occupancy
+                        </button>
                       </div>
-                    ))}
-                    {boardAttentionItems.length === 0 ? (
-                      <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                        The board action queue is clear right now. Review meetings, finances, and recent changes below.
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="rounded-xl border p-4 space-y-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Board Context</div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Badge variant={getStatusBadgeVariant(boardDashboard?.workflowStates.access.status ?? "active")}>
-                        {formatStatusLabel(boardDashboard?.workflowStates.access.status ?? "active")}
-                      </Badge>
-                      {boardTerm ? (
-                        <Badge variant={boardTerm.isActive ? "default" : "outline"}>
-                          {boardTerm.isActive ? "term active" : "term ended"}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    {boardTerm ? (
-                      <div className="text-sm text-muted-foreground">
-                        Serving from {new Date(boardTerm.startDate).toLocaleDateString()}
-                        {boardTerm.endDate ? ` through ${new Date(boardTerm.endDate).toLocaleDateString()}` : " with no scheduled end date"}.
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">Active board access is association-scoped and audit-tracked.</div>
-                    )}
-                    <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Role Focus</div>
-                      <div className="mt-1">{boardRoleFocus}</div>
-                    </div>
-                  </div>
-                  <div className="rounded-xl border p-4 grid grid-cols-2 gap-3">
-                    <div>
-                      <div className="text-xs text-muted-foreground">Units</div>
-                      <div className="text-2xl font-semibold">{boardOverview?.units ?? "-"}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Open Tasks</div>
-                      <div className="text-2xl font-semibold">{boardDashboard?.governance.openTaskCount ?? "-"}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Open Maintenance</div>
-                      <div className="text-2xl font-semibold">{boardOverview?.maintenanceOpen ?? "-"}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Contact Coverage</div>
-                      <div className="text-2xl font-semibold">{boardOverview?.contactCoveragePercent ?? "-"}%</div>
-                    </div>
-                  </div>
-                  <div className="rounded-xl border p-4 space-y-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Access Boundaries</div>
-                    <div className="space-y-2">
-                      {boardScopeRules.map((rule) => (
-                        <div key={rule} className="flex items-start gap-2 text-sm text-muted-foreground">
-                          <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-slate-400" />
-                          <span>{rule}</span>
+                      <div className="bg-surface-container-lowest p-6 rounded-xl shadow-sm md:col-span-2 flex items-center gap-6 border border-outline-variant/5">
+                        <div className="hidden sm:flex h-14 w-14 rounded-xl bg-primary/10 items-center justify-center shrink-0">
+                          <span className="material-symbols-outlined text-primary" style={{ fontSize: 28 }}>apartment</span>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div id="board-decisions" className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-                <div className="rounded-xl border p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
-                      <h3 className="text-base font-semibold">Decision Queue</h3>
-                      <p className="text-sm text-muted-foreground mt-1">Recommended board actions with supporting context and auditable state.</p>
-                    </div>
-                    <Badge variant={boardDecisionCards.length > 0 ? "default" : "outline"}>
-                      {boardDecisionCards.length} queued
-                    </Badge>
-                  </div>
-                  <div className="space-y-3">
-                    {boardDecisionCards.map((item) => (
-                      <div key={item.key} className="rounded-lg border bg-slate-50/80 p-4 space-y-2">
-                        <div className="flex items-start justify-between gap-3 flex-wrap">
-                          <div className="font-medium">{item.title}</div>
-                          <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>
-                            {item.tone === "high" ? "Needs decision" : "Review next"}
-                          </Badge>
-                        </div>
-                        <div className="text-sm">{item.recommendation}</div>
-                        <div className="text-sm text-muted-foreground">Support: {item.evidence}</div>
-                        <div className={`gap-3 text-xs text-muted-foreground ${isMobile ? "grid grid-cols-1" : "flex items-center justify-between flex-wrap"}`}>
-                          <span>{item.dueLabel}</span>
-                          <span>{item.auditLabel}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {boardDecisionCards.length === 0 ? (
-                      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                        No decision cards are queued right now. Review recent changes and the risk snapshot for anything that needs board attention.
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="rounded-xl border p-4 space-y-3">
-                  <div>
-                    <h3 className="text-base font-semibold">Since Last Review</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Recent association changes that affect meeting context, trust, or follow-up.</p>
-                  </div>
-                  <div className="space-y-3">
-                    {boardRecentChangeSummary.map((entry) => (
-                      <div key={entry.id} className="rounded-lg border p-3 space-y-2">
-                        <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex items-center justify-between flex-wrap"}`}>
-                          <div className="font-medium">{formatStatusLabel(entry.action)}</div>
-                          <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline">{entry.entityType}</Badge>
-                          {entry.actorEmail ? <Badge variant="secondary">{entry.actorEmail}</Badge> : null}
-                        </div>
-                      </div>
-                    ))}
-                    {boardRecentChangeSummary.length === 0 ? (
-                      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                        No recent board-visible changes are available yet.
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6 space-y-4">
-              <div>
-                <h2 className="text-lg font-semibold">Board Lanes</h2>
-                <p className="text-sm text-muted-foreground">Move through decisions, meetings, packages, and risks before opening execution tools.</p>
-              </div>
-              <div className={isMobile ? "flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2" : "grid gap-3 lg:grid-cols-6"}>
-                <button type="button" onClick={() => scrollToBoardSection("board-home")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Home</div>
-                  <div className="mt-2 text-sm font-medium">{boardAttentionItems.length} active item{boardAttentionItems.length === 1 ? "" : "s"}</div>
-                  <div className="text-sm text-muted-foreground mt-1">Start with decisions, recent changes, and current risks.</div>
-                </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-decisions")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Decisions</div>
-                  <div className="mt-2 text-sm font-medium">{boardDecisionCards.length} recommended</div>
-                  <div className="text-sm text-muted-foreground mt-1">Recommended actions with due dates and audit context.</div>
-                </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-meetings")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Meetings</div>
-                  <div className="mt-2 text-sm font-medium">{boardUpcomingMeetings.length} upcoming</div>
-                  <div className="text-sm text-muted-foreground mt-1">Agenda readiness, minutes, tasks, and board package prep.</div>
-                </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-financials")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Financials</div>
-                  <div className="mt-2 text-sm font-medium">${boardDashboard?.financial.openBalance?.toFixed(2) ?? "0.00"} open</div>
-                  <div className="text-sm text-muted-foreground mt-1">Cash exposure, invoices, ledger movement, and owner balances.</div>
-                </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-messages")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Packages</div>
-                  <div className="mt-2 text-sm font-medium">{(boardPackageStates.draft ?? 0) + (boardPackageStates.approved ?? 0) + (boardPackageStates.distributed ?? 0)} tracked</div>
-                  <div className="text-sm text-muted-foreground mt-1">Board packages, shared documents, and communication history.</div>
-                </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-operations")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Compliance</div>
-                  <div className="mt-2 text-sm font-medium">{boardDashboard?.governance.openTaskCount ?? 0} open tasks</div>
-                  <div className="text-sm text-muted-foreground mt-1">Governance tasks, maintenance exceptions, and compliance follow-up.</div>
-                </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-activity")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Activity</div>
-                  <div className="mt-2 text-sm font-medium">{boardActivityItems.length} recent event{boardActivityItems.length === 1 ? "" : "s"}</div>
-                  <div className="text-sm text-muted-foreground mt-1">Audit history grouped by governance, financials, communications, operations, and access.</div>
-                </button>
-                <button type="button" onClick={() => scrollToBoardSection("board-boundary")} className={`rounded-lg border p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors ${isMobile ? "min-w-[16rem] snap-start shrink-0" : ""}`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Boundary</div>
-                  <div className="mt-2 text-sm font-medium">Oversight only</div>
-                  <div className="text-sm text-muted-foreground mt-1">Board mode excludes manager-only editing, execution, and cross-association controls.</div>
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card id="board-meetings">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-lg font-semibold">Meeting Readiness and Decisions</h2>
-                  <p className="text-sm text-muted-foreground">Keep the board focused on what must be prepared, reviewed, or decided before the next session.</p>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  {Object.entries(boardDashboard?.workflowStates.governance.meetingsByStatus ?? {}).map(([status, count]) => (
-                    <Badge key={`meeting-${status}`} variant={getStatusBadgeVariant(status)}>
-                      {count} {formatStatusLabel(status)}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <div className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
-                <div className="rounded-xl border p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
-                      <h3 className="text-base font-semibold">Readiness Checklist</h3>
-                      <p className="text-sm text-muted-foreground mt-1">Use one scan to see whether the board can actually walk into the next meeting prepared.</p>
-                    </div>
-                    <Badge variant={boardMeetingReadinessItems.every((item) => item.done) ? "secondary" : "default"}>
-                      {boardMeetingReadinessItems.filter((item) => item.done).length}/{boardMeetingReadinessItems.length} ready
-                    </Badge>
-                  </div>
-                  <div className="space-y-3">
-                    {boardMeetingReadinessItems.map((item) => (
-                      <div key={item.key} className="rounded-lg border p-4">
-                        <div className="flex items-start justify-between gap-3 flex-wrap">
-                          <div>
-                            <div className="font-medium">{item.label}</div>
-                            <div className="text-sm text-muted-foreground mt-1">{item.detail}</div>
-                          </div>
-                          <Badge variant={item.done ? "secondary" : item.tone === "high" ? "destructive" : "default"}>
-                            {item.done ? "Ready" : item.tone === "high" ? "Needs setup" : "Review"}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-xl border p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
-                      <h3 className="text-base font-semibold">Board Package Review</h3>
-                      <p className="text-sm text-muted-foreground mt-1">Package state stays visible in the meeting lane instead of hiding in document tools.</p>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => scrollToBoardSection("board-messages")}>
-                      Open package lane
-                    </Button>
-                  </div>
-                  <div className="space-y-3">
-                    {boardPackageReviewRows.map((row) => (
-                      <div key={row.key} className="rounded-lg border p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="font-medium">{row.label}</div>
-                            <div className="text-sm text-muted-foreground mt-1">{row.detail}</div>
-                          </div>
-                          <Badge variant={row.tone === "medium" ? "default" : "outline"}>{row.value}</Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {nextBoardMeeting ? (
-                    <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-700">
-                      Plan package distribution against the next scheduled meeting on {new Date(nextBoardMeeting.scheduledAt).toLocaleDateString()}.
-                    </div>
-                  ) : (
-                    <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-700">
-                      No meeting is scheduled yet, so package review has no target session. Set the next meeting first.
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-lg border p-4 space-y-3">
-                  <div className="text-sm font-medium">Upcoming Meetings</div>
-                  <div className="space-y-3">
-                    {boardUpcomingMeetings.slice(0, 4).map((meeting) => (
-                      <div key={meeting.id} className="rounded-md border p-3 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium">{meeting.title}</div>
+                        <div>
+                          <h3 className="font-headline text-xl text-on-surface mb-1">Associated Portfolio</h3>
+                          <p className="text-on-surface-variant text-sm mb-3">
+                            {myUnits.length > 0
+                              ? `You are managing ${myUnits.length} ${myUnits.length === 1 ? "unit" : "units"}${myAssociations?.[0]?.associationName ? ` under ${myAssociations[0].associationName}` : ""}.`
+                              : "No units are currently associated with your account."}
+                          </p>
                           <div className="flex gap-2 flex-wrap">
-                            <Badge variant={getStatusBadgeVariant(meeting.status)}>{formatStatusLabel(meeting.status)}</Badge>
-                            <Badge variant={getStatusBadgeVariant(meeting.summaryStatus)}>{formatStatusLabel(meeting.summaryStatus)}</Badge>
+                            {myUnits.length > 0 ? (
+                              <span className="bg-surface border border-outline-variant/30 px-3 py-1 rounded text-xs font-medium">{myUnits.length} {myUnits.length === 1 ? "Unit" : "Units"}</span>
+                            ) : (
+                              <span className="bg-surface border border-outline-variant/30 px-3 py-1 rounded text-xs font-medium">No units</span>
+                            )}
                           </div>
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          {meeting.scheduledAt ? new Date(meeting.scheduledAt).toLocaleString() : "Date pending"}
-                          {meeting.meetingType ? ` · ${meeting.meetingType}` : ""}
-                        </div>
                       </div>
-                    ))}
-                    {boardUpcomingMeetings.length === 0 ? <div className="text-sm text-muted-foreground">No upcoming meetings are currently scheduled.</div> : null}
-                  </div>
-                </div>
-                <div className="rounded-lg border p-4 space-y-3">
-                  <div className="text-sm font-medium">Open Board Tasks</div>
-                  <div className="space-y-3">
-                    {boardOpenTasks.slice(0, 5).map((task) => (
-                      <div key={task.id} className="rounded-md border p-3 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium">{task.title}</div>
-                          <Badge variant={getStatusBadgeVariant(task.status)}>{formatStatusLabel(task.status)}</Badge>
-                        </div>
-                        <div className="text-sm text-muted-foreground">{task.dueDate ? `Due ${new Date(task.dueDate).toLocaleDateString()}` : "No due date"}</div>
-                      </div>
-                    ))}
-                    {boardOpenTasks.length === 0 ? <div className="text-sm text-muted-foreground">No open governance tasks are currently assigned.</div> : null}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-lg font-semibold">Financial and Risk Snapshot</h2>
-                  <p className="text-sm text-muted-foreground">Summary first, exceptions second, with the operational detail kept below.</p>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <Badge variant={boardDashboard?.workflowStates.maintenance.urgentOpenCount ? "destructive" : "outline"}>
-                    {boardDashboard?.workflowStates.maintenance.urgentOpenCount ?? 0} urgent/high maintenance
-                  </Badge>
-                  <Badge variant={(boardDashboard?.financial.openBalance ?? 0) > 0 ? "default" : "outline"}>
-                    ${boardDashboard?.financial.openBalance?.toFixed(2) ?? "0.00"} open balance
-                  </Badge>
-                  <Badge variant="outline">
-                    {boardPackageStates.draft ?? 0} draft packages
-                  </Badge>
-                </div>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-2">
-                {boardRiskHighlights.map((item) => (
-                  <div key={item.key} className="rounded-lg border p-4 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium">{item.label}</div>
-                      <Badge variant={item.tone === "high" ? "destructive" : item.tone === "medium" ? "default" : "outline"}>{item.tone}</Badge>
                     </div>
-                    <div className="text-sm text-muted-foreground">{item.detail}</div>
                   </div>
-                ))}
-                {boardRiskHighlights.length === 0 ? (
-                  <div className="rounded-lg border p-4 text-sm text-muted-foreground">No elevated financial or operating risk signals are currently surfaced for this association.</div>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+                )}
 
-          <Card>
-            <CardContent className="p-6 space-y-4">
-              <div>
-                <h2 className="text-lg font-semibold">Recent Association Changes</h2>
-                <p className="text-sm text-muted-foreground">A lightweight audit trail so board members can see what changed without leaving the workspace.</p>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-2">
-                {boardRecentActivity.slice(0, 6).map((entry) => (
-                  <div key={entry.id} className="rounded-lg border p-4 space-y-1">
-                    <div className="font-medium">{formatStatusLabel(entry.action)}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {entry.entityType}
-                      {entry.actorEmail ? ` · ${entry.actorEmail}` : ""}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
-                  </div>
-                ))}
-                {boardRecentActivity.length === 0 ? (
-                  <div className="rounded-lg border p-4 text-sm text-muted-foreground">No recent audited board-facing activity is available.</div>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+                {/* Occupancy Subtab */}
+                {overviewSubtab === "occupancy" && (
+                  <div className="space-y-6">
+                    {myUnits.map((unit) => {
+                      const isEditing = editingUnitId === unit.unitId;
+                      const form = occupancyFormByUnit[unit.unitId] || {
+                        occupancyType: "OWNER_OCCUPIED" as "OWNER_OCCUPIED" | "TENANT",
+                        tenantFirstName: "",
+                        tenantLastName: "",
+                        tenantEmail: "",
+                        tenantPhone: "",
+                        notes: "",
+                      };
+                      const unitLabel = [unit.building && `Bldg ${unit.building}`, unit.unitNumber && `Unit ${unit.unitNumber}`].filter(Boolean).join(" · ") || "Unit";
+                      const tenant = unit.occupants?.find((o) => o.occupancyType === "TENANT");
+                      const isOwnerOccupied = !tenant && unit.occupants?.some((o) => o.occupancyType === "OWNER_OCCUPIED");
 
-          <Card id="board-financials">
-            <CardContent className="p-6 space-y-4">
-              <h2 className="text-lg font-semibold">Board Financial Snapshot</h2>
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Budgets</div><div className="text-xl font-semibold">{boardDashboard?.financial.budgetCount ?? "-"}</div></div>
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Ledger Entries</div><div className="text-xl font-semibold">{boardDashboard?.financial.ledgerEntryCount ?? "-"}</div></div>
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Charges</div><div className="text-xl font-semibold">${boardDashboard?.financial.totalCharges?.toFixed?.(2) ?? "-"}</div></div>
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Payments</div><div className="text-xl font-semibold">${boardDashboard?.financial.totalPayments?.toFixed?.(2) ?? "-"}</div></div>
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Open Balance</div><div className="text-xl font-semibold">${boardDashboard?.financial.openBalance?.toFixed?.(2) ?? "-"}</div></div>
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Invoices + Utilities</div><div className="text-xl font-semibold">${(((boardDashboard?.financial.totalInvoices ?? 0) + (boardDashboard?.financial.totalUtilities ?? 0)).toFixed(2))}</div></div>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <h3 className="text-sm font-medium">Recent Ledger Activity</h3>
-                  <div className="hidden md:block">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Amount</TableHead>
-                          <TableHead>Description</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(boardDashboard?.financial.recentLedgerEntries ?? []).map((entry) => (
-                          <TableRow key={entry.id}>
-                            <TableCell>{entry.entryType}</TableCell>
-                            <TableCell>${entry.amount.toFixed(2)}</TableCell>
-                            <TableCell>{entry.description || "-"}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <div className="space-y-3 md:hidden">
-                    {(boardDashboard?.financial.recentLedgerEntries ?? []).map((entry) => (
-                      <div key={entry.id} className="rounded-xl border p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium">{entry.description || formatStatusLabel(entry.entryType)}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">{formatStatusLabel(entry.entryType)}</div>
-                          </div>
-                          <div className="text-sm font-semibold">${entry.amount.toFixed(2)}</div>
-                        </div>
-                      </div>
-                    ))}
-                    {(boardDashboard?.financial.recentLedgerEntries ?? []).length === 0 ? (
-                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No recent ledger activity.</div>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-sm font-medium">Recent Vendor Invoices</h3>
-                  <div className="hidden md:block">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Vendor</TableHead>
-                          <TableHead>Invoice</TableHead>
-                          <TableHead>Amount</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(boardDashboard?.financial.recentInvoices ?? []).map((invoice) => (
-                          <TableRow key={invoice.id}>
-                            <TableCell>{invoice.vendorName || "-"}</TableCell>
-                            <TableCell>{invoice.invoiceNumber || "-"}</TableCell>
-                            <TableCell>${invoice.amount.toFixed(2)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <div className="space-y-3 md:hidden">
-                    {(boardDashboard?.financial.recentInvoices ?? []).map((invoice) => (
-                      <div key={invoice.id} className="rounded-xl border p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium">{invoice.vendorName || "Vendor invoice"}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              Invoice {invoice.invoiceNumber || "-"}
-                              {invoice.invoiceDate ? ` · ${new Date(invoice.invoiceDate).toLocaleDateString()}` : ""}
+                      return (
+                        <div key={unit.unitId} className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/10 overflow-hidden">
+                          {/* Card header */}
+                          <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-outline-variant/10">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: 20 }}>apartment</span>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-on-surface leading-tight">{unitLabel}</p>
+                                <p className="text-xs text-on-surface-variant truncate">
+                                  {isEditing
+                                    ? "Editing occupancy"
+                                    : isOwnerOccupied
+                                    ? "Owner-occupied"
+                                    : tenant
+                                    ? `Tenanted · ${tenant.firstName} ${tenant.lastName}`
+                                    : "No occupancy on file"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 shrink-0">
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    className="px-4 py-2 text-on-surface-variant font-medium hover:bg-surface-container transition-all rounded-lg text-sm"
+                                    onClick={() => setEditingUnitId(null)}
+                                  >
+                                    Discard
+                                  </button>
+                                  <button
+                                    className="px-4 py-2 bg-primary text-on-primary font-semibold rounded-lg text-sm flex items-center gap-1.5 transition-transform active:scale-95 disabled:opacity-50"
+                                    onClick={() => saveOccupancy.mutate()}
+                                    disabled={saveOccupancy.isPending}
+                                  >
+                                    {saveOccupancy.isPending ? "Saving…" : "Save"}
+                                    {!saveOccupancy.isPending && <span className="material-symbols-outlined" style={{ fontSize: 15 }}>arrow_forward</span>}
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  className="px-3 py-1.5 text-primary font-medium text-sm flex items-center gap-1.5 hover:bg-surface-container rounded-lg transition-all"
+                                  onClick={() => {
+                                    const occupant = unit.occupants?.[0];
+                                    setOccupancyFormByUnit((prev) => ({
+                                      ...prev,
+                                      [unit.unitId]: {
+                                        occupancyType: (occupant?.occupancyType as any) || "OWNER_OCCUPIED",
+                                        tenantFirstName: occupant?.occupancyType === "TENANT" ? occupant.firstName : "",
+                                        tenantLastName: occupant?.occupancyType === "TENANT" ? occupant.lastName : "",
+                                        tenantEmail: occupant?.occupancyType === "TENANT" ? occupant.email || "" : "",
+                                        tenantPhone: occupant?.occupancyType === "TENANT" ? formatPhoneNumber(occupant.phone || "") : "",
+                                        notes: "",
+                                      },
+                                    }));
+                                    setEditingUnitId(unit.unitId);
+                                  }}
+                                >
+                                  <span className="material-symbols-outlined" style={{ fontSize: 15 }}>edit</span>
+                                  Edit
+                                </button>
+                              )}
                             </div>
                           </div>
-                          <div className="text-sm font-semibold">${invoice.amount.toFixed(2)}</div>
-                        </div>
-                      </div>
-                    ))}
-                    {(boardDashboard?.financial.recentInvoices ?? []).length === 0 ? (
-                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No recent invoices.</div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardContent className="p-6 space-y-4">
-              <h2 className="text-lg font-semibold">Governance Snapshot</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Meetings</div><div className="text-xl font-semibold">{boardDashboard?.governance.meetingCount ?? "-"}</div></div>
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Upcoming Meetings</div><div className="text-xl font-semibold">{boardDashboard?.governance.upcomingMeetings.length ?? "-"}</div></div>
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Tasks</div><div className="text-xl font-semibold">{boardDashboard?.governance.taskCount ?? "-"}</div></div>
-                <div className="rounded-md border p-3"><div className="text-xs text-muted-foreground">Open Tasks</div><div className="text-xl font-semibold">{boardDashboard?.governance.openTaskCount ?? "-"}</div></div>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <h3 className="text-sm font-medium">Upcoming Meetings</h3>
-                  <div className="hidden md:block">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Title</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>State</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(boardDashboard?.governance.upcomingMeetings ?? []).map((meeting) => (
-                          <TableRow key={meeting.id}>
-                            <TableCell>{meeting.title}</TableCell>
-                            <TableCell>{meeting.scheduledAt ? new Date(meeting.scheduledAt).toLocaleDateString() : "-"}</TableCell>
-                            <TableCell>{meeting.meetingType || "-"}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-2 flex-wrap">
-                                <Badge variant={getStatusBadgeVariant(meeting.status)}>{formatStatusLabel(meeting.status)}</Badge>
-                                <Badge variant={getStatusBadgeVariant(meeting.summaryStatus)}>{formatStatusLabel(meeting.summaryStatus)}</Badge>
+                          {/* Card body */}
+                          <div className="p-6">
+                            {occupancyUpdateSuccess === unit.unitId && (
+                              <div className="mb-5 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-3 text-green-800">
+                                <span className="material-symbols-outlined text-green-600" style={{ fontSize: 18 }}>check_circle</span>
+                                <span className="text-sm font-medium">Occupancy updated successfully</span>
                               </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <div className="space-y-3 md:hidden">
-                    {(boardDashboard?.governance.upcomingMeetings ?? []).map((meeting) => (
-                      <div key={meeting.id} className="rounded-xl border p-4 space-y-3">
-                        <div>
-                          <div className="text-sm font-medium">{meeting.title}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {meeting.scheduledAt ? new Date(meeting.scheduledAt).toLocaleDateString() : "Date not set"}
-                            {meeting.meetingType ? ` · ${meeting.meetingType}` : ""}
+                            )}
+
+                            {isEditing ? (
+                              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                                {/* Left — occupancy type + tenant details */}
+                                <div className="md:col-span-8 space-y-5">
+                                  {/* Occupancy Type */}
+                                  <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">Occupancy Type</p>
+                                    <div className="space-y-2">
+                                      {([
+                                        { value: "OWNER_OCCUPIED", icon: "home", label: "Owner Occupied", desc: "You are living in this unit" },
+                                        { value: "TENANT", icon: "person", label: "Tenant Occupied", desc: "A tenant is renting this unit" },
+                                      ] as const).map(({ value, icon, label, desc }) => (
+                                        <label key={value} className="flex items-center p-3 rounded-lg bg-surface-container-low cursor-pointer hover:bg-primary-fixed/60 transition-all">
+                                          <input
+                                            type="radio"
+                                            name={`occupancy_type_${unit.unitId}`}
+                                            className="h-4 w-4 accent-primary"
+                                            checked={form.occupancyType === value}
+                                            onChange={() =>
+                                              setOccupancyFormByUnit((prev) => ({
+                                                ...prev,
+                                                [unit.unitId]: { ...form, occupancyType: value },
+                                              }))
+                                            }
+                                          />
+                                          <div className="ml-3 flex items-center gap-2.5">
+                                            <span className="material-symbols-outlined text-primary" style={{ fontSize: 18 }}>{icon}</span>
+                                            <div>
+                                              <p className="font-medium text-sm">{label}</p>
+                                              <p className="text-xs text-on-surface-variant">{desc}</p>
+                                            </div>
+                                          </div>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* Tenant details */}
+                                  {form.occupancyType === "TENANT" && (
+                                    <div>
+                                      <p className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">Tenant Information</p>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                                        <div className="space-y-1.5">
+                                          <label className="block text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">First Name</label>
+                                          <input
+                                            className="w-full bg-surface-container border-none rounded-lg focus:ring-2 focus:ring-primary p-3 outline-none transition-all text-on-surface placeholder:text-on-surface-variant/50 text-sm"
+                                            type="text"
+                                            value={form.tenantFirstName}
+                                            onChange={(e) => setOccupancyFormByUnit((prev) => ({ ...prev, [unit.unitId]: { ...form, tenantFirstName: e.target.value } }))}
+                                            placeholder="First name"
+                                          />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <label className="block text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Last Name</label>
+                                          <input
+                                            className="w-full bg-surface-container border-none rounded-lg focus:ring-2 focus:ring-primary p-3 outline-none transition-all text-on-surface placeholder:text-on-surface-variant/50 text-sm"
+                                            type="text"
+                                            value={form.tenantLastName}
+                                            onChange={(e) => setOccupancyFormByUnit((prev) => ({ ...prev, [unit.unitId]: { ...form, tenantLastName: e.target.value } }))}
+                                            placeholder="Last name"
+                                          />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <label className="block text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Email Address</label>
+                                          <input
+                                            className="w-full bg-surface-container border-none rounded-lg focus:ring-2 focus:ring-primary p-3 outline-none transition-all text-on-surface placeholder:text-on-surface-variant/50 text-sm"
+                                            type="email"
+                                            value={form.tenantEmail}
+                                            onChange={(e) => setOccupancyFormByUnit((prev) => ({ ...prev, [unit.unitId]: { ...form, tenantEmail: e.target.value } }))}
+                                            placeholder="tenant@email.com"
+                                          />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <label className="block text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Phone Number</label>
+                                          <input
+                                            className="w-full bg-surface-container border-none rounded-lg focus:ring-2 focus:ring-primary p-3 outline-none transition-all text-on-surface placeholder:text-on-surface-variant/50 text-sm"
+                                            type="tel"
+                                            value={form.tenantPhone}
+                                            onChange={(e) => setOccupancyFormByUnit((prev) => ({ ...prev, [unit.unitId]: { ...form, tenantPhone: formatPhoneNumber(e.target.value) } }))}
+                                            placeholder="(XXX) XXX-XXXX"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Right — status tile */}
+                                <div className="md:col-span-4">
+                                  <div className="bg-secondary-container rounded-xl p-5 flex flex-col gap-3 h-full">
+                                    <span className="material-symbols-outlined text-primary" style={{ fontSize: 28 }}>
+                                      {form.occupancyType === "TENANT" ? "person" : "home"}
+                                    </span>
+                                    <div>
+                                      <p className="font-headline text-base text-on-secondary-container mb-1">
+                                        {form.occupancyType === "TENANT" ? "Tenant Occupied" : "Owner Occupied"}
+                                      </p>
+                                      <p className="text-xs text-on-secondary-container/80 leading-relaxed">
+                                        {form.occupancyType === "TENANT"
+                                          ? "Provide the tenant's contact details so the association can reach them if needed."
+                                          : "You are the primary resident. No tenant details required."}
+                                      </p>
+                                    </div>
+                                    {form.occupancyType === "TENANT" && (form.tenantFirstName || form.tenantLastName) && (
+                                      <div className="pt-3 border-t border-on-secondary-container/10 space-y-0.5">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-on-secondary-container/60">On file</p>
+                                        <p className="font-semibold text-sm text-on-secondary-container">{[form.tenantFirstName, form.tenantLastName].filter(Boolean).join(" ")}</p>
+                                        {form.tenantEmail && <p className="text-xs text-on-secondary-container/70">{form.tenantEmail}</p>}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              /* View mode */
+                              unit.occupants && unit.occupants.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                  {Object.values(
+                                    unit.occupants.reduce((acc, o) => ({ ...acc, [o.occupancyType]: o }), {} as Record<string, typeof unit.occupants[0]>)
+                                  ).map((occupant) => (
+                                    <div key={occupant.personId} className="bg-surface-container-low rounded-lg p-4 space-y-1.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="material-symbols-outlined text-primary" style={{ fontSize: 16 }}>
+                                          {occupant.occupancyType === "OWNER_OCCUPIED" ? "home" : "person"}
+                                        </span>
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                                          {occupant.occupancyType === "OWNER_OCCUPIED" ? "Owner" : "Tenant"}
+                                        </span>
+                                      </div>
+                                      <p className="font-semibold text-sm text-on-surface">{occupant.firstName} {occupant.lastName}</p>
+                                      {occupant.email && <p className="text-xs text-on-surface-variant">{occupant.email}</p>}
+                                      {occupant.phone && <p className="text-xs text-on-surface-variant">{occupant.phone}</p>}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-center py-6 space-y-1">
+                                  <span className="material-symbols-outlined text-2xl text-on-surface-variant/40">family_restroom</span>
+                                  <p className="text-sm text-on-surface-variant">No occupancy information on file</p>
+                                </div>
+                              )
+                            )}
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant={getStatusBadgeVariant(meeting.status)}>{formatStatusLabel(meeting.status)}</Badge>
-                          <Badge variant={getStatusBadgeVariant(meeting.summaryStatus)}>{formatStatusLabel(meeting.summaryStatus)}</Badge>
-                        </div>
-                      </div>
-                    ))}
-                    {(boardDashboard?.governance.upcomingMeetings ?? []).length === 0 ? (
-                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No upcoming meetings scheduled.</div>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-sm font-medium">Open Governance Tasks</h3>
-                  <div className="hidden md:block">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Task</TableHead>
-                          <TableHead>Due</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(boardDashboard?.governance.openTasks ?? []).map((task) => (
-                          <TableRow key={task.id}>
-                            <TableCell>{task.title}</TableCell>
-                            <TableCell>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "-"}</TableCell>
-                            <TableCell>
-                              <Badge variant={getStatusBadgeVariant(task.status)}>{formatStatusLabel(task.status)}</Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <div className="space-y-3 md:hidden">
-                    {(boardDashboard?.governance.openTasks ?? []).map((task) => (
-                      <div key={task.id} className="rounded-xl border p-4 space-y-3">
-                        <div>
-                          <div className="text-sm font-medium">{task.title}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            Due {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "not scheduled"}
-                          </div>
-                        </div>
-                        <Badge variant={getStatusBadgeVariant(task.status)}>{formatStatusLabel(task.status)}</Badge>
-                      </div>
-                    ))}
-                    {(boardDashboard?.governance.openTasks ?? []).length === 0 ? (
-                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No open governance tasks.</div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card id="board-messages">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-lg font-semibold">Board Packages and Messages</h2>
-                  <p className="text-sm text-muted-foreground">Keep distribution readiness and recent board communications visible without dropping into editing tools.</p>
-                </div>
-                <Badge variant={(boardPackageStates.draft ?? 0) > 0 ? "default" : "outline"}>
-                  {boardPackageStates.draft ?? 0} draft package{(boardPackageStates.draft ?? 0) === 1 ? "" : "s"}
-                </Badge>
-              </div>
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-lg border p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-medium">Package Readiness</div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Badge variant="outline">{boardPackageStates.approved ?? 0} approved</Badge>
-                      <Badge variant="secondary">{boardPackageStates.distributed ?? 0} distributed</Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {(boardDocuments ?? []).slice(0, 4).map((document) => (
-                      <div key={document.id} className="rounded-md border p-3 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium">{document.title}</div>
-                          <Badge variant={document.isPortalVisible === 1 ? "secondary" : "outline"}>
-                            {document.isPortalVisible === 1 ? "shared" : "internal"}
-                          </Badge>
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {document.documentType || "Document"}
-                          {document.portalAudience ? ` · ${document.portalAudience}` : ""}
-                        </div>
-                      </div>
-                    ))}
-                    {(boardDocuments ?? []).length === 0 ? <div className="text-sm text-muted-foreground">No board documents are currently published.</div> : null}
-                  </div>
-                </div>
-                <div className="rounded-lg border p-4 space-y-3">
-                  <div className="text-sm font-medium">Recent Board Sends</div>
-                  <div className="space-y-3">
-                    {(boardNoticeSends ?? []).slice(0, 5).map((send) => (
-                      <div key={send.id} className="rounded-md border p-3 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium">{send.subjectRendered}</div>
-                          <Badge variant={getStatusBadgeVariant(send.status)}>{formatStatusLabel(send.status)}</Badge>
-                        </div>
-                        <div className="text-sm text-muted-foreground">{send.recipientEmail}</div>
-                        <div className="text-xs text-muted-foreground">{new Date(send.sentAt).toLocaleString()}</div>
-                      </div>
-                    ))}
-                    {(boardNoticeSends ?? []).length === 0 ? <div className="text-sm text-muted-foreground">No board notices have been sent yet.</div> : null}
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <div className="text-sm font-medium">Communication History</div>
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {(boardCommunicationHistory ?? []).slice(0, 4).map((entry) => (
-                    <div key={entry.id} className="rounded-md border p-3">
-                      <div className="font-medium">{entry.subject || "-"}</div>
-                      <div className="text-sm text-muted-foreground">{entry.bodySnippet || "-"}</div>
-                      <div className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</div>
-                    </div>
-                  ))}
-                  {(boardCommunicationHistory ?? []).length === 0 ? <div className="text-sm text-muted-foreground">No association-wide communication history yet.</div> : null}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card id="board-boundary">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-lg font-semibold">Board Access Boundary</h2>
-                  <p className="text-sm text-muted-foreground">This workspace is intentionally limited to board review and association oversight.</p>
-                </div>
-                <Badge variant="outline">Current association only</Badge>
-              </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-lg border p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Hidden Here</div>
-                  <div className="mt-2 text-sm">Association editing, person and unit maintenance, direct ledger posting, invoice creation, document publishing, and notice composition stay outside board mode.</div>
-                </div>
-                <div className="rounded-lg border p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Association Scope</div>
-                  <div className="mt-2 text-sm">Board members review only the association tied to their current board access. No board cross-association switcher is shown here.</div>
-                </div>
-                <div className="rounded-lg border p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Owner Return Path</div>
-                  <div className="mt-2 text-sm">Use `Return to Owner Portal` for owner self-service tasks, unit switching, or non-board workflows.</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card id="board-operations">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-lg font-semibold">Maintenance Queue</h2>
-                  <p className="text-sm text-muted-foreground">Board-visible maintenance exceptions for oversight, follow-up, and risk review.</p>
-                </div>
-                <Badge variant={sumStateCounts(boardDashboard?.workflowStates.maintenance.requestsByStatus ?? {}) > 0 ? "default" : "outline"}>
-                  {sumStateCounts(boardDashboard?.workflowStates.maintenance.requestsByStatus ?? {})} tracked requests
-                </Badge>
-              </div>
-              <div className="space-y-3">
-                {(boardDashboard?.workflowStates.maintenance.recent ?? []).map((request) => (
-                  <div key={request.id} className="rounded-md border p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div>
-                        <div className="font-medium">{request.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {request.locationText || "Location not specified"} · opened {new Date(request.createdAt).toLocaleString()}
-                        </div>
-                      </div>
-                      <div className="flex gap-2 flex-wrap">
-                        <Badge variant={getStatusBadgeVariant(request.status)}>{formatStatusLabel(request.status)}</Badge>
-                        <Badge variant={getStatusBadgeVariant(request.priority)}>{formatStatusLabel(request.priority)}</Badge>
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Response due {request.responseDueAt ? new Date(request.responseDueAt).toLocaleString() : "not scheduled"}
-                    </div>
-                  </div>
-                ))}
-                {(boardDashboard?.workflowStates.maintenance.recent ?? []).length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No association-wide maintenance requests are currently visible.</div>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card id="board-activity">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-lg font-semibold">Recent Activity</h2>
-                  <p className="text-sm text-muted-foreground">See the living board record by workflow area instead of scanning one undifferentiated audit list.</p>
-                </div>
-                {isMobile ? (
-                  <MobileTabBar
-                    items={[
-                      { id: "all", label: "All" },
-                      { id: "governance", label: "Governance" },
-                      { id: "financial", label: "Financial" },
-                      { id: "communications", label: "Messages" },
-                      { id: "operations", label: "Operations" },
-                      { id: "access", label: "Access" },
-                    ]}
-                    value={boardActivityFilter}
-                    onChange={(value) => setBoardActivityFilter(value as typeof boardActivityFilter)}
-                  />
-                ) : (
-                  <div className="flex gap-2 flex-wrap">
-                    {[
-                      { id: "all", label: "All" },
-                      { id: "governance", label: "Governance" },
-                      { id: "financial", label: "Financial" },
-                      { id: "communications", label: "Messages" },
-                      { id: "operations", label: "Operations" },
-                      { id: "access", label: "Access" },
-                    ].map((filter) => (
-                      <Button
-                        key={filter.id}
-                        size="sm"
-                        variant={boardActivityFilter === filter.id ? "default" : "outline"}
-                        onClick={() => setBoardActivityFilter(filter.id as typeof boardActivityFilter)}
-                      >
-                        {filter.label}
-                      </Button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
-              <div className="space-y-3">
-                {filteredBoardActivityItems.map((entry) => (
-                  <div key={entry.id} className={`rounded-md border p-3 ${isMobile ? "space-y-3" : "flex items-center justify-between gap-3"}`}>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="font-medium">{entry.title}</div>
-                        <Badge variant="outline">{entry.laneLabel}</Badge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">{formatStatusLabel(entry.action)} by {entry.actorEmail || "system"}</div>
-                      {entry.changedFields && entry.changedFields.length > 0 ? (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Changed: {entry.changedFields.slice(0, 4).join(", ")}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className={`text-xs text-muted-foreground ${isMobile ? "" : "shrink-0"}`}>{new Date(entry.createdAt).toLocaleString()}</div>
-                  </div>
-                ))}
-                {filteredBoardActivityItems.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No recent board-visible activity matches this filter yet.</div>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-
-        </>
-      ) : null}
-
-
-      {/* Documents Tab */}
-      {activeTab === "documents" && (
-      <MobileSectionShell
-        eyebrow="Documents"
-        title="Community Documents"
-        summary="Association files shared with owners, grouped so recent and high-value documents are easier to scan and open from a phone."
-      >
-          {(documents ?? []).length > 0 ? (
-            <div className="grid gap-3">
-              {recentDocuments.map((doc) => {
-                const isRecent = (Date.now() - toTimestamp(doc.createdAt)) < 30 * 24 * 60 * 60 * 1000;
-                return (
-                  <div key={doc.id} className="rounded-xl border p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="min-w-0 break-words text-sm font-medium sm:text-base">{doc.title}</div>
-                        {isRecent ? <Badge>New</Badge> : null}
-                        <Badge variant="outline">{formatStatusLabel(doc.documentType)}</Badge>
-                        <Badge variant="secondary">{doc.portalAudience}</Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Added {new Date(doc.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 gap-2">
-                      <a
-                        href={doc.fileUrl}
-                        className="inline-flex min-h-10 items-center justify-center rounded-full border px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open
-                      </a>
-                      <a
-                        href={doc.fileUrl}
-                        download
-                        className="inline-flex min-h-10 items-center justify-center rounded-full border px-4 text-sm text-muted-foreground transition-colors hover:bg-muted"
-                      >
-                        Download
-                      </a>
-                    </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="rounded-md border py-8 text-center text-sm text-muted-foreground">No documents available yet.</div>
+            </>
           )}
-      </MobileSectionShell>
-      )}
 
-      {/* Notices Tab */}
-      {activeTab === "notices" && (
-      <MobileSectionShell
-        eyebrow="Notices"
-        title="Message Center"
-        summary="Association notices and maintenance-related updates in one place, with scope and urgency made explicit."
-        meta={
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{ownerMessageCenterItems.length} messages</Badge>
-            <Badge variant="secondary">{ownerMessageCenterItems.filter((item) => !readNoticeIds.includes(item.id)).length} unread</Badge>
-          </div>
-        }
-      >
-          <div className="space-y-2">
-            {ownerMessageCenterItems.map((item) => {
-              const isExpanded = expandedNoticeId === item.id;
-              const isRead = readNoticeIds.includes(item.id);
-              const isHtml = (item.detail || "").trimStart().startsWith("<");
-              const renderedPreview = item.snippet || stripHtml(item.detail);
-              return (
-                <div key={item.id} className="overflow-hidden rounded-xl border">
-                  <button
-                    className="w-full px-4 py-4 text-left transition-colors hover:bg-muted/30"
-                    onClick={() => {
-                      if (!isExpanded) markNoticeRead(item.id);
-                      setExpandedNoticeId(isExpanded ? null : item.id);
-                    }}
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-sm">{item.title}</span>
-                          <Badge variant={isRead ? "outline" : "default"} className="text-xs">
-                            {isRead ? "Read" : "Unread"}
-                          </Badge>
-                          <Badge variant={item.stateLabel === "Action needed" ? "destructive" : item.stateLabel === "Waiting on management" ? "default" : "secondary"} className="text-xs">
-                            {item.stateLabel}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {item.kind === "maintenance" ? "Maintenance" : "Notice"}
-                          </Badge>
-                          <Badge variant="secondary" className="text-xs">{item.scopeLabel}</Badge>
-                        </div>
-                        {!isExpanded && renderedPreview && (
-                          <div className="mt-1 text-xs text-muted-foreground sm:truncate">{renderedPreview}</div>
+          {/* MAINTENANCE TAB */}
+          {activeTab === "maintenance" && (
+            <div className="space-y-8">
+              <div className="space-y-2">
+                <p className="font-label text-primary uppercase tracking-widest text-[11px]">Maintenance</p>
+                <h1 className="font-headline text-4xl text-on-surface">Submit & Track Requests</h1>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Submit Form */}
+                <div className="lg:col-span-1">
+                  <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10 sticky top-24">
+                    <h3 className="font-headline text-lg mb-4">New Request</h3>
+                    <div className="space-y-3">
+                      <Input placeholder="Issue title" value={maintenanceTitle} onChange={(e) => setMaintenanceTitle(e.target.value)} />
+                      <Textarea placeholder="Description" value={maintenanceDescription} onChange={(e) => setMaintenanceDescription(e.target.value)} />
+                      <Input placeholder="Location" value={maintenanceLocation} onChange={(e) => setMaintenanceLocation(e.target.value)} />
+                      <Select value={maintenanceCategory} onValueChange={setMaintenanceCategory}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {maintenanceCategories.map((cat) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Select value={maintenancePriority} onValueChange={setMaintenancePriority}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {maintenancePriorities.map((pri) => <SelectItem key={pri} value={pri}>{pri}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <div>
+                        <label className="text-xs font-medium text-on-surface-variant">Attach photos</label>
+                        <Input type="file" multiple accept="image/*" onChange={(e) => setMaintenanceFiles(Array.from(e.target.files ?? []))} className="mt-1" />
+                        {maintenanceFiles.length > 0 && (
+                          <p className="text-xs text-on-surface-variant mt-2">{maintenanceFiles.length} photo(s) selected</p>
                         )}
                       </div>
-                      <div className="flex items-center justify-between gap-2 sm:justify-end sm:shrink-0">
-                        <span className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleDateString()}</span>
-                        <span className="text-xs text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>
-                      </div>
-                    </div>
-                  </button>
-                  {isExpanded && (
-                    <div className="border-t bg-muted/10">
-                      {isHtml ? (
-                        <iframe
-                          srcDoc={item.detail ?? ""}
-                          className="w-full border-0 bg-white"
-                          style={{ minHeight: isMobile ? "420px" : "520px" }}
-                          onLoad={(e) => {
-                            const iframe = e.currentTarget;
-                            const doc = iframe.contentDocument;
-                            const body = doc?.body;
-                            const html = doc?.documentElement;
-                            const height = Math.max(body?.scrollHeight ?? 0, html?.scrollHeight ?? 0);
-                            if (height > 0) iframe.style.height = `${height + 24}px`;
-                          }}
-                          sandbox="allow-same-origin"
-                          title={item.title}
-                        />
-                      ) : (
-                        <div className="px-4 py-3 text-sm whitespace-pre-wrap">
-                          {item.detail || "No message body available."}
+                      <Button onClick={() => submitMaintenanceRequest.mutate()} disabled={submitMaintenanceRequest.isPending} className="w-full">
+                        {submitMaintenanceRequest.isPending ? 'Submitting...' : 'Submit Request'}
+                      </Button>
+                      {maintenanceSuccess && (
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                          Request submitted successfully
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-            {ownerMessageCenterItems.length === 0 && (
-              <div className="rounded-md border py-8 text-center text-sm text-muted-foreground">No messages yet.</div>
-            )}
-          </div>
-      </MobileSectionShell>
-      )}
-
-      {/* Maintenance Tab */}
-      {activeTab === "maintenance" && (
-      <>
-      <MobileSectionShell
-        eyebrow="Maintenance"
-        title="Submit Maintenance Request"
-        summary="Report an issue quickly, attach photos, and track open work without navigating a dense operator-style screen."
-      >
-        <div className="space-y-4">
-          <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-            Response targets: <strong>urgent</strong> — 4 hours, <strong>high</strong> — 12 hours, <strong>medium</strong> — 48 hours, <strong>low</strong> — 120 hours. Overdue requests escalate automatically.
-          </div>
-          <div className="grid gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Issue title</label>
-              <Input placeholder="Issue title" value={maintenanceTitle} onChange={(e) => setMaintenanceTitle(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</label>
-              <Textarea placeholder="Describe the issue" value={maintenanceDescription} onChange={(e) => setMaintenanceDescription(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Location</label>
-              <Input placeholder="Location (unit/common area)" value={maintenanceLocation} onChange={(e) => setMaintenanceLocation(e.target.value)} />
-            </div>
-            <Select value={maintenanceCategory} onValueChange={setMaintenanceCategory}>
-              <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
-              <SelectContent>
-                {maintenanceCategories.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={maintenancePriority} onValueChange={setMaintenancePriority}>
-              <SelectTrigger><SelectValue placeholder="Priority" /></SelectTrigger>
-              <SelectContent>
-                {maintenancePriorities.map((priority) => <SelectItem key={priority} value={priority}>{priority}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Input
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={(e) => setMaintenanceFiles(Array.from(e.target.files ?? []))}
-            />
-            {maintenanceFiles.length > 0 ? (
-              <div className="text-xs text-muted-foreground">
-                Photos ready: {maintenanceFiles.map((file) => file.name).join(", ")}
-              </div>
-            ) : null}
-          </div>
-          <Button
-            onClick={() => submitMaintenanceRequest.mutate()}
-            disabled={submitMaintenanceRequest.isPending || !maintenanceTitle.trim() || !maintenanceDescription.trim()}
-          >
-            {submitMaintenanceRequest.isPending ? "Submitting…" : "Submit Maintenance Request"}
-          </Button>
-          {submitMaintenanceRequest.isError && (
-            <p className="text-sm text-destructive">{(submitMaintenanceRequest.error as Error).message}</p>
-          )}
-          {maintenanceSuccess && (
-            <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-              Your maintenance request was submitted successfully. We'll notify you when there's an update.
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {(maintenanceRequests ?? []).map((request) => (
-              <div key={request.id} className="space-y-2 rounded-xl border p-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="font-medium">{request.title}</div>
-                    <div className="text-xs text-muted-foreground">{request.locationText || "Location not specified"} · {request.category}</div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    <Badge variant={getStatusBadgeVariant(request.status)}>{getOwnerReadableState(request.status)}</Badge>
-                    <Badge variant={request.priority === "urgent" ? "destructive" : request.priority === "high" ? "default" : "outline"}>
-                      {request.priority === "urgent" ? "Urgent" : request.priority === "high" ? "Due soon" : formatStatusLabel(request.priority)}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="text-sm text-muted-foreground">{request.description}</div>
-                <div className="text-xs text-muted-foreground">
-                  Submitted {new Date(request.createdAt).toLocaleString()} · SLA due {request.responseDueAt ? new Date(request.responseDueAt).toLocaleString() : "-"}
-                </div>
-                {request.resolutionNotes ? <div className="text-sm">Resolution: {request.resolutionNotes}</div> : null}
-                {Array.isArray(request.attachmentUrlsJson) && request.attachmentUrlsJson.length > 0 ? (
-                  <div className="flex gap-2 flex-wrap">
-                    {request.attachmentUrlsJson.map((url, index) => (
-                      <a key={url} href={url} className="underline text-xs" target="_blank" rel="noreferrer">Photo {index + 1}</a>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-            {(maintenanceRequests ?? []).length === 0 ? <div className="text-sm text-muted-foreground">No maintenance requests submitted yet.</div> : null}
-          </div>
-        </div>
-      </MobileSectionShell>
-
-      <MobileSectionShell
-        eyebrow="Updates"
-        title="Maintenance Updates"
-        summary="Read the latest owner-facing maintenance notices in a mobile-friendly timeline."
-      >
-        <div className="hidden md:block">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Subject</TableHead>
-                <TableHead>Update</TableHead>
-                <TableHead>When</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {maintenanceUpdates.map((notice) => (
-                <TableRow key={notice.id}>
-                  <TableCell>{notice.subject || "-"}</TableCell>
-                  <TableCell className="max-w-[520px]">{notice.bodySnippet || "-"}</TableCell>
-                  <TableCell>{new Date(notice.createdAt).toLocaleString()}</TableCell>
-                </TableRow>
-              ))}
-              {maintenanceUpdates.length === 0 ? (
-                <TableRow><TableCell colSpan={3} className="text-muted-foreground">No maintenance updates yet.</TableCell></TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
-        </div>
-        <div className="space-y-3 md:hidden">
-          {maintenanceUpdates.map((notice) => (
-            <div key={notice.id} className="rounded-xl border p-4">
-              <div className="text-sm font-medium">{notice.subject || "-"}</div>
-              <div className="mt-2 text-sm text-muted-foreground">{notice.bodySnippet || "-"}</div>
-              <div className="mt-3 text-xs text-muted-foreground">{new Date(notice.createdAt).toLocaleString()}</div>
-            </div>
-          ))}
-          {maintenanceUpdates.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No maintenance updates yet.</div>
-          ) : null}
-        </div>
-      </MobileSectionShell>
-      </>
-      )}
-
-      {/* Financials Tab */}
-      {activeTab === "financials" && (
-      <>
-      <MobileSectionShell
-        eyebrow="Financials"
-        title="Pay dues and review recent activity"
-        summary="Stay focused on one unit, one amount due, and the latest transactions."
-        meta={
-          <div className={`rounded-xl px-4 py-3 ${totalPortfolioBalance > 0 ? "bg-red-50 text-red-700" : totalPortfolioBalance < 0 ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-700"}`}>
-            <div className="text-xs uppercase tracking-wide opacity-70">Account total</div>
-            <div className="mt-1 text-2xl font-bold">
-              {totalPortfolioBalance > 0
-                ? `$${totalPortfolioBalance.toFixed(2)} due`
-                : totalPortfolioBalance < 0
-                ? `Credit $${Math.abs(totalPortfolioBalance).toFixed(2)}`
-                : "$0.00"}
-            </div>
-          </div>
-        }
-      >
-        <div className="space-y-6">
-            {myUnits.length > 1
-              ? renderOwnerUnitSelector({
-                  activeUnitId: focusedFinancialUnit?.unitId,
-                  onSelect: (unit) => setOwnedUnitFocusId(unit.unitId),
-                })
-              : null}
-
-            <div className="rounded-2xl border bg-slate-50/60 p-4 sm:p-6">
-              <div className="space-y-6">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="space-y-2">
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Current statement</div>
-                    <div className="font-semibold text-2xl">
-                      {focusedFinancialUnit ? formatUnitContextLabel(focusedFinancialUnit.building, focusedFinancialUnit.unitNumber) : "No unit selected"}
-                    </div>
-                    <p className="text-sm text-muted-foreground max-w-2xl">
-                      Review the balance for this unit, make a payment, and check the latest account activity without digging through setup controls.
-                    </p>
-                  </div>
-                  <div className={`min-w-[180px] rounded-2xl px-5 py-4 ${currentUnitPayableBalance > 0 ? "bg-red-50 text-red-700" : focusedFinancialUnit?.balance && focusedFinancialUnit.balance < 0 ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-700"}`}>
-                    <div className="text-xs uppercase tracking-wide opacity-70">Amount due</div>
-                    <div className="text-3xl font-bold mt-1">
-                      {currentUnitPayableBalance > 0
-                        ? `$${currentUnitPayableBalance.toFixed(2)}`
-                        : focusedFinancialUnit?.balance && focusedFinancialUnit.balance < 0
-                        ? `Credit $${Math.abs(focusedFinancialUnit.balance).toFixed(2)}`
-                        : "$0.00"}
-                    </div>
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border bg-white p-4">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Statement status</div>
-                    <div className={`mt-2 text-sm font-semibold ${currentUnitPayableBalance > 0 ? "text-red-600" : focusedFinancialUnit?.balance && focusedFinancialUnit.balance < 0 ? "text-green-600" : "text-slate-700"}`}>
-                      {currentUnitPayableBalance > 0
-                        ? "Payment due now"
-                        : focusedFinancialUnit?.balance && focusedFinancialUnit.balance < 0
-                        ? "Account has a credit"
-                        : "Account is current"}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {financialDashboard?.nextDueDate ? `Next charge ${new Date(financialDashboard.nextDueDate).toLocaleDateString()}` : "No upcoming charge scheduled"}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border bg-white p-4">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Latest payment</div>
-                    <div className="mt-2 text-sm font-semibold">
-                      {recentFocusedPayment ? `$${Math.abs(recentFocusedPayment.amount).toFixed(2)}` : "No payment yet"}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {recentFocusedPayment
-                        ? `${new Date(recentFocusedPayment.postedAt).toLocaleDateString()} · ${recentFocusedPayment.description || formatStatusLabel(recentFocusedPayment.entryType)}`
-                        : "Pay from this page once a balance is due."}
-                    </div>
-                  </div>
-                  <div className={`rounded-xl border p-4 ${paymentSetupStateTone}`}>
-                    <div className="text-xs uppercase tracking-wide opacity-80">Payment setup</div>
-                    <div className="mt-2 text-sm font-semibold">{paymentSetupStateLabel}</div>
-                    <div className="mt-1 text-xs opacity-80">
-                      {activeAutopayEnrollment
-                        ? `Using ${defaultPaymentMethod?.displayName || "saved method"}`
-                        : defaultPaymentMethod
-                        ? `${defaultPaymentMethod.displayName} is ready for use`
-                        : "Add a method below before enabling autopay."}
-                    </div>
-                  </div>
-                </div>
-
-                {paymentReceipt ? (
-                  <div className="rounded-md border border-green-200 bg-green-50 p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold text-green-700">Payment recorded</div>
-                      <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setPaymentReceipt(null)}>Dismiss</button>
-                    </div>
-                    <div className="text-xs text-muted-foreground space-y-0.5">
-                      <div><span className="font-medium">Amount:</span> ${paymentReceipt.amount.toFixed(2)}</div>
-                      <div><span className="font-medium">Description:</span> {paymentReceipt.description}</div>
-                      <div><span className="font-medium">Date:</span> {paymentReceipt.date}</div>
-                      {paymentReceipt.confirmationNumber ? <div><span className="font-medium">Confirmation #:</span> {paymentReceipt.confirmationNumber}</div> : null}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)]">
-                  <div className="rounded-xl border bg-slate-50/70 p-5 space-y-4">
-                    <div>
-                      <div className="text-sm font-semibold">Make a payment</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {currentUnitPayableBalance > 0
-                          ? "Start with the full amount due, then adjust only if you need a different payment."
-                          : "This unit does not have a payment due right now."}
-                      </div>
-                    </div>
-
-                    {currentUnitPayableBalance > 0 ? (
-                      <div className={`flex gap-2 flex-wrap ${isMobile ? "flex-col" : ""}`}>
-                        <Button size="sm" onClick={() => { setPaymentFormOpen(true); setPaymentAmount(currentUnitPayableBalance.toFixed(2)); setPaymentDescription("HOA dues payment"); }}>
-                          Pay ${currentUnitPayableBalance.toFixed(2)}
-                        </Button>
-                        {financialDashboard?.paymentPlan ? (
-                          <Button size="sm" variant="outline" onClick={() => { setPaymentFormOpen(true); setPaymentAmount(financialDashboard.paymentPlan!.installmentAmount.toFixed(2)); setPaymentDescription("Payment plan installment"); }}>
-                            Pay installment ${financialDashboard.paymentPlan.installmentAmount.toFixed(2)}
-                          </Button>
-                        ) : null}
-                        <Button size="sm" variant="ghost" onClick={() => { setPaymentFormOpen((current) => !current); if (!paymentAmount) setPaymentDescription("HOA dues payment"); }}>
-                          {paymentFormOpen ? "Hide custom amount" : "Enter custom amount"}
-                        </Button>
-                      </div>
-                    ) : null}
-
-                    {paymentFormOpen ? (
-                      <div className="rounded-lg border bg-white p-4 space-y-3">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-xs text-muted-foreground">Amount ($)</label>
-                            <Input className={isMobile ? "min-h-11" : undefined} type="number" min="0.01" step="0.01" placeholder="0.00" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-xs text-muted-foreground">Description</label>
-                            <Input className={isMobile ? "min-h-11" : undefined} placeholder="HOA dues payment" value={paymentDescription} onChange={(e) => setPaymentDescription(e.target.value)} />
-                          </div>
-                        </div>
-                        <div className={`flex justify-end gap-2 ${isMobile ? "flex-col" : ""}`}>
-                          <Button variant="outline" size="sm" onClick={() => setPaymentFormOpen(false)}>Cancel</Button>
-                          <Button
-                            size="sm"
-                            onClick={() => submitPayment.mutate()}
-                            disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || submitPayment.isPending || !focusedFinancialUnit}
-                          >
-                            {submitPayment.isPending ? "Processing..." : "Record payment"}
-                          </Button>
-                        </div>
-                        {submitPayment.isError ? <p className="text-xs text-red-600">{(submitPayment.error as Error)?.message}</p> : null}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="rounded-xl border p-5 space-y-4">
-                    <div className="text-sm font-semibold">Account details</div>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex items-start justify-between gap-4 border-b pb-3">
-                        <span className="text-muted-foreground">Next charge</span>
-                        <span className="font-medium text-right">
-                          {financialDashboard?.nextDueDate ? new Date(financialDashboard.nextDueDate).toLocaleDateString() : "No upcoming charge"}
-                        </span>
-                      </div>
-                      <div className="flex items-start justify-between gap-4 border-b pb-3">
-                        <span className="text-muted-foreground">Payment method</span>
-                        <span className="font-medium text-right">{defaultPaymentMethod ? defaultPaymentMethod.displayName : "Not set up"}</span>
-                      </div>
-                      <div className="flex items-start justify-between gap-4 border-b pb-3">
-                        <span className="text-muted-foreground">Autopay</span>
-                        <span className="font-medium text-right">{activeAutopayEnrollment ? "Active" : "Not enrolled"}</span>
-                      </div>
-                      <div className="flex items-start justify-between gap-4">
-                        <span className="text-muted-foreground">Payment plan</span>
-                        <span className="font-medium text-right">
-                          {financialDashboard?.paymentPlan
-                            ? `$${financialDashboard.paymentPlan.installmentAmount.toFixed(2)} ${financialDashboard.paymentPlan.installmentFrequency}`
-                            : "None"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <MobileSectionShell
-              title="Recent transactions"
-              summary="Charges, payments, and credits for the selected unit."
-              meta={recentFocusedPayment ? (
-                <div className="text-xs text-muted-foreground">
-                  Latest payment {new Date(recentFocusedPayment.postedAt).toLocaleDateString()} · ${Math.abs(recentFocusedPayment.amount).toFixed(2)}
-                </div>
-              ) : undefined}
-            >
-                <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {focusedFinancialLedgerEntries.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="text-muted-foreground text-sm">{new Date(entry.postedAt).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <Badge variant={entry.entryType === "payment" || entry.entryType === "credit" ? "default" : entry.entryType === "late-fee" ? "destructive" : "outline"}>
-                            {formatStatusLabel(entry.entryType)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">{entry.description || "-"}</TableCell>
-                        <TableCell className={`text-right font-mono text-sm ${entry.amount > 0 ? "text-red-600" : "text-green-600"}`}>
-                          {entry.amount > 0 ? "+" : ""}{entry.amount.toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {focusedFinancialLedgerEntries.length === 0 ? (
-                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">No ledger entries found for the selected unit.</TableCell></TableRow>
-                    ) : null}
-                  </TableBody>
-                </Table>
-                </div>
-                <div className="space-y-3 md:hidden">
-                  {focusedFinancialLedgerEntries.map((entry) => (
-                    <div key={entry.id} className="rounded-xl border p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium">{entry.description || formatStatusLabel(entry.entryType)}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">{new Date(entry.postedAt).toLocaleDateString()}</div>
-                        </div>
-                        <div className={`text-right text-sm font-semibold ${entry.amount > 0 ? "text-red-600" : "text-green-600"}`}>
-                          {entry.amount > 0 ? "+" : ""}{entry.amount.toFixed(2)}
-                        </div>
-                      </div>
-                      <div className="mt-3">
-                        <Badge variant={entry.entryType === "payment" || entry.entryType === "credit" ? "default" : entry.entryType === "late-fee" ? "destructive" : "outline"}>
-                          {formatStatusLabel(entry.entryType)}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                  {focusedFinancialLedgerEntries.length === 0 ? (
-                    <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
-                      <div className="font-medium text-foreground">No account activity yet</div>
-                      <div className="mt-1">
-                        Charges, payments, and credits will appear here after the first posting for this unit.
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-            </MobileSectionShell>
-
-            <MobileSectionShell
-              title="Payment setup"
-              summary="Open this only when you need to update saved methods or autopay."
-              actions={
-                <>
-                  <Button size="sm" variant="outline" onClick={() => setAddMethodOpen((current) => !current)}>
-                    {addMethodOpen ? "Hide methods" : "Manage methods"}
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setAutopayFormOpen((current) => !current)}>
-                    {autopayFormOpen ? "Hide autopay" : "Manage autopay"}
-                  </Button>
-                </>
-              }
-            >
-                <div className="space-y-4">
-                {(defaultPaymentMethod || activeAutopayEnrollment || financialDashboard?.paymentPlan) ? (
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-lg border p-4">
-                      <div className="text-xs text-muted-foreground">Default method</div>
-                      <div className="text-sm font-semibold mt-2">{defaultPaymentMethod ? defaultPaymentMethod.displayName : "Not set up"}</div>
-                    </div>
-                    <div className="rounded-lg border p-4">
-                      <div className="text-xs text-muted-foreground">Autopay</div>
-                      <div className="text-sm font-semibold mt-2">{activeAutopayEnrollment ? "Active" : "Not enrolled"}</div>
-                    </div>
-                    <div className="rounded-lg border p-4">
-                      <div className="text-xs text-muted-foreground">Payment plan</div>
-                      <div className="text-sm font-semibold mt-2">
-                        {financialDashboard?.paymentPlan
-                          ? `$${financialDashboard.paymentPlan.installmentAmount.toFixed(2)} ${financialDashboard.paymentPlan.installmentFrequency}`
-                          : "None"}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {financialDashboard?.paymentPlan ? (
-                  <div className="rounded-lg border p-4 space-y-1">
-                    <div className="text-xs text-muted-foreground">Payment plan on file</div>
-                    <div className="text-sm font-semibold">
-                      ${financialDashboard.paymentPlan.installmentAmount.toFixed(2)} {financialDashboard.paymentPlan.installmentFrequency}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {financialDashboard.paymentPlan.nextDueDate ? `Next installment ${new Date(financialDashboard.paymentPlan.nextDueDate).toLocaleDateString()}` : "Installment schedule on file"}
-                    </div>
-                  </div>
-                ) : null}
-
-                {addMethodOpen ? (
-                  <div className="rounded-lg border bg-slate-50 p-4 space-y-3">
-                    {savedMethods.length > 0 ? (
-                      <div className="space-y-3">
-                        {savedMethods.filter((method) => method.isActive !== 0).map((method) => (
-                          <div key={method.id} className="rounded-lg border bg-white p-4 flex items-start justify-between gap-3">
+                {/* Requests List */}
+                <div className="lg:col-span-2">
+                  <div className="space-y-4">
+                    <h3 className="font-headline text-lg">Your Requests</h3>
+                    {(maintenanceRequests ?? []).length > 0 ? (
+                      <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 overflow-hidden">
+                        <button
+                          onClick={() => setMaintenanceSuccess(!maintenanceSuccess)}
+                          className="w-full px-6 py-4 flex justify-between items-center hover:bg-surface-container-high transition-colors"
+                        >
+                          <div className="flex items-center gap-4 text-left">
                             <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <div className="font-medium">{method.displayName}</div>
-                                {method.isDefault === 1 ? <Badge>Default</Badge> : null}
-                              </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {[method.methodType, method.bankName, method.last4 ? `•••• ${method.last4}` : null].filter(Boolean).join(" · ")}
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              {method.isDefault !== 1 ? (
-                                <Button size="sm" variant="ghost" onClick={() => setDefaultMethod.mutate(method.id)} disabled={setDefaultMethod.isPending}>Make default</Button>
-                              ) : null}
-                              <Button size="sm" variant="ghost" onClick={() => removeMethod.mutate(method.id)} disabled={removeMethod.isPending}>Remove</Button>
+                              <h4 className="font-bold text-on-surface">Maintenance Requests</h4>
+                              <p className="text-sm text-on-surface-variant">{maintenanceRequests?.length} {maintenanceRequests?.length === 1 ? 'request' : 'requests'}</p>
                             </div>
                           </div>
-                        ))}
+                          <span className={`material-symbols-outlined transition-transform ${maintenanceSuccess ? 'rotate-180' : ''}`}>
+                            expand_more
+                          </span>
+                        </button>
+                        {maintenanceSuccess && (
+                          <div className="border-t border-outline-variant/10 p-6 space-y-6">
+                            {(maintenanceRequests ?? [])
+                              .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+                              .map((req, index) => (
+                                <div key={req.id} className="relative">
+                                  <div className="flex gap-4">
+                                    <div className="flex flex-col items-center">
+                                      <div className="w-3 h-3 rounded-full bg-primary mt-2"></div>
+                                      {index < (maintenanceRequests?.length || 0) - 1 && (
+                                        <div className="w-0.5 h-16 bg-outline-variant/20 my-1"></div>
+                                      )}
+                                    </div>
+                                    <div className="flex-1 pb-4">
+                                      <p className="text-xs text-on-surface-variant uppercase tracking-widest mb-1">
+                                        {req.createdAt ? new Date(req.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date unknown'}
+                                      </p>
+                                      <div className="bg-surface-container rounded-lg p-4 space-y-3">
+                                        <div className="flex justify-between items-start gap-3">
+                                          <div>
+                                            <h5 className="font-bold text-on-surface">{req.title}</h5>
+                                            <p className="text-sm text-on-surface-variant mt-1">{req.locationText || "Location not specified"} · {req.category}</p>
+                                          </div>
+                                          <Badge className="shrink-0">{getOwnerReadableState(req.status)}</Badge>
+                                        </div>
+                                        <p className="text-sm text-on-surface">{req.description}</p>
+                                        <div className="flex gap-2 flex-wrap">
+                                          <Badge variant={req.priority === "urgent" ? "destructive" : "outline"}>{req.priority}</Badge>
+                                          {req.responseDueAt && (
+                                            <p className="text-xs text-on-surface-variant">Due {new Date(req.responseDueAt).toLocaleDateString()}</p>
+                                          )}
+                                        </div>
+                                        {req.resolutionNotes && (
+                                          <div className="p-3 bg-surface-container-lowest rounded border border-outline-variant/10">
+                                            <p className="text-xs font-medium text-on-surface-variant mb-1">Resolution</p>
+                                            <p className="text-sm text-on-surface">{req.resolutionNotes}</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        )}
                       </div>
                     ) : (
-                      <div className="rounded-lg border border-dashed bg-white p-4 text-sm text-muted-foreground">
-                        Add a payment method to pay balances faster and enable autopay.
+                      <div className="text-center py-16 space-y-2">
+                        <span className="material-symbols-outlined text-4xl text-on-surface-variant/40">build_circle</span>
+                        <p className="text-on-surface-variant">No maintenance requests yet</p>
+                        <p className="text-sm text-on-surface-variant/60">Use the form to submit your first request</p>
                       </div>
                     )}
-                    <div className="grid grid-cols-1 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Display name</label>
-                        <Input className={isMobile ? "min-h-11" : undefined} placeholder="Primary bank account" value={methodForm.displayName} onChange={(e) => setMethodForm((current) => ({ ...current, displayName: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* FINANCIALS TAB */}
+          {activeTab === "financials" && (
+            <div className="space-y-8">
+              <div className="space-y-2">
+                <p className="font-label text-primary uppercase tracking-widest text-[11px]">Financials</p>
+                <h1 className="font-headline text-4xl text-on-surface">Manage Payments</h1>
+              </div>
+
+              {/* Unit Selector for Multi-Unit Owners */}
+              {myUnits.length > 1 && (
+                <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10">
+                  <p className="text-sm font-medium mb-2">Select Unit</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {myUnits.map((unit) => (
+                      <Button
+                        key={unit.unitId}
+                        variant={ownedUnitFocusId === unit.unitId ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setOwnedUnitFocusId(unit.unitId)}
+                      >
+                        {unit.building} {unit.unitNumber}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Payment Section */}
+                <div className="lg:col-span-2 space-y-6">
+                  <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10">
+                    <h3 className="font-headline text-lg mb-4">Current Statement</h3>
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                      <div className="p-4 bg-surface rounded-lg border border-outline-variant/10">
+                        <p className="text-xs text-on-surface-variant font-medium">Amount Due</p>
+                        <p className={`font-headline text-2xl mt-1 ${currentUnitPayableBalance > 0 ? "text-destructive" : "text-secondary"}`}>
+                          ${Math.abs(currentUnitPayableBalance).toFixed(2)}
+                        </p>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Bank name</label>
-                        <Input className={isMobile ? "min-h-11" : undefined} placeholder="Bank name" value={methodForm.bankName} onChange={(e) => setMethodForm((current) => ({ ...current, bankName: e.target.value }))} />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">Last 4 digits</label>
-                          <Input className={isMobile ? "min-h-11" : undefined} placeholder="1234" value={methodForm.last4} onChange={(e) => setMethodForm((current) => ({ ...current, last4: e.target.value }))} />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">Method type</label>
-                          <Select value={methodForm.methodType} onValueChange={(value) => setMethodForm((current) => ({ ...current, methodType: value }))}>
-                            <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ach">ACH</SelectItem>
-                              <SelectItem value="card">Card</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                      <div className="p-4 bg-surface rounded-lg border border-outline-variant/10">
+                        <p className="text-xs text-on-surface-variant font-medium">Last Payment</p>
+                        <p className="font-medium mt-1">{financialDashboard?.lastPaymentDate ? new Date(financialDashboard.lastPaymentDate).toLocaleDateString() : "None"}</p>
                       </div>
                     </div>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={methodForm.isDefault} onChange={(e) => setMethodForm((current) => ({ ...current, isDefault: e.target.checked }))} />
-                      Set as default
-                    </label>
-                    <Button size="sm" onClick={() => addMethod.mutate()} disabled={addMethod.isPending || !methodForm.displayName.trim()}>
-                      {addMethod.isPending ? "Saving..." : "Save method"}
-                    </Button>
-                  </div>
-                ) : null}
 
-                {autopayFormOpen ? (
-                  <div className="rounded-lg border bg-slate-50 p-4 space-y-3">
-                    {activeAutopayEnrollment ? (
-                      <div className="rounded-lg border bg-white p-4">
-                        <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-3">
+                      <h4 className="font-bold">Make a Payment</h4>
+                      <Input type="number" step="0.01" placeholder="Amount" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
+                      <Input placeholder="Description (optional)" value={paymentDescription} onChange={(e) => setPaymentDescription(e.target.value)} />
+                      <Button onClick={() => submitPayment.mutate()} disabled={!paymentAmount || submitPayment.isPending} className="w-full">
+                        {submitPayment.isPending ? 'Processing...' : 'Submit Payment'}
+                      </Button>
+                      {submitPayment.isError && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                          Error submitting payment
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Payment Methods */}
+                  <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-headline text-lg">Payment Methods</h3>
+                      <Button size="sm" variant={addMethodOpen ? "destructive" : "outline"} onClick={() => setAddMethodOpen(!addMethodOpen)}>
+                        {addMethodOpen ? "Cancel" : "Add Method"}
+                      </Button>
+                    </div>
+                    <div className="space-y-3">
+                      {(savedMethods ?? []).map((method) => (
+                        <div key={method.id} className="p-3 bg-surface rounded-lg border border-outline-variant/10 flex justify-between items-center">
                           <div>
-                            <div className="font-medium">Current autopay</div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              ${Number(activeAutopayEnrollment.amount ?? 0).toFixed(2)} {activeAutopayEnrollment.frequency}
-                              {activeAutopayEnrollment.dayOfMonth ? ` · day ${activeAutopayEnrollment.dayOfMonth}` : ""}
+                            <p className="font-medium">{method.displayName}</p>
+                            <p className="text-xs text-on-surface-variant">•••• {method.last4}</p>
+                          </div>
+                          <Button size="sm" variant="outline" onClick={() => removeMethod.mutate(method.id)}>Remove</Button>
+                        </div>
+                      ))}
+                    </div>
+                    {addMethodOpen && (
+                      <div className="mt-4 space-y-3 p-4 bg-surface rounded-lg border border-outline-variant/10">
+                        <Input placeholder="Display name" value={methodForm.displayName} onChange={(e) => setMethodForm((p) => ({ ...p, displayName: e.target.value }))} />
+                        <Select value={methodForm.methodType} onValueChange={(value) => setMethodForm((p) => ({ ...p, methodType: value as any }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ach">Bank Account</SelectItem>
+                            <SelectItem value="card">Credit Card</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button onClick={() => addMethod.mutate()} disabled={addMethod.isPending} className="w-full">
+                          {addMethod.isPending ? "Adding..." : "Add Method"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Autopay */}
+                  <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-headline text-lg">Autopay</h3>
+                      <Button size="sm" variant={autopayFormOpen ? "destructive" : "outline"} onClick={() => setAutopayFormOpen(!autopayFormOpen)}>
+                        {autopayFormOpen ? "Cancel" : "Setup Autopay"}
+                      </Button>
+                    </div>
+                    {activeAutopayEnrollment ? (
+                      <div className="p-4 bg-surface rounded-lg border border-outline-variant/10">
+                        <p className="font-medium">Active autopay</p>
+                        <p className="text-sm text-on-surface-variant mt-1">${Number(activeAutopayEnrollment.amount ?? 0).toFixed(2)} {activeAutopayEnrollment.frequency}</p>
+                        <Button size="sm" onClick={() => cancelAutopay.mutate(activeAutopayEnrollment.id)} disabled={cancelAutopay.isPending} className="mt-3">
+                          Cancel Autopay
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-on-surface-variant">No autopay currently enabled</p>
+                    )}
+                    {autopayFormOpen && (
+                      <div className="mt-4 space-y-3 p-4 bg-surface rounded-lg border border-outline-variant/10">
+                        <Input type="number" step="0.01" placeholder="Amount" value={autopayForm.amount} onChange={(e) => setAutopayForm((p) => ({ ...p, amount: e.target.value }))} />
+                        <Input type="number" min="1" max="31" placeholder="Day of month" value={autopayForm.dayOfMonth} onChange={(e) => setAutopayForm((p) => ({ ...p, dayOfMonth: e.target.value }))} />
+                        <Select value={autopayForm.frequency} onValueChange={(value) => setAutopayForm((p) => ({ ...p, frequency: value }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="quarterly">Quarterly</SelectItem>
+                            <SelectItem value="annually">Annually</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button onClick={() => enrollAutopay.mutate()} disabled={enrollAutopay.isPending} className="w-full">
+                          {enrollAutopay.isPending ? "Setting up..." : "Enable Autopay"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Statement Summary */}
+                <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10 sticky top-24 h-fit">
+                  <h3 className="font-headline text-lg mb-4">Ledger Summary</h3>
+                  <div className="space-y-3">
+                    <div className="p-3 bg-surface rounded-lg border border-outline-variant/10">
+                      <p className="text-xs text-on-surface-variant">Total Charges</p>
+                      <p className="font-bold text-lg">${financialDashboard?.totalCharges?.toFixed(2) ?? "0.00"}</p>
+                    </div>
+                    <div className="p-3 bg-surface rounded-lg border border-outline-variant/10">
+                      <p className="text-xs text-on-surface-variant">Total Paid</p>
+                      <p className="font-bold text-lg">${financialDashboard?.totalPayments?.toFixed(2) ?? "0.00"}</p>
+                    </div>
+                    <div className="p-3 bg-surface rounded-lg border border-outline-variant/10">
+                      <p className="text-xs text-on-surface-variant">Current Balance</p>
+                      <p className={`font-bold text-lg ${(financialDashboard?.balance ?? 0) > 0 ? "text-destructive" : "text-secondary"}`}>
+                        ${Math.abs(financialDashboard?.balance ?? 0).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* DOCUMENTS TAB */}
+          {activeTab === "documents" && (
+            <div className="space-y-8">
+              <div className="space-y-2">
+                <p className="font-label text-primary uppercase tracking-widest text-[11px]">Documents</p>
+                <h1 className="font-headline text-4xl text-on-surface">Community Documents</h1>
+              </div>
+              <div className="grid gap-4">
+                {(documents ?? []).length > 0 ? (
+                  (documents ?? []).map((doc) => (
+                    <div key={doc.id} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 overflow-hidden">
+                      <div className="p-5 flex justify-between items-center gap-4">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-secondary-container flex-shrink-0 flex items-center justify-center">
+                            <span className="material-symbols-outlined text-secondary text-lg">description</span>
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-base truncate">{doc.title}</h4>
+                            <p className="text-sm text-on-surface-variant capitalize">
+                              {doc.documentType?.replace(/-/g, " ") || "Document"}
+                              {(doc as any).currentVersionNumber ? ` · v${(doc as any).currentVersionNumber}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                        {doc.fileUrl ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0 flex items-center gap-1"
+                            onClick={() => downloadDocument(doc)}
+                          >
+                            <span className="material-symbols-outlined text-base">download</span>
+                            Download
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-on-surface-variant shrink-0">No file</span>
+                        )}
+                      </div>
+                      {(doc as any).versions?.length > 0 && (
+                        <div className="border-t border-outline-variant/10">
+                          <button
+                            className="w-full flex items-center justify-between px-5 py-3 text-xs font-medium text-on-surface-variant uppercase tracking-wider hover:bg-surface-container/40 transition-colors"
+                            onClick={() => setExpandedVersionDocId(expandedVersionDocId === doc.id ? null : doc.id)}
+                            aria-expanded={expandedVersionDocId === doc.id}
+                          >
+                            <span>Version History ({(doc as any).versions.length})</span>
+                            <span className="material-symbols-outlined text-base" style={{ fontSize: "16px" }}>
+                              {expandedVersionDocId === doc.id ? "expand_less" : "expand_more"}
+                            </span>
+                          </button>
+                          {expandedVersionDocId === doc.id && (
+                            <div className="px-5 pb-4 space-y-2">
+                              {((doc as any).versions as Array<{ id: string; versionNumber: number; title: string; fileUrl: string; effectiveDate?: string; amendmentNotes?: string; isCurrent: number; createdAt: string }>).map((v) => (
+                                <div key={v.id} className="flex items-start justify-between gap-3 text-sm">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium">v{v.versionNumber}</span>
+                                      {v.isCurrent ? <span className="text-xs text-primary font-medium">Current</span> : null}
+                                      {v.effectiveDate ? <span className="text-xs text-on-surface-variant">Eff. {new Date(v.effectiveDate).toLocaleDateString()}</span> : null}
+                                    </div>
+                                    {v.amendmentNotes ? <p className="text-xs text-on-surface-variant mt-0.5 italic">{v.amendmentNotes}</p> : null}
+                                  </div>
+                                  {v.fileUrl ? (
+                                    <Button size="sm" variant="ghost" asChild className="shrink-0 text-xs h-7">
+                                      <a href={v.fileUrl} download>Download</a>
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-16 space-y-2">
+                    <span className="material-symbols-outlined text-4xl text-on-surface-variant/40">folder_open</span>
+                    <p className="text-on-surface-variant">No documents available yet</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* NOTICES TAB */}
+          {activeTab === "notices" && (
+            <div className="space-y-8">
+              <div className="space-y-2">
+                <p className="font-label text-primary uppercase tracking-widest text-[11px]">Notices</p>
+                <h1 className="font-headline text-4xl text-on-surface">Community Updates</h1>
+                {unreadNoticesCount > 0 && (
+                  <p className="text-sm text-on-surface-variant">{unreadNoticesCount} unread {unreadNoticesCount === 1 ? "notice" : "notices"}</p>
+                )}
+              </div>
+              <div className="grid gap-3">
+                {/* Maintenance — single grouped entry with timeline */}
+                {(maintenanceRequests ?? []).length > 0 && (() => {
+                  const allRequests = maintenanceRequests ?? [];
+                  const isExpanded = expandedNoticeId === "__maintenance__";
+                  const openCount = allRequests.filter((r) => !["resolved", "closed", "rejected"].includes(r.status)).length;
+                  const lastUpdated = allRequests.reduce((latest, r) => {
+                    const d = new Date(r.updatedAt);
+                    return d > latest ? d : latest;
+                  }, new Date(0));
+
+                  const statusCfg: Record<string, { label: string; dotColor: string; icon: string }> = {
+                    submitted:     { label: "Submitted",    dotColor: "bg-primary",        icon: "schedule" },
+                    triaged:       { label: "Under Review", dotColor: "bg-tertiary",       icon: "search" },
+                    "in-progress": { label: "In Progress",  dotColor: "bg-secondary",      icon: "construction" },
+                    resolved:      { label: "Resolved",     dotColor: "bg-green-500",      icon: "check_circle" },
+                    closed:        { label: "Closed",       dotColor: "bg-outline-variant", icon: "lock" },
+                    rejected:      { label: "Not Approved", dotColor: "bg-destructive",          icon: "cancel" },
+                  };
+
+                  const maintenanceRead = readNoticeIds.includes("__maintenance__");
+                  return (
+                    <div className={`rounded-2xl border overflow-hidden transition-all ${maintenanceRead ? "bg-surface-container-lowest border-outline-variant/10" : "bg-surface-container border-primary/20 shadow-sm"}`}>
+                      {/* Header row */}
+                      <div
+                        className="p-5 flex items-start gap-3 cursor-pointer"
+                        onClick={() => {
+                          if (!isExpanded) markNoticeAsRead("__maintenance__");
+                          setExpandedNoticeId(isExpanded ? null : "__maintenance__");
+                        }}
+                      >
+                        <div className="mt-1 flex-shrink-0">
+                          <span className={`block w-2 h-2 rounded-full ${!maintenanceRead ? "bg-primary" : "bg-outline-variant/30"}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className={`font-bold text-base ${!maintenanceRead ? "text-on-surface" : "text-on-surface-variant"}`}>Maintenance Updates</h4>
+                              <span className="text-xs bg-surface-container px-2 py-0.5 rounded-full text-on-surface-variant font-medium">
+                                {allRequests.length} {allRequests.length === 1 ? "request" : "requests"}
+                              </span>
+                              {openCount > 0 && (
+                                <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                                  {openCount} open
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <p className="text-xs text-on-surface-variant whitespace-nowrap">
+                                {lastUpdated.toLocaleDateString()}
+                              </p>
+                              <span className={`material-symbols-outlined text-sm text-on-surface-variant transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                                expand_more
+                              </span>
                             </div>
                           </div>
-                          <Button size="sm" variant="ghost" onClick={() => cancelAutopay.mutate(activeAutopayEnrollment.id)} disabled={cancelAutopay.isPending}>Cancel autopay</Button>
+                          {!isExpanded && (
+                            <p className="text-sm text-on-surface-variant mt-1 line-clamp-1">
+                              {allRequests.slice(0, 2).map((r) => r.title).join(" · ")}
+                              {allRequests.length > 2 ? ` · +${allRequests.length - 2} more` : ""}
+                            </p>
+                          )}
                         </div>
                       </div>
-                    ) : null}
-                    <div className="grid grid-cols-1 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Amount</label>
-                        <Input className={isMobile ? "min-h-11" : undefined} placeholder="0.00" value={autopayForm.amount} onChange={(e) => setAutopayForm((current) => ({ ...current, amount: e.target.value }))} />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">Day of month</label>
-                          <Input className={isMobile ? "min-h-11" : undefined} placeholder="1" value={autopayForm.dayOfMonth} onChange={(e) => setAutopayForm((current) => ({ ...current, dayOfMonth: e.target.value }))} />
+
+                      {/* Timeline body */}
+                      {isExpanded && (
+                        <div className="border-t border-outline-variant/10 divide-y divide-outline-variant/10">
+                          {allRequests.map((req) => {
+                            const cfg = statusCfg[req.status] ?? statusCfg.submitted;
+                            type Step = { label: string; date: string | null; done: boolean; active: boolean };
+                            const steps: Step[] = [
+                              { label: "Submitted",    date: req.createdAt,                        done: true,  active: req.status === "submitted" },
+                              { label: "Under Review", date: (req as any).triagedAt ?? null,       done: ["triaged","in-progress","resolved","closed"].includes(req.status), active: req.status === "triaged" },
+                              { label: "In Progress",  date: null,                                 done: ["in-progress","resolved","closed"].includes(req.status), active: req.status === "in-progress" },
+                              { label: "Resolved",     date: (req as any).resolvedAt ?? (req as any).closedAt ?? null, done: ["resolved","closed","rejected"].includes(req.status), active: ["resolved","closed","rejected"].includes(req.status) },
+                            ];
+
+                            return (
+                              <div key={req.id} className="px-5 py-5">
+                                {/* Request header */}
+                                <div className="flex items-start justify-between gap-3 mb-5">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-sm text-on-surface">{req.title}</p>
+                                    {req.locationText && (
+                                      <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-1">
+                                        <span className="material-symbols-outlined" style={{ fontSize: 12 }}>location_on</span>
+                                        {req.locationText}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <span className={`shrink-0 inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full text-white ${cfg.dotColor}`}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 12 }}>{cfg.icon}</span>
+                                    {cfg.label}
+                                  </span>
+                                </div>
+
+                                {/* Step timeline */}
+                                <div className="flex items-start">
+                                  {steps.map((step, i) => {
+                                    const isLast = i === steps.length - 1;
+                                    return (
+                                      <div key={step.label} className="flex-1 flex flex-col items-center relative">
+                                        {!isLast && (
+                                          <div className={`absolute top-2.5 left-1/2 w-full h-0.5 ${step.done ? "bg-primary/40" : "bg-outline-variant/20"}`} />
+                                        )}
+                                        <div className={`relative z-10 w-5 h-5 rounded-full flex items-center justify-center ring-4 ring-surface-container-lowest ${
+                                          step.active ? "bg-primary" : step.done ? "bg-primary/50" : "bg-surface-container border-2 border-outline-variant/30"
+                                        }`}>
+                                          {step.done && <span className="material-symbols-outlined text-white" style={{ fontSize: 11 }}>check</span>}
+                                        </div>
+                                        <p className={`text-[10px] font-medium mt-1.5 text-center leading-tight px-0.5 ${step.active ? "text-primary" : step.done ? "text-on-surface-variant" : "text-outline-variant"}`}>
+                                          {step.label}
+                                        </p>
+                                        {step.date && (
+                                          <p className="text-[9px] text-on-surface-variant/60 text-center mt-0.5">
+                                            {new Date(step.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                                          </p>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {req.resolutionNotes && (
+                                  <div className="mt-4 bg-surface-container-low rounded-lg p-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Resolution Notes</p>
+                                    <p className="text-sm text-on-surface">{req.resolutionNotes}</p>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
-                        <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">Frequency</label>
-                          <Select value={autopayForm.frequency} onValueChange={(value) => setAutopayForm((current) => ({ ...current, frequency: value }))}>
-                            <SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="monthly">Monthly</SelectItem>
-                              <SelectItem value="quarterly">Quarterly</SelectItem>
-                              <SelectItem value="annually">Annually</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Description</label>
-                        <Input className={isMobile ? "min-h-11" : undefined} placeholder="Monthly dues autopay" value={autopayForm.description} onChange={(e) => setAutopayForm((current) => ({ ...current, description: e.target.value }))} />
-                      </div>
+                      )}
                     </div>
-                    <Button size="sm" onClick={() => enrollAutopay.mutate()} disabled={enrollAutopay.isPending || !autopayForm.amount.trim()}>
-                      {enrollAutopay.isPending ? "Saving..." : activeAutopayEnrollment ? "Save autopay" : "Enroll in autopay"}
-                    </Button>
+                  );
+                })()}
+
+                {/* Community notices */}
+                {(notices ?? []).length > 0 ? (
+                  (notices ?? []).map((notice) => {
+                    const isRead = readNoticeIds.includes(notice.id);
+                    const isExpanded = expandedNoticeId === notice.id;
+                    return (
+                      <div
+                        key={notice.id}
+                        className={`rounded-2xl border transition-all cursor-pointer ${
+                          isRead
+                            ? "bg-surface-container-lowest border-outline-variant/10"
+                            : "bg-surface-container border-primary/20 shadow-sm"
+                        }`}
+                        onClick={() => {
+                          setExpandedNoticeId(isExpanded ? null : notice.id);
+                          markNoticeAsRead(notice.id);
+                        }}
+                      >
+                        <div className="p-5 flex items-start gap-3">
+                          <div className="mt-1 flex-shrink-0">
+                            {!isRead ? (
+                              <span className="block w-2 h-2 rounded-full bg-primary" />
+                            ) : (
+                              <span className="block w-2 h-2 rounded-full bg-outline-variant/30" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-start gap-2">
+                              <h4 className={`font-bold text-base leading-snug ${!isRead ? "text-on-surface" : "text-on-surface-variant"}`}>
+                                {notice.subject}
+                              </h4>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <p className="text-xs text-on-surface-variant whitespace-nowrap">
+                                  {new Date(notice.createdAt).toLocaleDateString()}
+                                </p>
+                                <span className={`material-symbols-outlined text-sm text-on-surface-variant transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                                  expand_more
+                                </span>
+                              </div>
+                            </div>
+                            {!isExpanded && (
+                              <p className="text-sm text-on-surface-variant mt-1 line-clamp-2">
+                                {stripHtml(notice.bodyRendered)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div className="border-t border-outline-variant/10 overflow-hidden rounded-b-2xl">
+                            <iframe
+                              srcDoc={notice.bodyRendered}
+                              className="w-full border-0 block"
+                              style={{ minHeight: 200 }}
+                              onLoad={(e) => {
+                                try {
+                                  const doc = e.currentTarget.contentDocument;
+                                  if (doc) e.currentTarget.style.height = doc.body.scrollHeight + 24 + "px";
+                                } catch {}
+                              }}
+                              title={notice.subject}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (maintenanceRequests ?? []).length === 0 ? (
+                  <div className="text-center py-16 space-y-2">
+                    <span className="material-symbols-outlined text-4xl text-on-surface-variant/40">notifications_off</span>
+                    <p className="text-on-surface-variant">No community notices yet</p>
                   </div>
                 ) : null}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "elections" && (
+            <div className="space-y-8">
+              {/* Election Detail View */}
+              {selectedElectionId && electionDetail ? (() => {
+                const ed = electionDetail;
+                const CHART_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#14b8a6"];
+                return (
+                  <div className="space-y-6">
+                    {/* Back button */}
+                    <button
+                      onClick={() => { setSelectedElectionId(null); setProxyFormOpen(false); }}
+                      className="flex items-center gap-1 text-sm text-primary hover:text-primary/80 font-medium"
+                    >
+                      <span className="material-symbols-outlined text-base">arrow_back</span>
+                      Back to Elections
+                    </button>
+
+                    {/* Header */}
+                    <div className="space-y-2">
+                      <p className="font-label text-primary uppercase tracking-widest text-[11px]">Election Detail</p>
+                      <div className="flex items-start justify-between gap-3">
+                        <h1 className="font-headline text-3xl text-on-surface">{ed.election.title}</h1>
+                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium shrink-0 ${
+                          ed.election.status === "open" ? "bg-green-100 text-green-700" :
+                          ed.election.status === "certified" ? "bg-blue-100 text-blue-700" :
+                          ed.election.status === "closed" ? "bg-yellow-100 text-yellow-700" :
+                          "bg-gray-100 text-gray-700"
+                        }`}>{ed.election.status}</span>
+                      </div>
+                      {ed.election.description && (
+                        <p className="text-sm text-on-surface-variant">{ed.election.description}</p>
+                      )}
+                    </div>
+
+                    {/* Info grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="rounded-xl border bg-surface-container-lowest border-outline-variant/10 p-4">
+                        <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Type</p>
+                        <p className="text-sm font-semibold text-on-surface capitalize">{ed.election.voteType.replace(/-/g, " ")}</p>
+                      </div>
+                      <div className="rounded-xl border bg-surface-container-lowest border-outline-variant/10 p-4">
+                        <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Voting Rule</p>
+                        <p className="text-sm font-semibold text-on-surface capitalize">{ed.election.votingRule.replace(/-/g, " ")}</p>
+                      </div>
+                      <div className="rounded-xl border bg-surface-container-lowest border-outline-variant/10 p-4">
+                        <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Opens</p>
+                        <p className="text-sm font-semibold text-on-surface">{ed.election.opensAt ? new Date(ed.election.opensAt).toLocaleDateString() : "N/A"}</p>
+                      </div>
+                      <div className="rounded-xl border bg-surface-container-lowest border-outline-variant/10 p-4">
+                        <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Closes</p>
+                        <p className="text-sm font-semibold text-on-surface">{ed.election.closesAt ? new Date(ed.election.closesAt).toLocaleDateString() : "N/A"}</p>
+                      </div>
+                    </div>
+
+                    {/* Options/Candidates */}
+                    {ed.options.length > 0 && (
+                      <div className="rounded-2xl border bg-surface-container-lowest border-outline-variant/10 p-5 space-y-3">
+                        <h3 className="font-headline text-lg text-on-surface">Options / Candidates</h3>
+                        <div className="space-y-2">
+                          {ed.options.sort((a, b) => a.orderIndex - b.orderIndex).map((opt) => (
+                            <div key={opt.id} className="flex items-start gap-3 p-3 rounded-lg bg-surface-container-low/50">
+                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                <span className="text-xs font-bold text-primary">{opt.orderIndex + 1}</span>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-medium text-sm text-on-surface">{opt.label}</p>
+                                {opt.description && <p className="text-xs text-on-surface-variant mt-0.5">{opt.description}</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Participation status */}
+                    <div className="rounded-2xl border bg-surface-container-lowest border-outline-variant/10 p-5 space-y-3">
+                      <h3 className="font-headline text-lg text-on-surface">Your Participation</h3>
+                      <div className="flex items-center gap-3">
+                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                          ed.status === "voted" ? "bg-green-100 text-green-700" :
+                          ed.status === "proxy-designated" ? "bg-blue-100 text-blue-700" :
+                          "bg-gray-100 text-gray-600"
+                        }`}>
+                          {ed.status === "voted" ? "Voted" : ed.status === "proxy-designated" ? "Proxy Designated" : "Not Voted"}
+                        </span>
+                        {ed.election.isSecretBallot ? <span className="text-xs text-amber-600 font-medium">Secret ballot</span> : null}
+                      </div>
+
+                      {/* Vote Now button for open + not voted */}
+                      {ed.election.status === "open" && ed.status === "not-voted" && ed.ballotToken && (
+                        <a
+                          href={`/vote/${ed.ballotToken}`}
+                          className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-on-primary rounded-lg text-sm font-bold uppercase tracking-wider hover:bg-primary/90 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-base">how_to_vote</span>
+                          Cast Your Vote
+                        </a>
+                      )}
+
+                      {/* Current proxy info */}
+                      {ed.proxyDesignation && (
+                        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-blue-600 text-base">people</span>
+                            <p className="text-sm font-medium text-blue-800">Proxy designated to {ed.proxyDesignation.proxyName}</p>
+                          </div>
+                          <p className="text-xs text-blue-600">
+                            Designated {new Date(ed.proxyDesignation.designatedAt).toLocaleDateString()}
+                            {ed.proxyDesignation.notes && ` — ${ed.proxyDesignation.notes}`}
+                          </p>
+                          {ed.election.status === "open" && (
+                            <button
+                              onClick={() => revokeProxy.mutate(ed.proxyDesignation!.id)}
+                              disabled={revokeProxy.isPending}
+                              className="text-xs text-red-600 hover:text-red-700 font-medium underline"
+                            >
+                              {revokeProxy.isPending ? "Revoking..." : "Revoke Proxy"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Designate Proxy action for open elections */}
+                      {ed.election.status === "open" && ed.status === "not-voted" && !ed.proxyDesignation && (
+                        <div className="pt-2">
+                          {!proxyFormOpen ? (
+                            <button
+                              onClick={() => setProxyFormOpen(true)}
+                              className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1"
+                            >
+                              <span className="material-symbols-outlined text-base">people</span>
+                              Designate a Proxy
+                            </button>
+                          ) : (
+                            <div className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 space-y-3">
+                              <h4 className="text-sm font-semibold text-on-surface">Designate a Proxy</h4>
+                              <p className="text-xs text-on-surface-variant">Select another owner in your association to vote on your behalf.</p>
+                              <Select value={proxyPersonId} onValueChange={setProxyPersonId}>
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Select a person..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {proxyCandidates.map((p) => (
+                                    <SelectItem key={p.personId} value={p.personId}>
+                                      {p.firstName} {p.lastName}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Textarea
+                                placeholder="Notes (optional)"
+                                value={proxyNotes}
+                                onChange={(e) => setProxyNotes(e.target.value)}
+                                className="h-16"
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  onClick={() => designateProxy.mutate()}
+                                  disabled={!proxyPersonId || designateProxy.isPending}
+                                  size="sm"
+                                >
+                                  {designateProxy.isPending ? "Designating..." : "Confirm Proxy"}
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => { setProxyFormOpen(false); setProxyPersonId(""); setProxyNotes(""); }}>
+                                  Cancel
+                                </Button>
+                              </div>
+                              {designateProxy.isError && (
+                                <p className="text-xs text-destructive">{(designateProxy.error as Error).message}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Self-Nomination Section (WS3.2) */}
+                    {(() => {
+                      const now = new Date();
+                      const nomOpen = ed.election.nominationsOpenAt ? new Date(ed.election.nominationsOpenAt) : null;
+                      const nomClose = ed.election.nominationsCloseAt ? new Date(ed.election.nominationsCloseAt) : null;
+                      const isNominationWindow = nomOpen && nomClose && now >= nomOpen && now <= nomClose;
+
+                      if (!isNominationWindow) return null;
+
+                      return (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-amber-600">person_add</span>
+                            <h3 className="font-headline text-lg text-on-surface">Self-Nomination</h3>
+                          </div>
+                          <p className="text-sm text-on-surface-variant">
+                            Nominations are open until {nomClose!.toLocaleDateString()} at {nomClose!.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. You can nominate yourself as a candidate for this election.
+                          </p>
+
+                          {!nominationFormOpen ? (
+                            <Button
+                              onClick={() => setNominationFormOpen(true)}
+                              variant="outline"
+                              className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                            >
+                              <span className="material-symbols-outlined text-base mr-1">person_add</span>
+                              Nominate Yourself
+                            </Button>
+                          ) : (
+                            <div className="rounded-xl border border-outline-variant/20 bg-white p-4 space-y-3">
+                              <h4 className="text-sm font-semibold text-on-surface">Nomination Form</h4>
+
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-on-surface-variant">Bio *</label>
+                                <Textarea
+                                  placeholder="Tell voters about yourself, your background, and qualifications..."
+                                  value={nominationBio}
+                                  onChange={(e) => setNominationBio(e.target.value)}
+                                  className="h-20"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-on-surface-variant">Current Role *</label>
+                                <Input
+                                  placeholder="e.g., Homeowner since 2020, Former Board Treasurer"
+                                  value={nominationCurrentRole}
+                                  onChange={(e) => setNominationCurrentRole(e.target.value)}
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-on-surface-variant">Nomination Statement *</label>
+                                <Textarea
+                                  placeholder="Why are you running? What do you hope to accomplish if elected?"
+                                  value={nominationStatement}
+                                  onChange={(e) => setNominationStatement(e.target.value)}
+                                  className="h-24"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-on-surface-variant">Photo URL (optional)</label>
+                                <Input
+                                  placeholder="https://example.com/photo.jpg"
+                                  value={nominationPhotoUrl}
+                                  onChange={(e) => setNominationPhotoUrl(e.target.value)}
+                                />
+                              </div>
+
+                              <div className="flex gap-2 pt-1">
+                                <Button
+                                  onClick={() => submitNomination.mutate()}
+                                  disabled={!nominationBio || !nominationCurrentRole || !nominationStatement || submitNomination.isPending}
+                                  size="sm"
+                                >
+                                  {submitNomination.isPending ? "Submitting..." : "Submit Nomination"}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setNominationFormOpen(false);
+                                    setNominationBio("");
+                                    setNominationCurrentRole("");
+                                    setNominationStatement("");
+                                    setNominationPhotoUrl("");
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+
+                              {submitNomination.isError && (
+                                <p className="text-xs text-destructive">{(submitNomination.error as Error).message}</p>
+                              )}
+
+                              {submitNomination.isSuccess && (
+                                <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
+                                  Your nomination has been submitted and is pending review by the board.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Visual Results for certified elections with public visibility */}
+                    {ed.tally && ed.election.status === "certified" && ed.election.resultVisibility === "public" && (
+                      <div className="rounded-2xl border bg-surface-container-lowest border-outline-variant/10 p-5 space-y-4">
+                        <h3 className="font-headline text-lg text-on-surface">Election Results</h3>
+
+                        {/* Participation vs Quorum */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-xl bg-surface-container-low p-4 text-center">
+                            <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Participation</p>
+                            <p className="text-2xl font-bold text-on-surface">{ed.tally.participationPercent}%</p>
+                            <p className="text-xs text-on-surface-variant">{ed.tally.castCount} of {ed.tally.eligibleCount} voters</p>
+                          </div>
+                          <div className="rounded-xl bg-surface-container-low p-4 text-center">
+                            <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Quorum</p>
+                            <p className={`text-2xl font-bold ${ed.tally.quorumMet ? "text-green-600" : "text-red-600"}`}>
+                              {ed.tally.quorumMet ? "Met" : "Not Met"}
+                            </p>
+                            <p className="text-xs text-on-surface-variant">{ed.tally.quorumPercent}% required</p>
+                          </div>
+                        </div>
+
+                        {/* Bar chart of vote distribution */}
+                        {ed.tally.optionTallies.length > 0 && !ed.election.isSecretBallot && (() => {
+                          const chartData = ed.tally!.optionTallies.map((opt) => ({
+                            name: opt.label.length > 20 ? opt.label.slice(0, 18) + "..." : opt.label,
+                            fullName: opt.label,
+                            votes: opt.votes,
+                            percent: opt.percent,
+                          }));
+                          const maxVotes = Math.max(...chartData.map((d) => d.votes), 1);
+                          const winnerIdx = chartData.reduce((best, cur, idx) => (cur.votes > chartData[best].votes ? idx : best), 0);
+
+                          return (
+                            <div>
+                              <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 50)}>
+                                <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                                  <XAxis type="number" domain={[0, maxVotes]} tickFormatter={(v) => `${v}`} />
+                                  <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12 }} />
+                                  <Tooltip
+                                    formatter={(value: number, _name: string, props: any) => [`${value} votes (${props.payload.percent}%)`, props.payload.fullName]}
+                                    contentStyle={{ fontSize: 12 }}
+                                  />
+                                  <Bar dataKey="votes" radius={[0, 4, 4, 0]}>
+                                    {chartData.map((_, idx) => (
+                                      <Cell key={idx} fill={idx === winnerIdx ? "#22c55e" : CHART_COLORS[idx % CHART_COLORS.length]} />
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+
+                              {/* Winner highlight */}
+                              <div className="mt-3 rounded-lg bg-green-50 border border-green-200 p-3 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-green-600">emoji_events</span>
+                                <p className="text-sm font-medium text-green-800">
+                                  Winner: {chartData[winnerIdx].fullName} with {chartData[winnerIdx].votes} votes ({chartData[winnerIdx].percent}%)
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {ed.election.isSecretBallot && (
+                          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-700">
+                            This was a secret ballot. Individual vote choices are anonymized.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : (
+                /* Election List View with Tabs */
+                <>
+                  <div className="space-y-2">
+                    <p className="font-label text-primary uppercase tracking-widest text-[11px]">Voting</p>
+                    <h1 className="font-headline text-4xl text-on-surface">Elections & Votes</h1>
+                    <p className="text-sm text-on-surface-variant">{electionHistory.length} election{electionHistory.length !== 1 ? "s" : ""} on record</p>
+                  </div>
+
+                  <Tabs value={electionsSubtab} onValueChange={(v) => setElectionsSubtab(v as typeof electionsSubtab)} className="w-full">
+                    <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="active" className="text-xs sm:text-sm">
+                        Active {activeElectionsList.length > 0 && <span className="ml-1 text-[10px] bg-primary text-on-primary px-1.5 py-0.5 rounded-full">{activeElectionsList.length}</span>}
+                      </TabsTrigger>
+                      <TabsTrigger value="upcoming" className="text-xs sm:text-sm">Upcoming</TabsTrigger>
+                      <TabsTrigger value="past" className="text-xs sm:text-sm">Past</TabsTrigger>
+                      <TabsTrigger value="history" className="text-xs sm:text-sm">My History</TabsTrigger>
+                    </TabsList>
+
+                    {/* Active Elections Tab */}
+                    <TabsContent value="active" className="mt-4 space-y-3">
+                      {activeElectionsList.length === 0 ? (
+                        <div className="text-center py-12 text-on-surface-variant text-sm">
+                          <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 block mb-2">how_to_vote</span>
+                          No active elections requiring your vote right now.
+                        </div>
+                      ) : (
+                        activeElectionsList.map(({ election, status }) => {
+                          const activeMatch = activeElections.find(ae => ae.election.id === election.id);
+                          return (
+                            <div
+                              key={election.id}
+                              className="rounded-xl border-2 border-primary/20 bg-surface-container-lowest p-4 space-y-3 cursor-pointer hover:border-primary/40 hover:shadow-md transition-all"
+                              onClick={() => setSelectedElectionId(election.id)}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="font-semibold text-on-surface">{election.title}</div>
+                                  <div className="text-xs text-on-surface-variant mt-0.5 capitalize">{election.voteType.replace(/-/g, " ")}</div>
+                                </div>
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">Open</span>
+                              </div>
+                              {election.description && (
+                                <div className="text-sm text-on-surface-variant line-clamp-2">{election.description}</div>
+                              )}
+                              <div className="flex items-center gap-3 flex-wrap text-xs text-on-surface-variant">
+                                {election.opensAt && <span>Opened {new Date(election.opensAt).toLocaleDateString()}</span>}
+                                {election.closesAt && <span>Closes {new Date(election.closesAt).toLocaleDateString()}</span>}
+                                {election.isSecretBallot ? <span className="text-amber-600">Secret ballot</span> : null}
+                              </div>
+                              <div className="flex items-center gap-3 pt-1">
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600">Not Voted</span>
+                                {activeMatch?.token && (
+                                  <a
+                                    href={`/vote/${activeMatch.token}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-primary/90 transition-colors"
+                                  >
+                                    <span className="material-symbols-outlined text-sm">how_to_vote</span>
+                                    Vote Now
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </TabsContent>
+
+                    {/* Upcoming Elections Tab */}
+                    <TabsContent value="upcoming" className="mt-4 space-y-3">
+                      {upcomingElectionsList.length === 0 ? (
+                        <div className="text-center py-12 text-on-surface-variant text-sm">
+                          <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 block mb-2">event_upcoming</span>
+                          No upcoming elections scheduled.
+                        </div>
+                      ) : (
+                        upcomingElectionsList.map(({ election }) => (
+                          <div
+                            key={election.id}
+                            className="rounded-xl border bg-surface-container-lowest border-outline-variant/10 p-4 space-y-2 cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all"
+                            onClick={() => setSelectedElectionId(election.id)}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="font-semibold text-on-surface">{election.title}</div>
+                                <div className="text-xs text-on-surface-variant mt-0.5 capitalize">{election.voteType.replace(/-/g, " ")}</div>
+                              </div>
+                              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">Draft</span>
+                            </div>
+                            {election.description && (
+                              <div className="text-sm text-on-surface-variant line-clamp-2">{election.description}</div>
+                            )}
+                            <div className="flex items-center gap-3 flex-wrap text-xs text-on-surface-variant">
+                              {election.opensAt && <span>Opens {new Date(election.opensAt).toLocaleDateString()}</span>}
+                              {election.closesAt && <span>Closes {new Date(election.closesAt).toLocaleDateString()}</span>}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </TabsContent>
+
+                    {/* Past Elections Tab */}
+                    <TabsContent value="past" className="mt-4 space-y-3">
+                      {pastElectionsList.length === 0 ? (
+                        <div className="text-center py-12 text-on-surface-variant text-sm">
+                          <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 block mb-2">history</span>
+                          No past elections on record.
+                        </div>
+                      ) : (
+                        pastElectionsList.map(({ election, status, outcome }) => (
+                          <div
+                            key={election.id}
+                            className="rounded-xl border bg-surface-container-lowest border-outline-variant/10 p-4 space-y-2 cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all"
+                            onClick={() => setSelectedElectionId(election.id)}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="font-semibold text-on-surface">{election.title}</div>
+                                <div className="text-xs text-on-surface-variant mt-0.5 capitalize">{election.voteType.replace(/-/g, " ")}</div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  election.status === "certified" ? "bg-blue-100 text-blue-700" :
+                                  election.status === "closed" ? "bg-yellow-100 text-yellow-700" :
+                                  election.status === "cancelled" ? "bg-red-100 text-red-700" :
+                                  "bg-gray-100 text-gray-700"
+                                }`}>{election.status}</span>
+                              </div>
+                            </div>
+                            {election.description && (
+                              <div className="text-sm text-on-surface-variant line-clamp-2">{election.description}</div>
+                            )}
+                            <div className="flex items-center gap-3 flex-wrap text-xs text-on-surface-variant">
+                              {election.closesAt && <span>Closed {new Date(election.closesAt).toLocaleDateString()}</span>}
+                              {election.isSecretBallot ? <span className="text-amber-600">Secret ballot</span> : null}
+                            </div>
+                            <div className="flex items-center gap-3 pt-1">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                status === "voted" ? "bg-green-100 text-green-700" :
+                                status === "proxy-designated" ? "bg-blue-100 text-blue-700" :
+                                "bg-gray-100 text-gray-600"
+                              }`}>
+                                {status === "voted" ? "Voted" : status === "proxy-designated" ? "Proxy Designated" : "Not Voted"}
+                              </span>
+                              {outcome && (
+                                <span className="text-xs text-on-surface-variant">Result: {outcome}</span>
+                              )}
+                              {election.status === "certified" && election.resultVisibility === "public" && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setSelectedElectionId(election.id); }}
+                                  className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium"
+                                >
+                                  <span className="material-symbols-outlined text-sm">bar_chart</span>
+                                  View Results
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </TabsContent>
+
+                    {/* My Voting History Tab */}
+                    <TabsContent value="history" className="mt-4 space-y-4">
+                      <div className="rounded-2xl border bg-surface-container-lowest border-outline-variant/10 p-5 space-y-4">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-primary">history</span>
+                          <h3 className="font-headline text-lg text-on-surface">My Voting History</h3>
+                        </div>
+                        <p className="text-sm text-on-surface-variant">A complete record of all elections you were eligible to participate in.</p>
+
+                        {electionHistory.length === 0 ? (
+                          <div className="text-center py-8 text-on-surface-variant text-sm">
+                            No election history available.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="text-xs">Election</TableHead>
+                                  <TableHead className="text-xs">Date</TableHead>
+                                  <TableHead className="text-xs">Participation</TableHead>
+                                  <TableHead className="text-xs">Outcome</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {electionHistory.map(({ election, status, outcome }) => (
+                                  <TableRow key={election.id} className="cursor-pointer hover:bg-surface-container-low/50" onClick={() => setSelectedElectionId(election.id)}>
+                                    <TableCell>
+                                      <div className="font-medium text-sm text-on-surface">{election.title}</div>
+                                      <div className="text-xs text-on-surface-variant capitalize">{election.voteType.replace(/-/g, " ")}</div>
+                                    </TableCell>
+                                    <TableCell className="text-sm text-on-surface-variant whitespace-nowrap">
+                                      {election.closesAt ? new Date(election.closesAt).toLocaleDateString() : election.opensAt ? new Date(election.opensAt).toLocaleDateString() : "N/A"}
+                                    </TableCell>
+                                    <TableCell>
+                                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                        status === "voted" ? "bg-green-100 text-green-700" :
+                                        status === "proxy-designated" ? "bg-blue-100 text-blue-700" :
+                                        "bg-gray-100 text-gray-600"
+                                      }`}>
+                                        {status === "voted" ? "Yes" : status === "proxy-designated" ? "Proxy" : "No"}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-xs text-on-surface-variant">
+                                      {election.isSecretBallot ? (
+                                        <span className="text-amber-600 italic">Secret ballot</span>
+                                      ) : outcome ? (
+                                        <span>{outcome}</span>
+                                      ) : (
+                                        <span className="text-on-surface-variant/60">--</span>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+
+                        {/* Summary stats */}
+                        {electionHistory.length > 0 && (
+                          <div className="grid grid-cols-3 gap-3 pt-2 border-t border-outline-variant/10">
+                            <div className="text-center">
+                              <p className="text-xl font-bold text-on-surface">{electionHistory.length}</p>
+                              <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Total Elections</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xl font-bold text-green-600">{electionHistory.filter(e => e.status === "voted").length}</p>
+                              <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Votes Cast</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xl font-bold text-on-surface">
+                                {electionHistory.length > 0 ? Math.round((electionHistory.filter(e => e.status === "voted" || e.status === "proxy-designated").length / electionHistory.length) * 100) : 0}%
+                              </p>
+                              <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Participation Rate</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === "communications" && (
+            <div className="space-y-8">
+              <div className="space-y-2">
+                <p className="font-label text-primary uppercase tracking-widest text-[11px]">Communications</p>
+                <h1 className="font-headline text-4xl text-on-surface">Board Communications</h1>
+                <p className="text-sm text-on-surface-variant">{Object.values(boardDashboardData?.workflowStates.communications.noticesByStatus || {}).reduce((a, b) => a + b, 0)} notices</p>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-on-surface mb-3">Notices</h3>
+                  {Object.keys(boardDashboardData?.workflowStates.communications.noticesByStatus || {}).length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {Object.entries(boardDashboardData?.workflowStates.communications.noticesByStatus || {}).map(([status, count]) => (
+                        <div key={status} className="rounded-lg border bg-surface-container-lowest border-outline-variant/10 p-3 text-center">
+                          <p className="text-sm text-on-surface-variant capitalize">{status.replace("-", " ")}</p>
+                          <p className="text-2xl font-bold text-on-surface">{count}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 space-y-2 text-on-surface-variant">
+                      <p>No notices</p>
+                    </div>
+                  )}
                 </div>
-            </MobileSectionShell>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border bg-surface-container-lowest border-outline-variant/10 p-4">
+                    <p className="text-xs text-on-surface-variant uppercase tracking-widest mb-2">Portal Documents</p>
+                    <p className="text-2xl font-bold text-on-surface">{boardDashboardData?.workflowStates.communications.documentsPortalVisible || 0}</p>
+                  </div>
+                  <div className="rounded-lg border bg-surface-container-lowest border-outline-variant/10 p-4">
+                    <p className="text-xs text-on-surface-variant uppercase tracking-widest mb-2">Internal Only</p>
+                    <p className="text-2xl font-bold text-on-surface">{boardDashboardData?.workflowStates.communications.documentsInternalOnly || 0}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </MobileSectionShell>
-      </>
-      )}
+      </main>
 
+      {/* Mobile Tab Bar */}
+      {isMobile && (
+        <nav className="fixed bottom-0 left-0 right-0 bg-surface-bright border-t border-outline-variant/10 flex justify-around z-40 pb-safe">
+          {[
+            { id: "overview" as const, icon: "dashboard", label: "Overview", badge: 0 },
+            { id: "maintenance" as const, icon: "build", label: "Maintenance", badge: openMaintenanceRequests },
+            { id: "financials" as const, icon: "payments", label: "Pay", badge: 0 },
+            { id: "documents" as const, icon: "description", label: "Docs", badge: 0 },
+            { id: "notices" as const, icon: "notifications", label: "Updates", badge: unreadNoticesCount },
+            { id: "elections" as const, icon: "how_to_vote", label: "Voting", badge: activeElections.length },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 flex flex-col items-center gap-1 px-2 py-3 transition-colors ${activeTab === tab.id ? "text-primary" : "text-on-surface-variant"}`}
+            >
+              <div className="relative">
+                <span className="material-symbols-outlined text-xl">{tab.icon}</span>
+                {tab.badge > 0 && (
+                  <span className="absolute -top-1 -right-2 min-w-[14px] h-[14px] bg-destructive text-on-error text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                    {tab.badge}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] font-medium">{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
     </div>
-
-      {/* Mobile bottom tab navigation — shown on small screens in owner mode */}
-      {workspaceMode === "owner" && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 border-t bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
-          <div className="flex">
-            {ownerTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 flex flex-col items-center justify-center px-1 py-2 text-xs font-medium transition-colors min-h-[3.75rem] ${
-                  activeTab === tab.id
-                    ? "text-primary border-t-2 border-primary -mt-px bg-primary/5"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-  </div>
   );
 }

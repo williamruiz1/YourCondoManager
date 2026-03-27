@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { Person, Unit, BoardRole } from "@shared/schema";
+import { formatPhoneNumber, getPhoneDigits } from "@/lib/phone-formatter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -93,7 +94,7 @@ export default function PersonsPage() {
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email || null,
-        phone: data.phone || null,
+        phone: getPhoneDigits(data.phone || ""),
         mailingAddress: data.mailingAddress || null,
         associationId: activeAssociationId || null,
       };
@@ -137,7 +138,7 @@ export default function PersonsPage() {
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email || null,
-        phone: data.phone || null,
+        phone: getPhoneDigits(data.phone || ""),
         mailingAddress: data.mailingAddress || null,
       };
       return apiRequest("PATCH", `/api/persons/${data.id}`, payload);
@@ -200,7 +201,7 @@ export default function PersonsPage() {
       firstName: p.firstName,
       lastName: p.lastName,
       email: p.email ?? "",
-      phone: p.phone ?? "",
+      phone: formatPhoneNumber(p.phone ?? ""),
       residentRole: "none",
       unitId: "",
       mailingAddress: p.mailingAddress ?? "",
@@ -383,8 +384,8 @@ export default function PersonsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">People</h1>
-          <p className="text-muted-foreground">Owners, tenants, and board members across your associations.</p>
+          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">People</h1>
+          <p className="text-sm text-on-surface/60 mt-1">Owners, tenants, and board members across your associations.</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -429,7 +430,7 @@ export default function PersonsPage() {
                 <FormField control={form.control} name="phone" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Phone</FormLabel>
-                    <FormControl><Input data-testid="input-person-phone" placeholder="(555) 123-4567" {...field} /></FormControl>
+                    <FormControl><Input data-testid="input-person-phone" placeholder="(XXX) XXX-XXXX" {...field} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -634,7 +635,7 @@ export default function PersonsPage() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+            <div className="p-6 space-y-3">{[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : !persons?.length ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />

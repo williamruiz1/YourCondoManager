@@ -49,6 +49,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { HelpTooltip } from "@/components/help-tooltip";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { financeSubPages } from "@/lib/sub-page-nav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 
@@ -81,7 +82,7 @@ function formatCurrency(amount: number) {
   return `$${amount.toFixed(2)}`;
 }
 
-export default function FinancialLateFeesPage() {
+export function FinancialLateFeesContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -442,14 +443,7 @@ export default function FinancialLateFeesPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-0">
-      <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Late Fees"
-        eyebrow="Finance"
-        summary="Manage late fee rules, review applied fees, and recover delinquent balances through payment plans and collections handoffs."
-        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Late Fees" }]}
-      />
+    <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rules" | "activity" | "recovery")} className="space-y-6">
         {isMobile ? (
           <MobileTabBar
@@ -1367,6 +1361,22 @@ export default function FinancialLateFeesPage() {
       </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+export default function FinancialLateFeesPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Late Fees"
+          eyebrow="Finance"
+          summary="Manage late fee rules, review applied fees, and recover delinquent balances through payment plans and collections handoffs."
+          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Late Fees" }]}
+          subPages={financeSubPages}
+        />
+        <FinancialLateFeesContent />
       </div>
     </div>
   );

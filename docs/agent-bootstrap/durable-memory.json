@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-21T17:24:53.868Z",
+  "generatedAt": "2026-03-27T16:57:36.013Z",
   "purpose": "Durable working memory for stable repo facts and repeatable operating knowledge.",
   "sourceArtifacts": {
     "workspaceManifest": "docs/agent-bootstrap/workspace-manifest.json",
@@ -132,12 +132,12 @@
   "activeRoadmapContext": [
     {
       "title": "Admin Roadmap Backbone - Agent Bootstrap and Continuous Improvement",
-      "status": "archived",
+      "status": "complete",
       "openTasks": []
     },
     {
       "title": "Platform-wide UI and UX Opportunity Analysis",
-      "status": "archived",
+      "status": "complete",
       "openTasks": []
     }
   ],

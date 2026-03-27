@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { formatPhoneNumber, getPhoneDigits } from "@/lib/phone-formatter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -156,7 +157,7 @@ export default function OwnersPage() {
         firstName: row.person?.firstName ?? "",
         lastName: row.person?.lastName ?? "",
         email: row.person?.email ?? "",
-        phone: row.person?.phone ?? "",
+        phone: formatPhoneNumber(row.person?.phone ?? ""),
         mailingAddress: row.person?.mailingAddress ?? "",
         ownershipPercentage: String(row.ownership.ownershipPercentage ?? 100),
         startDate: toDateInput(row.ownership.startDate),
@@ -202,7 +203,7 @@ export default function OwnersPage() {
           firstName: row.firstName.trim(),
           lastName: row.lastName.trim(),
           email: row.email.trim() || null,
-          phone: row.phone.trim() || null,
+          phone: getPhoneDigits(row.phone) || null,
           mailingAddress: row.mailingAddress.trim() || null,
           ownershipPercentage: Number(row.ownershipPercentage),
           startDate: row.startDate ? new Date(row.startDate).toISOString() : null,
@@ -238,11 +239,16 @@ export default function OwnersPage() {
   }
 
   function updateDraft(ownershipId: string, patch: Partial<OwnerDraft>) {
+    // Apply phone formatting if phone field is being updated
+    const formattedPatch = {
+      ...patch,
+      phone: patch.phone !== undefined ? formatPhoneNumber(patch.phone) : patch.phone,
+    };
     setDrafts((current) => ({
       ...current,
       [ownershipId]: {
         ...current[ownershipId],
-        ...patch,
+        ...formattedPatch,
       },
     }));
   }
@@ -306,7 +312,7 @@ export default function OwnersPage() {
         firstName: row.person?.firstName ?? "",
         lastName: row.person?.lastName ?? "",
         email: row.person?.email ?? "",
-        phone: row.person?.phone ?? "",
+        phone: formatPhoneNumber(row.person?.phone ?? ""),
         mailingAddress: row.person?.mailingAddress ?? "",
         ownershipPercentage: String(row.ownership.ownershipPercentage ?? 100),
         startDate: toDateInput(row.ownership.startDate),
@@ -325,8 +331,8 @@ export default function OwnersPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Owners</h1>
-          <p className="text-muted-foreground">Track unit ownership records and repair imported owner data.</p>
+          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">Owners</h1>
+          <p className="text-sm text-on-surface/60 mt-1">Track unit ownership records and repair imported owner data.</p>
         </div>
         <div className="flex gap-2">
           {isBulkEditing ? (
@@ -424,7 +430,7 @@ export default function OwnersPage() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+            <div className="p-6 space-y-3">{[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : !ownerships.length ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />

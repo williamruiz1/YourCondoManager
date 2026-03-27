@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { aliasedTable, and, desc, eq, getTableColumns, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { execFile } from "child_process";
 import { readFile } from "fs/promises";
@@ -9,6 +9,7 @@ import { db } from "./db";
 import { sendPlatformEmail } from "./email-provider";
 import {
   adminAssociationScopes,
+  adminUserPreferences,
   associationMemberships,
   adminUsers,
   authUsers,
@@ -72,6 +73,8 @@ import {
   paymentGatewayConnections,
   paymentMethodConfigs,
   paymentWebhookEvents,
+  platformSubscriptions,
+  platformWebhookEvents,
   permissionEnvelopes,
   onboardingInvites,
   onboardingSubmissions,
@@ -215,6 +218,8 @@ import {
   type PaymentGatewayConnection,
   type PaymentMethodConfig,
   type PaymentWebhookEvent,
+  type PlatformSubscription,
+  type InsertPlatformSubscription,
   type UnitChangeHistory,
   type RoadmapProject,
   type RoadmapTask,
@@ -245,7 +250,26 @@ import {
   type TenantConfig,
   utilityPayments,
   vendorInvoices,
+  elections,
+  electionOptions,
+  electionBallotTokens,
+  electionBallotCasts,
+  electionProxyDesignations,
+  electionProxyDocuments,
+  type Election,
+  type InsertElection,
+  type ElectionOption,
+  type InsertElectionOption,
+  type ElectionBallotToken,
+  type InsertElectionBallotToken,
+  type ElectionBallotCast,
+  type InsertElectionBallotCast,
+  type ElectionProxyDesignation,
+  type InsertElectionProxyDesignation,
+  type ElectionProxyDocument,
+  type InsertElectionProxyDocument,
 } from "@shared/schema";
+import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { governanceStateTemplateLibrary } from "@shared/governance-state-template-library";
 
 type WorkState = "not-started" | "in-progress" | "complete";
@@ -293,6 +317,8 @@ export interface RoadmapResponse {
   workstreams: (RoadmapWorkstream & { progress: WorkstreamProgress })[];
   tasks: RoadmapTask[];
   timeline: TimelineItem[];
+  executiveUpdates: ExecutiveUpdate[];
+  analysisVersions: AnalysisVersion[];
   refreshedAt: string;
 }
 
@@ -4255,6 +4281,13 @@ export interface IStorage {
     failedRecipients: string[];
   }>;
 
+  // Platform Subscriptions
+  getPlatformSubscription(associationId: string): Promise<PlatformSubscription | undefined>;
+  getPlatformSubscriptionByStripeId(stripeSubscriptionId: string): Promise<PlatformSubscription | undefined>;
+  createPlatformSubscription(data: InsertPlatformSubscription): Promise<PlatformSubscription>;
+  updatePlatformSubscription(id: string, data: Partial<InsertPlatformSubscription>): Promise<PlatformSubscription | undefined>;
+  listPlatformSubscriptions(): Promise<PlatformSubscription[]>;
+
   getRoadmap(): Promise<RoadmapResponse>;
   createRoadmapProject(data: InsertRoadmapProject): Promise<RoadmapProject>;
   createRoadmapWorkstream(data: InsertRoadmapWorkstream): Promise<RoadmapWorkstream>;
@@ -4262,6 +4295,12 @@ export interface IStorage {
   updateRoadmapTask(id: string, data: Partial<InsertRoadmapTask>): Promise<RoadmapTask | undefined>;
   updateRoadmapProject(id: string, data: Partial<InsertRoadmapProject>): Promise<RoadmapProject | undefined>;
   updateRoadmapWorkstream(id: string, data: Partial<InsertRoadmapWorkstream>): Promise<RoadmapWorkstream | undefined>;
+  getRoadmapProject(id: string): Promise<RoadmapProject | undefined>;
+  getRoadmapWorkstream(id: string): Promise<RoadmapWorkstream | undefined>;
+  getRoadmapTask(id: string): Promise<RoadmapTask | undefined>;
+  deleteRoadmapProject(id: string): Promise<void>;
+  deleteRoadmapWorkstream(id: string): Promise<void>;
+  deleteRoadmapTask(id: string): Promise<void>;
   getExecutiveUpdates(): Promise<ExecutiveUpdate[]>;
   createExecutiveUpdate(data: InsertExecutiveUpdate): Promise<ExecutiveUpdate>;
   updateExecutiveUpdate(id: string, data: Partial<InsertExecutiveUpdate>): Promise<ExecutiveUpdate | undefined>;
@@ -4341,6 +4380,113 @@ export interface IStorage {
         }>;
       };
     }>;
+
+  // Elections
+  getElections(associationId?: string, meetingId?: string): Promise<Election[]>;
+  getElection(id: string): Promise<Election | undefined>;
+  createElection(data: InsertElection): Promise<Election>;
+  updateElection(id: string, data: Partial<InsertElection>): Promise<Election | undefined>;
+  getElectionOptions(electionId: string): Promise<ElectionOption[]>;
+  createElectionOption(data: InsertElectionOption): Promise<ElectionOption>;
+  deleteElectionOption(id: string): Promise<void>;
+  getNominationsForElection(electionId: string): Promise<ElectionOption[]>;
+  approveNomination(optionId: string): Promise<ElectionOption | undefined>;
+  rejectNomination(optionId: string): Promise<ElectionOption | undefined>;
+  getPortalNominationsForElection(portalAccessId: string, electionId: string): Promise<ElectionOption[]>;
+  submitNomination(data: { electionId: string; label: string; bio?: string; photoUrl?: string; currentRole?: string; nominationStatement?: string; nominatedByPersonId: string }): Promise<ElectionOption>;
+  generateBallotTokens(electionId: string, actorEmail?: string): Promise<{ created: number }>;
+  getBallotTokens(electionId: string): Promise<ElectionBallotToken[]>;
+  getBallotTokenByToken(token: string): Promise<ElectionBallotToken | undefined>;
+  castBallot(data: { token: string; choicesJson: string[]; personId?: string | null }): Promise<ElectionBallotCast>;
+  getBallotCasts(electionId: string): Promise<ElectionBallotCast[]>;
+  getProxyDesignations(electionId: string): Promise<(ElectionProxyDesignation & { ownerName: string; proxyName: string })[]>;
+  createProxyDesignation(data: InsertElectionProxyDesignation): Promise<ElectionProxyDesignation>;
+  revokeProxyDesignation(id: string): Promise<ElectionProxyDesignation | undefined>;
+  getProxyDocuments(electionId: string): Promise<ElectionProxyDocument[]>;
+  createProxyDocument(data: InsertElectionProxyDocument): Promise<ElectionProxyDocument>;
+  getElectionTally(electionId: string): Promise<{
+    electionId: string;
+    eligibleCount: number;
+    castCount: number;
+    participationPercent: number;
+    quorumPercent: number;
+    quorumMet: boolean;
+    optionTallies: Array<{ optionId: string; label: string; votes: number; percent: number }>;
+    totalWeightedVotes: number;
+    isCertified: boolean;
+    certifiedAt: string | null;
+  }>;
+  certifyElection(id: string, actorEmail: string, certificationSummary?: string): Promise<Election>;
+  revokeAllPendingTokens(electionId: string): Promise<number>;
+  deleteElection(id: string): Promise<void>;
+  getBallotTokensWithNames(electionId: string): Promise<Array<{
+    id: string; token: string; personId: string | null; unitId: string | null;
+    status: string; sentAt: Date | null; castAt: Date | null;
+    voterName: string; unitNumber: string;
+    confirmationRef: string | null;
+  }>>;
+  getVoterEmailsForElection(electionId: string): Promise<Array<{ tokenId: string; email: string; token: string; firstName: string }>>;
+  getPendingVoterEmailsForElection(electionId: string): Promise<Array<{ tokenId: string; email: string; token: string; firstName: string }>>;
+  markBallotTokensSent(tokenIds: string[]): Promise<void>;
+  resendBallotToken(tokenId: string): Promise<{ token: string; email: string; personId: string; electionId: string } | null>;
+  getOwnerElectionHistory(portalAccessId: string): Promise<Array<{
+    election: Election;
+    participated: boolean;
+    status: "voted" | "proxy-designated" | "not-voted";
+    outcome: string | null;
+  }>>;
+  getOwnerActiveElections(portalAccessId: string): Promise<Array<{
+    election: Election;
+    token: string;
+  }>>;
+  getElectionDetailForPortal(portalAccessId: string, electionId: string): Promise<{
+    election: Election;
+    options: ElectionOption[];
+    participated: boolean;
+    status: "voted" | "proxy-designated" | "not-voted";
+    ballotToken: string | null;
+    proxyDesignation: { id: string; proxyPersonId: string; proxyName: string; designatedAt: string; notes: string | null } | null;
+    tally: { eligibleCount: number; castCount: number; participationPercent: number; quorumPercent: number; quorumMet: boolean; optionTallies: Array<{ optionId: string; label: string; votes: number; percent: number }> } | null;
+  } | null>;
+  getAssociationOwnersForProxy(portalAccessId: string, electionId: string): Promise<Array<{ personId: string; firstName: string; lastName: string }>>;
+  revokeProxyDesignationForPortal(portalAccessId: string, designationId: string): Promise<boolean>;
+  getBoardPendingElections(portalAccessId: string): Promise<Array<{
+    election: Election;
+    token: string;
+  }>>;
+  getCertifiedElections(associationId: string): Promise<Array<{
+    election: Election;
+    participationPercent: number;
+    outcome: string | null;
+  }>>;
+  getRecentlyCertifiedBoardElections(associationId: string): Promise<Election[]>;
+  closeExpiredElections(): Promise<number>;
+  getActiveElectionsSummary(associationId?: string): Promise<Array<{
+    id: string;
+    title: string;
+    associationId: string;
+    status: string;
+    closesAt: Date | null;
+    eligibleVoterCount: number;
+    castCount: number;
+    participationPercent: number;
+    quorumPercent: number;
+    quorumMet: boolean;
+  }>>;
+  getElectionComplianceSummary(associationId: string): Promise<{
+    totalElections: number;
+    byYear: Array<{ year: number; count: number; quorumMet: number; quorumFailed: number; avgParticipation: number }>;
+    overallAvgParticipation: number;
+  }>;
+  getElectionAnalytics(associationId: string): Promise<{
+    totalElections: number;
+    averageTurnoutPercent: number;
+    highestParticipation: { electionId: string; title: string; participationPercent: number } | null;
+    lowestParticipation: { electionId: string; title: string; participationPercent: number } | null;
+    quorumFailureRate: number;
+    byType: Record<string, number>;
+    byStatus: Record<string, number>;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5353,22 +5499,24 @@ export class DatabaseStorage implements IStorage {
         associationName: associations.name,
       })
       .from(onboardingInvites)
-      .innerJoin(units, eq(units.id, onboardingInvites.unitId))
+      .leftJoin(units, eq(units.id, onboardingInvites.unitId))
       .innerJoin(associations, eq(associations.id, onboardingInvites.associationId))
       .where(eq(onboardingInvites.associationId, associationId))
       .orderBy(desc(onboardingInvites.createdAt));
 
     return rows.map(({ invite, unitNumber, associationName }) => ({
       ...invite,
-      unitLabel: unitNumber,
+      unitLabel: unitNumber ?? undefined,
       associationName,
     }));
   }
 
   async createOnboardingInvite(data: InsertOnboardingInvite): Promise<OnboardingInvite & { inviteUrl: string }> {
-    const [unit] = await db.select().from(units).where(eq(units.id, data.unitId));
-    if (!unit || unit.associationId !== data.associationId) {
-      throw new Error("Unit not found for association");
+    if (data.unitId) {
+      const [unit] = await db.select().from(units).where(eq(units.id, data.unitId));
+      if (!unit || unit.associationId !== data.associationId) {
+        throw new Error("Unit not found for association");
+      }
     }
 
     const token = randomBytes(24).toString("base64url");
@@ -5517,7 +5665,7 @@ export class DatabaseStorage implements IStorage {
         associationCountry: associations.country,
       })
       .from(onboardingInvites)
-      .innerJoin(units, eq(units.id, onboardingInvites.unitId))
+      .leftJoin(units, eq(units.id, onboardingInvites.unitId))
       .innerJoin(associations, eq(associations.id, onboardingInvites.associationId))
       .where(eq(onboardingInvites.token, token));
 
@@ -5535,7 +5683,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       ...invite,
-      unitLabel: row.unitNumber,
+      unitLabel: row.unitNumber ?? undefined,
       unitBuilding: row.unitBuilding,
       associationName: row.associationName,
       associationAddress: row.associationAddress,
@@ -5560,7 +5708,7 @@ export class DatabaseStorage implements IStorage {
         associationName: associations.name,
       })
       .from(onboardingInvites)
-      .innerJoin(units, eq(units.id, onboardingInvites.unitId))
+      .leftJoin(units, eq(units.id, onboardingInvites.unitId))
       .innerJoin(associations, eq(associations.id, onboardingInvites.associationId))
       .where(eq(onboardingInvites.id, id));
 
@@ -5571,15 +5719,17 @@ export class DatabaseStorage implements IStorage {
 
     const appBaseUrl = (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
     const inviteUrl = `${appBaseUrl}/onboarding/${encodeURIComponent(row.invite.token)}`;
-    const subject = `${row.associationName} onboarding for Unit ${row.unitNumber}`;
+    const subject = row.unitNumber
+      ? `${row.associationName} onboarding for Unit ${row.unitNumber}`
+      : `${row.associationName} owner onboarding`;
     const body = [
       `You have been invited to complete ${row.invite.residentType} onboarding for ${row.associationName}.`,
-      `Unit: ${row.unitNumber}`,
+      row.unitNumber ? `Unit: ${row.unitNumber}` : null,
       "",
       `Complete your onboarding form here: ${inviteUrl}`,
       "",
       "If you were not expecting this message, contact the association administrator.",
-    ].join("\n");
+    ].filter(Boolean).join("\n");
 
     const delivery = await sendPlatformEmail({
       associationId: row.invite.associationId,
@@ -5677,6 +5827,7 @@ export class DatabaseStorage implements IStorage {
     lastName: string;
     email?: string | null;
     phone?: string | null;
+    unitId?: string | null;
     mailingAddress?: string | null;
     emergencyContactName?: string | null;
     emergencyContactPhone?: string | null;
@@ -5705,6 +5856,16 @@ export class DatabaseStorage implements IStorage {
     }
     if (Number.isNaN(input.startDate.getTime())) {
       throw new Error("startDate must be valid");
+    }
+    const resolvedUnitId = invite.unitId || input.unitId;
+    if (!resolvedUnitId) {
+      throw new Error("Unit selection is required");
+    }
+    if (!invite.unitId && resolvedUnitId) {
+      const [unit] = await db.select().from(units).where(eq(units.id, resolvedUnitId));
+      if (!unit || unit.associationId !== invite.associationId) {
+        throw new Error("Selected unit not found for this association");
+      }
     }
     if (!(input.email || "").trim() && !(input.phone || "").trim()) {
       throw new Error(`${invite.residentType === "owner" ? "Owner" : "Tenant"} intake requires at least an email or phone number`);
@@ -5741,7 +5902,7 @@ export class DatabaseStorage implements IStorage {
       .values({
         inviteId: invite.id,
         associationId: invite.associationId,
-        unitId: invite.unitId,
+        unitId: resolvedUnitId,
         residentType: invite.residentType,
         sourceChannel: "unit-link",
         status: "pending",
@@ -6358,7 +6519,11 @@ export class DatabaseStorage implements IStorage {
         documentType: documents.documentType,
         isPortalVisible: documents.isPortalVisible,
         portalAudience: documents.portalAudience,
+        priorVersionsPortalVisible: documents.priorVersionsPortalVisible,
         uploadedBy: documents.uploadedBy,
+        parentDocumentId: documents.parentDocumentId,
+        versionNumber: documents.versionNumber,
+        isCurrentVersion: documents.isCurrentVersion,
         createdAt: documents.createdAt,
       })
       .from(documents)
@@ -6371,10 +6536,11 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db.insert(documents).values(data).returning();
     await db.insert(documentVersions).values({
       documentId: result.id,
-      versionNumber: 1,
+      versionNumber: result.versionNumber ?? 1,
       title: result.title,
       fileUrl: result.fileUrl,
       uploadedBy: result.uploadedBy,
+      isCurrent: 1,
     });
     await this.recordAuditEvent({
       actorEmail: actorEmail || "system",
@@ -14536,12 +14702,22 @@ export class DatabaseStorage implements IStorage {
   private async getDefaultBoardPackageRecipients(associationId: string): Promise<string[]> {
     const rows = await db
       .select({
+        adminUserId: adminUsers.id,
         email: adminUsers.email,
         role: adminUsers.role,
         isActive: adminUsers.isActive,
+        emailNotifications: adminUserPreferences.emailNotifications,
+        pushNotifications: adminUserPreferences.pushNotifications,
+        desktopNotifications: adminUserPreferences.desktopNotifications,
+        alertDigest: adminUserPreferences.alertDigest,
+        quietHoursEnabled: adminUserPreferences.quietHoursEnabled,
+        quietHoursStart: adminUserPreferences.quietHoursStart,
+        quietHoursEnd: adminUserPreferences.quietHoursEnd,
+        notificationCategoryPreferencesJson: adminUserPreferences.notificationCategoryPreferencesJson,
       })
       .from(adminAssociationScopes)
       .innerJoin(adminUsers, eq(adminUsers.id, adminAssociationScopes.adminUserId))
+      .leftJoin(adminUserPreferences, eq(adminUserPreferences.adminUserId, adminUsers.id))
       .where(eq(adminAssociationScopes.associationId, associationId));
 
     return Array.from(
@@ -14549,6 +14725,19 @@ export class DatabaseStorage implements IStorage {
         rows
           .filter((row) => row.isActive === 1)
           .filter((row) => row.role === "platform-admin" || row.role === "board-admin" || row.role === "viewer")
+          .filter((row) => {
+            const preferences = normalizeAdminNotificationPreferences({
+              emailNotifications: row.emailNotifications,
+              pushNotifications: row.pushNotifications,
+              desktopNotifications: row.desktopNotifications,
+              alertDigest: row.alertDigest as any,
+              quietHoursEnabled: row.quietHoursEnabled,
+              quietHoursStart: row.quietHoursStart,
+              quietHoursEnd: row.quietHoursEnd,
+              notificationCategoryPreferences: (row.notificationCategoryPreferencesJson ?? {}) as Record<string, boolean>,
+            });
+            return preferences.emailNotifications && preferences.notificationCategoryPreferences.boardPackages;
+          })
           .map((row) => row.email.trim().toLowerCase())
           .filter(Boolean),
       ),
@@ -14709,14 +14898,49 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Dependencies must stay within the same project: ${crossProject.join(", ")}`);
     }
 
+    // Cycle detection: check that the proposed dependency edges would not create a
+    // cycle. For updates, selfTaskId is the task being modified; for creates, we use
+    // a synthetic placeholder ID to represent the not-yet-inserted task.
+    const nodeId = selfTaskId ?? `__new_task_${Date.now()}__`;
+    const allProjectTasks = await db
+      .select({ id: roadmapTasks.id, dependencyTaskIds: roadmapTasks.dependencyTaskIds })
+      .from(roadmapTasks)
+      .where(eq(roadmapTasks.projectId, projectId));
+
+    // Build adjacency map representing the dependency graph after the proposed change.
+    const depMap = new Map<string, string[]>();
+    for (const t of allProjectTasks) {
+      depMap.set(t.id, (t.dependencyTaskIds ?? []) as string[]);
+    }
+    // Apply proposed change: nodeId will depend on uniqueIds.
+    depMap.set(nodeId, uniqueIds);
+
+    // DFS from nodeId following dependency edges; reaching nodeId again means a cycle.
+    const visited = new Set<string>();
+    const stack: string[] = [...uniqueIds];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (current === nodeId) {
+        throw new Error("Circular dependency detected");
+      }
+      if (visited.has(current)) continue;
+      visited.add(current);
+      const deps = depMap.get(current) ?? [];
+      for (const dep of deps) {
+        stack.push(dep);
+      }
+    }
+
     return uniqueIds;
   }
 
   private async buildRoadmapResponse(): Promise<RoadmapResponse> {
-    const [projects, workstreams, tasks] = await Promise.all([
+    const [projects, workstreams, tasks, execUpdates, analysisVers] = await Promise.all([
       db.select().from(roadmapProjects),
       db.select().from(roadmapWorkstreams),
       db.select().from(roadmapTasks),
+      db.select().from(executiveUpdates).orderBy(desc(executiveUpdates.deliveredAt), desc(executiveUpdates.updatedAt)),
+      db.select().from(analysisVersions).orderBy(desc(analysisVersions.createdAt)),
     ]);
 
     const taskByWorkstream = new Map<string, RoadmapTask[]>();
@@ -14801,8 +15025,34 @@ export class DatabaseStorage implements IStorage {
       workstreams: workstreamsWithProgress,
       tasks,
       timeline,
+      executiveUpdates: execUpdates,
+      analysisVersions: analysisVers,
       refreshedAt: new Date().toISOString(),
     };
+  }
+
+  async getPlatformSubscription(associationId: string): Promise<PlatformSubscription | undefined> {
+    const [row] = await db.select().from(platformSubscriptions).where(eq(platformSubscriptions.associationId, associationId));
+    return row;
+  }
+
+  async getPlatformSubscriptionByStripeId(stripeSubscriptionId: string): Promise<PlatformSubscription | undefined> {
+    const [row] = await db.select().from(platformSubscriptions).where(eq(platformSubscriptions.stripeSubscriptionId, stripeSubscriptionId));
+    return row;
+  }
+
+  async createPlatformSubscription(data: InsertPlatformSubscription): Promise<PlatformSubscription> {
+    const [row] = await db.insert(platformSubscriptions).values(data).returning();
+    return row;
+  }
+
+  async updatePlatformSubscription(id: string, data: Partial<InsertPlatformSubscription>): Promise<PlatformSubscription | undefined> {
+    const [row] = await db.update(platformSubscriptions).set({ ...data, updatedAt: new Date() }).where(eq(platformSubscriptions.id, id)).returning();
+    return row;
+  }
+
+  async listPlatformSubscriptions(): Promise<PlatformSubscription[]> {
+    return db.select().from(platformSubscriptions);
   }
 
   async getRoadmap(): Promise<RoadmapResponse> {
@@ -15097,6 +15347,51 @@ export class DatabaseStorage implements IStorage {
       .where(eq(roadmapWorkstreams.id, id))
       .returning();
     return result;
+  }
+
+  async getRoadmapProject(id: string): Promise<RoadmapProject | undefined> {
+    const [result] = await db.select().from(roadmapProjects).where(eq(roadmapProjects.id, id));
+    return result;
+  }
+
+  async getRoadmapWorkstream(id: string): Promise<RoadmapWorkstream | undefined> {
+    const [result] = await db.select().from(roadmapWorkstreams).where(eq(roadmapWorkstreams.id, id));
+    return result;
+  }
+
+  async getRoadmapTask(id: string): Promise<RoadmapTask | undefined> {
+    const [result] = await db.select().from(roadmapTasks).where(eq(roadmapTasks.id, id));
+    return result;
+  }
+
+  async deleteRoadmapTask(id: string): Promise<void> {
+    const [existing] = await db.select({ id: roadmapTasks.id }).from(roadmapTasks).where(eq(roadmapTasks.id, id));
+    if (!existing) return;
+    await db.delete(roadmapTasks).where(eq(roadmapTasks.id, id));
+    await db
+      .update(roadmapTasks)
+      .set({ dependencyTaskIds: sql`array_remove(${roadmapTasks.dependencyTaskIds}, ${id})` })
+      .where(sql`${id} = ANY(${roadmapTasks.dependencyTaskIds})`);
+  }
+
+  async deleteRoadmapWorkstream(id: string): Promise<void> {
+    const [existing] = await db.select({ id: roadmapWorkstreams.id }).from(roadmapWorkstreams).where(eq(roadmapWorkstreams.id, id));
+    if (!existing) return;
+    const tasks = await db.select({ id: roadmapTasks.id }).from(roadmapTasks).where(eq(roadmapTasks.workstreamId, id));
+    for (const task of tasks) {
+      await this.deleteRoadmapTask(task.id);
+    }
+    await db.delete(roadmapWorkstreams).where(eq(roadmapWorkstreams.id, id));
+  }
+
+  async deleteRoadmapProject(id: string): Promise<void> {
+    const [existing] = await db.select({ id: roadmapProjects.id }).from(roadmapProjects).where(eq(roadmapProjects.id, id));
+    if (!existing) return;
+    const workstreams = await db.select({ id: roadmapWorkstreams.id }).from(roadmapWorkstreams).where(eq(roadmapWorkstreams.projectId, id));
+    for (const workstream of workstreams) {
+      await this.deleteRoadmapWorkstream(workstream.id);
+    }
+    await db.delete(roadmapProjects).where(eq(roadmapProjects.id, id));
   }
 
   async getExecutiveUpdates(): Promise<ExecutiveUpdate[]> {
@@ -15553,6 +15848,1115 @@ export class DatabaseStorage implements IStorage {
         associationId: associationId ?? null,
         categories: expenseCategoryTrend,
       },
+    };
+  }
+
+  // ─── Elections ────────────────────────────────────────────────────────────
+
+  async getElections(associationId?: string, meetingId?: string): Promise<Election[]> {
+    const conditions = [];
+    if (associationId) conditions.push(eq(elections.associationId, associationId));
+    if (meetingId) conditions.push(eq(elections.meetingId, meetingId));
+    if (conditions.length === 0) {
+      return db.select().from(elections).orderBy(desc(elections.createdAt));
+    }
+    return db
+      .select()
+      .from(elections)
+      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+      .orderBy(desc(elections.createdAt));
+  }
+
+  async getElection(id: string): Promise<Election | undefined> {
+    const [row] = await db.select().from(elections).where(eq(elections.id, id));
+    return row;
+  }
+
+  async createElection(data: InsertElection): Promise<Election> {
+    const [row] = await db
+      .insert(elections)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return row;
+  }
+
+  async updateElection(id: string, data: Partial<InsertElection>): Promise<Election | undefined> {
+    const [row] = await db
+      .update(elections)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(elections.id, id))
+      .returning();
+    return row;
+  }
+
+  async getElectionOptions(electionId: string): Promise<ElectionOption[]> {
+    return db
+      .select()
+      .from(electionOptions)
+      .where(eq(electionOptions.electionId, electionId))
+      .orderBy(electionOptions.orderIndex);
+  }
+
+  async createElectionOption(data: InsertElectionOption): Promise<ElectionOption> {
+    const [row] = await db.insert(electionOptions).values(data).returning();
+    return row;
+  }
+
+  async deleteElectionOption(id: string): Promise<void> {
+    await db.delete(electionOptions).where(eq(electionOptions.id, id));
+  }
+
+  async getNominationsForElection(electionId: string): Promise<ElectionOption[]> {
+    return db
+      .select()
+      .from(electionOptions)
+      .where(
+        and(
+          eq(electionOptions.electionId, electionId),
+          isNotNull(electionOptions.nominationStatus),
+        ),
+      )
+      .orderBy(electionOptions.createdAt);
+  }
+
+  async approveNomination(optionId: string): Promise<ElectionOption | undefined> {
+    const [row] = await db
+      .update(electionOptions)
+      .set({ nominationStatus: "approved" })
+      .where(eq(electionOptions.id, optionId))
+      .returning();
+    return row;
+  }
+
+  async rejectNomination(optionId: string): Promise<ElectionOption | undefined> {
+    const [row] = await db
+      .update(electionOptions)
+      .set({ nominationStatus: "rejected" })
+      .where(eq(electionOptions.id, optionId))
+      .returning();
+    return row;
+  }
+
+  async getPortalNominationsForElection(portalAccessId: string, electionId: string): Promise<ElectionOption[]> {
+    const resolved = await this.resolvePortalAccessContext(portalAccessId);
+    if (!resolved) return [];
+    const { access } = resolved;
+    if (!access.personId) return [];
+    return db
+      .select()
+      .from(electionOptions)
+      .where(
+        and(
+          eq(electionOptions.electionId, electionId),
+          eq(electionOptions.nominatedByPersonId, access.personId),
+        ),
+      )
+      .orderBy(electionOptions.createdAt);
+  }
+
+  async submitNomination(data: { electionId: string; label: string; bio?: string; photoUrl?: string; currentRole?: string; nominationStatement?: string; nominatedByPersonId: string }): Promise<ElectionOption> {
+    const [row] = await db
+      .insert(electionOptions)
+      .values({
+        electionId: data.electionId,
+        label: data.label,
+        bio: data.bio ?? null,
+        photoUrl: data.photoUrl ?? null,
+        currentRole: data.currentRole ?? null,
+        nominationStatement: data.nominationStatement ?? null,
+        nominatedByPersonId: data.nominatedByPersonId,
+        nominationStatus: "pending",
+        orderIndex: 0,
+      })
+      .returning();
+    return row;
+  }
+
+  async generateBallotTokens(electionId: string, _actorEmail?: string): Promise<{ created: number }> {
+    const [election] = await db.select().from(elections).where(eq(elections.id, electionId));
+    if (!election) return { created: 0 };
+
+    let eligiblePairs: Array<{ personId: string; unitId: string | null }> = [];
+
+    if (election.votingRule === "board-only") {
+      const boardMembers = await db
+        .select({ personId: boardRoles.personId })
+        .from(boardRoles)
+        .where(and(eq(boardRoles.associationId, election.associationId), isNull(boardRoles.endDate)));
+      eligiblePairs = boardMembers.map((b) => ({ personId: b.personId, unitId: null }));
+    } else if (election.votingRule === "unit-weighted") {
+      const unitOwners = await db
+        .select({ personId: ownerships.personId, unitId: ownerships.unitId })
+        .from(ownerships)
+        .innerJoin(units, eq(units.id, ownerships.unitId))
+        .where(and(eq(units.associationId, election.associationId), isNull(ownerships.endDate)));
+      const seen = new Set<string>();
+      for (const row of unitOwners) {
+        if (!seen.has(row.unitId)) {
+          seen.add(row.unitId);
+          eligiblePairs.push({ personId: row.personId, unitId: row.unitId });
+        }
+      }
+    } else {
+      const owners = await db
+        .select({ personId: ownerships.personId, unitId: ownerships.unitId })
+        .from(ownerships)
+        .innerJoin(units, eq(units.id, ownerships.unitId))
+        .where(and(eq(units.associationId, election.associationId), isNull(ownerships.endDate)));
+      const seenPersons = new Set<string>();
+      for (const row of owners) {
+        if (!seenPersons.has(row.personId)) {
+          seenPersons.add(row.personId);
+          eligiblePairs.push({ personId: row.personId, unitId: row.unitId });
+        }
+      }
+    }
+
+    const existing = await db
+      .select({ personId: electionBallotTokens.personId })
+      .from(electionBallotTokens)
+      .where(eq(electionBallotTokens.electionId, electionId));
+    const existingPersonIds = new Set(existing.map((e) => e.personId));
+
+    let created = 0;
+    for (const pair of eligiblePairs) {
+      if (existingPersonIds.has(pair.personId)) continue;
+      const token = randomBytes(32).toString("hex");
+      await db.insert(electionBallotTokens).values({
+        electionId,
+        token,
+        personId: pair.personId,
+        unitId: pair.unitId,
+        status: "pending",
+      });
+      created++;
+    }
+
+    await db
+      .update(elections)
+      .set({ eligibleVoterCount: eligiblePairs.length, updatedAt: new Date() })
+      .where(eq(elections.id, electionId));
+
+    return { created };
+  }
+
+  async getBallotTokens(electionId: string): Promise<ElectionBallotToken[]> {
+    return db
+      .select()
+      .from(electionBallotTokens)
+      .where(eq(electionBallotTokens.electionId, electionId))
+      .orderBy(electionBallotTokens.createdAt);
+  }
+
+  async getBallotTokenByToken(token: string): Promise<ElectionBallotToken | undefined> {
+    const [row] = await db
+      .select()
+      .from(electionBallotTokens)
+      .where(eq(electionBallotTokens.token, token));
+    return row;
+  }
+
+  async castBallot(data: {
+    token: string;
+    choicesJson: string[];
+    personId?: string | null;
+  }): Promise<ElectionBallotCast> {
+    const ballotToken = await this.getBallotTokenByToken(data.token);
+    if (!ballotToken) throw new Error("Invalid ballot token");
+    if (ballotToken.status !== "pending") throw new Error("Ballot token already used or revoked");
+
+    const [election] = await db.select().from(elections).where(eq(elections.id, ballotToken.electionId));
+    if (!election) throw new Error("Election not found");
+    if (election.status !== "open") throw new Error("Election is not open");
+
+    const now = new Date();
+    if (election.opensAt && now < new Date(election.opensAt)) throw new Error("Election has not opened yet");
+    if (election.closesAt && now > new Date(election.closesAt)) throw new Error("Election has closed");
+
+    // maxChoices validation
+    if (election.maxChoices && data.choicesJson.length > election.maxChoices) {
+      throw new Error(`Too many choices selected. Maximum allowed: ${election.maxChoices}`);
+    }
+
+    if (ballotToken.unitId) {
+      const [proxyCast] = await db
+        .select()
+        .from(electionBallotCasts)
+        .where(
+          and(
+            eq(electionBallotCasts.electionId, ballotToken.electionId),
+            eq(electionBallotCasts.proxyForUnitId, ballotToken.unitId),
+          ),
+        );
+      if (proxyCast) throw new Error("A proxy has already voted on behalf of your unit");
+    }
+
+    const confirmationRef = randomBytes(8).toString("hex").toUpperCase();
+    const storedChoices = election.isSecretBallot ? null : data.choicesJson;
+
+    const [cast] = await db
+      .insert(electionBallotCasts)
+      .values({
+        electionId: ballotToken.electionId,
+        ballotTokenId: ballotToken.id,
+        personId: ballotToken.personId,
+        unitId: ballotToken.unitId,
+        choicesJson: storedChoices,
+        voteWeight: 1,
+        isProxy: 0,
+        confirmationRef,
+      })
+      .returning();
+
+    await db
+      .update(electionBallotTokens)
+      .set({ status: "cast", castAt: now })
+      .where(eq(electionBallotTokens.id, ballotToken.id));
+
+    return cast;
+  }
+
+  async getBallotCasts(electionId: string): Promise<ElectionBallotCast[]> {
+    return db
+      .select()
+      .from(electionBallotCasts)
+      .where(eq(electionBallotCasts.electionId, electionId))
+      .orderBy(electionBallotCasts.castAt);
+  }
+
+  async getProxyDesignations(electionId: string): Promise<(ElectionProxyDesignation & { ownerName: string; proxyName: string })[]> {
+    const ownerPerson = aliasedTable(persons, "owner_person");
+    const proxyPerson = aliasedTable(persons, "proxy_person");
+
+    const rows = await db
+      .select({
+        ...getTableColumns(electionProxyDesignations),
+        ownerName: sql<string>`concat(${ownerPerson.firstName}, ' ', ${ownerPerson.lastName})`,
+        proxyName: sql<string>`concat(${proxyPerson.firstName}, ' ', ${proxyPerson.lastName})`,
+      })
+      .from(electionProxyDesignations)
+      .leftJoin(ownerPerson, eq(electionProxyDesignations.ownerPersonId, ownerPerson.id))
+      .leftJoin(proxyPerson, eq(electionProxyDesignations.proxyPersonId, proxyPerson.id))
+      .where(eq(electionProxyDesignations.electionId, electionId))
+      .orderBy(electionProxyDesignations.designatedAt);
+    return rows;
+  }
+
+  async createProxyDesignation(data: InsertElectionProxyDesignation): Promise<ElectionProxyDesignation> {
+    const [existing] = await db
+      .select()
+      .from(electionProxyDesignations)
+      .where(
+        and(
+          eq(electionProxyDesignations.electionId, data.electionId),
+          eq(electionProxyDesignations.ownerPersonId, data.ownerPersonId),
+        ),
+      );
+
+    if (existing) {
+      const [updated] = await db
+        .update(electionProxyDesignations)
+        .set({ proxyPersonId: data.proxyPersonId, notes: data.notes ?? null, revokedAt: null, designatedAt: new Date() })
+        .where(eq(electionProxyDesignations.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [row] = await db.insert(electionProxyDesignations).values({ ...data, designatedAt: new Date() }).returning();
+
+    await db
+      .update(electionBallotTokens)
+      .set({ status: "consumed-by-proxy" })
+      .where(
+        and(
+          eq(electionBallotTokens.electionId, data.electionId),
+          eq(electionBallotTokens.personId, data.ownerPersonId),
+          eq(electionBallotTokens.status, "pending"),
+        ),
+      );
+
+    return row;
+  }
+
+  async revokeProxyDesignation(id: string): Promise<ElectionProxyDesignation | undefined> {
+    const [existing] = await db
+      .select()
+      .from(electionProxyDesignations)
+      .where(eq(electionProxyDesignations.id, id));
+
+    if (!existing) return undefined;
+
+    const [row] = await db
+      .update(electionProxyDesignations)
+      .set({ revokedAt: new Date() })
+      .where(eq(electionProxyDesignations.id, id))
+      .returning();
+
+    await db
+      .update(electionBallotTokens)
+      .set({ status: "pending" })
+      .where(
+        and(
+          eq(electionBallotTokens.electionId, existing.electionId),
+          eq(electionBallotTokens.personId, existing.ownerPersonId),
+          eq(electionBallotTokens.status, "consumed-by-proxy"),
+        ),
+      );
+
+    return row;
+  }
+
+  async getProxyDocuments(electionId: string): Promise<ElectionProxyDocument[]> {
+    return db
+      .select()
+      .from(electionProxyDocuments)
+      .where(eq(electionProxyDocuments.electionId, electionId))
+      .orderBy(electionProxyDocuments.createdAt);
+  }
+
+  async createProxyDocument(data: InsertElectionProxyDocument): Promise<ElectionProxyDocument> {
+    const [row] = await db.insert(electionProxyDocuments).values(data).returning();
+    return row;
+  }
+
+  async getElectionTally(electionId: string): Promise<{
+    electionId: string;
+    eligibleCount: number;
+    castCount: number;
+    participationPercent: number;
+    quorumPercent: number;
+    quorumMet: boolean;
+    optionTallies: Array<{ optionId: string; label: string; votes: number; percent: number }>;
+    totalWeightedVotes: number;
+    isCertified: boolean;
+    certifiedAt: string | null;
+  }> {
+    const [election] = await db.select().from(elections).where(eq(elections.id, electionId));
+    if (!election) throw new Error("Election not found");
+
+    const options = await this.getElectionOptions(electionId);
+    const casts = await this.getBallotCasts(electionId);
+
+    const castCount = casts.length;
+    const eligibleCount = Math.max(election.eligibleVoterCount, 1);
+    const participationPercent = Math.round((castCount / eligibleCount) * 100);
+    const quorumMet = participationPercent >= (election.quorumPercent || 50);
+
+    const optionVotes: Record<string, number> = {};
+    for (const opt of options) {
+      optionVotes[opt.id] = 0;
+    }
+
+    if (!election.isSecretBallot) {
+      for (const cast of casts) {
+        const choices = (cast.choicesJson as string[] | null) ?? [];
+        for (const choiceId of choices) {
+          if (choiceId in optionVotes) {
+            optionVotes[choiceId] = (optionVotes[choiceId] ?? 0) + cast.voteWeight;
+          }
+        }
+      }
+    }
+
+    const rawTotalVotes = Object.values(optionVotes).reduce((a, b) => a + b, 0);
+    const totalVotes = Math.max(rawTotalVotes, 1);
+
+    const optionTallies = options.map((opt) => ({
+      optionId: opt.id,
+      label: opt.label,
+      votes: optionVotes[opt.id] ?? 0,
+      percent: election.isSecretBallot ? 0 : Math.round(((optionVotes[opt.id] ?? 0) / totalVotes) * 100),
+    }));
+
+    return {
+      electionId,
+      eligibleCount: election.eligibleVoterCount,
+      castCount,
+      participationPercent,
+      quorumPercent: election.quorumPercent,
+      quorumMet,
+      optionTallies,
+      totalWeightedVotes: rawTotalVotes,
+      isCertified: election.status === "certified",
+      certifiedAt: election.certifiedAt ? new Date(election.certifiedAt).toISOString() : null,
+    };
+  }
+
+  async certifyElection(id: string, actorEmail: string, certificationSummary?: string): Promise<Election> {
+    const [row] = await db
+      .update(elections)
+      .set({ status: "certified", certifiedBy: actorEmail, certifiedAt: new Date(), certificationSummary: certificationSummary || null, updatedAt: new Date() })
+      .where(eq(elections.id, id))
+      .returning();
+    return row;
+  }
+
+  async revokeAllPendingTokens(electionId: string): Promise<number> {
+    const result = await db
+      .update(electionBallotTokens)
+      .set({ status: "revoked" })
+      .where(
+        and(
+          eq(electionBallotTokens.electionId, electionId),
+          eq(electionBallotTokens.status, "pending"),
+        ),
+      )
+      .returning();
+    return result.length;
+  }
+
+  async deleteElection(id: string): Promise<void> {
+    const casts = await this.getBallotCasts(id);
+    if (casts.length > 0) throw new Error("Cannot delete election with cast votes");
+    await db.delete(electionProxyDocuments).where(eq(electionProxyDocuments.electionId, id));
+    await db.delete(electionProxyDesignations).where(eq(electionProxyDesignations.electionId, id));
+    await db.delete(electionBallotTokens).where(eq(electionBallotTokens.electionId, id));
+    await db.delete(electionOptions).where(eq(electionOptions.electionId, id));
+    await db.delete(elections).where(eq(elections.id, id));
+  }
+
+  async getBallotTokensWithNames(electionId: string): Promise<Array<{
+    id: string; token: string; personId: string | null; unitId: string | null;
+    status: string; sentAt: Date | null; castAt: Date | null;
+    voterName: string; unitNumber: string;
+    confirmationRef: string | null;
+  }>> {
+    const tokens = await db
+      .select({
+        id: electionBallotTokens.id,
+        token: electionBallotTokens.token,
+        personId: electionBallotTokens.personId,
+        unitId: electionBallotTokens.unitId,
+        status: electionBallotTokens.status,
+        sentAt: electionBallotTokens.sentAt,
+        castAt: electionBallotTokens.castAt,
+        firstName: persons.firstName,
+        lastName: persons.lastName,
+        unitNumber: units.unitNumber,
+      })
+      .from(electionBallotTokens)
+      .leftJoin(persons, eq(persons.id, electionBallotTokens.personId))
+      .leftJoin(units, eq(units.id, electionBallotTokens.unitId))
+      .where(eq(electionBallotTokens.electionId, electionId))
+      .orderBy(electionBallotTokens.createdAt);
+
+    const casts = await db
+      .select({
+        ballotTokenId: electionBallotCasts.ballotTokenId,
+        confirmationRef: electionBallotCasts.confirmationRef,
+      })
+      .from(electionBallotCasts)
+      .where(eq(electionBallotCasts.electionId, electionId));
+
+    const castMap = new Map(casts.map((c) => [c.ballotTokenId, c.confirmationRef]));
+
+    return tokens.map((t) => ({
+      id: t.id,
+      token: t.token,
+      personId: t.personId,
+      unitId: t.unitId,
+      status: t.status,
+      sentAt: t.sentAt,
+      castAt: t.castAt,
+      voterName: t.firstName && t.lastName ? `${t.firstName} ${t.lastName}` : t.firstName || t.lastName || "Unknown",
+      unitNumber: t.unitNumber || "—",
+      confirmationRef: castMap.get(t.id) ?? null,
+    }));
+  }
+
+  async getVoterEmailsForElection(electionId: string): Promise<Array<{ tokenId: string; email: string; token: string; firstName: string }>> {
+    const rows = await db
+      .select({
+        tokenId: electionBallotTokens.id,
+        email: persons.email,
+        token: electionBallotTokens.token,
+        firstName: persons.firstName,
+      })
+      .from(electionBallotTokens)
+      .innerJoin(persons, eq(persons.id, electionBallotTokens.personId))
+      .where(eq(electionBallotTokens.electionId, electionId));
+    return rows.filter((r) => r.email && r.email.trim()) as Array<{ tokenId: string; email: string; token: string; firstName: string }>;
+  }
+
+  async getPendingVoterEmailsForElection(electionId: string): Promise<Array<{ tokenId: string; email: string; token: string; firstName: string }>> {
+    const rows = await db
+      .select({
+        tokenId: electionBallotTokens.id,
+        email: persons.email,
+        token: electionBallotTokens.token,
+        firstName: persons.firstName,
+      })
+      .from(electionBallotTokens)
+      .innerJoin(persons, eq(persons.id, electionBallotTokens.personId))
+      .where(and(
+        eq(electionBallotTokens.electionId, electionId),
+        eq(electionBallotTokens.status, "pending"),
+      ));
+    return rows.filter((r) => r.email && r.email.trim()) as Array<{ tokenId: string; email: string; token: string; firstName: string }>;
+  }
+
+  async markBallotTokensSent(tokenIds: string[]): Promise<void> {
+    if (tokenIds.length === 0) return;
+    await db
+      .update(electionBallotTokens)
+      .set({ sentAt: new Date() })
+      .where(inArray(electionBallotTokens.id, tokenIds));
+  }
+
+  async resendBallotToken(tokenId: string): Promise<{ token: string; email: string; personId: string; electionId: string } | null> {
+    const rows = await db
+      .select({
+        token: electionBallotTokens.token,
+        email: persons.email,
+        personId: electionBallotTokens.personId,
+        electionId: electionBallotTokens.electionId,
+        status: electionBallotTokens.status,
+      })
+      .from(electionBallotTokens)
+      .innerJoin(persons, eq(persons.id, electionBallotTokens.personId))
+      .where(eq(electionBallotTokens.id, tokenId));
+
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    if (row.status !== "pending") return null;
+    if (!row.email || !row.email.trim()) return null;
+
+    // Update sentAt timestamp
+    await db
+      .update(electionBallotTokens)
+      .set({ sentAt: new Date() })
+      .where(eq(electionBallotTokens.id, tokenId));
+
+    return {
+      token: row.token,
+      email: row.email,
+      personId: row.personId!,
+      electionId: row.electionId,
+    };
+  }
+
+  async getOwnerElectionHistory(portalAccessId: string): Promise<Array<{
+    election: Election;
+    participated: boolean;
+    status: "voted" | "proxy-designated" | "not-voted";
+    outcome: string | null;
+  }>> {
+    const resolved = await this.resolvePortalAccessContext(portalAccessId);
+    if (!resolved) return [];
+
+    const { access } = resolved;
+    const assocElections = await this.getElections(access.associationId ?? undefined);
+
+    const results = [];
+    for (const election of assocElections) {
+      if (election.resultVisibility === "admin-only" && election.status !== "certified") continue;
+
+      const token = access.personId
+        ? await db
+            .select()
+            .from(electionBallotTokens)
+            .where(
+              and(
+                eq(electionBallotTokens.electionId, election.id),
+                eq(electionBallotTokens.personId, access.personId),
+              ),
+            )
+            .then((rows) => rows[0])
+        : undefined;
+
+      const proxyDesignation = access.personId
+        ? await db
+            .select()
+            .from(electionProxyDesignations)
+            .where(
+              and(
+                eq(electionProxyDesignations.electionId, election.id),
+                eq(electionProxyDesignations.ownerPersonId, access.personId),
+                isNull(electionProxyDesignations.revokedAt),
+              ),
+            )
+            .then((rows) => rows[0])
+        : undefined;
+
+      let status: "voted" | "proxy-designated" | "not-voted" = "not-voted";
+      if (token?.status === "cast") status = "voted";
+      else if (proxyDesignation) status = "proxy-designated";
+      else if (token?.status === "consumed-by-proxy") status = "proxy-designated";
+
+      let outcome: string | null = null;
+      if (election.status === "certified" && election.resultVisibility === "public") {
+        const tally = await this.getElectionTally(election.id);
+        if (tally.optionTallies.length > 0) {
+          const top = tally.optionTallies.reduce((a, b) => (a.votes >= b.votes ? a : b));
+          outcome = `${top.label} (${top.votes} votes)`;
+        }
+      }
+
+      results.push({ election, participated: status !== "not-voted", status, outcome });
+    }
+
+    return results;
+  }
+
+  async getOwnerActiveElections(portalAccessId: string): Promise<Array<{
+    election: Election;
+    token: string;
+  }>> {
+    const resolved = await this.resolvePortalAccessContext(portalAccessId);
+    if (!resolved) return [];
+
+    const { access } = resolved;
+    if (!access.personId) return [];
+
+    const assocElections = await this.getElections(access.associationId ?? undefined);
+    const results: Array<{ election: Election; token: string }> = [];
+
+    for (const election of assocElections) {
+      if (election.status !== "open") continue;
+
+      const [tokenRow] = await db
+        .select()
+        .from(electionBallotTokens)
+        .where(
+          and(
+            eq(electionBallotTokens.electionId, election.id),
+            eq(electionBallotTokens.personId, access.personId),
+            eq(electionBallotTokens.status, "pending"),
+          ),
+        );
+
+      if (tokenRow) {
+        results.push({ election, token: tokenRow.token });
+      }
+    }
+
+    return results;
+  }
+
+  async getElectionDetailForPortal(portalAccessId: string, electionId: string): Promise<{
+    election: Election;
+    options: ElectionOption[];
+    participated: boolean;
+    status: "voted" | "proxy-designated" | "not-voted";
+    ballotToken: string | null;
+    proxyDesignation: { id: string; proxyPersonId: string; proxyName: string; designatedAt: string; notes: string | null } | null;
+    tally: { eligibleCount: number; castCount: number; participationPercent: number; quorumPercent: number; quorumMet: boolean; optionTallies: Array<{ optionId: string; label: string; votes: number; percent: number }> } | null;
+  } | null> {
+    const resolved = await this.resolvePortalAccessContext(portalAccessId);
+    if (!resolved) return null;
+
+    const { access } = resolved;
+    const election = await this.getElection(electionId);
+    if (!election) return null;
+
+    if (election.associationId !== access.associationId) return null;
+
+    const options = await this.getElectionOptions(electionId);
+
+    const token = access.personId
+      ? await db
+          .select()
+          .from(electionBallotTokens)
+          .where(
+            and(
+              eq(electionBallotTokens.electionId, electionId),
+              eq(electionBallotTokens.personId, access.personId),
+            ),
+          )
+          .then((rows) => rows[0])
+      : undefined;
+
+    const proxyRow = access.personId
+      ? await db
+          .select()
+          .from(electionProxyDesignations)
+          .where(
+            and(
+              eq(electionProxyDesignations.electionId, electionId),
+              eq(electionProxyDesignations.ownerPersonId, access.personId),
+              isNull(electionProxyDesignations.revokedAt),
+            ),
+          )
+          .then((rows) => rows[0])
+      : undefined;
+
+    let status: "voted" | "proxy-designated" | "not-voted" = "not-voted";
+    if (token?.status === "cast") status = "voted";
+    else if (proxyRow) status = "proxy-designated";
+    else if (token?.status === "consumed-by-proxy") status = "proxy-designated";
+
+    let proxyDesignation: { id: string; proxyPersonId: string; proxyName: string; designatedAt: string; notes: string | null } | null = null;
+    if (proxyRow) {
+      const [proxyPerson] = await db.select().from(persons).where(eq(persons.id, proxyRow.proxyPersonId));
+      proxyDesignation = {
+        id: proxyRow.id,
+        proxyPersonId: proxyRow.proxyPersonId,
+        proxyName: proxyPerson ? `${proxyPerson.firstName ?? ""} ${proxyPerson.lastName ?? ""}`.trim() : "Unknown",
+        designatedAt: new Date(proxyRow.designatedAt).toISOString(),
+        notes: proxyRow.notes,
+      };
+    }
+
+    const ballotToken = (token && token.status === "pending") ? token.token : null;
+
+    let tally: { eligibleCount: number; castCount: number; participationPercent: number; quorumPercent: number; quorumMet: boolean; optionTallies: Array<{ optionId: string; label: string; votes: number; percent: number }> } | null = null;
+    if (election.status === "certified" && election.resultVisibility === "public") {
+      const fullTally = await this.getElectionTally(electionId);
+      tally = {
+        eligibleCount: fullTally.eligibleCount,
+        castCount: fullTally.castCount,
+        participationPercent: fullTally.participationPercent,
+        quorumPercent: fullTally.quorumPercent,
+        quorumMet: fullTally.quorumMet,
+        optionTallies: fullTally.optionTallies,
+      };
+    }
+
+    return { election, options, participated: status !== "not-voted", status, ballotToken, proxyDesignation, tally };
+  }
+
+  async getAssociationOwnersForProxy(portalAccessId: string, electionId: string): Promise<Array<{ personId: string; firstName: string; lastName: string }>> {
+    const resolved = await this.resolvePortalAccessContext(portalAccessId);
+    if (!resolved) return [];
+
+    const { access } = resolved;
+    if (!access.associationId || !access.personId) return [];
+
+    const allAccess = await db
+      .select({
+        personId: portalAccess.personId,
+        firstName: persons.firstName,
+        lastName: persons.lastName,
+      })
+      .from(portalAccess)
+      .innerJoin(persons, eq(persons.id, portalAccess.personId))
+      .where(
+        and(
+          eq(portalAccess.associationId, access.associationId),
+          eq(portalAccess.status, "active"),
+        ),
+      );
+
+    return allAccess
+      .filter((p) => p.personId !== access.personId && p.personId !== null)
+      .map((p) => ({
+        personId: p.personId!,
+        firstName: p.firstName ?? "",
+        lastName: p.lastName ?? "",
+      }));
+  }
+
+  async revokeProxyDesignationForPortal(portalAccessId: string, designationId: string): Promise<boolean> {
+    const resolved = await this.resolvePortalAccessContext(portalAccessId);
+    if (!resolved) return false;
+
+    const { access } = resolved;
+    if (!access.personId) return false;
+
+    const [designation] = await db
+      .select()
+      .from(electionProxyDesignations)
+      .where(
+        and(
+          eq(electionProxyDesignations.id, designationId),
+          eq(electionProxyDesignations.ownerPersonId, access.personId),
+          isNull(electionProxyDesignations.revokedAt),
+        ),
+      );
+
+    if (!designation) return false;
+
+    await this.revokeProxyDesignation(designationId);
+    return true;
+  }
+
+  async getBoardPendingElections(portalAccessId: string): Promise<Array<{
+    election: Election;
+    token: string;
+  }>> {
+    const resolved = await this.resolvePortalAccessContext(portalAccessId);
+    if (!resolved || !resolved.hasBoardAccess) return [];
+
+    const { access } = resolved;
+    if (!access.personId || !access.associationId) return [];
+
+    const assocElections = await this.getElections(access.associationId);
+    const results: Array<{ election: Election; token: string }> = [];
+
+    for (const election of assocElections) {
+      if (election.status !== "open") continue;
+      if (election.votingRule !== "board-only") continue;
+
+      const tokenRow = await db
+        .select()
+        .from(electionBallotTokens)
+        .where(
+          and(
+            eq(electionBallotTokens.electionId, election.id),
+            eq(electionBallotTokens.personId, access.personId),
+            eq(electionBallotTokens.status, "pending"),
+          ),
+        )
+        .then((rows) => rows[0]);
+
+      if (tokenRow) {
+        results.push({ election, token: tokenRow.token });
+      }
+    }
+
+    return results;
+  }
+
+  async getCertifiedElections(associationId: string): Promise<Array<{
+    election: Election;
+    participationPercent: number;
+    outcome: string | null;
+  }>> {
+    const certified = await db
+      .select()
+      .from(elections)
+      .where(
+        and(
+          eq(elections.associationId, associationId),
+          eq(elections.status, "certified"),
+        ),
+      )
+      .orderBy(desc(elections.certifiedAt));
+
+    const results: Array<{ election: Election; participationPercent: number; outcome: string | null }> = [];
+
+    for (const election of certified) {
+      const tally = await this.getElectionTally(election.id);
+      let outcome: string | null = null;
+      if (election.resultVisibility === "public" && tally.optionTallies.length > 0) {
+        const top = tally.optionTallies.reduce((a, b) => (a.votes >= b.votes ? a : b));
+        outcome = `${top.label} (${top.votes} votes)`;
+      }
+      results.push({ election, participationPercent: tally.participationPercent, outcome });
+    }
+
+    return results;
+  }
+
+  async getRecentlyCertifiedBoardElections(associationId: string): Promise<Election[]> {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    return db
+      .select()
+      .from(elections)
+      .where(
+        and(
+          eq(elections.associationId, associationId),
+          eq(elections.status, "certified"),
+          eq(elections.voteType, "board-election"),
+          gte(elections.certifiedAt, sevenDaysAgo),
+        ),
+      )
+      .orderBy(desc(elections.certifiedAt));
+  }
+
+  async closeExpiredElections(): Promise<number> {
+    const now = new Date();
+    const expired = await db
+      .select()
+      .from(elections)
+      .where(
+        and(
+          eq(elections.status, "open"),
+          isNotNull(elections.closesAt),
+          lte(elections.closesAt, now),
+        ),
+      );
+
+    for (const election of expired) {
+      await db
+        .update(elections)
+        .set({ status: "closed", updatedAt: now })
+        .where(eq(elections.id, election.id));
+    }
+
+    return expired.length;
+  }
+
+  async getActiveElectionsSummary(associationId?: string): Promise<Array<{
+    id: string;
+    title: string;
+    associationId: string;
+    status: string;
+    closesAt: Date | null;
+    eligibleVoterCount: number;
+    castCount: number;
+    participationPercent: number;
+    quorumPercent: number;
+    quorumMet: boolean;
+  }>> {
+    const conditions = [
+      sql`${elections.status} IN ('open', 'closed')`,
+    ];
+    if (associationId) {
+      conditions.push(eq(elections.associationId, associationId));
+    }
+
+    const rows = await db
+      .select()
+      .from(elections)
+      .where(and(...conditions))
+      .orderBy(elections.closesAt);
+
+    const results = [];
+    for (const election of rows) {
+      const casts = await this.getBallotCasts(election.id);
+      const castCount = casts.length;
+      const eligibleCount = Math.max(election.eligibleVoterCount, 1);
+      const participationPercent = Math.round((castCount / eligibleCount) * 100);
+      const quorumMet = participationPercent >= (election.quorumPercent || 50);
+
+      results.push({
+        id: election.id,
+        title: election.title,
+        associationId: election.associationId,
+        status: election.status,
+        closesAt: election.closesAt,
+        eligibleVoterCount: election.eligibleVoterCount,
+        castCount,
+        participationPercent,
+        quorumPercent: election.quorumPercent,
+        quorumMet,
+      });
+    }
+
+    return results;
+  }
+
+  async getElectionComplianceSummary(associationId: string): Promise<{
+    totalElections: number;
+    byYear: Array<{ year: number; count: number; quorumMet: number; quorumFailed: number; avgParticipation: number }>;
+    overallAvgParticipation: number;
+  }> {
+    const allElections = await db
+      .select()
+      .from(elections)
+      .where(
+        and(
+          eq(elections.associationId, associationId),
+          sql`${elections.status} IN ('closed', 'certified')`,
+        ),
+      )
+      .orderBy(desc(elections.createdAt));
+
+    const yearMap = new Map<number, { count: number; quorumMet: number; quorumFailed: number; participationSum: number }>();
+    let totalParticipation = 0;
+
+    for (const election of allElections) {
+      const year = election.certifiedAt
+        ? new Date(election.certifiedAt).getFullYear()
+        : election.closesAt
+          ? new Date(election.closesAt).getFullYear()
+          : new Date(election.createdAt).getFullYear();
+
+      const casts = await this.getBallotCasts(election.id);
+      const castCount = casts.length;
+      const eligibleCount = Math.max(election.eligibleVoterCount, 1);
+      const participation = Math.round((castCount / eligibleCount) * 100);
+      const quorumMet = participation >= (election.quorumPercent || 50);
+
+      totalParticipation += participation;
+
+      if (!yearMap.has(year)) {
+        yearMap.set(year, { count: 0, quorumMet: 0, quorumFailed: 0, participationSum: 0 });
+      }
+      const entry = yearMap.get(year)!;
+      entry.count++;
+      if (quorumMet) entry.quorumMet++;
+      else entry.quorumFailed++;
+      entry.participationSum += participation;
+    }
+
+    const byYear = Array.from(yearMap.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([year, data]) => ({
+        year,
+        count: data.count,
+        quorumMet: data.quorumMet,
+        quorumFailed: data.quorumFailed,
+        avgParticipation: data.count > 0 ? Math.round(data.participationSum / data.count) : 0,
+      }));
+
+    return {
+      totalElections: allElections.length,
+      byYear,
+      overallAvgParticipation: allElections.length > 0 ? Math.round(totalParticipation / allElections.length) : 0,
+    };
+  }
+
+  async getElectionAnalytics(associationId: string): Promise<{
+    totalElections: number;
+    averageTurnoutPercent: number;
+    highestParticipation: { electionId: string; title: string; participationPercent: number } | null;
+    lowestParticipation: { electionId: string; title: string; participationPercent: number } | null;
+    quorumFailureRate: number;
+    byType: Record<string, number>;
+    byStatus: Record<string, number>;
+  }> {
+    const allElections = await db
+      .select()
+      .from(elections)
+      .where(eq(elections.associationId, associationId))
+      .orderBy(desc(elections.createdAt));
+
+    if (allElections.length === 0) {
+      return {
+        totalElections: 0,
+        averageTurnoutPercent: 0,
+        highestParticipation: null,
+        lowestParticipation: null,
+        quorumFailureRate: 0,
+        byType: {},
+        byStatus: {},
+      };
+    }
+
+    const byType: Record<string, number> = {};
+    const byStatus: Record<string, number> = {};
+    let totalParticipation = 0;
+    let quorumFailures = 0;
+    let closedOrCertifiedCount = 0;
+    let highest: { electionId: string; title: string; participationPercent: number } | null = null;
+    let lowest: { electionId: string; title: string; participationPercent: number } | null = null;
+
+    for (const election of allElections) {
+      byType[election.voteType] = (byType[election.voteType] || 0) + 1;
+      byStatus[election.status] = (byStatus[election.status] || 0) + 1;
+
+      if (election.status === "closed" || election.status === "certified") {
+        closedOrCertifiedCount++;
+        const casts = await this.getBallotCasts(election.id);
+        const castCount = casts.length;
+        const eligibleCount = Math.max(election.eligibleVoterCount, 1);
+        const participation = Math.round((castCount / eligibleCount) * 100);
+        totalParticipation += participation;
+
+        const quorumMet = participation >= (election.quorumPercent || 50);
+        if (!quorumMet) quorumFailures++;
+
+        if (!highest || participation > highest.participationPercent) {
+          highest = { electionId: election.id, title: election.title, participationPercent: participation };
+        }
+        if (!lowest || participation < lowest.participationPercent) {
+          lowest = { electionId: election.id, title: election.title, participationPercent: participation };
+        }
+      }
+    }
+
+    return {
+      totalElections: allElections.length,
+      averageTurnoutPercent: closedOrCertifiedCount > 0 ? Math.round(totalParticipation / closedOrCertifiedCount) : 0,
+      highestParticipation: highest,
+      lowestParticipation: lowest,
+      quorumFailureRate: closedOrCertifiedCount > 0 ? Math.round((quorumFailures / closedOrCertifiedCount) * 100) : 0,
+      byType,
+      byStatus,
     };
   }
 }

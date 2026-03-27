@@ -39,8 +39,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, FileText, Upload, Download, Tags, History, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { Plus, FileText, Upload, Download, Tags, History, AlertTriangle, Eye, EyeOff, RotateCcw, FileDown } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +60,10 @@ const formSchema = z.object({
   uploadedBy: z.string().optional(),
   isPortalVisible: z.boolean().default(false),
   portalAudience: z.enum(["owner", "all"]).default("owner"),
+  isNewVersion: z.boolean().default(false),
+  parentDocumentId: z.string().optional(),
+  effectiveDate: z.string().optional(),
+  amendmentNotes: z.string().optional(),
 });
 
 const addTagSchema = z.object({
@@ -69,6 +74,8 @@ const addTagSchema = z.object({
 const addVersionSchema = z.object({
   title: z.string().min(1, "Title is required"),
   uploadedBy: z.string().optional(),
+  effectiveDate: z.string().optional(),
+  amendmentNotes: z.string().optional(),
 });
 
 
@@ -78,6 +85,8 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [metaOpen, setMetaOpen] = useState(false);
   const [versionFile, setVersionFile] = useState<File | null>(null);
+  const [rollbackTarget, setRollbackTarget] = useState<{ documentId: string; versionId: string; versionNumber: number } | null>(null);
+  const [rollbackReason, setRollbackReason] = useState("");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [page, setPage] = useState(1);
@@ -119,7 +128,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { associationId: "", title: "", documentType: typeFilter ?? "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner" },
+    defaultValues: { associationId: "", title: "", documentType: typeFilter ?? "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner", isNewVersion: false, parentDocumentId: "", effectiveDate: "", amendmentNotes: "" },
   });
 
   const tagForm = useForm<z.infer<typeof addTagSchema>>({
@@ -129,15 +138,28 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
 
   const versionForm = useForm<z.infer<typeof addVersionSchema>>({
     resolver: zodResolver(addVersionSchema),
-    defaultValues: { title: "", uploadedBy: "" },
+    defaultValues: { title: "", uploadedBy: "", effectiveDate: "", amendmentNotes: "" },
   });
   const watchedTitle = form.watch("title");
   const watchedDocumentType = form.watch("documentType");
+  const watchedIsNewVersion = form.watch("isNewVersion");
+  const watchedParentDocumentId = form.watch("parentDocumentId");
   const watchedVersionTitle = versionForm.watch("title");
 
   useEffect(() => {
     form.setValue("associationId", activeAssociationId, { shouldValidate: true });
   }, [activeAssociationId, form]);
+
+  // Auto-fill title and type from parent document when "new version of" is selected
+  useEffect(() => {
+    if (watchedIsNewVersion && watchedParentDocumentId) {
+      const parent = documents?.find((d) => d.id === watchedParentDocumentId);
+      if (parent) {
+        form.setValue("title", parent.title);
+        form.setValue("documentType", parent.documentType);
+      }
+    }
+  }, [watchedParentDocumentId, watchedIsNewVersion, documents, form]);
 
   useEffect(() => {
     if (!selectedFile) {
@@ -164,6 +186,9 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
       if (data.uploadedBy) formData.append("uploadedBy", data.uploadedBy);
       formData.append("isPortalVisible", data.isPortalVisible ? "1" : "0");
       formData.append("portalAudience", data.portalAudience);
+      if (data.isNewVersion && data.parentDocumentId) formData.append("parentDocumentId", data.parentDocumentId);
+      if (data.effectiveDate) formData.append("effectiveDate", data.effectiveDate);
+      if (data.amendmentNotes) formData.append("amendmentNotes", data.amendmentNotes);
       if (selectedFile) formData.append("file", selectedFile);
 
       const res = await fetch("/api/documents", {
@@ -186,7 +211,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
       });
       setUploadStage("complete");
       setOpen(false);
-      form.reset({ associationId: activeAssociationId, title: "", documentType: "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner" });
+      form.reset({ associationId: activeAssociationId, title: "", documentType: "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner", isNewVersion: false, parentDocumentId: "", effectiveDate: "", amendmentNotes: "" });
       setSelectedFile(null);
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
@@ -207,6 +232,23 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
 
+  const setCurrentVersionMutation = useMutation({
+    mutationFn: async ({ documentId, versionId, reason }: { documentId: string; versionId: string; reason?: string }) => {
+      const res = await apiRequest("PATCH", `/api/documents/${documentId}/versions/${versionId}/set-current`, { reason: reason || null });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      if (!selectedDocument) return;
+      queryClient.invalidateQueries({ queryKey: ["/api/documents", selectedDocument.id, "versions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      setRollbackTarget(null);
+      setRollbackReason("");
+      toast({ title: "Version set as current" });
+    },
+    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+  });
+
   const createVersionMutation = useMutation({
     mutationFn: async (data: z.infer<typeof addVersionSchema> & { fileName: string }) => {
       if (!selectedDocument) throw new Error("No document selected");
@@ -215,6 +257,8 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
       const formData = new FormData();
       formData.append("title", data.title);
       if (data.uploadedBy) formData.append("uploadedBy", data.uploadedBy);
+      if (data.effectiveDate) formData.append("effectiveDate", data.effectiveDate);
+      if (data.amendmentNotes) formData.append("amendmentNotes", data.amendmentNotes);
       formData.append("file", versionFile);
 
       const res = await fetch(`/api/documents/${selectedDocument.id}/versions`, {
@@ -231,7 +275,8 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
     onSuccess: (_data, variables) => {
       if (!selectedDocument) return;
       queryClient.invalidateQueries({ queryKey: ["/api/documents", selectedDocument.id, "versions"] });
-      versionForm.reset({ title: "", uploadedBy: "" });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      versionForm.reset({ title: "", uploadedBy: "", effectiveDate: "", amendmentNotes: "" });
       setVersionFile(null);
       setVersionStage("complete");
       toast({
@@ -248,9 +293,17 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/documents"] }); },
+    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+  });
+
+  const togglePriorVersionsVisible = useMutation({
+    mutationFn: async ({ id, visible }: { id: string; visible: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/documents/${id}`, { priorVersionsPortalVisible: visible ? 1 : 0 });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
     },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/documents"] }); },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
 
@@ -268,8 +321,12 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
   }
 
   function onSubmitVersion(values: z.infer<typeof addVersionSchema>) {
+    if (!versionFile) {
+      toast({ title: "Please select a file to upload", variant: "destructive" });
+      return;
+    }
     setVersionStage("uploading");
-    createVersionMutation.mutate({ ...values, fileName: versionFile?.name || "Document version" });
+    createVersionMutation.mutate({ ...values, fileName: versionFile.name });
   }
 
   const getAssocName = (id: string) => associations?.find((a) => a.id === id)?.name ?? "Unknown";
@@ -316,7 +373,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
           { label: "Open Association Context", href: "/app/association-context" },
           { label: "Open Communications", href: "/app/communications" },
         ]}
-        actions={<Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { form.reset(); setSelectedFile(null); setUploadStage("select"); } }}>
+        actions={<Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { form.reset({ associationId: activeAssociationId, title: "", documentType: "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner", isNewVersion: false, parentDocumentId: "", effectiveDate: "", amendmentNotes: "" }); setSelectedFile(null); setUploadStage("select"); } }}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-document" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />Upload Document</Button>
           </DialogTrigger>
@@ -379,6 +436,51 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                         <FormMessage />
                       </FormItem>
                     )} />
+                  )}
+                  <FormField control={form.control} name="isNewVersion" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center gap-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormLabel className="font-normal cursor-pointer">This is a new version of an existing document</FormLabel>
+                    </FormItem>
+                  )} />
+                  {watchedIsNewVersion && (
+                    <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+                      <FormField control={form.control} name="parentDocumentId" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Replaces document</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="Select existing document" /></SelectTrigger></FormControl>
+                            <SelectContent>
+                              {(documents ?? [])
+                                .filter((d) => !d.parentDocumentId)
+                                .map((d) => (
+                                  <SelectItem key={d.id} value={d.id}>{d.title} ({d.documentType})</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="effectiveDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Effective Date</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="amendmentNotes" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Amendment Notes</FormLabel>
+                          <FormControl><Textarea placeholder="Summarize what changed in this version…" rows={3} {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
                   )}
                   <div>
                     <FormLabel>File</FormLabel>
@@ -478,6 +580,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                       <TableHead>Type</TableHead>
                       <TableHead>Uploaded By</TableHead>
                       <TableHead>Date</TableHead>
+                      <TableHead>Versions</TableHead>
                       <TableHead>Owner Portal</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -501,6 +604,16 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                         <TableCell><Badge variant="secondary">{d.documentType}</Badge></TableCell>
                         <TableCell className="text-muted-foreground">{d.uploadedBy || "-"}</TableCell>
                         <TableCell className="text-muted-foreground">{new Date(d.createdAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          {(d as any).versionCount > 0 ? (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <History className="h-3 w-3" />
+                              v{(d as any).currentVersionNumber ?? (d as any).versionCount} · {(d as any).versionCount} version{(d as any).versionCount !== 1 ? "s" : ""}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Switch
@@ -711,31 +824,59 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <History className="h-4 w-4" />
-                Versions
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <History className="h-4 w-4" />
+                  Versions
+                </div>
+                {versions && versions.length > 0 && selectedDocument && (
+                  <Button variant="outline" size="sm" asChild title="Export amendment history as CSV">
+                    <a href={`/api/documents/${selectedDocument.id}/versions/export?format=csv`} download>
+                      <FileDown className="h-3.5 w-3.5 mr-1" />Export
+                    </a>
+                  </Button>
+                )}
               </div>
               <div className="space-y-2 max-h-44 overflow-auto rounded-md border p-3">
                 {versions?.length ? (
                   versions.map((version) => (
-                    <div key={version.id} className="rounded-lg border p-3 text-sm">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="font-medium">v{version.versionNumber}: {version.title}</p>
-                        <p className="text-muted-foreground">{new Date(version.createdAt).toLocaleDateString()}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" asChild>
-                          <a href={version.fileUrl} target="_blank" rel="noopener noreferrer">
-                            Open
-                          </a>
-                        </Button>
-                        <Button variant="outline" size="sm" asChild>
-                          <a href={version.fileUrl} download>
-                            Download
-                          </a>
-                        </Button>
-                      </div>
+                    <div key={version.id} className={`rounded-lg border p-3 text-sm ${(version as any).isCurrent ? "border-primary/40 bg-primary/5" : ""}`}>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">v{version.versionNumber}: {version.title}</p>
+                            {(version as any).isCurrent ? <Badge variant="secondary" className="text-xs">Current</Badge> : null}
+                          </div>
+                          <p className="text-muted-foreground text-xs mt-0.5">
+                            {new Date(version.createdAt).toLocaleDateString()}
+                            {(version as any).effectiveDate ? ` · Effective ${new Date((version as any).effectiveDate).toLocaleDateString()}` : ""}
+                          </p>
+                          {(version as any).amendmentNotes && (
+                            <p className="text-muted-foreground text-xs mt-1 italic">{(version as any).amendmentNotes}</p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 shrink-0">
+                          {!(version as any).isCurrent && selectedDocument && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              title="Set as current version"
+                              onClick={() => {
+                                setRollbackTarget({ documentId: selectedDocument.id, versionId: version.id, versionNumber: version.versionNumber });
+                                setRollbackReason("");
+                              }}
+                              disabled={setCurrentVersionMutation.isPending}
+                            >
+                              <RotateCcw className="h-3 w-3 mr-1" />Rollback
+                            </Button>
+                          )}
+                          <Button variant="outline" size="sm" asChild>
+                            <a href={version.fileUrl} target="_blank" rel="noopener noreferrer">Open</a>
+                          </Button>
+                          <Button variant="outline" size="sm" asChild>
+                            <a href={version.fileUrl} download>Download</a>
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))
@@ -743,6 +884,18 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                   <p className="text-sm text-muted-foreground">No versions</p>
                 )}
               </div>
+              {selectedDocument?.isPortalVisible ? (
+                <div className="flex items-center gap-3 rounded-md border bg-muted/20 px-3 py-2">
+                  <Checkbox
+                    id="prior-versions-visible"
+                    checked={Boolean((selectedDocument as any).priorVersionsPortalVisible)}
+                    onCheckedChange={(checked) => togglePriorVersionsVisible.mutate({ id: selectedDocument.id, visible: Boolean(checked) })}
+                  />
+                  <label htmlFor="prior-versions-visible" className="text-sm cursor-pointer">
+                    Show prior versions to owners in portal
+                  </label>
+                </div>
+              ) : null}
               <Form {...versionForm}>
                 <form onSubmit={versionForm.handleSubmit(onSubmitVersion)} className="space-y-3">
                   <TaskFlowChecklist
@@ -777,6 +930,28 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={versionForm.control}
+                    name="effectiveDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Effective Date <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={versionForm.control}
+                    name="amendmentNotes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Amendment Notes <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormControl><Input placeholder="Brief description of changes in this version" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <div>
                     <FormLabel>File</FormLabel>
                     <div
@@ -798,6 +973,41 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                   </Button>
                 </form>
               </Form>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rollback confirmation dialog */}
+      <Dialog open={Boolean(rollbackTarget)} onOpenChange={(o) => { if (!o) { setRollbackTarget(null); setRollbackReason(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Version Rollback</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              You are about to set <span className="font-medium text-foreground">v{rollbackTarget?.versionNumber}</span> as the current version. This change will be immediately visible in the owner portal if the document is published.
+            </p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Reason for rollback <span className="text-muted-foreground font-normal">(optional)</span></label>
+              <Textarea
+                placeholder="e.g. Prior version contained an error in Section 3.1"
+                rows={3}
+                value={rollbackReason}
+                onChange={(e) => setRollbackReason(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setRollbackTarget(null); setRollbackReason(""); }}>Cancel</Button>
+              <Button
+                disabled={setCurrentVersionMutation.isPending}
+                onClick={() => {
+                  if (!rollbackTarget) return;
+                  setCurrentVersionMutation.mutate({ documentId: rollbackTarget.documentId, versionId: rollbackTarget.versionId, reason: rollbackReason });
+                }}
+              >
+                {setCurrentVersionMutation.isPending ? "Rolling back…" : "Confirm Rollback"}
+              </Button>
             </div>
           </div>
         </DialogContent>

@@ -634,12 +634,32 @@ export default function UnitsPage() {
       .sort((left, right) => left.building.localeCompare(right.building));
   }, [buildings, residentialDataset, units]);
 
+  const summaryCounts = useMemo(() => {
+    const allUnitRows = buildingGroups.flatMap((g) => g.unitRows);
+    const totalUnits = allUnitRows.length;
+    const ownerOccupied = allUnitRows.filter((r) => r.occupancyType === "OWNER_OCCUPIED").length;
+    const tenants = allUnitRows.filter((r) => r.occupancyType === "TENANT").length;
+    const uniqueOwnerIds = new Set<string>();
+    for (const row of allUnitRows) {
+      if (row.ownerPersonId) uniqueOwnerIds.add(row.ownerPersonId);
+      for (const additional of row.additionalOwners) uniqueOwnerIds.add(additional.personId);
+    }
+    const ownerOccupiedPct = totalUnits > 0 ? Math.round((ownerOccupied / totalUnits) * 100) : 0;
+    return {
+      buildings: buildingGroups.filter((g) => !g.isLegacyGroup).length || buildings.length,
+      units: totalUnits,
+      owners: uniqueOwnerIds.size,
+      tenants,
+      ownerOccupiedPct,
+    };
+  }, [buildingGroups, buildings]);
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Buildings &amp; Units</h1>
-          <p className="text-muted-foreground">Start by adding buildings, then add units within each building.</p>
+          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">Buildings &amp; Units</h1>
+          <p className="text-sm text-on-surface/60 mt-1">Start by adding buildings, then add units within each building.</p>
         </div>
         <div className="flex gap-2">
           <Button type="button" onClick={openBuildingDialog} data-testid="button-add-building" disabled={!activeAssociationId}>
@@ -1077,6 +1097,24 @@ export default function UnitsPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {activeAssociationId && (units?.length ?? 0) > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {[
+            { label: "Buildings", value: summaryCounts.buildings, sub: "registered" },
+            { label: "Units", value: summaryCounts.units, sub: "total" },
+            { label: "Owners", value: summaryCounts.owners, sub: "on record" },
+            { label: "Tenants", value: summaryCounts.tenants, sub: "active" },
+            { label: "Owner Occupied", value: `${summaryCounts.ownerOccupiedPct}%`, sub: "of units" },
+          ].map(({ label, value, sub }) => (
+            <div key={label} className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest editorial-shadow px-4 py-3">
+              <p className="text-[10px] font-label font-semibold uppercase tracking-[0.18em] text-on-surface/50">{label}</p>
+              <p className="font-headline text-2xl font-bold text-on-surface mt-0.5">{value}</p>
+              <p className="text-xs text-on-surface/40 mt-0.5">{sub}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-0">

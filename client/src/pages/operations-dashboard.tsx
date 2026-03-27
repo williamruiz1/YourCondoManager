@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AuditLog } from "@shared/schema";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { operationsSubPages } from "@/lib/sub-page-nav";
 import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
@@ -102,6 +103,7 @@ export default function OperationsDashboardPage() {
           { label: "Open Work Orders", href: "/app/work-orders" },
           { label: "Open Vendors", href: "/app/vendors" },
         ]}
+        subPages={operationsSubPages}
       />
       <div className="grid gap-2 sm:flex sm:flex-wrap">
         <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("vendors")}>Export Vendor Report</Button>

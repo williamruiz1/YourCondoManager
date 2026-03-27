@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { platformSubPages } from "@/lib/sub-page-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,6 +124,7 @@ export default function FeatureFlagsPage() {
         summary="Define platform-wide feature flags and configure per-association staged rollout controls."
         eyebrow="Admin"
         breadcrumbs={[{ label: "Admin", href: "/app/admin" }, { label: "Feature Flags" }]}
+        subPages={platformSubPages}
       />
 
       {/* Summary */}

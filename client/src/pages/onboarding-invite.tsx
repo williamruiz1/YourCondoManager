@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { formatPhoneNumber, getPhoneDigits } from "@/lib/phone-formatter";
 
 type PublicInvite = {
   id: string;
@@ -16,8 +17,8 @@ type PublicInvite = {
   associationCity?: string | null;
   associationState?: string | null;
   associationCountry?: string | null;
-  unitId: string;
-  unitLabel?: string;
+  unitId: string | null;
+  unitLabel?: string | null;
   unitBuilding?: string | null;
   residentType: "owner" | "tenant";
   status: "active" | "submitted" | "approved" | "rejected" | "expired" | "revoked";
@@ -26,6 +27,7 @@ type PublicInvite = {
   expiresAt?: string | null;
   latestSubmissionStatus?: "pending" | "approved" | "rejected" | null;
   latestSubmissionRejectionReason?: string | null;
+  availableUnits?: Array<{ id: string; unitNumber: string; building: string | null }> | null;
 };
 
 export default function OnboardingInvitePage() {
@@ -51,6 +53,7 @@ export default function OnboardingInvitePage() {
     ownershipPercentage: "100",
     occupancyIntent: "owner-occupied",
   });
+  const [selectedUnitId, setSelectedUnitId] = useState("");
   const [includeSecondOwner, setIncludeSecondOwner] = useState(false);
   const [secondOwner, setSecondOwner] = useState(createEmptyResident());
   const [tenantResidents, setTenantResidents] = useState([createEmptyResident()]);
@@ -75,7 +78,8 @@ export default function OnboardingInvitePage() {
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim(),
           email: form.email.trim() || null,
-          phone: form.phone.trim() || null,
+          phone: getPhoneDigits(form.phone.trim()) || null,
+          unitId: selectedUnitId || null,
           mailingAddress: [
             form.mailingAddressLine1.trim(),
             [form.mailingCity.trim(), form.mailingState.trim(), form.mailingPostalCode.trim()].filter(Boolean).join(", "),
@@ -88,7 +92,7 @@ export default function OnboardingInvitePage() {
               firstName: secondOwner.firstName.trim(),
               lastName: secondOwner.lastName.trim(),
               email: secondOwner.email.trim() || null,
-              phone: secondOwner.phone.trim() || null,
+              phone: getPhoneDigits(secondOwner.phone.trim()) || null,
               ownershipPercentage: secondOwner.ownershipPercentage.trim() ? Number(secondOwner.ownershipPercentage) : null,
             }]
             : [],
@@ -99,7 +103,7 @@ export default function OnboardingInvitePage() {
                 firstName: resident.firstName.trim(),
                 lastName: resident.lastName.trim(),
                 email: resident.email.trim() || null,
-                phone: resident.phone.trim() || null,
+                phone: getPhoneDigits(resident.phone.trim()) || null,
               }))
             : [],
         }),
@@ -114,12 +118,13 @@ export default function OnboardingInvitePage() {
     resident.firstName.trim() && resident.lastName.trim() && (resident.email.trim() || resident.phone.trim()),
   ).length;
   const ownerFormInvalid = invite?.residentType === "owner" && form.occupancyIntent === "rental" && validTenantCount === 0;
+  const unitRequired = invite && !invite.unitId && !selectedUnitId;
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 sm:px-6">
       <div className="mx-auto max-w-2xl space-y-5 sm:space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Unit Intake Form</h1>
+          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface">Unit Intake Form</h1>
         </div>
 
         <Card className="rounded-2xl">
@@ -132,9 +137,13 @@ export default function OnboardingInvitePage() {
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div>
                     <div className="text-lg font-semibold">{invite.associationName || "Association"}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {invite.unitBuilding ? `${invite.unitBuilding} · ` : ""}{invite.unitLabel ? `Unit ${invite.unitLabel}` : invite.unitId}
-                    </div>
+                    {invite.unitId ? (
+                      <div className="text-sm text-muted-foreground">
+                        {invite.unitBuilding ? `${invite.unitBuilding} · ` : ""}{invite.unitLabel ? `Unit ${invite.unitLabel}` : invite.unitId}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">Please select your building and unit below</div>
+                    )}
                   </div>
                   <Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge>
                 </div>
@@ -156,6 +165,23 @@ export default function OnboardingInvitePage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {!invite.unitId && invite.availableUnits && invite.availableUnits.length > 0 ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="invite-unit-select">Select Your Unit</Label>
+                        <Select value={selectedUnitId} onValueChange={setSelectedUnitId}>
+                          <SelectTrigger id="invite-unit-select">
+                            <SelectValue placeholder="Choose your building & unit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {invite.availableUnits.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {u.building ? `${u.building} — ` : ""}Unit {u.unitNumber}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : null}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="space-y-2">
                         <Label htmlFor="invite-first-name">First Name</Label>
@@ -171,7 +197,7 @@ export default function OnboardingInvitePage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="invite-phone">Phone</Label>
-                        <Input id="invite-phone" placeholder="Phone" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
+                        <Input id="invite-phone" placeholder="(XXX) XXX-XXXX" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: formatPhoneNumber(e.target.value) }))} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="invite-start-date">{invite.residentType === "owner" ? "Purchase Date" : "Occupancy Start Date"}</Label>
@@ -208,7 +234,7 @@ export default function OnboardingInvitePage() {
                             <Input placeholder="Second owner first name" value={secondOwner.firstName} onChange={(e) => setSecondOwner((p) => ({ ...p, firstName: e.target.value }))} />
                             <Input placeholder="Second owner last name" value={secondOwner.lastName} onChange={(e) => setSecondOwner((p) => ({ ...p, lastName: e.target.value }))} />
                             <Input placeholder="Second owner email" value={secondOwner.email} onChange={(e) => setSecondOwner((p) => ({ ...p, email: e.target.value }))} />
-                            <Input placeholder="Second owner phone" value={secondOwner.phone} onChange={(e) => setSecondOwner((p) => ({ ...p, phone: e.target.value }))} />
+                            <Input placeholder="(XXX) XXX-XXXX" value={secondOwner.phone} onChange={(e) => setSecondOwner((p) => ({ ...p, phone: formatPhoneNumber(e.target.value) }))} />
                             <Input
                               type="number"
                               min="0"
@@ -274,7 +300,7 @@ export default function OnboardingInvitePage() {
                                   <Input placeholder="Tenant first name" value={resident.firstName} onChange={(e) => setTenantResidents((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, firstName: e.target.value } : row))} />
                                   <Input placeholder="Tenant last name" value={resident.lastName} onChange={(e) => setTenantResidents((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, lastName: e.target.value } : row))} />
                                   <Input placeholder="Tenant email" value={resident.email} onChange={(e) => setTenantResidents((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, email: e.target.value } : row))} />
-                                  <Input placeholder="Tenant phone" value={resident.phone} onChange={(e) => setTenantResidents((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, phone: e.target.value } : row))} />
+                                  <Input placeholder="(XXX) XXX-XXXX" value={resident.phone} onChange={(e) => setTenantResidents((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, phone: formatPhoneNumber(e.target.value) } : row))} />
                                 </div>
                               </div>
                             ))}
@@ -300,7 +326,7 @@ export default function OnboardingInvitePage() {
                     <Button
                       className="min-h-11 w-full sm:w-auto"
                       onClick={() => submitMutation.mutate()}
-                      disabled={submitMutation.isPending || !form.firstName.trim() || !form.lastName.trim() || !form.startDate || ownerFormInvalid}
+                      disabled={submitMutation.isPending || !form.firstName.trim() || !form.lastName.trim() || !form.startDate || ownerFormInvalid || unitRequired}
                     >
                       Submit Onboarding Form
                     </Button>

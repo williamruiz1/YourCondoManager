@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { operationsSubPages } from "@/lib/sub-page-nav";
 import { Link } from "wouter";
 import { Wrench, ExternalLink } from "lucide-react";
 
@@ -93,7 +95,7 @@ function toForm(record: InspectionRecord): InspectionForm {
   };
 }
 
-export default function InspectionsPage() {
+export function InspectionsContent() {
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const [open, setOpen] = useState(false);
@@ -201,12 +203,9 @@ export default function InspectionsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <>
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Inspection Records</h1>
-          <p className="text-muted-foreground">Record unit and common-area inspections, document findings, and turn follow-up items into work orders.</p>
-        </div>
+        <div />
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button disabled={!activeAssociationId} onClick={openCreate}>New Inspection</Button>
@@ -395,6 +394,21 @@ export default function InspectionsPage() {
           </Table>
         </CardContent>
       </Card>
+    </>
+  );
+}
+
+export default function InspectionsPage() {
+  return (
+    <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Inspection Records"
+        summary="Record unit and common-area inspections, document findings, and turn follow-up items into work orders."
+        eyebrow="Operations"
+        breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Inspection Records" }]}
+        subPages={operationsSubPages}
+      />
+      <InspectionsContent />
     </div>
   );
 }

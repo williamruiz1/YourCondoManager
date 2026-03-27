@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 
 const emptyForm = {
   title: "",
@@ -26,8 +28,11 @@ const emptyForm = {
   targetAudience: "all",
 };
 
-export default function AnnouncementsPage() {
+export function AnnouncementsContent() {
   const isMobile = useIsMobile();
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [notifyAnnouncement, setNotifyAnnouncement] = useState<CommunityAnnouncement | null>(null);
+  const [notifyChannels, setNotifyChannels] = useState({ push: true, sms: false });
   const { toast } = useToast();
   const { activeAssociationId } = useActiveAssociation();
   const [open, setOpen] = useState(false);
@@ -108,6 +113,39 @@ export default function AnnouncementsPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const sendNotification = useMutation({
+    mutationFn: async () => {
+      if (!activeAssociationId || !notifyAnnouncement) throw new Error("No association or announcement selected");
+      if (!notifyChannels.push && !notifyChannels.sms) throw new Error("Select at least one channel");
+      const results: string[] = [];
+      if (notifyChannels.push) {
+        const res = await apiRequest("POST", "/api/communications/send-push", {
+          associationId: activeAssociationId,
+          title: notifyAnnouncement.title,
+          body: notifyAnnouncement.body.slice(0, 120),
+          url: "/",
+        });
+        const d = await res.json() as { sent: number; total: number };
+        results.push(`Push: ${d.sent}/${d.total}`);
+      }
+      if (notifyChannels.sms) {
+        const res = await apiRequest("POST", "/api/communications/send-sms", {
+          associationId: activeAssociationId,
+          body: `${notifyAnnouncement.title}: ${notifyAnnouncement.body.slice(0, 140)}`,
+        });
+        const d = await res.json() as { sent: number; eligibleCount: number };
+        results.push(`SMS: ${d.sent}/${d.eligibleCount}`);
+      }
+      return results.join(" | ");
+    },
+    onSuccess: (summary) => {
+      toast({ title: "Notification sent", description: summary });
+      setNotifyOpen(false);
+      setNotifyAnnouncement(null);
+    },
+    onError: (err: Error) => toast({ title: "Send failed", description: err.message, variant: "destructive" }),
+  });
+
   function openEdit(a: CommunityAnnouncement) {
     setEditing(a);
     setForm({
@@ -128,12 +166,43 @@ export default function AnnouncementsPage() {
   const pinned = announcements.filter(a => a.isPinned).length;
 
   return (
-    <div className="p-6 space-y-6">
+    <>
+      {/* Notify via Push/SMS dialog */}
+      <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Send Push / SMS Notification</DialogTitle></DialogHeader>
+          {notifyAnnouncement && (
+            <div className="space-y-4">
+              <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                <div className="font-medium">{notifyAnnouncement.title}</div>
+                <div className="text-muted-foreground mt-1 line-clamp-2">{notifyAnnouncement.body}</div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Channels</label>
+                <div className="flex gap-4 mt-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={notifyChannels.push} onChange={(e) => setNotifyChannels(c => ({ ...c, push: e.target.checked }))} />
+                    Web Push
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={notifyChannels.sms} onChange={(e) => setNotifyChannels(c => ({ ...c, sms: e.target.checked }))} />
+                    SMS
+                  </label>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setNotifyOpen(false)}>Cancel</Button>
+                <Button onClick={() => sendNotification.mutate()} disabled={sendNotification.isPending || (!notifyChannels.push && !notifyChannels.sms)}>
+                  {sendNotification.isPending ? "Sending…" : "Send Now"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Community Announcements</h1>
-          <p className="text-muted-foreground">Post announcements and bulletins visible to residents in the owner portal.</p>
-        </div>
+        <div />
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button disabled={!activeAssociationId} onClick={() => { setEditing(null); setForm(emptyForm); }}>New Announcement</Button>
@@ -232,6 +301,9 @@ export default function AnnouncementsPage() {
                     <Button className="min-h-11 w-full" variant="outline" onClick={() => togglePublish.mutate({ id: a.id, isPublished: a.isPublished ? 0 : 1 })} disabled={togglePublish.isPending}>
                       {a.isPublished ? "Unpublish" : "Publish"}
                     </Button>
+                    {a.isPublished ? (
+                      <Button className="min-h-11 w-full" variant="outline" onClick={() => { setNotifyAnnouncement(a); setNotifyChannels({ push: true, sms: false }); setNotifyOpen(true); }}>Notify via Push / SMS</Button>
+                    ) : null}
                     <Button className="min-h-11 w-full" variant="outline" onClick={() => openEdit(a)}>Edit</Button>
                     <Button className="min-h-11 w-full" variant="outline" onClick={() => deleteAnnouncement.mutate(a.id)} disabled={deleteAnnouncement.isPending}>Delete</Button>
                   </div>
@@ -280,6 +352,9 @@ export default function AnnouncementsPage() {
                         <Button size="sm" variant="outline" onClick={() => togglePublish.mutate({ id: a.id, isPublished: a.isPublished ? 0 : 1 })} disabled={togglePublish.isPending}>
                           {a.isPublished ? "Unpublish" : "Publish"}
                         </Button>
+                        {a.isPublished ? (
+                          <Button size="sm" variant="outline" onClick={() => { setNotifyAnnouncement(a); setNotifyChannels({ push: true, sms: false }); setNotifyOpen(true); }}>Notify</Button>
+                        ) : null}
                         <Button size="sm" variant="outline" onClick={() => openEdit(a)}>Edit</Button>
                         <Button size="sm" variant="outline" onClick={() => deleteAnnouncement.mutate(a.id)} disabled={deleteAnnouncement.isPending}>Delete</Button>
                       </div>
@@ -294,6 +369,21 @@ export default function AnnouncementsPage() {
           )}
         </CardContent>
       </Card>
+    </>
+  );
+}
+
+export default function AnnouncementsPage() {
+  return (
+    <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Community Announcements"
+        summary="Post announcements and bulletins visible to residents in the owner portal."
+        eyebrow="Board & Governance"
+        breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Announcements" }]}
+        subPages={boardGovernanceSubPages}
+      />
+      <AnnouncementsContent />
     </div>
   );
 }

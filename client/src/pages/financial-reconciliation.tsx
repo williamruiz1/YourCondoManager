@@ -4,6 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { financeSubPages } from "@/lib/sub-page-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +52,7 @@ function matchStatusBadge(status: string) {
   return <Badge variant={m.variant}>{m.label}</Badge>;
 }
 
-export default function FinancialReconciliationPage() {
+export function FinancialReconciliationContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -259,15 +260,7 @@ export default function FinancialReconciliationPage() {
   });
 
   return (
-    <div className="flex flex-col min-h-0">
-      <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Bank Reconciliation"
-        summary="Import bank statements, auto-match transactions to ledger entries, and manually review unmatched items."
-        eyebrow="Finance"
-        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Reconciliation" }]}
-      />
-
+    <div className="space-y-6">
       {/* Workflow Step Indicator */}
       <div className={`rounded-lg border bg-muted/30 overflow-hidden ${isMobile ? "grid grid-cols-1" : "flex items-center gap-0"}`}>
         {[
@@ -770,6 +763,22 @@ export default function FinancialReconciliationPage() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+export default function FinancialReconciliationPage() {
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="p-6 space-y-6">
+        <WorkspacePageHeader
+          title="Bank Reconciliation"
+          summary="Import bank statements, auto-match transactions to ledger entries, and manually review unmatched items."
+          eyebrow="Finance"
+          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Reconciliation" }]}
+          subPages={financeSubPages}
+        />
+        <FinancialReconciliationContent />
       </div>
     </div>
   );

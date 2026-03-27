@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useUserSettings, formatSettingsDate } from "@/hooks/use-user-settings";
 import type {
   CommunicationHistory,
   ContactUpdateRequest,
@@ -26,10 +27,13 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ChevronDown, ChevronUp, AlertTriangle, Zap } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AnnouncementsContent } from "./announcements";
 
 const standardTemplateDefinitions = [
   // Payments & Finance
@@ -199,9 +203,44 @@ const standardTemplateDefinitions = [
     footerTemplate: null,
     signatureTemplate: "{{association_name}} Board",
   },
+  // Elections & Voting
+  {
+    name: "Election Ballot Invitation",
+    subjectTemplate: "{{election_title}} — Your Vote",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nVoting is now open for {{election_title}}.\n\n{{election_description}}\n\nVoting closes on {{election_close_date}}. Please use the secure link below to cast your ballot:\n\n{{vote_link}}\n\nYour vote is confidential and important to our community.\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{association_name}}",
+    signatureTemplate: "{{association_name}} Board",
+  },
+  {
+    name: "Voting Reminder",
+    subjectTemplate: "Reminder: {{election_title}} — Your Vote",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nThis is a friendly reminder that voting for {{election_title}} is still open.\n\nSo far, {{participation_percent}}% of eligible voters have participated. Voting closes on {{election_close_date}}.\n\nYour vote matters — don't miss your chance to have a say.\n\n{{vote_link}}\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{association_name}}",
+    signatureTemplate: "{{association_name}} Board",
+  },
+  {
+    name: "Election Results Announcement",
+    subjectTemplate: "{{election_title}} — Election Results",
+    headerTemplate: "ELECTION RESULTS",
+    bodyTemplate: "Dear {{recipient_name}},\n\nThe election for {{election_title}} has been certified. Here are the official results:\n\nParticipation: {{participation_percent}}% ({{cast_count}} of {{eligible_count}} eligible voters)\n\n{{results_summary}}\n\nCertified by {{certified_by}} on {{certified_date}}.\n\nThank you for participating in our community governance.\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{association_name}}",
+    signatureTemplate: "{{association_name}} Board",
+  },
+  {
+    name: "Proxy Designation Confirmation",
+    subjectTemplate: "Proxy Designation Confirmed — {{election_title}}",
+    headerTemplate: null,
+    bodyTemplate: "Dear {{recipient_name}},\n\nThis confirms that you have designated {{proxy_name}} to vote on your behalf in {{election_title}}.\n\nElection: {{election_title}}\nProxy: {{proxy_name}}\nDesignated on: {{designation_date}}\n\nIf you did not authorize this designation, please contact {{association_name}} management immediately.\n\nYou may revoke this proxy at any time before your proxy casts a vote.\n\n{{association_name}} Board of Directors",
+    footerTemplate: "{{association_name}}",
+    signatureTemplate: "{{association_name}} Board",
+  },
 ];
 
-export default function CommunicationsPage() {
+export function CommunicationsContent() {
+  const userSettings = useUserSettings();
+  const fmtDate = (d: string | Date | null | undefined) => formatSettingsDate(d, userSettings, { includeTime: true });
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [workspacePanel, setWorkspacePanel] = useState<"delivery" | "onboarding" | "operations">("delivery");
@@ -277,15 +316,17 @@ export default function CommunicationsPage() {
   });
   const [reminderSweepHours, setReminderSweepHours] = useState("24");
   const [emergencyAlertOpen, setEmergencyAlertOpen] = useState(false);
-  const [emergencyForm, setEmergencyForm] = useState({ subject: "", body: "", targetType: "all-occupants" as "all-occupants" | "all-owners" | "all-tenants" });
+  const [emergencyForm, setEmergencyForm] = useState({ subject: "", body: "", targetType: "all-occupants" as "all-occupants" | "all-owners" | "all-tenants", channelEmail: true, channelSms: false, channelPush: false });
+  const [smsRecipientCount, setSmsRecipientCount] = useState<{ optedIn: number; eligible: number } | null>(null);
+  const [pushSubscriberCount, setPushSubscriberCount] = useState<{ count: number } | null>(null);
   const selectedAssociationId = activeAssociationId;
 
-  const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
+  const { data: persons } = useQuery<Person[]>({ queryKey: ["/api/persons", selectedAssociationId] });
   const { data: units } = useQuery<Unit[]>({
-    queryKey: [selectedAssociationId ? `/api/units?associationId=${selectedAssociationId}` : "/api/units"],
+    queryKey: [selectedAssociationId ? `/api/units?associationId=${selectedAssociationId}` : "/api/units", selectedAssociationId],
     enabled: Boolean(selectedAssociationId),
   });
-  const { data: templates } = useQuery<NoticeTemplate[]>({ queryKey: ["/api/communications/templates"] });
+  const { data: templates } = useQuery<NoticeTemplate[]>({ queryKey: ["/api/communications/templates", selectedAssociationId] });
 
   // Payment reminder rules
   const [reminderRuleOpen, setReminderRuleOpen] = useState(false);
@@ -351,12 +392,12 @@ export default function CommunicationsPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const { data: history } = useQuery<CommunicationHistory[]>({ queryKey: ["/api/communications/history"] });
+  const { data: history } = useQuery<CommunicationHistory[]>({ queryKey: ["/api/communications/history", selectedAssociationId] });
   const { data: pendingSends } = useQuery<NoticeSend[]>({
-    queryKey: ["/api/communications/sends?status=pending-approval"],
+    queryKey: ["/api/communications/sends?status=pending-approval", selectedAssociationId],
   });
   const { data: scheduledSends } = useQuery<NoticeSend[]>({
-    queryKey: ["/api/communications/sends?status=scheduled"],
+    queryKey: ["/api/communications/sends?status=scheduled", selectedAssociationId],
   });
   type DeliveryStats = {
     total: number; delivered: number; opened: number; bounced: number; queued: number;
@@ -655,26 +696,47 @@ export default function CommunicationsPage() {
       if (!selectedAssociationId) throw new Error("Select an association first");
       if (!emergencyForm.subject.trim()) throw new Error("Subject is required");
       if (!emergencyForm.body.trim()) throw new Error("Message body is required");
-      const res = await apiRequest("POST", "/api/communications/send-targeted", {
-        associationId: selectedAssociationId,
-        targetType: emergencyForm.targetType,
-        subject: `🚨 EMERGENCY: ${emergencyForm.subject}`,
-        body: emergencyForm.body,
-        requireApproval: false,
-        bypassReadinessGate: true,
-        scheduledFor: null,
-        messageClass: "operational",
-      });
-      return res.json() as Promise<{ recipientCount: number; sentCount: number; skippedRecipients: number; missingEmailCount: number }>;
+      if (!emergencyForm.channelEmail && !emergencyForm.channelSms && !emergencyForm.channelPush) throw new Error("Select at least one channel");
+      const results: string[] = [];
+      if (emergencyForm.channelEmail) {
+        const res = await apiRequest("POST", "/api/communications/send-targeted", {
+          associationId: selectedAssociationId,
+          targetType: emergencyForm.targetType,
+          subject: `EMERGENCY: ${emergencyForm.subject}`,
+          body: emergencyForm.body,
+          requireApproval: false,
+          bypassReadinessGate: true,
+          scheduledFor: null,
+          messageClass: "operational",
+        });
+        const data = await res.json() as { recipientCount: number; sentCount: number; skippedRecipients: number; missingEmailCount: number };
+        results.push(`Email: ${data.sentCount}/${data.recipientCount}`);
+      }
+      if (emergencyForm.channelSms) {
+        const res = await apiRequest("POST", "/api/communications/send-sms", {
+          associationId: selectedAssociationId,
+          body: `EMERGENCY: ${emergencyForm.subject}\n\n${emergencyForm.body}`,
+        });
+        const data = await res.json() as { sent: number; failed: number; eligibleCount: number };
+        results.push(`SMS: ${data.sent}/${data.eligibleCount}`);
+      }
+      if (emergencyForm.channelPush) {
+        const res = await apiRequest("POST", "/api/communications/send-push", {
+          associationId: selectedAssociationId,
+          title: `EMERGENCY: ${emergencyForm.subject}`,
+          body: emergencyForm.body,
+          url: "/",
+        });
+        const data = await res.json() as { sent: number; total: number };
+        results.push(`Push: ${data.sent}/${data.total}`);
+      }
+      return results.join(" | ");
     },
-    onSuccess: (result) => {
+    onSuccess: (summary) => {
       queryClient.invalidateQueries({ queryKey: ["/api/communications/history"] });
-      toast({
-        title: "Emergency alert sent",
-        description: `Sent to ${result.sentCount} of ${result.recipientCount} recipients. ${result.missingEmailCount} missing email.`,
-      });
+      toast({ title: "Emergency alert sent", description: summary });
       setEmergencyAlertOpen(false);
-      setEmergencyForm({ subject: "", body: "", targetType: "all-occupants" });
+      setEmergencyForm({ subject: "", body: "", targetType: "all-occupants", channelEmail: true, channelSms: false, channelPush: false });
     },
     onError: (err: Error) => toast({ title: "Emergency send failed", description: err.message, variant: "destructive" }),
   });
@@ -891,109 +953,54 @@ export default function CommunicationsPage() {
   });
 
   const filteredHistory = history ?? [];
+  const [deliveryDetailRelatedId, setDeliveryDetailRelatedId] = useState<string | null>(null);
+  const deliveryDetailRecords = filteredHistory.filter(h => deliveryDetailRelatedId && h.relatedId === deliveryDetailRelatedId);
 
   return (
-    <div className="p-6 space-y-6">
-      <WorkspacePageHeader
-        title="Communications"
-        summary="Manage templates, sends, approvals, outreach readiness, and communication history inside the active association scope."
-        eyebrow="Communications"
-        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Communications" }]}
-        shortcuts={[
-          { label: "Open Association Context", href: "/app/association-context" },
-          { label: "Open Documents", href: "/app/documents" },
-        ]}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="destructive"
-              className="gap-2"
-              disabled={!selectedAssociationId}
-              onClick={() => setEmergencyAlertOpen(true)}
-            >
-              <Zap className="h-4 w-4" />
-              Emergency Alert
-            </Button>
-            <Dialog open={emergencyAlertOpen} onOpenChange={setEmergencyAlertOpen}>
-              <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2 text-red-600">
-                    <Zap className="h-5 w-5" />
-                    Send Emergency Alert
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                    <strong>This will send immediately</strong> to all selected recipients, bypassing scheduling and approval. Use only for genuine emergencies (water shutoff, safety events, building access issues).
-                  </div>
-                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                    Association: <span className="font-medium">{activeAssociationName || "None selected"}</span>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Recipients</label>
-                    <Select value={emergencyForm.targetType} onValueChange={(v) => setEmergencyForm((p) => ({ ...p, targetType: v as typeof p.targetType }))}>
-                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all-occupants">All occupants (owners + tenants)</SelectItem>
-                        <SelectItem value="all-owners">All owners only</SelectItem>
-                        <SelectItem value="all-tenants">All tenants only</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Input
-                    placeholder="Alert subject (e.g. 'Water Shutoff — Unit Access Required')"
-                    value={emergencyForm.subject}
-                    onChange={(e) => setEmergencyForm((p) => ({ ...p, subject: e.target.value }))}
-                  />
-                  <Textarea
-                    rows={6}
-                    placeholder="Alert message body. Be concise, clear, and include any required action."
-                    value={emergencyForm.body}
-                    onChange={(e) => setEmergencyForm((p) => ({ ...p, body: e.target.value }))}
-                  />
-                  <Button
-                    variant="destructive"
-                    className="w-full gap-2"
-                    disabled={sendEmergencyAlert.isPending || !emergencyForm.subject.trim() || !emergencyForm.body.trim() || !selectedAssociationId}
-                    onClick={() => sendEmergencyAlert.mutate()}
-                  >
-                    <Zap className="h-4 w-4" />
-                    {sendEmergencyAlert.isPending ? "Sending…" : "Send Emergency Alert Now"}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-            <Button
-              variant="outline"
-              onClick={() => seedStandardTemplates.mutate()}
-              disabled={seedStandardTemplates.isPending || !selectedAssociationId}
-            >
-              Load HOA Template Library ({standardTemplateDefinitions.length})
-            </Button>
-            <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
-              <DialogTrigger asChild><Button>New Template</Button></DialogTrigger>
-              <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto sm:max-h-[85vh]">
-                <DialogHeader><DialogTitle>Create Notice Template</DialogTitle></DialogHeader>
-                <div className="space-y-3">
-                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                    Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
-                  </div>
-                  <Input placeholder="Template name" value={templateForm.name} onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))} />
-                  <Input placeholder="Subject template (e.g. Update for {{unit_number}})" value={templateForm.subjectTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, subjectTemplate: e.target.value }))} />
-                  <Textarea rows={3} placeholder="Header block (optional)" value={templateForm.headerTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, headerTemplate: e.target.value }))} />
-                  <Textarea rows={7} placeholder="Body template" value={templateForm.bodyTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, bodyTemplate: e.target.value }))} />
-                  <Textarea rows={3} placeholder="Footer block (optional)" value={templateForm.footerTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, footerTemplate: e.target.value }))} />
-                  <Textarea rows={2} placeholder="Signature block (optional)" value={templateForm.signatureTemplate} onChange={(e) => setTemplateForm((p) => ({ ...p, signatureTemplate: e.target.value }))} />
-                  <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-                    Canonical variables: {`{{association_name}}`} {`{{association_address}}`} {`{{unit_number}}`} {`{{owner_name}}`} {`{{tenant_name}}`} {`{{maintenance_request_link}}`} {`{{owner_submission_link}}`} {`{{tenant_submission_link}}`}
-                  </div>
-                  <Button className="w-full" onClick={() => createTemplate.mutate()} disabled={createTemplate.isPending}>Save Template</Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+    <>
+      {/* Per-recipient delivery receipt dialog */}
+      <Dialog open={Boolean(deliveryDetailRelatedId)} onOpenChange={(open) => { if (!open) setDeliveryDetailRelatedId(null); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Delivery Details — Per Recipient</DialogTitle></DialogHeader>
+          {deliveryDetailRecords.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No per-recipient records found for this campaign.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Channel</TableHead>
+                  <TableHead>Recipient</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {deliveryDetailRecords.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell><Badge variant="outline">{r.channel}</Badge></TableCell>
+                    <TableCell className="text-sm">{r.recipientEmail || "-"}</TableCell>
+                    <TableCell>
+                      {r.deliveryStatus ? (
+                        <Badge variant={["delivered", "sent", "simulated"].includes(r.deliveryStatus) ? "default" : ["failed", "undelivered"].includes(r.deliveryStatus) ? "destructive" : "outline"}>
+                          {r.deliveryStatus}
+                        </Badge>
+                      ) : <span className="text-muted-foreground text-xs">pending</span>}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{fmtDate(r.createdAt)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          <div className="pt-2">
+            <p className="text-xs text-muted-foreground">
+              {deliveryDetailRecords.filter(r => r.deliveryStatus && ["delivered","sent","simulated"].includes(r.deliveryStatus)).length} delivered &bull;&nbsp;
+              {deliveryDetailRecords.filter(r => r.deliveryStatus && ["failed","undelivered"].includes(r.deliveryStatus)).length} failed &bull;&nbsp;
+              {deliveryDetailRecords.filter(r => !r.deliveryStatus).length} pending
+            </p>
           </div>
-        }
-      />
+        </DialogContent>
+      </Dialog>
 
       <AssociationScopeBanner
         activeAssociationId={activeAssociationId}
@@ -1226,7 +1233,7 @@ export default function CommunicationsPage() {
                     <TableCell className="capitalize">{invite.residentType}</TableCell>
                     <TableCell><Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge></TableCell>
                     <TableCell>{invite.email || invite.phone || "-"}</TableCell>
-                    <TableCell>{invite.lastSentAt ? new Date(invite.lastSentAt).toLocaleString() : "-"}</TableCell>
+                    <TableCell>{invite.lastSentAt ? fmtDate(invite.lastSentAt) : "-"}</TableCell>
                     <TableCell className="max-w-[360px] truncate">
                       <button
                         type="button"
@@ -1285,7 +1292,7 @@ export default function CommunicationsPage() {
                   </div>
                   <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                     <div>Contact: {invite.email || invite.phone || "-"}</div>
-                    <div>Last sent: {invite.lastSentAt ? new Date(invite.lastSentAt).toLocaleString() : "-"}</div>
+                    <div>Last sent: {invite.lastSentAt ? fmtDate(invite.lastSentAt) : "-"}</div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => navigator?.clipboard?.writeText?.(inviteUrl)}>Copy Link</Button>
@@ -1330,7 +1337,7 @@ export default function CommunicationsPage() {
             <TableBody>
               {(onboardingSubmissions ?? []).slice(0, 50).map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell>{new Date(row.submittedAt).toLocaleString()}</TableCell>
+                  <TableCell>{fmtDate(row.submittedAt)}</TableCell>
                   <TableCell>{row.unitLabel ? `Unit ${row.unitLabel}` : row.unitId}</TableCell>
                   <TableCell>{row.firstName} {row.lastName} · <span className="capitalize">{row.residentType}</span></TableCell>
                   <TableCell>{row.email || row.phone || row.inviteEmail || "-"}</TableCell>
@@ -1373,7 +1380,7 @@ export default function CommunicationsPage() {
                   <Badge variant={row.status === "pending" ? "secondary" : "outline"}>{row.status}</Badge>
                 </div>
                 <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                  <div>Submitted: {new Date(row.submittedAt).toLocaleString()}</div>
+                  <div>Submitted: {fmtDate(row.submittedAt)}</div>
                   <div>Contact: {row.email || row.phone || row.inviteEmail || "-"}</div>
                 </div>
                 <div className="mt-4 flex gap-2">
@@ -1737,7 +1744,7 @@ export default function CommunicationsPage() {
             <TableBody>
               {(contactUpdates ?? []).filter((row) => row.reviewStatus === "pending").map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell>{new Date(row.createdAt).toLocaleString()}</TableCell>
+                  <TableCell>{fmtDate(row.createdAt)}</TableCell>
                   <TableCell><Badge variant="secondary">{row.reviewStatus}</Badge></TableCell>
                   <TableCell className="max-w-[520px] truncate">{JSON.stringify(row.requestJson)}</TableCell>
                   <TableCell className="space-x-2">
@@ -1772,7 +1779,7 @@ export default function CommunicationsPage() {
                   <div className="text-sm font-medium">Contact update request</div>
                   <Badge variant="secondary">{row.reviewStatus}</Badge>
                 </div>
-                <div className="mt-3 text-xs text-muted-foreground">Created: {new Date(row.createdAt).toLocaleString()}</div>
+                <div className="mt-3 text-xs text-muted-foreground">Created: {fmtDate(row.createdAt)}</div>
                 <div className="mt-2 rounded-lg bg-muted/30 p-3 text-xs text-muted-foreground break-words">
                   {JSON.stringify(row.requestJson)}
                 </div>
@@ -1817,11 +1824,11 @@ export default function CommunicationsPage() {
             <TableBody>
               {(maintenanceRequests ?? []).slice(0, 100).map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell>{new Date(row.createdAt).toLocaleString()}</TableCell>
+                  <TableCell>{fmtDate(row.createdAt)}</TableCell>
                   <TableCell>{row.title}</TableCell>
                   <TableCell><Badge variant="secondary">{row.status}</Badge></TableCell>
                   <TableCell>{row.priority}</TableCell>
-                  <TableCell>{row.responseDueAt ? new Date(row.responseDueAt).toLocaleString() : "-"}</TableCell>
+                  <TableCell>{row.responseDueAt ? fmtDate(row.responseDueAt) : "-"}</TableCell>
                   <TableCell>{row.escalationStage}</TableCell>
                   <TableCell className="space-x-2">
                     <Button size="sm" variant="outline" onClick={() => updateMaintenanceStatus.mutate({ id: row.id, status: "triaged" })} disabled={updateMaintenanceStatus.isPending}>Triage</Button>
@@ -1843,7 +1850,7 @@ export default function CommunicationsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-medium">{row.title}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">Created {new Date(row.createdAt).toLocaleString()}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Created {fmtDate(row.createdAt)}</div>
                   </div>
                   <Badge variant="secondary">{row.status}</Badge>
                 </div>
@@ -1852,7 +1859,7 @@ export default function CommunicationsPage() {
                   <Badge variant="outline">{row.escalationStage}</Badge>
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground">
-                  SLA due: {row.responseDueAt ? new Date(row.responseDueAt).toLocaleString() : "-"}
+                  SLA due: {row.responseDueAt ? fmtDate(row.responseDueAt) : "-"}
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <Button size="sm" variant="outline" onClick={() => updateMaintenanceStatus.mutate({ id: row.id, status: "triaged" })} disabled={updateMaintenanceStatus.isPending}>Triage</Button>
@@ -1897,7 +1904,7 @@ export default function CommunicationsPage() {
                   <TableCell><Badge variant="secondary">{row.status}</Badge></TableCell>
                   <TableCell>{row.recipientEmail}</TableCell>
                   <TableCell>{row.subjectRendered}</TableCell>
-                  <TableCell>{new Date(row.sentAt).toLocaleString()}</TableCell>
+                  <TableCell>{fmtDate(row.sentAt)}</TableCell>
                   <TableCell className="space-x-2">
                     <Button
                       size="sm"
@@ -1922,7 +1929,7 @@ export default function CommunicationsPage() {
                   <TableCell><Badge variant="outline">{row.status}</Badge></TableCell>
                   <TableCell>{row.recipientEmail}</TableCell>
                   <TableCell>{row.subjectRendered}</TableCell>
-                  <TableCell>{new Date(row.sentAt).toLocaleString()}</TableCell>
+                  <TableCell>{fmtDate(row.sentAt)}</TableCell>
                   <TableCell className="text-muted-foreground">Scheduled</TableCell>
                 </TableRow>
               ))}
@@ -1942,7 +1949,7 @@ export default function CommunicationsPage() {
                   </div>
                   <Badge variant="secondary">{row.status}</Badge>
                 </div>
-                <div className="mt-3 text-xs text-muted-foreground">Dispatch at: {new Date(row.sentAt).toLocaleString()}</div>
+                <div className="mt-3 text-xs text-muted-foreground">Dispatch at: {fmtDate(row.sentAt)}</div>
                 <div className="mt-4 flex gap-2">
                   <Button size="sm" className="flex-1" onClick={() => approveSend.mutate({ id: row.id, decision: "approved" })} disabled={approveSend.isPending}>
                     Approve
@@ -1962,7 +1969,7 @@ export default function CommunicationsPage() {
                   </div>
                   <Badge variant="outline">{row.status}</Badge>
                 </div>
-                <div className="mt-3 text-xs text-muted-foreground">Dispatch at: {new Date(row.sentAt).toLocaleString()}</div>
+                <div className="mt-3 text-xs text-muted-foreground">Dispatch at: {fmtDate(row.sentAt)}</div>
               </div>
             ))}
             {(pendingSends ?? []).length === 0 && (scheduledSends ?? []).length === 0 ? (
@@ -1981,15 +1988,31 @@ export default function CommunicationsPage() {
           </div>
           <div className="hidden md:block">
             <Table>
-              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Channel</TableHead><TableHead>Recipient</TableHead><TableHead>Subject</TableHead><TableHead>Related</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Channel</TableHead><TableHead>Delivery</TableHead><TableHead>Recipient</TableHead><TableHead>Subject</TableHead><TableHead>Related</TableHead></TableRow></TableHeader>
               <TableBody>
                 {filteredHistory.map((h) => (
                   <TableRow key={h.id}>
-                    <TableCell>{new Date(h.createdAt).toLocaleString()}</TableCell>
-                    <TableCell><Badge variant="secondary">{h.channel}</Badge></TableCell>
+                    <TableCell>{fmtDate(h.createdAt)}</TableCell>
+                    <TableCell>
+                      <Badge variant={h.channel === "email" ? "secondary" : "outline"}>{h.channel}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {h.deliveryStatus ? (
+                        <Badge variant={["delivered", "sent", "simulated"].includes(h.deliveryStatus) ? "default" : ["failed", "undelivered"].includes(h.deliveryStatus) ? "destructive" : "outline"}>
+                          {h.deliveryStatus}
+                        </Badge>
+                      ) : <span className="text-muted-foreground text-xs">-</span>}
+                    </TableCell>
                     <TableCell>{h.recipientEmail || "-"}</TableCell>
                     <TableCell>{h.subject || "-"}</TableCell>
-                    <TableCell>{h.relatedType || "-"} {h.relatedId || ""}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{h.relatedType || "-"}</span>
+                        {h.relatedId && filteredHistory.filter(r => r.relatedId === h.relatedId).length > 1 ? (
+                          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setDeliveryDetailRelatedId(h.relatedId)}>Details</Button>
+                        ) : null}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -2003,9 +2026,16 @@ export default function CommunicationsPage() {
                     <div className="text-sm font-medium">{h.subject || "Untitled communication"}</div>
                     <div className="mt-1 text-xs text-muted-foreground">{h.recipientEmail || "No recipient"}</div>
                   </div>
-                  <Badge variant="secondary">{h.channel}</Badge>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge variant={h.channel === "email" ? "secondary" : "outline"}>{h.channel}</Badge>
+                    {h.deliveryStatus && (
+                      <Badge variant={["delivered", "sent", "simulated"].includes(h.deliveryStatus) ? "default" : ["failed", "undelivered"].includes(h.deliveryStatus) ? "destructive" : "outline"} className="text-xs">
+                        {h.deliveryStatus}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-                <div className="mt-3 text-xs text-muted-foreground">{new Date(h.createdAt).toLocaleString()}</div>
+                <div className="mt-3 text-xs text-muted-foreground">{fmtDate(h.createdAt)}</div>
                 <div className="mt-2 text-xs text-muted-foreground">
                   Related: {h.relatedType || "-"} {h.relatedId || ""}
                 </div>
@@ -2086,7 +2116,7 @@ export default function CommunicationsPage() {
                       <TableCell>{rule.triggerOn}</TableCell>
                       <TableCell>{rule.daysRelativeToDue > 0 ? `+${rule.daysRelativeToDue}` : rule.daysRelativeToDue}</TableCell>
                       <TableCell>${(rule.minBalanceThreshold ?? 0).toFixed(2)}</TableCell>
-                      <TableCell>{rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "Never"}</TableCell>
+                      <TableCell>{rule.lastRunAt ? fmtDate(rule.lastRunAt) : "Never"}</TableCell>
                       <TableCell><Badge variant={rule.isActive ? "secondary" : "outline"}>{rule.isActive ? "active" : "paused"}</Badge></TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -2118,7 +2148,7 @@ export default function CommunicationsPage() {
                     </div>
                     <Badge variant={rule.isActive ? "secondary" : "outline"}>{rule.isActive ? "active" : "paused"}</Badge>
                   </div>
-                  <div className="text-xs text-muted-foreground">Last run: {rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : "Never"}</div>
+                  <div className="text-xs text-muted-foreground">Last run: {rule.lastRunAt ? fmtDate(rule.lastRunAt) : "Never"}</div>
                   <div className="flex gap-2">
                     <Button className="flex-1" size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={runReminderRule.isPending || !rule.isActive}>Run Now</Button>
                     <Button className="flex-1" size="sm" variant="outline" onClick={() => toggleReminderRule.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })} disabled={toggleReminderRule.isPending}>
@@ -2180,7 +2210,7 @@ export default function CommunicationsPage() {
                             <TableCell className="font-mono text-sm">{b.email}</TableCell>
                             <TableCell><Badge variant={b.type === "hard" ? "destructive" : "secondary"}>{b.type || "unknown"}</Badge></TableCell>
                             <TableCell className="text-sm text-muted-foreground">{b.reason || "—"}</TableCell>
-                            <TableCell className="text-sm">{b.bouncedAt ? new Date(b.bouncedAt).toLocaleDateString() : "—"}</TableCell>
+                            <TableCell className="text-sm">{b.bouncedAt ? fmtDate(b.bouncedAt) : "—"}</TableCell>
                             <TableCell>{b.retryCount}</TableCell>
                             <TableCell className="text-right">
                               {b.type !== "hard" ? (
@@ -2205,7 +2235,7 @@ export default function CommunicationsPage() {
                           <Badge variant={b.type === "hard" ? "destructive" : "secondary"}>{b.type || "unknown"}</Badge>
                         </div>
                         <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                          <span>{b.bouncedAt ? new Date(b.bouncedAt).toLocaleDateString() : "No date"}</span>
+                          <span>{b.bouncedAt ? fmtDate(b.bouncedAt) : "No date"}</span>
                           <span>{b.retryCount} retr{b.retryCount === 1 ? "y" : "ies"}</span>
                         </div>
                         {b.type !== "hard" ? (
@@ -2227,6 +2257,32 @@ export default function CommunicationsPage() {
         ) : null}
         </>
       ) : null}
+    </>
+  );
+}
+
+export default function CommunicationsPage() {
+  return (
+    <div className="p-6 space-y-6">
+      <WorkspacePageHeader
+        title="Communications"
+        summary="Send notices and publish community announcements."
+        eyebrow="Board & Governance"
+        breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Communications" }]}
+        subPages={boardGovernanceSubPages}
+      />
+      <Tabs defaultValue="communications" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="communications">Notices</TabsTrigger>
+          <TabsTrigger value="announcements">Announcements</TabsTrigger>
+        </TabsList>
+        <TabsContent value="communications" className="mt-0 space-y-6">
+          <CommunicationsContent />
+        </TabsContent>
+        <TabsContent value="announcements" className="mt-0 space-y-6">
+          <AnnouncementsContent />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -22,11 +22,15 @@ import {
   CheckCircle2,
   Circle,
   ChevronRight,
+  Vote,
+  Timer,
+  ClipboardCheck,
 } from "lucide-react";
 import { SetupWizard } from "@/components/setup-wizard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { useAssociationContext } from "@/context/association-context";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
@@ -145,6 +149,100 @@ function AlertRow({
   );
 }
 
+interface ActiveElectionSummary {
+  id: string;
+  title: string;
+  associationId: string;
+  status: string;
+  closesAt: string | null;
+  eligibleVoterCount: number;
+  castCount: number;
+  participationPercent: number;
+  quorumPercent: number;
+  quorumMet: boolean;
+}
+
+function formatTimeRemaining(closesAt: string): string {
+  const now = new Date();
+  const closes = new Date(closesAt);
+  const diffMs = closes.getTime() - now.getTime();
+  if (diffMs <= 0) return "Closed";
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ${hours % 24}h remaining`;
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  return `${hours}h ${minutes}m remaining`;
+}
+
+function ActiveElectionsCard({
+  elections,
+  loading,
+}: {
+  elections: ActiveElectionSummary[] | undefined;
+  loading: boolean;
+}) {
+  const openElections = (elections ?? []).filter((e) => e.status === "open");
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Vote className="h-4 w-4" />
+          Active Elections
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        ) : openElections.length === 0 ? (
+          <div className="text-center py-4">
+            <Vote className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+            <p className="text-sm text-muted-foreground">No active elections</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {openElections.map((election) => (
+              <Link key={election.id} href={`/app/governance/elections/${election.id}`}>
+                <div className="rounded-lg border bg-background p-3 transition-colors hover:bg-muted/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium truncate">{election.title}</span>
+                    <Badge
+                      variant={election.quorumMet ? "default" : "outline"}
+                      className="shrink-0 ml-2 text-xs"
+                    >
+                      {election.quorumMet ? "Quorum met" : "No quorum"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <Progress value={election.participationPercent} className="h-2 flex-1" />
+                    <span className="text-xs font-medium tabular-nums shrink-0">
+                      {election.participationPercent}%
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {election.castCount} of {election.eligibleVoterCount} voted
+                    </span>
+                    {election.closesAt && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {formatTimeRemaining(election.closesAt)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
 
 function QuickActions({
@@ -243,11 +341,23 @@ function AlertsPanel({
   alerts,
   loading,
   activeAssociationId,
+  activeElections,
 }: {
   alerts: DashboardAlerts | undefined;
   loading: boolean;
   activeAssociationId: string | null;
+  activeElections?: ActiveElectionSummary[];
 }) {
+  const electionsClosingSoon = (activeElections ?? []).filter((e) => {
+    if (e.status !== "open" || !e.closesAt) return false;
+    const hoursLeft = (new Date(e.closesAt).getTime() - Date.now()) / (1000 * 60 * 60);
+    return hoursLeft > 0 && hoursLeft <= 48;
+  });
+
+  const electionsAwaitingCertification = (activeElections ?? []).filter(
+    (e) => e.status === "closed",
+  );
+
   const totalAlerts =
     (alerts?.workOrders.urgent ?? 0) +
     (alerts?.workOrders.stalledOpen ?? 0) +
@@ -256,7 +366,9 @@ function AlertsPanel({
     (alerts?.vendorInsurance.expired ?? 0) +
     (alerts?.vendorInsurance.dueSoon ?? 0) +
     (alerts?.delinquentAccounts.count ?? 0) +
-    (alerts?.orphanWarnings ?? []).reduce((sum, w) => sum + w.count, 0);
+    (alerts?.orphanWarnings ?? []).reduce((sum, w) => sum + w.count, 0) +
+    electionsClosingSoon.length +
+    electionsAwaitingCertification.length;
 
   return (
     <div className="rounded-xl border bg-muted/10 p-4 space-y-4">
@@ -359,6 +471,52 @@ function AlertsPanel({
               href="/app/persons"
             />
           ))}
+          {electionsClosingSoon.map((election) => (
+            <div key={`closing-${election.id}`} className="rounded-lg border bg-background p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                    <Timer className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">Election closing soon: {election.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {election.closesAt ? formatTimeRemaining(election.closesAt) : ""} — {election.participationPercent}% participation
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 sm:justify-end">
+                  <Badge variant="destructive">1</Badge>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/app/governance/elections/${election.id}`}>Review</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {electionsAwaitingCertification.map((election) => (
+            <div key={`certify-${election.id}`} className="rounded-lg border bg-background p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400">
+                    <ClipboardCheck className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">Election awaiting certification: {election.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Voting closed — {election.participationPercent}% participation, {election.quorumMet ? "quorum met" : "quorum not met"}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 sm:justify-end">
+                  <Badge variant="destructive">1</Badge>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/app/governance/elections/${election.id}`}>Certify</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -374,11 +532,11 @@ export default function DashboardPage() {
   const adminRole: AdminRole | null = authSession?.admin?.role ?? null;
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/dashboard/stats"],
+    queryKey: ["/api/dashboard/stats", activeAssociationId],
   });
 
   const { data: associations = [], isLoading: associationsLoading } = useQuery<AssociationSummary[]>({
-    queryKey: ["/api/associations"],
+    queryKey: ["/api/associations", activeAssociationId],
   });
 
   const alertsQueryKey = activeAssociationId
@@ -387,6 +545,14 @@ export default function DashboardPage() {
 
   const { data: alerts, isLoading: alertsLoading } = useQuery<DashboardAlerts>({
     queryKey: alertsQueryKey,
+  });
+
+  const electionsQueryKey = activeAssociationId
+    ? [`/api/elections/active-summary?associationId=${activeAssociationId}`]
+    : ["/api/elections/active-summary"];
+
+  const { data: activeElections, isLoading: electionsLoading } = useQuery<ActiveElectionSummary[]>({
+    queryKey: electionsQueryKey,
   });
 
   const { data: onboardingState } = useQuery<{
@@ -515,6 +681,8 @@ export default function DashboardPage() {
 
       <QuickActions activeAssociationId={activeAssociationId} onNewAssociation={() => setWizardOpen(true)} adminRole={adminRole} />
 
+      <ActiveElectionsCard elections={activeElections} loading={electionsLoading} />
+
       {activeAssociationId && onboardingState && onboardingState.state !== "complete" && (
         <Card>
           <CardHeader className="pb-3">
@@ -566,6 +734,7 @@ export default function DashboardPage() {
         alerts={alerts}
         loading={alertsLoading}
         activeAssociationId={activeAssociationId}
+        activeElections={activeElections}
       />
 
       <AsyncStateBoundary

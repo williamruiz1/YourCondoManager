@@ -4,6 +4,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { initializeAuth } from "./auth";
+import { runAutomaticSpecialAssessmentInstallments } from "./assessment-installments";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
@@ -12,6 +13,7 @@ import { pool, db } from "./db";
 import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { recurringChargeSchedules, recurringChargeRuns, ownerships, units, ownerLedgerEntries } from "@shared/schema";
 import { log } from "./logger";
+import { startElectionScheduler } from "./election-scheduler";
 
 dotenv.config();
 dotenv.config({ path: ".env.local", override: true });
@@ -73,7 +75,10 @@ app.use(session({
     createTableIfMissing: true,
     tableName: "user_sessions",
   }),
-  name: "sid",
+  // Use a different name in development so the Replit IDE preview session
+  // cookie never collides with the published app's "sid" cookie when both
+  // are open in the same browser.
+  name: isProduction ? "sid" : "sid_dev",
   secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
@@ -196,14 +201,15 @@ async function runDueRecurringCharges(): Promise<{ succeeded: number; failed: nu
 }
 
 async function runAutomationSweep() {
-  const [scheduledResult, escalationResult, boardPackageResult, recurringResult] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult, recurringResult, assessmentResult] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
     storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
     runDueRecurringCharges(),
+    runAutomaticSpecialAssessmentInstallments(),
   ]);
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, recurring charges succeeded=${recurringResult.succeeded} failed=${recurringResult.failed} skipped=${recurringResult.skipped}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, recurring charges succeeded=${recurringResult.succeeded} failed=${recurringResult.failed} skipped=${recurringResult.skipped}, assessment installments associations=${assessmentResult.associationsProcessed} posted=${assessmentResult.entriesCreated} alreadyPosted=${assessmentResult.alreadyPosted} skipped=${assessmentResult.skippedUnits}`,
     "automation",
   );
 }
@@ -321,6 +327,7 @@ app.use((req, res, next) => {
     () => {
       log(`serving on port ${port}`);
       startAutomationJobs();
+      startElectionScheduler();
     },
   );
 })();

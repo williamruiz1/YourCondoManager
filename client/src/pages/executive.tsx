@@ -3,6 +3,8 @@ import { useForm } from "react-hook-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { platformSubPages } from "@/lib/sub-page-nav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -220,20 +222,23 @@ export default function ExecutivePage() {
 
   return (
     <div className="p-4 md:p-6 space-y-4" data-testid="page-executive">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Executive Delivery Deck</h1>
-          <p className="text-sm text-muted-foreground">Slide format: one project per slide with a problem-solution-features table.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => createTemplateMutation.mutate()} disabled={createTemplateMutation.isPending} data-testid="button-create-slide-template">
-            {createTemplateMutation.isPending ? "Creating..." : "Create Slide Template"}
-          </Button>
-          <Button onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending} data-testid="button-sync-executive-from-roadmap">
-            {syncMutation.isPending ? "Syncing..." : "Sync from Roadmap"}
-          </Button>
-        </div>
-      </div>
+      <WorkspacePageHeader
+        title="Executive Delivery Deck"
+        summary="Slide format: one project per slide with a problem-solution-features table."
+        eyebrow="Platform"
+        breadcrumbs={[{ label: "Platform", href: "/app/platform/controls" }, { label: "Executive Delivery Deck" }]}
+        subPages={platformSubPages}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => createTemplateMutation.mutate()} disabled={createTemplateMutation.isPending} data-testid="button-create-slide-template">
+              {createTemplateMutation.isPending ? "Creating..." : "Create Slide Template"}
+            </Button>
+            <Button onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending} data-testid="button-sync-executive-from-roadmap">
+              {syncMutation.isPending ? "Syncing..." : "Sync from Roadmap"}
+            </Button>
+          </div>
+        }
+      />
 
       <Tabs defaultValue="highlights" className="space-y-4">
         <TabsList>
