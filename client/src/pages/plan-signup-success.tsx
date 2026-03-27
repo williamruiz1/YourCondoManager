@@ -119,7 +119,7 @@ export default function PlanSignupSuccessPage() {
       <div className="min-h-screen bg-surface-container-lowest flex flex-col px-6">
         <div className="py-6 px-2">
           <a href="/" className="font-headline text-xl font-semibold italic tracking-tight text-primary hover:opacity-80 transition-opacity">
-            CondoManager
+            Your Condo Manager
           </a>
         </div>
         <div className="flex-1 flex items-center justify-center">
@@ -147,7 +147,7 @@ export default function PlanSignupSuccessPage() {
       <div className="min-h-screen bg-surface-container-lowest flex flex-col px-6">
         <div className="py-6 px-2">
           <a href="/" className="font-headline text-xl font-semibold italic tracking-tight text-primary hover:opacity-80 transition-opacity">
-            CondoManager
+            Your Condo Manager
           </a>
         </div>
         <div className="flex-1 flex items-center justify-center">
@@ -171,7 +171,7 @@ export default function PlanSignupSuccessPage() {
     <div className="min-h-screen bg-surface-container-lowest flex flex-col px-6">
       <div className="py-6 px-2">
         <a href="/" className="font-headline text-xl font-semibold italic tracking-tight text-primary hover:opacity-80 transition-opacity">
-          CondoManager
+          Your Condo Manager
         </a>
       </div>
       <div className="flex-1 flex items-center justify-center">

@@ -662,18 +662,18 @@ export default function PlatformControlsPage() {
       <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-background">
         <CardHeader>
           <div className="flex items-center gap-2 mb-1">
-            <Badge variant="secondary" className="text-xs font-medium uppercase tracking-wide">About CondoManager</Badge>
+            <Badge variant="secondary" className="text-xs font-medium uppercase tracking-wide">About Your Condo Manager</Badge>
           </div>
           <CardTitle className="text-2xl font-bold leading-snug">
             The All-in-One Platform Built for Condo &amp; HOA Management
           </CardTitle>
           <CardDescription className="text-base text-foreground/70 leading-relaxed mt-1">
-            CondoManager gives property managers, boards, and residents one connected platform — eliminating spreadsheets, disconnected tools, and costly manual work.
+            Your Condo Manager gives property managers, boards, and residents one connected platform — eliminating spreadsheets, disconnected tools, and costly manual work.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Managing a condominium association shouldn't require a dozen different tools. CondoManager unifies every aspect of association operations — from financial ledgers and automated billing to owner portals and board governance — into a single, audit-ready platform. Whether you oversee one building or a portfolio of hundreds of properties, CondoManager scales with your business and keeps every stakeholder informed.
+            Managing a condominium association shouldn't require a dozen different tools. Your Condo Manager unifies every aspect of association operations — from financial ledgers and automated billing to owner portals and board governance — into a single, audit-ready platform. Whether you oversee one building or a portfolio of hundreds of properties, Your Condo Manager scales with your business and keeps every stakeholder informed.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -704,7 +704,7 @@ export default function PlatformControlsPage() {
           </div>
 
           <div className="rounded-lg border bg-background p-4 space-y-2">
-            <div className="text-sm font-semibold">Why CondoManager?</div>
+            <div className="text-sm font-semibold">Why Your Condo Manager?</div>
             <ul className="text-xs text-muted-foreground space-y-1.5 list-none">
               <li className="flex items-start gap-2"><span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-1.5" /><span><strong className="text-foreground/80">Built for scale:</strong> Multi-association isolation ensures data, permissions, and billing are always clean across every property in your portfolio.</span></li>
               <li className="flex items-start gap-2"><span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-1.5" /><span><strong className="text-foreground/80">Reduce admin overhead:</strong> Automate the repeatable work — assessments, late fee runs, recurring charges, and reminders — so your team focuses on residents, not spreadsheets.</span></li>
@@ -714,7 +714,7 @@ export default function PlatformControlsPage() {
           </div>
 
           <p className="text-xs text-muted-foreground italic">
-            CondoManager is trusted by property management companies to operate with confidence, consistency, and complete control — from the first unit to the full portfolio.
+            Your Condo Manager is trusted by property management companies to operate with confidence, consistency, and complete control — from the first unit to the full portfolio.
           </p>
         </CardContent>
       </Card>

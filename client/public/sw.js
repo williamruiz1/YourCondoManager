@@ -18,10 +18,10 @@ self.addEventListener("push", (event) => {
   try {
     payload = event.data.json();
   } catch {
-    payload = { title: "CondoManager", body: event.data.text() };
+    payload = { title: "Your Condo Manager", body: event.data.text() };
   }
 
-  const title = payload.title || "CondoManager";
+  const title = payload.title || "Your Condo Manager";
   const options = {
     body: payload.body || "",
     icon: payload.icon || "/favicon.png",

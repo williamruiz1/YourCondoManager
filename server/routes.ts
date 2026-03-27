@@ -7743,7 +7743,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           continue;
         }
         const ownerName = personNameMap.get(access.personId) || "Resident";
-        const formattedBody = `Your CondoManager on behalf of ${associationName} to ${ownerName}\n${body}`;
+        const formattedBody = `Your Condo Manager on behalf of ${associationName} to ${ownerName}\n${body}`;
         const result = await sendSms({ to: toNumber, body: formattedBody, from: fromNumber, associationId });
         await db.insert(communicationHistory).values({
           associationId,
@@ -8190,7 +8190,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Send email to admin
       const emailBody = `
-Demo Request from CondoManager Website
+Demo Request from Your Condo Manager Website
 
 Name: ${name}
 Email: ${email}
@@ -8200,7 +8200,7 @@ Message:
 ${message || "No message provided"}
 
 ---
-This is an automated demo request from the CondoManager website.
+This is an automated demo request from the Your Condo Manager website.
       `.trim();
 
       const notification = await sendPlatformAdminEmailNotification({
@@ -8215,7 +8215,7 @@ This is an automated demo request from the CondoManager website.
 
       if (notification.recipients.length === 0) {
         await sendPlatformEmail({
-          to: "yourcondomanager@gmail.com",
+          to: "contact@yourcondomanager.org",
           subject: `New Demo Request: ${name}`,
           text: emailBody,
           replyTo: email,
@@ -10722,6 +10722,30 @@ This is an automated demo request from the CondoManager website.
     }
   });
 
+  const portalNoticeHtmlToText = (value: string | null | undefined): string => {
+    if (!value) return "";
+
+    return value
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<(br|\/p|\/div|\/li|\/tr|\/h[1-6])\s*\/?>/gi, "\n")
+      .replace(/<li[^>]*>/gi, "- ")
+      .replace(/<\/(ul|ol)>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, "\"")
+      .replace(/&#39;/gi, "'")
+      .replace(/&mdash;/gi, "—")
+      .replace(/\r/g, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  };
+
   app.get("/api/portal/notices", requirePortal, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getPortalCommunicationHistory(req.portalAccessId || "");
@@ -10741,7 +10765,7 @@ This is an automated demo request from the CondoManager website.
       const noticeRows = result.filter((row) => (row.relatedType || "").startsWith("notice"));
       res.json(noticeRows.map((row) => ({
         ...row,
-        bodyRendered: row.relatedId ? (noticeBodyById.get(row.relatedId) ?? null) : null,
+        bodyText: portalNoticeHtmlToText(row.relatedId ? (noticeBodyById.get(row.relatedId) ?? row.bodySnippet ?? null) : row.bodySnippet),
       })));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -11858,10 +11882,10 @@ This is an automated demo request from the CondoManager website.
         category: "adminAccess",
         priority: "realtime",
         email: {
-          subject: `Your CondoManager admin access has been ${isActive ? "enabled" : "disabled"}`,
-          html: `<p>Your CondoManager admin account access has been <strong>${isActive ? "enabled" : "disabled"}</strong>.</p>
+          subject: `Your Condo Manager admin access has been ${isActive ? "enabled" : "disabled"}`,
+          html: `<p>Your Condo Manager admin account access has been <strong>${isActive ? "enabled" : "disabled"}</strong>.</p>
             <p>Changed by: ${req.adminUserEmail || "system"}</p>`,
-          text: `Your CondoManager admin account access has been ${isActive ? "enabled" : "disabled"}.\nChanged by: ${req.adminUserEmail || "system"}`,
+          text: `Your Condo Manager admin account access has been ${isActive ? "enabled" : "disabled"}.\nChanged by: ${req.adminUserEmail || "system"}`,
         },
       }).catch((error) => console.error("[admin-access] Failed to send active status notification:", error));
     } catch (error: any) {
@@ -11892,11 +11916,11 @@ This is an automated demo request from the CondoManager website.
         category: "adminAccess",
         priority: "realtime",
         email: {
-          subject: `Your CondoManager admin role is now ${role}`,
-          html: `<p>Your CondoManager admin role has been updated to <strong>${role}</strong>.</p>
+          subject: `Your Condo Manager admin role is now ${role}`,
+          html: `<p>Your Condo Manager admin role has been updated to <strong>${role}</strong>.</p>
             <p>Changed by: ${req.adminUserEmail || "system"}</p>
             <p>Reason: ${typeof reason === "string" && reason.trim() ? reason.trim() : "No reason provided"}</p>`,
-          text: `Your CondoManager admin role has been updated to ${role}.\nChanged by: ${req.adminUserEmail || "system"}\nReason: ${typeof reason === "string" && reason.trim() ? reason.trim() : "No reason provided"}`,
+          text: `Your Condo Manager admin role has been updated to ${role}.\nChanged by: ${req.adminUserEmail || "system"}\nReason: ${typeof reason === "string" && reason.trim() ? reason.trim() : "No reason provided"}`,
         },
       }).catch((error) => console.error("[admin-access] Failed to send role change notification:", error));
     } catch (error: any) {
@@ -12141,7 +12165,7 @@ This is an automated demo request from the CondoManager website.
       if (!associationId) return res.status(400).json({ message: "No association context" });
       const sub = await storage.getPlatformSubscription(associationId);
       if (!sub?.stripeCustomerId) return res.status(400).json({ message: "No billing account found" });
-      const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.condomanager.com";
+      const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.yourcondomanager.org";
       const params = new URLSearchParams({ customer: sub.stripeCustomerId, return_url: `${baseUrl}/app/platform/controls` });
       const session = await stripeRequest("POST", "/billing_portal/sessions", params);
       res.json({ url: session.url });
@@ -12219,7 +12243,7 @@ This is an automated demo request from the CondoManager website.
       const [adminUser] = await db.insert(adminUsers).values({ email: email.toLowerCase().trim(), role: "platform-admin", isActive: 0 }).returning();
 
       // Create Stripe Checkout Session
-      const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.condomanager.com";
+      const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.yourcondomanager.org";
       const sessionParams = new URLSearchParams({
         mode: "subscription",
         payment_method_collection: "if_required",
@@ -12329,9 +12353,9 @@ This is an automated demo request from the CondoManager website.
             if (assocAdminEmail) {
               await sendPlatformEmail({
                 to: assocAdminEmail,
-                subject: "Action required: payment failed for your CondoManager subscription",
-                html: `<p>Hi,</p><p>We were unable to process your payment for your <strong>${sub.plan}</strong> CondoManager subscription.</p><p>Please update your payment method to continue using CondoManager without interruption.</p><p><a href="https://app.condomanager.com/app/platform/controls">Update payment method →</a></p>`,
-                text: `Your CondoManager ${sub.plan} subscription payment failed. Please update your payment method at https://app.condomanager.com/app/platform/controls`,
+                subject: "Action required: payment failed for your Your Condo Manager subscription",
+                html: `<p>Hi,</p><p>We were unable to process your payment for your <strong>${sub.plan}</strong> Your Condo Manager subscription.</p><p>Please update your payment method to continue using Your Condo Manager without interruption.</p><p><a href="https://app.yourcondomanager.org/app/platform/controls">Update payment method →</a></p>`,
+                text: `Your Condo Manager ${sub.plan} subscription payment failed. Please update your payment method at https://app.yourcondomanager.org/app/platform/controls`,
               }).catch(() => {});
             }
           }

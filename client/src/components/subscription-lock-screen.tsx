@@ -53,7 +53,7 @@ export function SubscriptionLockScreen({
             Update Payment Method
           </button>
           <a
-            href="mailto:support@condomanager.com"
+            href="mailto:support@yourcondomanager.org"
             className="block w-full text-sm font-body text-muted-foreground hover:text-foreground transition-colors py-1"
           >
             Contact Support

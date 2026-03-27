@@ -213,7 +213,7 @@ type UnitBalance = {
 };
 
 type PortalNoticeHistory = CommunicationHistory & {
-  bodyRendered?: string | null;
+  bodyText?: string | null;
 };
 
 function formatUnitContextLabel(building?: string | null, unitNumber?: string | null) {
@@ -1509,8 +1509,8 @@ export default function OwnerPortalPage() {
     ...recentOwnerNotices.map((notice) => ({
       id: `notice-${notice.id}`,
       title: notice.subject || "Association notice",
-      snippet: stripHtml(notice.bodyRendered || notice.bodySnippet) || "Review the latest association message.",
-      detail: notice.bodyRendered || notice.bodySnippet || "No message body available.",
+      snippet: (notice.bodyText || notice.bodySnippet || "").trim() || "Review the latest association message.",
+      detail: (notice.bodyText || notice.bodySnippet || "").trim() || "No message body available.",
       createdAt: notice.createdAt,
       kind: "notice" as const,
       scopeLabel: hasMultipleUnits ? "Association-wide" : unitLabel || "Association-wide",
@@ -1521,8 +1521,8 @@ export default function OwnerPortalPage() {
     ...maintenanceUpdates.map((notice) => ({
       id: `maintenance-update-${notice.id}`,
       title: notice.subject || "Maintenance update",
-      snippet: stripHtml(notice.bodyRendered || notice.bodySnippet) || "There is an update on your maintenance request.",
-      detail: notice.bodyRendered || notice.bodySnippet || "No message body available.",
+      snippet: (notice.bodyText || notice.bodySnippet || "").trim() || "There is an update on your maintenance request.",
+      detail: (notice.bodyText || notice.bodySnippet || "").trim() || "No message body available.",
       createdAt: notice.createdAt,
       kind: "maintenance" as const,
       scopeLabel: "Unit-specific",
@@ -4115,8 +4115,7 @@ export default function OwnerPortalPage() {
             {ownerMessageCenterItems.map((item) => {
               const isExpanded = expandedNoticeId === item.id;
               const isRead = readNoticeIds.includes(item.id);
-              const isHtml = (item.detail || "").trimStart().startsWith("<");
-              const renderedPreview = item.snippet || stripHtml(item.detail);
+              const renderedPreview = item.snippet || item.detail;
               return (
                 <div key={item.id} className="overflow-hidden rounded-xl border">
                   <button
@@ -4153,27 +4152,9 @@ export default function OwnerPortalPage() {
                   </button>
                   {isExpanded && (
                     <div className="border-t bg-muted/10">
-                      {isHtml ? (
-                        <iframe
-                          srcDoc={item.detail ?? ""}
-                          className="w-full border-0 bg-white"
-                          style={{ minHeight: isMobile ? "420px" : "520px" }}
-                          onLoad={(e) => {
-                            const iframe = e.currentTarget;
-                            const doc = iframe.contentDocument;
-                            const body = doc?.body;
-                            const html = doc?.documentElement;
-                            const height = Math.max(body?.scrollHeight ?? 0, html?.scrollHeight ?? 0);
-                            if (height > 0) iframe.style.height = `${height + 24}px`;
-                          }}
-                          sandbox="allow-same-origin"
-                          title={item.title}
-                        />
-                      ) : (
-                        <div className="px-4 py-3 text-sm whitespace-pre-wrap">
-                          {item.detail || "No message body available."}
-                        </div>
-                      )}
+                      <div className="px-4 py-3 text-sm whitespace-pre-wrap break-words">
+                        {item.detail || "No message body available."}
+                      </div>
                     </div>
                   )}
                 </div>

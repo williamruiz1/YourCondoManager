@@ -104,7 +104,7 @@ function SidebarContents({
   return (
     <>
       <div className="mb-10 px-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-primary font-serif italic">CondoManager</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-primary font-serif italic">Your Condo Manager</h1>
         <p className="text-[10px] text-on-surface-variant/60 italic mt-0.5">Community management, elevated.</p>
       </div>
 
@@ -151,7 +151,7 @@ function SidebarContents({
 
       <div className="mt-auto pt-6 border-t border-outline-variant/10 space-y-2 px-4">
         <a
-          href="mailto:support@condomanager.com"
+          href="mailto:support@yourcondomanager.org"
           className="w-full bg-primary text-on-primary rounded-lg py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
         >
           <span className="material-symbols-outlined text-sm">support_agent</span>

@@ -60,7 +60,7 @@ export default function SolutionsPage({
   useEffect(() => {
     trackEvent("page_view", {
       page_path: "/solutions",
-      page_title: "Solutions - CondoManager",
+      page_title: "Solutions - Your Condo Manager",
     });
 
     const handleScroll = () => {
@@ -102,7 +102,7 @@ export default function SolutionsPage({
         <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 h-16 flex items-center justify-between gap-6">
           {/* Logo */}
           <Link href="/" className="shrink-0">
-            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">CondoManager</span>
+            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">Your Condo Manager</span>
           </Link>
 
           {/* Nav links — desktop */}
@@ -211,7 +211,7 @@ export default function SolutionsPage({
                 <i className="font-light">Modern Excellence.</i>
               </h1>
               <p className="text-xl text-on-surface-variant dark:text-slate-400 max-w-xl leading-relaxed">
-                CondoManager provides the architectural framework for high-performance property
+                Your Condo Manager provides the architectural framework for high-performance property
                 ecosystems—from independent boards to global management firms.
               </p>
             </div>
@@ -527,7 +527,7 @@ export default function SolutionsPage({
                 Ready to elevate your estate?
               </h2>
               <p className="text-xl text-on-primary/70 dark:text-blue-100 mb-12 max-w-xl mx-auto">
-                Join the leading properties that have standardized their operations on CondoManager.
+                Join the leading properties that have standardized their operations on Your Condo Manager.
               </p>
               <div className="flex flex-col sm:flex-row justify-center gap-6">
                 <button
@@ -536,14 +536,14 @@ export default function SolutionsPage({
                     setDemoModalOpen(true);
                   }}
                   className="bg-white dark:bg-slate-100 text-primary dark:text-blue-900 px-10 py-4 rounded font-bold text-lg hover:bg-slate-50 dark:hover:bg-slate-200 transition-all shadow-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary dark:focus:ring-offset-blue-900"
-                  aria-label="Request a demo of CondoManager solutions"
+                  aria-label="Request a demo of Your Condo Manager solutions"
                 >
                   Request a Demo
                 </button>
                 <Link href="/pricing" onClick={() => handleCTAClick("view_pricing", "cta_footer")}>
                   <button
                     className="border border-white/30 dark:border-blue-400/30 text-white dark:text-blue-100 px-10 py-4 rounded font-bold text-lg hover:bg-white/10 dark:hover:bg-white/5 transition-all focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary dark:focus:ring-offset-blue-900"
-                    aria-label="View CondoManager pricing"
+                    aria-label="View Your Condo Manager pricing"
                   >
                     View Pricing
                   </button>
@@ -559,7 +559,7 @@ export default function SolutionsPage({
       <footer className="bg-slate-50 dark:bg-slate-900 w-full border-t border-slate-200 dark:border-slate-800" role="contentinfo">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 px-12 py-16 w-full max-w-screen-2xl mx-auto">
           <div className="space-y-6">
-            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">CondoManager</div>
+            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">Your Condo Manager</div>
             <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed">
               Setting the standard for architectural excellence in property management software.
               Trusted by over 5,000 associations globally.
@@ -627,7 +627,7 @@ export default function SolutionsPage({
             </div>
             <div className="mt-8 md:mt-0">
               <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                © {new Date().getFullYear()} CondoManager. The Modern Estate Excellence.
+                © {new Date().getFullYear()} Your Condo Manager. The Modern Estate Excellence.
               </p>
             </div>
           </div>

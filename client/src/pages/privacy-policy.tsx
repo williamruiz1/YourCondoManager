@@ -26,7 +26,7 @@ export default function PrivacyPolicyPage({
           {/* Logo */}
           <Link href="/" className="shrink-0">
             <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">
-              CondoManager
+              Your Condo Manager
             </span>
           </Link>
 
@@ -156,10 +156,10 @@ export default function PrivacyPolicyPage({
                 Introduction
               </h2>
               <p className="text-slate-700 dark:text-slate-300 mb-4">
-                CondoManager ("Company," "we," "us," or "our") operates the CondoManager platform (the "Service"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website and use our application.
+                Your Condo Manager ("Company," "we," "us," or "our") operates the Your Condo Manager platform (the "Service"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website and use our application.
               </p>
               <p className="text-slate-700 dark:text-slate-300">
-                Please read this Privacy Policy carefully. If you do not agree with our policies and practices, please do not use our Service. By accessing and using CondoManager, you acknowledge that you have read, understood, and agree to be bound by all the provisions of this Privacy Policy.
+                Please read this Privacy Policy carefully. If you do not agree with our policies and practices, please do not use our Service. By accessing and using Your Condo Manager, you acknowledge that you have read, understood, and agree to be bound by all the provisions of this Privacy Policy.
               </p>
             </section>
 
@@ -289,7 +289,7 @@ export default function PrivacyPolicyPage({
                 <li><strong>Right to Restrict Processing:</strong> You can restrict how we use your data</li>
               </ul>
               <p className="text-slate-700 dark:text-slate-300">
-                To exercise these rights, please contact us at <a href="mailto:privacy@condomanager.com" className="text-primary hover:underline">privacy@condomanager.com</a> with your request. We will respond within 30 days.
+                To exercise these rights, please contact us at <a href="mailto:privacy@yourcondomanager.org" className="text-primary hover:underline">privacy@yourcondomanager.org</a> with your request. We will respond within 30 days.
               </p>
             </section>
 
@@ -381,15 +381,15 @@ export default function PrivacyPolicyPage({
                 If you have questions, concerns, or requests regarding this Privacy Policy or our privacy practices, please contact us at:
               </p>
               <div className="bg-slate-100 dark:bg-slate-800 p-6 rounded-lg mb-4">
-                <p className="text-slate-900 dark:text-slate-100 font-semibold mb-3">CondoManager Privacy Team</p>
+                <p className="text-slate-900 dark:text-slate-100 font-semibold mb-3">Your Condo Manager Privacy Team</p>
                 <p className="text-slate-700 dark:text-slate-300 mb-2">
-                  <strong>Email:</strong> <a href="mailto:privacy@condomanager.com" className="text-primary hover:underline">privacy@condomanager.com</a>
+                  <strong>Email:</strong> <a href="mailto:privacy@yourcondomanager.org" className="text-primary hover:underline">privacy@yourcondomanager.org</a>
                 </p>
                 <p className="text-slate-700 dark:text-slate-300 mb-2">
-                  <strong>Support:</strong> <a href="mailto:support@condomanager.com" className="text-primary hover:underline">support@condomanager.com</a>
+                  <strong>Support:</strong> <a href="mailto:support@yourcondomanager.org" className="text-primary hover:underline">support@yourcondomanager.org</a>
                 </p>
                 <p className="text-slate-700 dark:text-slate-300">
-                  <strong>Address:</strong> CondoManager Inc., Property Management Software, United States
+                  <strong>Address:</strong> Your Condo Manager Inc., Property Management Software, United States
                 </p>
               </div>
               <p className="text-slate-700 dark:text-slate-300">
@@ -404,7 +404,7 @@ export default function PrivacyPolicyPage({
       <footer className="bg-slate-50 dark:bg-slate-900 w-full border-t border-slate-200 dark:border-slate-800" role="contentinfo">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 px-12 py-16 w-full max-w-screen-2xl mx-auto">
           <div className="space-y-6">
-            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">CondoManager</div>
+            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">Your Condo Manager</div>
             <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed">
               Setting the standard for architectural excellence in property management software.
               Trusted by over 5,000 associations globally.
@@ -472,7 +472,7 @@ export default function PrivacyPolicyPage({
             </div>
             <div className="mt-8 md:mt-0">
               <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                © {new Date().getFullYear()} CondoManager. The Modern Estate Excellence.
+                © {new Date().getFullYear()} Your Condo Manager. The Modern Estate Excellence.
               </p>
             </div>
           </div>

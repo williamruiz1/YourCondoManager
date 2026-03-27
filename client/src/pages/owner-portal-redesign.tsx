@@ -215,7 +215,7 @@ type UnitBalance = {
 };
 
 type PortalNoticeHistory = CommunicationHistory & {
-  bodyRendered?: string | null;
+  bodyText?: string | null;
 };
 
 function formatUnitContextLabel(building?: string | null, unitNumber?: string | null) {

@@ -26,7 +26,7 @@ export default function TermsOfServicePage({
           {/* Logo */}
           <Link href="/" className="shrink-0">
             <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">
-              CondoManager
+              Your Condo Manager
             </span>
           </Link>
 
@@ -156,7 +156,7 @@ export default function TermsOfServicePage({
                 Agreement to Terms
               </h2>
               <p className="text-slate-700 dark:text-slate-300">
-                These Terms of Service ("Terms," "Agreement") constitute a legal agreement between you ("User," "you," "your") and CondoManager ("Company," "we," "us," "our"). By accessing and using the CondoManager platform (the "Service"), you acknowledge that you have read, understood, and agree to be bound by all terms and conditions outlined in this Agreement. If you do not agree with any part of these Terms, you must immediately stop using the Service.
+                These Terms of Service ("Terms," "Agreement") constitute a legal agreement between you ("User," "you," "your") and Your Condo Manager ("Company," "we," "us," "our"). By accessing and using the Your Condo Manager platform (the "Service"), you acknowledge that you have read, understood, and agree to be bound by all terms and conditions outlined in this Agreement. If you do not agree with any part of these Terms, you must immediately stop using the Service.
               </p>
             </section>
 
@@ -165,7 +165,7 @@ export default function TermsOfServicePage({
                 1. Use License
               </h2>
               <p className="text-slate-700 dark:text-slate-300 mb-4">
-                CondoManager grants you a limited, non-exclusive, non-transferable, revocable license to access and use the Service for lawful purposes only. You agree not to:
+                Your Condo Manager grants you a limited, non-exclusive, non-transferable, revocable license to access and use the Service for lawful purposes only. You agree not to:
               </p>
               <ul className="list-disc list-inside text-slate-700 dark:text-slate-300 space-y-2">
                 <li>Reproduce, duplicate, copy, sell, resell, or exploit the Service</li>
@@ -184,7 +184,7 @@ export default function TermsOfServicePage({
                 2. User Accounts
               </h2>
               <p className="text-slate-700 dark:text-slate-300 mb-4">
-                To use CondoManager, you may be required to create an account. You are responsible for:
+                To use Your Condo Manager, you may be required to create an account. You are responsible for:
               </p>
               <ul className="list-disc list-inside text-slate-700 dark:text-slate-300 space-y-2 mb-4">
                 <li>Providing accurate, complete, and current information during registration</li>
@@ -194,7 +194,7 @@ export default function TermsOfServicePage({
                 <li>Complying with all applicable laws while using the Service</li>
               </ul>
               <p className="text-slate-700 dark:text-slate-300">
-                CondoManager reserves the right to suspend or terminate your account if you violate these Terms or engage in unauthorized activity.
+                Your Condo Manager reserves the right to suspend or terminate your account if you violate these Terms or engage in unauthorized activity.
               </p>
             </section>
 
@@ -203,10 +203,10 @@ export default function TermsOfServicePage({
                 3. Intellectual Property Rights
               </h2>
               <p className="text-slate-700 dark:text-slate-300 mb-4">
-                All content, features, and functionality of the Service—including but not limited to text, graphics, logos, images, software, and documentation—are the exclusive property of CondoManager or its content providers and are protected by copyright, trademark, and other intellectual property laws.
+                All content, features, and functionality of the Service—including but not limited to text, graphics, logos, images, software, and documentation—are the exclusive property of Your Condo Manager or its content providers and are protected by copyright, trademark, and other intellectual property laws.
               </p>
               <p className="text-slate-700 dark:text-slate-300">
-                You retain all rights to any content you submit to the Service. However, by submitting content, you grant CondoManager a worldwide, royalty-free, perpetual license to use, reproduce, modify, and distribute your content for purposes of providing and improving the Service.
+                You retain all rights to any content you submit to the Service. However, by submitting content, you grant Your Condo Manager a worldwide, royalty-free, perpetual license to use, reproduce, modify, and distribute your content for purposes of providing and improving the Service.
               </p>
             </section>
 
@@ -224,7 +224,7 @@ export default function TermsOfServicePage({
                 <li>The content does not contain viruses, malware, or harmful code</li>
               </ul>
               <p className="text-slate-700 dark:text-slate-300">
-                CondoManager reserves the right to remove, modify, or refuse any User Content that violates these Terms or applicable laws, without liability.
+                Your Condo Manager reserves the right to remove, modify, or refuse any User Content that violates these Terms or applicable laws, without liability.
               </p>
             </section>
 
@@ -255,7 +255,7 @@ export default function TermsOfServicePage({
                 To the fullest extent permitted by law:
               </p>
               <ul className="list-disc list-inside text-slate-700 dark:text-slate-300 space-y-2">
-                <li>CondoManager is provided "as is" without warranties of any kind</li>
+                <li>Your Condo Manager is provided "as is" without warranties of any kind</li>
                 <li>We do not warrant that the Service will be uninterrupted, error-free, or secure</li>
                 <li>We are not liable for any indirect, incidental, special, or consequential damages</li>
                 <li>Our total liability shall not exceed the amount you paid for the Service in the past 12 months</li>
@@ -268,7 +268,7 @@ export default function TermsOfServicePage({
                 7. Indemnification
               </h2>
               <p className="text-slate-700 dark:text-slate-300">
-                You agree to indemnify and hold harmless CondoManager and its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses arising from:
+                You agree to indemnify and hold harmless Your Condo Manager and its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses arising from:
               </p>
               <ul className="list-disc list-inside text-slate-700 dark:text-slate-300 space-y-2">
                 <li>Your use of the Service</li>
@@ -283,7 +283,7 @@ export default function TermsOfServicePage({
                 8. Modifications to Service
               </h2>
               <p className="text-slate-700 dark:text-slate-300 mb-4">
-                CondoManager reserves the right to:
+                Your Condo Manager reserves the right to:
               </p>
               <ul className="list-disc list-inside text-slate-700 dark:text-slate-300 space-y-2">
                 <li>Modify, update, or discontinue the Service at any time</li>
@@ -300,7 +300,7 @@ export default function TermsOfServicePage({
                 9. Third-Party Links and Services
               </h2>
               <p className="text-slate-700 dark:text-slate-300">
-                The Service may contain links to third-party websites and services. CondoManager does not endorse, control, or assume responsibility for third-party content, policies, or practices. Your use of third-party services is governed by their own terms and conditions. We are not liable for any damage or loss caused by your use of third-party services.
+                The Service may contain links to third-party websites and services. Your Condo Manager does not endorse, control, or assume responsibility for third-party content, policies, or practices. Your use of third-party services is governed by their own terms and conditions. We are not liable for any damage or loss caused by your use of third-party services.
               </p>
             </section>
 
@@ -309,7 +309,7 @@ export default function TermsOfServicePage({
                 10. Termination
               </h2>
               <p className="text-slate-700 dark:text-slate-300 mb-4">
-                Either party may terminate this Agreement at any time. CondoManager may terminate or suspend your access immediately if you:
+                Either party may terminate this Agreement at any time. Your Condo Manager may terminate or suspend your access immediately if you:
               </p>
               <ul className="list-disc list-inside text-slate-700 dark:text-slate-300 space-y-2 mb-4">
                 <li>Violate these Terms</li>
@@ -327,7 +327,7 @@ export default function TermsOfServicePage({
                 11. Disclaimer of Warranties
               </h2>
               <p className="text-slate-700 dark:text-slate-300 mb-4">
-                The Service is provided on an "as is" and "as available" basis without warranties of any kind, either express or implied. CondoManager disclaims all warranties including:
+                The Service is provided on an "as is" and "as available" basis without warranties of any kind, either express or implied. Your Condo Manager disclaims all warranties including:
               </p>
               <ul className="list-disc list-inside text-slate-700 dark:text-slate-300 space-y-2">
                 <li>Warranties of merchantability or fitness for a particular purpose</li>
@@ -360,7 +360,7 @@ export default function TermsOfServicePage({
                 14. Entire Agreement
               </h2>
               <p className="text-slate-700 dark:text-slate-300">
-                These Terms, together with our Privacy Policy and any other legal notices published by CondoManager, constitute the entire agreement between you and CondoManager regarding the Service and supersede all prior agreements and understandings.
+                These Terms, together with our Privacy Policy and any other legal notices published by Your Condo Manager, constitute the entire agreement between you and Your Condo Manager regarding the Service and supersede all prior agreements and understandings.
               </p>
             </section>
 
@@ -369,7 +369,7 @@ export default function TermsOfServicePage({
                 15. Amendments
               </h2>
               <p className="text-slate-700 dark:text-slate-300 mb-4">
-                CondoManager may update these Terms at any time. We will provide notice of material changes by posting the updated Terms on our website with a new "Last updated" date. Your continued use of the Service after changes constitutes your acceptance of the modified Terms.
+                Your Condo Manager may update these Terms at any time. We will provide notice of material changes by posting the updated Terms on our website with a new "Last updated" date. Your continued use of the Service after changes constitutes your acceptance of the modified Terms.
               </p>
               <p className="text-slate-700 dark:text-slate-300">
                 It is your responsibility to review these Terms periodically for updates. If you do not agree to any modifications, you must discontinue using the Service.
@@ -384,15 +384,15 @@ export default function TermsOfServicePage({
                 If you have questions about these Terms of Service, please contact us at:
               </p>
               <div className="bg-slate-100 dark:bg-slate-800 p-6 rounded-lg mb-4">
-                <p className="text-slate-900 dark:text-slate-100 font-semibold mb-3">CondoManager Legal Team</p>
+                <p className="text-slate-900 dark:text-slate-100 font-semibold mb-3">Your Condo Manager Legal Team</p>
                 <p className="text-slate-700 dark:text-slate-300 mb-2">
-                  <strong>Email:</strong> <a href="mailto:legal@condomanager.com" className="text-primary hover:underline">legal@condomanager.com</a>
+                  <strong>Email:</strong> <a href="mailto:legal@yourcondomanager.org" className="text-primary hover:underline">legal@yourcondomanager.org</a>
                 </p>
                 <p className="text-slate-700 dark:text-slate-300 mb-2">
-                  <strong>Support:</strong> <a href="mailto:support@condomanager.com" className="text-primary hover:underline">support@condomanager.com</a>
+                  <strong>Support:</strong> <a href="mailto:support@yourcondomanager.org" className="text-primary hover:underline">support@yourcondomanager.org</a>
                 </p>
                 <p className="text-slate-700 dark:text-slate-300">
-                  <strong>Address:</strong> CondoManager Inc., Property Management Software, United States
+                  <strong>Address:</strong> Your Condo Manager Inc., Property Management Software, United States
                 </p>
               </div>
               <p className="text-slate-700 dark:text-slate-300">
@@ -407,7 +407,7 @@ export default function TermsOfServicePage({
       <footer className="bg-slate-50 dark:bg-slate-900 w-full border-t border-slate-200 dark:border-slate-800" role="contentinfo">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 px-12 py-16 w-full max-w-screen-2xl mx-auto">
           <div className="space-y-6">
-            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">CondoManager</div>
+            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">Your Condo Manager</div>
             <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed">
               Setting the standard for architectural excellence in property management software.
               Trusted by over 5,000 associations globally.
@@ -475,7 +475,7 @@ export default function TermsOfServicePage({
             </div>
             <div className="mt-8 md:mt-0">
               <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                © {new Date().getFullYear()} CondoManager. The Modern Estate Excellence.
+                © {new Date().getFullYear()} Your Condo Manager. The Modern Estate Excellence.
               </p>
             </div>
           </div>

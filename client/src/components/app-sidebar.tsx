@@ -204,7 +204,7 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
           </div>
           <div className="group-data-[collapsible=icon]:hidden">
             <h2 className="font-headline italic font-semibold text-lg tracking-tight text-slate-900 dark:text-slate-100" data-testid="text-app-title">
-              CondoManager
+              Your Condo Manager
             </h2>
             <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-tight font-label">Property Operations</p>
           </div>

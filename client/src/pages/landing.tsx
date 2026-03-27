@@ -36,7 +36,7 @@ const personaContent = {
     badge: "For property management companies",
     headline: "Run your entire portfolio from one command center.",
     subhead:
-      "CondoManager gives property managers a single platform for every association — billing, owners, maintenance, governance, and reporting — without the spreadsheets.",
+      "Your Condo Manager gives property managers a single platform for every association — billing, owners, maintenance, governance, and reporting — without the spreadsheets.",
     features: [
       {
         icon: BarChart3,
@@ -76,7 +76,7 @@ const personaContent = {
     badge: "For self-managed condo boards",
     headline: "Give your board the tools to govern with confidence.",
     subhead:
-      "CondoManager gives volunteer boards everything needed to handle finances, governance, residents, and maintenance — without expensive management fees or complicated software.",
+      "Your Condo Manager gives volunteer boards everything needed to handle finances, governance, residents, and maintenance — without expensive management fees or complicated software.",
     features: [
       {
         icon: DollarSign,
@@ -263,7 +263,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 h-16 flex items-center justify-between gap-6">
           {/* Logo */}
           <Link href="/" className="shrink-0">
-            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">CondoManager</span>
+            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">Your Condo Manager</span>
           </Link>
 
           {/* Nav links — desktop */}
@@ -573,7 +573,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               </div>
               <div>
                 <h2 id="compliance-heading" className="font-headline text-2xl font-bold mb-2">Always Audit-Ready</h2>
-                <p className="text-on-surface-variant leading-relaxed">Every transaction, vote, and communication is timestamped and immutable. CondoManager ensures your association meets state regulations effortlessly.</p>
+                <p className="text-on-surface-variant leading-relaxed">Every transaction, vote, and communication is timestamped and immutable. Your Condo Manager ensures your association meets state regulations effortlessly.</p>
               </div>
             </div>
             <div className="flex gap-6">
@@ -649,7 +649,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
       <footer className="bg-slate-50 dark:bg-slate-900 w-full border-t border-slate-200 dark:border-slate-800" role="contentinfo">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 px-12 py-16 w-full max-w-screen-2xl mx-auto">
           <div className="space-y-6">
-            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">CondoManager</div>
+            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">Your Condo Manager</div>
             <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed">
               Setting the standard for architectural excellence in property management software.
               Trusted by over 5,000 associations globally.
@@ -717,7 +717,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             </div>
             <div className="mt-8 md:mt-0">
               <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                © {new Date().getFullYear()} CondoManager. The Modern Estate Excellence.
+                © {new Date().getFullYear()} Your Condo Manager. The Modern Estate Excellence.
               </p>
             </div>
           </div>

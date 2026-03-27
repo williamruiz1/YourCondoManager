@@ -64,7 +64,7 @@ export function OwnerPortalLogin({
               <span className="material-symbols-outlined text-3xl" style={{fontVariationSettings: "'FILL' 1"}}>
                 domain
               </span>
-              <h1 className="text-2xl font-serif italic tracking-tight">CondoManager</h1>
+              <h1 className="text-2xl font-serif italic tracking-tight">Your Condo Manager</h1>
             </div>
             <div className="max-w-md">
               <h2 className="text-5xl font-serif leading-tight mb-6">Elevating the standard of property ownership.</h2>
@@ -97,7 +97,7 @@ export function OwnerPortalLogin({
               <span className="material-symbols-outlined text-primary text-4xl mb-2" style={{fontVariationSettings: "'FILL' 1"}}>
                 domain
               </span>
-              <h1 className="text-2xl font-serif italic text-on-surface">CondoManager</h1>
+              <h1 className="text-2xl font-serif italic text-on-surface">Your Condo Manager</h1>
             </div>
 
             <div className="mb-10 text-center lg:text-left">

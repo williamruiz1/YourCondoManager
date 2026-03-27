@@ -35,7 +35,7 @@ async function getVapidConfig() {
   return {
     publicKey: await getSecret("VAPID_PUBLIC_KEY", "vapid.publicKey"),
     privateKey: await getSecret("VAPID_PRIVATE_KEY", "vapid.privateKey"),
-    subject: await getSecret("VAPID_SUBJECT", "vapid.subject") ?? "mailto:admin@condomanager.app",
+    subject: await getSecret("VAPID_SUBJECT", "vapid.subject") ?? "mailto:admin@yourcondomanager.org",
   };
 }
 

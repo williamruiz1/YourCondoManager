@@ -128,7 +128,8 @@ type PortalAssociation = {
 type PortalNoticeHistory = {
   id: string;
   subject: string;
-  bodyRendered: string;
+  bodyText: string;
+  bodySnippet?: string | null;
   createdAt: string;
 };
 type MyUnit = {
@@ -160,12 +161,6 @@ type FinancialDashboard = {
   totalCharges: number;
   totalPayments: number;
 };
-
-function stripHtml(html: string): string {
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  return div.innerText || "";
-}
 
 function formatStatusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1).replace(/-/g, " ");
@@ -398,6 +393,9 @@ export default function OwnerPortalPage() {
       return res.json();
     },
   });
+
+  const getNoticeBodyText = (notice: PortalNoticeHistory): string =>
+    notice.bodyText?.trim() || notice.bodySnippet?.trim() || "No message body available.";
 
   const { data: electionHistory = [] } = useQuery<Array<{
     election: { id: string; title: string; description: string | null; voteType: string; status: string; opensAt: string | null; closesAt: string | null; resultVisibility: string; isSecretBallot: number };
@@ -1044,7 +1042,7 @@ export default function OwnerPortalPage() {
       {/* Sidebar */}
       <aside className="hidden md:flex fixed left-0 top-0 h-screen w-64 border-r border-outline-variant/15 bg-surface flex-col py-8 px-4 z-40">
         <div className="mb-10 px-4">
-          <h1 className="text-2xl font-semibold tracking-tight text-primary font-serif italic">CondoManager</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-primary font-serif italic">Your Condo Manager</h1>
           <p className="text-[10px] text-on-surface-variant/60 italic mt-0.5">Community management, elevated.</p>
         </div>
         <nav className="flex-1 space-y-2">
@@ -1311,24 +1309,15 @@ export default function OwnerPortalPage() {
                                     </div>
                                     <p className="text-xs text-on-surface-variant mt-0.5">{new Date(notice.createdAt).toLocaleDateString()}</p>
                                     {!isExpanded && (
-                                      <p className="text-xs text-on-surface-variant mt-1 line-clamp-1">{stripHtml(notice.bodyRendered)}</p>
+                                      <p className="text-xs text-on-surface-variant mt-1 line-clamp-1">{getNoticeBodyText(notice)}</p>
                                     )}
                                   </div>
                                 </div>
                                 {isExpanded && (
-                                  <div className="border-t border-outline-variant/10 overflow-hidden rounded-b-xl">
-                                    <iframe
-                                      srcDoc={notice.bodyRendered}
-                                      className="w-full border-0 block"
-                                      style={{ minHeight: 200 }}
-                                      onLoad={(e) => {
-                                        try {
-                                          const doc = e.currentTarget.contentDocument;
-                                          if (doc) e.currentTarget.style.height = doc.body.scrollHeight + 24 + "px";
-                                        } catch {}
-                                      }}
-                                      title={notice.subject}
-                                    />
+                                  <div className="border-t border-outline-variant/10 rounded-b-xl px-4 py-3">
+                                    <p className="whitespace-pre-line break-words text-sm leading-6 text-on-surface">
+                                      {getNoticeBodyText(notice)}
+                                    </p>
                                   </div>
                                 )}
                               </div>
@@ -2438,25 +2427,16 @@ export default function OwnerPortalPage() {
                             </div>
                             {!isExpanded && (
                               <p className="text-sm text-on-surface-variant mt-1 line-clamp-2">
-                                {stripHtml(notice.bodyRendered)}
+                                {getNoticeBodyText(notice)}
                               </p>
                             )}
                           </div>
                         </div>
                         {isExpanded && (
-                          <div className="border-t border-outline-variant/10 overflow-hidden rounded-b-2xl">
-                            <iframe
-                              srcDoc={notice.bodyRendered}
-                              className="w-full border-0 block"
-                              style={{ minHeight: 200 }}
-                              onLoad={(e) => {
-                                try {
-                                  const doc = e.currentTarget.contentDocument;
-                                  if (doc) e.currentTarget.style.height = doc.body.scrollHeight + 24 + "px";
-                                } catch {}
-                              }}
-                              title={notice.subject}
-                            />
+                          <div className="border-t border-outline-variant/10 rounded-b-2xl px-6 py-4">
+                            <p className="whitespace-pre-line break-words text-sm leading-6 text-on-surface">
+                              {getNoticeBodyText(notice)}
+                            </p>
                           </div>
                         )}
                       </div>

@@ -123,7 +123,7 @@ function PlanPanel({ planKey }: { planKey: PlanKey }) {
       {/* Logo */}
       <div>
         <a href="/" className="font-headline text-2xl font-semibold italic tracking-tight hover:opacity-80 transition-opacity">
-          CondoManager
+          Your Condo Manager
         </a>
       </div>
 
@@ -272,7 +272,7 @@ export default function PlanSignupPage() {
 
   async function handleSubmit(values: FormValues) {
     if (isEnterprise) {
-      window.location.href = "mailto:sales@condomanager.com";
+      window.location.href = "mailto:sales@yourcondomanager.org";
       return;
     }
 
@@ -341,7 +341,7 @@ export default function PlanSignupPage() {
           {/* Mobile logo */}
           <div className="mb-8 lg:hidden">
             <a href="/" className="font-headline text-xl font-semibold italic tracking-tight text-primary hover:opacity-80 transition-opacity">
-              CondoManager
+              Your Condo Manager
             </a>
           </div>
 
