@@ -62,6 +62,7 @@ import {
   personContactPoints,
   persons,
   roadmapProjects,
+  roadmapTaskAttachments,
   roadmapTasks,
   roadmapWorkstreams,
   lateFeeEvents,
@@ -6462,6 +6463,7 @@ export class DatabaseStorage implements IStorage {
         .from(boardRoles)
         .where(
           and(
+            eq(boardRoles.personId, data.personId),
             eq(boardRoles.associationId, data.associationId),
             eq(boardRoles.role, data.role),
             eq(boardRoles.endDate, null as any),
@@ -6469,7 +6471,7 @@ export class DatabaseStorage implements IStorage {
         );
 
       if (conflictingActiveRole.length > 0) {
-        throw new Error("An active board assignment already exists for this role");
+        throw new Error("This person already has an active assignment for this role");
       }
     }
 
@@ -15372,6 +15374,32 @@ export class DatabaseStorage implements IStorage {
       .update(roadmapTasks)
       .set({ dependencyTaskIds: sql`array_remove(${roadmapTasks.dependencyTaskIds}, ${id})` })
       .where(sql`${id} = ANY(${roadmapTasks.dependencyTaskIds})`);
+  }
+
+  async createRoadmapTaskAttachment(data: {
+    taskId: string;
+    fileUrl: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number | null;
+    uploadedBy: string | null;
+  }) {
+    const [result] = await db
+      .insert(roadmapTaskAttachments)
+      .values(data)
+      .returning();
+    return result;
+  }
+
+  async getRoadmapTaskAttachments(taskId: string) {
+    return db
+      .select()
+      .from(roadmapTaskAttachments)
+      .where(eq(roadmapTaskAttachments.taskId, taskId));
+  }
+
+  async deleteRoadmapTaskAttachment(id: string): Promise<void> {
+    await db.delete(roadmapTaskAttachments).where(eq(roadmapTaskAttachments.id, id));
   }
 
   async deleteRoadmapWorkstream(id: string): Promise<void> {

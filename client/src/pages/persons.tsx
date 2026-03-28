@@ -20,7 +20,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, Mail, Phone, Search, MapPin, Home, FileUp, X } from "lucide-react";
+import { Plus, Users, Mail, Phone, Search, MapPin, Home, FileUp, Pencil, Shield, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,6 +33,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import type { ResidentialDatasetPersonDirectoryItem } from "@shared/schema";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -54,6 +55,10 @@ type AddressSearchResult = {
 };
 
 type RoleFilter = "all" | "owner" | "tenant" | "board";
+
+function getStreetAddressLine(address: string | null | undefined) {
+  return (address || "").split(",")[0]?.trim() || "";
+}
 
 export default function PersonsPage() {
   const isMobile = useIsMobile();
@@ -262,9 +267,18 @@ export default function PersonsPage() {
     }
   }
 
-  function openBoardRoleAssignment(personId: string) {
-    setBoardRolePersonId(personId);
-    setBoardRoleAssociationId(associations[0]?.id || "");
+  function openBoardRoleAssignment(person: Person) {
+    const directoryEntry = personDirectoryMap.get(person.id);
+    const linkedAssociationIds = Array.from(
+      new Set(
+        [...(directoryEntry?.ownedUnitIds ?? []), ...(directoryEntry?.occupiedUnitIds ?? [])]
+          .map((unitId) => residentialDataset?.units.find((unit) => unit.id === unitId)?.associationId)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+
+    setBoardRolePersonId(person.id);
+    setBoardRoleAssociationId(activeAssociationId || person.associationId || linkedAssociationIds[0] || associations[0]?.id || "");
     setBoardRoleName("Board Member");
     setBoardRoleStartDate(new Date().toISOString().slice(0, 10));
     setBoardRoleEndDate("");
@@ -653,17 +667,18 @@ export default function PersonsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Roles</TableHead>
-                  <TableHead>Units</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Mailing Address</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="w-[170px]">Roles</TableHead>
+                  <TableHead className="w-[190px]">Units</TableHead>
+                  <TableHead className="w-[220px]">Contact</TableHead>
+                  <TableHead className="w-[170px]">Street Address</TableHead>
+                  <TableHead className="w-[96px] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredPersons.map((p) => {
                   const dir = personDirectoryMap.get(p.id);
                   const activeBoardRoles = boardRolesByPerson.get(p.id) ?? [];
+                  const streetAddress = getStreetAddressLine(p.mailingAddress);
 
                   const ownedUnits = (dir?.ownedUnitIds ?? []).map((id) => unitMap.get(id)).filter(Boolean);
                   const tenantUnits = (dir?.occupiedUnitIds ?? [])
@@ -683,7 +698,7 @@ export default function PersonsPage() {
                           onCopy={copyFieldValue}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         <div className="flex flex-wrap gap-1">
                           {dir?.isOwnerOccupant ? (
                             <Badge variant="default" className="text-xs">Owner-Occupant</Badge>
@@ -703,13 +718,13 @@ export default function PersonsPage() {
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         {allUnits.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
+                          <div className="space-y-1">
                             {allUnits.slice(0, 3).map((unit, i) => (
                               <div key={i} className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Home className="h-3 w-3 shrink-0" />
-                                <span>
+                                <span className="truncate">
                                   {unit!.building ? `${unit!.building} · ` : ""}{unit!.unitNumber}
                                 </span>
                               </div>
@@ -722,7 +737,7 @@ export default function PersonsPage() {
                           <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         <div className="space-y-1">
                           {p.email ? (
                             <CopyableItem
@@ -745,22 +760,50 @@ export default function PersonsPage() {
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell className="max-w-[220px]">
+                      <TableCell className="max-w-[170px] align-top">
                         <CopyableItem
                           icon={<MapPin className="h-3 w-3 mt-0.5 shrink-0" />}
                           value={p.mailingAddress ?? ""}
+                          displayValue={streetAddress}
                           label="Mailing address"
                           onCopy={copyFieldValue}
                           textClassName="text-xs leading-snug"
                           emptyFallback="—"
                         />
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="align-top text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => openEdit(p)} data-testid={`button-edit-person-${p.id}`}>Edit</Button>
-                          <Button variant="outline" size="sm" onClick={() => openBoardRoleAssignment(p.id)}>
-                            Assign Board Role
-                          </Button>
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => openEdit(p)}
+                                  data-testid={`button-edit-person-${p.id}`}
+                                  aria-label={`Edit ${p.firstName} ${p.lastName}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Edit person</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => openBoardRoleAssignment(p)}
+                                  aria-label={`Assign board role for ${p.firstName} ${p.lastName}`}
+                                >
+                                  <Shield className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Assign board role</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -824,6 +867,7 @@ function CopyableCell({
 function CopyableItem({
   icon,
   value,
+  displayValue,
   label,
   onCopy,
   textClassName = "text-sm",
@@ -831,12 +875,14 @@ function CopyableItem({
 }: {
   icon: React.ReactNode;
   value: string;
+  displayValue?: string;
   label: string;
   onCopy: (value: string, label: string) => Promise<void>;
   textClassName?: string;
   emptyFallback?: string;
 }) {
   const hasValue = Boolean(value.trim());
+  const renderedValue = displayValue?.trim() || value.trim();
   if (!hasValue && !emptyFallback) return null;
   if (!hasValue && emptyFallback) {
     return <span className="text-muted-foreground text-xs">{emptyFallback}</span>;
@@ -847,9 +893,10 @@ function CopyableItem({
       className="flex items-center gap-1 text-muted-foreground cursor-copy w-full text-left"
       onClick={() => void onCopy(value, label)}
       data-testid={`field-copy-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      title={renderedValue !== value.trim() ? value.trim() : undefined}
     >
       {icon}
-      <span className={textClassName}>{value}</span>
+      <span className={textClassName}>{renderedValue}</span>
     </button>
   );
 }

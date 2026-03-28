@@ -148,10 +148,6 @@ import {
   insertRecurringChargeScheduleSchema,
   recurringChargeRuns,
   insertRecurringChargeRunSchema,
-  featureFlags,
-  insertFeatureFlagSchema,
-  associationFeatureFlags,
-  insertAssociationFeatureFlagSchema,
   partialPaymentRules,
   insertPartialPaymentRuleSchema,
   autopayEnrollments,
@@ -234,6 +230,7 @@ const adminContextualFeedbackSchema = z.object({
   description: z.string().min(1).max(4000),
   feedbackType: z.enum(["bug", "enhancement"]),
   priority: z.enum(["low", "medium", "high", "critical"]).default("high"),
+  screenshotBase64: z.string().max(5_000_000).nullable().optional(),
   context: z.object({
     route: z.string().min(1),
     selector: z.string().min(1).max(1000),
@@ -558,6 +555,49 @@ function renderPaymentLinkPage(params: {
 function getParam(value: string | string[] | undefined): string {
   if (!value) return "";
   return Array.isArray(value) ? value[0] : value;
+}
+
+function normalizeBaseUrl(value: string | null | undefined): string | null {
+  const trimmed = value?.trim().replace(/\/$/, "");
+  return trimmed || null;
+}
+
+function isLocalBaseUrl(value: string | null | undefined): boolean {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function requestBaseUrl(req: Request): string | null {
+  const forwardedProto = (req.header("x-forwarded-proto") || "").split(",")[0]?.trim().toLowerCase();
+  const forwardedHost = (req.header("x-forwarded-host") || "").split(",")[0]?.trim();
+  const host = forwardedHost || req.header("host") || "";
+  if (!host) return null;
+
+  const proto = forwardedProto || (req.protocol ? req.protocol.toLowerCase() : "http");
+  if (proto !== "http" && proto !== "https") return null;
+  return `${proto}://${host}`;
+}
+
+async function resolvePublicAppBaseUrl(req: Request): Promise<string> {
+  const configuredBaseUrl = normalizeBaseUrl(await getSecret("APP_BASE_URL", "app_base_url"));
+  if (configuredBaseUrl && !isLocalBaseUrl(configuredBaseUrl)) {
+    return configuredBaseUrl;
+  }
+
+  const requestUrl = normalizeBaseUrl(requestBaseUrl(req));
+  if (requestUrl) return requestUrl;
+  return configuredBaseUrl || "http://localhost:5000";
+}
+
+async function resolveInviteUrl(req: Request, token: string): Promise<string> {
+  const baseUrl = await resolvePublicAppBaseUrl(req);
+  return `${baseUrl}/onboarding/${encodeURIComponent(token)}`;
 }
 
 function getAssociationIdQuery(req: Request): string | undefined {
@@ -7932,7 +7972,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       assertAssociationScope(req, parsed.associationId);
       const result = await storage.createOnboardingInvite(parsed);
-      res.status(201).json(result);
+      res.status(201).json({
+        ...result,
+        inviteUrl: await resolveInviteUrl(req, result.token),
+      });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -7956,7 +7999,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         createdBy: req.adminUserEmail || null,
         expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
       });
-      res.json(result);
+      res.json({
+        ...result,
+        inviteUrl: await resolveInviteUrl(req, result.token),
+      });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -7980,7 +8026,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         createdBy: req.adminUserEmail || null,
         expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
       });
-      res.json(result);
+      res.json({
+        ...result,
+        inviteUrl: await resolveInviteUrl(req, result.token),
+      });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -9486,89 +9535,6 @@ This is an automated demo request from the Your Condo Manager website.
         associationIds: qaAssocs.map(a => a.id),
         associations: qaAssocs.map(a => ({ id: a.id, name: a.name })),
       });
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  // ── Feature flags + staged rollout controls ─────────────────────────────
-  // List all feature flags (platform-admin only for write, all for read)
-  app.get("/api/admin/feature-flags", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
-    try {
-      const rows = await db.select().from(featureFlags);
-      res.json(rows);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/admin/feature-flags", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
-    try {
-      const parsed = insertFeatureFlagSchema.parse({ ...req.body, createdBy: req.adminUserEmail || "unknown" });
-      const [result] = await db.insert(featureFlags).values(parsed).returning();
-      res.status(201).json(result);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.patch("/api/admin/feature-flags/:id", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
-    try {
-      const id = req.params.id as string;
-      const updates = insertFeatureFlagSchema.partial().parse(req.body);
-      const [result] = await db.update(featureFlags).set({ ...updates, updatedAt: new Date() }).where(eq(featureFlags.id, id)).returning();
-      if (!result) return res.status(404).json({ message: "Flag not found" });
-      res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  // Per-association flag overrides
-  app.get("/api/admin/feature-flags/associations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
-    try {
-      const associationId = getAssociationIdQuery(req);
-      if (!associationId) {
-        // Return all if platform-admin
-        const rows = await db.select().from(associationFeatureFlags);
-        return res.json(rows);
-      }
-      assertAssociationScope(req, associationId);
-      const rows = await db.select().from(associationFeatureFlags).where(eq(associationFeatureFlags.associationId, associationId));
-      res.json(rows);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.put("/api/admin/feature-flags/:flagId/associations/:associationId", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
-    try {
-      const flagId = req.params.flagId as string;
-      const assocId = req.params.associationId as string;
-      const { enabled, rolloutPercent, notes } = req.body as { enabled: number; rolloutPercent?: number; notes?: string };
-      // Upsert
-      const existing = await db.select().from(associationFeatureFlags).where(
-        and(eq(associationFeatureFlags.flagId, flagId), eq(associationFeatureFlags.associationId, assocId))
-      ).limit(1);
-      if (existing.length > 0) {
-        const [result] = await db.update(associationFeatureFlags).set({
-          enabled,
-          rolloutPercent: rolloutPercent ?? existing[0].rolloutPercent,
-          notes: notes ?? existing[0].notes,
-          updatedBy: req.adminUserEmail || "unknown",
-          updatedAt: new Date(),
-        }).where(and(eq(associationFeatureFlags.flagId, flagId), eq(associationFeatureFlags.associationId, assocId))).returning();
-        return res.json(result);
-      }
-      const [result] = await db.insert(associationFeatureFlags).values({
-        flagId,
-        associationId: assocId,
-        enabled,
-        rolloutPercent: rolloutPercent ?? 100,
-        notes,
-        updatedBy: req.adminUserEmail || "unknown",
-      }).returning();
-      res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -12423,6 +12389,31 @@ This is an automated demo request from the Your Condo Manager website.
         targetEndDate: null,
       });
 
+      let screenshotAttachment = null;
+      if (parsed.screenshotBase64) {
+        try {
+          const match = parsed.screenshotBase64.match(/^data:(image\/\w+);base64,(.+)$/);
+          if (match) {
+            const mimeType = match[1];
+            const ext = mimeType === "image/png" ? "png" : mimeType === "image/jpeg" ? "jpg" : "webp";
+            const buffer = Buffer.from(match[2], "base64");
+            const filename = `feedback-${task.id}-${Date.now()}.${ext}`;
+            const filePath = path.join(uploadDir, filename);
+            fs.writeFileSync(filePath, buffer);
+            screenshotAttachment = await storage.createRoadmapTaskAttachment({
+              taskId: task.id,
+              fileUrl: `/api/uploads/${filename}`,
+              fileName: `screenshot.${ext}`,
+              mimeType,
+              sizeBytes: buffer.length,
+              uploadedBy: req.adminUserEmail || null,
+            });
+          }
+        } catch {
+          // Screenshot saving is best-effort; do not fail ticket creation
+        }
+      }
+
       res.status(201).json({
         task: {
           id: task.id,
@@ -12439,6 +12430,10 @@ This is an automated demo request from the Your Condo Manager website.
           id: workstream.id,
           title: workstream.title,
         },
+        screenshot: screenshotAttachment ? {
+          id: screenshotAttachment.id,
+          fileUrl: screenshotAttachment.fileUrl,
+        } : null,
       });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -12574,6 +12569,55 @@ This is an automated demo request from the Your Condo Manager website.
       const result = await storage.getRoadmapTask(getParam(req.params.taskId));
       if (!result) return res.status(404).json({ message: "Task not found" });
       await storage.deleteRoadmapTask(getParam(req.params.taskId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/tasks/:taskId/attachments", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+    try {
+      const task = await storage.getRoadmapTask(getParam(req.params.taskId));
+      if (!task) return res.status(404).json({ message: "Task not found" });
+      const attachments = await storage.getRoadmapTaskAttachments(task.id);
+      res.json({ attachments });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/tasks/:taskId/attachments", requireAdmin, requireAdminRole(["platform-admin"]), upload.single("file"), async (req: AdminRequest, res) => {
+    try {
+      const task = await storage.getRoadmapTask(getParam(req.params.taskId));
+      if (!task) return res.status(404).json({ message: "Task not found" });
+
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) return res.status(400).json({ message: "No file uploaded" });
+
+      const allowedMimeTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+      if (!allowedMimeTypes.includes(file.mimetype)) {
+        fs.unlinkSync(file.path);
+        return res.status(400).json({ message: "Only image files (PNG, JPEG, WebP, GIF) are allowed" });
+      }
+
+      const attachment = await storage.createRoadmapTaskAttachment({
+        taskId: task.id,
+        fileUrl: `/api/uploads/${file.filename}`,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        uploadedBy: req.adminUserEmail || null,
+      });
+
+      res.status(201).json(attachment);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/tasks/:taskId/attachments/:attachmentId", requireAdmin, requireAdminRole(["platform-admin"]), async (req, res) => {
+    try {
+      await storage.deleteRoadmapTaskAttachment(getParam(req.params.attachmentId));
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: error.message });

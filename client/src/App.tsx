@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -74,7 +75,6 @@ const ElectionBallotPage = lazy(() => import("@/pages/election-ballot"));
 const AiIngestionPage = lazy(() => import("@/pages/ai-ingestion"));
 const CommunicationsPage = lazy(() => import("@/pages/communications"));
 const PlatformControlsPage = lazy(() => import("@/pages/platform-controls"));
-const FeatureFlagsPage = lazy(() => import("@/pages/feature-flags"));
 const OwnerPortalPage = lazy(() => import("@/pages/owner-portal"));
 const VendorPortalPage = lazy(() => import("@/pages/vendor-portal"));
 const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
@@ -87,6 +87,7 @@ const PlanSignupSuccessPage = lazy(() => import("@/pages/plan-signup-success"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
 const TermsOfServicePage = lazy(() => import("@/pages/terms-of-service"));
 const UserSettingsPage = lazy(() => import("@/pages/user-settings"));
+const HelpCenterPage = lazy(() => import("@/pages/help-center"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const AdminContextualFeedbackWidget = lazy(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })));
 
@@ -130,12 +131,13 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
   },
   {
     id: "governance",
-    matchPrefixes: ["/app/board", "/app/governance", "/app/communications"],
+    matchPrefixes: ["/app/board", "/app/governance", "/app/communications", "/app/announcements"],
     testId: "tabs-governance-inpage",
     tabs: [
       { label: "Board Members", href: "/app/board", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Governance", href: "/app/governance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Communications", href: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Announcements", href: "/app/announcements", roles: ["platform-admin", "board-admin", "manager"] },
     ],
   },
   {
@@ -152,10 +154,12 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
   },
   {
     id: "operations",
-    matchPrefixes: ["/app/work-orders", "/app/vendors", "/app/resident-feedback"],
+    matchPrefixes: ["/app/work-orders", "/app/vendors", "/app/resident-feedback", "/app/maintenance-schedules", "/app/inspections"],
     testId: "tabs-operations-inpage",
     tabs: [
       { label: "Work Orders", href: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Maintenance", href: "/app/maintenance-schedules", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Inspections", href: "/app/inspections", roles: ["platform-admin", "board-admin", "manager"] },
       { label: "Vendors", href: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { label: "Feedback", href: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
@@ -178,7 +182,6 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Admin Roadmap", href: "/app/admin/roadmap", matchPrefixes: ["/app/admin", "/app/admin/roadmap"], roles: ["platform-admin", "board-admin"] },
       { label: "Executive", href: "/app/admin/executive", roles: ["platform-admin", "board-admin"] },
       { label: "Admin Users", href: "/app/admin/users", roles: ["platform-admin"] },
-      { label: "Feature Flags", href: "/app/admin/feature-flags", roles: ["platform-admin"] },
       { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
     ],
   },
@@ -259,7 +262,6 @@ function WorkspaceRouter({
         <Route path="/app/admin" component={RoadmapPage} />
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
-        <Route path="/app/admin/feature-flags" component={FeatureFlagsPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
         {/* Finance — consolidated routes */}
         <Route path="/app/financial/foundation" component={FinancialFoundationPage} />
@@ -281,8 +283,8 @@ function WorkspaceRouter({
         <Route path="/app/vendors" component={VendorsPage} />
         <Route path="/app/work-orders" component={WorkOrdersPage} />
         <Route path="/app/resident-feedback" component={ResidentFeedbackPage} />
-        <Route path="/app/maintenance-schedules"><RouteRedirect to="/app/work-orders" /></Route>
-        <Route path="/app/inspections"><RouteRedirect to="/app/vendors" /></Route>
+        <Route path="/app/maintenance-schedules" component={MaintenanceSchedulesPage} />
+        <Route path="/app/inspections" component={InspectionsPage} />
         {/* Board & Governance — consolidated routes */}
         <Route path="/app/governance" component={GovernancePage} />
         <Route path="/app/governance/elections/:id">{(params) => <ElectionDetailPage id={params.id ?? ""} />}</Route>
@@ -301,7 +303,8 @@ function WorkspaceRouter({
         <Route path="/app/portfolio">
           {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <PortfolioPage />}
         </Route>
-        <Route path="/app/announcements"><RouteRedirect to="/app/communications" /></Route>
+        <Route path="/app/announcements" component={AnnouncementsPage} />
+        <Route path="/app/help-center" component={HelpCenterPage} />
         <Route path="/app/settings" component={UserSettingsPage} />
         <Route component={NotFound} />
       </Switch>
@@ -739,6 +742,16 @@ const OPERATIONS_PARENT_TABS = [
     prefixes: ["/app/work-orders"],
   },
   {
+    label: "Maintenance",
+    href: "/app/maintenance-schedules",
+    prefixes: ["/app/maintenance-schedules"],
+  },
+  {
+    label: "Inspections",
+    href: "/app/inspections",
+    prefixes: ["/app/inspections"],
+  },
+  {
     label: "Vendors",
     href: "/app/vendors",
     prefixes: ["/app/vendors"],
@@ -786,11 +799,14 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
 
   return (
     <>
-      <main ref={mainRef} className="flex-1 overflow-auto pb-[max(env(safe-area-inset-bottom),1rem)]">
-        <WorkspaceRouter
-          adminRole={adminRole}
-          singleAssociationBoardExperience={singleAssociationBoardExperience}
-        />
+      <main ref={mainRef} className="flex-1 overflow-auto">
+        <div className="pb-[max(env(safe-area-inset-bottom),1rem)]">
+          <WorkspaceRouter
+            adminRole={adminRole}
+            singleAssociationBoardExperience={singleAssociationBoardExperience}
+          />
+        </div>
+        <SiteFooter />
       </main>
     </>
   );

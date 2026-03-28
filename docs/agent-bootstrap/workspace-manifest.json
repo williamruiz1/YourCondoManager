@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-27T16:57:34.753Z",
+  "generatedAt": "2026-03-27T23:47:41.830Z",
   "purpose": "Reusable startup snapshot for coding agents working in the CondoManager workspace.",
   "repository": {
     "root": "/home/runner/workspace",
@@ -77,11 +77,6 @@
         "redirectTo": null
       },
       {
-        "path": "/app/admin/feature-flags",
-        "component": "FeatureFlagsPage",
-        "redirectTo": null
-      },
-      {
         "path": "/app/admin/roadmap",
         "component": "RoadmapPage",
         "redirectTo": null
@@ -98,8 +93,8 @@
       },
       {
         "path": "/app/announcements",
-        "component": null,
-        "redirectTo": "/app/communications"
+        "component": "AnnouncementsPage",
+        "redirectTo": null
       },
       {
         "path": "/app/association-context",
@@ -227,9 +222,14 @@
         "redirectTo": "/app/governance"
       },
       {
+        "path": "/app/help-center",
+        "component": "HelpCenterPage",
+        "redirectTo": null
+      },
+      {
         "path": "/app/inspections",
-        "component": null,
-        "redirectTo": "/app/vendors"
+        "component": "InspectionsPage",
+        "redirectTo": null
       },
       {
         "path": "/app/insurance",
@@ -238,8 +238,8 @@
       },
       {
         "path": "/app/maintenance-schedules",
-        "component": null,
-        "redirectTo": "/app/work-orders"
+        "component": "MaintenanceSchedulesPage",
+        "redirectTo": null
       },
       {
         "path": "/app/new-association",
@@ -558,10 +558,6 @@
         "importPath": "@/pages/executive"
       },
       {
-        "id": "FeatureFlagsPage",
-        "importPath": "@/pages/feature-flags"
-      },
-      {
         "id": "FinancialAssessmentsPage",
         "importPath": "@/pages/financial-assessments"
       },
@@ -624,6 +620,10 @@
       {
         "id": "GovernancePage",
         "importPath": "@/pages/governance"
+      },
+      {
+        "id": "HelpCenterPage",
+        "importPath": "@/pages/help-center"
       },
       {
         "id": "InspectionsPage",
@@ -789,6 +789,10 @@
       },
       {
         "name": "roadmapTasks",
+        "kind": "pgTable"
+      },
+      {
+        "name": "roadmapTaskAttachments",
         "kind": "pgTable"
       },
       {

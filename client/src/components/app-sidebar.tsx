@@ -20,8 +20,11 @@ import {
   Layers,
   MessageCircle,
   Megaphone,
-  Flag,
   Vote,
+  Settings,
+  ShieldCheck,
+  Wrench,
+  SearchCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -115,6 +118,7 @@ const associationModules: NavModule[] = [
     children: [
       { title: "Governance", url: "/app/governance", icon: ClipboardCheck, materialIcon: "gavel", activePrefix: "/app/governance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { title: "Communications", url: "/app/communications", icon: MessageSquare, materialIcon: "forum", activePrefix: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Announcements", url: "/app/announcements", icon: Megaphone, materialIcon: "campaign", activePrefix: "/app/announcements", roles: ["platform-admin", "board-admin", "manager"] },
     ],
   },
   {
@@ -126,6 +130,14 @@ const associationModules: NavModule[] = [
     roles: ["platform-admin", "board-admin", "manager", "viewer"],
   },
   {
+    title: "Insurance",
+    url: "/app/insurance",
+    icon: ShieldCheck,
+    materialIcon: "verified_user",
+    activePrefix: "/app/insurance",
+    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+  },
+  {
     title: "Operations",
     url: "/app/operations/dashboard",
     icon: ClipboardList,
@@ -134,6 +146,8 @@ const associationModules: NavModule[] = [
     roles: ["platform-admin", "board-admin", "manager", "viewer"],
     children: [
       { title: "Work Orders", url: "/app/work-orders", icon: ClipboardList, materialIcon: "build", activePrefix: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Maintenance", url: "/app/maintenance-schedules", icon: Wrench, materialIcon: "handyman", activePrefix: "/app/maintenance-schedules", roles: ["platform-admin", "board-admin", "manager"] },
+      { title: "Inspections", url: "/app/inspections", icon: SearchCheck, materialIcon: "fact_check", activePrefix: "/app/inspections", roles: ["platform-admin", "board-admin", "manager"] },
       { title: "Vendors", url: "/app/vendors", icon: BriefcaseBusiness, materialIcon: "storefront", activePrefix: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { title: "Feedback", url: "/app/resident-feedback", icon: MessageCircle, materialIcon: "rate_review", activePrefix: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
@@ -151,9 +165,20 @@ const platformModules: NavModule[] = [
     roles: ["platform-admin"],
     children: [
       { title: "Owner Portal", url: "/portal", icon: Contact, materialIcon: "person", roles: ["platform-admin"] },
-      { title: "Admin Roadmap", url: "/app/admin/roadmap", icon: ListChecks, materialIcon: "checklist", activePrefix: "/app/admin", roles: ["platform-admin"] },
-      { title: "Feature Flags", url: "/app/admin/feature-flags", icon: Flag, materialIcon: "flag", roles: ["platform-admin"] },
+      { title: "Admin Roadmap", url: "/app/admin/roadmap", icon: ListChecks, materialIcon: "checklist", activePrefix: "/app/admin/roadmap", roles: ["platform-admin"] },
+      { title: "AI Ingestion", url: "/app/ai/ingestion", icon: Bot, materialIcon: "smart_toy", activePrefix: "/app/ai", roles: ["platform-admin"] },
     ],
+  },
+];
+
+// User-level entries shown at bottom of sidebar
+const userModules: NavModule[] = [
+  {
+    title: "Settings",
+    url: "/app/settings",
+    icon: Settings,
+    materialIcon: "settings",
+    activePrefix: "/app/settings",
   },
 ];
 
@@ -393,10 +418,18 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
             </Link>
           )}
           <div className="flex items-center gap-4 px-1 pt-1">
-            <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-on-surface transition-colors font-body">
-              <span className="material-symbols-outlined text-[16px]">help</span>
-              Help Center
-            </button>
+            <Link href="/app/settings">
+              <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-on-surface transition-colors font-body">
+                <span className="material-symbols-outlined text-[16px]">settings</span>
+                Settings
+              </button>
+            </Link>
+            <Link href="/app/help-center">
+              <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-on-surface transition-colors font-body">
+                <span className="material-symbols-outlined text-[16px]">help</span>
+                Help Center
+              </button>
+            </Link>
           </div>
         </div>
       </SidebarFooter>

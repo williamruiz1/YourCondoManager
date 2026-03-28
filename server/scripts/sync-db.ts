@@ -6,7 +6,7 @@
  * Use --tables to sync only specific dev-managed reference tables.
  *
  * Usage:
- *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --tables notice_templates,feature_flags
+ *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --tables notice_templates
  *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --dry-run --tables notice_templates
  *   PRODUCTION_DATABASE_URL="postgres://..." npx tsx server/scripts/sync-db.ts --tables admin_roadmap_projects,admin_roadmap_workstreams,admin_roadmap_tasks
  *

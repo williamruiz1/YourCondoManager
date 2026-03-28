@@ -76,6 +76,10 @@ type ActivatorPosition = {
   top: number;
 };
 
+const SCREENSHOT_TIMEOUT_MS = 3000;
+const SCREENSHOT_PADDING = 32;
+const SCREENSHOT_MAX_DIMENSION = 800;
+
 const STORAGE_KEY = "admin-contextual-feedback:markers";
 const ACTIVATOR_POSITION_STORAGE_KEY_PREFIX = "admin-contextual-feedback:activator-position";
 const LONG_PRESS_MS = 450;
@@ -195,6 +199,69 @@ function getTextPreview(element: HTMLElement) {
     .slice(0, 160);
 }
 
+async function captureScreenshot(element: HTMLElement): Promise<string | null> {
+  try {
+    const rect = element.getBoundingClientRect();
+    const x = Math.max(0, rect.left - SCREENSHOT_PADDING);
+    const y = Math.max(0, rect.top - SCREENSHOT_PADDING);
+    const w = Math.min(rect.width + SCREENSHOT_PADDING * 2, window.innerWidth - x, SCREENSHOT_MAX_DIMENSION);
+    const h = Math.min(rect.height + SCREENSHOT_PADDING * 2, window.innerHeight - y, SCREENSHOT_MAX_DIMENSION);
+
+    if (w < 10 || h < 10) return null;
+
+    const svgData = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+        <foreignObject width="100%" height="100%" x="0" y="0">
+          <div xmlns="http://www.w3.org/1999/xhtml"
+               style="width:${w}px;height:${h}px;overflow:hidden;background:#fff;">
+            <div style="margin-left:${-x}px;margin-top:${-y}px;">
+              ${new XMLSerializer().serializeToString(document.documentElement)}
+            </div>
+          </div>
+        </foreignObject>
+      </svg>`;
+
+    const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    return await new Promise<string | null>((resolve) => {
+      const img = new Image();
+      const timeout = window.setTimeout(() => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      }, SCREENSHOT_TIMEOUT_MS);
+
+      img.onload = () => {
+        window.clearTimeout(timeout);
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.min(w, SCREENSHOT_MAX_DIMENSION);
+          canvas.height = Math.min(h, SCREENSHOT_MAX_DIMENSION);
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/png", 0.85);
+          resolve(dataUrl);
+        } catch {
+          resolve(null);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      };
+
+      img.onerror = () => {
+        window.clearTimeout(timeout);
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+
+      img.src = url;
+    });
+  } catch {
+    return null;
+  }
+}
+
 function captureSnapshot(element: HTMLElement, route: string, admin: AdminIdentity): ContextSnapshot {
   return {
     route,
@@ -272,6 +339,47 @@ function getMarkerRect(marker: StoredMarker) {
     return getElementBounds(element);
   }
   return marker.bounds;
+}
+
+type MarkerCluster = {
+  markers: StoredMarker[];
+  centroid: { top: number; left: number };
+};
+
+function clusterMarkers(markers: StoredMarker[], threshold = 40): MarkerCluster[] {
+  if (markers.length === 0) return [];
+
+  const rects = markers.map((m) => getMarkerRect(m));
+  const assigned = new Set<number>();
+  const clusters: MarkerCluster[] = [];
+
+  for (let i = 0; i < markers.length; i++) {
+    if (assigned.has(i)) continue;
+    const group = [i];
+    assigned.add(i);
+
+    for (let j = i + 1; j < markers.length; j++) {
+      if (assigned.has(j)) continue;
+      const dx = rects[j].right - rects[i].right;
+      const dy = rects[j].top - rects[i].top;
+      if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) {
+        group.push(j);
+        assigned.add(j);
+      }
+    }
+
+    const groupMarkers = group.map((idx) => markers[idx]);
+    const groupRects = group.map((idx) => rects[idx]);
+    const avgTop = groupRects.reduce((s, r) => s + r.top, 0) / groupRects.length;
+    const avgLeft = groupRects.reduce((s, r) => s + r.right, 0) / groupRects.length;
+
+    clusters.push({
+      markers: groupMarkers,
+      centroid: { top: avgTop - 10, left: avgLeft - 12 },
+    });
+  }
+
+  return clusters;
 }
 
 function getModeLabel(mode: WidgetMode) {
@@ -387,6 +495,8 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
+  const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
   const [activatorPosition, setActivatorPosition] = useState<ActivatorPosition>(() => loadActivatorPosition(positionScope));
   const [panelHeight, setPanelHeight] = useState(FEEDBACK_PANEL_FALLBACK_HEIGHT);
   const selectedElementRef = useRef<HTMLElement | null>(null);
@@ -509,6 +619,13 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
         ...current,
         title: current.title || `${snapshot.tagName} on ${location}`,
       }));
+
+      setIsCapturingScreenshot(true);
+      setScreenshotBase64(null);
+      captureScreenshot(inspectable).then((result) => {
+        setScreenshotBase64(result);
+        setIsCapturingScreenshot(false);
+      });
     };
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -621,6 +738,7 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
           description: form.description.trim(),
           feedbackType: form.type,
           priority: form.priority,
+          screenshotBase64: screenshotBase64 || null,
           context: {
             route: selectedSnapshot.route,
             selector: selectedSnapshot.selector,
@@ -667,6 +785,7 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
       setHoveredSnapshot(null);
       setSelectedSnapshot(null);
       setForm(EMPTY_FORM);
+      setScreenshotBase64(null);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/roadmap"] });
 
       toast({
@@ -690,6 +809,7 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
     setForm(EMPTY_FORM);
     setActiveMarkerId(null);
     setEditingTaskId(null);
+    setScreenshotBase64(null);
 
     setMode((current) => {
       if (current === "inactive") return "inspect";
@@ -898,6 +1018,29 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
                   <div>Bounds: {describeBounds(selectedSnapshot.bounds)}</div>
                   <div>Component: {selectedSnapshot.componentName || "unavailable"}</div>
                 </div>
+                {isCapturingScreenshot ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-500">
+                    Capturing screenshot...
+                  </div>
+                ) : screenshotBase64 ? (
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Screenshot</label>
+                    <div className="relative overflow-hidden rounded-lg border border-slate-200">
+                      <img
+                        src={screenshotBase64}
+                        alt="Screenshot of selected element"
+                        className="max-h-40 w-full object-contain bg-slate-50"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-1 top-1 rounded-full bg-slate-900/70 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-slate-900"
+                        onClick={() => setScreenshotBase64(null)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-end gap-2">
                   <Button
                     type="button"
@@ -905,6 +1048,7 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
                     onClick={() => {
                       setSelectedSnapshot(null);
                       setForm(EMPTY_FORM);
+                      setScreenshotBase64(null);
                     }}
                   >
                     Cancel
@@ -918,23 +1062,65 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
           ) : null}
 
           {mode === "markers"
-            ? currentRouteMarkers.map((marker, index) => {
-              const rect = getMarkerRect(marker);
+            ? clusterMarkers(currentRouteMarkers).map((cluster, clusterIdx) => {
+              if (cluster.markers.length === 1) {
+                const marker = cluster.markers[0];
+                const rect = getMarkerRect(marker);
+                return (
+                  <button
+                    key={marker.roadmapTaskId}
+                    type="button"
+                    data-admin-feedback-root="true"
+                    className="pointer-events-auto absolute flex h-7 min-w-7 items-center justify-center rounded-full border border-amber-300 bg-amber-400 px-2 text-xs font-semibold text-slate-900 shadow-lg"
+                    style={{
+                      top: clamp(rect.top - 10, 12, window.innerHeight - 40),
+                      left: clamp(rect.right - 12, 12, window.innerWidth - 56),
+                    }}
+                    onClick={() => setActiveMarkerId(marker.roadmapTaskId)}
+                    title={marker.roadmapTaskTitle}
+                  >
+                    {clusterIdx + 1}
+                  </button>
+                );
+              }
+
               return (
-                <button
-                  key={marker.roadmapTaskId}
-                  type="button"
+                <div
+                  key={`cluster-${clusterIdx}`}
                   data-admin-feedback-root="true"
-                  className="pointer-events-auto absolute flex h-7 min-w-7 items-center justify-center rounded-full border border-amber-300 bg-amber-400 px-2 text-xs font-semibold text-slate-900 shadow-lg"
+                  className="pointer-events-auto absolute"
                   style={{
-                    top: clamp(rect.top - 10 + (index % 3) * 6, 12, window.innerHeight - 40),
-                    left: clamp(rect.right - 12, 12, window.innerWidth - 56),
+                    top: clamp(cluster.centroid.top, 12, window.innerHeight - 40),
+                    left: clamp(cluster.centroid.left, 12, window.innerWidth - 56),
                   }}
-                  onClick={() => setActiveMarkerId(marker.roadmapTaskId)}
-                  title={marker.roadmapTaskTitle}
                 >
-                  {index + 1}
-                </button>
+                  <button
+                    type="button"
+                    className="flex h-8 min-w-8 items-center justify-center rounded-full border-2 border-orange-400 bg-orange-500 px-2 text-xs font-bold text-white shadow-lg"
+                    onClick={() => setActiveMarkerId(cluster.markers[0].roadmapTaskId)}
+                    title={`${cluster.markers.length} markers clustered`}
+                  >
+                    {cluster.markers.length}
+                  </button>
+                  {activeMarkerId && cluster.markers.some((m) => m.roadmapTaskId === activeMarkerId) ? (
+                    <div className="absolute left-10 top-0 z-10 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+                      {cluster.markers.map((m) => (
+                        <button
+                          key={m.roadmapTaskId}
+                          type="button"
+                          className={`block w-full truncate rounded px-2 py-1 text-left text-xs ${
+                            m.roadmapTaskId === activeMarkerId
+                              ? "bg-amber-100 font-semibold text-amber-900"
+                              : "text-slate-700 hover:bg-slate-50"
+                          }`}
+                          onClick={() => setActiveMarkerId(m.roadmapTaskId)}
+                        >
+                          {m.roadmapTaskTitle.replace(/^\[Feedback (Bug|Enhancement)\]\s+/, "")}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               );
             })
             : null}

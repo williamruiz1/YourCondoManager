@@ -1198,40 +1198,6 @@ export const tenantConfigs = pgTable("tenant_configs", {
   uniqueTenantConfigAssociation: uniqueIndex("tenant_configs_association_uq").on(table.associationId),
 }));
 
-// ── Feature flags + staged rollout controls ──────────────────────────────
-export const featureFlagRolloutStatusEnum = pgEnum("feature_flag_rollout_status", ["global_off", "staged", "global_on"]);
-export const featureFlags = pgTable("feature_flags", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  key: text("key").notNull().unique(), // e.g. "online_payments", "autopay_enrollment"
-  name: text("name").notNull(),
-  description: text("description"),
-  defaultEnabled: integer("default_enabled").notNull().default(0),
-  rolloutStatus: featureFlagRolloutStatusEnum("rollout_status").notNull().default("staged"),
-  createdBy: text("created_by"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-export type FeatureFlag = typeof featureFlags.$inferSelect;
-export type InsertFeatureFlag = typeof featureFlags.$inferInsert;
-export const insertFeatureFlagSchema = createInsertSchema(featureFlags);
-
-export const associationFeatureFlags = pgTable("association_feature_flags", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  flagId: varchar("flag_id").notNull().references(() => featureFlags.id),
-  associationId: varchar("association_id").notNull().references(() => associations.id),
-  enabled: integer("enabled").notNull().default(0),
-  rolloutPercent: integer("rollout_percent").notNull().default(100), // 0-100
-  notes: text("notes"),
-  updatedBy: text("updated_by"),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  uniqueAssocFlag: uniqueIndex("association_feature_flags_uq").on(table.flagId, table.associationId),
-}));
-export type AssociationFeatureFlag = typeof associationFeatureFlags.$inferSelect;
-export type InsertAssociationFeatureFlag = typeof associationFeatureFlags.$inferInsert;
-export const insertAssociationFeatureFlagSchema = createInsertSchema(associationFeatureFlags);
-
 export const emailThreads = pgTable("email_threads", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -1666,6 +1632,17 @@ export const roadmapTasks = pgTable("admin_roadmap_tasks", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const roadmapTaskAttachments = pgTable("admin_roadmap_task_attachments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  taskId: varchar("task_id").notNull().references(() => roadmapTasks.id),
+  fileUrl: text("file_url").notNull(),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes"),
+  uploadedBy: text("uploaded_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const executiveUpdateStatusEnum = pgEnum("executive_update_status", ["draft", "published"]);
 export const executiveSourceTypeEnum = pgEnum("executive_source_type", ["manual", "roadmap-task", "roadmap-project"]);
 export const executiveEvidenceTypeEnum = pgEnum("executive_evidence_type", ["release-note", "metric", "screenshot", "link", "note"]);
@@ -1909,6 +1886,7 @@ export const insertRoadmapWorkstreamSchema = createInsertSchema(roadmapWorkstrea
 export const insertRoadmapTaskSchema = createInsertSchema(roadmapTasks).omit({ id: true, createdAt: true, updatedAt: true, completedDate: true }).extend({
   dependencyTaskIds: z.array(z.string()).optional(),
 });
+export const insertRoadmapTaskAttachmentSchema = createInsertSchema(roadmapTaskAttachments).omit({ id: true, createdAt: true });
 export const insertExecutiveUpdateSchema = createInsertSchema(executiveUpdates).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertExecutiveEvidenceSchema = createInsertSchema(executiveEvidence).omit({ id: true, createdAt: true });
 export const insertAnalysisVersionSchema = createInsertSchema(analysisVersions).omit({ id: true, createdAt: true });
@@ -2082,6 +2060,8 @@ export type RoadmapWorkstream = typeof roadmapWorkstreams.$inferSelect;
 export type InsertRoadmapWorkstream = z.infer<typeof insertRoadmapWorkstreamSchema>;
 export type RoadmapTask = typeof roadmapTasks.$inferSelect;
 export type InsertRoadmapTask = z.infer<typeof insertRoadmapTaskSchema>;
+export type RoadmapTaskAttachment = typeof roadmapTaskAttachments.$inferSelect;
+export type InsertRoadmapTaskAttachment = z.infer<typeof insertRoadmapTaskAttachmentSchema>;
 export type ExecutiveUpdate = typeof executiveUpdates.$inferSelect;
 export type InsertExecutiveUpdate = z.infer<typeof insertExecutiveUpdateSchema>;
 export type ExecutiveEvidence = typeof executiveEvidence.$inferSelect;

@@ -87,7 +87,6 @@ npm run db:push
 - [ ] Payment method configs published (ACH, Zelle, etc.)
 - [ ] Webhook signing secrets configured for payment providers
 - [ ] QA seed data purged (Admin → Platform Controls → QA Seed Data Management)
-- [ ] Feature flags reviewed — set `online_payments` and `autopay_enrollment` per rollout plan
 - [ ] Board package templates and governance task templates assigned
 - [ ] Reconciliation periods created for current month
 - [ ] Payment acceptance tests pass: `npm run test:payments`
@@ -97,9 +96,8 @@ npm run db:push
 1. Take a final database snapshot
 2. Run QA seed data dry-run preview: confirm only test associations identified
 3. Execute QA purge (confirm)
-4. Set `rolloutStatus` on feature flags to `global_on` for all confirmed features
-5. Send portal access invitations to all owners
-6. Monitor financial alerts for first 24h
+4. Send portal access invitations to all owners
+5. Monitor financial alerts for first 24h
 
 ### Post-Cutover Monitoring
 
@@ -126,6 +124,5 @@ npm run db:push
 ## 6. Maintenance Notes
 
 - Schema changes: always run `npm run db:push` after editing `shared/schema.ts`
-- New feature flags: create via Admin → Feature Flags before deploying
 - Board package auto-schedule: configured per association in Admin → Board Packages
 - Governance template library: Platform-admin assigns state templates to associations

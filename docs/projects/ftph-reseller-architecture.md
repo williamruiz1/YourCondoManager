@@ -29,7 +29,6 @@ CREATE TABLE tenants (
   plan_id         VARCHAR REFERENCES subscription_plans(id),
   status          TEXT NOT NULL DEFAULT 'trial',  -- trial/active/suspended/cancelled
   branding        JSONB,                     -- {logoUrl, primaryColor, companyName, supportEmail}
-  feature_flags   JSONB,                     -- override per-tenant feature gates
   created_at      TIMESTAMP DEFAULT NOW(),
   trial_ends_at   TIMESTAMP,
   suspended_at    TIMESTAMP
