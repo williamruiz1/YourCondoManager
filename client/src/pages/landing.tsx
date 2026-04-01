@@ -395,17 +395,6 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             <div className="absolute -inset-4 bg-primary-container/5 rounded-xl blur-3xl"></div>
             <div className="relative bg-surface-container-lowest rounded-xl overflow-hidden shadow-lg border border-outline-variant/20">
               <img className="w-full h-[400px] object-cover opacity-90" alt="Modern architectural glass facade reflecting a clear blue sky with sophisticated structural lines and high-end professional aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDORRxFHQEQQgLB-LIhVTxXwSjX3PFwaeqJK47VYkPcV7-8kExURnYNhcett0B3XsY4Furz0oLDNIL-hv5Gb-CtAJH4O1AQTQEiZegVanQLHzPcE9R5gOcmtSizhcBoPPEw0nyDF5-NDpn_MBo8VnLFFGCe_W0Hr6ohoNeQqB_gs0bschoj3OyC0Ky9FESgTtEANJ0OMhmC_OsDwF8NH4wwFLcjU8Nvh5tQ7evgrRtIJUHxITX__w9M_c4mPyGx2b123CkVsDXtk84" />
-              <div className="absolute bottom-6 left-6 right-6 bg-white/40 backdrop-blur-xl p-6 rounded-lg border border-white/20">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white" aria-hidden="true">
-                    <span className="material-symbols-outlined">insights</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-label font-bold text-on-surface">Live Dashboard</p>
-                    <p className="text-xs text-on-surface-variant">Real-time financial transparency for 2024</p>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>

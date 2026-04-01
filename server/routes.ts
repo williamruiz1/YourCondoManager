@@ -111,6 +111,7 @@ import {
   ownerships,
   persons,
   units,
+  buildings,
   associationInsurancePolicies,
   insertAssociationInsurancePolicySchema,
   governanceMeetings,
@@ -181,6 +182,18 @@ import {
   adminUsers,
   meetingNotes,
   electionBallotTokens,
+  hubPageConfigs,
+  hubActionLinks,
+  hubInfoBlocks,
+  hubMapLayers,
+  hubMapNodes,
+  hubMapIssues,
+  insertHubPageConfigSchema,
+  insertHubActionLinkSchema,
+  insertHubInfoBlockSchema,
+  insertHubMapLayerSchema,
+  insertHubMapNodeSchema,
+  insertHubMapIssueSchema,
 } from "@shared/schema";
 import {
   ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE,
@@ -1019,6 +1032,33 @@ function requireAdminRole(roles: AdminRole[]) {
     }
     return next();
   };
+}
+
+async function requireActiveSubscription(req: AdminRequest, res: Response, next: NextFunction) {
+  // Platform admins bypass subscription checks
+  if (req.adminRole === "platform-admin") return next();
+
+  const associationId = req.adminScopedAssociationIds?.[0];
+  if (!associationId) return next(); // No association context — let other middleware handle
+
+  const sub = await storage.getPlatformSubscription(associationId);
+  if (!sub) {
+    // No subscription record — allow access (legacy/free associations)
+    return next();
+  }
+
+  const activeStatuses = ["active", "trialing", "past_due"];
+  if (activeStatuses.includes(sub.status)) {
+    return next();
+  }
+
+  return res.status(402).json({
+    message: "Subscription inactive",
+    code: "SUBSCRIPTION_REQUIRED",
+    detail: "Your subscription is no longer active. Please update your billing to continue.",
+    subscriptionStatus: sub.status,
+    plan: sub.plan,
+  });
 }
 
 async function requirePortal(req: PortalRequest, res: Response, next: NextFunction) {
@@ -13691,6 +13731,736 @@ This is an automated demo request from the Your Condo Manager website.
       events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       res.json(events.slice(0, 10));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Community Hub — Admin API (hub config, action links, info blocks)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET hub config for an association
+  app.get("/api/associations/:id/hub/config", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [config] = await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, associationId));
+      res.json(config || null);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PUT (upsert) hub config
+  app.put("/api/associations/:id/hub/config", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const body = { ...req.body, associationId };
+      const [existing] = await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, associationId));
+      if (existing) {
+        const [updated] = await db.update(hubPageConfigs)
+          .set({ ...body, updatedAt: new Date() })
+          .where(eq(hubPageConfigs.id, existing.id))
+          .returning();
+        res.json(updated);
+      } else {
+        const [created] = await db.insert(hubPageConfigs).values(body).returning();
+        res.json(created);
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET action links for an association
+  app.get("/api/associations/:id/hub/action-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const links = await db.select().from(hubActionLinks)
+        .where(eq(hubActionLinks.associationId, associationId))
+        .orderBy(hubActionLinks.orderIndex);
+      res.json(links);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST create action link
+  app.post("/api/associations/:id/hub/action-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      // Enforce max 8 action links per association
+      const existing = await db.select().from(hubActionLinks).where(eq(hubActionLinks.associationId, associationId));
+      if (existing.length >= 8) return res.status(400).json({ message: "Maximum 8 action links per association" });
+      const [created] = await db.insert(hubActionLinks).values({ ...req.body, associationId }).returning();
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PUT update action link
+  app.put("/api/associations/:id/hub/action-links/:linkId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [updated] = await db.update(hubActionLinks)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(and(eq(hubActionLinks.id, getParam(req.params.linkId)), eq(hubActionLinks.associationId, associationId)))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Action link not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE action link
+  app.delete("/api/associations/:id/hub/action-links/:linkId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [deleted] = await db.delete(hubActionLinks)
+        .where(and(eq(hubActionLinks.id, getParam(req.params.linkId)), eq(hubActionLinks.associationId, associationId)))
+        .returning();
+      if (!deleted) return res.status(404).json({ message: "Action link not found" });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET info blocks for an association
+  app.get("/api/associations/:id/hub/info-blocks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const blocks = await db.select().from(hubInfoBlocks)
+        .where(eq(hubInfoBlocks.associationId, associationId))
+        .orderBy(hubInfoBlocks.orderIndex);
+      res.json(blocks);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST create info block
+  app.post("/api/associations/:id/hub/info-blocks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [created] = await db.insert(hubInfoBlocks).values({ ...req.body, associationId }).returning();
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PUT update info block
+  app.put("/api/associations/:id/hub/info-blocks/:blockId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [updated] = await db.update(hubInfoBlocks)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(and(eq(hubInfoBlocks.id, getParam(req.params.blockId)), eq(hubInfoBlocks.associationId, associationId)))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Info block not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE info block
+  app.delete("/api/associations/:id/hub/info-blocks/:blockId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [deleted] = await db.delete(hubInfoBlocks)
+        .where(and(eq(hubInfoBlocks.id, getParam(req.params.blockId)), eq(hubInfoBlocks.associationId, associationId)))
+        .returning();
+      if (!deleted) return res.status(404).json({ message: "Info block not found" });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Community Hub — Map API (layers, nodes, issues)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET map layers
+  app.get("/api/associations/:id/hub/map/layers", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const layers = await db.select().from(hubMapLayers).where(eq(hubMapLayers.associationId, associationId));
+      res.json(layers);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST create map layer
+  app.post("/api/associations/:id/hub/map/layers", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [created] = await db.insert(hubMapLayers).values({ ...req.body, associationId }).returning();
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PUT update map layer
+  app.put("/api/associations/:id/hub/map/layers/:layerId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [updated] = await db.update(hubMapLayers)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(and(eq(hubMapLayers.id, getParam(req.params.layerId)), eq(hubMapLayers.associationId, associationId)))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Map layer not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET map nodes for a layer
+  app.get("/api/associations/:id/hub/map/layers/:layerId/nodes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const nodes = await db.select().from(hubMapNodes)
+        .where(and(eq(hubMapNodes.layerId, getParam(req.params.layerId)), eq(hubMapNodes.associationId, associationId)));
+      res.json(nodes);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST create map node
+  app.post("/api/associations/:id/hub/map/nodes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [created] = await db.insert(hubMapNodes).values({ ...req.body, associationId }).returning();
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PUT update map node
+  app.put("/api/associations/:id/hub/map/nodes/:nodeId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [updated] = await db.update(hubMapNodes)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(and(eq(hubMapNodes.id, getParam(req.params.nodeId)), eq(hubMapNodes.associationId, associationId)))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Map node not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE map node
+  app.delete("/api/associations/:id/hub/map/nodes/:nodeId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [deleted] = await db.delete(hubMapNodes)
+        .where(and(eq(hubMapNodes.id, getParam(req.params.nodeId)), eq(hubMapNodes.associationId, associationId)))
+        .returning();
+      if (!deleted) return res.status(404).json({ message: "Map node not found" });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET map issues (admin view — all issues for the association)
+  app.get("/api/associations/:id/hub/map/issues", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const statusFilter = req.query.status as string | undefined;
+      const categoryFilter = req.query.category as string | undefined;
+      const conditions = [eq(hubMapIssues.associationId, associationId)];
+      if (statusFilter) conditions.push(eq(hubMapIssues.status, statusFilter as any));
+      if (categoryFilter) conditions.push(eq(hubMapIssues.category, categoryFilter as any));
+      const issues = await db.select().from(hubMapIssues)
+        .where(and(...conditions))
+        .orderBy(desc(hubMapIssues.createdAt));
+      res.json(issues);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PUT update map issue status (admin review)
+  app.put("/api/associations/:id/hub/map/issues/:issueId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const updates: Record<string, any> = { ...req.body, updatedAt: new Date() };
+      if (req.body.status === "under-review" || req.body.status === "approved" || req.body.status === "dismissed") {
+        updates.reviewedBy = req.adminUserEmail;
+        updates.reviewedAt = new Date();
+      }
+      if (req.body.status === "resolved") {
+        updates.resolvedAt = new Date();
+      }
+      const [updated] = await db.update(hubMapIssues)
+        .set(updates)
+        .where(and(eq(hubMapIssues.id, getParam(req.params.issueId)), eq(hubMapIssues.associationId, associationId)))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Map issue not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Community Hub — Notices API (extends communityAnnouncements)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET hub notices for admin
+  app.get("/api/associations/:id/hub/notices", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const notices = await db.select().from(communityAnnouncements)
+        .where(eq(communityAnnouncements.associationId, associationId))
+        .orderBy(desc(communityAnnouncements.createdAt));
+      res.json(notices);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST create hub notice
+  app.post("/api/associations/:id/hub/notices", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [created] = await db.insert(communityAnnouncements).values({
+        ...req.body,
+        associationId,
+        createdBy: req.adminUserEmail,
+      }).returning();
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PUT update hub notice
+  app.put("/api/associations/:id/hub/notices/:noticeId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [updated] = await db.update(communityAnnouncements)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(and(eq(communityAnnouncements.id, getParam(req.params.noticeId)), eq(communityAnnouncements.associationId, associationId)))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Notice not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE hub notice
+  app.delete("/api/associations/:id/hub/notices/:noticeId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+      const [deleted] = await db.delete(communityAnnouncements)
+        .where(and(eq(communityAnnouncements.id, getParam(req.params.noticeId)), eq(communityAnnouncements.associationId, associationId)))
+        .returning();
+      if (!deleted) return res.status(404).json({ message: "Notice not found" });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST auto-populate hub from existing association data
+  app.post("/api/associations/:id/hub/auto-populate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.params.id);
+      assertAssociationScope(req, associationId);
+
+      const [assoc] = await db.select().from(associations).where(eq(associations.id, associationId));
+      if (!assoc) return res.status(404).json({ message: "Association not found" });
+
+      const results: string[] = [];
+
+      // 1. Ensure hub config exists
+      let [config] = await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, associationId));
+      if (!config) {
+        const slug = assoc.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+        [config] = await db.insert(hubPageConfigs).values({
+          associationId,
+          isEnabled: 0,
+          communityDescription: `Welcome to ${assoc.name}. Located in ${assoc.city}, ${assoc.state}.`,
+          slug,
+          sectionOrder: ["notices", "quick-actions", "info-blocks", "contacts"],
+          enabledSections: ["notices", "quick-actions", "info-blocks", "contacts"],
+        }).returning();
+        results.push("Created hub configuration with slug: " + slug);
+      }
+      const hubSlug = config.slug || associationId;
+
+      // 2. Auto-derive quick action links if none exist
+      const existingLinks = await db.select().from(hubActionLinks).where(eq(hubActionLinks.associationId, associationId));
+      if (existingLinks.length === 0) {
+        const defaultLinks = [
+          { label: "Owner Portal", routeTarget: `/portal?association_id=${associationId}&return_url=/community/${hubSlug}`, routeType: "internal" as const, orderIndex: 0, iconKey: "person" },
+          { label: "Submit Maintenance Request", routeTarget: `/portal?association_id=${associationId}&tab=maintenance&return_url=/community/${hubSlug}`, routeType: "internal" as const, orderIndex: 1, iconKey: "build" },
+          { label: "Pay Dues", routeTarget: `/portal?association_id=${associationId}&tab=payments&return_url=/community/${hubSlug}`, routeType: "internal" as const, orderIndex: 2, iconKey: "payments" },
+          { label: "View Documents", routeTarget: `/portal?association_id=${associationId}&tab=documents&return_url=/community/${hubSlug}`, routeType: "internal" as const, orderIndex: 3, iconKey: "description" },
+        ];
+        for (const link of defaultLinks) {
+          await db.insert(hubActionLinks).values({ ...link, associationId, autoDerived: 1 });
+        }
+        results.push("Created " + defaultLinks.length + " default quick action links");
+      }
+
+      // 3. Auto-derive info blocks from association details if none exist
+      const existingBlocks = await db.select().from(hubInfoBlocks).where(eq(hubInfoBlocks.associationId, associationId));
+      if (existingBlocks.length === 0) {
+        const blocks: Array<{ category: any; title: string; body: string; orderIndex: number }> = [];
+
+        // Get building count for a summary
+        const buildingsList = await db.select().from(buildings).where(eq(buildings.associationId, associationId));
+        const unitsList = await db.select().from(units).where(eq(units.associationId, associationId));
+
+        if (buildingsList.length > 0 || unitsList.length > 0) {
+          blocks.push({
+            category: "custom",
+            title: "Community Overview",
+            body: `${assoc.name} is a ${assoc.associationType || "community"} located at ${assoc.address}, ${assoc.city}, ${assoc.state}.\n\n${buildingsList.length > 0 ? `Buildings: ${buildingsList.length}` : ""}${unitsList.length > 0 ? `\nUnits: ${unitsList.length}` : ""}`,
+            orderIndex: 0,
+          });
+        }
+
+        blocks.push({
+          category: "emergency",
+          title: "Emergency Contacts",
+          body: "For emergencies, please contact:\n- 911 for fire, police, or medical emergencies\n- Your property management office during business hours",
+          orderIndex: 1,
+        });
+
+        blocks.push({
+          category: "rules",
+          title: "Community Guidelines",
+          body: "Please review the community rules and regulations available in the Documents section of the Owner Portal.",
+          orderIndex: 2,
+        });
+
+        for (const block of blocks) {
+          await db.insert(hubInfoBlocks).values({ ...block, associationId });
+        }
+        results.push("Created " + blocks.length + " default info blocks");
+      }
+
+      // 4. Seed initial notices from recent community announcements if none exist
+      const existingNotices = await db.select().from(communityAnnouncements)
+        .where(and(eq(communityAnnouncements.associationId, associationId), eq(communityAnnouncements.isPublished, 1)))
+        .limit(1);
+      if (existingNotices.length === 0) {
+        await db.insert(communityAnnouncements).values({
+          associationId,
+          title: "Welcome to the Community Hub",
+          body: `The ${assoc.name} Community Hub is now available. Visit this page for community notices, important information, and quick access to owner services.`,
+          priority: "normal",
+          isPinned: 1,
+          isPublished: 1,
+          publishedAt: new Date(),
+          targetAudience: "all",
+          createdBy: req.adminUserEmail,
+          visibilityLevel: "public",
+          isDraft: 0,
+        });
+        results.push("Created welcome notice");
+      }
+
+      res.json({ success: true, actions: results });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Community Hub — Public API (no auth required)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Simple in-memory rate limiter for public hub API
+  const hubPublicRateLimit = new Map<string, { count: number; resetAt: number }>();
+  const HUB_RATE_LIMIT_MAX = 60;
+  const HUB_RATE_LIMIT_WINDOW_MS = 60_000;
+
+  function checkHubRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = hubPublicRateLimit.get(ip);
+    if (!entry || now > entry.resetAt) {
+      hubPublicRateLimit.set(ip, { count: 1, resetAt: now + HUB_RATE_LIMIT_WINDOW_MS });
+      return true;
+    }
+    if (entry.count >= HUB_RATE_LIMIT_MAX) return false;
+    entry.count++;
+    return true;
+  }
+
+  // Periodic cleanup of stale rate limit entries
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of hubPublicRateLimit) {
+      if (now > entry.resetAt) hubPublicRateLimit.delete(ip);
+    }
+  }, 300_000);
+
+  // GET public hub data by association ID or slug
+  app.get("/api/hub/:identifier/public", async (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkHubRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    try {
+      const identifier = getParam(req.params.identifier);
+      // Try slug first, then ID
+      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
+      if (!config) {
+        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
+      }
+      if (!config || !config.isEnabled) {
+        return res.status(404).json({ message: "Community hub not found or not enabled" });
+      }
+
+      const associationId = config.associationId;
+
+      // Get association name
+      const [association] = await db.select({ name: associations.name, city: associations.city, state: associations.state })
+        .from(associations).where(eq(associations.id, associationId));
+
+      // Get public notices (published, not expired, public visibility)
+      const now = new Date();
+      const publicNotices = await db.select().from(communityAnnouncements)
+        .where(and(
+          eq(communityAnnouncements.associationId, associationId),
+          eq(communityAnnouncements.isPublished, 1),
+          or(isNull(communityAnnouncements.expiresAt), gte(communityAnnouncements.expiresAt, now)),
+          or(isNull(communityAnnouncements.visibilityLevel), eq(communityAnnouncements.visibilityLevel, "public")),
+          eq(communityAnnouncements.isDraft, 0),
+        ))
+        .orderBy(desc(communityAnnouncements.publishedAt))
+        .limit(10);
+
+      // Get public info blocks
+      const publicInfoBlocks = await db.select().from(hubInfoBlocks)
+        .where(and(eq(hubInfoBlocks.associationId, associationId), eq(hubInfoBlocks.isEnabled, 1)))
+        .orderBy(hubInfoBlocks.orderIndex);
+
+      // Get enabled action links
+      const publicActionLinks = await db.select().from(hubActionLinks)
+        .where(and(eq(hubActionLinks.associationId, associationId), eq(hubActionLinks.isEnabled, 1)))
+        .orderBy(hubActionLinks.orderIndex);
+
+      // Get upcoming public meetings (scheduled, future)
+      const upcomingMeetings = await db.select({
+        id: governanceMeetings.id,
+        title: governanceMeetings.title,
+        meetingType: governanceMeetings.meetingType,
+        scheduledAt: governanceMeetings.scheduledAt,
+        location: governanceMeetings.location,
+      }).from(governanceMeetings)
+        .where(and(
+          eq(governanceMeetings.associationId, associationId),
+          eq(governanceMeetings.status, "scheduled"),
+          gte(governanceMeetings.scheduledAt, now),
+        ))
+        .orderBy(governanceMeetings.scheduledAt)
+        .limit(5);
+
+      // Get public documents (portal-visible, current version)
+      const publicDocuments = await db.select({
+        id: documents.id,
+        title: documents.title,
+        documentType: documents.documentType,
+        fileUrl: documents.fileUrl,
+        createdAt: documents.createdAt,
+      }).from(documents)
+        .where(and(
+          eq(documents.associationId, associationId),
+          eq(documents.isPortalVisible, 1),
+          eq(documents.isCurrentVersion, 1),
+        ))
+        .orderBy(desc(documents.createdAt))
+        .limit(10);
+
+      res.json({
+        config: {
+          communityDescription: config.communityDescription,
+          logoUrl: config.logoUrl,
+          bannerImageUrl: config.bannerImageUrl,
+          themeColor: config.themeColor,
+          sectionOrder: config.sectionOrder,
+          enabledSections: config.enabledSections,
+          slug: config.slug,
+          welcomeModeEnabled: config.welcomeModeEnabled,
+          welcomeHeadline: config.welcomeHeadline,
+          welcomeHighlights: config.welcomeHighlights,
+        },
+        association: association || null,
+        notices: publicNotices,
+        infoBlocks: publicInfoBlocks,
+        actionLinks: publicActionLinks,
+        meetings: upcomingMeetings,
+        documents: publicDocuments,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Community Hub — Portal API (authenticated residents)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET hub data for authenticated portal user (role-filtered)
+  app.get("/api/hub/portal/home", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const associationId = req.portalAssociationId!;
+      const role = req.portalRole || "readonly";
+
+      const [config] = await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, associationId));
+      if (!config || !config.isEnabled) {
+        return res.status(404).json({ message: "Community hub not enabled for this association" });
+      }
+
+      const [association] = await db.select({ name: associations.name, city: associations.city, state: associations.state })
+        .from(associations).where(eq(associations.id, associationId));
+
+      // Visibility hierarchy: public < resident < owner < board < admin
+      const visibilityLevels = ["public"];
+      if (["tenant", "owner", "board-member", "readonly"].includes(role)) visibilityLevels.push("resident");
+      if (["owner", "board-member"].includes(role)) visibilityLevels.push("owner");
+      if (role === "board-member" || req.portalHasBoardAccess) visibilityLevels.push("board");
+
+      // Get role-filtered notices
+      const now = new Date();
+      const notices = await db.select().from(communityAnnouncements)
+        .where(and(
+          eq(communityAnnouncements.associationId, associationId),
+          eq(communityAnnouncements.isPublished, 1),
+          or(isNull(communityAnnouncements.expiresAt), gte(communityAnnouncements.expiresAt, now)),
+          eq(communityAnnouncements.isDraft, 0),
+          or(
+            isNull(communityAnnouncements.visibilityLevel),
+            inArray(communityAnnouncements.visibilityLevel, visibilityLevels),
+          ),
+        ))
+        .orderBy(desc(communityAnnouncements.isPinned), desc(communityAnnouncements.publishedAt))
+        .limit(20);
+
+      const infoBlocks = await db.select().from(hubInfoBlocks)
+        .where(and(eq(hubInfoBlocks.associationId, associationId), eq(hubInfoBlocks.isEnabled, 1)))
+        .orderBy(hubInfoBlocks.orderIndex);
+
+      const actionLinks = await db.select().from(hubActionLinks)
+        .where(and(eq(hubActionLinks.associationId, associationId), eq(hubActionLinks.isEnabled, 1)))
+        .orderBy(hubActionLinks.orderIndex);
+
+      // Map data — layers and issues visible to the user's role
+      const mapLayers = await db.select().from(hubMapLayers)
+        .where(and(eq(hubMapLayers.associationId, associationId), eq(hubMapLayers.isActive, 1)));
+
+      let mapIssues: any[] = [];
+      if (mapLayers.length > 0) {
+        const issueConditions = [
+          eq(hubMapIssues.associationId, associationId),
+          inArray(hubMapIssues.visibilityLevel, visibilityLevels as any),
+        ];
+        mapIssues = await db.select().from(hubMapIssues)
+          .where(and(...issueConditions))
+          .orderBy(desc(hubMapIssues.createdAt))
+          .limit(50);
+      }
+
+      // Map nodes for all active layers
+      let mapNodes: any[] = [];
+      if (mapLayers.length > 0) {
+        mapNodes = await db.select().from(hubMapNodes)
+          .where(eq(hubMapNodes.associationId, associationId));
+      }
+
+      res.json({
+        config: {
+          communityDescription: config.communityDescription,
+          logoUrl: config.logoUrl,
+          bannerImageUrl: config.bannerImageUrl,
+          themeColor: config.themeColor,
+          sectionOrder: config.sectionOrder,
+          enabledSections: config.enabledSections,
+        },
+        association: association || null,
+        notices,
+        infoBlocks,
+        actionLinks,
+        map: {
+          layers: mapLayers,
+          nodes: mapNodes,
+          issues: mapIssues,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST report a map issue (portal user)
+  app.post("/api/hub/portal/map/issues", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const associationId = req.portalAssociationId!;
+      const [config] = await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, associationId));
+      if (!config || !config.isEnabled) {
+        return res.status(404).json({ message: "Community hub not enabled" });
+      }
+      const [created] = await db.insert(hubMapIssues).values({
+        ...req.body,
+        associationId,
+        reportedByPortalAccessId: req.portalAccessId,
+        status: "reported",
+        visibilityLevel: "board",
+      }).returning();
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET portal user's own reported map issues
+  app.get("/api/hub/portal/map/issues/mine", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const issues = await db.select().from(hubMapIssues)
+        .where(eq(hubMapIssues.reportedByPortalAccessId, req.portalAccessId!))
+        .orderBy(desc(hubMapIssues.createdAt));
+      res.json(issues);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

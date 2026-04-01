@@ -1077,6 +1077,12 @@ export default function OwnerPortalPage() {
             <span className="font-label uppercase tracking-widest text-[11px]">Voting</span>
             {activeElections.length > 0 && <span className="ml-auto text-xs bg-primary text-on-primary px-2 py-0.5 rounded-full">{activeElections.length}</span>}
           </button>
+          {me?.associationId && (
+            <a href={`/community/${me.associationId}`} target="_blank" rel="noopener noreferrer" className="w-full text-left rounded-lg px-4 py-3 font-bold flex items-center gap-3 transition-colors text-on-surface-variant hover:text-primary">
+              <span className="material-symbols-outlined">language</span>
+              <span className="font-label uppercase tracking-widest text-[11px]">Community Hub</span>
+            </a>
+          )}
         </nav>
         <div className="mt-auto pt-6 border-t border-outline-variant/10 space-y-2">
           <button className="w-full bg-primary text-on-primary rounded-lg py-3 px-4 text-xs font-bold uppercase">Support</button>

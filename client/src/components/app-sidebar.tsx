@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Wrench,
   SearchCheck,
+  Globe,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -151,6 +152,14 @@ const associationModules: NavModule[] = [
       { title: "Vendors", url: "/app/vendors", icon: BriefcaseBusiness, materialIcon: "storefront", activePrefix: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { title: "Feedback", url: "/app/resident-feedback", icon: MessageCircle, materialIcon: "rate_review", activePrefix: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
+  },
+  {
+    title: "Community Hub",
+    url: "/app/community-hub",
+    icon: Globe,
+    materialIcon: "language",
+    activePrefix: "/app/community-hub",
+    roles: ["platform-admin", "board-admin", "manager", "viewer"],
   },
 ];
 

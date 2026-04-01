@@ -12516,6 +12516,13 @@ export class DatabaseStorage implements IStorage {
     let access = await this.getPortalAccessById(portalAccessId);
     if (!access || access.status !== "active") return undefined;
 
+    // Enforce 30-day session expiry based on last login
+    const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+    if (access.lastLoginAt) {
+      const elapsed = Date.now() - new Date(access.lastLoginAt).getTime();
+      if (elapsed > SESSION_MAX_AGE_MS) return undefined;
+    }
+
     let boardRole: BoardRole | null = null;
     if (access.boardRoleId) {
       const now = new Date();

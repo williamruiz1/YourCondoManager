@@ -1387,6 +1387,12 @@ export const communityAnnouncements = pgTable("community_announcements", {
   isPublished: integer("is_published").notNull().default(0),
   targetAudience: text("target_audience").notNull().default("all"),
   createdBy: text("created_by"),
+  // Hub notice extensions
+  noticeCategory: text("notice_category"),
+  visibilityLevel: text("visibility_level"),
+  attachments: jsonb("attachments").default(sql`'[]'::jsonb`),
+  isDraft: integer("is_draft").notNull().default(0),
+  scheduledPublishAt: timestamp("scheduled_publish_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -2572,3 +2578,134 @@ export const platformWebhookEvents = pgTable("platform_webhook_events", {
 }));
 
 export type PlatformWebhookEvent = typeof platformWebhookEvents.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Community Hub — Association microsite & infrastructure map
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const hubVisibilityLevelEnum = pgEnum("hub_visibility_level", ["public", "resident", "owner", "board", "admin"]);
+export const hubInfoBlockCategoryEnum = pgEnum("hub_info_block_category", ["trash", "parking", "emergency", "maintenance", "rules", "amenities", "custom"]);
+export const hubActionRouteTypeEnum = pgEnum("hub_action_route_type", ["internal", "external"]);
+export const hubMapNodeTypeEnum = pgEnum("hub_map_node_type", ["building", "unit", "common-area", "parking", "amenity", "path", "infrastructure"]);
+export const hubMapIssueCategoryEnum = pgEnum("hub_map_issue_category", ["maintenance", "repair", "safety", "landscaping", "suggestion", "inspection", "other"]);
+export const hubMapIssueStatusEnum = pgEnum("hub_map_issue_status", ["reported", "under-review", "approved", "in-progress", "resolved", "dismissed"]);
+export const hubNoticeCategoryEnum = pgEnum("hub_notice_category", ["general", "maintenance", "governance", "safety", "seasonal", "meeting", "financial"]);
+
+// Hub page configuration — one per association
+export const hubPageConfigs = pgTable("hub_page_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  isEnabled: integer("is_enabled").notNull().default(0),
+  logoUrl: text("logo_url"),
+  bannerImageUrl: text("banner_image_url"),
+  communityDescription: text("community_description"),
+  sectionOrder: jsonb("section_order").notNull().default(sql`'["notices","quick-actions","info-blocks","map","contacts"]'::jsonb`),
+  enabledSections: jsonb("enabled_sections").notNull().default(sql`'["notices","quick-actions","info-blocks","contacts"]'::jsonb`),
+  themeColor: text("theme_color"),
+  slug: text("slug"),
+  welcomeModeEnabled: integer("welcome_mode_enabled").notNull().default(0),
+  welcomeHeadline: text("welcome_headline"),
+  welcomeHighlights: jsonb("welcome_highlights"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAssociation: uniqueIndex("hub_page_configs_association_uq").on(table.associationId),
+  uniqueSlug: uniqueIndex("hub_page_configs_slug_uq").on(table.slug),
+}));
+export type HubPageConfig = typeof hubPageConfigs.$inferSelect;
+export type InsertHubPageConfig = typeof hubPageConfigs.$inferInsert;
+export const insertHubPageConfigSchema = createInsertSchema(hubPageConfigs);
+
+// Hub action links — quick action buttons on the hub (max 8 per association)
+export const hubActionLinks = pgTable("hub_action_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  label: text("label").notNull(),
+  iconKey: text("icon_key"),
+  routeType: hubActionRouteTypeEnum("route_type").notNull().default("internal"),
+  routeTarget: text("route_target").notNull(),
+  orderIndex: integer("order_index").notNull().default(0),
+  isEnabled: integer("is_enabled").notNull().default(1),
+  autoDerived: integer("auto_derived").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type HubActionLink = typeof hubActionLinks.$inferSelect;
+export type InsertHubActionLink = typeof hubActionLinks.$inferInsert;
+export const insertHubActionLinkSchema = createInsertSchema(hubActionLinks);
+
+// Hub info blocks — community information cards
+export const hubInfoBlocks = pgTable("hub_info_blocks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  category: hubInfoBlockCategoryEnum("category").notNull().default("custom"),
+  title: text("title").notNull(),
+  body: text("body"),
+  externalLinks: jsonb("external_links").notNull().default(sql`'[]'::jsonb`),
+  orderIndex: integer("order_index").notNull().default(0),
+  isEnabled: integer("is_enabled").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type HubInfoBlock = typeof hubInfoBlocks.$inferSelect;
+export type InsertHubInfoBlock = typeof hubInfoBlocks.$inferInsert;
+export const insertHubInfoBlockSchema = createInsertSchema(hubInfoBlocks);
+
+// Hub map layers — site plan images for the infrastructure map
+export const hubMapLayers = pgTable("hub_map_layers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  name: text("name").notNull(),
+  baseImageUrl: text("base_image_url").notNull(),
+  coordinateSystem: jsonb("coordinate_system"),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type HubMapLayer = typeof hubMapLayers.$inferSelect;
+export type InsertHubMapLayer = typeof hubMapLayers.$inferInsert;
+export const insertHubMapLayerSchema = createInsertSchema(hubMapLayers);
+
+// Hub map nodes — buildings, areas, amenities placed on a map layer
+export const hubMapNodes = pgTable("hub_map_nodes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  layerId: varchar("layer_id").notNull().references(() => hubMapLayers.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  nodeType: hubMapNodeTypeEnum("node_type").notNull(),
+  label: text("label").notNull(),
+  linkedBuildingId: varchar("linked_building_id").references(() => buildings.id),
+  linkedUnitId: varchar("linked_unit_id").references(() => units.id),
+  geometry: jsonb("geometry").notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type HubMapNode = typeof hubMapNodes.$inferSelect;
+export type InsertHubMapNode = typeof hubMapNodes.$inferInsert;
+export const insertHubMapNodeSchema = createInsertSchema(hubMapNodes);
+
+// Hub map issues — location-based issue reports on the infrastructure map
+export const hubMapIssues = pgTable("hub_map_issues", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  mapNodeId: varchar("map_node_id").references(() => hubMapNodes.id),
+  layerId: varchar("layer_id").notNull().references(() => hubMapLayers.id),
+  reportedByPortalAccessId: varchar("reported_by_portal_access_id").references(() => portalAccess.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: hubMapIssueCategoryEnum("category").notNull().default("maintenance"),
+  images: jsonb("images").notNull().default(sql`'[]'::jsonb`),
+  coordinates: jsonb("coordinates"),
+  status: hubMapIssueStatusEnum("status").notNull().default("reported"),
+  visibilityLevel: hubVisibilityLevelEnum("visibility_level").notNull().default("board"),
+  priority: roadmapPriorityEnum("priority").notNull().default("medium"),
+  linkedTicketId: varchar("linked_ticket_id"),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type HubMapIssue = typeof hubMapIssues.$inferSelect;
+export type InsertHubMapIssue = typeof hubMapIssues.$inferInsert;
+export const insertHubMapIssueSchema = createInsertSchema(hubMapIssues);

@@ -109,8 +109,8 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 <button className="text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>
                   Sign In
                 </button>
-                <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-5 py-2 rounded font-semibold scale-95 active:opacity-80 transition-all" onClick={onStartGoogleSignIn}>
-                  Open Workspace
+                <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-5 py-2 rounded font-semibold scale-95 active:opacity-80 transition-all" onClick={() => setLocation("/signup?plan=property-manager")}>
+                  Start Free Trial
                 </button>
               </>
             )}
@@ -157,7 +157,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               ) : (
                 <>
                   <button className="px-4 py-2 text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>Sign In</button>
-                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all" onClick={onStartGoogleSignIn}>Open Workspace</button>
+                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all" onClick={() => setLocation("/signup?plan=property-manager")}>Start Free Trial</button>
                 </>
               )}
             </div>

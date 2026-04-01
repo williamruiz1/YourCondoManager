@@ -88,6 +88,8 @@ const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
 const TermsOfServicePage = lazy(() => import("@/pages/terms-of-service"));
 const UserSettingsPage = lazy(() => import("@/pages/user-settings"));
 const HelpCenterPage = lazy(() => import("@/pages/help-center"));
+const CommunityHubPage = lazy(() => import("@/pages/community-hub"));
+const CommunityHubPublicPage = lazy(() => import("@/pages/community-hub-public"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const AdminContextualFeedbackWidget = lazy(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })));
 
@@ -303,6 +305,7 @@ function WorkspaceRouter({
         <Route path="/app/portfolio">
           {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <PortfolioPage />}
         </Route>
+        <Route path="/app/community-hub" component={CommunityHubPage} />
         <Route path="/app/announcements" component={AnnouncementsPage} />
         <Route path="/app/help-center" component={HelpCenterPage} />
         <Route path="/app/settings" component={UserSettingsPage} />
@@ -359,6 +362,7 @@ function PublicRouter({
         <Route path="/vote/:token">
           {(params) => <ElectionBallotPage token={params.token ?? ""} />}
         </Route>
+        <Route path="/community/:identifier" component={CommunityHubPublicPage} />
         <Route path="/onboarding/:token" component={OnboardingInvitePage} />
         <Route path="/associations">
           <RouteRedirect to="/app/associations" />

@@ -147,6 +147,18 @@ function SidebarContents({
             <SidebarSubLink icon="feedback" label="Resident Feedback" href="/app/resident-feedback" />
           </div>
         )}
+
+        {associationId && (
+          <a
+            href={`/community/${associationId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors"
+          >
+            <span className="material-symbols-outlined text-[20px]">language</span>
+            <span className="font-label uppercase tracking-widest text-[11px]">Community Hub</span>
+          </a>
+        )}
       </nav>
 
       <div className="mt-auto pt-6 border-t border-outline-variant/10 space-y-2 px-4">
