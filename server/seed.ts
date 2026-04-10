@@ -3,7 +3,7 @@ import { and, eq, ilike, sql } from "drizzle-orm";
 import {
   adminUsers, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
   elections, electionOptions, electionBallotTokens, electionBallotCasts, electionProxyDesignations, electionProxyDocuments,
-  vendors, workOrders,
+  vendors, vendorInvoices, workOrders,
   associationInsurancePolicies, inspectionRecords,
   maintenanceScheduleTemplates, maintenanceScheduleInstances,
   governanceMeetings,
@@ -3117,6 +3117,91 @@ export async function seedDatabase() {
     log("[seed] onboarding invites :: 5 records inserted for Cherry Hill", "seed");
   } else {
     log("[seed] onboarding invites :: already exist, skipping", "seed");
+  }
+
+  // ── Vendor Invoices ──
+  const [existingVendorInvoice] = await db.select().from(vendorInvoices)
+    .where(eq(vendorInvoices.associationId, CHERRY_HILL_CONDO_ID));
+
+  if (!existingVendorInvoice) {
+    await db.insert(vendorInvoices).values([
+      {
+        id: "vinv0001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_CONDO_ID,
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000001",
+        vendorName: "Northeast HVAC Services",
+        invoiceNumber: "HVAC-2026-001",
+        invoiceDate: new Date("2026-01-15T00:00:00Z"),
+        dueDate: new Date("2026-02-05T00:00:00Z"),
+        amount: 500,
+        status: "paid",
+        notes: "Jan 2026 boiler room annual inspection. Paid Feb 5 2026.",
+      },
+      {
+        id: "vinv0001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_CONDO_ID,
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000002",
+        vendorName: "Harbor Plumbing Co.",
+        invoiceNumber: "HPB-2026-014",
+        invoiceDate: new Date("2026-03-10T00:00:00Z"),
+        dueDate: new Date("2026-03-20T00:00:00Z"),
+        amount: 850,
+        status: "paid",
+        notes: "Emergency water shutoff repair — Mar 2026. Paid Mar 20 2026.",
+      },
+      {
+        id: "vinv0001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_CONDO_ID,
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000003",
+        vendorName: "Greenscape Landscaping",
+        invoiceNumber: "GLS-2026-Q1",
+        invoiceDate: new Date("2026-01-31T00:00:00Z"),
+        dueDate: new Date("2026-02-15T00:00:00Z"),
+        amount: 6000,
+        status: "paid",
+        notes: "Q1 2026 landscaping contract. Paid Feb 15 2026.",
+      },
+      {
+        id: "vinv0001-0000-4000-8000-000000000004",
+        associationId: CHERRY_HILL_CONDO_ID,
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000003",
+        vendorName: "Greenscape Landscaping",
+        invoiceNumber: "GLS-2026-Q2",
+        invoiceDate: new Date("2026-04-01T00:00:00Z"),
+        dueDate: new Date("2026-05-01T00:00:00Z"),
+        amount: 6000,
+        status: "received",
+        notes: "Q2 2026 landscaping contract. Due May 1 2026.",
+      },
+      {
+        id: "vinv0001-0000-4000-8000-000000000005",
+        associationId: CHERRY_HILL_CONDO_ID,
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000005",
+        vendorName: "ProClean Janitorial",
+        invoiceNumber: "PCJ-2026-003",
+        invoiceDate: new Date("2026-03-31T00:00:00Z"),
+        dueDate: new Date("2026-04-10T00:00:00Z"),
+        amount: 1200,
+        status: "approved",
+        notes: "March 2026 common area cleaning. Due Apr 10 2026.",
+      },
+      {
+        id: "vinv0001-0000-4000-8000-000000000006",
+        associationId: CHERRY_HILL_CONDO_ID,
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000004",
+        vendorName: "Brightline Electrical",
+        invoiceNumber: "BLE-2026-007",
+        invoiceDate: new Date("2026-04-05T00:00:00Z"),
+        dueDate: new Date("2026-04-15T00:00:00Z"),
+        amount: 320,
+        status: "received",
+        notes: "Parking lot light repair. Due Apr 15 2026.",
+      },
+    ])
+    .onConflictDoNothing();
+    log("[seed] vendor invoices :: 6 records inserted for Cherry Hill", "seed");
+  } else {
+    log("[seed] vendor invoices :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
