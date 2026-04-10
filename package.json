@@ -21,7 +21,8 @@
     "verify:mobile": "tsx script/verify-mobile-journeys.ts",
     "verify:owner-portal-multi-unit": "tsx script/verify-owner-portal-multi-unit.ts",
     "verify:elections": "npx tsx scripts/verify-elections.ts",
-    "verify:vendors": "npx tsx scripts/verify-vendors.ts"
+    "verify:vendors": "npx tsx scripts/verify-vendors.ts",
+    "verify:work-orders": "npx tsx scripts/verify-work-orders.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
