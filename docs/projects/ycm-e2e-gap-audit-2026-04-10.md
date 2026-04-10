@@ -29,7 +29,7 @@ However, four **critical runtime bugs** were found, along with several high/medi
 | G13 | Browserslist dataset 6 months old | **RESOLVED** | `de6f617` (dataset refreshed) |
 | G14 | `verify:mobile` is a manual checklist | Deferred | No action — informational, replacement would be a new roadmap item |
 
-**Catchall inbox impact:** 10 of 13 tasks `done`, 3 `todo` (PostCSS mitigation done; G11/G12/G14 intentionally deferred; new findings from follow-up review are the 3 remaining todo items — see appendix).
+**Catchall inbox impact:** All 13 actionable tasks `done` (as of the F2 + F1 follow-ups); G11/G12/G14 intentionally deferred as architectural/operational rather than bugs. The three new findings from the follow-up review (F1/F2/F3) are all now resolved — F2 by commit `62a756a`, F3 by commit `a97d8d5`, F1 by a narrower deletion than originally scoped (see appendix).
 
 ---
 
@@ -204,12 +204,18 @@ New tasks added to **Admin Roadmap Catchall Findings Inbox** (`ed8345a1`):
 
 A fresh-eyes review of the fix wave surfaced three new findings not in the original audit. They were captured as new catchall tasks and left `todo` since they emerged from the remediation itself, not the original platform state.
 
-### F1: 9 orphaned financial page files
-- **Type:** Continuity gap introduced by cleanup
-- **Evidence:** Commit `bc2984a` removed nine financial page lazy imports from `App.tsx` (FinancialFees, FinancialAssessments, FinancialLateFees, FinancialInvoices, FinancialUtilities, FinancialLedger, FinancialBudgets, FinancialReconciliation, FinancialRecurringCharges). Their routes are pure redirects to the consolidated foundation/billing/expenses/reports pages, so the imports were correctly identified as dead. However, the nine `.tsx` files themselves still exist in `client/src/pages/` and are now completely unreferenced.
-- **Inconsistency:** `51cf675` deleted the orphan page *files* for occupancy/owners, but `bc2984a` only deleted the *imports* for the financial pages, leaving a cleanup asymmetry.
-- **Fix:** Either delete the nine files to match the occupancy/owners treatment, or wire them back to live routes if the consolidation work is incomplete.
-- **Priority:** Medium.
+### F1: ~~9 orphaned financial page files~~ — actually only 1; correction below
+- **Type:** Initial finding was wrong. Corrected scope retained as a historical record of the correction.
+- **Original claim:** Commit `bc2984a` removed nine financial page lazy imports from `App.tsx`, and the original review assumed all nine `.tsx` files were therefore dead.
+- **Actual state after deeper grep:** Eight of the nine files are **still live** — they export named `*Content` components that the consolidated pages import and render as tab contents:
+  - `financial-billing.tsx` → imports `FinancialLedgerContent`, `FinancialAssessmentsContent`, `FinancialLateFeesContent`
+  - `financial-expenses.tsx` → imports `FinancialInvoicesContent`, `FinancialUtilitiesContent`, `FinancialBudgetsContent`
+  - `financial-foundation.tsx` → imports `FinancialRecurringChargesContent`
+  - `financial-reports.tsx` → imports `FinancialReconciliationContent`
+- **Only one file was actually orphaned:** `client/src/pages/financial-fees.tsx` (332 lines) only exported a default `FinancialFeesPage` component with no `*Content` named export and no consumer. It was a genuine leftover from before the consolidation.
+- **Fix:** Deleted `financial-fees.tsx` in a separate commit. The other eight files remain in place as the actual source of truth for the consolidated pages' tabs.
+- **Lesson:** "Lazy import removed + route is a redirect" does not imply "file is dead." Always grep for *named* exports and their consumers before deleting a refactored module.
+- **Priority:** Medium (resolved with corrected scope).
 
 ### F2: Portal login endpoints not rate-limited
 - **Type:** Partial-fix gap introduced by `a3e5414`
