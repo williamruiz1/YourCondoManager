@@ -9,6 +9,7 @@ import {
   governanceMeetings,
   communityAnnouncements,
   budgets, budgetVersions, budgetLines,
+  ownerLedgerEntries,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -2638,6 +2639,239 @@ export async function seedDatabase() {
     log("[seed] budget lines :: 8 operating + 3 reserve lines inserted for Cherry Hill", "seed");
   } else {
     log("[seed] budget lines :: already exist, skipping", "seed");
+  }
+
+  // ── Owner Ledger Entries — Cherry Hill Court Condominiums ───────────────────
+  // 3-month ledger (Jan–Mar 2026) for 3 units. Unit 1415-A has a late fee and
+  // no March payment yet; the other two units are fully paid through March.
+  const existingLedgerEntries = await db
+    .select()
+    .from(ownerLedgerEntries)
+    .where(eq(ownerLedgerEntries.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (existingLedgerEntries.length === 0) {
+    // Seed Cherry Hill persons referenced by ledger entries — idempotent fixed UUIDs
+    const CHERRY_HILL_PERSONS = [
+      {
+        id: "chper001-0000-4000-8000-000000000001",
+        firstName: "Patricia",
+        lastName: "Marchetti",
+        email: "p.marchetti@email.com",
+        phone: "(203) 555-0411",
+        mailingAddress: "1405 Quinnipiac Ave. Unit 1415-A, New Haven, CT 06513",
+      },
+      {
+        id: "chper001-0000-4000-8000-000000000002",
+        firstName: "Derek",
+        lastName: "Sullivan",
+        email: "d.sullivan@email.com",
+        phone: "(203) 555-0412",
+        mailingAddress: "1405 Quinnipiac Ave. Unit 1417-A, New Haven, CT 06513",
+      },
+      {
+        id: "chper001-0000-4000-8000-000000000003",
+        firstName: "Yuki",
+        lastName: "Nakamura",
+        email: "y.nakamura@email.com",
+        phone: "(203) 555-0413",
+        mailingAddress: "1405 Quinnipiac Ave. Unit 1421-A, New Haven, CT 06513",
+      },
+    ];
+    for (const p of CHERRY_HILL_PERSONS) {
+      await db.insert(persons).values(p).onConflictDoNothing();
+    }
+
+    const ledgerRows: (typeof ownerLedgerEntries.$inferInsert)[] = [
+      // ── Unit 1415-A (Patricia Marchetti) — fully paid Jan–Mar ──────────────
+      {
+        id: "olgr0001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
+        personId: "chper001-0000-4000-8000-000000000001",
+        entryType: "assessment",
+        amount: 350,
+        postedAt: new Date("2026-01-01T00:00:00Z"),
+        description: "Monthly assessment — January 2026",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
+        personId: "chper001-0000-4000-8000-000000000001",
+        entryType: "payment",
+        amount: -350,
+        postedAt: new Date("2026-01-05T00:00:00Z"),
+        description: "Payment received — January 2026 assessment",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
+        personId: "chper001-0000-4000-8000-000000000001",
+        entryType: "assessment",
+        amount: 350,
+        postedAt: new Date("2026-02-01T00:00:00Z"),
+        description: "Monthly assessment — February 2026",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000004",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
+        personId: "chper001-0000-4000-8000-000000000001",
+        entryType: "payment",
+        amount: -350,
+        postedAt: new Date("2026-02-07T00:00:00Z"),
+        description: "Payment received — February 2026 assessment",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000005",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
+        personId: "chper001-0000-4000-8000-000000000001",
+        entryType: "assessment",
+        amount: 350,
+        postedAt: new Date("2026-03-01T00:00:00Z"),
+        description: "Monthly assessment — March 2026",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000006",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
+        personId: "chper001-0000-4000-8000-000000000001",
+        entryType: "payment",
+        amount: -350,
+        postedAt: new Date("2026-03-08T00:00:00Z"),
+        description: "Payment received — March 2026 assessment",
+      },
+
+      // ── Unit 1417-A (Derek Sullivan) — fully paid Jan–Mar ──────────────────
+      {
+        id: "olgr0001-0000-4000-8000-000000000007",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
+        personId: "chper001-0000-4000-8000-000000000002",
+        entryType: "assessment",
+        amount: 350,
+        postedAt: new Date("2026-01-01T00:00:00Z"),
+        description: "Monthly assessment — January 2026",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000008",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
+        personId: "chper001-0000-4000-8000-000000000002",
+        entryType: "payment",
+        amount: -350,
+        postedAt: new Date("2026-01-05T00:00:00Z"),
+        description: "Payment received — January 2026 assessment",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000009",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
+        personId: "chper001-0000-4000-8000-000000000002",
+        entryType: "assessment",
+        amount: 350,
+        postedAt: new Date("2026-02-01T00:00:00Z"),
+        description: "Monthly assessment — February 2026",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000010",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
+        personId: "chper001-0000-4000-8000-000000000002",
+        entryType: "payment",
+        amount: -350,
+        postedAt: new Date("2026-02-07T00:00:00Z"),
+        description: "Payment received — February 2026 assessment",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000011",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
+        personId: "chper001-0000-4000-8000-000000000002",
+        entryType: "assessment",
+        amount: 350,
+        postedAt: new Date("2026-03-01T00:00:00Z"),
+        description: "Monthly assessment — March 2026",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000012",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
+        personId: "chper001-0000-4000-8000-000000000002",
+        entryType: "payment",
+        amount: -350,
+        postedAt: new Date("2026-03-08T00:00:00Z"),
+        description: "Payment received — March 2026 assessment",
+      },
+
+      // ── Unit 1421-A (Yuki Nakamura) — late on March; fee charged, no payment ─
+      {
+        id: "olgr0001-0000-4000-8000-000000000013",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
+        personId: "chper001-0000-4000-8000-000000000003",
+        entryType: "assessment",
+        amount: 350,
+        postedAt: new Date("2026-01-01T00:00:00Z"),
+        description: "Monthly assessment — January 2026",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000014",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
+        personId: "chper001-0000-4000-8000-000000000003",
+        entryType: "payment",
+        amount: -350,
+        postedAt: new Date("2026-01-05T00:00:00Z"),
+        description: "Payment received — January 2026 assessment",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000015",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
+        personId: "chper001-0000-4000-8000-000000000003",
+        entryType: "assessment",
+        amount: 350,
+        postedAt: new Date("2026-02-01T00:00:00Z"),
+        description: "Monthly assessment — February 2026",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000016",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
+        personId: "chper001-0000-4000-8000-000000000003",
+        entryType: "payment",
+        amount: -350,
+        postedAt: new Date("2026-02-07T00:00:00Z"),
+        description: "Payment received — February 2026 assessment",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000017",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
+        personId: "chper001-0000-4000-8000-000000000003",
+        entryType: "assessment",
+        amount: 350,
+        postedAt: new Date("2026-03-01T00:00:00Z"),
+        description: "Monthly assessment — March 2026",
+      },
+      {
+        id: "olgr0001-0000-4000-8000-000000000018",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
+        personId: "chper001-0000-4000-8000-000000000003",
+        entryType: "late-fee",
+        amount: 25,
+        postedAt: new Date("2026-03-16T00:00:00Z"),
+        description: "Late fee — March 2026 assessment overdue",
+      },
+    ];
+    await db.insert(ownerLedgerEntries).values(ledgerRows).onConflictDoNothing();
+    log("[seed] owner ledger entries :: 18 entries (Jan–Mar 2026) for 3 Cherry Hill units inserted", "seed");
+  } else {
+    log("[seed] owner ledger entries :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
