@@ -19,6 +19,7 @@ import {
   occupancies,
   ownerships,
   persons,
+  personContactPoints,
   portalAccess,
   units,
 } from "../shared/schema";
@@ -83,6 +84,7 @@ async function cleanup(scopes: ScenarioScope[], actorEmail: string) {
   }
 
   if (personIds.length > 0) {
+    await db.delete(personContactPoints).where(inArray(personContactPoints.personId, personIds));
     await db.delete(persons).where(inArray(persons.id, personIds));
   }
 
@@ -97,14 +99,22 @@ async function verifyCodeCoverage() {
   const portal = read("client/src/pages/owner-portal.tsx");
   const routes = read("server/routes.ts");
 
-  assertCheck(portal.includes("Open Board Workspace"), "missing board-workspace toggle");
-  assertCheck(portal.includes("Return to Owner Portal"), "missing return-to-owner toggle");
-  assertCheck(portal.includes("Your units and balances stay one tap away"), "missing owner unit workspace");
-  assertCheck(portal.includes("hasBoardAccess"), "missing board-access state");
-  assertCheck(portal.includes("effectiveRole"), "missing effective-role state");
+  assertCheck(portal.includes('queryKey: ["portal/my-units"]'), "missing owner-unit query wiring");
+  assertCheck(portal.includes('queryKey: ["portal/units-balance"]'), "missing per-unit balance query wiring");
+  assertCheck(portal.includes('queryKey: ["portal/board-dashboard"]'), "missing board dashboard query wiring");
+  assertCheck(portal.includes("/api/portal/my-units"), "missing owner-unit endpoint usage");
+  assertCheck(portal.includes("/api/portal/units-balance"), "missing units-balance endpoint usage");
+  assertCheck(portal.includes("/api/portal/board/dashboard"), "missing board dashboard endpoint usage");
+  assertCheck(portal.includes("Total Units"), "missing multi-unit overview summary");
+  assertCheck(portal.includes("Select Unit"), "missing multi-unit financial unit selector");
+  assertCheck(portal.includes("Current Statement"), "missing per-unit financial statement");
+  assertCheck(portal.includes("Ledger Summary"), "missing owner ledger summary");
+  assertCheck(portal.includes("Manage Payments"), "missing owner financial workspace");
 
   assertCheck(routes.includes('"/api/portal/my-units"'), "missing portal multi-unit route");
   assertCheck(routes.includes('"/api/portal/units-balance"'), "missing portal balance route");
+  assertCheck(routes.includes('"/api/portal/board/dashboard"'), "missing portal board dashboard route");
+  assertCheck(routes.includes("requirePortalBoard"), "missing board route guard");
   assertCheck(routes.includes("resolvePortalAccessContext"), "missing portal access resolution");
   assertCheck(routes.includes("getOwnedPortalUnitsForAssociation"), "missing owned-unit resolver");
 }
@@ -547,10 +557,10 @@ async function run() {
         "owner-board-member",
       ],
       checks: [
-        "owner portal shell exposes board/workspace switching controls",
+        "owner portal shell exposes the live multi-unit summary, unit focus, and financial surfaces",
         "single-unit owner resolves to owner-only access with portal-visible docs and maintenance history",
         "multi-unit owner resolves to two active portal access rows and per-unit maintenance context",
-        "owner-board-member resolves to combined access, sees board-only docs, and sees all association communication",
+        "owner-board-member resolves to combined access, sees board-only docs, and keeps board-only routes behind board access",
       ],
     }, null, 2));
   } finally {

@@ -115,6 +115,12 @@ Required outputs:
 - tasks that map one-to-one to real implementation chunks
 - explicit verification tasks
 
+Catchall rule:
+- if a validated finding exists before a dedicated implementation project exists, capture it in the forever-active catchall project `Admin Roadmap Catchall Findings Inbox`
+- use the catchall as the default intake surface for verified bugs, verification drift, and infrastructure findings that should not remain only in terminal output or transient notes
+- move, duplicate, or refine those tasks into dedicated projects once the implementation shape is clear
+- do not mark the catchall project complete; it is a permanent intake lane
+
 ### 8. Execution Rhythm
 Implementation should follow the project in chunks.
 
@@ -128,6 +134,7 @@ Working clarification:
 - built and validated work must be reflected in the live roadmap task records before closeout
 - partial delivery should move the task to `in-progress` with remaining gaps left explicit
 - completed delivery should move the task to `done`
+- validated findings without an implementation project should still be reflected in the catchall intake project before closeout
 
 ## Agent Bootstrap Backbone
 Repeated agent setup work should be treated as product debt and operationalized, not re-done manually forever.
@@ -185,6 +192,7 @@ Examples:
 - append newly discovered stable facts to the reusable memory layer
 - create or update roadmap tasks when repeated friction appears
 - add verification expectations when an agent had to infer too much
+- capture validated findings in the forever catchall Admin roadmap project when no dedicated project exists yet
 
 ### 5. Governance
 Self-amending behavior must stay bounded.

@@ -22,6 +22,8 @@ Roadmap execution rule:
 - When work is being done against an Admin roadmap project, agents must update the live roadmap task records in the Admin roadmap as implementation chunks are built and validated.
 - Do not leave completed, validated work reflected only in code or docs; sync the corresponding roadmap task status before closeout.
 - If a chunk improves a task materially but does not fully complete it, update the task to `in-progress` and leave the remaining gap explicit.
+- When validated findings are discovered but no dedicated Admin roadmap project exists yet, agents must capture them in the forever-active catchall project `Admin Roadmap Catchall Findings Inbox` before closeout.
+- Treat `Admin Roadmap Catchall Findings Inbox` as a permanent intake surface: add or update tasks there for verified findings, then move or mirror them into dedicated projects later if implementation planning becomes explicit. Do not mark the catchall project complete.
 
 Backbone analysis commands:
 - `npm run backbone:friction -- --summary="..." --category="..." --repeatable="yes|no" --couldPrecompute="yes|no"`

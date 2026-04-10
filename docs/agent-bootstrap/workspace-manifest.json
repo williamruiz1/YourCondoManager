@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-27T23:47:41.830Z",
+  "generatedAt": "2026-04-01T15:26:32.385Z",
   "purpose": "Reusable startup snapshot for coding agents working in the CondoManager workspace.",
   "repository": {
     "root": "/home/runner/workspace",
@@ -27,9 +27,9 @@
     "verificationNote": "TypeScript checks currently surface an existing RegExpStringIterator issue in server/storage.ts around matchAll iteration. Treat it as a known repo issue unless that area is being changed."
   },
   "routes": {
-    "total": 93,
-    "appRoutes": 49,
-    "publicRoutes": 44,
+    "total": 95,
+    "appRoutes": 50,
+    "publicRoutes": 45,
     "entries": [
       {
         "path": "/",
@@ -117,8 +117,13 @@
         "redirectTo": null
       },
       {
+        "path": "/app/community-hub",
+        "component": "CommunityHubPage",
+        "redirectTo": null
+      },
+      {
         "path": "/app/documents",
-        "component": "DocumentsPage",
+        "component": null,
         "redirectTo": null
       },
       {
@@ -327,6 +332,11 @@
         "redirectTo": "/app/communications"
       },
       {
+        "path": "/community/:identifier",
+        "component": "CommunityHubPublicPage",
+        "redirectTo": null
+      },
+      {
         "path": "/documents",
         "component": null,
         "redirectTo": "/app/documents"
@@ -499,7 +509,7 @@
     ]
   },
   "pages": {
-    "totalLazyPages": 58,
+    "totalLazyPages": 60,
     "entries": [
       {
         "id": "AdminUsersPage",
@@ -532,6 +542,14 @@
       {
         "id": "CommunicationsPage",
         "importPath": "@/pages/communications"
+      },
+      {
+        "id": "CommunityHubPage",
+        "importPath": "@/pages/community-hub"
+      },
+      {
+        "id": "CommunityHubPublicPage",
+        "importPath": "@/pages/community-hub-public"
       },
       {
         "id": "DashboardPage",
@@ -836,6 +854,12 @@
       "status": "complete",
       "workstreamCount": 4,
       "openTaskCount": 0
+    },
+    {
+      "title": "Admin Roadmap Catchall Findings Inbox",
+      "status": "active",
+      "workstreamCount": 2,
+      "openTaskCount": 4
     },
     {
       "title": "Platform-wide UI and UX Opportunity Analysis",

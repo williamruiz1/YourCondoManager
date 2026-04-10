@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-27T23:47:42.401Z",
+  "generatedAt": "2026-04-01T15:26:32.880Z",
   "purpose": "Durable working memory for stable repo facts and repeatable operating knowledge.",
   "sourceArtifacts": {
     "workspaceManifest": "docs/agent-bootstrap/workspace-manifest.json",
@@ -117,6 +117,10 @@
     {
       "decision": "Backbone automation may write analysis artifacts and backbone docs, but must not silently change schema, business logic, authorization, or user-facing workflows.",
       "evidence": "docs/projects/agent-bootstrap-self-amend-guardrails.md"
+    },
+    {
+      "decision": "Validated findings that do not yet have a dedicated implementation project must still be captured in the forever-active Admin Roadmap Catchall Findings Inbox before closeout.",
+      "evidence": "docs/projects/admin-roadmap-service-journey-backbone.md"
     }
   ],
   "recurringRepoIssues": [
@@ -134,6 +138,32 @@
       "title": "Admin Roadmap Backbone - Agent Bootstrap and Continuous Improvement",
       "status": "complete",
       "openTasks": []
+    },
+    {
+      "title": "Admin Roadmap Catchall Findings Inbox",
+      "status": "active",
+      "openTasks": [
+        {
+          "title": "Update owner portal multi-unit verifier to match the live portal contract",
+          "priority": "high",
+          "status": "todo"
+        },
+        {
+          "title": "Identify and fix the PostCSS plugin warning during production build",
+          "priority": "medium",
+          "status": "todo"
+        },
+        {
+          "title": "Reduce oversized client bundle hotspots surfaced by production build",
+          "priority": "medium",
+          "status": "todo"
+        },
+        {
+          "title": "Refresh browserslist dataset or document the expected maintenance workflow",
+          "priority": "low",
+          "status": "todo"
+        }
+      ]
     },
     {
       "title": "Platform-wide UI and UX Opportunity Analysis",

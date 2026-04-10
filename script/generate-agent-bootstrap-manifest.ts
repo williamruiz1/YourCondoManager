@@ -106,6 +106,7 @@ function summarizeAgentInstructions(agentsSource: string) {
 async function getRoadmapSummary(): Promise<RoadmapProjectSummary[]> {
   const titles = [
     "Admin Roadmap Backbone - Agent Bootstrap and Continuous Improvement",
+    "Admin Roadmap Catchall Findings Inbox",
     "Platform-wide UI and UX Opportunity Analysis",
   ];
   const projects = await db.select().from(roadmapProjects).where(inArray(roadmapProjects.title, titles));

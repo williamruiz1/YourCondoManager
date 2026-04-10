@@ -18,6 +18,7 @@ function normalizePath(filePath: string) {
 async function getRoadmapContext() {
   const titles = [
     "Admin Roadmap Backbone - Agent Bootstrap and Continuous Improvement",
+    "Admin Roadmap Catchall Findings Inbox",
     "Platform-wide UI and UX Opportunity Analysis",
   ];
   const projects = await db.select().from(roadmapProjects).where(inArray(roadmapProjects.title, titles));
@@ -147,6 +148,10 @@ async function main() {
       {
         decision: "Backbone automation may write analysis artifacts and backbone docs, but must not silently change schema, business logic, authorization, or user-facing workflows.",
         evidence: normalizePath(GUARDRAILS_PATH),
+      },
+      {
+        decision: "Validated findings that do not yet have a dedicated implementation project must still be captured in the forever-active Admin Roadmap Catchall Findings Inbox before closeout.",
+        evidence: normalizePath(BACKBONE_PATH),
       },
     ],
     recurringRepoIssues: [
