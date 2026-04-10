@@ -94,11 +94,13 @@ function SidebarContents({
   activeSection,
   scrollTo,
   isSessionMode,
+  associationId,
   onLogout,
 }: {
   activeSection: Section;
   scrollTo: (s: Section) => void;
   isSessionMode: boolean;
+  associationId?: string;
   onLogout?: () => void;
 }) {
   return (
@@ -348,6 +350,7 @@ export function BoardPortal({ portalAccessId, associationId, associationName, me
               activeSection={activeSection}
               scrollTo={scrollTo}
               isSessionMode={isSessionMode}
+              associationId={associationId}
               onLogout={onLogout}
             />
           </div>
@@ -360,6 +363,7 @@ export function BoardPortal({ portalAccessId, associationId, associationName, me
           activeSection={activeSection}
           scrollTo={scrollTo}
           isSessionMode={isSessionMode}
+          associationId={associationId}
           onLogout={onLogout}
         />
       </aside>

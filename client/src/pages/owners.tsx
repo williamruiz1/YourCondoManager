@@ -240,9 +240,9 @@ export default function OwnersPage() {
 
   function updateDraft(ownershipId: string, patch: Partial<OwnerDraft>) {
     // Apply phone formatting if phone field is being updated
-    const formattedPatch = {
+    const formattedPatch: Partial<OwnerDraft> = {
       ...patch,
-      phone: patch.phone !== undefined ? formatPhoneNumber(patch.phone) : patch.phone,
+      ...(patch.phone !== undefined ? { phone: formatPhoneNumber(patch.phone) } : {}),
     };
     setDrafts((current) => ({
       ...current,

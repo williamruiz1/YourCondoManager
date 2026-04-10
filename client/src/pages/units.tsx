@@ -655,37 +655,64 @@ export default function UnitsPage() {
   }, [buildingGroups, buildings]);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">Buildings &amp; Units</h1>
-          <p className="text-sm text-on-surface/60 mt-1">Start by adding buildings, then add units within each building.</p>
+    <div className="space-y-8 p-4 sm:p-6">
+      <section className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(145deg,hsl(var(--primary))_0%,hsl(217_78%_34%)_48%,hsl(221_45%_18%)_100%)] p-6 text-primary-foreground md:rounded-[24px] md:border md:border-outline-variant/30 md:bg-surface-container-lowest md:text-on-surface">
+        <div className="absolute inset-0 md:hidden">
+          <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/10 blur-3xl" />
+          <div className="absolute -left-12 bottom-0 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
         </div>
-        <div className="flex gap-2">
-          <Button type="button" onClick={openBuildingDialog} data-testid="button-add-building" disabled={!activeAssociationId}>
-            <Building2 className="h-4 w-4 mr-2" />
-            Add Building
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => openUnitDialog()}
-            data-testid="button-add-unit"
-            disabled={!activeAssociationId || !buildings.length}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Unit
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setImportOpen(true)}
-            data-testid="button-import-units"
-            disabled={!activeAssociationId}
-          >
-            <FileUp className="h-4 w-4 mr-2" />
-            Import CSV
-          </Button>
+        <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75 md:hidden">
+              <DoorOpen className="h-3.5 w-3.5" />
+              Lease Workspace
+            </div>
+            <h1
+              className="mt-4 font-headline text-4xl font-bold italic leading-tight text-white md:mt-0 md:text-3xl md:not-italic md:text-on-surface"
+              data-testid="text-page-title"
+            >
+              Buildings &amp; Units
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/80 md:text-on-surface/60">
+              Manage buildings, unit records, owners, and live occupancy for {activeAssociationName || "the current association"} without leaving the workspace.
+            </p>
+
+            <div className="mt-5 rounded-[22px] border border-white/15 bg-white/10 p-4 backdrop-blur-sm md:hidden">
+              <div className="label-caps text-white/70">Current Snapshot</div>
+              <p className="mt-2 text-sm leading-relaxed text-white/90">
+                {summaryCounts.units > 0
+                  ? `${summaryCounts.units} units across ${summaryCounts.buildings} buildings, with ${summaryCounts.tenants} active tenant records and ${summaryCounts.ownerOccupiedPct}% owner occupancy.`
+                  : "Start by creating a building shell, then add units and assign owners or tenants as leases change."}
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden gap-2 md:flex">
+            <Button type="button" onClick={openBuildingDialog} data-testid="button-add-building" disabled={!activeAssociationId}>
+              <Building2 className="mr-2 h-4 w-4" />
+              Add Building
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => openUnitDialog()}
+              data-testid="button-add-unit"
+              disabled={!activeAssociationId || !buildings.length}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Unit
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setImportOpen(true)}
+              data-testid="button-import-units"
+              disabled={!activeAssociationId}
+            >
+              <FileUp className="mr-2 h-4 w-4" />
+              Import CSV
+            </Button>
+          </div>
         </div>
         <Dialog open={open} onOpenChange={handleOpenChange}>
           <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
@@ -1096,9 +1123,81 @@ export default function UnitsPage() {
             ) : null}
           </DialogContent>
         </Dialog>
-      </div>
+      </section>
+
+      <section className="space-y-4 md:hidden">
+        <div className="flex items-baseline gap-4">
+          <h2 className="font-headline text-2xl font-bold text-on-surface">Quick Actions</h2>
+          <div className="h-px flex-1 bg-outline-variant/30" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={openBuildingDialog}
+            disabled={!activeAssociationId}
+            className="group flex min-h-[156px] flex-col justify-between rounded-[22px] border border-outline-variant/20 bg-surface-container-lowest p-5 text-left editorial-shadow transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-active:scale-95">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="font-semibold text-on-surface">Add Building</div>
+              <div className="mt-1 text-xs leading-relaxed text-on-surface/55">Create the property shell first.</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openUnitDialog()}
+            disabled={!activeAssociationId || !buildings.length}
+            className="group flex min-h-[156px] flex-col justify-between rounded-[22px] border border-outline-variant/20 bg-surface-container-lowest p-5 text-left editorial-shadow transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-active:scale-95">
+              <Plus className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="font-semibold text-on-surface">Add Unit</div>
+              <div className="mt-1 text-xs leading-relaxed text-on-surface/55">Place a new residence in an existing building.</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            disabled={!activeAssociationId}
+            className="group flex min-h-[132px] flex-col justify-between rounded-[22px] border border-outline-variant/20 bg-surface-container-lowest p-5 text-left editorial-shadow transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-active:scale-95">
+              <FileUp className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="font-semibold text-on-surface">Import CSV</div>
+              <div className="mt-1 text-xs leading-relaxed text-on-surface/55">Bulk-load unit records in one pass.</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => document.getElementById("units-directory")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="group flex min-h-[132px] flex-col justify-between rounded-[22px] border border-outline-variant/20 bg-surface-container-lowest p-5 text-left editorial-shadow transition-all active:scale-[0.98]"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-active:scale-95">
+              <DoorOpen className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="font-semibold text-on-surface">Browse Directory</div>
+              <div className="mt-1 text-xs leading-relaxed text-on-surface/55">Jump into buildings, owners, and active leases.</div>
+            </div>
+          </button>
+        </div>
+      </section>
 
       {activeAssociationId && (units?.length ?? 0) > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-baseline gap-4">
+            <h2 className="font-headline text-2xl font-bold text-on-surface">Lease Snapshot</h2>
+            <div className="h-px flex-1 bg-outline-variant/30" />
+          </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {[
             { label: "Buildings", value: summaryCounts.buildings, sub: "registered" },
@@ -1114,46 +1213,56 @@ export default function UnitsPage() {
             </div>
           ))}
         </div>
+        </section>
       )}
 
-      <Card>
+      <section id="units-directory" className="space-y-4">
+        <div className="flex items-baseline gap-4">
+          <h2 className="font-headline text-2xl font-bold text-on-surface">Building Directory</h2>
+          <div className="h-px flex-1 bg-outline-variant/30" />
+        </div>
+      <Card className="border-outline-variant/30 bg-transparent shadow-none">
         <CardContent className="p-0">
           {!!buildingGroups.length ? (
-            <div className="p-6">
+            <div className="p-4 md:p-6">
               <div className="grid gap-4 grid-cols-1">
                 {buildingGroups.map((group) => (
-                  <div key={group.groupKey} className="rounded-lg border bg-card">
-                    <div className="flex items-center justify-between border-b px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleBuildingCollapse(group.groupKey)}
-                        className="text-left"
-                        data-testid={`button-toggle-building-${group.groupKey}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          {collapsedBuildings[group.groupKey] ? (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          <div className="font-medium">{group.building}</div>
-                          {group.isLegacyGroup ? <Badge variant="outline">Legacy</Badge> : null}
-                        </div>
-                        <div className="ml-6 text-xs text-muted-foreground">{group.unitCount} total units</div>
-                      </button>
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <Badge variant="outline">{group.ownerLinkedCount} owned</Badge>
-                        <Badge variant="secondary">{group.occupiedCount} occupied</Badge>
+                  <div key={group.groupKey} className="overflow-hidden rounded-[24px] border border-outline-variant/20 bg-surface-container-lowest editorial-shadow">
+                    <div className="border-b border-outline-variant/20 px-4 py-4 md:px-4 md:py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleBuildingCollapse(group.groupKey)}
+                          className="min-w-0 text-left"
+                          data-testid={`button-toggle-building-${group.groupKey}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            {collapsedBuildings[group.groupKey] ? (
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            )}
+                            <div className="font-headline text-xl font-semibold text-on-surface">{group.building}</div>
+                            {group.isLegacyGroup ? <Badge variant="outline">Legacy</Badge> : null}
+                          </div>
+                          <div className="ml-6 mt-1 text-xs text-muted-foreground">Manage ownership, occupancy, and contact actions for this building.</div>
+                        </button>
                         <Button
                           type="button"
                           size="sm"
                           variant="outline"
+                          className="shrink-0 rounded-full"
                           onClick={() => openUnitDialog(group.buildingId ?? undefined, group.isLegacyGroup ? group.building : undefined)}
                           data-testid={`button-add-unit-for-building-${group.buildingId ?? group.building}`}
                         >
-                          <Plus className="h-4 w-4 mr-1" />
+                          <Plus className="mr-1 h-4 w-4" />
                           Add Unit
                         </Button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Badge variant="outline">{group.unitCount} units</Badge>
+                        <Badge variant="outline">{group.ownerLinkedCount} owned</Badge>
+                        <Badge variant="secondary">{group.occupiedCount} occupied</Badge>
                       </div>
                     </div>
                     {collapsedBuildings[group.groupKey] ? null : (
@@ -1163,7 +1272,7 @@ export default function UnitsPage() {
                           No units yet in this building.
                         </div>
                       ) : null}
-                      {group.unitRows.length > 0 ? (
+                      {!isMobile && group.unitRows.length > 0 ? (
                         <div className="hidden lg:grid grid-cols-[80px_110px_minmax(0,1fr)_minmax(0,1fr)_140px_104px] gap-3 rounded-t-md border bg-muted/10 px-3 py-2 text-xs font-medium text-muted-foreground">
                           <div>Unit</div>
                           <div>Occupancy</div>
@@ -1173,6 +1282,133 @@ export default function UnitsPage() {
                           <div>Actions</div>
                         </div>
                       ) : null}
+                      {isMobile ? (
+                        <div className="space-y-4">
+                          {group.unitRows.map((row) => (
+                            <div key={row.unit.id} className="rounded-[22px] border border-outline-variant/20 bg-background p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="label-caps text-on-surface/45">Unit</div>
+                                  <div className="mt-1 font-headline text-3xl font-bold text-primary">{row.unit.unitNumber}</div>
+                                </div>
+                                <Badge
+                                  variant={
+                                    row.occupancyType === "OWNER_OCCUPIED" ? "default"
+                                    : row.occupancyType === "TENANT" ? "secondary"
+                                    : "outline"
+                                  }
+                                  className="mt-1"
+                                >
+                                  {row.occupancyLabel}
+                                </Badge>
+                              </div>
+
+                              <div className="mt-4 grid grid-cols-2 gap-3">
+                                <div className="rounded-2xl bg-surface-container p-3">
+                                  <div className="label-caps text-on-surface/45">Owners</div>
+                                  <div className="mt-1 text-lg font-semibold text-on-surface">{row.ownerCount}</div>
+                                </div>
+                                <div className="rounded-2xl bg-surface-container p-3">
+                                  <div className="label-caps text-on-surface/45">Sq Ft</div>
+                                  <div className="mt-1 text-lg font-semibold text-on-surface">{row.unit.squareFootage ?? "—"}</div>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 rounded-[20px] bg-surface-container p-4">
+                                <div className="label-caps text-on-surface/45">Owner Of Record</div>
+                                <div className="mt-2 font-headline text-xl font-semibold text-on-surface">
+                                  {row.ownerName === "Unassigned" || !row.ownerName ? "Unassigned" : row.ownerName}
+                                </div>
+                                <div className="mt-3 grid gap-2">
+                                  <CopyableCell
+                                    label="Owner email"
+                                    value={row.ownerEmail}
+                                    fallback="No email"
+                                    onCopy={copyFieldValue}
+                                  />
+                                  <CopyableCell
+                                    label="Owner phone"
+                                    value={row.ownerPhone}
+                                    fallback="No phone"
+                                    onCopy={copyFieldValue}
+                                  />
+                                </div>
+                                {row.additionalOwners.length > 0 ? (
+                                  <div className="mt-3 text-xs text-on-surface/55">
+                                    {row.additionalOwners.length} additional owner{row.additionalOwners.length === 1 ? "" : "s"} on file.
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              {row.tenantPerson ? (
+                                <div className="mt-4 rounded-[20px] border border-dashed border-outline-variant/40 bg-surface-container p-4">
+                                  <div className="label-caps text-on-surface/45">Current Tenant</div>
+                                  <div className="mt-2 font-headline text-xl font-semibold text-on-surface">{row.tenantName || "No name"}</div>
+                                  <div className="mt-3 grid gap-2">
+                                    <CopyableCell
+                                      label="Tenant email"
+                                      value={row.tenantEmail}
+                                      fallback="No email"
+                                      onCopy={copyFieldValue}
+                                    />
+                                    <CopyableCell
+                                      label="Tenant phone"
+                                      value={row.tenantPhone}
+                                      fallback="No phone"
+                                      onCopy={copyFieldValue}
+                                    />
+                                  </div>
+                                  <Button
+                                    asChild
+                                    size="sm"
+                                    variant="ghost"
+                                    className="mt-3 h-10 rounded-full px-4 text-primary"
+                                  >
+                                    <Link href={`/app/communications?targetType=selected-units&selectedUnitAudience=tenants&unitId=${row.unit.id}${row.tenantPersonId ? `&personId=${row.tenantPersonId}` : ""}`}>
+                                      <MessageSquare className="mr-2 h-4 w-4" />
+                                      Message Tenant
+                                    </Link>
+                                  </Button>
+                                </div>
+                              ) : null}
+
+                              <div className="mt-4 grid grid-cols-3 gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-11 rounded-full"
+                                  data-testid={`button-contact-form-link-unit-${row.unit.id}`}
+                                  disabled={contactFormLinkMutation.isPending}
+                                  onClick={() => contactFormLinkMutation.mutate({ unitId: row.unit.id })}
+                                >
+                                  <Link2 className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  asChild
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-11 rounded-full"
+                                  data-testid={`button-send-communication-unit-${row.unit.id}`}
+                                >
+                                  <Link href={`/app/communications?targetType=selected-units&selectedUnitAudience=owners&unitId=${row.unit.id}${row.ownerPersonId ? `&personId=${row.ownerPersonId}` : ""}`}>
+                                    <MessageSquare className="h-4 w-4" />
+                                  </Link>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-11 rounded-full"
+                                  onClick={() => openEdit(row.unit)}
+                                  data-testid={`button-edit-unit-${row.unit.id}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
                       <div className="md:rounded-b-md md:border md:border-t-0 md:divide-y">
                         {group.unitRows.map((row) => (
                           <div key={row.unit.id} className="border mb-2 rounded-md p-3 text-sm md:mb-0 md:rounded-none md:border-0 md:p-3">
@@ -1319,6 +1555,7 @@ export default function UnitsPage() {
                           </div>
                         ))}
                       </div>
+                      )}
                     </div>
                     )}
                   </div>
@@ -1338,6 +1575,7 @@ export default function UnitsPage() {
           ) : null}
         </CardContent>
       </Card>
+      </section>
 
       <CsvImportDialog
         open={importOpen}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { AnnualGovernanceTask, Association, BoardRole, CommunicationHistory, ContactUpdateRequest, Document, GovernanceMeeting, MaintenanceRequest, NoticeSend, OwnerLedgerEntry, Person, PortalAccess, Unit, VendorInvoice } from "@shared/schema";
+import type { AnnualGovernanceTask, Association, BoardRole, CommunicationHistory, ContactUpdateRequest, Document, GovernanceMeeting, MaintenanceRequest, NoticeSend, OwnerLedgerEntry, Person, PortalAccess, VendorInvoice } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { OwnerPortalLogin } from "@/components/owner-portal-login";
+import { OwnerPortalLoginContainer } from "@/components/owner-portal-login-container";
 import { OwnerInfoSection } from "@/components/owner-info-section";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -234,7 +234,6 @@ function isValidEmail(value: string) {
 
 export default function OwnerPortalPage() {
   const isMobile = useIsMobile();
-  const [email, setEmail] = useState("");
   const [portalAccessId, setPortalAccessId] = useState<string | null>(() => window.localStorage.getItem("portalAccessId"));
   const [onboardingDismissed, setOnboardingDismissed] = useState<boolean>(() => {
     const key = `portal-onboarding-dismissed-${window.localStorage.getItem("portalAccessId") || ""}`;
@@ -260,11 +259,6 @@ export default function OwnerPortalPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentDescription, setPaymentDescription] = useState("HOA dues payment");
   const [paymentReceipt, setPaymentReceipt] = useState<{ amount: number; description: string; date: string; confirmationNumber?: string } | null>(null);
-  const [otpStep, setOtpStep] = useState<"email" | "otp" | "pick">("email");
-  const [otp, setOtp] = useState("");
-  const [otpSimulated, setOtpSimulated] = useState<string | null>(null);
-  const [associationChoices, setAssociationChoices] = useState<AssociationChoice[]>([]);
-  const [ownedUnitFocusId, setOwnedUnitFocusId] = useState("");
   const [activeSection, setActiveSection] = useState<"overview" | "maintenance" | "financials" | "documents" | "notices" | "profile">("overview");
 
   // Queries - simplified for demo
@@ -274,16 +268,6 @@ export default function OwnerPortalPage() {
     queryFn: async () => {
       const res = await fetch("/api/portal/me", { headers: portalHeaders(portalAccessId) });
       if (!res.ok) return null;
-      return res.json();
-    },
-  });
-
-  const { data: myAssociations } = useQuery<AssociationChoice[]>({
-    queryKey: ["myAssociations", portalAccessId],
-    enabled: !!portalAccessId,
-    queryFn: async () => {
-      const res = await fetch("/api/portal/my-associations", { headers: portalHeaders(portalAccessId) });
-      if (!res.ok) return [];
       return res.json();
     },
   });
@@ -328,7 +312,7 @@ export default function OwnerPortalPage() {
     },
   });
 
-  const { data: ownerUnits } = useQuery<Unit[]>({
+  const { data: ownerUnits } = useQuery<UnitBalance[]>({
     queryKey: ["ownerUnits", portalAccessId],
     enabled: !!portalAccessId,
     queryFn: async () => {
@@ -450,7 +434,7 @@ export default function OwnerPortalPage() {
   });
 
   if (!portalAccessId) {
-    return <OwnerPortalLogin onLoginSuccess={(id) => setPortalAccessId(id)} />;
+    return <OwnerPortalLoginContainer onLoginSuccess={(accessId) => setPortalAccessId(accessId)} />;
   }
 
   // Calculate derived state
@@ -472,55 +456,35 @@ export default function OwnerPortalPage() {
           <nav className="flex-1 space-y-2">
             <button
               onClick={() => setActiveSection("overview")}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all ${
-                activeSection === "overview"
-                  ? "bg-surface-container-highest text-primary shadow-sm font-bold"
-                  : "text-on-surface-variant hover:translate-x-1 hover:text-primary"
-              }`}
+              className="w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all text-on-surface-variant hover:translate-x-1 hover:text-primary"
             >
               <span className="material-symbols-outlined">home</span>
               <span className="font-label uppercase tracking-widest text-[11px]">Overview</span>
             </button>
             <button
               onClick={() => setActiveSection("maintenance")}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all ${
-                activeSection === "maintenance"
-                  ? "bg-surface-container-highest text-primary shadow-sm font-bold"
-                  : "text-on-surface-variant hover:translate-x-1 hover:text-primary"
-              }`}
+              className="w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all text-on-surface-variant hover:translate-x-1 hover:text-primary"
             >
               <span className="material-symbols-outlined">build</span>
               <span className="font-label uppercase tracking-widest text-[11px]">Maintenance</span>
             </button>
             <button
               onClick={() => setActiveSection("financials")}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all ${
-                activeSection === "financials"
-                  ? "bg-surface-container-highest text-primary shadow-sm font-bold"
-                  : "text-on-surface-variant hover:translate-x-1 hover:text-primary"
-              }`}
+              className="w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all text-on-surface-variant hover:translate-x-1 hover:text-primary"
             >
               <span className="material-symbols-outlined">payments</span>
               <span className="font-label uppercase tracking-widest text-[11px]">Financials</span>
             </button>
             <button
               onClick={() => setActiveSection("documents")}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all ${
-                activeSection === "documents"
-                  ? "bg-surface-container-highest text-primary shadow-sm font-bold"
-                  : "text-on-surface-variant hover:translate-x-1 hover:text-primary"
-              }`}
+              className="w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all text-on-surface-variant hover:translate-x-1 hover:text-primary"
             >
               <span className="material-symbols-outlined">description</span>
               <span className="font-label uppercase tracking-widest text-[11px]">Documents</span>
             </button>
             <button
               onClick={() => setActiveSection("notices")}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all ${
-                activeSection === "notices"
-                  ? "bg-surface-container-highest text-primary shadow-sm font-bold"
-                  : "text-on-surface-variant hover:translate-x-1 hover:text-primary"
-              }`}
+              className="w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all text-on-surface-variant hover:translate-x-1 hover:text-primary"
             >
               <span className="material-symbols-outlined">notifications</span>
               <span className="font-label uppercase tracking-widest text-[11px]">Notices</span>
@@ -562,27 +526,21 @@ export default function OwnerPortalPage() {
         <nav className="md:hidden fixed bottom-0 left-0 w-full bg-surface-bright/90 backdrop-blur-2xl flex justify-around items-center px-4 pb-6 pt-3 z-50 rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.05)] border-t border-outline-variant/10">
           <button
             onClick={() => setActiveSection("overview")}
-            className={`flex flex-col items-center justify-center rounded-xl px-4 py-2 ${
-              activeSection === "overview" ? "text-primary bg-primary/10" : "text-on-surface-variant"
-            }`}
+            className="flex flex-col items-center justify-center rounded-xl px-4 py-2 text-on-surface-variant"
           >
             <span className="material-symbols-outlined">home</span>
             <span className="font-body text-[10px] mt-1">Home</span>
           </button>
           <button
             onClick={() => setActiveSection("maintenance")}
-            className={`flex flex-col items-center justify-center rounded-xl px-4 py-2 ${
-              activeSection === "maintenance" ? "text-primary bg-primary/10" : "text-on-surface-variant"
-            }`}
+            className="flex flex-col items-center justify-center rounded-xl px-4 py-2 text-on-surface-variant"
           >
             <span className="material-symbols-outlined">build</span>
             <span className="font-body text-[10px] mt-1">Maintenance</span>
           </button>
           <button
             onClick={() => setActiveSection("financials")}
-            className={`flex flex-col items-center justify-center rounded-xl px-4 py-2 ${
-              activeSection === "financials" ? "text-primary bg-primary/10" : "text-on-surface-variant"
-            }`}
+            className="flex flex-col items-center justify-center rounded-xl px-4 py-2 text-on-surface-variant"
           >
             <span className="material-symbols-outlined">payments</span>
             <span className="font-body text-[10px] mt-1">Financials</span>

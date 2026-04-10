@@ -260,7 +260,9 @@ function WorkspaceRouter({
           <RouteRedirect to="/app/units" />
         </Route>
         <Route path="/app/board" component={BoardPage} />
-        <Route path="/app/documents" component={DocumentsPage} />
+        <Route path="/app/documents">
+          <DocumentsPage />
+        </Route>
         <Route path="/app/admin" component={RoadmapPage} />
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
