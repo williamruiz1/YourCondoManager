@@ -12,6 +12,9 @@
  *   [h] All late fee events reference a ruleId that exists in late_fee_rules
  *   [i] All resident feedbacks that reference a unitId point to a valid unit
  *   [j] All resident feedbacks that reference a personId point to a valid person
+ *   [k] All vendor invoices reference a vendorId that exists in vendors
+ *   [l] All payment plans reference a unitId that exists in units
+ *   [m] All payment plans reference a personId that exists in persons
  *
  * Run with: tsx script/verify-seed-integrity.ts
  */
@@ -33,6 +36,7 @@ const CHERRY_HILL_ID = "f301d073-ed84-4d73-84ce-3ef28af66f7a";
 const {
   workOrders,
   vendors,
+  vendorInvoices,
   units,
   budgetLines,
   budgetVersions,
@@ -42,6 +46,7 @@ const {
   lateFeeEvents,
   lateFeeRules,
   residentFeedbacks,
+  paymentPlans,
 } = schema;
 
 type CheckResult = {
@@ -349,6 +354,84 @@ async function runChecks(): Promise<CheckResult[]> {
       fail(
         "[j] All Cherry Hill resident feedbacks with personId reference a valid person",
         `${feedbacksWithBadPerson.length} orphaned feedback(s): ${ids}`,
+      ),
+    );
+  }
+
+  // ── [k] Vendor invoices: vendorId FK ─────────────────────────────────────────
+  const chVendorInvoices = await db
+    .select({ id: vendorInvoices.id, vendorId: vendorInvoices.vendorId })
+    .from(vendorInvoices)
+    .where(eq(vendorInvoices.associationId, CHERRY_HILL_ID));
+
+  const invoicesWithVendor = chVendorInvoices.filter((i) => i.vendorId !== null);
+  const invoicesWithBadVendor = invoicesWithVendor.filter((i) => !vendorIds.has(i.vendorId!));
+  if (invoicesWithBadVendor.length === 0) {
+    results.push(
+      pass(
+        "[k] All Cherry Hill vendor invoices reference a valid vendor",
+        `${invoicesWithVendor.length} vendor invoice(s) checked`,
+      ),
+    );
+  } else {
+    const ids = invoicesWithBadVendor
+      .map((i) => `${i.id} → vendorId ${i.vendorId}`)
+      .join(", ");
+    results.push(
+      fail(
+        "[k] All Cherry Hill vendor invoices reference a valid vendor",
+        `${invoicesWithBadVendor.length} orphaned invoice(s): ${ids}`,
+      ),
+    );
+  }
+
+  // ── [l] Payment plans: unitId FK ─────────────────────────────────────────────
+  const chPaymentPlans = await db
+    .select({
+      id: paymentPlans.id,
+      unitId: paymentPlans.unitId,
+      personId: paymentPlans.personId,
+    })
+    .from(paymentPlans)
+    .where(eq(paymentPlans.associationId, CHERRY_HILL_ID));
+
+  const plansWithBadUnit = chPaymentPlans.filter((p) => !unitIds.has(p.unitId));
+  if (plansWithBadUnit.length === 0) {
+    results.push(
+      pass(
+        "[l] All Cherry Hill payment plans reference a valid unit",
+        `${chPaymentPlans.length} payment plan(s) checked`,
+      ),
+    );
+  } else {
+    const ids = plansWithBadUnit
+      .map((p) => `${p.id} → unitId ${p.unitId}`)
+      .join(", ");
+    results.push(
+      fail(
+        "[l] All Cherry Hill payment plans reference a valid unit",
+        `${plansWithBadUnit.length} orphaned plan(s): ${ids}`,
+      ),
+    );
+  }
+
+  // ── [m] Payment plans: personId FK ───────────────────────────────────────────
+  const plansWithBadPerson = chPaymentPlans.filter((p) => !personIds.has(p.personId));
+  if (plansWithBadPerson.length === 0) {
+    results.push(
+      pass(
+        "[m] All Cherry Hill payment plans reference a valid person",
+        `${chPaymentPlans.length} payment plan(s) checked`,
+      ),
+    );
+  } else {
+    const ids = plansWithBadPerson
+      .map((p) => `${p.id} → personId ${p.personId}`)
+      .join(", ");
+    results.push(
+      fail(
+        "[m] All Cherry Hill payment plans reference a valid person",
+        `${plansWithBadPerson.length} orphaned plan(s): ${ids}`,
       ),
     );
   }
