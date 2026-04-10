@@ -7,3 +7,9 @@ export function log(message: string, source = "express") {
   });
   console.log(`${formattedTime} [${source}] ${message}`);
 }
+
+/** Structured debug logging — suppressed in production. */
+export function debug(label: string, data?: unknown): void {
+  if (process.env.NODE_ENV === "production") return;
+  console.debug(label, data !== undefined ? data : "");
+}

@@ -7,6 +7,7 @@ import fs from "fs";
 import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
+import { debug } from "./logger";
 import { getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import {
   sendAssociationAdminEmailNotification,

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-01T15:26:32.385Z",
+  "generatedAt": "2026-04-10T02:48:30.148Z",
   "purpose": "Reusable startup snapshot for coding agents working in the CondoManager workspace.",
   "repository": {
     "root": "/home/runner/workspace",
@@ -859,7 +859,7 @@
       "title": "Admin Roadmap Catchall Findings Inbox",
       "status": "active",
       "workstreamCount": 2,
-      "openTaskCount": 4
+      "openTaskCount": 8
     },
     {
       "title": "Platform-wide UI and UX Opportunity Analysis",
