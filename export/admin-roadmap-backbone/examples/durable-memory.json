@@ -1,0 +1,196 @@
+{
+  "generatedAt": "2026-04-01T15:26:32.880Z",
+  "purpose": "Durable working memory for stable repo facts and repeatable operating knowledge.",
+  "sourceArtifacts": {
+    "workspaceManifest": "docs/agent-bootstrap/workspace-manifest.json",
+    "roadmapBackbone": "docs/projects/admin-roadmap-service-journey-backbone.md",
+    "guardrails": "docs/projects/agent-bootstrap-self-amend-guardrails.md"
+  },
+  "separationRule": {
+    "durableMemoryContains": [
+      "stable repo structure",
+      "preferred commands",
+      "verification paths by change type",
+      "long-lived planning and roadmap context",
+      "known recurring repo issues"
+    ],
+    "durableMemoryExcludes": [
+      "task-specific hypotheses",
+      "temporary debugging notes",
+      "one-off findings from a single session",
+      "implementation advice not yet accepted into roadmap or backbone artifacts"
+    ]
+  },
+  "stableRepoFacts": [
+    {
+      "fact": "This is a full-stack TypeScript app with a React/Vite frontend and an Express backend.",
+      "evidence": "AGENTS.md"
+    },
+    {
+      "fact": "UI code is primarily under client/src, server wiring under server/, and shared types/schema under shared/schema.ts.",
+      "evidence": "AGENTS.md"
+    },
+    {
+      "fact": "DATABASE_URL is required for local startup and Drizzle-backed roadmap/database scripts.",
+      "evidence": "AGENTS.md and server/db.ts"
+    },
+    {
+      "fact": "Admin roadmap work is backed by roadmapProjects, roadmapWorkstreams, and roadmapTasks in shared/schema.ts with storage logic in server/storage.ts.",
+      "evidence": "workspace-manifest.json"
+    }
+  ],
+  "preferredCommands": [
+    "npm run dev",
+    "npm run build",
+    "npm run start",
+    "npm run check",
+    "npm run db:push",
+    "npm run bootstrap:agent"
+  ],
+  "verificationByChangeType": [
+    {
+      "changeType": "roadmap or planning scripts",
+      "commands": [
+        "npm run bootstrap:agent"
+      ],
+      "notes": "Regenerate bootstrap artifacts and verify roadmap context is reflected in durable artifacts."
+    },
+    {
+      "changeType": "frontend or route shell changes",
+      "commands": [
+        "npm run bootstrap:agent",
+        "npm run check"
+      ],
+      "notes": "Refresh route surface data and run TypeScript validation."
+    },
+    {
+      "changeType": "server, storage, or schema changes",
+      "commands": [
+        "npm run check"
+      ],
+      "notes": "Database-affecting work may also require npm run db:push when schema is intentionally changed."
+    },
+    {
+      "changeType": "database schema updates",
+      "commands": [
+        "npm run check",
+        "npm run db:push"
+      ],
+      "notes": "Use db:push only when schema changes are intentional and DATABASE_URL is valid."
+    }
+  ],
+  "workflowEntryPoints": [
+    {
+      "workflow": "workspace shell and route map",
+      "path": "client/src/App.tsx"
+    },
+    {
+      "workflow": "admin roadmap data and KPI logic",
+      "path": "server/storage.ts"
+    },
+    {
+      "workflow": "HTTP route registration",
+      "path": "server/routes.ts"
+    },
+    {
+      "workflow": "shared schema and roadmap tables",
+      "path": "shared/schema.ts"
+    },
+    {
+      "workflow": "bootstrap artifacts",
+      "path": "docs/agent-bootstrap/"
+    }
+  ],
+  "currentProductDecisions": [
+    {
+      "decision": "Service-oriented roadmap work should follow the planning backbone before implementation when the request changes service model or workflow.",
+      "evidence": "docs/projects/admin-roadmap-service-journey-backbone.md"
+    },
+    {
+      "decision": "Repeated agent setup work should be converted into backbone automation work rather than normalized as repeated manual exploration.",
+      "evidence": "docs/projects/admin-roadmap-service-journey-backbone.md"
+    },
+    {
+      "decision": "Bootstrap and durable memory artifacts may self-amend, but product behavior changes still require explicit implementation work.",
+      "evidence": "docs/projects/admin-roadmap-service-journey-backbone.md"
+    },
+    {
+      "decision": "Backbone automation may write analysis artifacts and backbone docs, but must not silently change schema, business logic, authorization, or user-facing workflows.",
+      "evidence": "docs/projects/agent-bootstrap-self-amend-guardrails.md"
+    },
+    {
+      "decision": "Validated findings that do not yet have a dedicated implementation project must still be captured in the forever-active Admin Roadmap Catchall Findings Inbox before closeout.",
+      "evidence": "docs/projects/admin-roadmap-service-journey-backbone.md"
+    }
+  ],
+  "recurringRepoIssues": [
+    {
+      "issue": "npm run check currently fails on an existing IStorage mismatch in server/storage.ts for previewAiIngestionSupersededCleanup and executeAiIngestionSupersededCleanup.",
+      "impact": "TypeScript validation is not currently a clean signal for unrelated changes."
+    },
+    {
+      "issue": "A separate known TypeScript/iterator issue has also surfaced around matchAll iteration in server/storage.ts.",
+      "impact": "Some checks may expose pre-existing compiler targets or iterator compatibility issues outside the current task."
+    }
+  ],
+  "activeRoadmapContext": [
+    {
+      "title": "Admin Roadmap Backbone - Agent Bootstrap and Continuous Improvement",
+      "status": "complete",
+      "openTasks": []
+    },
+    {
+      "title": "Admin Roadmap Catchall Findings Inbox",
+      "status": "active",
+      "openTasks": [
+        {
+          "title": "Update owner portal multi-unit verifier to match the live portal contract",
+          "priority": "high",
+          "status": "todo"
+        },
+        {
+          "title": "Identify and fix the PostCSS plugin warning during production build",
+          "priority": "medium",
+          "status": "todo"
+        },
+        {
+          "title": "Reduce oversized client bundle hotspots surfaced by production build",
+          "priority": "medium",
+          "status": "todo"
+        },
+        {
+          "title": "Refresh browserslist dataset or document the expected maintenance workflow",
+          "priority": "low",
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "title": "Platform-wide UI and UX Opportunity Analysis",
+      "status": "complete",
+      "openTasks": []
+    }
+  ],
+  "backboneHighlights": [
+    "## Purpose",
+    "## Standard Planning Sequence",
+    "### 1. Service Intent",
+    "### 2. Journey Review",
+    "### 3. Findings",
+    "### 4. Product Decisions",
+    "### 5. Opportunity Breakdown",
+    "### 6. Implementation Plan",
+    "### 7. Roadmap Capture",
+    "### 8. Execution Rhythm",
+    "## Agent Bootstrap Backbone",
+    "### 1. Bootstrap Snapshot",
+    "### 2. Reusable Working Memory",
+    "### 3. Friction Logging",
+    "### 4. Closed-Loop Improvement",
+    "### 5. Governance",
+    "## Recommended Workstream Template",
+    "## Definition of Ready",
+    "## Definition of Done",
+    "## Working Rule"
+  ]
+}
