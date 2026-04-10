@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-01T15:26:32.880Z",
+  "generatedAt": "2026-04-10T02:48:30.707Z",
   "purpose": "Durable working memory for stable repo facts and repeatable operating knowledge.",
   "sourceArtifacts": {
     "workspaceManifest": "docs/agent-bootstrap/workspace-manifest.json",
@@ -123,16 +123,7 @@
       "evidence": "docs/projects/admin-roadmap-service-journey-backbone.md"
     }
   ],
-  "recurringRepoIssues": [
-    {
-      "issue": "npm run check currently fails on an existing IStorage mismatch in server/storage.ts for previewAiIngestionSupersededCleanup and executeAiIngestionSupersededCleanup.",
-      "impact": "TypeScript validation is not currently a clean signal for unrelated changes."
-    },
-    {
-      "issue": "A separate known TypeScript/iterator issue has also surfaced around matchAll iteration in server/storage.ts.",
-      "impact": "Some checks may expose pre-existing compiler targets or iterator compatibility issues outside the current task."
-    }
-  ],
+  "recurringRepoIssues": [],
   "activeRoadmapContext": [
     {
       "title": "Admin Roadmap Backbone - Agent Bootstrap and Continuous Improvement",
@@ -143,11 +134,6 @@
       "title": "Admin Roadmap Catchall Findings Inbox",
       "status": "active",
       "openTasks": [
-        {
-          "title": "Update owner portal multi-unit verifier to match the live portal contract",
-          "priority": "high",
-          "status": "todo"
-        },
         {
           "title": "Identify and fix the PostCSS plugin warning during production build",
           "priority": "medium",
@@ -160,6 +146,31 @@
         },
         {
           "title": "Refresh browserslist dataset or document the expected maintenance workflow",
+          "priority": "low",
+          "status": "todo"
+        },
+        {
+          "title": "Make /api/health endpoint publicly accessible without admin auth",
+          "priority": "critical",
+          "status": "todo"
+        },
+        {
+          "title": "Add /api/* and /uploads/* 404 JSON handler before SPA fallback",
+          "priority": "critical",
+          "status": "todo"
+        },
+        {
+          "title": "Fix demo-request 500 caused by non-RFC admin@local seed email",
+          "priority": "high",
+          "status": "todo"
+        },
+        {
+          "title": "Delete orphaned page files (owner-portal.backup, owner-portal-redesign, occupancy, owners)",
+          "priority": "medium",
+          "status": "todo"
+        },
+        {
+          "title": "Replace server console.log calls with structured debug-level logging",
           "priority": "low",
           "status": "todo"
         }
