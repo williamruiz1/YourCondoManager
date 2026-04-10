@@ -14,6 +14,7 @@ import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { recurringChargeSchedules, recurringChargeRuns, ownerships, units, ownerLedgerEntries } from "@shared/schema";
 import { log } from "./logger";
 import { startElectionScheduler } from "./election-scheduler";
+import { createRateLimiter } from "./rate-limit";
 
 dotenv.config();
 dotenv.config({ path: ".env.local", override: true });
@@ -271,6 +272,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
+  app.use("/api/public", publicRateLimiter);
+
   await registerRoutes(httpServer, app);
 
   // Log DB state on startup for deployment verification
