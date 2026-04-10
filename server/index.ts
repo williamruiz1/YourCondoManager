@@ -275,6 +275,23 @@ app.use((req, res, next) => {
   const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
   app.use("/api/public", publicRateLimiter);
 
+  // Portal login is the real brute-force surface. Apply a conservative
+  // limit to request-login (email enumeration / OTP spam) and a tighter
+  // limit to verify-login (OTP code brute-force).
+  const portalRequestLoginLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 10,
+    message: "Too many login attempts, please try again later.",
+  });
+  app.use("/api/portal/request-login", portalRequestLoginLimiter);
+
+  const portalVerifyLoginLimiter = createRateLimiter({
+    windowMs: 10 * 60_000,
+    max: 5,
+    message: "Too many verification attempts, please try again later.",
+  });
+  app.use("/api/portal/verify-login", portalVerifyLoginLimiter);
+
   await registerRoutes(httpServer, app);
 
   // Log DB state on startup for deployment verification
