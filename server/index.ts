@@ -303,6 +303,15 @@ app.use((req, res, next) => {
     return res.status(status).json({ message });
   });
 
+  // Return JSON 404 for unmatched /api/* and /uploads/* paths so they
+  // are never swallowed by the SPA HTML fallback below.
+  app.all("/api/*", (_req, res) => {
+    res.status(404).json({ message: "Not found" });
+  });
+  app.all("/uploads/*", (_req, res) => {
+    res.status(404).json({ message: "Not found" });
+  });
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
