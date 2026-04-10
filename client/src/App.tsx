@@ -24,6 +24,7 @@ import { AssociationProvider, useAssociationContext } from "@/context/associatio
 import { BoardPortal } from "@/pages/board-portal";
 import { GlobalCommandPalette } from "@/components/global-command-palette";
 import { canAccessWipRoute } from "@/lib/wip-features";
+import { trackPageView } from "@/lib/tracking";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -896,6 +897,10 @@ function WorkspaceShell({
 function AuthAwareApp() {
   const [location] = useLocation();
   const authRestoreAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    trackPageView(document.title, { page_path: location });
+  }, [location]);
 
   const { data: authSession, refetch: refetchAuthSession, isLoading: authSessionLoading } = useQuery<AuthSession | null>({
     queryKey: ["/api/auth/me", "session"],
