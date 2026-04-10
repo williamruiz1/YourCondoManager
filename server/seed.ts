@@ -12,6 +12,7 @@ import {
   ownerLedgerEntries,
   lateFeeRules, lateFeeEvents,
   residentFeedbacks,
+  onboardingInvites,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -3031,6 +3032,91 @@ export async function seedDatabase() {
     log("[seed] resident feedbacks :: 6 records inserted for Cherry Hill", "seed");
   } else {
     log("[seed] resident feedbacks :: already exist, skipping", "seed");
+  }
+
+  // --- Onboarding Invites ---
+  const existingOnboardingInvites = await db
+    .select()
+    .from(onboardingInvites)
+    .where(eq(onboardingInvites.associationId, "f301d073-ed84-4d73-84ce-3ef28af66f7a"));
+
+  if (existingOnboardingInvites.length === 0) {
+    await db
+      .insert(onboardingInvites)
+      .values([
+        {
+          id: "onbi0001-0000-4000-8000-000000000001",
+          associationId: "f301d073-ed84-4d73-84ce-3ef28af66f7a",
+          residentType: "owner",
+          email: "new.owner@example.com",
+          deliveryChannel: "email",
+          token: randomBytes(32).toString("hex"),
+          status: "active",
+          expiresAt: new Date("2026-04-24T00:00:00Z"),
+          createdBy: "seed",
+          createdAt: new Date("2026-04-10T09:00:00Z"),
+          updatedAt: new Date("2026-04-10T09:00:00Z"),
+        },
+        {
+          id: "onbi0001-0000-4000-8000-000000000002",
+          associationId: "f301d073-ed84-4d73-84ce-3ef28af66f7a",
+          residentType: "owner",
+          email: "future.board@example.com",
+          deliveryChannel: "email",
+          token: randomBytes(32).toString("hex"),
+          status: "active",
+          expiresAt: new Date("2026-04-17T00:00:00Z"),
+          createdBy: "seed",
+          createdAt: new Date("2026-04-10T10:00:00Z"),
+          updatedAt: new Date("2026-04-10T10:00:00Z"),
+        },
+        {
+          id: "onbi0001-0000-4000-8000-000000000003",
+          associationId: "f301d073-ed84-4d73-84ce-3ef28af66f7a",
+          residentType: "owner",
+          email: "accepted.owner@example.com",
+          deliveryChannel: "email",
+          token: randomBytes(32).toString("hex"),
+          status: "approved",
+          expiresAt: new Date("2026-04-17T00:00:00Z"),
+          approvedAt: new Date("2026-04-05T14:30:00Z"),
+          submittedAt: new Date("2026-04-04T11:00:00Z"),
+          createdBy: "seed",
+          createdAt: new Date("2026-03-29T09:00:00Z"),
+          updatedAt: new Date("2026-04-05T14:30:00Z"),
+        },
+        {
+          id: "onbi0001-0000-4000-8000-000000000004",
+          associationId: "f301d073-ed84-4d73-84ce-3ef28af66f7a",
+          residentType: "owner",
+          email: "expired.owner@example.com",
+          deliveryChannel: "email",
+          token: randomBytes(32).toString("hex"),
+          status: "expired",
+          expiresAt: new Date("2026-03-27T00:00:00Z"),
+          createdBy: "seed",
+          createdAt: new Date("2026-03-13T09:00:00Z"),
+          updatedAt: new Date("2026-03-27T00:00:00Z"),
+        },
+        {
+          id: "onbi0001-0000-4000-8000-000000000005",
+          associationId: "f301d073-ed84-4d73-84ce-3ef28af66f7a",
+          residentType: "owner",
+          email: "revoked.owner@example.com",
+          deliveryChannel: "email",
+          token: randomBytes(32).toString("hex"),
+          status: "revoked",
+          expiresAt: new Date("2026-04-17T00:00:00Z"),
+          revokedAt: new Date("2026-04-02T16:00:00Z"),
+          createdBy: "seed",
+          createdAt: new Date("2026-04-03T09:00:00Z"),
+          updatedAt: new Date("2026-04-02T16:00:00Z"),
+        },
+      ])
+      .onConflictDoNothing();
+    log("[seed] onboarding invites :: 5 records inserted for Cherry Hill", "seed");
+  } else {
+    log("[seed] onboarding invites :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
