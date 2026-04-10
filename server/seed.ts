@@ -7,6 +7,7 @@ import {
   associationInsurancePolicies, inspectionRecords,
   maintenanceScheduleTemplates, maintenanceScheduleInstances,
   governanceMeetings,
+  communityAnnouncements,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -2403,6 +2404,86 @@ export async function seedDatabase() {
     log("[seed] governance meetings :: 4 Cherry Hill meetings inserted", "seed");
   } else {
     log("[seed] governance meetings :: already exist, skipping", "seed");
+  }
+
+  // ── Community Announcements ─────────────────────────────────────────────────
+  const existingAnnouncements = await db
+    .select()
+    .from(communityAnnouncements)
+    .where(eq(communityAnnouncements.associationId, CHERRY_HILL_ASSOC_ID));
+  if (existingAnnouncements.length === 0) {
+    const announcementRows = [
+      {
+        id: "ann00001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Annual Meeting Reminder",
+        body: "This is a reminder that the Annual Meeting of Cherry Hill Court Homeowners Association will be held on January 28, 2026 at 6:30 PM in the Community Room. All homeowners are encouraged to attend. The agenda includes election of board members, budget approval for 2026, and open resident forum.",
+        priority: "normal" as const,
+        noticeCategory: "general",
+        isPublished: 1,
+        isDraft: 0,
+        publishedAt: new Date("2026-01-10T12:00:00Z"),
+        authorName: "Board of Directors",
+        targetAudience: "all",
+      },
+      {
+        id: "ann00001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Parking Lot Repaving Schedule",
+        body: "The parking lot repaving project is scheduled to begin February 17, 2026. Work will be completed in two phases over two weekends. Phase 1 (Feb 17–18): Sections A and B. Phase 2 (Feb 24–25): Sections C and D. Temporary overflow parking will be available on Oak Street. Please plan accordingly and move your vehicles before 7:00 AM on work days.",
+        priority: "normal" as const,
+        noticeCategory: "maintenance",
+        isPublished: 1,
+        isDraft: 0,
+        publishedAt: new Date("2026-02-05T09:00:00Z"),
+        authorName: "Property Management",
+        targetAudience: "all",
+      },
+      {
+        id: "ann00001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "New Pet Policy Update",
+        body: "Effective April 1, 2026, the updated Pet Policy will be in effect for all Cherry Hill Court residents. Key changes include: (1) A maximum of two pets per unit is permitted. (2) All dogs must be leashed in common areas at all times. (3) Pet waste stations have been added near the north entrance. (4) Residents must register pets with management. Please review the full policy document available in the resident portal.",
+        priority: "important" as const,
+        noticeCategory: "policy",
+        isPublished: 1,
+        isDraft: 0,
+        publishedAt: new Date("2026-03-01T10:00:00Z"),
+        authorName: "Board of Directors",
+        targetAudience: "all",
+      },
+      {
+        id: "ann00001-0000-4000-8000-000000000004",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Pool Opening — Memorial Day Weekend",
+        body: "We are excited to announce that the community pool will open for the season on Memorial Day Weekend, May 23, 2026. Pool hours will be 8:00 AM – 9:00 PM daily. Resident pool key fobs will be reactivated automatically. Guest passes (limit 2 per visit) are available from the management office. A pool safety orientation will be posted at the entrance.",
+        priority: "normal" as const,
+        noticeCategory: "community",
+        isPublished: 0,
+        isDraft: 1,
+        publishedAt: null,
+        scheduledPublishAt: new Date("2026-05-01T08:00:00Z"),
+        authorName: "Amenities Committee",
+        targetAudience: "all",
+      },
+      {
+        id: "ann00001-0000-4000-8000-000000000005",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Emergency Water Shutoff Notice",
+        body: "URGENT: Due to an emergency repair to the main water supply line, water service to all units will be shut off on March 14, 2026 from 8:00 AM to approximately 2:00 PM. Please store sufficient water for drinking and essential needs before 8:00 AM. We apologize for the inconvenience and will provide updates via email if the timeline changes. Contact the management office at (203) 555-0100 with questions.",
+        priority: "urgent" as const,
+        noticeCategory: "urgent",
+        isPublished: 1,
+        isDraft: 0,
+        publishedAt: new Date("2026-03-13T17:00:00Z"),
+        authorName: "Property Management",
+        targetAudience: "all",
+      },
+    ];
+    await db.insert(communityAnnouncements).values(announcementRows).onConflictDoNothing();
+    log("[seed] community announcements :: 5 Cherry Hill announcements inserted", "seed");
+  } else {
+    log("[seed] community announcements :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
