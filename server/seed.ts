@@ -13,6 +13,7 @@ import {
   lateFeeRules, lateFeeEvents,
   residentFeedbacks,
   onboardingInvites,
+  paymentPlans,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -1108,13 +1109,13 @@ export async function seedDatabase() {
             .update(adminUsers)
             .set({ role: "platform-admin", isActive: 1, updatedAt: new Date() })
             .where(eq(adminUsers.id, existing.id));
-          console.log(`[bootstrap] Promoted ${email} to platform-admin`);
+          log(`[bootstrap] Promoted ${email} to platform-admin`, "seed");
         } else {
-          console.log(`[bootstrap] Confirmed platform-admin: ${email}`);
+          log(`[bootstrap] Confirmed platform-admin: ${email}`, "seed");
         }
       } else {
         await db.insert(adminUsers).values({ email, role: "platform-admin", isActive: 1 });
-        console.log(`[bootstrap] Created platform-admin for ${email}`);
+        log(`[bootstrap] Created platform-admin for ${email}`, "seed");
       }
     }
   }
@@ -3202,6 +3203,35 @@ export async function seedDatabase() {
     log("[seed] vendor invoices :: 6 records inserted for Cherry Hill", "seed");
   } else {
     log("[seed] vendor invoices :: already exist, skipping", "seed");
+  }
+
+  // Payment plan — unit 1421-A (overdue March 2026 assessment $350 + late fee $25 = $375)
+  const [existingPaymentPlan] = await db
+    .select()
+    .from(paymentPlans)
+    .where(eq(paymentPlans.id, "pmpl0001-0000-4000-8000-000000000001"));
+
+  if (!existingPaymentPlan) {
+    await db
+      .insert(paymentPlans)
+      .values({
+        id: "pmpl0001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
+        personId: "chper001-0000-4000-8000-000000000003",
+        totalAmount: 375,
+        amountPaid: 0,
+        installmentAmount: 125,
+        installmentFrequency: "monthly",
+        startDate: new Date("2026-04-01T00:00:00Z"),
+        nextDueDate: new Date("2026-04-01T00:00:00Z"),
+        status: "active",
+        notes: "Outstanding March 2026 assessment ($350) + late fee ($25). 3 monthly installments of $125.",
+      })
+      .onConflictDoNothing();
+    log("[seed] payment plans :: 1 plan seeded for Cherry Hill unit 1421-A", "seed");
+  } else {
+    log("[seed] payment plans :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
