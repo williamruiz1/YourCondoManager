@@ -11,6 +11,7 @@ import {
   budgets, budgetVersions, budgetLines,
   ownerLedgerEntries,
   lateFeeRules, lateFeeEvents,
+  residentFeedbacks,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -2927,6 +2928,109 @@ export async function seedDatabase() {
     log("[seed] late fee events :: 1 event inserted for Cherry Hill unit 1421-A", "seed");
   } else {
     log("[seed] late fee events :: already exist, skipping", "seed");
+  }
+
+  // ── Resident Feedback — Cherry Hill Court Condominiums ─────────────────────
+  // Six feedback records covering a range of categories and statuses to exercise
+  // the feedback management workflow end-to-end.
+  const existingResidentFeedbacks = await db
+    .select()
+    .from(residentFeedbacks)
+    .where(eq(residentFeedbacks.associationId, CHERRY_HILL_CONDO_ID));
+
+  if (existingResidentFeedbacks.length === 0) {
+    await db
+      .insert(residentFeedbacks)
+      .values([
+        {
+          id: "rfbk0001-0000-4000-8000-000000000001",
+          associationId: CHERRY_HILL_CONDO_ID,
+          unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c", // 1415-A
+          personId: "chper001-0000-4000-8000-000000000001",
+          category: "maintenance",
+          subject: "Lobby lighting too dim at night",
+          feedbackText: "The lobby lights in building 1415 are very dim after 9 PM. It feels unsafe when coming home late. Could we get brighter bulbs or motion-activated lighting?",
+          isAnonymous: 0,
+          status: "new",
+          satisfactionScore: null,
+          adminNotes: null,
+          resolvedAt: null,
+        },
+        {
+          id: "rfbk0001-0000-4000-8000-000000000002",
+          associationId: CHERRY_HILL_CONDO_ID,
+          unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb", // 1417-A
+          personId: "chper001-0000-4000-8000-000000000002",
+          category: "management",
+          subject: "Landscaping team did an amazing job this week",
+          feedbackText: "Just wanted to say the landscaping crew did a fantastic job this week — the grounds look beautiful. Really appreciate the effort the management team puts into keeping the property well maintained.",
+          isAnonymous: 0,
+          status: "acknowledged",
+          satisfactionScore: 5,
+          adminNotes: "Thank you note forwarded to landscaping vendor.",
+          resolvedAt: null,
+        },
+        {
+          id: "rfbk0001-0000-4000-8000-000000000003",
+          associationId: CHERRY_HILL_CONDO_ID,
+          unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b", // 1421-A
+          personId: "chper001-0000-4000-8000-000000000003",
+          category: "amenities",
+          subject: "Pool hours should be extended on weekends",
+          feedbackText: "Many residents work long hours during the week and rely on weekends to use the pool. The current weekend closing time of 8 PM feels too early — could we extend to 10 PM on Fridays and Saturdays?",
+          isAnonymous: 0,
+          status: "under-review",
+          satisfactionScore: 3,
+          adminNotes: "Board will review pool hour policy at next meeting.",
+          resolvedAt: null,
+        },
+        {
+          id: "rfbk0001-0000-4000-8000-000000000004",
+          associationId: CHERRY_HILL_CONDO_ID,
+          unitId: "909ed4e8-fb53-49f8-aecf-5b56c10e1e30", // 1415-B
+          personId: null,
+          category: "communication",
+          subject: "Need clearer communication about parking rules",
+          feedbackText: "There seems to be a lot of confusion among residents about which spots are reserved vs. open. A simple map or notice in the building entrance would go a long way. Several visitors have parked in my reserved spot this month.",
+          isAnonymous: 1,
+          status: "in-progress",
+          satisfactionScore: 2,
+          adminNotes: "Drafting updated parking policy notice for all buildings.",
+          resolvedAt: null,
+        },
+        {
+          id: "rfbk0001-0000-4000-8000-000000000005",
+          associationId: CHERRY_HILL_CONDO_ID,
+          unitId: "b1f60b15-3cec-4cca-8c1c-0a0ba7bf4d7f", // 1417-B
+          personId: "chper001-0000-4000-8000-000000000001",
+          category: "neighbor",
+          subject: "Noise from Unit 1417-B late at night",
+          feedbackText: "There has been recurring loud music and noise coming from the unit above mine after midnight on weekends. I have knocked on the door twice with no response. Hoping management can intervene.",
+          isAnonymous: 0,
+          status: "resolved",
+          satisfactionScore: 4,
+          adminNotes: "Management spoke with the resident in 1417-B. Resident agreed to keep noise levels down after 10 PM. No further complaints reported.",
+          resolvedAt: new Date("2026-03-28T14:00:00Z"),
+        },
+        {
+          id: "rfbk0001-0000-4000-8000-000000000006",
+          associationId: CHERRY_HILL_CONDO_ID,
+          unitId: "96696dfe-9feb-439a-ba29-88b79c5a74fd", // 1421-B
+          personId: "chper001-0000-4000-8000-000000000002",
+          category: "financial",
+          subject: "Question about this month's assessment line items",
+          feedbackText: "I received my March assessment and noticed a line item labeled 'Capital Reserve Contribution — Special' that I don't recall seeing before. Could someone explain what this covers and whether it will appear on future statements?",
+          isAnonymous: 0,
+          status: "new",
+          satisfactionScore: null,
+          adminNotes: null,
+          resolvedAt: null,
+        },
+      ])
+      .onConflictDoNothing();
+    log("[seed] resident feedbacks :: 6 records inserted for Cherry Hill", "seed");
+  } else {
+    log("[seed] resident feedbacks :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
