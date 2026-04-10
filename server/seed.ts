@@ -1417,6 +1417,120 @@ export async function seedDatabase() {
     log("[seed] created roadmap project: Mobile Optimization", "seed");
   }
 
+  const [existingLeaseRedesignProject] = await db
+    .select()
+    .from(roadmapProjects)
+    .where(eq(roadmapProjects.title, "Lease And Occupancy Workspace Redesign"));
+
+  if (!existingLeaseRedesignProject) {
+    const [project] = await db.insert(roadmapProjects).values({
+      title: "Lease And Occupancy Workspace Redesign",
+      description: "Plan and deliver a desktop and mobile redesign for the lease and occupancy management experience, preserving current occupancy recording and onboarding intake functionality while moving the live workflow toward a clearer, more editorial workspace.",
+      status: "active",
+      isCollapsed: 0,
+    }).returning();
+
+    const workstreamDefinitions: {
+      title: string;
+      description: string;
+      priority: "low" | "medium" | "high" | "critical";
+      tasks: [string, string, "small" | "medium" | "large"][];
+    }[] = [
+      {
+        title: "Service Intent, Journey Review, And Scope",
+        description: "Clarify what the lease and occupancy workspace is meant to do before changing layout or visual direction.",
+        priority: "critical" as const,
+        tasks: [
+          ["Define the target operator, success criteria, and scope boundary for the lease workspace", "Document who uses this workspace, what counts as a successful session, and which current flows must remain intact during the redesign.", "medium"],
+          ["Audit the current live lease and occupancy journey across Units, occupancy CRUD, and onboarding intake", "Map how the current workflow actually operates today, including the route redirect from /app/occupancy to /app/units and any embedded lease or occupancy controls.", "large"],
+          ["Capture user-facing friction and data-safety risks in the existing lease workflow", "Record the current usability, trust, and workflow breakdowns that the redesign must address without introducing data loss or ambiguity.", "medium"],
+          ["Decide whether the redesign should live as a standalone page, a Units sub-workspace, or a hybrid entry model", "Resolve the route and navigation model before visual implementation so the redesign is attached to the correct operating surface.", "medium"],
+        ],
+      },
+      {
+        title: "Information Architecture And Theme Translation",
+        description: "Translate the provided references into a workable lease-management structure instead of copying them literally.",
+        priority: "high" as const,
+        tasks: [
+          ["Extract the reusable design language from the provided references", "Identify the typography, color, spacing, density, hero treatment, and card patterns worth carrying into the lease workspace theme.", "medium"],
+          ["Define the lease workspace information hierarchy for desktop and mobile", "Decide which summary metrics, records, actions, and status states should appear first so the page serves operators instead of acting like a generic gallery layout.", "large"],
+          ["Map current controls into the new structure and discard reference elements that do not fit the product", "Preserve the functional pieces that matter while explicitly ignoring off-theme or non-functional reference fragments.", "medium"],
+          ["Create a durable implementation brief for desktop and mobile parity", "Capture the accepted structure, visual direction, and non-goals so implementation stays aligned once code changes begin.", "small"],
+        ],
+      },
+      {
+        title: "Workflow Preservation And Data Integrity",
+        description: "Protect the live record creation and intake flows while the interface is being redesigned.",
+        priority: "critical" as const,
+        tasks: [
+          ["Inventory every current action, mutation, and dataset dependency in the lease workspace", "List the existing queries, mutations, dialogs, form fields, and invalidation behavior that must survive the redesign.", "medium"],
+          ["Preserve occupancy record creation, tenant-owner type handling, and onboarding intake behavior", "Keep the current operational behavior for recording occupancy and submitting onboarding intake, including required field rules and association context.", "large"],
+          ["Define safe edit, empty, loading, and failure states for the redesigned lease workspace", "Ensure the redesign handles operational edge states clearly rather than focusing only on ideal data-rich views.", "medium"],
+          ["Verify route continuity and command-path consistency after the redesign", "Ensure users can still reach the workspace from the existing navigation and redirects without breaking mental models or links.", "small"],
+        ],
+      },
+      {
+        title: "Desktop Lease Workspace Redesign",
+        description: "Implement the larger-screen lease experience with the new editorial visual direction and clearer action hierarchy.",
+        priority: "high" as const,
+        tasks: [
+          ["Design a desktop hero and summary layer that frames lease activity without burying core actions", "Create a purposeful top section that introduces the workspace theme and exposes high-value status and action entry points.", "medium"],
+          ["Rework desktop record browsing into a more intentional card or structured-list layout", "Replace the plain table treatment with a clearer desktop pattern that still supports rapid scanning of resident, unit, type, and date state.", "large"],
+          ["Integrate occupancy creation and onboarding entry points into the redesigned desktop surface", "Ensure the main create flows remain obvious and reachable within the new desktop structure.", "medium"],
+          ["Align desktop spacing, typography, surfaces, and motion to the accepted theme", "Apply the new visual system consistently instead of mixing the redesign with leftover legacy page patterns.", "medium"],
+        ],
+      },
+      {
+        title: "Mobile Lease Workspace Redesign",
+        description: "Build a phone-first version of the workspace that keeps lease actions finishable and readable.",
+        priority: "high" as const,
+        tasks: [
+          ["Design a mobile-first page structure for lease status, records, and actions", "Reorder the workspace for small screens so the primary decision areas appear first and remain reachable without dense stacking.", "large"],
+          ["Refactor mobile record presentation into prioritized cards and compact detail rows", "Present resident, unit, type, and date information in a mobile pattern that preserves context without requiring a desktop table.", "medium"],
+          ["Make occupancy and onboarding dialogs mobile-safe with single-column progression", "Ensure the create flows fit within the viewport cleanly, remain keyboard-safe, and keep submission actions visible.", "medium"],
+          ["Verify touch targets, safe-area spacing, and bottom-of-screen action behavior", "Confirm the redesigned mobile workspace works in realistic phone layouts instead of only shrinking the desktop design.", "small"],
+        ],
+      },
+      {
+        title: "Verification, Rollout, And Closure",
+        description: "Validate functional parity and reflect execution honestly in the roadmap as chunks land.",
+        priority: "high" as const,
+        tasks: [
+          ["Run desktop and mobile verification for occupancy creation, onboarding intake, and record review", "Exercise the highest-frequency lease workflows after implementation to confirm the redesign preserved functionality.", "medium"],
+          ["Capture before and after screenshots for the redesigned lease workspace", "Create a visual record of the redesign for roadmap, executive, and regression review needs.", "small"],
+          ["Document any remaining desktop-preferred or deferred lease workflows explicitly", "Leave unresolved gaps visible instead of implying the redesign completed more than it actually did.", "small"],
+          ["Update roadmap task status in step with implemented and validated redesign slices", "Use the Admin roadmap as the source of truth while the redesign is executed, moving tasks to in-progress or done only when reality supports it.", "small"],
+        ],
+      },
+    ];
+
+    for (let workstreamIndex = 0; workstreamIndex < workstreamDefinitions.length; workstreamIndex += 1) {
+      const workstreamDefinition = workstreamDefinitions[workstreamIndex];
+      const [workstream] = await db.insert(roadmapWorkstreams).values({
+        projectId: project.id,
+        title: workstreamDefinition.title,
+        description: workstreamDefinition.description,
+        orderIndex: workstreamIndex,
+        isCollapsed: 0,
+      }).returning();
+
+      await db.insert(roadmapTasks).values(
+        workstreamDefinition.tasks.map((taskDefinition) => ({
+          projectId: project.id,
+          workstreamId: workstream.id,
+          title: taskDefinition[0],
+          description: taskDefinition[1],
+          status: "todo" as const,
+          effort: taskDefinition[2],
+          priority: workstreamDefinition.priority,
+          dependencyTaskIds: [],
+        })),
+      );
+    }
+
+    log("[seed] created roadmap project: Lease And Occupancy Workspace Redesign", "seed");
+  }
+
   // ── Election Seed Data ──────────────────────────────────────────────────────
   // Seeds three elections for Sunset Towers: a certified board election, an open
   // community referendum, and a draft amendment. Plus proxy data on the board election.

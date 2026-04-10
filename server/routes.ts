@@ -9605,20 +9605,20 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/platform/sms/configure", requireAdmin, requireAdminRole(["platform-admin"]), async (req, res) => {
+  app.post("/api/platform/sms/configure", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
     try {
       const { accountSid, authToken, fromNumber, statusCallbackUrl } = req.body ?? {};
       if (accountSid !== undefined) {
-        accountSid ? await setSecret("twilio.accountSid", accountSid, req.adminUser?.email) : await deleteSecret("twilio.accountSid");
+        accountSid ? await setSecret("twilio.accountSid", accountSid, req.adminUserEmail) : await deleteSecret("twilio.accountSid");
       }
       if (authToken !== undefined) {
-        authToken ? await setSecret("twilio.authToken", authToken, req.adminUser?.email) : await deleteSecret("twilio.authToken");
+        authToken ? await setSecret("twilio.authToken", authToken, req.adminUserEmail) : await deleteSecret("twilio.authToken");
       }
       if (fromNumber !== undefined) {
-        fromNumber ? await setSecret("twilio.fromNumber", fromNumber, req.adminUser?.email) : await deleteSecret("twilio.fromNumber");
+        fromNumber ? await setSecret("twilio.fromNumber", fromNumber, req.adminUserEmail) : await deleteSecret("twilio.fromNumber");
       }
       if (statusCallbackUrl !== undefined) {
-        statusCallbackUrl ? await setSecret("twilio.statusCallbackUrl", statusCallbackUrl, req.adminUser?.email) : await deleteSecret("twilio.statusCallbackUrl");
+        statusCallbackUrl ? await setSecret("twilio.statusCallbackUrl", statusCallbackUrl, req.adminUserEmail) : await deleteSecret("twilio.statusCallbackUrl");
       }
       invalidateSecretsCache();
       res.json({ message: "SMS credentials saved", status: await getSmsProviderStatus() });
@@ -9635,17 +9635,17 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/platform/push/configure", requireAdmin, requireAdminRole(["platform-admin"]), async (req, res) => {
+  app.post("/api/platform/push/configure", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
     try {
       const { vapidPublicKey, vapidPrivateKey, vapidSubject } = req.body ?? {};
       if (vapidPublicKey !== undefined) {
-        vapidPublicKey ? await setSecret("vapid.publicKey", vapidPublicKey, req.adminUser?.email) : await deleteSecret("vapid.publicKey");
+        vapidPublicKey ? await setSecret("vapid.publicKey", vapidPublicKey, req.adminUserEmail) : await deleteSecret("vapid.publicKey");
       }
       if (vapidPrivateKey !== undefined) {
-        vapidPrivateKey ? await setSecret("vapid.privateKey", vapidPrivateKey, req.adminUser?.email) : await deleteSecret("vapid.privateKey");
+        vapidPrivateKey ? await setSecret("vapid.privateKey", vapidPrivateKey, req.adminUserEmail) : await deleteSecret("vapid.privateKey");
       }
       if (vapidSubject !== undefined) {
-        vapidSubject ? await setSecret("vapid.subject", vapidSubject, req.adminUser?.email) : await deleteSecret("vapid.subject");
+        vapidSubject ? await setSecret("vapid.subject", vapidSubject, req.adminUserEmail) : await deleteSecret("vapid.subject");
       }
       invalidateSecretsCache();
       res.json({ message: "Push credentials saved", status: await getPushProviderStatus() });
