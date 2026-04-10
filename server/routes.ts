@@ -783,7 +783,7 @@ function normalizeAdminRole(value: unknown): AdminRole {
 
 async function applyAdminContext(req: AdminRequest, adminUser: { id: string; email: string; role: string }) {
   const normalizedRole = normalizeAdminRole(adminUser.role);
-  console.log("[applyAdminContext]", {
+  debug("[applyAdminContext]", {
     adminUserId: adminUser.id,
     email: adminUser.email,
     rawRole: adminUser.role,
@@ -826,14 +826,14 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
       }
     }
     req.adminScopedAssociationIds = scopes.map((scope) => scope.associationId);
-    console.log("[applyAdminContext][scoped]", {
+    debug("[applyAdminContext][scoped]", {
       email: adminUser.email,
       scopeCount: req.adminScopedAssociationIds.length,
       scopedAssociationIds: req.adminScopedAssociationIds,
     });
   } else {
     req.adminScopedAssociationIds = [];
-    console.log("[applyAdminContext][platform-admin] full access granted", { email: adminUser.email });
+    debug("[applyAdminContext][platform-admin] full access granted", { email: adminUser.email });
   }
   req.adminUserId = adminUser.id;
   req.adminUserEmail = adminUser.email;
@@ -851,7 +851,7 @@ async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
       ? await storage.getAdminUserByEmail(authUser.email.trim().toLowerCase())
       : undefined;
 
-    console.log("[tryHydrateAdminFromSession][passport-path]", {
+    debug("[tryHydrateAdminFromSession][passport-path]", {
       authUserId: authUser.id || null,
       authEmail: authUser.email || null,
       sessionAdminUserId: authUser.adminUserId || null,
@@ -877,7 +877,7 @@ async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
     }
 
     if (resolvedAdmin && resolvedAdmin.isActive === 1) {
-      console.log("[tryHydrateAdminFromSession][resolved]", { email: authUser.email, role: resolvedAdmin.role, adminUserId: resolvedAdmin.id });
+      debug("[tryHydrateAdminFromSession][resolved]", { email: authUser.email, role: resolvedAdmin.role, adminUserId: resolvedAdmin.id });
       await applyAdminContext(req, resolvedAdmin);
       return true;
     }
@@ -893,7 +893,7 @@ async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
 
   const serializedAuthUserId = (req.session as { passport?: { user?: string } } | undefined)?.passport?.user;
   if (!serializedAuthUserId) {
-    console.log("[tryHydrateAdminFromSession][no-session]", { path: req.path });
+    debug("[tryHydrateAdminFromSession][no-session]", { path: req.path });
     return false;
   }
   const sessionAuthUser = await storage.getAuthUserById(String(serializedAuthUserId));
@@ -911,7 +911,7 @@ async function tryHydrateAdminFromSession(req: AdminRequest): Promise<boolean> {
     });
   }
 
-  console.log("[tryHydrateAdminFromSession][session-fallback-path]", {
+  debug("[tryHydrateAdminFromSession][session-fallback-path]", {
     sessionAuthUserId: sessionAuthUser.id,
     sessionEmail: sessionAuthUser.email,
     sessionAdminUserId: sessionAuthUser.adminUserId || null,
@@ -1456,7 +1456,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const scopedResult = adminReq.adminRole === "platform-admin"
         ? result
         : result.filter((association) => (adminReq.adminScopedAssociationIds ?? []).includes(association.id));
-      console.log("[GET /api/associations]", {
+      debug("[GET /api/associations]", {
         adminUserId: adminReq.adminUserId || null,
         adminUserEmail: adminReq.adminUserEmail || null,
         adminRole: adminReq.adminRole || null,
@@ -5448,7 +5448,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 templateKey: "election-deadline-extended",
               });
             }
-            console.log(`[elections] Sent ${pendingVoters.length} deadline extension emails for election ${result.id}`);
+            debug(`[elections] Sent ${pendingVoters.length} deadline extension emails for election ${result.id}`);
           } catch (err) {
             console.error("[elections] Failed to send deadline extension emails:", err);
           }
@@ -5489,7 +5489,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             if (tokenIds.length > 0) {
               await storage.markBallotTokensSent(tokenIds);
             }
-            console.log(`[elections] Sent ${tokenIds.length} ballot invitation emails for election ${result.id}`);
+            debug(`[elections] Sent ${tokenIds.length} ballot invitation emails for election ${result.id}`);
           } catch (err) {
             console.error("[elections] Failed to send ballot invitation emails:", err);
           }
@@ -5509,7 +5509,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               targetAudience: "all",
               createdBy: "system",
             });
-            console.log(`[elections] Created community announcement for election ${result.id}`);
+            debug(`[elections] Created community announcement for election ${result.id}`);
           } catch (err) {
             console.error("[elections] Failed to create community announcement:", err);
           }
@@ -5700,7 +5700,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }, req.adminUserEmail || "system");
           // Update election with the resultDocumentId
           await db.update(elections).set({ resultDocumentId: doc.id }).where(eq(elections.id, result.id));
-          console.log(`[elections] Created result certificate document ${doc.id} for election ${result.id}`);
+          debug(`[elections] Created result certificate document ${doc.id} for election ${result.id}`);
         } catch (err) {
           console.error("[elections] Failed to create result certificate document:", err);
         }
@@ -5737,7 +5737,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 templateKey: "election-results-announcement",
               });
             }
-            console.log(`[elections] Sent ${voters.length} results emails for election ${result.id}`);
+            debug(`[elections] Sent ${voters.length} results emails for election ${result.id}`);
           } catch (err) {
             console.error("[elections] Failed to send results emails:", err);
           }
@@ -5784,7 +5784,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               content: noteContent,
               createdBy: req.adminUserEmail || "system",
             });
-            console.log(`[elections] Appended election results to meeting ${meetingId} for election ${result.id}`);
+            debug(`[elections] Appended election results to meeting ${meetingId} for election ${result.id}`);
           } catch (err) {
             console.error("[elections] Failed to append election results to meeting minutes:", err);
           }
@@ -5833,7 +5833,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               templateKey: "election-voting-reminder",
             });
           }
-          console.log(`[elections] Sent ${pendingVoters.length} reminder emails for election ${election.id}`);
+          debug(`[elections] Sent ${pendingVoters.length} reminder emails for election ${election.id}`);
         } catch (err) {
           console.error("[elections] Failed to send reminder emails:", err);
         }
@@ -5883,7 +5883,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             associationId: election.associationId,
             templateKey: "election-ballot-invitation",
           });
-          console.log(`[elections] Resent ballot email for token ${tokenId} in election ${electionId}`);
+          debug(`[elections] Resent ballot email for token ${tokenId} in election ${electionId}`);
         } catch (err) {
           console.error("[elections] Failed to resend ballot email:", err);
         }
@@ -5964,7 +5964,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               versionNumber: 1,
               isCurrentVersion: 1,
             }, parsed.uploadedBy || "system");
-            console.log(`[elections] Mirrored proxy document to documents table for election ${election.id}`);
+            debug(`[elections] Mirrored proxy document to documents table for election ${election.id}`);
           }
         } catch (err) {
           console.error("[elections] Failed to mirror proxy document:", err);
@@ -9924,14 +9924,14 @@ This is an automated demo request from the Your Condo Manager website.
       // Sync portal access for every active ownership unit — runs on every login attempt so
       // units added after the first login are automatically provisioned.
       {
-        console.log("[portal-provision] Starting ownership sync", { email, existingAccessCount: accesses.length });
+        debug("[portal-provision] Starting ownership sync", { email, existingAccessCount: accesses.length });
 
         const matchingPersons = await db
           .select()
           .from(persons)
           .where(ilike(persons.email, email));
 
-        console.log("[portal-provision] Matched persons", { count: matchingPersons.length, personIds: matchingPersons.map((p) => p.id) });
+        debug("[portal-provision] Matched persons", { count: matchingPersons.length, personIds: matchingPersons.map((p) => p.id) });
 
         if (matchingPersons.length > 0) {
           const personIds = matchingPersons.map((p) => p.id);
@@ -9941,7 +9941,7 @@ This is an automated demo request from the Your Condo Manager website.
             .from(ownerships)
             .where(and(inArray(ownerships.personId, personIds), isNull(ownerships.endDate)));
 
-          console.log("[portal-provision] Active ownerships found", { count: activeOwnerships.length, ownerships: activeOwnerships });
+          debug("[portal-provision] Active ownerships found", { count: activeOwnerships.length, ownerships: activeOwnerships });
 
           if (activeOwnerships.length > 0) {
             const unitIds = Array.from(new Set(activeOwnerships.map((o) => o.unitId)));
@@ -9951,13 +9951,13 @@ This is an automated demo request from the Your Condo Manager website.
               .from(units)
               .where(inArray(units.id, unitIds));
 
-            console.log("[portal-provision] Resolved units", { unitRows });
+            debug("[portal-provision] Resolved units", { unitRows });
 
             const unitAssocMap = new Map(unitRows.map((u) => [u.id, u.associationId]));
 
             // Key by associationId:unitId — one portal_access row per unit per association
             const existingKeys = new Set(accesses.map((a) => `${a.associationId}:${a.unitId ?? ""}`));
-            console.log("[portal-provision] Existing access keys", { existingKeys: Array.from(existingKeys) });
+            debug("[portal-provision] Existing access keys", { existingKeys: Array.from(existingKeys) });
 
             for (const o of activeOwnerships) {
               const associationId = unitAssocMap.get(o.unitId);
@@ -9967,19 +9967,19 @@ This is an automated demo request from the Your Condo Manager website.
               }
               const key = `${associationId}:${o.unitId}`;
               if (existingKeys.has(key)) {
-                console.log("[portal-provision] Skipping — already provisioned", { key });
+                debug("[portal-provision] Skipping — already provisioned", { key });
                 continue;
               }
               await storage.createPortalAccess(
                 { associationId, personId: o.personId, unitId: o.unitId, email, role: "owner", status: "active" },
                 "system:auto-provision"
               );
-              console.log("[portal-provision] Created portal access", { email, associationId, unitId: o.unitId });
+              debug("[portal-provision] Created portal access", { email, associationId, unitId: o.unitId });
             }
 
             // Re-fetch active accesses after any new provisioning
             const refreshed = await storage.getPortalAccessesByEmail(email);
-            console.log("[portal-provision] Post-sync accesses", { count: refreshed.length, ids: refreshed.map((a) => ({ id: a.id, unitId: a.unitId, status: a.status })) });
+            debug("[portal-provision] Post-sync accesses", { count: refreshed.length, ids: refreshed.map((a) => ({ id: a.id, unitId: a.unitId, status: a.status })) });
             activeAccesses.length = 0;
             activeAccesses.push(
               ...refreshed.filter((a) => {
@@ -10136,7 +10136,7 @@ This is an automated demo request from the Your Condo Manager website.
         if (a.role !== "board-member" && !a.unitId) return false;
         return true;
       });
-      console.log("[portal-verify] Active accesses after OTP", { email, count: activeAccesses.length, accesses: activeAccesses.map((a) => ({ id: a.id, unitId: a.unitId, associationId: a.associationId, status: a.status })) });
+      debug("[portal-verify] Active accesses after OTP", { email, count: activeAccesses.length, accesses: activeAccesses.map((a) => ({ id: a.id, unitId: a.unitId, associationId: a.associationId, status: a.status })) });
       if (activeAccesses.length === 0) return res.status(404).json({ message: "No active portal access found" });
 
       // Only require a picker when the email spans multiple associations.
@@ -10560,7 +10560,7 @@ This is an automated demo request from the Your Condo Manager website.
           email,
         })
         : [];
-      console.log("[portal-my-associations]", { email, totalAccesses: accesses.length, activeCount: active.length, active: active.map((a) => ({ id: a.id, unitId: a.unitId, associationId: a.associationId })) });
+      debug("[portal-my-associations]", { email, totalAccesses: accesses.length, activeCount: active.length, active: active.map((a) => ({ id: a.id, unitId: a.unitId, associationId: a.associationId })) });
       const allAssocs = await storage.getAssociations();
       const assocMap = new Map(allAssocs.map((a) => [a.id, a]));
       // Fetch unit info for all accesses that have a unitId
