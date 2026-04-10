@@ -400,28 +400,28 @@ function PublicRouter({
           <RouteRedirect to="/app/admin/executive" />
         </Route>
         <Route path="/financial/fees">
-          <RouteRedirect to="/app/financial/recurring-charges" />
+          <RouteRedirect to="/app/financial/foundation" />
         </Route>
         <Route path="/financial/assessments">
-          <RouteRedirect to="/app/financial/assessments" />
+          <RouteRedirect to="/app/financial/billing" />
         </Route>
         <Route path="/financial/late-fees">
-          <RouteRedirect to="/app/financial/late-fees" />
+          <RouteRedirect to="/app/financial/billing" />
         </Route>
         <Route path="/financial/foundation">
           <RouteRedirect to="/app/financial/foundation" />
         </Route>
         <Route path="/financial/invoices">
-          <RouteRedirect to="/app/financial/invoices" />
+          <RouteRedirect to="/app/financial/expenses" />
         </Route>
         <Route path="/financial/utilities">
-          <RouteRedirect to="/app/financial/utilities" />
+          <RouteRedirect to="/app/financial/expenses" />
         </Route>
         <Route path="/financial/ledger">
-          <RouteRedirect to="/app/financial/ledger" />
+          <RouteRedirect to="/app/financial/billing" />
         </Route>
         <Route path="/financial/budgets">
-          <RouteRedirect to="/app/financial/budgets" />
+          <RouteRedirect to="/app/financial/expenses" />
         </Route>
         <Route path="/financial/payments">
           <RouteRedirect to="/app/financial/payments" />
@@ -433,7 +433,7 @@ function PublicRouter({
           <RouteRedirect to="/app/work-orders" />
         </Route>
         <Route path="/governance/board-packages">
-          <RouteRedirect to="/app/governance/board-packages" />
+          <RouteRedirect to="/app/governance" />
         </Route>
         <Route path="/maintenance-schedules">
           <RouteRedirect to="/app/maintenance-schedules" />
@@ -442,10 +442,10 @@ function PublicRouter({
           <RouteRedirect to="/app/inspections" />
         </Route>
         <Route path="/governance/meetings">
-          <RouteRedirect to="/app/governance/meetings" />
+          <RouteRedirect to="/app/governance" />
         </Route>
         <Route path="/governance/compliance">
-          <RouteRedirect to="/app/governance/compliance" />
+          <RouteRedirect to="/app/governance" />
         </Route>
         <Route path="/ai/ingestion">
           <RouteRedirect to="/app/ai/ingestion" />
