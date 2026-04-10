@@ -1175,8 +1175,18 @@ async function getOwnedPortalUnitsForAssociation(input: {
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   registerAuthRoutes(app);
 
-  // Health/diagnostics endpoint — shows DB state for deployment verification
+  // Lightweight public health check for monitors, load balancers, and liveness probes
   app.get("/api/health", async (_req, res) => {
+    try {
+      await db.execute(sql`SELECT 1`);
+      res.json({ status: "ok" });
+    } catch (err: any) {
+      res.status(500).json({ status: "error", message: "Database unreachable" });
+    }
+  });
+
+  // Detailed diagnostics endpoint — admin-only, shows DB state for deployment verification
+  app.get("/api/health/details", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
     try {
       const [countsResult, assocListResult, authResult] = await Promise.all([
         db.execute(sql`

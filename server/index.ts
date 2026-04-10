@@ -305,10 +305,10 @@ app.use((req, res, next) => {
 
   // Return JSON 404 for unmatched /api/* and /uploads/* paths so they
   // are never swallowed by the SPA HTML fallback below.
-  app.all("/api/*", (_req, res) => {
+  app.all("/api/*path", (_req, res) => {
     res.status(404).json({ message: "Not found" });
   });
-  app.all("/uploads/*", (_req, res) => {
+  app.all("/uploads/*path", (_req, res) => {
     res.status(404).json({ message: "Not found" });
   });
 
