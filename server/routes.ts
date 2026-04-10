@@ -1175,7 +1175,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerAuthRoutes(app);
 
   // Health/diagnostics endpoint — shows DB state for deployment verification
-  app.get("/api/health", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
+  app.get("/api/health", async (_req, res) => {
     try {
       const [countsResult, assocListResult, authResult] = await Promise.all([
         db.execute(sql`
