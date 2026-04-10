@@ -8,6 +8,7 @@ import {
   maintenanceScheduleTemplates, maintenanceScheduleInstances,
   governanceMeetings,
   communityAnnouncements,
+  budgets, budgetVersions, budgetLines,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -2484,6 +2485,159 @@ export async function seedDatabase() {
     log("[seed] community announcements :: 5 Cherry Hill announcements inserted", "seed");
   } else {
     log("[seed] community announcements :: already exist, skipping", "seed");
+  }
+
+  // ── Budgets ──────────────────────────────────────────────────────────────────
+  const existingBudgets = await db
+    .select()
+    .from(budgets)
+    .where(eq(budgets.associationId, CHERRY_HILL_ASSOC_ID));
+  if (existingBudgets.length === 0) {
+    const budgetRows: (typeof budgets.$inferInsert)[] = [
+      {
+        id: "budg0001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        name: "FY 2026 Operating Budget",
+        fiscalYear: 2026,
+        periodStart: new Date("2026-01-01T00:00:00Z"),
+        periodEnd: new Date("2026-12-31T23:59:59Z"),
+      },
+      {
+        id: "budg0001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        name: "FY 2026 Reserve Budget",
+        fiscalYear: 2026,
+        periodStart: new Date("2026-01-01T00:00:00Z"),
+        periodEnd: new Date("2026-12-31T23:59:59Z"),
+      },
+    ];
+    await db.insert(budgets).values(budgetRows).onConflictDoNothing();
+    log("[seed] budgets :: 2 Cherry Hill FY 2026 budgets inserted", "seed");
+  } else {
+    log("[seed] budgets :: already exist, skipping", "seed");
+  }
+
+  // ── Budget Versions ───────────────────────────────────────────────────────────
+  const existingBudgetVersions = await db
+    .select()
+    .from(budgetVersions)
+    .where(eq(budgetVersions.budgetId, "budg0001-0000-4000-8000-000000000001"));
+  if (existingBudgetVersions.length === 0) {
+    const budgetVersionRows: (typeof budgetVersions.$inferInsert)[] = [
+      {
+        id: "budgv001-0000-4000-8000-000000000001",
+        budgetId: "budg0001-0000-4000-8000-000000000001",
+        versionNumber: 1,
+        status: "ratified",
+        notes: "Approved by the board at the January 2026 annual meeting.",
+        ratifiedAt: new Date("2026-01-20T18:00:00Z"),
+      },
+      {
+        id: "budgv001-0000-4000-8000-000000000002",
+        budgetId: "budg0001-0000-4000-8000-000000000002",
+        versionNumber: 1,
+        status: "ratified",
+        notes: "Approved by the board at the January 2026 annual meeting.",
+        ratifiedAt: new Date("2026-01-20T18:00:00Z"),
+      },
+    ];
+    await db.insert(budgetVersions).values(budgetVersionRows).onConflictDoNothing();
+    log("[seed] budget versions :: 2 Cherry Hill FY 2026 budget versions inserted", "seed");
+  } else {
+    log("[seed] budget versions :: already exist, skipping", "seed");
+  }
+
+  // ── Budget Lines ──────────────────────────────────────────────────────────────
+  const existingBudgetLines = await db
+    .select()
+    .from(budgetLines)
+    .where(eq(budgetLines.budgetVersionId, "budgv001-0000-4000-8000-000000000001"));
+  if (existingBudgetLines.length === 0) {
+    const budgetLineRows: (typeof budgetLines.$inferInsert)[] = [
+      // Operating Budget lines
+      {
+        id: "bdln0001-0000-4000-8000-000000000001",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000001",
+        lineItemName: "Landscaping",
+        plannedAmount: 24000,
+        sortOrder: 1,
+      },
+      {
+        id: "bdln0001-0000-4000-8000-000000000002",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000001",
+        lineItemName: "Utilities (Water/Sewer)",
+        plannedAmount: 18000,
+        sortOrder: 2,
+      },
+      {
+        id: "bdln0001-0000-4000-8000-000000000003",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000001",
+        lineItemName: "Insurance Premiums",
+        plannedAmount: 28000,
+        sortOrder: 3,
+      },
+      {
+        id: "bdln0001-0000-4000-8000-000000000004",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000001",
+        lineItemName: "Management Fees",
+        plannedAmount: 36000,
+        sortOrder: 4,
+      },
+      {
+        id: "bdln0001-0000-4000-8000-000000000005",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000001",
+        lineItemName: "Maintenance & Repairs",
+        plannedAmount: 22000,
+        sortOrder: 5,
+      },
+      {
+        id: "bdln0001-0000-4000-8000-000000000006",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000001",
+        lineItemName: "Snow Removal",
+        plannedAmount: 8000,
+        sortOrder: 6,
+      },
+      {
+        id: "bdln0001-0000-4000-8000-000000000007",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000001",
+        lineItemName: "Cleaning Services",
+        plannedAmount: 14000,
+        sortOrder: 7,
+      },
+      {
+        id: "bdln0001-0000-4000-8000-000000000008",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000001",
+        lineItemName: "Legal & Professional",
+        plannedAmount: 5000,
+        sortOrder: 8,
+      },
+      // Reserve Budget lines
+      {
+        id: "bdln0001-0000-4000-8000-000000000009",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000002",
+        lineItemName: "Roof Replacement Reserve",
+        plannedAmount: 45000,
+        sortOrder: 1,
+      },
+      {
+        id: "bdln0001-0000-4000-8000-000000000010",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000002",
+        lineItemName: "Parking Lot Resurfacing",
+        plannedAmount: 20000,
+        sortOrder: 2,
+      },
+      {
+        id: "bdln0001-0000-4000-8000-000000000011",
+        budgetVersionId: "budgv001-0000-4000-8000-000000000002",
+        lineItemName: "HVAC Major Repairs",
+        plannedAmount: 15000,
+        sortOrder: 3,
+      },
+    ];
+    await db.insert(budgetLines).values(budgetLineRows).onConflictDoNothing();
+    log("[seed] budget lines :: 8 operating + 3 reserve lines inserted for Cherry Hill", "seed");
+  } else {
+    log("[seed] budget lines :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
