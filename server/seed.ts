@@ -1811,9 +1811,9 @@ export async function seedDatabase() {
   }
 
   // ── 5: Vendors ──
-  // Reuse CHERRY_HILL_CONDO_ID (declared earlier at function scope) — same association.
+  // Check by specific UUID so unrelated pre-existing vendors do not block our seed.
   const [existingVendor] = await db.select().from(vendors)
-    .where(eq(vendors.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(vendors.id, "a1b2c3d4-0001-4000-8000-000000000001"));
 
   if (!existingVendor) {
     await db.insert(vendors).values([
@@ -1884,8 +1884,9 @@ export async function seedDatabase() {
   }
 
   // ── 6: Work Orders ──
+  // Check by specific UUID so pre-existing unrelated work orders do not block our seed.
   const [existingWorkOrder] = await db.select().from(workOrders)
-    .where(eq(workOrders.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(workOrders.id, "w0000001-0000-4000-8000-000000000001"));
 
   if (!existingWorkOrder) {
     const workOrderRows: (typeof workOrders.$inferInsert)[] = [
@@ -2034,12 +2035,12 @@ export async function seedDatabase() {
   }
 
   // ── Insurance Policies ──────────────────────────────────────────────────────
-  const existingPolicies = await db
+  const [existingPolicy] = await db
     .select()
     .from(associationInsurancePolicies)
-    .where(eq(associationInsurancePolicies.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(associationInsurancePolicies.id, "ins00001-0000-4000-8000-000000000001"));
 
-  if (existingPolicies.length === 0) {
+  if (!existingPolicy) {
     const policyRows = [
       {
         id: "ins00001-0000-4000-8000-000000000001",
@@ -2097,12 +2098,12 @@ export async function seedDatabase() {
   }
 
   // ── Inspection Records ───────────────────────────────────────────────────────
-  const existingInspections = await db
+  const [existingInspection] = await db
     .select()
     .from(inspectionRecords)
-    .where(eq(inspectionRecords.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(inspectionRecords.id, "insp0001-0000-4000-8000-000000000001"));
 
-  if (existingInspections.length === 0) {
+  if (!existingInspection) {
     const inspectionRows = [
       {
         id: "insp0001-0000-4000-8000-000000000001",
@@ -2195,12 +2196,12 @@ export async function seedDatabase() {
   }
 
   // ── Maintenance Schedule Templates ──────────────────────────────────────────
-  const existingMaintTemplates = await db
+  const [existingMaintTemplate] = await db
     .select()
     .from(maintenanceScheduleTemplates)
-    .where(eq(maintenanceScheduleTemplates.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(maintenanceScheduleTemplates.id, "maint001-0000-4000-8000-000000000001"));
 
-  if (existingMaintTemplates.length === 0) {
+  if (!existingMaintTemplate) {
     const maintTemplateRows = [
       {
         id: "maint001-0000-4000-8000-000000000001",
@@ -2252,12 +2253,12 @@ export async function seedDatabase() {
   }
 
   // ── Maintenance Schedule Instances ──────────────────────────────────────────
-  const existingMaintInstances = await db
+  const [existingMaintInstance] = await db
     .select()
     .from(maintenanceScheduleInstances)
-    .where(eq(maintenanceScheduleInstances.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(maintenanceScheduleInstances.id, "minst001-0000-4000-8000-000000000001"));
 
-  if (existingMaintInstances.length === 0) {
+  if (!existingMaintInstance) {
     const maintInstanceRows = [
       // HVAC Filter Replacement instances
       {
@@ -2350,12 +2351,13 @@ export async function seedDatabase() {
   }
 
   // ── Governance Meetings ──────────────────────────────────────────────────────
-  const existingMeetings = await db
+  // Check by specific UUID so pre-existing meetings do not block our seed.
+  const [existingMeeting] = await db
     .select()
     .from(governanceMeetings)
-    .where(eq(governanceMeetings.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(governanceMeetings.id, "meet0001-0000-4000-8000-000000000001"));
 
-  if (existingMeetings.length === 0) {
+  if (!existingMeeting) {
     const meetingRows = [
       {
         id: "meet0001-0000-4000-8000-000000000001",
@@ -2413,11 +2415,11 @@ export async function seedDatabase() {
   }
 
   // ── Community Announcements ─────────────────────────────────────────────────
-  const existingAnnouncements = await db
+  const [existingAnnouncement] = await db
     .select()
     .from(communityAnnouncements)
-    .where(eq(communityAnnouncements.associationId, CHERRY_HILL_CONDO_ID));
-  if (existingAnnouncements.length === 0) {
+    .where(eq(communityAnnouncements.id, "ann00001-0000-4000-8000-000000000001"));
+  if (!existingAnnouncement) {
     const announcementRows = [
       {
         id: "ann00001-0000-4000-8000-000000000001",
@@ -2493,11 +2495,11 @@ export async function seedDatabase() {
   }
 
   // ── Budgets ──────────────────────────────────────────────────────────────────
-  const existingBudgets = await db
+  const [existingBudget] = await db
     .select()
     .from(budgets)
-    .where(eq(budgets.associationId, CHERRY_HILL_CONDO_ID));
-  if (existingBudgets.length === 0) {
+    .where(eq(budgets.id, "budg0001-0000-4000-8000-000000000001"));
+  if (!existingBudget) {
     const budgetRows: (typeof budgets.$inferInsert)[] = [
       {
         id: "budg0001-0000-4000-8000-000000000001",
@@ -2648,12 +2650,12 @@ export async function seedDatabase() {
   // ── Owner Ledger Entries — Cherry Hill Court Condominiums ───────────────────
   // 3-month ledger (Jan–Mar 2026) for 3 units. Unit 1421-A has a late fee and
   // no March payment yet; units 1415-A and 1417-A are fully paid through March.
-  const existingLedgerEntries = await db
+  const [existingLedgerEntry] = await db
     .select()
     .from(ownerLedgerEntries)
-    .where(eq(ownerLedgerEntries.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(ownerLedgerEntries.id, "olgr0001-0000-4000-8000-000000000001"));
 
-  if (existingLedgerEntries.length === 0) {
+  if (!existingLedgerEntry) {
     // Seed Cherry Hill persons referenced by ledger entries — idempotent fixed UUIDs
     const CHERRY_HILL_PERSONS = [
       {
@@ -2879,12 +2881,13 @@ export async function seedDatabase() {
   }
 
   // ── Late Fee Rules — Cherry Hill Court Condominiums ────────────────────────
-  const existingLateFeeRules = await db
+  // Check by specific UUID so unrelated pre-existing rules do not block our seed.
+  const [existingLateFeeRule] = await db
     .select()
     .from(lateFeeRules)
-    .where(eq(lateFeeRules.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(lateFeeRules.id, "lfru0001-0000-4000-8000-000000000001"));
 
-  if (existingLateFeeRules.length === 0) {
+  if (!existingLateFeeRule) {
     await db
       .insert(lateFeeRules)
       .values({
@@ -2907,12 +2910,12 @@ export async function seedDatabase() {
   // Ties to the March 2026 assessment (olgr0001-...-000000000017) for unit 1421-A
   // (Yuki Nakamura), which went unpaid past the 10-day grace period and triggered
   // a $25 flat late fee posted on 2026-03-16.
-  const existingLateFeeEvents = await db
+  const [existingLateFeeEvent] = await db
     .select()
     .from(lateFeeEvents)
-    .where(eq(lateFeeEvents.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(lateFeeEvents.id, "lfev0001-0000-4000-8000-000000000001"));
 
-  if (existingLateFeeEvents.length === 0) {
+  if (!existingLateFeeEvent) {
     await db
       .insert(lateFeeEvents)
       .values({
@@ -2935,12 +2938,12 @@ export async function seedDatabase() {
   // ── Resident Feedback — Cherry Hill Court Condominiums ─────────────────────
   // Six feedback records covering a range of categories and statuses to exercise
   // the feedback management workflow end-to-end.
-  const existingResidentFeedbacks = await db
+  const [existingResidentFeedback] = await db
     .select()
     .from(residentFeedbacks)
-    .where(eq(residentFeedbacks.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(residentFeedbacks.id, "rfbk0001-0000-4000-8000-000000000001"));
 
-  if (existingResidentFeedbacks.length === 0) {
+  if (!existingResidentFeedback) {
     await db
       .insert(residentFeedbacks)
       .values([
@@ -3036,12 +3039,13 @@ export async function seedDatabase() {
   }
 
   // --- Onboarding Invites ---
-  const existingOnboardingInvites = await db
+  // Check by specific UUID so unrelated pre-existing invites do not block our seed.
+  const [existingOnboardingInvite] = await db
     .select()
     .from(onboardingInvites)
-    .where(eq(onboardingInvites.associationId, "f301d073-ed84-4d73-84ce-3ef28af66f7a"));
+    .where(eq(onboardingInvites.id, "onbi0001-0000-4000-8000-000000000001"));
 
-  if (existingOnboardingInvites.length === 0) {
+  if (!existingOnboardingInvite) {
     await db
       .insert(onboardingInvites)
       .values([
@@ -3121,8 +3125,9 @@ export async function seedDatabase() {
   }
 
   // ── Vendor Invoices ──
+  // Check by specific UUID so pre-existing unrelated invoices do not block our seed.
   const [existingVendorInvoice] = await db.select().from(vendorInvoices)
-    .where(eq(vendorInvoices.associationId, CHERRY_HILL_CONDO_ID));
+    .where(eq(vendorInvoices.id, "vinv0001-0000-4000-8000-000000000001"));
 
   if (!existingVendorInvoice) {
     await db.insert(vendorInvoices).values([

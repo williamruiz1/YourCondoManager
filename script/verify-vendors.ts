@@ -9,7 +9,7 @@
  *   [e] Vendors with contact email have valid email format
  *   [f] All vendors reference a valid association ID
  *
- * Run with: npx tsx scripts/verify-vendors.ts
+ * Run with: tsx script/verify-vendors.ts
  */
 
 import { drizzle } from "drizzle-orm/node-postgres";
