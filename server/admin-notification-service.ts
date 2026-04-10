@@ -76,6 +76,8 @@ function hydrateRecipientFromRow(
 ): AdminNotificationRecipient | null {
   const email = row.email.trim().toLowerCase();
   if (!email || row.isActive !== 1) return null;
+  // Skip emails that fail basic RFC validation (e.g. seed data like admin@local with no TLD)
+  if (!/.+@.+\..+/.test(email)) return null;
 
   const preferences = normalizeAdminNotificationPreferences({
     emailNotifications: row.emailNotifications,
