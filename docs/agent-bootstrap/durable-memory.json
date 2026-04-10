@@ -151,7 +151,8 @@
         {
           "title": "Identify and fix the PostCSS plugin warning during production build",
           "priority": "medium",
-          "status": "todo"
+          "status": "done",
+          "notes": "Root cause traced to Tailwind v3 generateRules.js (isParsableCssValue parse without from); suppressed via vite.config.ts customLogger filter"
         },
         {
           "title": "Make /api/health endpoint publicly accessible without admin auth",

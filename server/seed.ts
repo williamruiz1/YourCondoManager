@@ -1810,15 +1810,15 @@ export async function seedDatabase() {
   }
 
   // ── 5: Vendors ──
-  const CHERRY_HILL_ASSOC_ID = "f301d073-ed84-4d73-84ce-3ef28af66f7a";
+  // Reuse CHERRY_HILL_CONDO_ID (declared earlier at function scope) — same association.
   const [existingVendor] = await db.select().from(vendors)
-    .where(eq(vendors.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(vendors.associationId, CHERRY_HILL_CONDO_ID));
 
   if (!existingVendor) {
     await db.insert(vendors).values([
       {
         id: "a1b2c3d4-0001-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         name: "Northeast HVAC Services",
         trade: "hvac",
         primaryContactName: "Rick Morales",
@@ -1830,7 +1830,7 @@ export async function seedDatabase() {
       },
       {
         id: "a1b2c3d4-0001-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         name: "Harbor Plumbing Co.",
         trade: "plumbing",
         primaryContactName: "Sandra Leung",
@@ -1842,7 +1842,7 @@ export async function seedDatabase() {
       },
       {
         id: "a1b2c3d4-0001-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         name: "Greenscape Landscaping",
         trade: "landscaping",
         primaryContactName: "Tom Ferrara",
@@ -1854,7 +1854,7 @@ export async function seedDatabase() {
       },
       {
         id: "a1b2c3d4-0001-4000-8000-000000000004",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         name: "Brightline Electrical",
         trade: "electrical",
         primaryContactName: "Denise Park",
@@ -1866,7 +1866,7 @@ export async function seedDatabase() {
       },
       {
         id: "a1b2c3d4-0001-4000-8000-000000000005",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         name: "ProClean Janitorial",
         trade: "cleaning",
         primaryContactName: "Miguel Santos",
@@ -1884,13 +1884,13 @@ export async function seedDatabase() {
 
   // ── 6: Work Orders ──
   const [existingWorkOrder] = await db.select().from(workOrders)
-    .where(eq(workOrders.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(workOrders.associationId, CHERRY_HILL_CONDO_ID));
 
   if (!existingWorkOrder) {
     const workOrderRows: (typeof workOrders.$inferInsert)[] = [
       {
         id: "w0000001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c", // 1415-A
         vendorId: "a1b2c3d4-0001-4000-8000-000000000001", // Northeast HVAC
         title: "HVAC unit making loud noise",
@@ -1907,7 +1907,7 @@ export async function seedDatabase() {
       },
       {
         id: "w0000001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null, // common area
         vendorId: "a1b2c3d4-0001-4000-8000-000000000002", // Harbor Plumbing
         title: "Lobby ceiling water stain",
@@ -1923,7 +1923,7 @@ export async function seedDatabase() {
       },
       {
         id: "w0000001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null, // common area
         vendorId: "a1b2c3d4-0001-4000-8000-000000000004", // Brightline Electrical
         title: "Parking lot light out",
@@ -1939,7 +1939,7 @@ export async function seedDatabase() {
       },
       {
         id: "w0000001-0000-4000-8000-000000000004",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb", // 1417-A
         vendorId: "a1b2c3d4-0001-4000-8000-000000000002", // Harbor Plumbing
         title: "Slow drain in bathroom sink",
@@ -1958,7 +1958,7 @@ export async function seedDatabase() {
       },
       {
         id: "w0000001-0000-4000-8000-000000000005",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null, // common area
         vendorId: "a1b2c3d4-0001-4000-8000-000000000003", // Greenscape
         title: "Overgrown hedges blocking walkway",
@@ -1977,7 +1977,7 @@ export async function seedDatabase() {
       },
       {
         id: "w0000001-0000-4000-8000-000000000006",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null, // common area
         vendorId: "a1b2c3d4-0001-4000-8000-000000000005", // ProClean
         title: "Graffiti on stairwell wall",
@@ -1993,7 +1993,7 @@ export async function seedDatabase() {
       },
       {
         id: "w0000001-0000-4000-8000-000000000007",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b", // 1421-A
         vendorId: null,
         title: "Entry door lock sticking",
@@ -2007,7 +2007,7 @@ export async function seedDatabase() {
       },
       {
         id: "w0000001-0000-4000-8000-000000000008",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null, // common area
         vendorId: "a1b2c3d4-0001-4000-8000-000000000001", // Northeast HVAC
         title: "Boiler room annual inspection",
@@ -2036,13 +2036,13 @@ export async function seedDatabase() {
   const existingPolicies = await db
     .select()
     .from(associationInsurancePolicies)
-    .where(eq(associationInsurancePolicies.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(associationInsurancePolicies.associationId, CHERRY_HILL_CONDO_ID));
 
   if (existingPolicies.length === 0) {
     const policyRows = [
       {
         id: "ins00001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         policyType: "master" as const,
         carrier: "Hartford Fire Insurance",
         policyNumber: "HFI-2026-CH-00142",
@@ -2054,7 +2054,7 @@ export async function seedDatabase() {
       },
       {
         id: "ins00001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         policyType: "d-and-o" as const,
         carrier: "Chubb Group",
         policyNumber: "CHUBB-DO-2026-8831",
@@ -2066,7 +2066,7 @@ export async function seedDatabase() {
       },
       {
         id: "ins00001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         policyType: "umbrella" as const,
         carrier: "Zurich Insurance",
         policyNumber: "ZNA-UMB-2026-44019",
@@ -2078,7 +2078,7 @@ export async function seedDatabase() {
       },
       {
         id: "ins00001-0000-4000-8000-000000000004",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         policyType: "flood" as const,
         carrier: "NFIP via Wright Flood",
         policyNumber: "NFIP-WF-2026-CH-7723",
@@ -2099,13 +2099,13 @@ export async function seedDatabase() {
   const existingInspections = await db
     .select()
     .from(inspectionRecords)
-    .where(eq(inspectionRecords.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(inspectionRecords.associationId, CHERRY_HILL_CONDO_ID));
 
   if (existingInspections.length === 0) {
     const inspectionRows = [
       {
         id: "insp0001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null,
         locationType: "common-area" as const,
         locationText: "All buildings — common corridors, stairwells, and mechanical rooms",
@@ -2118,7 +2118,7 @@ export async function seedDatabase() {
       },
       {
         id: "insp0001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null,
         locationType: "building" as const,
         locationText: "1417 Cherry Hill Dr — elevator cab and machine room",
@@ -2138,7 +2138,7 @@ export async function seedDatabase() {
       },
       {
         id: "insp0001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null,
         locationType: "building" as const,
         locationText: "1415 and 1417 Cherry Hill Dr — roof decks and flashings",
@@ -2162,7 +2162,7 @@ export async function seedDatabase() {
       },
       {
         id: "insp0001-0000-4000-8000-000000000004",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null,
         locationType: "common-area" as const,
         locationText: "Underground parking garage — levels P1 and P2",
@@ -2175,7 +2175,7 @@ export async function seedDatabase() {
       },
       {
         id: "insp0001-0000-4000-8000-000000000005",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: null,
         locationType: "common-area" as const,
         locationText: "Pool deck, fitness room, and lobby — main common areas",
@@ -2197,13 +2197,13 @@ export async function seedDatabase() {
   const existingMaintTemplates = await db
     .select()
     .from(maintenanceScheduleTemplates)
-    .where(eq(maintenanceScheduleTemplates.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(maintenanceScheduleTemplates.associationId, CHERRY_HILL_CONDO_ID));
 
   if (existingMaintTemplates.length === 0) {
     const maintTemplateRows = [
       {
         id: "maint001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "HVAC Filter Replacement",
         component: "HVAC",
         description: "Replace air handler filters in all mechanical rooms and rooftop units. Check and clean condensate drains.",
@@ -2217,7 +2217,7 @@ export async function seedDatabase() {
       },
       {
         id: "maint001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Fire Extinguisher Inspection",
         component: "Fire Safety",
         description: "Annual inspection of all portable fire extinguishers per NFPA 10. Tag, document, and recharge or replace as needed.",
@@ -2231,7 +2231,7 @@ export async function seedDatabase() {
       },
       {
         id: "maint001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Common Area Deep Clean",
         component: "Cleaning",
         description: "Monthly deep cleaning of lobby, hallways, laundry rooms, and fitness center. Includes carpet extraction, floor scrubbing, and window cleaning.",
@@ -2254,7 +2254,7 @@ export async function seedDatabase() {
   const existingMaintInstances = await db
     .select()
     .from(maintenanceScheduleInstances)
-    .where(eq(maintenanceScheduleInstances.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(maintenanceScheduleInstances.associationId, CHERRY_HILL_CONDO_ID));
 
   if (existingMaintInstances.length === 0) {
     const maintInstanceRows = [
@@ -2262,7 +2262,7 @@ export async function seedDatabase() {
       {
         id: "minst001-0000-4000-8000-000000000001",
         templateId: "maint001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "HVAC Filter Replacement — Q1 2026",
         component: "HVAC",
         locationText: "Mechanical rooms — 1415 basement and 1417 basement; rooftop units",
@@ -2272,7 +2272,7 @@ export async function seedDatabase() {
       {
         id: "minst001-0000-4000-8000-000000000002",
         templateId: "maint001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "HVAC Filter Replacement — Q2 2026",
         component: "HVAC",
         locationText: "Mechanical rooms — 1415 basement and 1417 basement; rooftop units",
@@ -2282,7 +2282,7 @@ export async function seedDatabase() {
       {
         id: "minst001-0000-4000-8000-000000000003",
         templateId: "maint001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "HVAC Filter Replacement — Q3 2026",
         component: "HVAC",
         locationText: "Mechanical rooms — 1415 basement and 1417 basement; rooftop units",
@@ -2293,7 +2293,7 @@ export async function seedDatabase() {
       {
         id: "minst001-0000-4000-8000-000000000004",
         templateId: "maint001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Fire Extinguisher Inspection — Annual 2026",
         component: "Fire Safety",
         locationText: "All common area corridors, mechanical rooms, garage, and lobby",
@@ -2303,7 +2303,7 @@ export async function seedDatabase() {
       {
         id: "minst001-0000-4000-8000-000000000005",
         templateId: "maint001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Fire Extinguisher Inspection — Annual 2027",
         component: "Fire Safety",
         locationText: "All common area corridors, mechanical rooms, garage, and lobby",
@@ -2314,7 +2314,7 @@ export async function seedDatabase() {
       {
         id: "minst001-0000-4000-8000-000000000006",
         templateId: "maint001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Common Area Deep Clean — March 2026",
         component: "Cleaning",
         locationText: "Lobby, 1415 and 1417 corridors, laundry rooms, fitness center",
@@ -2324,7 +2324,7 @@ export async function seedDatabase() {
       {
         id: "minst001-0000-4000-8000-000000000007",
         templateId: "maint001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Common Area Deep Clean — April 2026",
         component: "Cleaning",
         locationText: "Lobby, 1415 and 1417 corridors, laundry rooms, fitness center",
@@ -2334,7 +2334,7 @@ export async function seedDatabase() {
       {
         id: "minst001-0000-4000-8000-000000000008",
         templateId: "maint001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Common Area Deep Clean — May 2026",
         component: "Cleaning",
         locationText: "Lobby, 1415 and 1417 corridors, laundry rooms, fitness center",
@@ -2352,13 +2352,13 @@ export async function seedDatabase() {
   const existingMeetings = await db
     .select()
     .from(governanceMeetings)
-    .where(eq(governanceMeetings.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(governanceMeetings.associationId, CHERRY_HILL_CONDO_ID));
 
   if (existingMeetings.length === 0) {
     const meetingRows = [
       {
         id: "meet0001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         meetingType: "annual",
         title: "Annual Board Meeting",
         scheduledAt: new Date("2026-01-20T18:00:00Z"),
@@ -2370,7 +2370,7 @@ export async function seedDatabase() {
       },
       {
         id: "meet0001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         meetingType: "special",
         title: "Budget Review Special Meeting",
         scheduledAt: new Date("2026-02-10T18:30:00Z"),
@@ -2382,7 +2382,7 @@ export async function seedDatabase() {
       },
       {
         id: "meet0001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         meetingType: "emergency",
         title: "Emergency Meeting — Roof Repair Authorization",
         scheduledAt: new Date("2026-03-03T19:00:00Z"),
@@ -2394,7 +2394,7 @@ export async function seedDatabase() {
       },
       {
         id: "meet0001-0000-4000-8000-000000000004",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         meetingType: "regular",
         title: "Q2 Board Meeting",
         scheduledAt: new Date("2026-05-19T18:00:00Z"),
@@ -2415,12 +2415,12 @@ export async function seedDatabase() {
   const existingAnnouncements = await db
     .select()
     .from(communityAnnouncements)
-    .where(eq(communityAnnouncements.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(communityAnnouncements.associationId, CHERRY_HILL_CONDO_ID));
   if (existingAnnouncements.length === 0) {
     const announcementRows = [
       {
         id: "ann00001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Annual Meeting Reminder",
         body: "This is a reminder that the Annual Meeting of Cherry Hill Court Homeowners Association will be held on January 28, 2026 at 6:30 PM in the Community Room. All homeowners are encouraged to attend. The agenda includes election of board members, budget approval for 2026, and open resident forum.",
         priority: "normal" as const,
@@ -2433,7 +2433,7 @@ export async function seedDatabase() {
       },
       {
         id: "ann00001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Parking Lot Repaving Schedule",
         body: "The parking lot repaving project is scheduled to begin February 17, 2026. Work will be completed in two phases over two weekends. Phase 1 (Feb 17–18): Sections A and B. Phase 2 (Feb 24–25): Sections C and D. Temporary overflow parking will be available on Oak Street. Please plan accordingly and move your vehicles before 7:00 AM on work days.",
         priority: "normal" as const,
@@ -2446,7 +2446,7 @@ export async function seedDatabase() {
       },
       {
         id: "ann00001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "New Pet Policy Update",
         body: "Effective April 1, 2026, the updated Pet Policy will be in effect for all Cherry Hill Court residents. Key changes include: (1) A maximum of two pets per unit is permitted. (2) All dogs must be leashed in common areas at all times. (3) Pet waste stations have been added near the north entrance. (4) Residents must register pets with management. Please review the full policy document available in the resident portal.",
         priority: "important" as const,
@@ -2459,7 +2459,7 @@ export async function seedDatabase() {
       },
       {
         id: "ann00001-0000-4000-8000-000000000004",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Pool Opening — Memorial Day Weekend",
         body: "We are excited to announce that the community pool will open for the season on Memorial Day Weekend, May 23, 2026. Pool hours will be 8:00 AM – 9:00 PM daily. Resident pool key fobs will be reactivated automatically. Guest passes (limit 2 per visit) are available from the management office. A pool safety orientation will be posted at the entrance.",
         priority: "normal" as const,
@@ -2473,7 +2473,7 @@ export async function seedDatabase() {
       },
       {
         id: "ann00001-0000-4000-8000-000000000005",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         title: "Emergency Water Shutoff Notice",
         body: "URGENT: Due to an emergency repair to the main water supply line, water service to all units will be shut off on March 14, 2026 from 8:00 AM to approximately 2:00 PM. Please store sufficient water for drinking and essential needs before 8:00 AM. We apologize for the inconvenience and will provide updates via email if the timeline changes. Contact the management office at (203) 555-0100 with questions.",
         priority: "urgent" as const,
@@ -2495,12 +2495,12 @@ export async function seedDatabase() {
   const existingBudgets = await db
     .select()
     .from(budgets)
-    .where(eq(budgets.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(budgets.associationId, CHERRY_HILL_CONDO_ID));
   if (existingBudgets.length === 0) {
     const budgetRows: (typeof budgets.$inferInsert)[] = [
       {
         id: "budg0001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         name: "FY 2026 Operating Budget",
         fiscalYear: 2026,
         periodStart: new Date("2026-01-01T00:00:00Z"),
@@ -2508,7 +2508,7 @@ export async function seedDatabase() {
       },
       {
         id: "budg0001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         name: "FY 2026 Reserve Budget",
         fiscalYear: 2026,
         periodStart: new Date("2026-01-01T00:00:00Z"),
@@ -2645,12 +2645,12 @@ export async function seedDatabase() {
   }
 
   // ── Owner Ledger Entries — Cherry Hill Court Condominiums ───────────────────
-  // 3-month ledger (Jan–Mar 2026) for 3 units. Unit 1415-A has a late fee and
-  // no March payment yet; the other two units are fully paid through March.
+  // 3-month ledger (Jan–Mar 2026) for 3 units. Unit 1421-A has a late fee and
+  // no March payment yet; units 1415-A and 1417-A are fully paid through March.
   const existingLedgerEntries = await db
     .select()
     .from(ownerLedgerEntries)
-    .where(eq(ownerLedgerEntries.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(ownerLedgerEntries.associationId, CHERRY_HILL_CONDO_ID));
 
   if (existingLedgerEntries.length === 0) {
     // Seed Cherry Hill persons referenced by ledger entries — idempotent fixed UUIDs
@@ -2688,7 +2688,7 @@ export async function seedDatabase() {
       // ── Unit 1415-A (Patricia Marchetti) — fully paid Jan–Mar ──────────────
       {
         id: "olgr0001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
         personId: "chper001-0000-4000-8000-000000000001",
         entryType: "assessment",
@@ -2698,7 +2698,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000002",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
         personId: "chper001-0000-4000-8000-000000000001",
         entryType: "payment",
@@ -2708,7 +2708,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000003",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
         personId: "chper001-0000-4000-8000-000000000001",
         entryType: "assessment",
@@ -2718,7 +2718,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000004",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
         personId: "chper001-0000-4000-8000-000000000001",
         entryType: "payment",
@@ -2728,7 +2728,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000005",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
         personId: "chper001-0000-4000-8000-000000000001",
         entryType: "assessment",
@@ -2738,7 +2738,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000006",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
         personId: "chper001-0000-4000-8000-000000000001",
         entryType: "payment",
@@ -2750,7 +2750,7 @@ export async function seedDatabase() {
       // ── Unit 1417-A (Derek Sullivan) — fully paid Jan–Mar ──────────────────
       {
         id: "olgr0001-0000-4000-8000-000000000007",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
         personId: "chper001-0000-4000-8000-000000000002",
         entryType: "assessment",
@@ -2760,7 +2760,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000008",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
         personId: "chper001-0000-4000-8000-000000000002",
         entryType: "payment",
@@ -2770,7 +2770,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000009",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
         personId: "chper001-0000-4000-8000-000000000002",
         entryType: "assessment",
@@ -2780,7 +2780,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000010",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
         personId: "chper001-0000-4000-8000-000000000002",
         entryType: "payment",
@@ -2790,7 +2790,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000011",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
         personId: "chper001-0000-4000-8000-000000000002",
         entryType: "assessment",
@@ -2800,7 +2800,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000012",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
         personId: "chper001-0000-4000-8000-000000000002",
         entryType: "payment",
@@ -2812,7 +2812,7 @@ export async function seedDatabase() {
       // ── Unit 1421-A (Yuki Nakamura) — late on March; fee charged, no payment ─
       {
         id: "olgr0001-0000-4000-8000-000000000013",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
         personId: "chper001-0000-4000-8000-000000000003",
         entryType: "assessment",
@@ -2822,7 +2822,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000014",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
         personId: "chper001-0000-4000-8000-000000000003",
         entryType: "payment",
@@ -2832,7 +2832,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000015",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
         personId: "chper001-0000-4000-8000-000000000003",
         entryType: "assessment",
@@ -2842,7 +2842,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000016",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
         personId: "chper001-0000-4000-8000-000000000003",
         entryType: "payment",
@@ -2852,7 +2852,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000017",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
         personId: "chper001-0000-4000-8000-000000000003",
         entryType: "assessment",
@@ -2862,7 +2862,7 @@ export async function seedDatabase() {
       },
       {
         id: "olgr0001-0000-4000-8000-000000000018",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
         personId: "chper001-0000-4000-8000-000000000003",
         entryType: "late-fee",
@@ -2881,14 +2881,14 @@ export async function seedDatabase() {
   const existingLateFeeRules = await db
     .select()
     .from(lateFeeRules)
-    .where(eq(lateFeeRules.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(lateFeeRules.associationId, CHERRY_HILL_CONDO_ID));
 
   if (existingLateFeeRules.length === 0) {
     await db
       .insert(lateFeeRules)
       .values({
         id: "lfru0001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         name: "Standard late fee",
         feeType: "flat",
         feeAmount: 25,
@@ -2909,14 +2909,14 @@ export async function seedDatabase() {
   const existingLateFeeEvents = await db
     .select()
     .from(lateFeeEvents)
-    .where(eq(lateFeeEvents.associationId, CHERRY_HILL_ASSOC_ID));
+    .where(eq(lateFeeEvents.associationId, CHERRY_HILL_CONDO_ID));
 
   if (existingLateFeeEvents.length === 0) {
     await db
       .insert(lateFeeEvents)
       .values({
         id: "lfev0001-0000-4000-8000-000000000001",
-        associationId: CHERRY_HILL_ASSOC_ID,
+        associationId: CHERRY_HILL_CONDO_ID,
         ruleId: "lfru0001-0000-4000-8000-000000000001",
         referenceType: "owner_ledger_entry",
         referenceId: "olgr0001-0000-4000-8000-000000000017",
