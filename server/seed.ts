@@ -3,6 +3,7 @@ import { and, eq, ilike, sql } from "drizzle-orm";
 import {
   adminUsers, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
   elections, electionOptions, electionBallotTokens, electionBallotCasts, electionProxyDesignations, electionProxyDocuments,
+  vendors, workOrders,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -1797,6 +1798,229 @@ export async function seedDatabase() {
     log("[seed] elections :: draft amendment created (no tokens for draft status)", "seed");
   } else {
     log("[seed] elections :: draft amendment already exists, skipping", "seed");
+  }
+
+  // ── 5: Vendors ──
+  const CHERRY_HILL_ASSOC_ID = "f301d073-ed84-4d73-84ce-3ef28af66f7a";
+  const [existingVendor] = await db.select().from(vendors)
+    .where(eq(vendors.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (!existingVendor) {
+    await db.insert(vendors).values([
+      {
+        id: "a1b2c3d4-0001-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        name: "Northeast HVAC Services",
+        trade: "hvac",
+        primaryContactName: "Rick Morales",
+        primaryEmail: "rick@northeasthvac.com",
+        primaryPhone: "(203) 555-0181",
+        licenseNumber: "HVAC-CT-20847",
+        status: "active",
+        notes: "Preferred vendor for all HVAC work. 24/7 emergency line available.",
+      },
+      {
+        id: "a1b2c3d4-0001-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        name: "Harbor Plumbing Co.",
+        trade: "plumbing",
+        primaryContactName: "Sandra Leung",
+        primaryEmail: "sandra@harborplumbing.com",
+        primaryPhone: "(203) 555-0242",
+        licenseNumber: "PLB-CT-11934",
+        status: "active",
+        notes: "Licensed and insured. Handles both emergency and scheduled work.",
+      },
+      {
+        id: "a1b2c3d4-0001-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        name: "Greenscape Landscaping",
+        trade: "landscaping",
+        primaryContactName: "Tom Ferrara",
+        primaryEmail: "tom@greenscapect.com",
+        primaryPhone: "(203) 555-0317",
+        licenseNumber: null,
+        status: "active",
+        notes: "Seasonal contract for lawn care and snow removal.",
+      },
+      {
+        id: "a1b2c3d4-0001-4000-8000-000000000004",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        name: "Brightline Electrical",
+        trade: "electrical",
+        primaryContactName: "Denise Park",
+        primaryEmail: "denise@brightlineelectric.com",
+        primaryPhone: "(203) 555-0409",
+        licenseNumber: "ELC-CT-58821",
+        status: "pending-renewal",
+        notes: "Insurance renewal pending. Do not dispatch until confirmed active.",
+      },
+      {
+        id: "a1b2c3d4-0001-4000-8000-000000000005",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        name: "ProClean Janitorial",
+        trade: "cleaning",
+        primaryContactName: "Miguel Santos",
+        primaryEmail: "miguel@procleanct.com",
+        primaryPhone: "(203) 555-0563",
+        licenseNumber: null,
+        status: "active",
+        notes: "Weekly common-area cleaning. Key fob access on file.",
+      },
+    ]).onConflictDoNothing();
+    log("[seed] vendors :: 5 Cherry Hill vendors inserted", "seed");
+  } else {
+    log("[seed] vendors :: already exist, skipping", "seed");
+  }
+
+  // ── 6: Work Orders ──
+  const [existingWorkOrder] = await db.select().from(workOrders)
+    .where(eq(workOrders.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (!existingWorkOrder) {
+    const workOrderRows: (typeof workOrders.$inferInsert)[] = [
+      {
+        id: "w0000001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c", // 1415-A
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000001", // Northeast HVAC
+        title: "HVAC unit making loud noise",
+        description: "Unit 1415-A resident reports the HVAC system produces a loud rattling sound during startup. Suspected loose fan housing.",
+        locationText: "Unit 1415-A — HVAC closet",
+        category: "hvac",
+        priority: "high",
+        status: "in-progress",
+        assignedTo: "Northeast HVAC Services",
+        estimatedCost: 320,
+        scheduledFor: new Date("2026-04-14T09:00:00Z"),
+        startedAt: new Date("2026-04-14T09:30:00Z"),
+        vendorNotes: "Fan blade loose. Parts ordered — ETA 2 days.",
+      },
+      {
+        id: "w0000001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null, // common area
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000002", // Harbor Plumbing
+        title: "Lobby ceiling water stain",
+        description: "Water stain visible on lobby ceiling near unit 1417-B. Possible slow leak from upstairs bathroom. Needs inspection and repair.",
+        locationText: "1417 Building — Lobby ceiling",
+        category: "plumbing",
+        priority: "urgent",
+        status: "assigned",
+        assignedTo: "Harbor Plumbing Co.",
+        estimatedCost: 750,
+        scheduledFor: new Date("2026-04-11T08:00:00Z"),
+        vendorNotes: "Will inspect and identify source on arrival.",
+      },
+      {
+        id: "w0000001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null, // common area
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000004", // Brightline Electrical
+        title: "Parking lot light out",
+        description: "Exterior light pole #3 in the 1421 parking lot is not functioning. Bulb or ballast replacement required.",
+        locationText: "1421 parking lot — light pole #3",
+        category: "electrical",
+        priority: "medium",
+        status: "open",
+        assignedTo: null,
+        estimatedCost: null,
+        resolutionNotes: null,
+        vendorNotes: "Brightline insurance renewal pending. Assign once status confirmed.",
+      },
+      {
+        id: "w0000001-0000-4000-8000-000000000004",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb", // 1417-A
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000002", // Harbor Plumbing
+        title: "Slow drain in bathroom sink",
+        description: "Unit 1417-A reports bathroom sink draining very slowly. Likely blockage in P-trap.",
+        locationText: "Unit 1417-A — bathroom sink",
+        category: "plumbing",
+        priority: "low",
+        status: "closed",
+        assignedTo: "Harbor Plumbing Co.",
+        estimatedCost: 150,
+        actualCost: 125,
+        scheduledFor: new Date("2026-03-20T10:00:00Z"),
+        startedAt: new Date("2026-03-20T10:15:00Z"),
+        completedAt: new Date("2026-03-20T11:00:00Z"),
+        resolutionNotes: "P-trap cleared. No structural damage found.",
+      },
+      {
+        id: "w0000001-0000-4000-8000-000000000005",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null, // common area
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000003", // Greenscape
+        title: "Overgrown hedges blocking walkway",
+        description: "Hedges along 1419 entrance walkway have grown over the path. Safety hazard for residents and visitors.",
+        locationText: "1419 Building — front entrance walkway",
+        category: "landscaping",
+        priority: "medium",
+        status: "closed",
+        assignedTo: "Greenscape Landscaping",
+        estimatedCost: 200,
+        actualCost: 180,
+        scheduledFor: new Date("2026-03-15T07:00:00Z"),
+        startedAt: new Date("2026-03-15T07:30:00Z"),
+        completedAt: new Date("2026-03-15T09:00:00Z"),
+        resolutionNotes: "Hedges trimmed back 18 inches. Walkway fully clear.",
+      },
+      {
+        id: "w0000001-0000-4000-8000-000000000006",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null, // common area
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000005", // ProClean
+        title: "Graffiti on stairwell wall",
+        description: "Graffiti found on the 1421 B-stairwell wall between floors 1 and 2. Needs cleaning or repainting.",
+        locationText: "1421 Building — B stairwell, floors 1–2",
+        category: "cleaning",
+        priority: "high",
+        status: "assigned",
+        assignedTo: "ProClean Janitorial",
+        estimatedCost: 275,
+        scheduledFor: new Date("2026-04-12T08:00:00Z"),
+        vendorNotes: "Will assess whether chemical cleaning or paint touch-up is needed.",
+      },
+      {
+        id: "w0000001-0000-4000-8000-000000000007",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b", // 1421-A
+        vendorId: null,
+        title: "Entry door lock sticking",
+        description: "Unit 1421-A reports the front door deadbolt is difficult to turn. May need lubrication or lock cylinder replacement.",
+        locationText: "Unit 1421-A — front door deadbolt",
+        category: "general",
+        priority: "medium",
+        status: "open",
+        assignedTo: null,
+        estimatedCost: null,
+      },
+      {
+        id: "w0000001-0000-4000-8000-000000000008",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null, // common area
+        vendorId: "a1b2c3d4-0001-4000-8000-000000000001", // Northeast HVAC
+        title: "Boiler room annual inspection",
+        description: "Annual inspection of the shared boiler system for buildings 1415 and 1417. Required per CT state code before May 1.",
+        locationText: "1415/1417 shared boiler room — basement",
+        category: "hvac",
+        priority: "high",
+        status: "closed",
+        assignedTo: "Northeast HVAC Services",
+        estimatedCost: 500,
+        actualCost: 500,
+        scheduledFor: new Date("2026-03-28T09:00:00Z"),
+        startedAt: new Date("2026-03-28T09:10:00Z"),
+        completedAt: new Date("2026-03-28T12:00:00Z"),
+        resolutionNotes: "Boiler passed inspection. Certificate on file. Minor sediment flush performed at no extra charge.",
+        vendorEstimatedCompletionDate: new Date("2026-03-28T12:00:00Z"),
+      },
+    ];
+    await db.insert(workOrders).values(workOrderRows).onConflictDoNothing();
+    log("[seed] work orders :: 8 Cherry Hill work orders inserted", "seed");
+  } else {
+    log("[seed] work orders :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
