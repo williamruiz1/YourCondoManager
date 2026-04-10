@@ -4,6 +4,7 @@ import {
   adminUsers, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
   elections, electionOptions, electionBallotTokens, electionBallotCasts, electionProxyDesignations, electionProxyDocuments,
   vendors, workOrders,
+  associationInsurancePolicies, inspectionRecords,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -2021,6 +2022,167 @@ export async function seedDatabase() {
     log("[seed] work orders :: 8 Cherry Hill work orders inserted", "seed");
   } else {
     log("[seed] work orders :: already exist, skipping", "seed");
+  }
+
+  // ── Insurance Policies ──────────────────────────────────────────────────────
+  const existingPolicies = await db
+    .select()
+    .from(associationInsurancePolicies)
+    .where(eq(associationInsurancePolicies.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (existingPolicies.length === 0) {
+    const policyRows = [
+      {
+        id: "ins00001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        policyType: "master" as const,
+        carrier: "Hartford Fire Insurance",
+        policyNumber: "HFI-2026-CH-00142",
+        effectiveDate: new Date("2026-01-01T00:00:00Z"),
+        expirationDate: new Date("2027-01-01T00:00:00Z"),
+        premiumAmount: 12500,
+        coverageAmount: 5000000,
+        notes: "Master property policy covering all buildings and common areas. Replacement cost coverage.",
+      },
+      {
+        id: "ins00001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        policyType: "d-and-o" as const,
+        carrier: "Chubb Group",
+        policyNumber: "CHUBB-DO-2026-8831",
+        effectiveDate: new Date("2026-01-01T00:00:00Z"),
+        expirationDate: new Date("2027-01-01T00:00:00Z"),
+        premiumAmount: 4200,
+        coverageAmount: 2000000,
+        notes: "Directors & Officers liability policy covering board members for management decisions.",
+      },
+      {
+        id: "ins00001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        policyType: "umbrella" as const,
+        carrier: "Zurich Insurance",
+        policyNumber: "ZNA-UMB-2026-44019",
+        effectiveDate: new Date("2026-01-01T00:00:00Z"),
+        expirationDate: new Date("2027-01-01T00:00:00Z"),
+        premiumAmount: 8000,
+        coverageAmount: 10000000,
+        notes: "Commercial umbrella policy providing excess coverage above primary liability limits.",
+      },
+      {
+        id: "ins00001-0000-4000-8000-000000000004",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        policyType: "flood" as const,
+        carrier: "NFIP via Wright Flood",
+        policyNumber: "NFIP-WF-2026-CH-7723",
+        effectiveDate: new Date("2026-01-01T00:00:00Z"),
+        expirationDate: new Date("2027-01-01T00:00:00Z"),
+        premiumAmount: 3100,
+        coverageAmount: 500000,
+        notes: "National Flood Insurance Program policy administered through Wright Flood. Covers basement and ground-floor common areas.",
+      },
+    ];
+    await db.insert(associationInsurancePolicies).values(policyRows).onConflictDoNothing();
+    log("[seed] insurance policies :: 4 Cherry Hill policies inserted", "seed");
+  } else {
+    log("[seed] insurance policies :: already exist, skipping", "seed");
+  }
+
+  // ── Inspection Records ───────────────────────────────────────────────────────
+  const existingInspections = await db
+    .select()
+    .from(inspectionRecords)
+    .where(eq(inspectionRecords.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (existingInspections.length === 0) {
+    const inspectionRows = [
+      {
+        id: "insp0001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null,
+        locationType: "common-area" as const,
+        locationText: "All buildings — common corridors, stairwells, and mechanical rooms",
+        inspectionType: "fire-safety",
+        inspectorName: "Robert Fielding, CT Fire Marshal",
+        overallCondition: "good" as const,
+        summary: "Annual fire safety inspection completed. All extinguishers current, exit signs functional, sprinkler heads clear. No deficiencies noted.",
+        inspectedAt: new Date("2026-02-14T10:00:00Z"),
+        findingsJson: [],
+      },
+      {
+        id: "insp0001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null,
+        locationType: "building" as const,
+        locationText: "1417 Cherry Hill Dr — elevator cab and machine room",
+        inspectionType: "elevator",
+        inspectorName: "Otis Elevator Services / CT DOLS Inspector",
+        overallCondition: "good" as const,
+        summary: "Annual elevator inspection passed. Certificate of operation issued. Minor note: door re-open sensitivity adjusted on-site during inspection.",
+        inspectedAt: new Date("2026-01-22T09:30:00Z"),
+        findingsJson: [
+          {
+            severity: "low",
+            description: "Door re-open sensitivity slightly slow on ground floor",
+            status: "resolved",
+            resolvedNote: "Adjusted on-site by inspector. Retested and confirmed passing.",
+          },
+        ],
+      },
+      {
+        id: "insp0001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null,
+        locationType: "building" as const,
+        locationText: "1415 and 1417 Cherry Hill Dr — roof decks and flashings",
+        inspectionType: "roof-condition",
+        inspectorName: "Summit Roofing Consultants",
+        overallCondition: "fair" as const,
+        summary: "Roof condition assessment found moderate granule loss on the 1415 building flat section and cracked flashing at two HVAC penetrations. Recommend repair within 6 months to prevent water intrusion.",
+        inspectedAt: new Date("2026-03-05T13:00:00Z"),
+        findingsJson: [
+          {
+            severity: "medium",
+            description: "Moderate granule loss on 1415 flat roof membrane — approx 400 sq ft affected",
+            status: "open",
+          },
+          {
+            severity: "medium",
+            description: "Cracked step flashing at two HVAC roof penetrations on 1417",
+            status: "open",
+          },
+        ],
+      },
+      {
+        id: "insp0001-0000-4000-8000-000000000004",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null,
+        locationType: "common-area" as const,
+        locationText: "Underground parking garage — levels P1 and P2",
+        inspectionType: "structural",
+        inspectorName: "Greenfield Structural Engineers",
+        overallCondition: "good" as const,
+        summary: "Parking garage structural inspection scheduled for Q2 2026. Pre-inspection documentation review completed. No prior structural concerns on record.",
+        inspectedAt: new Date("2026-04-20T09:00:00Z"),
+        findingsJson: [],
+      },
+      {
+        id: "insp0001-0000-4000-8000-000000000005",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        unitId: null,
+        locationType: "common-area" as const,
+        locationText: "Pool deck, fitness room, and lobby — main common areas",
+        inspectionType: "health-and-safety",
+        inspectorName: "Hartford County Health Department",
+        overallCondition: "excellent" as const,
+        summary: "Pool and common area health inspection passed with no violations. Water chemistry within range, deck surfaces clean and non-slip, fitness equipment sanitized. Certificate posted.",
+        inspectedAt: new Date("2026-03-18T11:00:00Z"),
+        findingsJson: [],
+      },
+    ];
+    await db.insert(inspectionRecords).values(inspectionRows).onConflictDoNothing();
+    log("[seed] inspection records :: 5 Cherry Hill inspections inserted", "seed");
+  } else {
+    log("[seed] inspection records :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
