@@ -1,10 +1,35 @@
 # YCM End-to-End Gap Audit — 2026-04-10
 
+> **Document status:** Historical snapshot of the platform state on 2026-04-10 before remediation. Findings are preserved as originally written. See **Resolution Status** immediately below for what has since been fixed, and the **Follow-up Review** appendix at the end for new findings that emerged during the fix wave.
+
 ## Executive Summary
 
 Full-platform audit of YourCondoManager covering static analysis, build/typecheck, existing verify scripts, and live dev-server walkthrough. The platform is impressively broad — 60+ pages, 535 route registrations across 418 unique endpoints, 137 database tables, 50 roadmap projects (42 complete). TypeScript checks and production build both pass cleanly. All existing verify scripts pass.
 
 However, four **critical runtime bugs** were found, along with several high/medium-priority gaps in code hygiene, coverage, and operational readiness.
+
+---
+
+## Resolution Status (as of 2026-04-10 follow-up review)
+
+| ID | Finding | Status | Fix Commit(s) |
+|----|---------|--------|---------------|
+| G1 | `/api/health` requires platform-admin | **RESOLVED** | `9aa55f3`, `ff842da` (split into public probe + admin details) |
+| G2 | `/api/*` 404s swallowed by SPA fallback | **RESOLVED** | `0c73bf6`, `ff842da` (Express 5 path-to-regexp syntax) |
+| G3 | Demo request 500 from `admin@local` | **RESOLVED** | `cf40ced` (filter non-RFC admin emails before send) |
+| G4 | `/uploads/*` missing files return HTML | **RESOLVED** | `0c73bf6`, `ff842da` (same JSON 404 handler) |
+| G5 | ~6k lines of dead page files | **RESOLVED** | `51cf675` (all four files deleted) |
+| G6 | `BoardPackagesPage` imported but never rendered | **RESOLVED** | `1733235` (lazy import removed; file retained — still imports `BoardPackagesContent` from `governance.tsx`) |
+| G7 | Durable memory stale | **RESOLVED** | `4dff9c7`, `689b040`, `npm run bootstrap:agent` |
+| G8 | PostCSS plugin warning | **RESOLVED** | `d90f96c` (customLogger suppresses false-positive from Tailwind v3; root cause documented) |
+| G9 | Oversized client bundle (`index.js` 511 kB) | **RESOLVED** | `843afcc` (main chunk 511 kB → 213 kB, 58% reduction) |
+| G10 | 38 `console.log` in server code | **RESOLVED** | `b7e9aef`, `de6f617` (replaced with gated `debug()` helper in `server/logger.ts`) |
+| G11 | Monolithic `storage.ts` / `routes.ts` | Deferred | No action taken — flagged as architectural, not blocking |
+| G12 | Push notifications not configured | Deferred | Expected for dev; production gap tracked on `SMS & Push Notifications` roadmap project |
+| G13 | Browserslist dataset 6 months old | **RESOLVED** | `de6f617` (dataset refreshed) |
+| G14 | `verify:mobile` is a manual checklist | Deferred | No action — informational, replacement would be a new roadmap item |
+
+**Catchall inbox impact:** 10 of 13 tasks `done`, 3 `todo` (PostCSS mitigation done; G11/G12/G14 intentionally deferred; new findings from follow-up review are the 3 remaining todo items — see appendix).
 
 ---
 
@@ -172,3 +197,37 @@ New tasks added to **Admin Roadmap Catchall Findings Inbox** (`ed8345a1`):
 - **Live walkthrough:** Started dev server on port 5050, probed 30+ API endpoints via curl (both GET and POST), verified auth gates, 404 behavior, portal login flow, public endpoints
 - **Database inspection:** Queried roadmap projects, workstreams, tasks, and table structure directly via psql
 - **Agent-assisted analysis:** Three parallel Explore agents performed route inventory (535 registrations), dead code audit, and domain coverage matrix construction
+
+---
+
+## Appendix — Follow-up Review (same day)
+
+A fresh-eyes review of the fix wave surfaced three new findings not in the original audit. They were captured as new catchall tasks and left `todo` since they emerged from the remediation itself, not the original platform state.
+
+### F1: 9 orphaned financial page files
+- **Type:** Continuity gap introduced by cleanup
+- **Evidence:** Commit `bc2984a` removed nine financial page lazy imports from `App.tsx` (FinancialFees, FinancialAssessments, FinancialLateFees, FinancialInvoices, FinancialUtilities, FinancialLedger, FinancialBudgets, FinancialReconciliation, FinancialRecurringCharges). Their routes are pure redirects to the consolidated foundation/billing/expenses/reports pages, so the imports were correctly identified as dead. However, the nine `.tsx` files themselves still exist in `client/src/pages/` and are now completely unreferenced.
+- **Inconsistency:** `51cf675` deleted the orphan page *files* for occupancy/owners, but `bc2984a` only deleted the *imports* for the financial pages, leaving a cleanup asymmetry.
+- **Fix:** Either delete the nine files to match the occupancy/owners treatment, or wire them back to live routes if the consolidation work is incomplete.
+- **Priority:** Medium.
+
+### F2: Portal login endpoints not rate-limited
+- **Type:** Partial-fix gap introduced by `a3e5414`
+- **Evidence:** `a3e5414` added a 20 req/min per-IP sliding-window rate limiter to `/api/public/*`. The real brute-force target, however, is the portal OTP login flow (`POST /api/portal/request-login` and `POST /api/portal/verify-login`) which is unauthenticated and still unprotected. An attacker enumerating portal emails or brute-forcing OTP codes will route around the public-only limiter entirely.
+- **Fix:** Mount the same limiter on the portal login paths, with a tighter window for `verify-login` (e.g. 5 attempts per 10 minutes).
+- **Priority:** High.
+
+### F3: This document describes bugs that are now fixed
+- **Type:** Documentation drift
+- **Evidence:** The Findings section above was written against the pre-fix platform state. Without an explicit resolution marker, a reader could act on findings that have already been remediated.
+- **Fix:** Covered by the Resolution Status table at the top of this document, added in the follow-up review. Catchall task retained so future audits remember to refresh historical reports rather than silently overwriting them.
+- **Priority:** Low.
+
+### Commit-hygiene observations (not tracked as tasks)
+
+These are minor history-quality issues from the rapid parallel fix wave. No action required but worth noting if a future reader tries to follow the audit trail:
+
+1. **`51cf675`** is titled "Delete ~6000 lines of orphaned dead page files" but also bundles: creation of the `debug()` helper in `server/logger.ts`, the initial import wiring in `server/routes.ts`, the first commit of this audit document, and a workspace manifest regeneration. Scope creep hides behind the deletion-focused title.
+2. **`bc2984a`** is titled "Remove unused financial page lazy imports and dead board-packages page." The board-packages import was already removed in `1733235`; this commit only removes the nine financial imports. Title reads as if it is doing both removals.
+3. **`82cd7b6`** created `client/src/lib/analytics.ts` unaware that `client/src/lib/tracking.ts` already existed; **`0ccffec`** removed the duplicate ~9 hours later. Net-zero code change but commit-history noise. The only consumer, `0e82476`, imported from the correct `tracking.ts` throughout.
+4. **Twelve merge commits** from parallel agent worktrees (`worktree-agent-*`) between `9aa55f3` and `0cdefea`. All merged cleanly with no conflict resolution required — indicates the parallel agents were working on non-overlapping files.
