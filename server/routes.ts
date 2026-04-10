@@ -10621,7 +10621,7 @@ This is an automated demo request from the Your Condo Manager website.
         email,
       });
       const unitIds = ownedUnits.map((unit) => unit.unitId);
-      console.log("[portal-units-balance]", { email, associationId: req.portalAssociationId, personId: req.portalPersonId, ownedUnitCount: ownedUnits.length, unitIds });
+      debug("[portal-units-balance]", { email, associationId: req.portalAssociationId, personId: req.portalPersonId, ownedUnitCount: ownedUnits.length, unitIds });
       if (unitIds.length === 0) return res.json([]);
       const allEntries = await storage.getOwnerLedgerEntries(req.portalAssociationId);
       const result = unitIds.map((unitId) => {
@@ -13232,7 +13232,7 @@ This is an automated demo request from the Your Condo Manager website.
 
       if ((status === "pending-review" || status === "closed") && isEmailProviderConfigured()) {
         const [vendor] = await db.select().from(vendors).where(eq(vendors.id, req.vendorId!)).limit(1);
-        console.log(`[vendor-portal] Job marked complete: workOrder=${workOrderId}, vendor=${vendor?.name}`);
+        debug(`[vendor-portal] Job marked complete: workOrder=${workOrderId}, vendor=${vendor?.name}`);
       }
 
       res.json(updated);
