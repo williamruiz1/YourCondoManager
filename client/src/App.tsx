@@ -66,7 +66,6 @@ const WorkOrdersPage = lazy(() => import("@/pages/work-orders"));
 const MaintenanceSchedulesPage = lazy(() => import("@/pages/maintenance-schedules"));
 const ResidentFeedbackPage = lazy(() => import("@/pages/resident-feedback"));
 const InspectionsPage = lazy(() => import("@/pages/inspections"));
-const BoardPackagesPage = lazy(() => import("@/pages/board-packages"));
 const MeetingsPage = lazy(() => import("@/pages/meetings"));
 const GovernanceCompliancePage = lazy(() => import("@/pages/governance-compliance"));
 const ElectionsPage = lazy(() => import("@/pages/elections"));
