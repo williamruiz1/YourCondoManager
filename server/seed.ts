@@ -5,6 +5,8 @@ import {
   elections, electionOptions, electionBallotTokens, electionBallotCasts, electionProxyDesignations, electionProxyDocuments,
   vendors, workOrders,
   associationInsurancePolicies, inspectionRecords,
+  maintenanceScheduleTemplates, maintenanceScheduleInstances,
+  governanceMeetings,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -2183,6 +2185,224 @@ export async function seedDatabase() {
     log("[seed] inspection records :: 5 Cherry Hill inspections inserted", "seed");
   } else {
     log("[seed] inspection records :: already exist, skipping", "seed");
+  }
+
+  // ── Maintenance Schedule Templates ──────────────────────────────────────────
+  const existingMaintTemplates = await db
+    .select()
+    .from(maintenanceScheduleTemplates)
+    .where(eq(maintenanceScheduleTemplates.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (existingMaintTemplates.length === 0) {
+    const maintTemplateRows = [
+      {
+        id: "maint001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "HVAC Filter Replacement",
+        component: "HVAC",
+        description: "Replace air handler filters in all mechanical rooms and rooftop units. Check and clean condensate drains.",
+        locationText: "Mechanical rooms — 1415 basement and 1417 basement; rooftop units",
+        frequencyUnit: "quarter" as const,
+        frequencyInterval: 1,
+        responsibleParty: "Facilities Manager",
+        autoCreateWorkOrder: 0,
+        nextDueAt: new Date("2026-07-01T08:00:00Z"),
+        status: "active" as const,
+      },
+      {
+        id: "maint001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Fire Extinguisher Inspection",
+        component: "Fire Safety",
+        description: "Annual inspection of all portable fire extinguishers per NFPA 10. Tag, document, and recharge or replace as needed.",
+        locationText: "All common area corridors, mechanical rooms, garage, and lobby",
+        frequencyUnit: "year" as const,
+        frequencyInterval: 1,
+        responsibleParty: "Licensed Fire Safety Vendor",
+        autoCreateWorkOrder: 1,
+        nextDueAt: new Date("2027-01-15T09:00:00Z"),
+        status: "active" as const,
+      },
+      {
+        id: "maint001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Common Area Deep Clean",
+        component: "Cleaning",
+        description: "Monthly deep cleaning of lobby, hallways, laundry rooms, and fitness center. Includes carpet extraction, floor scrubbing, and window cleaning.",
+        locationText: "Lobby, 1415 and 1417 corridors, laundry rooms, fitness center",
+        frequencyUnit: "month" as const,
+        frequencyInterval: 1,
+        responsibleParty: "Cleaning Contractor",
+        autoCreateWorkOrder: 0,
+        nextDueAt: new Date("2026-05-01T07:00:00Z"),
+        status: "active" as const,
+      },
+    ];
+    await db.insert(maintenanceScheduleTemplates).values(maintTemplateRows).onConflictDoNothing();
+    log("[seed] maintenance schedule templates :: 3 Cherry Hill templates inserted", "seed");
+  } else {
+    log("[seed] maintenance schedule templates :: already exist, skipping", "seed");
+  }
+
+  // ── Maintenance Schedule Instances ──────────────────────────────────────────
+  const existingMaintInstances = await db
+    .select()
+    .from(maintenanceScheduleInstances)
+    .where(eq(maintenanceScheduleInstances.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (existingMaintInstances.length === 0) {
+    const maintInstanceRows = [
+      // HVAC Filter Replacement instances
+      {
+        id: "minst001-0000-4000-8000-000000000001",
+        templateId: "maint001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "HVAC Filter Replacement — Q1 2026",
+        component: "HVAC",
+        locationText: "Mechanical rooms — 1415 basement and 1417 basement; rooftop units",
+        dueAt: new Date("2026-01-15T08:00:00Z"),
+        status: "completed" as const,
+      },
+      {
+        id: "minst001-0000-4000-8000-000000000002",
+        templateId: "maint001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "HVAC Filter Replacement — Q2 2026",
+        component: "HVAC",
+        locationText: "Mechanical rooms — 1415 basement and 1417 basement; rooftop units",
+        dueAt: new Date("2026-04-15T08:00:00Z"),
+        status: "due" as const,
+      },
+      {
+        id: "minst001-0000-4000-8000-000000000003",
+        templateId: "maint001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "HVAC Filter Replacement — Q3 2026",
+        component: "HVAC",
+        locationText: "Mechanical rooms — 1415 basement and 1417 basement; rooftop units",
+        dueAt: new Date("2026-07-01T08:00:00Z"),
+        status: "scheduled" as const,
+      },
+      // Fire Extinguisher Inspection instances
+      {
+        id: "minst001-0000-4000-8000-000000000004",
+        templateId: "maint001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Fire Extinguisher Inspection — Annual 2026",
+        component: "Fire Safety",
+        locationText: "All common area corridors, mechanical rooms, garage, and lobby",
+        dueAt: new Date("2026-01-15T09:00:00Z"),
+        status: "completed" as const,
+      },
+      {
+        id: "minst001-0000-4000-8000-000000000005",
+        templateId: "maint001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Fire Extinguisher Inspection — Annual 2027",
+        component: "Fire Safety",
+        locationText: "All common area corridors, mechanical rooms, garage, and lobby",
+        dueAt: new Date("2027-01-15T09:00:00Z"),
+        status: "scheduled" as const,
+      },
+      // Common Area Deep Clean instances
+      {
+        id: "minst001-0000-4000-8000-000000000006",
+        templateId: "maint001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Common Area Deep Clean — March 2026",
+        component: "Cleaning",
+        locationText: "Lobby, 1415 and 1417 corridors, laundry rooms, fitness center",
+        dueAt: new Date("2026-03-01T07:00:00Z"),
+        status: "completed" as const,
+      },
+      {
+        id: "minst001-0000-4000-8000-000000000007",
+        templateId: "maint001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Common Area Deep Clean — April 2026",
+        component: "Cleaning",
+        locationText: "Lobby, 1415 and 1417 corridors, laundry rooms, fitness center",
+        dueAt: new Date("2026-04-01T07:00:00Z"),
+        status: "due" as const,
+      },
+      {
+        id: "minst001-0000-4000-8000-000000000008",
+        templateId: "maint001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        title: "Common Area Deep Clean — May 2026",
+        component: "Cleaning",
+        locationText: "Lobby, 1415 and 1417 corridors, laundry rooms, fitness center",
+        dueAt: new Date("2026-05-01T07:00:00Z"),
+        status: "scheduled" as const,
+      },
+    ];
+    await db.insert(maintenanceScheduleInstances).values(maintInstanceRows).onConflictDoNothing();
+    log("[seed] maintenance schedule instances :: 8 Cherry Hill instances inserted", "seed");
+  } else {
+    log("[seed] maintenance schedule instances :: already exist, skipping", "seed");
+  }
+
+  // ── Governance Meetings ──────────────────────────────────────────────────────
+  const existingMeetings = await db
+    .select()
+    .from(governanceMeetings)
+    .where(eq(governanceMeetings.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (existingMeetings.length === 0) {
+    const meetingRows = [
+      {
+        id: "meet0001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        meetingType: "annual",
+        title: "Annual Board Meeting",
+        scheduledAt: new Date("2026-01-20T18:00:00Z"),
+        location: "Cherry Hill Court Community Room, 1415 Quinnipiac Ave., New Haven, CT",
+        status: "completed" as const,
+        agenda: "1. Call to order\n2. Approval of prior meeting minutes\n3. President's report\n4. Treasurer's financial report — FY2025 actuals\n5. Election of board officers\n6. Approval of FY2026 operating budget\n7. Resident open forum\n8. Adjournment",
+        notes: "Quorum achieved with 14 of 22 unit owners present or represented by proxy. Budget approved 12-2. All incumbent officers re-elected by acclamation.",
+        summaryStatus: "published" as const,
+      },
+      {
+        id: "meet0001-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        meetingType: "special",
+        title: "Budget Review Special Meeting",
+        scheduledAt: new Date("2026-02-10T18:30:00Z"),
+        location: "Cherry Hill Court Community Room, 1415 Quinnipiac Ave., New Haven, CT",
+        status: "completed" as const,
+        agenda: "1. Call to order\n2. Review of Q4 2025 reserve fund expenditures\n3. Discussion of proposed Q1 2026 capital reserve contribution increase\n4. Vote on reserve contribution amendment\n5. Adjournment",
+        notes: "Special meeting called to address reserve fund shortfall identified after year-end audit. Reserve contribution increased by $15/unit/month effective March 2026. Vote: 10 in favor, 2 opposed, 1 abstention.",
+        summaryStatus: "published" as const,
+      },
+      {
+        id: "meet0001-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        meetingType: "emergency",
+        title: "Emergency Meeting — Roof Repair Authorization",
+        scheduledAt: new Date("2026-03-03T19:00:00Z"),
+        location: "Virtual — Zoom (link distributed via email)",
+        status: "completed" as const,
+        agenda: "1. Call to order\n2. Roof inspection findings summary (Building Inspector Frank Almeida)\n3. Review of three contractor bids\n4. Vote to authorize emergency roof repair contract\n5. Discussion of special assessment options\n6. Adjournment",
+        notes: "Emergency meeting convened following February storm damage. Board authorized contract with Summit Roofing LLC ($28,400) for flashing repairs and membrane patching. Special assessment of $500/unit approved to fund repair, payable over two installments.",
+        summaryStatus: "published" as const,
+      },
+      {
+        id: "meet0001-0000-4000-8000-000000000004",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        meetingType: "regular",
+        title: "Q2 Board Meeting",
+        scheduledAt: new Date("2026-05-19T18:00:00Z"),
+        location: "Cherry Hill Court Community Room, 1415 Quinnipiac Ave., New Haven, CT",
+        status: "scheduled" as const,
+        agenda: "1. Call to order\n2. Approval of prior meeting minutes\n3. Treasurer's Q1 2026 financial report\n4. Landscaping contract renewal discussion\n5. Pool opening preparations and safety review\n6. Parking garage inspection debrief\n7. Resident open forum\n8. Adjournment",
+        notes: null,
+        summaryStatus: "draft" as const,
+      },
+    ];
+    await db.insert(governanceMeetings).values(meetingRows).onConflictDoNothing();
+    log("[seed] governance meetings :: 4 Cherry Hill meetings inserted", "seed");
+  } else {
+    log("[seed] governance meetings :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
