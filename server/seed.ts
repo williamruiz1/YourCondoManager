@@ -10,6 +10,7 @@ import {
   communityAnnouncements,
   budgets, budgetVersions, budgetLines,
   ownerLedgerEntries,
+  lateFeeRules, lateFeeEvents,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -2872,6 +2873,60 @@ export async function seedDatabase() {
     log("[seed] owner ledger entries :: 18 entries (Jan–Mar 2026) for 3 Cherry Hill units inserted", "seed");
   } else {
     log("[seed] owner ledger entries :: already exist, skipping", "seed");
+  }
+
+  // ── Late Fee Rules — Cherry Hill Court Condominiums ────────────────────────
+  const existingLateFeeRules = await db
+    .select()
+    .from(lateFeeRules)
+    .where(eq(lateFeeRules.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (existingLateFeeRules.length === 0) {
+    await db
+      .insert(lateFeeRules)
+      .values({
+        id: "lfru0001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        name: "Standard late fee",
+        feeType: "flat",
+        feeAmount: 25,
+        graceDays: 10,
+        maxFee: null,
+        isActive: 1,
+      })
+      .onConflictDoNothing();
+    log("[seed] late fee rules :: 1 rule inserted for Cherry Hill", "seed");
+  } else {
+    log("[seed] late fee rules :: already exist, skipping", "seed");
+  }
+
+  // ── Late Fee Events — Cherry Hill Court Condominiums ────────────────────────
+  // Ties to the March 2026 assessment (olgr0001-...-000000000017) for unit 1421-A
+  // (Yuki Nakamura), which went unpaid past the 10-day grace period and triggered
+  // a $25 flat late fee posted on 2026-03-16.
+  const existingLateFeeEvents = await db
+    .select()
+    .from(lateFeeEvents)
+    .where(eq(lateFeeEvents.associationId, CHERRY_HILL_ASSOC_ID));
+
+  if (existingLateFeeEvents.length === 0) {
+    await db
+      .insert(lateFeeEvents)
+      .values({
+        id: "lfev0001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_ASSOC_ID,
+        ruleId: "lfru0001-0000-4000-8000-000000000001",
+        referenceType: "owner_ledger_entry",
+        referenceId: "olgr0001-0000-4000-8000-000000000017",
+        balanceAmount: 350,
+        dueDate: new Date("2026-03-01T00:00:00Z"),
+        asOfDate: new Date("2026-03-16T00:00:00Z"),
+        calculatedFee: 25,
+      })
+      .onConflictDoNothing();
+    log("[seed] late fee events :: 1 event inserted for Cherry Hill unit 1421-A", "seed");
+  } else {
+    log("[seed] late fee events :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
