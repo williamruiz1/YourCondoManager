@@ -25,10 +25,13 @@ export function CookieConsentBanner() {
   }, [preference]);
 
   const loadGoogleAnalytics = () => {
+    const gaId = import.meta.env.VITE_GOOGLE_ANALYTICS_ID;
+    if (!gaId) return;
+
     // Load Google Analytics
     const script = document.createElement("script");
     script.async = true;
-    script.src = "https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX";
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${gaId}`;
     document.head.appendChild(script);
 
     window.dataLayer = window.dataLayer || [];
@@ -37,7 +40,7 @@ export function CookieConsentBanner() {
     }
     window.gtag = gtag;
     gtag("js", new Date());
-    gtag("config", "G-XXXXXXXXXX", {
+    gtag("config", gaId, {
       anonymize_ip: true,
     });
 
@@ -50,8 +53,8 @@ export function CookieConsentBanner() {
     if (typeof window !== "undefined") {
       // Track page views
       const trackPageView = () => {
-        if ((window as any).gtag) {
-          (window as any).gtag("event", "page_view", {
+        if (window.gtag) {
+          window.gtag("event", "page_view", {
             page_path: window.location.pathname,
             page_title: document.title,
           });
