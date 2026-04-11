@@ -113,8 +113,24 @@ export function WorkOrdersContent() {
   });
 
   const convertibleRequests = useMemo(
-    () => maintenanceRequests.filter((request) => !workOrders.some((order) => order.maintenanceRequestId === request.id)),
+    () => {
+      const unconverted = maintenanceRequests.filter((request) => !workOrders.some((order) => order.maintenanceRequestId === request.id));
+      // Sort overdue-first (most overdue on top), then by soonest upcoming due, then by createdAt.
+      return unconverted.slice().sort((a, b) => {
+        const aDue = a.responseDueAt ? new Date(a.responseDueAt).getTime() : Number.POSITIVE_INFINITY;
+        const bDue = b.responseDueAt ? new Date(b.responseDueAt).getTime() : Number.POSITIVE_INFINITY;
+        if (aDue !== bDue) return aDue - bDue;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+    },
     [maintenanceRequests, workOrders],
+  );
+  const convertibleOverdueCount = useMemo(
+    () => {
+      const now = Date.now();
+      return convertibleRequests.filter((r) => r.responseDueAt && new Date(r.responseDueAt).getTime() < now).length;
+    },
+    [convertibleRequests],
   );
   const requestById = useMemo(
     () => new Map(maintenanceRequests.map((r) => [r.id, r])),
@@ -188,7 +204,15 @@ export function WorkOrdersContent() {
       fd.append("file", file);
       fd.append("label", label);
       fd.append("type", type);
-      const res = await apiRequest("POST", `/api/work-orders/${selectedOrderId}/photos`, fd);
+      const res = await fetch(`/api/work-orders/${selectedOrderId}/photos`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -199,6 +223,19 @@ export function WorkOrdersContent() {
       toast({ title: "Photo uploaded" });
     },
     onError: (error: Error) => toast({ title: "Upload failed", description: error.message, variant: "destructive" }),
+  });
+
+  const deletePhoto = useMutation({
+    mutationFn: async (url: string) => {
+      if (!selectedOrderId) throw new Error("No work order selected");
+      const res = await apiRequest("DELETE", `/api/work-orders/${selectedOrderId}/photos`, { url });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      toast({ title: "Photo removed" });
+    },
+    onError: (error: Error) => toast({ title: "Remove failed", description: error.message, variant: "destructive" }),
   });
 
   function openCreate() {
@@ -433,7 +470,12 @@ export function WorkOrdersContent() {
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-semibold">Maintenance Requests Ready for Conversion</h2>
-            <Badge variant="outline">{convertibleRequests.length} available</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{convertibleRequests.length} available</Badge>
+              {convertibleOverdueCount > 0 && (
+                <Badge variant="destructive" data-testid="badge-convertible-overdue">{convertibleOverdueCount} overdue</Badge>
+              )}
+            </div>
           </div>
           <div className="hidden md:block">
           <Table>
@@ -443,35 +485,60 @@ export function WorkOrdersContent() {
                 <TableHead>Priority</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Unit</TableHead>
+                <TableHead>SLA</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {convertibleRequests.slice(0, 25).map((request) => (
-                <TableRow key={request.id}>
-                  <TableCell>{request.title}</TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${request.priority === "urgent" ? "text-red-600" : request.priority === "high" ? "text-orange-600" : "text-slate-700"}`} aria-label={`Priority: ${request.priority}`}>
-                      {request.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
-                      {request.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
-                      {request.priority}
-                    </span>
-                  </TableCell>
-                  <TableCell><Badge variant="secondary">{request.status}</Badge></TableCell>
-                  <TableCell>{units.find((unit) => unit.id === request.unitId)?.unitNumber || "-"}</TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" onClick={() => convertRequest.mutate(request)} disabled={convertRequest.isPending}>Convert</Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {convertibleRequests.slice(0, 25).map((request) => {
+                const dueAt = request.responseDueAt ? new Date(request.responseDueAt) : null;
+                const isOverdue = Boolean(dueAt && dueAt.getTime() < Date.now());
+                const stage = request.escalationStage ?? 0;
+                return (
+                  <TableRow key={request.id}>
+                    <TableCell>{request.title}</TableCell>
+                    <TableCell>
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${request.priority === "urgent" ? "text-red-600" : request.priority === "high" ? "text-orange-600" : "text-slate-700"}`} aria-label={`Priority: ${request.priority}`}>
+                        {request.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
+                        {request.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
+                        {request.priority}
+                      </span>
+                    </TableCell>
+                    <TableCell><Badge variant="secondary">{request.status}</Badge></TableCell>
+                    <TableCell>{units.find((unit) => unit.id === request.unitId)?.unitNumber || "-"}</TableCell>
+                    <TableCell>
+                      {dueAt ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1 text-xs font-medium ${isOverdue ? "text-red-600" : "text-muted-foreground"}`} aria-label={isOverdue ? "SLA overdue" : "SLA on track"}>
+                            <Clock className="h-3 w-3" aria-hidden="true" />
+                            {isOverdue ? "Overdue" : dueAt.toLocaleDateString()}
+                          </span>
+                          {stage > 0 && (
+                            <Badge variant="destructive" className="h-5 px-1.5 text-[10px]" aria-label={`Escalation stage ${stage}`}>stage {stage}</Badge>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" onClick={() => convertRequest.mutate(request)} disabled={convertRequest.isPending}>Convert</Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {convertibleRequests.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="h-20 text-center text-muted-foreground">No unconverted maintenance requests.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="h-20 text-center text-muted-foreground">No unconverted maintenance requests.</TableCell></TableRow>
               ) : null}
             </TableBody>
           </Table>
           </div>
           <div className="space-y-3 md:hidden">
-            {convertibleRequests.slice(0, 25).map((request) => (
+            {convertibleRequests.slice(0, 25).map((request) => {
+              const dueAt = request.responseDueAt ? new Date(request.responseDueAt) : null;
+              const isOverdue = Boolean(dueAt && dueAt.getTime() < Date.now());
+              const stage = request.escalationStage ?? 0;
+              return (
               <div key={request.id} className="rounded-xl border p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -489,9 +556,19 @@ export function WorkOrdersContent() {
                     {request.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
                     {request.priority}
                   </span>
+                  {dueAt && (
+                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${isOverdue ? "text-red-600" : "text-muted-foreground"}`} aria-label={isOverdue ? "SLA overdue" : "SLA on track"}>
+                      <Clock className="h-3 w-3" aria-hidden="true" />
+                      {isOverdue ? "Overdue" : dueAt.toLocaleDateString()}
+                    </span>
+                  )}
+                  {stage > 0 && (
+                    <Badge variant="destructive" className="h-5 px-1.5 text-[10px]" aria-label={`Escalation stage ${stage}`}>stage {stage}</Badge>
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
             {convertibleRequests.length === 0 ? (
               <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No unconverted maintenance requests.</div>
             ) : null}
@@ -785,6 +862,22 @@ export function WorkOrdersContent() {
                     const beforePhotos = photos.filter((p) => p.type === "before");
                     const afterPhotos = photos.filter((p) => p.type === "after");
                     const generalPhotos = photos.filter((p) => p.type !== "before" && p.type !== "after");
+                    const renderThumb = (photo: WorkOrderPhoto, fallbackAlt: string) => (
+                      <div key={photo.url} className="relative rounded overflow-hidden border bg-muted group">
+                        <img src={photo.url} alt={photo.label || fallbackAlt} className="w-full h-28 object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => deletePhoto.mutate(photo.url)}
+                          disabled={deletePhoto.isPending}
+                          className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-1 transition-colors disabled:opacity-50"
+                          aria-label="Remove photo"
+                          data-testid={`button-delete-photo-${photo.url}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                        {photo.label && <div className="text-xs px-2 py-1 truncate">{photo.label}</div>}
+                      </div>
+                    );
                     return (
                       <div className="space-y-3">
                         {photos.length === 0 && (
@@ -794,12 +887,7 @@ export function WorkOrdersContent() {
                           <div>
                             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Before</div>
                             <div className="grid grid-cols-2 gap-2">
-                              {beforePhotos.map((photo, i) => (
-                                <div key={i} className="relative rounded overflow-hidden border bg-muted">
-                                  <img src={photo.url} alt={photo.label || "Before"} className="w-full h-28 object-cover" />
-                                  {photo.label && <div className="text-xs px-2 py-1 truncate">{photo.label}</div>}
-                                </div>
-                              ))}
+                              {beforePhotos.map((photo) => renderThumb(photo, "Before"))}
                             </div>
                           </div>
                         )}
@@ -807,12 +895,7 @@ export function WorkOrdersContent() {
                           <div>
                             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">After</div>
                             <div className="grid grid-cols-2 gap-2">
-                              {afterPhotos.map((photo, i) => (
-                                <div key={i} className="relative rounded overflow-hidden border bg-muted">
-                                  <img src={photo.url} alt={photo.label || "After"} className="w-full h-28 object-cover" />
-                                  {photo.label && <div className="text-xs px-2 py-1 truncate">{photo.label}</div>}
-                                </div>
-                              ))}
+                              {afterPhotos.map((photo) => renderThumb(photo, "After"))}
                             </div>
                           </div>
                         )}
@@ -820,12 +903,7 @@ export function WorkOrdersContent() {
                           <div>
                             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">General</div>
                             <div className="grid grid-cols-2 gap-2">
-                              {generalPhotos.map((photo, i) => (
-                                <div key={i} className="relative rounded overflow-hidden border bg-muted">
-                                  <img src={photo.url} alt={photo.label || "Photo"} className="w-full h-28 object-cover" />
-                                  {photo.label && <div className="text-xs px-2 py-1 truncate">{photo.label}</div>}
-                                </div>
-                              ))}
+                              {generalPhotos.map((photo) => renderThumb(photo, "Photo"))}
                             </div>
                           </div>
                         )}

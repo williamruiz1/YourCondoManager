@@ -458,6 +458,177 @@ export function FinancialFoundationContent() {
   );
 }
 
+type AccountActivityRow = {
+  accountId: string;
+  accountCode: string | null;
+  accountName: string;
+  accountType: string;
+  isActive: number;
+  budgetedAmount: number;
+  invoicedAmount: number;
+  variance: number;
+  utilizationPct: number | null;
+  invoiceCount: number;
+};
+
+type AccountActivityResponse = {
+  associationId: string;
+  accounts: AccountActivityRow[];
+  totals: {
+    budgetedAmount: number;
+    invoicedAmount: number;
+    variance: number;
+    utilizationPct: number | null;
+  };
+  meta: {
+    activeBudgetCount: number;
+    totalAccounts: number;
+    totalCountableInvoices: number;
+  };
+};
+
+function formatCurrency(amount: number): string {
+  return amount.toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+
+function utilizationVariant(pct: number | null): "default" | "secondary" | "destructive" {
+  if (pct === null) return "secondary";
+  if (pct > 100) return "destructive";
+  if (pct >= 90) return "default";
+  return "secondary";
+}
+
+export function AccountActivityContent() {
+  const { activeAssociationId, activeAssociationName } = useActiveAssociation();
+
+  const { data, isLoading, isError, error } = useQuery<AccountActivityResponse>({
+    queryKey: ["/api/financial/accounts/activity", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) throw new Error("No active association");
+      const res = await apiRequest("GET", `/api/financial/accounts/activity?associationId=${activeAssociationId}`);
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+
+  if (!activeAssociationId) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center text-sm text-muted-foreground">
+          Select an active association to view account activity.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6" data-testid="section-account-activity">
+      <Card>
+        <CardHeader>
+          <CardTitle>Account Activity</CardTitle>
+          <CardDescription>
+            Budget vs. committed invoices, rolled up by chart-of-accounts entry for{" "}
+            <strong>{activeAssociationName || "this association"}</strong>. Counts approved and paid vendor invoices against the latest ratified budget version.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoading && (
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          )}
+          {isError && (
+            <p className="text-sm text-destructive" data-testid="text-account-activity-error">
+              Failed to load account activity: {(error as Error)?.message ?? "Unknown error"}
+            </p>
+          )}
+          {!isLoading && !isError && data && data.accounts.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-account-activity-empty">
+              No accounts configured. Add accounts on the Accounts tab to see activity here.
+            </p>
+          )}
+          {!isLoading && !isError && data && data.accounts.length > 0 && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-lg border p-3">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Total Budgeted</p>
+                  <p className="text-xl font-bold mt-1" data-testid="text-totals-budgeted">{formatCurrency(data.totals.budgetedAmount)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Total Invoiced</p>
+                  <p className="text-xl font-bold mt-1" data-testid="text-totals-invoiced">{formatCurrency(data.totals.invoicedAmount)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Variance</p>
+                  <p className={`text-xl font-bold mt-1 ${data.totals.variance < 0 ? "text-destructive" : ""}`} data-testid="text-totals-variance">
+                    {formatCurrency(data.totals.variance)}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Utilization</p>
+                  <p className="text-xl font-bold mt-1" data-testid="text-totals-utilization">
+                    {data.totals.utilizationPct === null ? "—" : `${data.totals.utilizationPct.toFixed(1)}%`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Budgeted</TableHead>
+                      <TableHead className="text-right">Invoiced</TableHead>
+                      <TableHead className="text-right">Variance</TableHead>
+                      <TableHead className="text-right">Utilization</TableHead>
+                      <TableHead className="text-right">Invoices</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.accounts.map((row) => (
+                      <TableRow key={row.accountId} data-testid={`row-account-activity-${row.accountId}`}>
+                        <TableCell className="font-mono text-xs">{row.accountCode || "—"}</TableCell>
+                        <TableCell className="font-medium">
+                          {row.accountName}
+                          {!row.isActive && <Badge variant="secondary" className="ml-2 text-[10px]">inactive</Badge>}
+                        </TableCell>
+                        <TableCell className="text-xs capitalize text-muted-foreground">{row.accountType}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(row.budgetedAmount)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(row.invoicedAmount)}</TableCell>
+                        <TableCell className={`text-right tabular-nums ${row.variance < 0 ? "text-destructive font-medium" : ""}`}>
+                          {formatCurrency(row.variance)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {row.utilizationPct === null ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <Badge variant={utilizationVariant(row.utilizationPct)} className="tabular-nums">
+                              {row.utilizationPct.toFixed(1)}%
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-xs text-muted-foreground">{row.invoiceCount}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Sourced from {data.meta.activeBudgetCount} ratified budget version{data.meta.activeBudgetCount === 1 ? "" : "s"} and {data.meta.totalCountableInvoices} approved/paid invoice{data.meta.totalCountableInvoices === 1 ? "" : "s"}.
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function FinancialFoundationPage() {
   return (
     <div className="flex flex-col min-h-0">
@@ -472,10 +643,14 @@ export default function FinancialFoundationPage() {
         <Tabs defaultValue="accounts" className="space-y-6">
           <TabsList>
             <TabsTrigger value="accounts">Accounts</TabsTrigger>
+            <TabsTrigger value="account-activity">Account Activity</TabsTrigger>
             <TabsTrigger value="recurring-charges">Recurring Charges</TabsTrigger>
           </TabsList>
           <TabsContent value="accounts" className="mt-0">
             <FinancialFoundationContent />
+          </TabsContent>
+          <TabsContent value="account-activity" className="mt-0">
+            <AccountActivityContent />
           </TabsContent>
           <TabsContent value="recurring-charges" className="mt-0">
             <FinancialRecurringChargesContent />

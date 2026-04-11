@@ -81,6 +81,8 @@ const UserSettingsPage = lazy(() => import("@/pages/user-settings"));
 const HelpCenterPage = lazy(() => import("@/pages/help-center"));
 const CommunityHubPage = lazy(() => import("@/pages/community-hub"));
 const CommunityHubPublicPage = lazy(() => import("@/pages/community-hub-public"));
+const AmenitiesAdminPage = lazy(() => import("@/pages/amenities-admin"));
+const AmenitiesPage = lazy(() => import("@/pages/amenities"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const AdminContextualFeedbackWidget = lazy(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })));
 
@@ -299,6 +301,7 @@ function WorkspaceRouter({
           {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <PortfolioPage />}
         </Route>
         <Route path="/app/community-hub" component={CommunityHubPage} />
+        <Route path="/app/amenities" component={AmenitiesAdminPage} />
         <Route path="/app/announcements" component={AnnouncementsPage} />
         <Route path="/app/help-center" component={HelpCenterPage} />
         <Route path="/app/settings" component={UserSettingsPage} />
@@ -351,6 +354,7 @@ function PublicRouter({
         <Route path="/signup/success" component={PlanSignupSuccessPage} />
         <Route path="/signup" component={PlanSignupPage} />
         <Route path="/portal" component={OwnerPortalPage} />
+        <Route path="/portal/amenities" component={AmenitiesPage} />
         <Route path="/vendor-portal" component={VendorPortalPage} />
         <Route path="/vote/:token">
           {(params) => <ElectionBallotPage token={params.token ?? ""} />}

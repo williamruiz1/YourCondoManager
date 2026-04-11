@@ -1,0 +1,66 @@
+# Phase 1 Audit — A6 Operations & Service
+**Auditor:** A6
+**Date:** 2026-04-11
+**Scope:** 6 pages — `operations-dashboard.tsx`, `work-orders.tsx`, `maintenance-schedules.tsx`, `inspections.tsx`, `vendors.tsx`, `resident-feedback.tsx`
+
+---
+
+## Scorecard
+
+| Page | Purpose | Persona | Category | Zone | Placement | Fulfillment | Verdict | Target | Rationale | Gaps | Cog |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `operations-dashboard.tsx` `/app/operations/dashboard` | This page exists to summarize operational health (work-order queue, maintenance due, vendor risk, inspection follow-up) at-a-glance for the operations section. | `manager` | Z1-1 Command Center | zone-1 | wrong-section | complete | PATCH | Reconcile with A1 — see Command Center Analysis below | Page is a genuine section-scoped dashboard (stat cards, aging breakdown, recommended actions, recent records) not a simple nav landing page; it belongs in Z1-1 but is scoped to Operations only, creating a three-way command-center conflict with `dashboard.tsx` and `portfolio.tsx`. Patch recommendation: treat it as the Operations section's own status hub within Z1-6 rather than a standalone Z1-1 entry, OR consolidate its summary widgets into `dashboard.tsx` (WIDGETIZE). Decision must be made by A1 reconciliation. | No link back from dashboard.tsx; audit trail section duplicates functionality available in a generic audit log; breadcrumb shows `/app` as "Dashboard" and then "Operations Dashboard" — the naming suggests peer status with the main dashboard rather than a sub-section view. | high |
+| `work-orders.tsx` `/app/work-orders` | This page exists to manage the full lifecycle of reactive work orders (create, assign, track, close) and also surfaces preventive maintenance schedules as a second tab. | `manager` | Z1-6 Service & Maintenance | zone-1 | correct | complete | PATCH | `work-orders.tsx` (self) — remove embedded Maintenance tab | `MaintenanceSchedulesContent` is imported and mounted as a tab at line 1016–1017, duplicating the standalone `/app/maintenance-schedules` route; the two routes currently present the same maintenance data from different entry points, which creates an ambiguous canonical home for maintenance schedule CRUD. Remove the embedded Maintenance tab from work-orders.tsx and let users navigate to `/app/maintenance-schedules` for that workflow. | Maintenance tab is a full CRUD surface, not a read-only preview — it is equivalent to visiting `/app/maintenance-schedules` directly, which makes the standalone route redundant rather than the tab redundant; resolution direction must be decided (tab or standalone). | med |
+| `maintenance-schedules.tsx` `/app/maintenance-schedules` | This page exists to manage recurring preventive maintenance templates, generate due instances, track association assets, and convert overdue instances into work orders. | `manager` | Z1-6 Service & Maintenance | zone-1 | correct | complete | MERGE-AS-TAB | `work-orders.tsx` | `MaintenanceSchedulesContent` is already embedded as a tab in `work-orders.tsx` (line 1017); the standalone route at `/app/maintenance-schedules` adds a nav sidebar item for what is structurally a subordinate workflow of the work-order lifecycle (preventive → reactive). Merging the standalone page away and keeping the tab in work-orders as the single canonical surface reduces nav depth by one item without losing content. Note: `MaintenanceSchedulesPage` is currently the standalone shell; its header breadcrumb already points back to the Operations Dashboard, reinforcing its sub-page status. Asset management (CRUD on `AssociationAsset`, APIs: `GET/POST/PATCH/DELETE /api/assets`) is embedded here — if merged, the tab must retain full asset management. | Assets sub-section is discoverable only inside this page; no dedicated nav entry for asset registry despite being a distinct concept from maintenance schedules; `autoCreateWorkOrder` flag links templates to work orders but the linkage UI is not surfaced on the work-orders side. | med |
+| `inspections.tsx` `/app/inspections` | This page exists to record unit and common-area inspections, document findings with severity ratings, and convert findings into work orders. | `manager` | Z1-6 Service & Maintenance | zone-1 | wrong-section | complete | MERGE-AS-TAB | `vendors.tsx` | `InspectionsContent` is already embedded as a second tab in `vendors.tsx` (line 1008); the standalone `/app/inspections` route duplicates that surface. The Inspections nav item and the Vendors/Inspections tab both present the same `InspectionsContent` component — one is redundant. The grouping of Inspections under Vendors in the current tab treatment is conceptually weak (inspections are not vendor management), but the merge has already been partially executed in code. Preferred resolution: move the Inspections tab out of vendors.tsx and into work-orders.tsx as a third tab (Work Orders / Maintenance / Inspections), then retire the standalone route. | Placement of Inspections inside Vendors page is a category mismatch — inspections produce findings that become work orders, not vendor compliance records; the current tab grouping may confuse managers who inspect common areas without vendor involvement. | med |
+| `vendors.tsx` `/app/vendors` | This page exists to manage the vendor registry (contacts, compliance, insurance expiry, documents) and also embeds inspection records as a second tab. | `manager` | Z1-6 Service & Maintenance | zone-1 | correct | complete | PATCH | `vendors.tsx` (self) — remove embedded Inspections tab | Vendors is correctly placed in Z1-6; the vendor management surface (CRUD, documents, portal invite, compliance tracking) is complete and well-scoped. The embedded Inspections tab is a placement defect (see `inspections.tsx` row above) — remove it from vendors.tsx once Inspections finds a better host (work-orders.tsx tab or standalone). Vendor portal credential management (APIs: `POST /api/vendors/:id/portal-invite`, `GET/DELETE /api/vendors/:id/portal-credential/:credentialId/revoke`) is an advanced feature that could become an admin-only sub-section, but that is a Phase 5 detail. | Inspections tab does not belong here thematically; vendor portal credential management UX not fully visible in shallow read but separate API routes confirm it exists at lines 13079–13150. | med |
+| `resident-feedback.tsx` `/app/resident-feedback` | This page exists to let managers review, categorize, and respond to resident feedback submissions with score analytics and status tracking. | `manager` | Z1-6 Service & Maintenance | zone-1 | correct | complete | KEEP | — | Resident Feedback is correctly placed in Z1-6 as a service-loop concept (not communications): it manages inbound operational signals from residents about maintenance, management quality, and amenity performance, and includes status workflow (open → in-review → resolved) and admin note-taking that are operational rather than broadcast/comms. The page is complete: filtered list, analytics panel, score distribution, PATCH mutation. APIs (`GET /api/feedback`, `GET /api/feedback/analytics`, `POST /api/feedback`, `PATCH /api/feedback/:id`) are all present and role-gated appropriately. | — | med |
+
+---
+
+## DEMOTE-ADMIN handovers
+
+None. All six pages in this section have `manager` or `board-admin` as primary persona. No page exhibits `platform-admin`-only characteristics. The operations audit trail shown in `operations-dashboard.tsx` is an operational read surface visible to managers, not a platform-operator tool.
+
+---
+
+## Cross-refs
+
+- **`work-orders.tsx` imports `MaintenanceSchedulesContent` from `maintenance-schedules.tsx`** — these two files are already partially merged at the component level; the two standalone routes create a redundancy the nav does not acknowledge.
+- **`vendors.tsx` imports `InspectionsContent` from `inspections.tsx`** — same pattern; the Inspections standalone route at `/app/inspections` and the Inspections tab in `/app/vendors` present identical content from two different nav paths.
+- **`/app/operations/records`** — `App.tsx` line 239 routes `/app/operations/records` to `<DocumentsPage typeFilter="Operations" />`. This is not a standalone page file; it is a filtered view of the shared Documents page. It does not have a sidebar nav entry and was not assigned to this audit section. Flagged for Phase 2 orphan sweep or A5 cross-reference.
+- **`resident-feedback.tsx` vs `communications.tsx` (A4 scope)** — The boundary between Z1-5 Communications and Z1-6 Service & Maintenance for resident feedback was considered. The deciding factor: feedback.tsx is a status-managed operational queue (open/in-review/resolved, admin notes, score analytics) whereas communications.tsx is an outbound/broadcast surface. Feedback belongs in Z1-6 and this placement is confirmed. A4 does not need to reconcile.
+- **`/portal/amenities` and `/portal`** — these surfaces are out of scope for this audit but the Vendors page manages vendor portal credentials that link to `/vendor-portal`. Flagged for the follow-on out-of-scope audit.
+
+---
+
+## Command center analysis
+
+`operations-dashboard.tsx` is a genuine at-a-glance dashboard, not a landing page and not a candidate for widgetization in isolation. It fetches a single aggregate endpoint (`GET /api/operations/dashboard`, line 35) that returns six summary totals, work-order aging buckets, vendor status counts, recent work orders, due maintenance instances, recent inspection records, and an audit trail — all in one payload. It renders stat cards, a recommended-actions panel, and detail sections. This is the behavioral signature of a Z1-1 Command Center scoped to Operations.
+
+The conflict with A1's scope is real and must be resolved in Phase 3 reconciliation. Three options exist:
+
+1. **Keep as Operations section hub (preferred for nav clarity).** Re-classify `operations-dashboard.tsx` as Z1-6 rather than Z1-1 — it is a section-level dashboard, not a cross-association command center. The sidebar currently places it as the parent nav entry for the Operations group (sidebar line 144, `url: "/app/operations/dashboard"`), which is coherent with this framing. `dashboard.tsx` (A1) remains the primary Z1-1 cross-association entry. The naming collision ("Dashboard" vs "Operations Dashboard") should be resolved in Phase 5 by renaming to "Operations Overview" or "Operations Status."
+
+2. **WIDGETIZE into `dashboard.tsx`.** If Phase 3 determines the main dashboard should absorb cross-functional operational metrics, the six stat cards and recommended-actions panel could become widgets on `dashboard.tsx`. The standalone `/app/operations/dashboard` route would then become unnecessary. This only makes sense if `dashboard.tsx` is genuinely a cross-functional command center rather than a narrow overview page — A1 must report on that.
+
+3. **Promote to Z1-1 alongside dashboard.tsx.** Least desirable: this directly worsens the three-command-center problem flagged in spec §1 bullet 5.
+
+**Recommendation to A1:** Report whether `dashboard.tsx` already surfaces any operations metrics. If not, Option 1 (keep as section hub, rename, classify Z1-6) resolves the conflict cleanly. If `dashboard.tsx` already shows work-order counts or maintenance alerts, then the content overlap is the real problem and Option 2 (WIDGETIZE) may be correct.
+
+---
+
+## API route inventory (C2 reference)
+
+Routes backing this section's pages — none carry a KILL verdict in this pass, so no deprecation action is required. Listed for Phase 5 completeness:
+
+| Route group | Endpoints | Roles |
+|---|---|---|
+| Operations dashboard | `GET /api/operations/dashboard`, `GET /api/operations/reports/:reportType` | all four roles |
+| Work orders | `GET/POST /api/work-orders`, `PATCH /api/work-orders/:id`, `POST /api/work-orders/:id/photos`, `DELETE /api/work-orders/:id/photos`, `GET /api/work-orders/:id/vendor-activity` | viewer=read, manager=write |
+| Maintenance requests | `GET/POST /api/maintenance/requests`, `PATCH /api/maintenance/requests/:id`, `POST /api/maintenance/requests/:id/convert-to-work-order`, `POST /api/maintenance/escalations/run` | viewer=read, manager=write |
+| Maintenance schedules | `GET/POST /api/maintenance/schedules`, `PATCH /api/maintenance/schedules/:id`, `POST /api/maintenance/schedules/:id/generate`, `POST /api/maintenance/instances/:id/convert-to-work-order` | viewer=read, manager=write |
+| Assets | `GET/POST /api/assets`, `PATCH /api/assets/:id`, `DELETE /api/assets/:id` | viewer=read, manager=write |
+| Inspections | `GET/POST /api/inspections`, `PATCH /api/inspections/:id`, `POST /api/inspections/:id/findings/:findingIndex/convert-to-work-order` | viewer=read, manager=write |
+| Vendors | `GET /api/vendors`, `POST /api/vendors`, `PATCH /api/vendors/:id`, `GET /api/vendors/renewal-alerts`, `GET/POST /api/vendors/:id/documents`, `GET /api/vendors/:id/metrics`, `POST /api/vendors/:id/portal-invite`, `GET /api/vendors/:id/portal-credential`, `DELETE /api/vendors/:id/portal-credential/:credentialId/revoke` | viewer=read, manager=write |
+| Feedback | `GET /api/feedback`, `GET /api/feedback/analytics`, `POST /api/feedback`, `PATCH /api/feedback/:id` | viewer=read, manager=write |

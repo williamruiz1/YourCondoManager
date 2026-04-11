@@ -26,6 +26,7 @@ import {
   Wrench,
   SearchCheck,
   Globe,
+  CalendarCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -152,6 +153,14 @@ const associationModules: NavModule[] = [
       { title: "Vendors", url: "/app/vendors", icon: BriefcaseBusiness, materialIcon: "storefront", activePrefix: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
       { title: "Feedback", url: "/app/resident-feedback", icon: MessageCircle, materialIcon: "rate_review", activePrefix: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
     ],
+  },
+  {
+    title: "Amenity Booking",
+    url: "/app/amenities",
+    icon: CalendarCheck,
+    materialIcon: "event_available",
+    activePrefix: "/app/amenities",
+    roles: ["platform-admin", "board-admin", "manager", "viewer"],
   },
   {
     title: "Community Hub",

@@ -11,3 +11,11 @@ vite.config.ts.*
 .ai-home/
 *.code-workspace
 .claude/worktrees/
+
+.pocketpm/
+# PPM:START v1
+.pocketpm/CONTEXT.md
+.pocketpm/session.json
+.pocketpm/.ppm-staging/
+.pocketpm/installed-harnesses.json
+# PPM:END v1

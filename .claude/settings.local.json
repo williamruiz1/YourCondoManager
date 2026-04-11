@@ -27,7 +27,14 @@
       "Bash(grep -l \"FinanceTabBar\" /home/runner/workspace/client/src/pages/financial-*.tsx)",
       "Bash(npm run:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(PORT=5051 npm run dev)",
+      "Bash(tee /tmp/dev-verify.log)",
+      "Bash(curl -s -o /tmp/r.out -w 'status=%{http_code} ct=%{content_type}\\\\n' http://localhost:5051/api/health)",
+      "Bash(curl -s -o /tmp/r.out -w 'status=%{http_code} ct=%{content_type}\\\\n' http://localhost:5051/api/this-does-not-exist)",
+      "Bash(curl -s -o /tmp/r.out -w 'status=%{http_code} ct=%{content_type}\\\\n' -X POST -H 'Content-Type: application/json' -d '{}' http://localhost:5051/api/nonexistent-endpoint)",
+      "Bash(curl -s -o /tmp/r.out -w 'status=%{http_code} ct=%{content_type}\\\\n' -X POST -H 'Content-Type: application/json' -d '{\"name\":\"Test User\",\"email\":\"test@example.com\",\"message\":\"hello\"}' http://localhost:5051/api/public/demo-request)",
+      "Bash(curl -s -o /tmp/r.out -w 'status=%{http_code} ct=%{content_type}\\\\n' http://localhost:5051/uploads/nonexistent.pdf)"
     ]
   }
 }

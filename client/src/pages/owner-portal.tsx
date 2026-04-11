@@ -665,13 +665,24 @@ export default function OwnerPortalPage() {
     },
   });
 
+  const { data: communicationInbox = [] } = useQuery<CommunicationHistory[]>({
+    queryKey: ["portal/communications", portalAccessId],
+    enabled: !!portalAccessId,
+    queryFn: async () => {
+      if (!portalAccessId) return [];
+      const res = await portalFetch(`/api/portal/communications`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const addMethod = useMutation({
     mutationFn: async () => {
       if (!portalAccessId) throw new Error("Not authenticated");
-      const res = await portalFetch("/api/portal/add-payment-method", {
+      const res = await portalFetch("/api/portal/payment-methods", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...methodForm }),
+        body: JSON.stringify({ ...methodForm, isDefault: methodForm.isDefault ? 1 : 0 }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -686,10 +697,10 @@ export default function OwnerPortalPage() {
   const setDefaultMethod = useMutation({
     mutationFn: async (methodId: string) => {
       if (!portalAccessId) throw new Error("Not authenticated");
-      const res = await portalFetch("/api/portal/set-default-method", {
-        method: "POST",
+      const res = await portalFetch(`/api/portal/payment-methods/${methodId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ methodId }),
+        body: JSON.stringify({ isDefault: 1 }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -700,10 +711,8 @@ export default function OwnerPortalPage() {
   const removeMethod = useMutation({
     mutationFn: async (methodId: string) => {
       if (!portalAccessId) throw new Error("Not authenticated");
-      const res = await portalFetch("/api/portal/remove-payment-method", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ methodId }),
+      const res = await portalFetch(`/api/portal/payment-methods/${methodId}`, {
+        method: "DELETE",
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -1126,6 +1135,17 @@ export default function OwnerPortalPage() {
                     <p className="font-label text-on-surface-variant uppercase tracking-widest text-[10px] mb-1">Open Maintenance</p>
                     <span className="font-headline text-3xl">{openMaintenanceRequests}</span>
                   </div>
+                  <a
+                    href="/portal/amenities"
+                    className="bg-primary/5 hover:bg-primary/10 transition-colors p-6 rounded-xl flex-1 min-w-[280px] border border-primary/20 flex items-center justify-between gap-3"
+                    data-testid="link-portal-amenities"
+                  >
+                    <div>
+                      <p className="font-label text-primary uppercase tracking-widest text-[10px] mb-1">Amenity Booking</p>
+                      <span className="font-headline text-2xl text-on-surface">Reserve a space</span>
+                    </div>
+                    <span className="material-symbols-outlined text-primary" style={{ fontSize: 32 }}>event_available</span>
+                  </a>
                 </div>
               </section>
 
@@ -3065,38 +3085,83 @@ export default function OwnerPortalPage() {
             <div className="space-y-8">
               <div className="space-y-2">
                 <p className="font-label text-primary uppercase tracking-widest text-[11px]">Communications</p>
-                <h1 className="font-headline text-4xl text-on-surface">Board Communications</h1>
-                <p className="text-sm text-on-surface-variant">{Object.values(boardDashboardData?.workflowStates.communications.noticesByStatus || {}).reduce((a, b) => a + b, 0)} notices</p>
+                <h1 className="font-headline text-4xl text-on-surface">Inbox</h1>
+                <p className="text-sm text-on-surface-variant">{communicationInbox.length} message{communicationInbox.length === 1 ? "" : "s"}</p>
               </div>
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-on-surface mb-3">Notices</h3>
-                  {Object.keys(boardDashboardData?.workflowStates.communications.noticesByStatus || {}).length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {Object.entries(boardDashboardData?.workflowStates.communications.noticesByStatus || {}).map(([status, count]) => (
-                        <div key={status} className="rounded-lg border bg-surface-container-lowest border-outline-variant/10 p-3 text-center">
-                          <p className="text-sm text-on-surface-variant capitalize">{status.replace("-", " ")}</p>
-                          <p className="text-2xl font-bold text-on-surface">{count}</p>
+
+              <div className="space-y-3" data-testid="section-portal-inbox">
+                {communicationInbox.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-outline-variant/20 p-8 text-center text-sm text-on-surface-variant">
+                    No messages yet. Announcements, notices, and replies from your association will appear here.
+                  </div>
+                ) : (
+                  communicationInbox.map((msg) => {
+                    const direction = msg.direction || "outbound";
+                    const isInbound = direction === "inbound";
+                    const channel = msg.channel || "email";
+                    return (
+                      <div key={msg.id} className="rounded-xl border bg-surface-container-lowest border-outline-variant/10 p-4" data-testid={`row-inbox-message-${msg.id}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="material-symbols-outlined text-primary text-base" aria-hidden="true">
+                                {channel === "sms" ? "sms" : channel === "portal" ? "forum" : "mail"}
+                              </span>
+                              <span className="font-semibold text-on-surface truncate">{msg.subject || "(no subject)"}</span>
+                              {isInbound && (
+                                <span className="text-[10px] uppercase tracking-widest rounded bg-primary/10 text-primary px-1.5 py-0.5">From you</span>
+                              )}
+                              {msg.relatedType && (
+                                <span className="text-[10px] uppercase tracking-widest rounded bg-surface-container-highest text-on-surface-variant px-1.5 py-0.5">{msg.relatedType.replace(/-/g, " ")}</span>
+                              )}
+                            </div>
+                            {msg.bodySnippet && (
+                              <p className="mt-1.5 text-sm text-on-surface-variant line-clamp-2">{msg.bodySnippet}</p>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-xs text-on-surface-variant">{new Date(msg.createdAt).toLocaleDateString()}</p>
+                            <p className="text-[10px] text-on-surface-variant mt-0.5">{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 space-y-2 text-on-surface-variant">
-                      <p>No notices</p>
-                    </div>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border bg-surface-container-lowest border-outline-variant/10 p-4">
-                    <p className="text-xs text-on-surface-variant uppercase tracking-widest mb-2">Portal Documents</p>
-                    <p className="text-2xl font-bold text-on-surface">{boardDashboardData?.workflowStates.communications.documentsPortalVisible || 0}</p>
-                  </div>
-                  <div className="rounded-lg border bg-surface-container-lowest border-outline-variant/10 p-4">
-                    <p className="text-xs text-on-surface-variant uppercase tracking-widest mb-2">Internal Only</p>
-                    <p className="text-2xl font-bold text-on-surface">{boardDashboardData?.workflowStates.communications.documentsInternalOnly || 0}</p>
-                  </div>
-                </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
+
+              {me?.hasBoardAccess && (
+                <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                  <h2 className="font-headline text-2xl text-on-surface">Board Overview</h2>
+                  <div>
+                    <h3 className="text-sm font-semibold text-on-surface mb-3">Notices</h3>
+                    {Object.keys(boardDashboardData?.workflowStates.communications.noticesByStatus || {}).length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {Object.entries(boardDashboardData?.workflowStates.communications.noticesByStatus || {}).map(([status, count]) => (
+                          <div key={status} className="rounded-lg border bg-surface-container-lowest border-outline-variant/10 p-3 text-center">
+                            <p className="text-sm text-on-surface-variant capitalize">{status.replace("-", " ")}</p>
+                            <p className="text-2xl font-bold text-on-surface">{count}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 space-y-2 text-on-surface-variant">
+                        <p>No notices</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg border bg-surface-container-lowest border-outline-variant/10 p-4">
+                      <p className="text-xs text-on-surface-variant uppercase tracking-widest mb-2">Portal Documents</p>
+                      <p className="text-2xl font-bold text-on-surface">{boardDashboardData?.workflowStates.communications.documentsPortalVisible || 0}</p>
+                    </div>
+                    <div className="rounded-lg border bg-surface-container-lowest border-outline-variant/10 p-4">
+                      <p className="text-xs text-on-surface-variant uppercase tracking-widest mb-2">Internal Only</p>
+                      <p className="text-2xl font-bold text-on-surface">{boardDashboardData?.workflowStates.communications.documentsInternalOnly || 0}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

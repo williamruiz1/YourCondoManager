@@ -1175,6 +1175,10 @@ async function getOwnedPortalUnitsForAssociation(input: {
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   registerAuthRoutes(app);
 
+  // Amenity booking routes
+  const { registerAmenityRoutes } = await import("./routes/amenities");
+  registerAmenityRoutes(app, requireAdmin, requireAdminRole, requirePortal);
+
   // Lightweight public health check for monitors, load balancers, and liveness probes
   app.get("/api/health", async (_req, res) => {
     try {
@@ -3774,6 +3778,110 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  // GET /api/financial/accounts/activity — Per-account budget vs actual roll-up
+  // Aggregates planned amounts (latest ratified budget version) and committed
+  // invoice amounts (status in approved|paid) per chart-of-accounts entry.
+  app.get("/api/financial/accounts/activity", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+
+      const [accounts, budgets, invoices] = await Promise.all([
+        storage.getFinancialAccounts(associationId),
+        storage.getBudgets(associationId),
+        storage.getVendorInvoices(associationId),
+      ]);
+
+      // Collect all budget lines from the latest ratified version of each budget.
+      // Parallelized per-budget: (1) resolve ratified version, (2) fetch lines.
+      const perBudgetLines = await Promise.all(
+        budgets.map(async (budget) => {
+          const versions = await storage.getBudgetVersions(budget.id);
+          const ratified = versions
+            .filter((v) => v.status === "ratified")
+            .sort((a, b) => (b.ratifiedAt?.getTime() ?? 0) - (a.ratifiedAt?.getTime() ?? 0))[0];
+          if (!ratified) return null;
+          const lines = await storage.getBudgetLines(ratified.id);
+          return lines.map((line) => ({
+            accountId: line.accountId ?? null,
+            plannedAmount: line.plannedAmount,
+          }));
+        }),
+      );
+      const allLines: { accountId: string | null; plannedAmount: number }[] = [];
+      let activeBudgetCount = 0;
+      for (const group of perBudgetLines) {
+        if (!group) continue;
+        activeBudgetCount += 1;
+        allLines.push(...group);
+      }
+
+      const COUNTABLE_INVOICE_STATUSES = new Set(["approved", "paid"]);
+      const countableInvoices = invoices.filter((inv) => COUNTABLE_INVOICE_STATUSES.has(inv.status));
+
+      const rows = accounts.map((account) => {
+        const linesForAccount = allLines.filter((l) => l.accountId === account.id);
+        const budgetedAmount = linesForAccount.reduce((sum, l) => sum + l.plannedAmount, 0);
+        const accountInvoices = countableInvoices.filter((inv) => inv.accountId === account.id);
+        const invoicedAmount = accountInvoices.reduce((sum, inv) => sum + inv.amount, 0);
+        const variance = Number((budgetedAmount - invoicedAmount).toFixed(2));
+        const utilizationPct = budgetedAmount > 0
+          ? Math.round((invoicedAmount / budgetedAmount) * 1000) / 10
+          : null;
+        return {
+          accountId: account.id,
+          accountCode: account.accountCode,
+          accountName: account.name,
+          accountType: account.accountType,
+          isActive: account.isActive,
+          budgetedAmount: Number(budgetedAmount.toFixed(2)),
+          invoicedAmount: Number(invoicedAmount.toFixed(2)),
+          variance,
+          utilizationPct,
+          invoiceCount: accountInvoices.length,
+        };
+      });
+
+      // Stable sort: by accountCode (string), then by accountName as tiebreaker.
+      rows.sort((a, b) => {
+        const codeA = a.accountCode ?? "";
+        const codeB = b.accountCode ?? "";
+        if (codeA !== codeB) return codeA.localeCompare(codeB);
+        return a.accountName.localeCompare(b.accountName);
+      });
+
+      const totals = rows.reduce(
+        (acc, r) => ({
+          budgetedAmount: acc.budgetedAmount + r.budgetedAmount,
+          invoicedAmount: acc.invoicedAmount + r.invoicedAmount,
+        }),
+        { budgetedAmount: 0, invoicedAmount: 0 },
+      );
+      const portfolioUtilizationPct = totals.budgetedAmount > 0
+        ? Math.round((totals.invoicedAmount / totals.budgetedAmount) * 1000) / 10
+        : null;
+
+      res.json({
+        associationId,
+        accounts: rows,
+        totals: {
+          budgetedAmount: Number(totals.budgetedAmount.toFixed(2)),
+          invoicedAmount: Number(totals.invoicedAmount.toFixed(2)),
+          variance: Number((totals.budgetedAmount - totals.invoicedAmount).toFixed(2)),
+          utilizationPct: portfolioUtilizationPct,
+        },
+        meta: {
+          activeBudgetCount,
+          totalAccounts: accounts.length,
+          totalCountableInvoices: countableInvoices.length,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -8633,6 +8741,26 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
+  app.delete("/api/work-orders/:id/photos", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const workOrderId = getParam(req.params.id);
+      await assertResourceScope(req, "work-order", workOrderId);
+      const url = typeof req.body?.url === "string" ? req.body.url : "";
+      if (!url) return res.status(400).json({ message: "url is required" });
+      const [current] = await db.select().from(workOrders).where(eq(workOrders.id, workOrderId));
+      if (!current) return res.status(404).json({ message: "Work order not found" });
+      const existingPhotos = Array.isArray(current.photosJson) ? (current.photosJson as any[]) : [];
+      const nextPhotos = existingPhotos.filter((p) => p?.url !== url);
+      if (nextPhotos.length === existingPhotos.length) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      const updated = await storage.updateWorkOrder(workOrderId, { photosJson: nextPhotos } as any, req.adminUserEmail);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.post("/api/maintenance/requests/:id/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
       const requestId = getParam(req.params.id);
@@ -9514,6 +9642,23 @@ This is an automated demo request from the Your Condo Manager website.
         ...(isDefault !== undefined ? { isDefault } : {}),
         ...(isActive !== undefined ? { isActive } : {}),
         ...(displayName ? { displayName } : {}),
+        updatedAt: new Date(),
+      }).where(eq(savedPaymentMethods.id, id)).returning();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/portal/payment-methods/:id", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const id = req.params.id as string;
+      const [method] = await db.select().from(savedPaymentMethods).where(eq(savedPaymentMethods.id, id)).limit(1);
+      if (!method) return res.status(404).json({ message: "Payment method not found" });
+      if (method.personId !== req.portalPersonId) return res.status(403).json({ message: "Not authorized" });
+      const [result] = await db.update(savedPaymentMethods).set({
+        isActive: 0,
+        isDefault: 0,
         updatedAt: new Date(),
       }).where(eq(savedPaymentMethods.id, id)).returning();
       res.json(result);
@@ -10784,6 +10929,17 @@ This is an automated demo request from the Your Condo Manager website.
         ...row,
         bodyText: portalNoticeHtmlToText(row.relatedId ? (noticeBodyById.get(row.relatedId) ?? row.bodySnippet ?? null) : row.bodySnippet),
       })));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portal/communications", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const result = await storage.getPortalCommunicationHistory(req.portalAccessId || "");
+      const limitRaw = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 100;
+      res.json(result.slice(0, limit));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -13357,7 +13513,7 @@ This is an automated demo request from the Your Condo Manager website.
           .limit(1);
         if (!existing) return res.status(404).json({ message: "Work order not found" });
 
-        const fileUrl = `/uploads/${file.filename}`;
+        const fileUrl = `/api/uploads/${file.filename}`;
         const currentPhotos = (existing.photosJson as any[]) || [];
         const newPhoto = { url: fileUrl, label: label || "Completion photo", type: "completion", uploadedAt: new Date().toISOString(), uploadedByVendor: true };
         await db
@@ -13742,6 +13898,78 @@ This is an automated demo request from the Your Condo Manager website.
       events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       res.json(events.slice(0, 10));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 6. GET /api/admin/portfolio/recent-activity — Portfolio-wide activity feed
+  app.get("/api/admin/portfolio/recent-activity", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const allAssociations = await storage.getAssociations({ includeArchived: false });
+      const visibleAssociations = req.adminRole === "platform-admin"
+        ? allAssociations
+        : allAssociations.filter((a) => (req.adminScopedAssociationIds ?? []).includes(a.id));
+
+      const limitRaw = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 20;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 50) : 20;
+
+      const events: Array<{
+        type: "work_order" | "financial" | "document";
+        title: string;
+        description: string;
+        associationId: string;
+        associationName: string;
+        timestamp: string;
+        icon: string;
+      }> = [];
+
+      await Promise.all(visibleAssociations.map(async (assoc) => {
+        const [wos, ledger, docs] = await Promise.all([
+          storage.getWorkOrders({ associationId: assoc.id }),
+          storage.getOwnerLedgerEntries(assoc.id),
+          db.select().from(documents).where(eq(documents.associationId, assoc.id)).orderBy(desc(documents.createdAt)).limit(3),
+        ]);
+
+        for (const wo of wos.slice().sort((a, b) => new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime()).slice(0, 3)) {
+          events.push({
+            type: "work_order",
+            title: wo.status === "closed" ? "Work order closed" : wo.status === "open" ? "Work order created" : `Work order ${wo.status}`,
+            description: wo.title,
+            associationId: assoc.id,
+            associationName: assoc.name,
+            timestamp: (wo.updatedAt ?? wo.createdAt).toISOString(),
+            icon: "build",
+          });
+        }
+
+        for (const entry of ledger.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 2)) {
+          events.push({
+            type: "financial",
+            title: entry.entryType === "payment" ? "Payment received" : `Ledger ${entry.entryType}`,
+            description: `${entry.description || entry.entryType} — $${Math.abs(entry.amount).toFixed(2)}`,
+            associationId: assoc.id,
+            associationName: assoc.name,
+            timestamp: entry.createdAt.toISOString(),
+            icon: entry.entryType === "payment" ? "payments" : "receipt_long",
+          });
+        }
+
+        for (const doc of docs) {
+          events.push({
+            type: "document",
+            title: "Document uploaded",
+            description: doc.title,
+            associationId: assoc.id,
+            associationName: assoc.name,
+            timestamp: doc.createdAt.toISOString(),
+            icon: "description",
+          });
+        }
+      }));
+
+      events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      res.json(events.slice(0, limit));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

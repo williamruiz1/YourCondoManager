@@ -12,20 +12,36 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-// Mock recent activity data for the timeline widget
-const MOCK_RECENT_ACTIVITY = [
-  { id: "1", timestamp: "2 hours ago", description: "Work order #1042 completed at **Riverside Towers**", color: "bg-green-500" },
-  { id: "2", timestamp: "4 hours ago", description: "New delinquency alert for **Oakwood Commons**", color: "bg-red-500" },
-  { id: "3", timestamp: "Yesterday", description: "Board meeting minutes uploaded for **Pine Valley HOA**", color: "bg-blue-500" },
-  { id: "4", timestamp: "Yesterday", description: "Insurance policy renewed for **Harbor View Condos**", color: "bg-amber-500" },
-  { id: "5", timestamp: "2 days ago", description: "Compliance audit passed at **Summit Ridge Estates**", color: "bg-green-500" },
-];
+type PortfolioActivityEvent = {
+  type: "work_order" | "financial" | "document";
+  title: string;
+  description: string;
+  associationId: string;
+  associationName: string;
+  timestamp: string;
+  icon: string;
+};
 
-function renderActivityDescription(desc: string) {
-  const parts = desc.split(/\*\*(.*?)\*\*/g);
-  return parts.map((part, i) =>
-    i % 2 === 1 ? <strong key={i} className="font-bold text-on-surface">{part}</strong> : part
-  );
+function activityColor(type: PortfolioActivityEvent["type"], title: string) {
+  if (type === "work_order") return title.includes("closed") ? "bg-green-500" : "bg-blue-500";
+  if (type === "financial") return title.includes("Payment") ? "bg-green-500" : "bg-amber-500";
+  if (type === "document") return "bg-blue-500";
+  return "bg-slate-400";
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const diffSeconds = Math.floor((now - then) / 1000);
+  if (diffSeconds < 60) return "Just now";
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -55,6 +71,24 @@ type ThresholdAlert = {
   threshold: number;
 };
 
+type PortfolioRiskAlert = {
+  associationId: string;
+  associationName: string;
+  type: string;
+  severity: "critical" | "warning" | "info";
+  description: string;
+};
+
+type PortfolioFinancialSummary = {
+  totalAssociations: number;
+  totalOperatingFunds: number;
+  totalReserveFunds: number;
+  delinquencyRate: number;
+  portfolioYield: number;
+  totalDelinquentAccounts: number;
+  totalOwnerAccounts: number;
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function downloadCsv(rows: string[][], filename: string) {
@@ -78,17 +112,19 @@ function healthLabel(health: AssociationKPI["health"]) {
 
 function alertTypeLabel(type: string) {
   if (type === "urgent_work_orders") return "Urgent Work Orders";
+  if (type === "overdue_work_orders") return "Overdue Work Orders";
   if (type === "overdue_compliance") return "Overdue Compliance";
   if (type === "delinquency") return "High Delinquency";
+  if (type === "delinquency_spike") return "Delinquency Spike";
   if (type === "expired_insurance") return "Expired Insurance";
   if (type === "expiring_insurance") return "Insurance Expiring Soon";
   return type.replace(/_/g, " ");
 }
 
 function alertIcon(type: string) {
-  if (type === "urgent_work_orders") return "build";
+  if (type === "urgent_work_orders" || type === "overdue_work_orders") return "build";
   if (type === "overdue_compliance") return "gavel";
-  if (type === "delinquency") return "account_balance_wallet";
+  if (type === "delinquency" || type === "delinquency_spike") return "account_balance_wallet";
   if (type.includes("insurance")) return "shield";
   return "warning";
 }
@@ -127,6 +163,35 @@ export default function PortfolioPage() {
     queryKey: ["/api/portfolio/threshold-alerts"],
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: recentActivity = [] } = useQuery<PortfolioActivityEvent[]>({
+    queryKey: ["/api/admin/portfolio/recent-activity"],
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const { data: portfolioSummary } = useQuery<PortfolioFinancialSummary>({
+    queryKey: ["/api/admin/portfolio/summary"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: portfolioRiskAlerts = [] } = useQuery<PortfolioRiskAlert[]>({
+    queryKey: ["/api/admin/portfolio/alerts"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const mergedAlerts = useMemo<ThresholdAlert[]>(() => {
+    const normalized: ThresholdAlert[] = portfolioRiskAlerts.map((a, idx) => ({
+      id: `portfolio-${a.associationId}-${a.type}-${idx}`,
+      associationId: a.associationId,
+      associationName: a.associationName,
+      alertType: a.type,
+      severity: a.severity,
+      message: a.description,
+      value: 0,
+      threshold: 0,
+    }));
+    return [...thresholdAlerts, ...normalized];
+  }, [thresholdAlerts, portfolioRiskAlerts]);
 
   const [filter, setFilter] = useState<"all" | "critical" | "warning" | "good">("all");
 
@@ -302,6 +367,45 @@ export default function PortfolioPage() {
             </span>
           </div>
         </div>
+
+        {/* ── Portfolio Financial Health (from /api/admin/portfolio/summary) ── */}
+        {portfolioSummary && portfolioSummary.totalOwnerAccounts > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 max-w-screen-2xl" data-testid="section-portfolio-financial-health">
+            <div className={`bg-surface-container-lowest dark:bg-slate-900 p-5 rounded-xl editorial-shadow border-b-2 ${portfolioSummary.delinquencyRate > 10 ? "border-destructive/30" : portfolioSummary.delinquencyRate > 5 ? "border-tertiary/30" : "border-secondary/10"}`}>
+              <span className="text-[10px] font-label uppercase tracking-widest text-on-surface-variant dark:text-slate-400 block mb-2">
+                Portfolio Delinquency Rate
+              </span>
+              <div className="flex items-baseline gap-2">
+                <span className={`font-headline text-3xl font-bold ${portfolioSummary.delinquencyRate > 10 ? "text-destructive" : "text-on-surface dark:text-slate-100"}`}>
+                  {portfolioSummary.delinquencyRate.toFixed(1)}%
+                </span>
+                {portfolioSummary.delinquencyRate > 10 && (
+                  <span className="text-destructive text-xs font-bold flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-[12px]">arrow_upward</span>
+                    Above threshold
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-outline dark:text-slate-500 mt-3">
+                {portfolioSummary.totalDelinquentAccounts} of {portfolioSummary.totalOwnerAccounts} owner accounts
+              </p>
+            </div>
+
+            <div className="bg-surface-container-lowest dark:bg-slate-900 p-5 rounded-xl editorial-shadow border-b-2 border-primary/10">
+              <span className="text-[10px] font-label uppercase tracking-widest text-on-surface-variant dark:text-slate-400 block mb-2">
+                Owner Accounts
+              </span>
+              <div className="flex items-baseline gap-2">
+                <span className="font-headline text-3xl font-bold text-on-surface dark:text-slate-100">
+                  {portfolioSummary.totalOwnerAccounts.toLocaleString()}
+                </span>
+              </div>
+              <p className="text-[11px] text-outline dark:text-slate-500 mt-3">
+                Active across {portfolioSummary.totalAssociations} association{portfolioSummary.totalAssociations === 1 ? "" : "s"}
+              </p>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* ── Main 2-col layout ───────────────────────────────────────────────── */}
@@ -432,13 +536,13 @@ export default function PortfolioPage() {
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-headline text-xl font-semibold text-on-surface dark:text-slate-100">Critical Alerts</h3>
-              {thresholdAlerts.length > 0 && (
+              {mergedAlerts.length > 0 && (
                 <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">
-                  {thresholdAlerts.filter((a) => a.severity === "critical").length} active
+                  {mergedAlerts.filter((a) => a.severity === "critical").length} active
                 </span>
               )}
             </div>
-            {thresholdAlerts.length === 0 ? (
+            {mergedAlerts.length === 0 ? (
               <div className="p-4 bg-surface-container-lowest dark:bg-slate-900 rounded-xl editorial-shadow border border-outline-variant/20 dark:border-slate-700/30">
                 <div className="flex items-center gap-2 text-sm text-on-surface-variant dark:text-slate-400">
                   <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -447,7 +551,7 @@ export default function PortfolioPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {thresholdAlerts.slice(0, 5).map((alert) => (
+                {mergedAlerts.slice(0, 5).map((alert) => (
                   <div
                     key={alert.id}
                     className={`p-4 rounded-r-lg border-l-4 ${
@@ -486,9 +590,9 @@ export default function PortfolioPage() {
                     </div>
                   </div>
                 ))}
-                {thresholdAlerts.length > 5 && (
+                {mergedAlerts.length > 5 && (
                   <p className="text-xs text-on-surface-variant text-center pt-1">
-                    + {thresholdAlerts.length - 5} more alerts
+                    + {mergedAlerts.length - 5} more alerts
                   </p>
                 )}
               </div>
@@ -566,31 +670,36 @@ export default function PortfolioPage() {
           </section>
 
           {/* Recent Activity Timeline */}
-          <section className="space-y-3">
+          <section className="space-y-3" data-testid="section-portfolio-activity">
             <h3 className="font-headline text-xl font-semibold text-on-surface dark:text-slate-100">Recent Activity</h3>
             <div className="bg-surface-container-lowest dark:bg-slate-900 rounded-xl p-6 editorial-shadow">
-              <div className="relative space-y-4">
-                {MOCK_RECENT_ACTIVITY.map((activity, idx) => (
-                  <div key={activity.id} className="relative flex gap-3 pl-4">
-                    {/* Vertical connector line */}
-                    {idx < MOCK_RECENT_ACTIVITY.length - 1 && (
-                      <div className="absolute left-[7px] top-3 bottom-0 w-px bg-outline-variant/30" />
-                    )}
-                    {/* Colored dot */}
-                    <div className={`relative z-10 mt-1.5 h-3 w-3 rounded-full ${activity.color} ring-2 ring-surface-container-lowest dark:ring-slate-900 shrink-0 -ml-4`} />
-                    <div className="min-w-0 pb-1">
-                      <p className="label-caps text-outline dark:text-slate-500 mb-0.5">{activity.timestamp}</p>
-                      <p className="text-xs text-on-surface-variant dark:text-slate-400 leading-relaxed font-body">
-                        {renderActivityDescription(activity.description)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button className="mt-4 text-primary font-bold text-xs flex items-center gap-1.5 hover:underline font-body">
-                <span className="material-symbols-outlined text-[14px]">history</span>
-                View Audit Log
-              </button>
+              {recentActivity.length === 0 ? (
+                <p className="text-xs text-on-surface-variant dark:text-slate-400 text-center py-4 font-body">
+                  No recent activity across your portfolio.
+                </p>
+              ) : (
+                <div className="relative space-y-4">
+                  {recentActivity.slice(0, 8).map((activity, idx) => {
+                    const color = activityColor(activity.type, activity.title);
+                    const isLast = idx >= Math.min(recentActivity.length, 8) - 1;
+                    return (
+                      <div key={`${activity.timestamp}-${activity.associationId}-${idx}`} className="relative flex gap-3 pl-4">
+                        {!isLast && (
+                          <div className="absolute left-[7px] top-3 bottom-0 w-px bg-outline-variant/30" />
+                        )}
+                        <div className={`relative z-10 mt-1.5 h-3 w-3 rounded-full ${color} ring-2 ring-surface-container-lowest dark:ring-slate-900 shrink-0 -ml-4`} />
+                        <div className="min-w-0 pb-1">
+                          <p className="label-caps text-outline dark:text-slate-500 mb-0.5">{formatRelativeTime(activity.timestamp)}</p>
+                          <p className="text-xs text-on-surface-variant dark:text-slate-400 leading-relaxed font-body">
+                            {activity.title}: {activity.description} at{" "}
+                            <strong className="font-bold text-on-surface dark:text-slate-100">{activity.associationName}</strong>
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </section>
         </div>

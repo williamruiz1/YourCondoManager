@@ -46,3 +46,60 @@ Recent history uses short, summary-style subjects such as `Add full condo proper
 
 ## Configuration Tips
 `DATABASE_URL` is required for local startup and Drizzle commands. Do not commit secrets, generated `dist/` assets, or local upload data from `uploads/`.
+<!-- PPM:START v1 -->
+# Pocket PM Protocol (auto-generated, do not edit)
+
+This repo is managed by **pocketp.m.** All agents working in this repo MUST
+follow the loop below. This section is regenerated on every `ppm relink`.
+
+Product: **YourCondoManager (YCM)** (`1e2da109-f6f6-431c-8dc0-f61b548a1b83`)
+Server: https://pocketpm.fly.dev · Schema 1.0.0
+
+## The Loop
+
+1. `mcp__pocketpm__ppm_bootstrap` — always your first call
+2. `mcp__pocketpm__ppm_checkpoint_start` — before each work burst
+3. Do work
+4. `mcp__pocketpm__ppm_checkpoint_end` — automatically syncs
+5. `mcp__pocketpm__ppm_session_end` — before you stop
+
+## Tool Preference (MANDATORY)
+
+- Use `mcp__pocketpm__*` MCP tools for ALL PM state. They are your native interface.
+- Do NOT shell out to `ppm` unless you have no MCP access
+- Do NOT create static feature-map docs and treat them as canonical
+- Do NOT read `.pocketpm/CONTEXT.md` as a source of truth
+- Do NOT read `.pocketpm/CONTEXT.md` as a source of truth — it is a regenerable cache.
+- Do NOT create static feature-map docs and treat them as canonical.
+- The pocketp.m. server tree is the only source of truth for feature status.
+
+## Blockers
+
+The moment you catch yourself writing "deferred for PM", "parked", "waiting for
+user approval", "blocked on", or "need credentials":
+- File a Human Task via `mcp__pocketpm__ppm_human_task_create`
+- OR call `mcp__pocketpm__ppm_acknowledge_no_blockers` if it was a false positive
+
+Do not bury blockers in commit messages or handoff docs.
+
+## Protocol Directives
+
+### loop-order
+
+Every session follows this order:
+
+1. `ppm_bootstrap` — fetch live PM state (tasks, blockers, tree)
+2. `ppm_checkpoint_start` — open a named work burst before editing
+3. (do the work)
+4. `ppm_checkpoint_end` — automatically syncs; runs blocker scan
+5. `ppm_session_end` — required before you stop
+
+### tool-preference
+
+Always prefer `mcp__pocketpm__*` tools. The shell `ppm` CLI exists for humans, not agents.
+
+### context-staleness
+
+`.pocketpm/CONTEXT.md` is a regenerable cache with a STALE AFTER header. Never treat it as canonical.
+
+<!-- PPM:END v1 -->

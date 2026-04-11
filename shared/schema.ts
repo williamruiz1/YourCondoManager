@@ -2709,3 +2709,58 @@ export const hubMapIssues = pgTable("hub_map_issues", {
 export type HubMapIssue = typeof hubMapIssues.$inferSelect;
 export type InsertHubMapIssue = typeof hubMapIssues.$inferInsert;
 export const insertHubMapIssueSchema = createInsertSchema(hubMapIssues);
+
+// ── Amenity Booking System ────────────────────────────────────────────────────
+
+export const amenities = pgTable("amenities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category").notNull().default("general"),
+  capacity: integer("capacity"),
+  bookingWindowDays: integer("booking_window_days").notNull().default(30),
+  minDurationMinutes: integer("min_duration_minutes").notNull().default(30),
+  maxDurationMinutes: integer("max_duration_minutes").notNull().default(240),
+  requiresApproval: integer("requires_approval").notNull().default(0),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type Amenity = typeof amenities.$inferSelect;
+export type InsertAmenity = typeof amenities.$inferInsert;
+export const insertAmenitySchema = createInsertSchema(amenities);
+
+export const amenityReservationStatusEnum = pgEnum("amenity_reservation_status", ["pending", "approved", "rejected", "cancelled"]);
+
+export const amenityReservations = pgTable("amenity_reservations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  amenityId: varchar("amenity_id").notNull().references(() => amenities.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  startAt: timestamp("start_at").notNull(),
+  endAt: timestamp("end_at").notNull(),
+  status: amenityReservationStatusEnum("status").notNull().default("pending"),
+  notes: text("notes"),
+  approvedBy: varchar("approved_by").references(() => persons.id),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type AmenityReservation = typeof amenityReservations.$inferSelect;
+export type InsertAmenityReservation = typeof amenityReservations.$inferInsert;
+export const insertAmenityReservationSchema = createInsertSchema(amenityReservations);
+
+export const amenityBlocks = pgTable("amenity_blocks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  amenityId: varchar("amenity_id").notNull().references(() => amenities.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  startAt: timestamp("start_at").notNull(),
+  endAt: timestamp("end_at").notNull(),
+  reason: text("reason"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type AmenityBlock = typeof amenityBlocks.$inferSelect;
+export type InsertAmenityBlock = typeof amenityBlocks.$inferInsert;
+export const insertAmenityBlockSchema = createInsertSchema(amenityBlocks);

@@ -8,6 +8,13 @@
       "when": 1774713769322,
       "tag": "0000_silent_mentor",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775880344622,
+      "tag": "0001_amenity_booking",
+      "breakpoints": true
     }
   ]
 }
