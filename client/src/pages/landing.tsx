@@ -223,7 +223,9 @@ const personaLabels: Record<Persona, string> = {
 };
 
 export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }: LandingPageProps) {
-  const [persona, setPersona] = useState<Persona>("manager");
+  // Default to "board" — Track 1 outreach targets self-managed volunteer boards.
+  // Property Manager (Track 2) is secondary and can self-select via the toggle.
+  const [persona, setPersona] = useState<Persona>("board");
   const [animating, setAnimating] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -408,7 +410,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           <div className="max-w-7xl mx-auto px-8 flex flex-col md:flex-row items-center justify-center gap-6">
             <span id="persona-toggle-label" className="font-label text-sm font-bold text-on-surface-variant uppercase tracking-widest">Tailored for you:</span>
             <div role="group" aria-labelledby="persona-toggle-label" className="flex p-1 bg-surface-container-high rounded-lg border border-outline-variant/20">
-              {(["manager", "board", "resident"] as Persona[]).map((p) => (
+              {(["board", "manager", "resident"] as Persona[]).map((p) => (
                 <button
                   key={p}
                   onClick={() => switchPersona(p)}
