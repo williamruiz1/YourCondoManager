@@ -39,8 +39,8 @@ const PLANS: Record<
 > = {
   "self-managed": {
     name: "Self-Managed",
-    price: "$99/mo",
-    tagline: "For independent Boards & HOAs",
+    price: "From $30/mo",
+    tagline: "For self-managed Boards & Condo Associations",
     features: [
       "Single Association Portal",
       "Maintenance Request Tool",
@@ -52,7 +52,7 @@ const PLANS: Record<
   },
   "property-manager": {
     name: "Property Manager",
-    price: "$449/mo",
+    price: "$450/mo",
     tagline: "For growing management firms",
     features: [
       "Manage 5–10 Associations",
@@ -77,10 +77,10 @@ const PLANS: Record<
   },
 };
 
+// Canonical pricing: under 30 units → $30/mo, 30+ units → $50/mo
 const SELF_MANAGED_TIERS = [
-  { label: "1–25 units", min: 1, max: 25, price: "$99/mo" },
-  { label: "26–75 units", min: 26, max: 75, price: "$149/mo" },
-  { label: "76+ units", min: 76, max: Infinity, price: "$199/mo" },
+  { label: "Under 30 units", min: 1, max: 29, price: "$30/mo" },
+  { label: "30 units or more", min: 30, max: Infinity, price: "$50/mo" },
 ];
 
 function getSelfManagedTier(unitCount: number) {
@@ -115,7 +115,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 // ── Left panel ────────────────────────────────────────────────────────────────
 
-function PlanPanel({ planKey }: { planKey: PlanKey }) {
+function PlanPanel({ planKey, resolvedPrice }: { planKey: PlanKey; resolvedPrice?: string }) {
   const plan = PLANS[planKey];
 
   return (
@@ -135,7 +135,7 @@ function PlanPanel({ planKey }: { planKey: PlanKey }) {
         <h2 className="font-headline text-5xl font-bold leading-tight mb-2">
           {plan.name}
         </h2>
-        <p className="font-headline text-3xl opacity-90 mb-8">{plan.price}</p>
+        <p className="font-headline text-3xl opacity-90 mb-8">{resolvedPrice ?? plan.price}</p>
 
         <ul className="space-y-3.5">
           {plan.features.map((feature) => (
@@ -332,7 +332,7 @@ export default function PlanSignupPage() {
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
       {/* Left — plan summary */}
       <div className="hidden lg:block">
-        <PlanPanel planKey={planKey} />
+        <PlanPanel planKey={planKey} resolvedPrice={tier?.price} />
       </div>
 
       {/* Right — form */}
