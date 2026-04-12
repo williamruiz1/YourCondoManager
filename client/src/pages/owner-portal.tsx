@@ -256,6 +256,8 @@ export default function OwnerPortalPage() {
   const [workspaceDefaultAppliedForAccessId, setWorkspaceDefaultAppliedForAccessId] = useState<string | null>(null);
   const [boardActivityFilter, setBoardActivityFilter] = useState<"all" | "governance" | "financial" | "communications" | "operations" | "access">("all");
   const [activeTab, setActiveTab] = useState<"overview" | "financials" | "documents" | "maintenance" | "notices" | "communications" | "elections">("overview");
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<"all" | "payment" | "charge" | "assessment" | "late-fee" | "credit" | "adjustment">("all");
+  const [historyLimit, setHistoryLimit] = useState(20);
   const [overviewSubtab, setOverviewSubtab] = useState<"summary" | "owner-info" | "occupancy">("summary");
   const [ownedUnitFocusId, setOwnedUnitFocusId] = useState("");
   const [selectedElectionId, setSelectedElectionId] = useState<string | null>(null);
@@ -2154,6 +2156,148 @@ export default function OwnerPortalPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Payment History */}
+              {(() => {
+                const allEntries = (portalLedger?.entries ?? []);
+                const sorted = [...allEntries].sort(
+                  (a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime()
+                );
+                const filtered = historyTypeFilter === "all"
+                  ? sorted
+                  : sorted.filter((e) => e.entryType === historyTypeFilter);
+                const visible = filtered.slice(0, historyLimit);
+                const hasMore = filtered.length > historyLimit;
+
+                const entryTypeLabel = (t: string) => {
+                  const map: Record<string, string> = {
+                    charge: "Charge",
+                    assessment: "Assessment",
+                    payment: "Payment",
+                    "late-fee": "Late Fee",
+                    credit: "Credit",
+                    adjustment: "Adjustment",
+                  };
+                  return map[t] ?? t;
+                };
+
+                const entryBadgeVariant = (t: string): "default" | "secondary" | "outline" | "destructive" => {
+                  if (t === "payment" || t === "credit") return "secondary";
+                  if (t === "late-fee") return "destructive";
+                  if (t === "assessment" || t === "charge") return "default";
+                  return "outline";
+                };
+
+                const amountDisplay = (entry: OwnerLedgerEntry) => {
+                  const isCredit = entry.entryType === "payment" || entry.entryType === "credit";
+                  const sign = isCredit ? "−" : "+";
+                  const colorClass = isCredit ? "text-secondary" : "text-destructive";
+                  return <span className={`font-bold text-sm tabular-nums ${colorClass}`}>{sign} ${Math.abs(entry.amount).toFixed(2)}</span>;
+                };
+
+                return (
+                  <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                      <div>
+                        <h3 className="font-headline text-lg">Payment History</h3>
+                        <p className="text-xs text-on-surface-variant mt-0.5">
+                          {filtered.length} {historyTypeFilter === "all" ? "total" : entryTypeLabel(historyTypeFilter).toLowerCase()} entr{filtered.length === 1 ? "y" : "ies"}
+                        </p>
+                      </div>
+                      <Select
+                        value={historyTypeFilter}
+                        onValueChange={(v) => {
+                          setHistoryTypeFilter(v as typeof historyTypeFilter);
+                          setHistoryLimit(20);
+                        }}
+                      >
+                        <SelectTrigger className="w-full sm:w-44 text-sm">
+                          <SelectValue placeholder="Filter by type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All activity</SelectItem>
+                          <SelectItem value="payment">Payments</SelectItem>
+                          <SelectItem value="charge">Charges</SelectItem>
+                          <SelectItem value="assessment">Assessments</SelectItem>
+                          <SelectItem value="late-fee">Late Fees</SelectItem>
+                          <SelectItem value="credit">Credits</SelectItem>
+                          <SelectItem value="adjustment">Adjustments</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {visible.length === 0 ? (
+                      <div className="text-center py-10 space-y-1">
+                        <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">receipt_long</span>
+                        <p className="text-sm text-on-surface-variant">
+                          {historyTypeFilter === "all" ? "No transactions yet" : `No ${entryTypeLabel(historyTypeFilter).toLowerCase()} entries`}
+                        </p>
+                      </div>
+                    ) : isMobile ? (
+                      <div className="space-y-3">
+                        {visible.map((entry) => (
+                          <div key={entry.id} className="p-4 bg-surface rounded-xl border border-outline-variant/10 flex justify-between items-start gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant={entryBadgeVariant(entry.entryType)} className="text-xs shrink-0">
+                                  {entryTypeLabel(entry.entryType)}
+                                </Badge>
+                              </div>
+                              <p className="text-sm font-medium mt-1 leading-snug">{entry.description ?? "—"}</p>
+                              <p className="text-xs text-on-surface-variant mt-0.5">
+                                {new Date(entry.postedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              {amountDisplay(entry)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">Date</TableHead>
+                            <TableHead className="text-xs">Type</TableHead>
+                            <TableHead className="text-xs">Description</TableHead>
+                            <TableHead className="text-xs text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {visible.map((entry) => (
+                            <TableRow key={entry.id}>
+                              <TableCell className="text-sm text-on-surface-variant whitespace-nowrap">
+                                {new Date(entry.postedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={entryBadgeVariant(entry.entryType)} className="text-xs">
+                                  {entryTypeLabel(entry.entryType)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm">{entry.description ?? "—"}</TableCell>
+                              <TableCell className="text-right">{amountDisplay(entry)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+
+                    {hasMore && (
+                      <div className="mt-4 text-center">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setHistoryLimit((prev) => prev + 20)}
+                        >
+                          Load more ({filtered.length - historyLimit} remaining)
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
             </div>
           )}
 
