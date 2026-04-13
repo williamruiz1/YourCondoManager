@@ -16,7 +16,7 @@ import {
 } from "./admin-notification-service";
 import { processSpecialAssessmentInstallments } from "./assessment-installments";
 import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
-import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, notInArray, or, sql, sum } from "drizzle-orm";
 import {
   getEmailLog,
   getEmailLogs,
@@ -58,6 +58,9 @@ import {
   insertBudgetLineSchema,
   insertBudgetSchema,
   insertBudgetVersionSchema,
+  budgets,
+  budgetVersions,
+  budgetLines,
   insertFinancialAccountSchema,
   insertFinancialCategorySchema,
   insertGovernanceComplianceTemplateSchema,
@@ -5086,6 +5089,278 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req as AdminRequest, getParam(req.params.associationId));
       const result = await storage.getOwnerLedgerSummary(getParam(req.params.associationId));
       res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/financial/reports/profit-loss?startDate&endDate&associationId
+  app.get("/api/financial/reports/profit-loss", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+
+      const startDateParam = typeof req.query.startDate === "string" ? req.query.startDate : null;
+      const endDateParam = typeof req.query.endDate === "string" ? req.query.endDate : null;
+      const startDate = startDateParam ? new Date(startDateParam) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      const endDate = endDateParam ? new Date(endDateParam) : new Date();
+
+      const conditions = [
+        eq(ownerLedgerEntries.associationId, associationId),
+        gte(ownerLedgerEntries.postedAt, startDate),
+        lte(ownerLedgerEntries.postedAt, endDate),
+      ];
+
+      const entries = await db.select().from(ownerLedgerEntries).where(and(...conditions));
+
+      // Income: payments received and credits
+      const incomeEntries = entries.filter(e => e.entryType === "payment" || e.entryType === "credit");
+      // Expenses/adjustments: credits, adjustments that reduce income
+      const expenseEntries = entries.filter(e => e.entryType === "adjustment");
+
+      const incomeByCategory: Record<string, number> = {};
+      for (const e of incomeEntries) {
+        const key = e.entryType;
+        incomeByCategory[key] = (incomeByCategory[key] ?? 0) + Math.abs(e.amount);
+      }
+
+      const expenseByCategory: Record<string, number> = {};
+      for (const e of expenseEntries) {
+        const key = e.entryType;
+        expenseByCategory[key] = (expenseByCategory[key] ?? 0) + Math.abs(e.amount);
+      }
+
+      const totalIncome = Object.values(incomeByCategory).reduce((s, v) => s + v, 0);
+      const totalExpenses = Object.values(expenseByCategory).reduce((s, v) => s + v, 0);
+      const net = totalIncome - totalExpenses;
+
+      // Budget comparison: find ratified budget version overlapping the period
+      const assocBudgets = await db.select().from(budgets)
+        .where(and(
+          eq(budgets.associationId, associationId),
+          lte(budgets.periodStart, endDate),
+          gte(budgets.periodEnd, startDate),
+        ));
+
+      let budgetComparison: { planned: number; actual: number; variance: number } = { planned: 0, actual: totalIncome, variance: totalIncome };
+
+      if (assocBudgets.length > 0) {
+        const budgetIds = assocBudgets.map(b => b.id);
+        const versions = await db.select().from(budgetVersions)
+          .where(and(inArray(budgetVersions.budgetId, budgetIds), sql`${budgetVersions.status} = 'ratified'`))
+          .orderBy(desc(budgetVersions.versionNumber))
+          .limit(1);
+
+        if (versions.length > 0) {
+          const lines = await db.select().from(budgetLines).where(eq(budgetLines.budgetVersionId, versions[0].id));
+          const totalPlanned = lines.reduce((s, l) => s + l.plannedAmount, 0);
+          budgetComparison = { planned: totalPlanned, actual: totalIncome, variance: totalIncome - totalPlanned };
+        }
+      }
+
+      res.json({
+        income: {
+          total: totalIncome,
+          byCategory: Object.entries(incomeByCategory).map(([category, amount]) => ({ category, amount })),
+        },
+        expenses: {
+          total: totalExpenses,
+          byCategory: Object.entries(expenseByCategory).map(([category, amount]) => ({ category, amount })),
+        },
+        net,
+        budgetComparison,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/financial/reports/ar-aging?associationId
+  app.get("/api/financial/reports/ar-aging", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+
+      const now = new Date();
+
+      // Get all charge/assessment/late-fee entries
+      const chargeEntries = await db.select().from(ownerLedgerEntries).where(and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        inArray(ownerLedgerEntries.entryType, ["charge", "assessment", "late-fee"]),
+      ));
+
+      // Get all payment/credit entries to compute net balance per unit
+      const paymentEntries = await db.select().from(ownerLedgerEntries).where(and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        inArray(ownerLedgerEntries.entryType, ["payment", "credit", "adjustment"]),
+      ));
+
+      // Get unit info
+      const unitList = await db.select({ id: units.id, unitNumber: units.unitNumber }).from(units)
+        .where(eq(units.associationId, associationId));
+      const unitMap: Record<string, string> = {};
+      for (const u of unitList) unitMap[u.id] = u.unitNumber;
+
+      // Group charges by unit
+      const unitCharges: Record<string, { amount: number; postedAt: Date }[]> = {};
+      for (const e of chargeEntries) {
+        if (!unitCharges[e.unitId]) unitCharges[e.unitId] = [];
+        unitCharges[e.unitId].push({ amount: e.amount, postedAt: e.postedAt });
+      }
+
+      // Total payments/credits per unit
+      const unitPayments: Record<string, number> = {};
+      for (const e of paymentEntries) {
+        unitPayments[e.unitId] = (unitPayments[e.unitId] ?? 0) + Math.abs(e.amount);
+      }
+
+      // Buckets per unit
+      const buckets = { current: 0, days30: 0, days60: 0, days90: 0, days120plus: 0 };
+      const byUnit: { unitId: string; unitNumber: string; current: number; days30: number; days60: number; days90: number; days120plus: number; total: number }[] = [];
+
+      let summaryTotal = 0;
+      const summaryCurrent = { ...buckets };
+
+      for (const [unitId, charges] of Object.entries(unitCharges)) {
+        // Compute remaining balance: total charges minus payments
+        const totalCharged = charges.reduce((s, c) => s + c.amount, 0);
+        const totalPaid = unitPayments[unitId] ?? 0;
+        const outstanding = totalCharged - totalPaid;
+
+        if (outstanding <= 0) continue; // no balance due
+
+        // Distribute outstanding across aging buckets based on charge dates (oldest first)
+        const sortedCharges = [...charges].sort((a, b) => new Date(a.postedAt).getTime() - new Date(b.postedAt).getTime());
+        let remaining = outstanding;
+        const unitBuckets = { current: 0, days30: 0, days60: 0, days90: 0, days120plus: 0 };
+
+        for (const charge of sortedCharges) {
+          if (remaining <= 0) break;
+          const ageMs = now.getTime() - new Date(charge.postedAt).getTime();
+          const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24));
+          const chargeRemaining = Math.min(charge.amount, remaining);
+
+          if (ageDays <= 30) unitBuckets.current += chargeRemaining;
+          else if (ageDays <= 60) unitBuckets.days30 += chargeRemaining;
+          else if (ageDays <= 90) unitBuckets.days60 += chargeRemaining;
+          else if (ageDays <= 120) unitBuckets.days90 += chargeRemaining;
+          else unitBuckets.days120plus += chargeRemaining;
+
+          remaining -= chargeRemaining;
+        }
+
+        const unitTotal = unitBuckets.current + unitBuckets.days30 + unitBuckets.days60 + unitBuckets.days90 + unitBuckets.days120plus;
+        byUnit.push({ unitId, unitNumber: unitMap[unitId] ?? unitId, ...unitBuckets, total: unitTotal });
+
+        summaryCurrent.current += unitBuckets.current;
+        summaryCurrent.days30 += unitBuckets.days30;
+        summaryCurrent.days60 += unitBuckets.days60;
+        summaryCurrent.days90 += unitBuckets.days90;
+        summaryCurrent.days120plus += unitBuckets.days120plus;
+        summaryTotal += unitTotal;
+      }
+
+      byUnit.sort((a, b) => b.total - a.total);
+
+      res.json({
+        summary: { ...summaryCurrent, total: summaryTotal },
+        byUnit,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/financial/reports/board-summary?month&year&associationId
+  app.get("/api/financial/reports/board-summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+
+      const now = new Date();
+      const month = parseInt(typeof req.query.month === "string" ? req.query.month : String(now.getMonth() + 1));
+      const year = parseInt(typeof req.query.year === "string" ? req.query.year : String(now.getFullYear()));
+
+      const periodStart = new Date(year, month - 1, 1);
+      const periodEnd = new Date(year, month, 0, 23, 59, 59);
+
+      const monthEntries = await db.select().from(ownerLedgerEntries).where(and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        gte(ownerLedgerEntries.postedAt, periodStart),
+        lte(ownerLedgerEntries.postedAt, periodEnd),
+      ));
+
+      const assessmentsBilled = monthEntries
+        .filter(e => e.entryType === "charge" || e.entryType === "assessment")
+        .reduce((s, e) => s + e.amount, 0);
+
+      const paymentsReceived = monthEntries
+        .filter(e => e.entryType === "payment")
+        .reduce((s, e) => s + Math.abs(e.amount), 0);
+
+      const collectionRate = assessmentsBilled > 0 ? Math.min(100, (paymentsReceived / assessmentsBilled) * 100) : 100;
+      const totalOutstanding = Math.max(0, assessmentsBilled - paymentsReceived);
+
+      // Delinquent units: units with net balance < 0 as of end of month
+      const allEntries = await db.select({
+        unitId: ownerLedgerEntries.unitId,
+        entryType: ownerLedgerEntries.entryType,
+        amount: ownerLedgerEntries.amount,
+      }).from(ownerLedgerEntries).where(and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        lte(ownerLedgerEntries.postedAt, periodEnd),
+      ));
+
+      const unitBalances: Record<string, number> = {};
+      for (const e of allEntries) {
+        if (!unitBalances[e.unitId]) unitBalances[e.unitId] = 0;
+        if (e.entryType === "charge" || e.entryType === "assessment" || e.entryType === "late-fee") {
+          unitBalances[e.unitId] += e.amount;
+        } else if (e.entryType === "payment" || e.entryType === "credit") {
+          unitBalances[e.unitId] -= Math.abs(e.amount);
+        } else if (e.entryType === "adjustment") {
+          unitBalances[e.unitId] += e.amount;
+        }
+      }
+
+      const delinquentUnits = Object.values(unitBalances).filter(b => b > 0).length;
+
+      // Budget utilization: find ratified budget covering this month
+      let budgetUtilization: number | null = null;
+
+      const assocBudgets = await db.select().from(budgets).where(and(
+        eq(budgets.associationId, associationId),
+        lte(budgets.periodStart, periodEnd),
+        gte(budgets.periodEnd, periodStart),
+      ));
+
+      if (assocBudgets.length > 0) {
+        const budgetIds = assocBudgets.map(b => b.id);
+        const versions = await db.select().from(budgetVersions)
+          .where(and(inArray(budgetVersions.budgetId, budgetIds), sql`${budgetVersions.status} = 'ratified'`))
+          .orderBy(desc(budgetVersions.versionNumber))
+          .limit(1);
+
+        if (versions.length > 0) {
+          const lines = await db.select().from(budgetLines).where(eq(budgetLines.budgetVersionId, versions[0].id));
+          const totalPlanned = lines.reduce((s, l) => s + l.plannedAmount, 0);
+          if (totalPlanned > 0) {
+            budgetUtilization = Math.round((paymentsReceived / totalPlanned) * 100);
+          }
+        }
+      }
+
+      res.json({
+        assessmentsBilled,
+        paymentsReceived,
+        collectionRate: Math.round(collectionRate * 10) / 10,
+        totalOutstanding,
+        delinquentUnits,
+        budgetUtilization,
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

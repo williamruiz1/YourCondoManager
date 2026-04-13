@@ -807,6 +807,434 @@ export function FinancialReportsContent() {
   );
 }
 
+// ─── Server-backed Financial Summary Reports ──────────────────────────────────
+
+type ProfitLossData = {
+  income: { total: number; byCategory: { category: string; amount: number }[] };
+  expenses: { total: number; byCategory: { category: string; amount: number }[] };
+  net: number;
+  budgetComparison: { planned: number; actual: number; variance: number };
+};
+
+type ArAgingData = {
+  summary: { current: number; days30: number; days60: number; days90: number; days120plus: number; total: number };
+  byUnit: { unitId: string; unitNumber: string; current: number; days30: number; days60: number; days90: number; days120plus: number; total: number }[];
+};
+
+type BoardSummaryData = {
+  assessmentsBilled: number;
+  paymentsReceived: number;
+  collectionRate: number;
+  totalOutstanding: number;
+  delinquentUnits: number;
+  budgetUtilization: number | null;
+};
+
+const SUMMARY_PERIODS = [
+  { label: "Last 30 days", days: 30 },
+  { label: "Last 90 days", days: 90 },
+  { label: "Last 6 months", days: 180 },
+  { label: "Last 12 months", days: 365 },
+];
+
+function ProfitLossTab({ associationId }: { associationId: string }) {
+  const [periodDays, setPeriodDays] = useState(90);
+
+  const endDate = new Date();
+  const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+
+  const query = useQuery<ProfitLossData>({
+    queryKey: ["/api/financial/reports/profit-loss", associationId, periodDays],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        associationId,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      });
+      const res = await apiRequest("GET", `/api/financial/reports/profit-loss?${params}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const data = query.data;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v))}>
+          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {SUMMARY_PERIODS.map((p) => (
+              <SelectItem key={p.days} value={String(p.days)}>{p.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {query.isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}><CardContent className="space-y-3 pt-6"><Skeleton className="h-4 w-24" /><Skeleton className="h-8 w-32" /></CardContent></Card>
+          ))}
+        </div>
+      ) : data ? (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Total Income</p>
+                <p className="text-2xl font-bold text-green-700">{formatCurrency(data.income.total)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Payments &amp; credits received</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Total Expenses</p>
+                <p className="text-2xl font-bold">{formatCurrency(data.expenses.total)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Adjustments posted</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Net</p>
+                <p className={cn("text-2xl font-bold", data.net >= 0 ? "text-green-700" : "text-red-600")}>
+                  {formatCurrency(data.net)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Budget Variance</p>
+                <p className={cn("text-2xl font-bold", data.budgetComparison.variance >= 0 ? "text-green-700" : "text-red-600")}>
+                  {formatCurrency(data.budgetComparison.variance)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">vs {formatCurrency(data.budgetComparison.planned)} planned</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Income Breakdown</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Category</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.income.byCategory.map((row) => (
+                      <TableRow key={row.category}>
+                        <TableCell className="capitalize">{row.category.replace(/-/g, " ")}</TableCell>
+                        <TableCell className="text-right font-medium text-green-700">{formatCurrency(row.amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {data.income.byCategory.length === 0 && (
+                      <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground py-6">No income entries</TableCell></TableRow>
+                    )}
+                    <TableRow className="font-semibold border-t">
+                      <TableCell>Total Income</TableCell>
+                      <TableCell className="text-right text-green-700">{formatCurrency(data.income.total)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Budget vs Actual</CardTitle></CardHeader>
+              <CardContent>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Planned (Budget)</span>
+                    <span className="font-medium">{formatCurrency(data.budgetComparison.planned)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Actual (Received)</span>
+                    <span className="font-medium text-green-700">{formatCurrency(data.budgetComparison.actual)}</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-3 font-semibold">
+                    <span>Variance</span>
+                    <span className={data.budgetComparison.variance >= 0 ? "text-green-700" : "text-red-600"}>
+                      {data.budgetComparison.variance >= 0 ? "+" : ""}{formatCurrency(data.budgetComparison.variance)}
+                    </span>
+                  </div>
+                  {data.budgetComparison.planned === 0 && (
+                    <p className="text-xs text-muted-foreground pt-1">No ratified budget found for this period.</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">Failed to load P&amp;L data.</p>
+      )}
+    </div>
+  );
+}
+
+function ArAgingTab({ associationId }: { associationId: string }) {
+  const query = useQuery<ArAgingData>({
+    queryKey: ["/api/financial/reports/ar-aging", associationId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/financial/reports/ar-aging?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const data = query.data;
+
+  return (
+    <div className="space-y-4">
+      {query.isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i}><CardContent className="space-y-3 pt-6"><Skeleton className="h-4 w-16" /><Skeleton className="h-8 w-24" /></CardContent></Card>
+          ))}
+        </div>
+      ) : data ? (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Current (0–30 days)</p>
+                <p className="text-2xl font-bold text-green-700">{formatCurrency(data.summary.current)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">31–60 days</p>
+                <p className={cn("text-2xl font-bold", data.summary.days30 > 0 ? "text-amber-600" : "text-green-700")}>{formatCurrency(data.summary.days30)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">61–90 days</p>
+                <p className={cn("text-2xl font-bold", data.summary.days60 > 0 ? "text-orange-600" : "text-green-700")}>{formatCurrency(data.summary.days60)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">91–120 days</p>
+                <p className={cn("text-2xl font-bold", data.summary.days90 > 0 ? "text-red-600" : "text-green-700")}>{formatCurrency(data.summary.days90)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">120+ days</p>
+                <p className={cn("text-2xl font-bold", data.summary.days120plus > 0 ? "text-red-700" : "text-green-700")}>{formatCurrency(data.summary.days120plus)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Total Outstanding</p>
+                <p className={cn("text-2xl font-bold", data.summary.total > 0 ? "text-red-600" : "text-green-700")}>{formatCurrency(data.summary.total)}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">AR Aging by Unit</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Unit</TableHead>
+                    <TableHead className="text-right">Current</TableHead>
+                    <TableHead className="text-right">31–60</TableHead>
+                    <TableHead className="text-right">61–90</TableHead>
+                    <TableHead className="text-right">91–120</TableHead>
+                    <TableHead className="text-right">120+</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.byUnit.map((row) => (
+                    <TableRow key={row.unitId}>
+                      <TableCell className="font-medium">{row.unitNumber}</TableCell>
+                      <TableCell className="text-right">{row.current > 0 ? formatCurrency(row.current) : "—"}</TableCell>
+                      <TableCell className="text-right">{row.days30 > 0 ? formatCurrency(row.days30) : "—"}</TableCell>
+                      <TableCell className="text-right">{row.days60 > 0 ? formatCurrency(row.days60) : "—"}</TableCell>
+                      <TableCell className="text-right">{row.days90 > 0 ? formatCurrency(row.days90) : "—"}</TableCell>
+                      <TableCell className="text-right">{row.days120plus > 0 ? formatCurrency(row.days120plus) : "—"}</TableCell>
+                      <TableCell className="text-right font-semibold text-red-600">{formatCurrency(row.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {data.byUnit.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        No outstanding balances found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">Failed to load AR aging data.</p>
+      )}
+    </div>
+  );
+}
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function BoardSummaryTab({ associationId }: { associationId: string }) {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+
+  const query = useQuery<BoardSummaryData>({
+    queryKey: ["/api/financial/reports/board-summary", associationId, month, year],
+    queryFn: async () => {
+      const params = new URLSearchParams({ associationId, month: String(month), year: String(year) });
+      const res = await apiRequest("GET", `/api/financial/reports/board-summary?${params}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const data = query.data;
+  const yearOptions = Array.from({ length: 5 }, (_, i) => now.getFullYear() - i);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {MONTHS.map((m, i) => (
+              <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+          <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {yearOptions.map((y) => (
+              <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {query.isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i}><CardContent className="space-y-3 pt-6"><Skeleton className="h-4 w-24" /><Skeleton className="h-8 w-32" /></CardContent></Card>
+          ))}
+        </div>
+      ) : data ? (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Assessments Billed</p>
+                <p className="text-2xl font-bold">{formatCurrency(data.assessmentsBilled)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Charges &amp; assessments posted</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Payments Received</p>
+                <p className="text-2xl font-bold text-green-700">{formatCurrency(data.paymentsReceived)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Collection Rate</p>
+                <p className={cn("text-2xl font-bold", data.collectionRate >= 90 ? "text-green-700" : data.collectionRate >= 70 ? "text-amber-600" : "text-red-600")}>
+                  {data.collectionRate.toFixed(1)}%
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Outstanding Balance</p>
+                <p className={cn("text-2xl font-bold", data.totalOutstanding > 0 ? "text-red-600" : "text-green-700")}>
+                  {formatCurrency(data.totalOutstanding)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Delinquent Units</p>
+                <p className={cn("text-2xl font-bold", data.delinquentUnits > 0 ? "text-red-600" : "text-green-700")}>
+                  {data.delinquentUnits}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Units with balance due</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Budget Utilization</p>
+                {data.budgetUtilization !== null ? (
+                  <>
+                    <p className={cn("text-2xl font-bold", data.budgetUtilization >= 80 ? "text-green-700" : data.budgetUtilization >= 50 ? "text-amber-600" : "text-red-600")}>
+                      {data.budgetUtilization}%
+                    </p>
+                    <div className="mt-2 h-2 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={cn("h-full rounded-full", data.budgetUtilization >= 80 ? "bg-green-500" : data.budgetUtilization >= 50 ? "bg-amber-500" : "bg-red-500")}
+                        style={{ width: `${Math.min(100, data.budgetUtilization)}%` }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground mt-1">No ratified budget</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">Failed to load board summary data.</p>
+      )}
+    </div>
+  );
+}
+
+function FinancialSummaryReports() {
+  const { activeAssociationId } = useActiveAssociation();
+
+  if (!activeAssociationId) {
+    return (
+      <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+        Select an association to view financial summary reports.
+      </div>
+    );
+  }
+
+  return (
+    <Tabs defaultValue="pl" className="space-y-4">
+      <TabsList>
+        <TabsTrigger value="pl">P&amp;L Statement</TabsTrigger>
+        <TabsTrigger value="ar-aging">AR Aging</TabsTrigger>
+        <TabsTrigger value="board">Board Summary</TabsTrigger>
+      </TabsList>
+      <TabsContent value="pl" className="mt-0">
+        <ProfitLossTab associationId={activeAssociationId} />
+      </TabsContent>
+      <TabsContent value="ar-aging" className="mt-0">
+        <ArAgingTab associationId={activeAssociationId} />
+      </TabsContent>
+      <TabsContent value="board" className="mt-0">
+        <BoardSummaryTab associationId={activeAssociationId} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 export default function FinancialReportsPage() {
   return (
     <div className="flex flex-col min-h-0">
@@ -818,11 +1246,15 @@ export default function FinancialReportsPage() {
           breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Reports" }]}
           subPages={financeSubPages}
         />
-        <Tabs defaultValue="reports" className="space-y-6">
+        <Tabs defaultValue="summary" className="space-y-6">
           <TabsList>
+            <TabsTrigger value="summary">Summary</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
             <TabsTrigger value="reconciliation">Reconciliation</TabsTrigger>
           </TabsList>
+          <TabsContent value="summary" className="mt-0">
+            <FinancialSummaryReports />
+          </TabsContent>
           <TabsContent value="reports" className="mt-0">
             <FinancialReportsContent />
           </TabsContent>
