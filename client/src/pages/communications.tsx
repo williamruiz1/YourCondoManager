@@ -1465,6 +1465,7 @@ export function CommunicationsContent() {
       ) : null}
 
       {workspacePanel === "operations" ? (
+      <>
       <Card>
         <CardContent className="p-6 space-y-4">
           <h2 className="text-lg font-semibold">Targeted Delivery</h2>
@@ -1724,7 +1725,69 @@ export function CommunicationsContent() {
           </div>
         </CardContent>
       </Card>
-      ) : null}
+
+      {/* Push Notification Broadcast */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">Push Notification Broadcast</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Send an instant browser push notification to all subscribed residents for the active association.
+            This is useful for urgent alerts, emergency notices, and time-sensitive announcements.
+          </p>
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm flex items-center">
+            Association Context: <span className="font-medium ml-1">{activeAssociationName || "None selected"}</span>
+          </div>
+          <Input
+            placeholder="Notification title (required)"
+            value={emergencyForm.subject}
+            onChange={(e) => setEmergencyForm((p) => ({ ...p, subject: e.target.value }))}
+          />
+          <Textarea
+            rows={3}
+            placeholder="Notification body (required)"
+            value={emergencyForm.body}
+            onChange={(e) => setEmergencyForm((p) => ({ ...p, body: e.target.value }))}
+          />
+          <Dialog open={emergencyAlertOpen} onOpenChange={setEmergencyAlertOpen}>
+            <DialogTrigger asChild>
+              <Button
+                variant="default"
+                disabled={!emergencyForm.subject.trim() || !emergencyForm.body.trim() || !selectedAssociationId}
+                onClick={() => {
+                  setEmergencyForm((p) => ({ ...p, channelPush: true, channelEmail: false, channelSms: false }));
+                  setEmergencyAlertOpen(true);
+                }}
+              >
+                Send Push Notification
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Confirm Push Broadcast</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 text-sm">
+                <p>This will send a push notification to all subscribed residents in <strong>{activeAssociationName || "the selected association"}</strong>.</p>
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                  <div><span className="text-muted-foreground">Title: </span><strong>{emergencyForm.subject}</strong></div>
+                  <div><span className="text-muted-foreground">Body: </span>{emergencyForm.body}</div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-2">
+                <Button variant="outline" onClick={() => setEmergencyAlertOpen(false)}>Cancel</Button>
+                <Button
+                  onClick={() => sendEmergencyAlert.mutate()}
+                  disabled={sendEmergencyAlert.isPending}
+                >
+                  {sendEmergencyAlert.isPending ? "Sending…" : "Confirm Send"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      </Card>
+      </>) : null}
 
       {workspacePanel === "delivery" ? (
         <>
