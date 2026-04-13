@@ -883,9 +883,16 @@ export default function OwnerPortalPage() {
       if (permission !== "granted") return;
 
       const reg = await navigator.serviceWorker.ready;
+      // Convert VAPID key from base64url to Uint8Array for browser compatibility
+      const padding = '='.repeat((4 - publicKey.length % 4) % 4);
+      const base64 = (publicKey + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: publicKey,
+        applicationServerKey: outputArray,
       });
       const subJson = subscription.toJSON();
       await portalFetch("/api/portal/push/subscribe", {
