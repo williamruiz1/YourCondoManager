@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   Plus, Trash2, ExternalLink, Globe, Settings, FileText, MapPin, Link2,
-  Bell, GripVertical, ChevronUp, ChevronDown, Eye, EyeOff, Calendar, Pin
+  Bell, GripVertical, ChevronUp, ChevronDown, Eye, EyeOff, Calendar, Pin, Building2, Home
 } from "lucide-react";
 
 type HubConfig = {
@@ -86,11 +86,12 @@ const SECTION_LABELS: Record<string, string> = {
   notices: "Notices & Bulletins",
   "quick-actions": "Quick Actions",
   "info-blocks": "Community Info",
+  buildings: "Buildings & Units",
   map: "Infrastructure Map",
   contacts: "Contacts & Key Info",
 };
 
-const ALL_SECTIONS = ["notices", "quick-actions", "info-blocks", "map", "contacts"];
+const ALL_SECTIONS = ["notices", "quick-actions", "info-blocks", "buildings", "map", "contacts"];
 
 export default function CommunityHubPage() {
   const { toast } = useToast();
@@ -349,6 +350,7 @@ export default function CommunityHubPage() {
           <TabsTrigger value="notices"><Bell className="h-4 w-4 mr-1.5" />Notices</TabsTrigger>
           <TabsTrigger value="actions"><Link2 className="h-4 w-4 mr-1.5" />Quick Actions</TabsTrigger>
           <TabsTrigger value="info"><FileText className="h-4 w-4 mr-1.5" />Info Blocks</TabsTrigger>
+          <TabsTrigger value="buildings"><Building2 className="h-4 w-4 mr-1.5" />Buildings</TabsTrigger>
           <TabsTrigger value="map"><MapPin className="h-4 w-4 mr-1.5" />Map</TabsTrigger>
         </TabsList>
 
@@ -713,6 +715,11 @@ export default function CommunityHubPage() {
           </Card>
         </TabsContent>
 
+        {/* Buildings Tab */}
+        <TabsContent value="buildings" className="space-y-4">
+          <BuildingsTab associationId={associationId} />
+        </TabsContent>
+
         {/* Map Tab */}
         <TabsContent value="map" className="space-y-4">
           <Card>
@@ -727,6 +734,104 @@ export default function CommunityHubPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// Buildings display tab — shows auto-populated building and unit data
+function BuildingsTab({ associationId }: { associationId: string }) {
+  const { data: buildingsData, isLoading } = useQuery<{ id: string; name: string; address: string; totalUnits: number | null; notes: string | null }[]>({
+    queryKey: [`/api/buildings?associationId=${associationId}`],
+    enabled: !!associationId,
+  });
+  const { data: unitsData } = useQuery<{ id: string; buildingId: string | null; unitNumber: string; building: string | null }[]>({
+    queryKey: [`/api/units?associationId=${associationId}`],
+    enabled: !!associationId,
+  });
+
+  const unitsByBuilding = (unitsData || []).reduce<Record<string, typeof unitsData>>((acc, unit) => {
+    if (!unit) return acc;
+    const key = unit.buildingId || "__none__";
+    if (!acc[key]) acc[key] = [];
+    acc[key]!.push(unit);
+    return acc;
+  }, {});
+
+  const buildings = buildingsData || [];
+  const unlinked = unitsByBuilding["__none__"] || [];
+
+  if (isLoading) {
+    return <Card><CardContent className="py-8 text-center text-muted-foreground text-sm">Loading buildings...</CardContent></Card>;
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Buildings & Units</CardTitle>
+          <CardDescription>
+            Auto-populated from your Building &amp; Unit Registry. To add or edit buildings, go to{" "}
+            <a href="/app/buildings" className="underline">Building Management</a>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {buildings.length === 0 && unlinked.length === 0 ? (
+            <div className="text-center py-8">
+              <Building2 className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground mb-3">No buildings or units registered for this association yet.</p>
+              <a href="/app/buildings">
+                <Button variant="outline" size="sm">
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  Add Buildings
+                </Button>
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {buildings.map((b) => {
+                const bUnits = unitsByBuilding[b.id] || [];
+                return (
+                  <div key={b.id} className="border rounded-lg p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <Home className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="font-medium">{b.name}</p>
+                          <p className="text-sm text-muted-foreground">{b.address}</p>
+                          {b.notes && <p className="text-xs text-muted-foreground mt-1">{b.notes}</p>}
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="shrink-0">
+                        {bUnits.length} unit{bUnits.length !== 1 ? "s" : ""}
+                      </Badge>
+                    </div>
+                    {bUnits.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {bUnits.map((u) => u && (
+                          <Badge key={u.id} variant="outline" className="text-xs">{u.unitNumber}</Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {unlinked.length > 0 && (
+                <div className="border rounded-lg p-4 border-dashed">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-muted-foreground">Units not assigned to a building</p>
+                    <Badge variant="secondary">{unlinked.length} unit{unlinked.length !== 1 ? "s" : ""}</Badge>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {unlinked.map((u) => u && (
+                      <Badge key={u.id} variant="outline" className="text-xs">{u.unitNumber}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
