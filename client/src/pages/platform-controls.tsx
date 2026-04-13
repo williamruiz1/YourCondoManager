@@ -264,7 +264,7 @@ function VapidConfigCard({ pushProviderStatus }: { pushProviderStatus: any }) {
 
 function PlatformStripeConfigCard() {
   const { toast } = useToast();
-  const [form, setForm] = useState({ secretKey: "", publishableKey: "", webhookSecret: "" });
+  const [form, setForm] = useState({ secretKey: "", publishableKey: "", webhookSecret: "", selfManagedSmallPriceId: "", selfManagedLargePriceId: "", propertyManagerPriceId: "" });
   const [showSecret, setShowSecret] = useState(false);
   const [showWebhook, setShowWebhook] = useState(false);
 
@@ -282,6 +282,19 @@ function PlatformStripeConfigCard() {
       if (form.secretKey.trim()) body.secretKey = form.secretKey.trim();
       if (form.publishableKey.trim()) body.publishableKey = form.publishableKey.trim();
       if (form.webhookSecret.trim()) body.webhookSecret = form.webhookSecret.trim();
+      // Build planPriceIdsJson from the three price-ID fields if any are set
+      const small = form.selfManagedSmallPriceId.trim();
+      const large = form.selfManagedLargePriceId.trim();
+      const pm = form.propertyManagerPriceId.trim();
+      if (small || large || pm) {
+        const priceIds: Record<string, string> = {};
+        if (small) priceIds["self-managed-small"] = small;   // < 30 units → $30/mo
+        if (large) priceIds["self-managed-large"] = large;   // ≥ 30 units → $50/mo
+        if (pm) priceIds["property-manager"] = pm;
+        // Also map the generic "self-managed" key to the small-tier price for backward compat
+        if (small) priceIds["self-managed"] = small;
+        body.planPriceIdsJson = JSON.stringify(priceIds);
+      }
       if (!Object.keys(body).length) throw new Error("Enter at least one field to save.");
       const res = await apiRequest("POST", "/api/platform/billing/configure", body);
       if (!res.ok) throw new Error(await res.text());
@@ -289,7 +302,7 @@ function PlatformStripeConfigCard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/platform/billing/summary"] });
-      setForm({ secretKey: "", publishableKey: "", webhookSecret: "" });
+      setForm({ secretKey: "", publishableKey: "", webhookSecret: "", selfManagedSmallPriceId: "", selfManagedLargePriceId: "", propertyManagerPriceId: "" });
       toast({ title: "Stripe credentials saved" });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -380,10 +393,41 @@ function PlatformStripeConfigCard() {
                 </button>
               </div>
             </div>
+
+            {/* Stripe Price IDs */}
+            <div className="pt-2 pb-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Plan Price IDs <span className="normal-case">(from Stripe Products)</span></p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Self-Managed &lt;30 units <span className="text-muted-foreground">($30/mo)</span></label>
+                <Input
+                  placeholder="price_…"
+                  value={form.selfManagedSmallPriceId}
+                  onChange={(e) => setForm((p) => ({ ...p, selfManagedSmallPriceId: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Self-Managed 30+ units <span className="text-muted-foreground">($50/mo)</span></label>
+                <Input
+                  placeholder="price_…"
+                  value={form.selfManagedLargePriceId}
+                  onChange={(e) => setForm((p) => ({ ...p, selfManagedLargePriceId: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Property Manager <span className="text-muted-foreground">($450/mo)</span></label>
+                <Input
+                  placeholder="price_…"
+                  value={form.propertyManagerPriceId}
+                  onChange={(e) => setForm((p) => ({ ...p, propertyManagerPriceId: e.target.value }))}
+                />
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              Save Stripe Keys
+              Save Stripe Config
             </Button>
           </div>
         </div>
@@ -394,8 +438,8 @@ function PlatformStripeConfigCard() {
             <li>Create your platform Stripe account at stripe.com and copy your API keys above.</li>
             <li>Set up a webhook endpoint in Stripe pointing to <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">/api/webhooks/platform/stripe</code>.</li>
             <li>Enable events: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">checkout.session.completed</code>, <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">customer.subscription.*</code>, <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">invoice.payment_failed</code>.</li>
-            <li>Create products in Stripe for Self-Managed and Property Manager plans with monthly prices.</li>
-            <li>Set <strong>STRIPE_SELF_MANAGED_PRICE_ID</strong> and <strong>STRIPE_PM_PRICE_ID</strong> env vars (or store via secrets store).</li>
+            <li>In Stripe, create products for Self-Managed ($30/mo under 30 units), Self-Managed ($50/mo, 30+ units), and Property Manager ($450/mo). Copy the monthly Price IDs into the fields above and save.</li>
+            <li>Test with a Stripe test-mode key and a test checkout to confirm the full signup flow before going live.</li>
           </ol>
         </div>
       </CardContent>

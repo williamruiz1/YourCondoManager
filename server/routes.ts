@@ -12434,7 +12434,9 @@ This is an automated demo request from the Your Condo Manager website.
   app.get("/api/platform/billing/summary", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
     try {
       const subs = await storage.listPlatformSubscriptions();
-      const planPrice: Record<string, number> = { "self-managed": 99, "property-manager": 449, "enterprise": 0 };
+      // Canonical pricing: self-managed uses two tiers ($30 or $50) — use $30 as the
+      // conservative floor for MRR estimates; actual MRR should be read from Stripe.
+      const planPrice: Record<string, number> = { "self-managed": 30, "property-manager": 450, "enterprise": 0 };
       const active = subs.filter(s => s.status === "active").length;
       const trialing = subs.filter(s => s.status === "trialing").length;
       const pastDue = subs.filter(s => s.status === "past_due").length;
@@ -12480,7 +12482,18 @@ This is an automated demo request from the Your Condo Manager website.
 
       const priceIdsRaw = await getSecret("STRIPE_PLAN_PRICE_IDS", "stripe_plan_price_ids");
       const priceIds = priceIdsRaw ? JSON.parse(priceIdsRaw) as Record<string, string> : {};
-      const priceId = priceIds[plan];
+
+      // For self-managed plan, resolve the two-tier price based on unit count.
+      // Canonical: under 30 units → self-managed-small ($30/mo), 30+ → self-managed-large ($50/mo).
+      // Falls back to generic "self-managed" key if tier-specific keys are not set.
+      let priceId: string | undefined;
+      if (plan === "self-managed") {
+        const units = unitCount ? parseInt(unitCount as string, 10) : 0;
+        const tierKey = (!isNaN(units) && units >= 30) ? "self-managed-large" : "self-managed-small";
+        priceId = priceIds[tierKey] ?? priceIds["self-managed"];
+      } else {
+        priceId = priceIds[plan];
+      }
       if (!priceId) return res.status(503).json({ message: "Plan pricing not configured" });
 
       // Check for existing account

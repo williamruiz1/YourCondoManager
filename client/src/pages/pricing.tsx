@@ -20,10 +20,13 @@ type PricingPageProps = {
   onStartGoogleSignIn: () => void;
 };
 
+// Track 1 primary — self-managed board features
 const selfManagedFeatures = [
-  "Single Association Portal",
-  "Maintenance Request Tool",
-  "Automated Dues Collection",
+  "Owner Portal with payment history",
+  "Automated dues & assessment collection",
+  "Maintenance request tracking",
+  "Document management & board packages",
+  "Governance meeting & compliance tools",
 ];
 
 const propertyManagerFeatures = [
@@ -45,7 +48,7 @@ type ComparisonCell = string | boolean;
 
 const comparisonRows: { capability: string; values: [ComparisonCell, ComparisonCell, ComparisonCell] }[] = [
   { capability: "Associations",         values: ["1",                      "5–10",                    "11+"] },
-  { capability: "Unit Increments",      values: ["Starter / Growth / Community", "Standardized",    "Customized"] },
+  { capability: "Unit Pricing",         values: ["$30 / $50 per month",    "Standardized",            "Customized"] },
   { capability: "Multi-Portfolio View", values: [false,                    true,                      true] },
   { capability: "Resident App",         values: ["Standard",               "Standard",                "White-label available"] },
   { capability: "API Access",           values: [false,                    false,                     true] },
@@ -109,7 +112,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 <button className="text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>
                   Sign In
                 </button>
-                <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-5 py-2 rounded font-semibold scale-95 active:opacity-80 transition-all" onClick={() => setLocation("/signup?plan=property-manager")}>
+                <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-5 py-2 rounded font-semibold scale-95 active:opacity-80 transition-all" onClick={() => setLocation("/signup?plan=self-managed")}>
                   Start Free Trial
                 </button>
               </>
@@ -157,7 +160,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               ) : (
                 <>
                   <button className="px-4 py-2 text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>Sign In</button>
-                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all" onClick={() => setLocation("/signup?plan=property-manager")}>Start Free Trial</button>
+                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all" onClick={() => setLocation("/signup?plan=self-managed")}>Start Free Trial</button>
                 </>
               )}
             </div>
@@ -173,16 +176,16 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             variant="secondary"
             className="rounded-full text-xs font-bold tracking-widest uppercase mb-6"
           >
-            Pricing Structure
+            Simple, Transparent Pricing
           </Badge>
           <h1 className="font-serif text-5xl md:text-[4.25rem] leading-[1.06] tracking-tight text-foreground mb-6">
-            Investment in{" "}
+            Run your association{" "}
             <br />
-            <em className="not-italic text-primary">Operational Excellence.</em>
+            <em className="not-italic text-primary">without a property manager.</em>
           </h1>
           <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-            Simple, transparent tiers designed for modern estate architecture. Whether you're a
-            single board or a regional manager.
+            Flat monthly pricing per association. No per-unit fees, no contracts, no surprises.
+            Built for self-managed boards who want a real system — not another spreadsheet.
           </p>
         </header>
 
@@ -190,62 +193,67 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         <section className="max-w-7xl mx-auto px-6 mb-28">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
 
-            {/* Self-Managed */}
-            <div className="bg-card border border-border/70 rounded-2xl p-10 flex flex-col shadow-sm hover:-translate-y-1 transition-transform duration-300">
-              <div className="mb-8">
-                <h3 className="font-serif text-2xl text-foreground mb-1.5">Self-Managed</h3>
-                <p className="text-muted-foreground text-sm">For independent Boards &amp; HOAs.</p>
+            {/* Self-Managed — FEATURED (Track 1 primary) */}
+            <div className="relative bg-card border-2 border-primary/40 rounded-2xl p-10 flex flex-col shadow-xl scale-[1.03] z-10">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                <Badge className="rounded-full text-[10px] font-bold tracking-[0.18em] uppercase px-4 py-1.5">
+                  Most Popular
+                </Badge>
               </div>
-              <div className="mb-7">
-                <span className="text-sm text-muted-foreground">Starting at</span>
-                <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className="font-serif text-5xl font-bold text-primary">$99</span>
+              <div className="mb-8 pt-2">
+                <h3 className="font-serif text-2xl text-foreground mb-1.5">Self-Managed</h3>
+                <p className="text-muted-foreground text-sm">For self-managed Boards &amp; Condo Associations.</p>
+              </div>
+              <div className="mb-3">
+                <div className="flex items-baseline gap-1">
+                  <span className="font-serif text-5xl font-bold text-primary">$30</span>
                   <span className="text-muted-foreground">/month</span>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mb-7">
-                Tiered by unit count: 1–25, 26–75, and 76+
-              </p>
+              <div className="mb-7 space-y-0.5">
+                <p className="text-xs text-muted-foreground">
+                  Under 30 units: <span className="font-semibold text-foreground">$30/mo</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  30 units or more: <span className="font-semibold text-foreground">$50/mo</span>
+                </p>
+                <p className="text-xs text-muted-foreground pt-1">Per association. No per-unit fees.</p>
+              </div>
               <ul className="space-y-3.5 mb-10 flex-grow">
                 {selfManagedFeatures.map((f) => (
+                  <li key={f} className="flex items-center gap-3 text-foreground text-sm">
+                    <CheckCircle2 className="h-[18px] w-[18px] text-primary shrink-0" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <Button className="w-full py-6 gap-2" onClick={() => setLocation("/signup?plan=self-managed")}>
+                Start 14-Day Free Trial <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Property Manager */}
+            <div className="bg-card border border-border/70 rounded-2xl p-10 flex flex-col shadow-sm hover:-translate-y-1 transition-transform duration-300">
+              <div className="mb-8">
+                <h3 className="font-serif text-2xl text-foreground mb-1.5">Property Manager</h3>
+                <p className="text-muted-foreground text-sm">For growing management firms.</p>
+              </div>
+              <div className="mb-7">
+                <div className="flex items-baseline gap-1">
+                  <span className="font-serif text-5xl font-bold text-primary">$450</span>
+                  <span className="text-muted-foreground">/month</span>
+                </div>
+              </div>
+              <ul className="space-y-3.5 mb-10 flex-grow">
+                {propertyManagerFeatures.map((f) => (
                   <li key={f} className="flex items-center gap-3 text-muted-foreground text-sm">
                     <CheckCircle2 className="h-4.5 w-4.5 h-[18px] w-[18px] text-primary shrink-0" />
                     {f}
                   </li>
                 ))}
               </ul>
-              <Button variant="outline" className="w-full py-6" onClick={() => setLocation("/signup?plan=self-managed")}>
+              <Button variant="outline" className="w-full py-6" onClick={() => setLocation("/signup?plan=property-manager")}>
                 Start Free Trial
-              </Button>
-            </div>
-
-            {/* Property Manager — featured */}
-            <div className="relative bg-card border-2 border-primary/40 rounded-2xl p-10 flex flex-col shadow-xl scale-[1.03] z-10">
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                <Badge className="rounded-full text-[10px] font-bold tracking-[0.18em] uppercase px-4 py-1.5">
-                  Professional Manager
-                </Badge>
-              </div>
-              <div className="mb-8 pt-2">
-                <h3 className="font-serif text-2xl text-foreground mb-1.5">Property Manager</h3>
-                <p className="text-muted-foreground text-sm">For growing management firms.</p>
-              </div>
-              <div className="mb-7">
-                <div className="flex items-baseline gap-1">
-                  <span className="font-serif text-5xl font-bold text-primary">$449</span>
-                  <span className="text-muted-foreground">/month</span>
-                </div>
-              </div>
-              <ul className="space-y-3.5 mb-10 flex-grow">
-                {propertyManagerFeatures.map((f) => (
-                  <li key={f} className="flex items-center gap-3 text-foreground text-sm">
-                    <CheckCircle2 className="h-[18px] w-[18px] text-primary shrink-0" />
-                    <span className={f === propertyManagerFeatures[0] ? "font-semibold" : ""}>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Button className="w-full py-6 gap-2" onClick={() => setLocation("/signup?plan=property-manager")}>
-                Start Free Trial <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
 
@@ -283,10 +291,10 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <thead>
                 <tr className="bg-muted/60 border-b border-border/60">
                   <th className="p-6 font-serif text-xl text-foreground">Capability</th>
-                  <th className="p-6 text-xs font-bold tracking-widest text-muted-foreground uppercase">
+                  <th className="p-6 text-xs font-bold tracking-widest text-primary uppercase">
                     Self-Managed
                   </th>
-                  <th className="p-6 text-xs font-bold tracking-widest text-primary uppercase">
+                  <th className="p-6 text-xs font-bold tracking-widest text-muted-foreground uppercase">
                     Property Manager
                   </th>
                   <th className="p-6 text-xs font-bold tracking-widest text-muted-foreground uppercase">
@@ -299,7 +307,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                   <tr key={row.capability} className="hover:bg-muted/30 transition-colors">
                     <td className="p-6 text-sm font-semibold text-foreground">{row.capability}</td>
                     {row.values.map((val, i) => (
-                      <td key={i} className={cn("p-6 text-sm", i === 1 ? "text-foreground" : "text-muted-foreground")}>
+                      <td key={i} className={cn("p-6 text-sm", i === 0 ? "text-foreground" : "text-muted-foreground")}>
                         {val === true ? (
                           <Check className="h-4 w-4 text-primary" />
                         ) : val === false ? (
@@ -330,7 +338,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <div className="relative z-10">
                 <h3 className="font-serif text-4xl text-foreground mb-4">Unrivaled Security.</h3>
                 <p className="text-muted-foreground leading-relaxed mb-8">
-                  Your estate data is protected by bank-grade encryption and regional compliance
+                  Your association data is protected by bank-grade encryption and regional compliance
                   standards. We take the burden of trust off your shoulders.
                 </p>
                 <div className="flex flex-wrap gap-3">
@@ -383,10 +391,12 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             <div className="relative z-10 space-y-8">
               <div className="space-y-4">
                 <h2 className="font-serif text-4xl tracking-tight text-foreground">
-                  Ready to elevate your management?
+                  Ready to stop managing on spreadsheets?
                 </h2>
                 <p className="text-muted-foreground max-w-2xl mx-auto">
-                  Built for property managers who want a modern, all-in-one platform for every association they manage.
+                  Your Condo Manager gives self-managed boards a real system of record — dues collection,
+                  owner portal, maintenance tracking, and governance tools in one place.
+                  No property manager required.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -398,7 +408,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                   </Button>
                 ) : (
                   <>
-                    <Button size="lg" onClick={() => setLocation("/signup?plan=property-manager")}>
+                    <Button size="lg" onClick={() => setLocation("/signup?plan=self-managed")}>
                       Start 14-Day Free Trial
                     </Button>
                     <Button size="lg" variant="outline" asChild>
