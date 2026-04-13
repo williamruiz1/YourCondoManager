@@ -4,6 +4,7 @@ import { financeSubPages } from "@/lib/sub-page-nav";
 import { FinancialLedgerContent } from "./financial-ledger";
 import { FinancialAssessmentsContent } from "./financial-assessments";
 import { FinancialLateFeesContent } from "./financial-late-fees";
+import { FinancialDelinquencyContent } from "./financial-delinquency";
 
 export default function FinancialBillingPage() {
   return (
@@ -11,7 +12,7 @@ export default function FinancialBillingPage() {
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Billing"
-          summary="Manage owner ledger entries, special assessments, and late fee rules in one place."
+          summary="Manage owner ledger entries, special assessments, late fee rules, and delinquency escalations."
           eyebrow="Finance"
           breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Billing" }]}
           subPages={financeSubPages}
@@ -21,6 +22,7 @@ export default function FinancialBillingPage() {
             <TabsTrigger value="ledger">Owner Ledger</TabsTrigger>
             <TabsTrigger value="assessments">Assessments</TabsTrigger>
             <TabsTrigger value="late-fees">Late Fees</TabsTrigger>
+            <TabsTrigger value="delinquency">Delinquency</TabsTrigger>
           </TabsList>
           <TabsContent value="ledger" className="mt-0">
             <FinancialLedgerContent />
@@ -30,6 +32,9 @@ export default function FinancialBillingPage() {
           </TabsContent>
           <TabsContent value="late-fees" className="mt-0">
             <FinancialLateFeesContent />
+          </TabsContent>
+          <TabsContent value="delinquency" className="mt-0">
+            <FinancialDelinquencyContent />
           </TabsContent>
         </Tabs>
       </div>
