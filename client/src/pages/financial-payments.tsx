@@ -28,6 +28,9 @@ import {
   Info,
   Shield,
   ArrowRight,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Link } from "wouter";
@@ -1253,6 +1256,274 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// ── Autopay Admin Tab ─────────────────────────────────────────────────────────
+
+type AutopayEnrollmentRow = {
+  id: string;
+  unitId: string;
+  personId: string;
+  amount: number;
+  frequency: string;
+  dayOfMonth: number | null;
+  status: string;
+  nextPaymentDate: string | null;
+  description: string;
+  enrolledAt: string;
+  cancelledAt: string | null;
+  unitNumber: string | null;
+  building: string | null;
+  personFirstName: string | null;
+  personLastName: string | null;
+  personEmail: string | null;
+};
+
+type AutopayRun = {
+  id: string;
+  enrollmentId: string;
+  associationId: string;
+  amount: number;
+  status: string;
+  errorMessage: string | null;
+  ranAt: string;
+};
+
+function AutopayAdminTab({ associationId }: { associationId: string | null }) {
+  const { toast } = useToast();
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { data: enrollments = [], isLoading, refetch } = useQuery<AutopayEnrollmentRow[]>({
+    queryKey: ["/api/financial/autopay/enrollments", associationId],
+    queryFn: async () => {
+      if (!associationId) return [];
+      const res = await apiRequest("GET", `/api/financial/autopay/enrollments?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const { data: runs = [], isLoading: runsLoading } = useQuery<AutopayRun[]>({
+    queryKey: ["/api/financial/autopay/enrollments/runs", expandedId],
+    queryFn: async () => {
+      if (!expandedId) return [];
+      const res = await apiRequest("GET", `/api/financial/autopay/enrollments/${expandedId}/runs`);
+      return res.json();
+    },
+    enabled: Boolean(expandedId),
+  });
+
+  const runCollections = useMutation({
+    mutationFn: async () => {
+      if (!associationId) throw new Error("No association selected");
+      const res = await apiRequest("POST", "/api/financial/autopay/run", { associationId });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Collection run complete",
+        description: `${data.succeeded} succeeded, ${data.failed} failed, ${data.skipped} skipped (${data.totalDue} due).`,
+      });
+      refetch();
+    },
+    onError: (e: Error) => toast({ title: "Run failed", description: e.message, variant: "destructive" }),
+  });
+
+  const updateEnrollment = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Record<string, unknown> }) => {
+      const res = await apiRequest("PATCH", `/api/financial/autopay/enrollments/${id}`, updates);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => { toast({ title: "Enrollment updated" }); refetch(); },
+    onError: (e: Error) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+  });
+
+  const filtered = enrollments.filter((e) => statusFilter === "all" || e.status === statusFilter);
+
+  const statusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
+    if (status === "active") return "default";
+    if (status === "paused") return "secondary";
+    if (status === "cancelled") return "destructive";
+    return "outline";
+  };
+
+  const runStatusBadge = (status: string): "default" | "secondary" | "destructive" | "outline" => {
+    if (status === "success") return "default";
+    if (status === "skipped") return "secondary";
+    if (status === "failed") return "destructive";
+    return "outline";
+  };
+
+  if (!associationId) {
+    return <div className="text-sm text-muted-foreground p-4">Select an association to manage autopay enrollments.</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36 h-8 text-xs">
+              <SelectValue placeholder="Filter status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="paused">Paused</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground">{filtered.length} enrollment{filtered.length !== 1 ? "s" : ""}</span>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => runCollections.mutate()}
+          disabled={runCollections.isPending}
+          className="gap-1.5"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${runCollections.isPending ? "animate-spin" : ""}`} />
+          Run Collections Now
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="text-sm text-muted-foreground">Loading enrollments...</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-sm text-muted-foreground">No autopay enrollments found.</div>
+      ) : (
+        <div className="rounded-md border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Unit</TableHead>
+                <TableHead>Resident</TableHead>
+                <TableHead>Frequency</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Next Run</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((enrollment) => (
+                <>
+                  <TableRow key={enrollment.id}>
+                    <TableCell className="font-medium">
+                      {enrollment.building ? `${enrollment.building} ` : ""}{enrollment.unitNumber ?? enrollment.unitId.slice(0, 8)}
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <span>{enrollment.personFirstName} {enrollment.personLastName}</span>
+                        {enrollment.personEmail && (
+                          <div className="text-xs text-muted-foreground">{enrollment.personEmail}</div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="capitalize">{enrollment.frequency}</TableCell>
+                    <TableCell>${Number(enrollment.amount).toFixed(2)}</TableCell>
+                    <TableCell>
+                      {enrollment.nextPaymentDate
+                        ? new Date(enrollment.nextPaymentDate).toLocaleDateString()
+                        : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusBadgeVariant(enrollment.status)} className="capitalize">
+                        {enrollment.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {enrollment.status === "active" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => updateEnrollment.mutate({ id: enrollment.id, updates: { status: "paused" } })}
+                          >
+                            Pause
+                          </Button>
+                        )}
+                        {enrollment.status === "paused" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => updateEnrollment.mutate({ id: enrollment.id, updates: { status: "active" } })}
+                          >
+                            Resume
+                          </Button>
+                        )}
+                        {enrollment.status !== "cancelled" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs text-destructive hover:text-destructive"
+                            onClick={() => updateEnrollment.mutate({ id: enrollment.id, updates: { status: "cancelled" } })}
+                          >
+                            Cancel
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => setExpandedId(expandedId === enrollment.id ? null : enrollment.id)}
+                        >
+                          {expandedId === enrollment.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {expandedId === enrollment.id && (
+                    <TableRow key={`${enrollment.id}-runs`}>
+                      <TableCell colSpan={7} className="bg-muted/30 p-4">
+                        <div className="text-xs font-semibold mb-2 uppercase tracking-wide text-muted-foreground">Run History</div>
+                        {runsLoading ? (
+                          <div className="text-xs text-muted-foreground">Loading run history...</div>
+                        ) : runs.length === 0 ? (
+                          <div className="text-xs text-muted-foreground">No runs recorded yet.</div>
+                        ) : (
+                          <div className="rounded border bg-background overflow-hidden">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="text-xs">Date</TableHead>
+                                  <TableHead className="text-xs">Amount</TableHead>
+                                  <TableHead className="text-xs">Status</TableHead>
+                                  <TableHead className="text-xs">Error</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {runs.map((run) => (
+                                  <TableRow key={run.id}>
+                                    <TableCell className="text-xs">{new Date(run.ranAt).toLocaleString()}</TableCell>
+                                    <TableCell className="text-xs">${Number(run.amount).toFixed(2)}</TableCell>
+                                    <TableCell>
+                                      <Badge variant={runStatusBadge(run.status)} className="text-xs capitalize">
+                                        {run.status}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-xs text-destructive">{run.errorMessage ?? "—"}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FinancialPaymentsPage() {
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { setActiveAssociationId } = useAssociationContext();
@@ -1343,6 +1614,7 @@ export default function FinancialPaymentsPage() {
               { id: "methods", label: paymentMethods.length > 0 ? `Methods ${paymentMethods.length}` : "Methods" },
               { id: "gateway", label: gatewayConnections.filter((c) => c.isActive === 1).length > 0 ? "Gateway On" : "Gateway" },
               { id: "links", label: "Links" },
+              { id: "autopay", label: "Autopay" },
               { id: "webhooks", label: "Webhooks" },
               { id: "activity", label: "Activity" },
               { id: "exceptions", label: "Exceptions" },
@@ -1372,6 +1644,10 @@ export default function FinancialPaymentsPage() {
             <TabsTrigger value="links" className="gap-1.5 shrink-0">
               <Link2 className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Links</span>
+            </TabsTrigger>
+            <TabsTrigger value="autopay" className="gap-1.5 shrink-0">
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Autopay</span>
             </TabsTrigger>
             <TabsTrigger value="webhooks" className="gap-1.5 shrink-0">
               <Webhook className="h-3.5 w-3.5" />
@@ -1414,6 +1690,10 @@ export default function FinancialPaymentsPage() {
             isLoadingPeople={personsLoading}
             isLoadingUnits={unitsLoading}
           />
+        </TabsContent>
+
+        <TabsContent value="autopay" className="mt-4">
+          <AutopayAdminTab associationId={selectedAssociationId} />
         </TabsContent>
 
         <TabsContent value="webhooks" className="mt-4">

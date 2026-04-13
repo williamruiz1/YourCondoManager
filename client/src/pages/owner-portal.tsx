@@ -731,13 +731,32 @@ export default function OwnerPortalPage() {
     },
   });
 
+  const [autopayRunsEnrollmentId, setAutopayRunsEnrollmentId] = useState<string | null>(null);
+  const { data: autopayRunHistory = [] } = useQuery<any[]>({
+    queryKey: ["portal/autopay/runs", autopayRunsEnrollmentId],
+    enabled: !!portalAccessId && !!autopayRunsEnrollmentId,
+    queryFn: async () => {
+      if (!portalAccessId || !autopayRunsEnrollmentId) return [];
+      const res = await portalFetch(`/api/portal/autopay/enrollments/${autopayRunsEnrollmentId}/runs`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const enrollAutopay = useMutation({
     mutationFn: async () => {
       if (!portalAccessId) throw new Error("Not authenticated");
-      const res = await portalFetch("/api/portal/enroll-autopay", {
+      const unitId = myUnits.find((u) => u.unitId === ownedUnitFocusId)?.unitId ?? myUnits[0]?.unitId;
+      if (!unitId) throw new Error("No unit found for your account");
+      const res = await portalFetch("/api/portal/autopay/enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...autopayForm }),
+        body: JSON.stringify({
+          ...autopayForm,
+          amount: autopayForm.amount ? parseFloat(autopayForm.amount) : 0,
+          dayOfMonth: parseInt(autopayForm.dayOfMonth, 10) || 1,
+          unitId,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -752,10 +771,38 @@ export default function OwnerPortalPage() {
   const cancelAutopay = useMutation({
     mutationFn: async (enrollmentId: string) => {
       if (!portalAccessId) throw new Error("Not authenticated");
-      const res = await portalFetch("/api/portal/cancel-autopay", {
-        method: "POST",
+      const res = await portalFetch(`/api/portal/autopay/enrollments/${enrollmentId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enrollmentId }),
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => refetchAutopay(),
+  });
+
+  const pauseAutopay = useMutation({
+    mutationFn: async (enrollmentId: string) => {
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch(`/api/portal/autopay/enrollments/${enrollmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "paused" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => refetchAutopay(),
+  });
+
+  const resumeAutopay = useMutation({
+    mutationFn: async (enrollmentId: string) => {
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch(`/api/portal/autopay/enrollments/${enrollmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -927,7 +974,7 @@ export default function OwnerPortalPage() {
     },
   });
 
-  const activeAutopayEnrollment = (autopayEnrollments ?? []).find((e) => e.active);
+  const activeAutopayEnrollment = (autopayEnrollments ?? []).find((e) => e.status === "active");
   const totalPortfolioBalance = portalLedger?.balance ?? 0;
   const focusedOwnedUnit = myUnits.find((u) => u.unitId === ownedUnitFocusId) ?? myUnits[0];
   const openMaintenanceRequests = (maintenanceRequests ?? []).filter((r) => !["resolved", "closed", "rejected"].includes(r.status)).length;
@@ -2118,33 +2165,159 @@ export default function OwnerPortalPage() {
                   <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-headline text-lg">Autopay</h3>
-                      <Button size="sm" variant={autopayFormOpen ? "destructive" : "outline"} onClick={() => setAutopayFormOpen(!autopayFormOpen)}>
-                        {autopayFormOpen ? "Cancel" : "Setup Autopay"}
-                      </Button>
-                    </div>
-                    {activeAutopayEnrollment ? (
-                      <div className="p-4 bg-surface rounded-lg border border-outline-variant/10">
-                        <p className="font-medium">Active autopay</p>
-                        <p className="text-sm text-on-surface-variant mt-1">${Number(activeAutopayEnrollment.amount ?? 0).toFixed(2)} {activeAutopayEnrollment.frequency}</p>
-                        <Button size="sm" onClick={() => cancelAutopay.mutate(activeAutopayEnrollment.id)} disabled={cancelAutopay.isPending} className="mt-3">
-                          Cancel Autopay
+                      {!activeAutopayEnrollment && (
+                        <Button size="sm" variant={autopayFormOpen ? "destructive" : "outline"} onClick={() => setAutopayFormOpen(!autopayFormOpen)}>
+                          {autopayFormOpen ? "Cancel" : "Set Up Autopay"}
                         </Button>
+                      )}
+                    </div>
+
+                    {/* Active or paused enrollment */}
+                    {activeAutopayEnrollment ? (
+                      <div className="space-y-4">
+                        <div className="p-4 bg-surface rounded-lg border border-outline-variant/10 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium">Autopay Active</p>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-secondary/20 text-secondary font-medium capitalize">
+                              {activeAutopayEnrollment.status}
+                            </span>
+                          </div>
+                          <p className="text-sm text-on-surface-variant">
+                            {Number(activeAutopayEnrollment.amount) > 0
+                              ? `$${Number(activeAutopayEnrollment.amount).toFixed(2)}`
+                              : "Full balance"}{" "}
+                            · <span className="capitalize">{activeAutopayEnrollment.frequency}</span>
+                            {activeAutopayEnrollment.dayOfMonth && ` on day ${activeAutopayEnrollment.dayOfMonth}`}
+                          </p>
+                          {activeAutopayEnrollment.nextPaymentDate && (
+                            <p className="text-xs text-on-surface-variant">
+                              Next run: {new Date(activeAutopayEnrollment.nextPaymentDate).toLocaleDateString()}
+                            </p>
+                          )}
+                          <div className="flex gap-2 pt-2 flex-wrap">
+                            {activeAutopayEnrollment.status === "active" ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => pauseAutopay.mutate(activeAutopayEnrollment.id)}
+                                disabled={pauseAutopay.isPending}
+                              >
+                                {pauseAutopay.isPending ? "Pausing..." : "Pause"}
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => resumeAutopay.mutate(activeAutopayEnrollment.id)}
+                                disabled={resumeAutopay.isPending}
+                              >
+                                {resumeAutopay.isPending ? "Resuming..." : "Resume"}
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => cancelAutopay.mutate(activeAutopayEnrollment.id)}
+                              disabled={cancelAutopay.isPending}
+                            >
+                              {cancelAutopay.isPending ? "Cancelling..." : "Cancel Autopay"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setAutopayRunsEnrollmentId(
+                                autopayRunsEnrollmentId === activeAutopayEnrollment.id ? null : activeAutopayEnrollment.id
+                              )}
+                            >
+                              {autopayRunsEnrollmentId === activeAutopayEnrollment.id ? "Hide History" : "View History"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Run History */}
+                        {autopayRunsEnrollmentId === activeAutopayEnrollment.id && (
+                          <div className="p-4 bg-surface rounded-lg border border-outline-variant/10">
+                            <p className="text-sm font-medium mb-3">Payment Run History</p>
+                            {autopayRunHistory.length === 0 ? (
+                              <p className="text-sm text-on-surface-variant">No payment runs recorded yet.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {autopayRunHistory.map((run: any) => (
+                                  <div key={run.id} className="flex items-center justify-between text-sm p-2 rounded bg-surface-container-lowest border border-outline-variant/10">
+                                    <div>
+                                      <span className="font-medium">${Number(run.amount).toFixed(2)}</span>
+                                      <span className="text-on-surface-variant ml-2 text-xs">
+                                        {new Date(run.ranAt).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {run.errorMessage && (
+                                        <span className="text-xs text-destructive">{run.errorMessage}</span>
+                                      )}
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                        run.status === "success"
+                                          ? "bg-secondary/20 text-secondary"
+                                          : run.status === "failed"
+                                          ? "bg-destructive/10 text-destructive"
+                                          : "bg-muted text-muted-foreground"
+                                      }`}>
+                                        {run.status}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ) : (
-                      <p className="text-on-surface-variant">No autopay currently enabled</p>
+                      <p className="text-on-surface-variant text-sm">
+                        No autopay currently enabled. Set up autopay to automatically pay your dues on a schedule.
+                      </p>
                     )}
-                    {autopayFormOpen && (
+
+                    {/* Enrollment Form */}
+                    {autopayFormOpen && !activeAutopayEnrollment && (
                       <div className="mt-4 space-y-3 p-4 bg-surface rounded-lg border border-outline-variant/10">
-                        <Input type="number" step="0.01" placeholder="Amount" value={autopayForm.amount} onChange={(e) => setAutopayForm((p) => ({ ...p, amount: e.target.value }))} />
-                        <Input type="number" min="1" max="31" placeholder="Day of month" value={autopayForm.dayOfMonth} onChange={(e) => setAutopayForm((p) => ({ ...p, dayOfMonth: e.target.value }))} />
-                        <Select value={autopayForm.frequency} onValueChange={(value) => setAutopayForm((p) => ({ ...p, frequency: value }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="monthly">Monthly</SelectItem>
-                            <SelectItem value="quarterly">Quarterly</SelectItem>
-                            <SelectItem value="annually">Annually</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <p className="text-sm font-medium">Configure Autopay</p>
+                        <div className="space-y-1">
+                          <label className="text-xs text-on-surface-variant">Amount (leave blank to pay full balance)</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="e.g. 350.00"
+                            value={autopayForm.amount}
+                            onChange={(e) => setAutopayForm((p) => ({ ...p, amount: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-on-surface-variant">Frequency</label>
+                          <Select value={autopayForm.frequency} onValueChange={(value) => setAutopayForm((p) => ({ ...p, frequency: value }))}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="monthly">Monthly</SelectItem>
+                              <SelectItem value="quarterly">Quarterly</SelectItem>
+                              <SelectItem value="annual">Annual</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-on-surface-variant">Day of month (1–28)</label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="28"
+                            placeholder="1"
+                            value={autopayForm.dayOfMonth}
+                            onChange={(e) => setAutopayForm((p) => ({ ...p, dayOfMonth: e.target.value }))}
+                          />
+                        </div>
+                        {enrollAutopay.isError && (
+                          <p className="text-xs text-destructive">{(enrollAutopay.error as Error)?.message}</p>
+                        )}
                         <Button onClick={() => enrollAutopay.mutate()} disabled={enrollAutopay.isPending} className="w-full">
                           {enrollAutopay.isPending ? "Setting up..." : "Enable Autopay"}
                         </Button>
