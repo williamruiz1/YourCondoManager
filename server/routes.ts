@@ -202,6 +202,7 @@ import {
   ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_TITLE,
 } from "@shared/admin-contextual-feedback";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
+import { registerAutopayRoutes } from "./routes/autopay";
 
 const uploadDir = path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -1180,8 +1181,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerAmenityRoutes(app, requireAdmin, requireAdminRole, requirePortal);
 
   // Autopay enrollment & recurring collection routes
-  const { registerAutopayRoutes } = await import("./routes/autopay");
-  registerAutopayRoutes(app, requireAdmin, requireAdminRole, requirePortal);
+  registerAutopayRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    requirePortal,
+    getAssociationIdQuery,
+    assertAssociationScope,
+    assertAssociationInputScope,
+  });
 
   // Lightweight public health check for monitors, load balancers, and liveness probes
   app.get("/api/health", async (_req, res) => {

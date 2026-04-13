@@ -730,11 +730,11 @@ export default function OwnerPortalPage() {
   });
 
   const { data: autopayEnrollments = [], refetch: refetchAutopay } = useQuery<any[]>({
-    queryKey: ["portal/autopay"],
+    queryKey: ["portal/autopay/enrollments"],
     enabled: !!portalAccessId,
     queryFn: async () => {
       if (!portalAccessId) return [];
-      const res = await portalFetch(`/api/portal/autopay`);
+      const res = await portalFetch(`/api/portal/autopay/enrollments`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -755,15 +755,16 @@ export default function OwnerPortalPage() {
   const enrollAutopay = useMutation({
     mutationFn: async () => {
       if (!portalAccessId) throw new Error("Not authenticated");
-      const unitId = myUnits.find((u) => u.unitId === ownedUnitFocusId)?.unitId ?? myUnits[0]?.unitId;
+      const unitId = focusedOwnedUnit?.unitId ?? myUnits[0]?.unitId;
       if (!unitId) throw new Error("No unit found for your account");
       const res = await portalFetch("/api/portal/autopay/enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...autopayForm,
           amount: autopayForm.amount ? parseFloat(autopayForm.amount) : 0,
+          frequency: autopayForm.frequency,
           dayOfMonth: parseInt(autopayForm.dayOfMonth, 10) || 1,
+          description: autopayForm.description,
           unitId,
         }),
       });

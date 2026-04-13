@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ppm _hook session-start",
+            "command": "PATH=\"$HOME/.pocketpm/bin:$PWD/.pocketpm/bin:$PATH\" command -v ppm >/dev/null && ppm _hook session-start || true",
             "description": "Inject live PPM state into the Claude Code session context",
             "serverSideEquivalent": "mcp__pocketpm__ppm_bootstrap"
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ppm _hook heartbeat",
+            "command": "PATH=\"$HOME/.pocketpm/bin:$PWD/.pocketpm/bin:$PATH\" command -v ppm >/dev/null && ppm _hook heartbeat || true",
             "description": "Per-turn heartbeat: surface unsynced edits, open blockers, stale context",
             "serverSideEquivalent": "mcp__pocketpm__ppm_sync freshness scan"
           }
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ppm _hook dirty-increment",
+            "command": "PATH=\"$HOME/.pocketpm/bin:$PWD/.pocketpm/bin:$PATH\" command -v ppm >/dev/null && ppm _hook dirty-increment || true",
             "description": "Increment the local dirty-edit counter in .pocketpm/session.json",
             "serverSideEquivalent": "server-side edits-since-sync counter (Phase C)"
           }
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ppm _hook pre-bash",
+            "command": "PATH=\"$HOME/.pocketpm/bin:$PWD/.pocketpm/bin:$PATH\" command -v ppm >/dev/null && ppm _hook pre-bash || true",
             "description": "Block `git commit*` if PPM sync is stale",
             "serverSideEquivalent": "ppm_sync freshness gate in mcp__pocketpm__ppm_session_end"
           }
@@ -58,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ppm _hook session-end",
+            "command": "PATH=\"$HOME/.pocketpm/bin:$PWD/.pocketpm/bin:$PATH\" command -v ppm >/dev/null && ppm _hook session-end || true",
             "description": "Refuse session termination until ppm_session_end has been called",
             "serverSideEquivalent": "mcp__pocketpm__ppm_session_end + orphan-session sweeper"
           }

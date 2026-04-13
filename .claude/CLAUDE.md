@@ -47,4 +47,18 @@ _enforced by: convention_
 
 _enforced by: mcp, convention_
 
+## Recovery — if `mcp__pocketpm__*` tools are not available
+
+This happens when the workspace was wiped (Replit/Gitpod/Codespaces
+container restart) or the install is stale. Run this from the repo
+root, then restart Claude Code so the MCP server attaches:
+
+```bash
+curl -fsSL https://pocketpm.fly.dev/install.sh | bash -s -- --product-id 1e2da109-f6f6-431c-8dc0-f61b548a1b83
+ppm relink
+ppm doctor
+```
+
+If `ppm doctor` reports missing auth, re-run the installer with `--key <ppm_...>`.
+
 <!-- PPM:END v1 -->

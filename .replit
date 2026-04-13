@@ -14,8 +14,19 @@ externalPort = 80
 localPort = 5050
 externalPort = 3000
 
+[[ports]]
+localPort = 17394
+externalPort = 3002
+exposeLocalhost = true
+
+[[ports]]
+localPort = 64078
+externalPort = 3001
+exposeLocalhost = true
+
 [env]
 PORT = "5000"
+PATH = "/home/runner/workspace/.pocketpm/bin:$PATH"
 
 [deployment]
 deploymentTarget = "autoscale"
