@@ -152,9 +152,6 @@ import {
   insertRecurringChargeRunSchema,
   partialPaymentRules,
   insertPartialPaymentRuleSchema,
-  autopayEnrollments,
-  insertAutopayEnrollmentSchema,
-  autopayRuns,
   savedPaymentMethods,
   insertSavedPaymentMethodSchema,
   webhookSigningSecrets,
@@ -202,6 +199,7 @@ import {
   ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_TITLE,
 } from "@shared/admin-contextual-feedback";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
+import { registerAutopayRoutes } from "./routes/autopay";
 
 const uploadDir = path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -1174,6 +1172,16 @@ async function getOwnedPortalUnitsForAssociation(input: {
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   registerAuthRoutes(app);
+
+  // ── Autopay routes (extracted to server/routes/autopay.ts) ─────────────────
+  registerAutopayRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    requirePortal,
+    getAssociationIdQuery,
+    assertAssociationScope,
+    assertAssociationInputScope,
+  });
 
   // Lightweight public health check for monitors, load balancers, and liveness probes
   app.get("/api/health", async (_req, res) => {
@@ -9241,206 +9249,6 @@ This is an automated demo request from the Your Condo Manager website.
       res.json(rows);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
-    }
-  });
-
-  // ── Autopay enrollment ───────────────────────────────────────────────────
-  app.get("/api/financial/autopay/enrollments", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
-    try {
-      const associationId = getAssociationIdQuery(req);
-      if (!associationId) return res.status(400).json({ message: "associationId is required" });
-      assertAssociationScope(req, associationId);
-      const rows = await db.select().from(autopayEnrollments).where(eq(autopayEnrollments.associationId, associationId));
-      res.json(rows);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/financial/autopay/enrollments", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
-    try {
-      const parsed = insertAutopayEnrollmentSchema.parse({ ...req.body, enrolledBy: req.adminUserEmail || "unknown" });
-      assertAssociationInputScope(req, parsed.associationId);
-      // Compute first nextPaymentDate
-      const now = new Date();
-      const next = new Date(now.getFullYear(), now.getMonth(), parsed.dayOfMonth ?? 1);
-      if (next <= now) next.setMonth(next.getMonth() + 1);
-      const [result] = await db.insert(autopayEnrollments).values({ ...parsed, nextPaymentDate: next }).returning();
-      res.status(201).json(result);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.patch("/api/financial/autopay/enrollments/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
-    try {
-      const id = req.params.id as string;
-      const [existing] = await db.select().from(autopayEnrollments).where(eq(autopayEnrollments.id, id)).limit(1);
-      if (!existing) return res.status(404).json({ message: "Enrollment not found" });
-      assertAssociationScope(req, existing.associationId);
-      const updates = insertAutopayEnrollmentSchema.partial().parse(req.body);
-      const now = new Date();
-      const setClauses: Partial<typeof existing> = { ...updates, updatedAt: now };
-      if (updates.status === "cancelled") {
-        (setClauses as any).cancelledBy = req.adminUserEmail || "unknown";
-        (setClauses as any).cancelledAt = now;
-      }
-      const [result] = await db.update(autopayEnrollments).set(setClauses).where(eq(autopayEnrollments.id, id)).returning();
-      res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  // Run due autopay charges — processes all active enrollments whose nextPaymentDate <= now
-  app.post("/api/financial/autopay/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
-    try {
-      const { associationId } = req.body as { associationId: string };
-      if (!associationId) return res.status(400).json({ message: "associationId is required" });
-      assertAssociationInputScope(req, associationId);
-
-      const now = new Date();
-      const enrollments = await db.select().from(autopayEnrollments).where(
-        and(eq(autopayEnrollments.associationId, associationId), eq(autopayEnrollments.status, "active"))
-      );
-      const dueNow = enrollments.filter(e => !e.nextPaymentDate || new Date(e.nextPaymentDate) <= now);
-
-      let succeeded = 0;
-      let failed = 0;
-
-      for (const enrollment of dueNow) {
-        try {
-          const [entry] = await db.insert(ownerLedgerEntries).values({
-            associationId,
-            unitId: enrollment.unitId,
-            personId: enrollment.personId,
-            entryType: "payment",
-            amount: -Math.abs(enrollment.amount),
-            postedAt: now,
-            description: enrollment.description,
-            referenceType: "autopay_enrollment",
-            referenceId: enrollment.id,
-          }).returning();
-
-          await db.insert(autopayRuns).values({
-            enrollmentId: enrollment.id,
-            associationId,
-            amount: enrollment.amount,
-            status: "success",
-            ledgerEntryId: entry.id,
-            ranAt: now,
-          });
-
-          // Advance nextPaymentDate
-          const next = new Date(now);
-          if (enrollment.frequency === "monthly") next.setMonth(next.getMonth() + 1);
-          else if (enrollment.frequency === "quarterly") next.setMonth(next.getMonth() + 3);
-          else if (enrollment.frequency === "annual") next.setFullYear(next.getFullYear() + 1);
-          next.setDate(enrollment.dayOfMonth ?? 1);
-          await db.update(autopayEnrollments).set({ nextPaymentDate: next, updatedAt: new Date() }).where(eq(autopayEnrollments.id, enrollment.id));
-          succeeded++;
-        } catch (err: any) {
-          await db.insert(autopayRuns).values({
-            enrollmentId: enrollment.id,
-            associationId,
-            amount: enrollment.amount,
-            status: "failed",
-            errorMessage: err.message,
-            ranAt: now,
-          });
-          failed++;
-        }
-      }
-      res.json({ succeeded, failed, totalDue: dueNow.length });
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/financial/autopay/runs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
-    try {
-      const associationId = getAssociationIdQuery(req);
-      if (!associationId) return res.status(400).json({ message: "associationId is required" });
-      assertAssociationScope(req, associationId);
-      const rows = await db.select().from(autopayRuns).where(eq(autopayRuns.associationId, associationId));
-      res.json(rows);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  // Portal: owner enroll/view/cancel autopay
-  app.get("/api/portal/autopay", requirePortal, async (req: PortalRequest, res) => {
-    try {
-      const rows = await db.select().from(autopayEnrollments).where(
-        and(eq(autopayEnrollments.associationId, req.portalAssociationId!), eq(autopayEnrollments.personId, req.portalPersonId!))
-      );
-      res.json(rows);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/portal/autopay/enroll", requirePortal, async (req: PortalRequest, res) => {
-    try {
-      const { amount, frequency, dayOfMonth, description, unitId } = req.body as {
-        amount: number; frequency: string; dayOfMonth: number; description?: string; unitId: string;
-      };
-      if (!amount || amount <= 0) return res.status(400).json({ message: "amount must be positive" });
-      if (!unitId) return res.status(400).json({ message: "unitId is required" });
-
-      // Check if already enrolled
-      const [existing] = await db.select().from(autopayEnrollments).where(
-        and(
-          eq(autopayEnrollments.associationId, req.portalAssociationId!),
-          eq(autopayEnrollments.personId, req.portalPersonId!),
-          eq(autopayEnrollments.unitId, unitId),
-          eq(autopayEnrollments.status, "active"),
-        )
-      ).limit(1);
-      if (existing) return res.status(409).json({ message: "Autopay already active for this unit" });
-
-      const now = new Date();
-      const day = dayOfMonth || 1;
-      const next = new Date(now.getFullYear(), now.getMonth(), day);
-      if (next <= now) next.setMonth(next.getMonth() + 1);
-
-      const [enrollment] = await db.insert(autopayEnrollments).values({
-        associationId: req.portalAssociationId!,
-        unitId,
-        personId: req.portalPersonId!,
-        amount,
-        frequency: (frequency || "monthly") as "monthly" | "quarterly" | "annual",
-        dayOfMonth: day,
-        status: "active",
-        nextPaymentDate: next,
-        description: description || "Autopay HOA dues",
-        enrolledBy: req.portalPersonId!,
-      }).returning();
-      res.status(201).json(enrollment);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.patch("/api/portal/autopay/:enrollmentId", requirePortal, async (req: PortalRequest, res) => {
-    try {
-      const enrollmentId = req.params.enrollmentId as string;
-      const [enrollment] = await db.select().from(autopayEnrollments).where(eq(autopayEnrollments.id, enrollmentId)).limit(1);
-      if (!enrollment) return res.status(404).json({ message: "Enrollment not found" });
-      if (enrollment.personId !== req.portalPersonId) return res.status(403).json({ message: "Not authorized" });
-
-      const { status } = req.body as { status: "paused" | "cancelled" };
-      const now = new Date();
-      const [result] = await db.update(autopayEnrollments).set({
-        status: status as "paused" | "cancelled",
-        cancelledBy: status === "cancelled" ? req.portalPersonId! : undefined,
-        cancelledAt: status === "cancelled" ? now : undefined,
-        updatedAt: now,
-      }).where(eq(autopayEnrollments.id, enrollmentId)).returning();
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
     }
   });
 

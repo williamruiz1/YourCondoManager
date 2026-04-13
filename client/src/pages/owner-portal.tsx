@@ -712,11 +712,11 @@ export default function OwnerPortalPage() {
   });
 
   const { data: autopayEnrollments = [], refetch: refetchAutopay } = useQuery<any[]>({
-    queryKey: ["portal/autopay"],
+    queryKey: ["portal/autopay/enrollments"],
     enabled: !!portalAccessId,
     queryFn: async () => {
       if (!portalAccessId) return [];
-      const res = await portalFetch(`/api/portal/autopay`);
+      const res = await portalFetch(`/api/portal/autopay/enrollments`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -725,10 +725,18 @@ export default function OwnerPortalPage() {
   const enrollAutopay = useMutation({
     mutationFn: async () => {
       if (!portalAccessId) throw new Error("Not authenticated");
-      const res = await portalFetch("/api/portal/enroll-autopay", {
+      const unitId = focusedOwnedUnit?.unitId;
+      if (!unitId) throw new Error("No unit found for your account");
+      const res = await portalFetch("/api/portal/autopay/enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...autopayForm }),
+        body: JSON.stringify({
+          amount: parseFloat(autopayForm.amount),
+          frequency: autopayForm.frequency,
+          dayOfMonth: parseInt(autopayForm.dayOfMonth, 10),
+          description: autopayForm.description,
+          unitId,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -743,10 +751,10 @@ export default function OwnerPortalPage() {
   const cancelAutopay = useMutation({
     mutationFn: async (enrollmentId: string) => {
       if (!portalAccessId) throw new Error("Not authenticated");
-      const res = await portalFetch("/api/portal/cancel-autopay", {
-        method: "POST",
+      const res = await portalFetch(`/api/portal/autopay/enrollments/${enrollmentId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enrollmentId }),
+        body: JSON.stringify({ status: "cancelled" }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -918,7 +926,7 @@ export default function OwnerPortalPage() {
     },
   });
 
-  const activeAutopayEnrollment = (autopayEnrollments ?? []).find((e) => e.active);
+  const activeAutopayEnrollment = (autopayEnrollments ?? []).find((e) => e.status === "active");
   const totalPortfolioBalance = portalLedger?.balance ?? 0;
   const focusedOwnedUnit = myUnits.find((u) => u.unitId === ownedUnitFocusId) ?? myUnits[0];
   const openMaintenanceRequests = (maintenanceRequests ?? []).filter((r) => !["resolved", "closed", "rejected"].includes(r.status)).length;
@@ -2098,35 +2106,114 @@ export default function OwnerPortalPage() {
                   <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-headline text-lg">Autopay</h3>
-                      <Button size="sm" variant={autopayFormOpen ? "destructive" : "outline"} onClick={() => setAutopayFormOpen(!autopayFormOpen)}>
-                        {autopayFormOpen ? "Cancel" : "Setup Autopay"}
-                      </Button>
+                      {!activeAutopayEnrollment && (
+                        <Button size="sm" variant={autopayFormOpen ? "destructive" : "outline"} onClick={() => setAutopayFormOpen(!autopayFormOpen)}>
+                          {autopayFormOpen ? "Cancel" : "Set Up Autopay"}
+                        </Button>
+                      )}
                     </div>
                     {activeAutopayEnrollment ? (
-                      <div className="p-4 bg-surface rounded-lg border border-outline-variant/10">
-                        <p className="font-medium">Active autopay</p>
-                        <p className="text-sm text-on-surface-variant mt-1">${Number(activeAutopayEnrollment.amount ?? 0).toFixed(2)} {activeAutopayEnrollment.frequency}</p>
-                        <Button size="sm" onClick={() => cancelAutopay.mutate(activeAutopayEnrollment.id)} disabled={cancelAutopay.isPending} className="mt-3">
-                          Cancel Autopay
-                        </Button>
+                      <div className="p-4 bg-surface rounded-lg border border-outline-variant/10 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Badge className="text-xs bg-green-600 text-white">Active</Badge>
+                          <span className="text-sm font-medium capitalize">{activeAutopayEnrollment.frequency}</span>
+                        </div>
+                        <p className="text-2xl font-bold">${Number(activeAutopayEnrollment.amount ?? 0).toFixed(2)}</p>
+                        <p className="text-xs text-on-surface-variant">
+                          Day {activeAutopayEnrollment.dayOfMonth} of each period
+                          {activeAutopayEnrollment.nextPaymentDate && (
+                            <> &middot; Next: {new Date(activeAutopayEnrollment.nextPaymentDate).toLocaleDateString()}</>
+                          )}
+                        </p>
+                        <div className="flex gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              const res = await portalFetch(`/api/portal/autopay/enrollments/${activeAutopayEnrollment.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ status: "paused" }),
+                              });
+                              if (res.ok) refetchAutopay();
+                            }}
+                          >
+                            Pause
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => cancelAutopay.mutate(activeAutopayEnrollment.id)}
+                            disabled={cancelAutopay.isPending}
+                          >
+                            {cancelAutopay.isPending ? "Cancelling…" : "Cancel Autopay"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (autopayEnrollments ?? []).find((e: any) => e.status === "paused") ? (
+                      <div className="p-4 bg-surface rounded-lg border border-outline-variant/10 space-y-3">
+                        {(() => {
+                          const paused = (autopayEnrollments ?? []).find((e: any) => e.status === "paused");
+                          return (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="text-xs">Paused</Badge>
+                                <span className="text-sm font-medium capitalize">{paused.frequency}</span>
+                              </div>
+                              <p className="text-2xl font-bold">${Number(paused.amount ?? 0).toFixed(2)}</p>
+                              <Button
+                                size="sm"
+                                onClick={async () => {
+                                  const res = await portalFetch(`/api/portal/autopay/enrollments/${paused.id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ status: "active" }),
+                                  });
+                                  if (res.ok) refetchAutopay();
+                                }}
+                              >
+                                Resume Autopay
+                              </Button>
+                            </>
+                          );
+                        })()}
                       </div>
                     ) : (
-                      <p className="text-on-surface-variant">No autopay currently enabled</p>
+                      <p className="text-on-surface-variant text-sm">No autopay currently enabled.</p>
                     )}
                     {autopayFormOpen && (
                       <div className="mt-4 space-y-3 p-4 bg-surface rounded-lg border border-outline-variant/10">
-                        <Input type="number" step="0.01" placeholder="Amount" value={autopayForm.amount} onChange={(e) => setAutopayForm((p) => ({ ...p, amount: e.target.value }))} />
-                        <Input type="number" min="1" max="31" placeholder="Day of month" value={autopayForm.dayOfMonth} onChange={(e) => setAutopayForm((p) => ({ ...p, dayOfMonth: e.target.value }))} />
+                        <div className="text-sm font-medium mb-1">Set Up Recurring Payment</div>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          placeholder="Amount ($)"
+                          value={autopayForm.amount}
+                          onChange={(e) => setAutopayForm((p) => ({ ...p, amount: e.target.value }))}
+                        />
+                        <Input
+                          type="number"
+                          min="1"
+                          max="28"
+                          placeholder="Day of month (1–28)"
+                          value={autopayForm.dayOfMonth}
+                          onChange={(e) => setAutopayForm((p) => ({ ...p, dayOfMonth: e.target.value }))}
+                        />
                         <Select value={autopayForm.frequency} onValueChange={(value) => setAutopayForm((p) => ({ ...p, frequency: value }))}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="monthly">Monthly</SelectItem>
                             <SelectItem value="quarterly">Quarterly</SelectItem>
-                            <SelectItem value="annually">Annually</SelectItem>
+                            <SelectItem value="annual">Annually</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Button onClick={() => enrollAutopay.mutate()} disabled={enrollAutopay.isPending} className="w-full">
-                          {enrollAutopay.isPending ? "Setting up..." : "Enable Autopay"}
+                        {enrollAutopay.isError && (
+                          <p className="text-xs text-destructive">{(enrollAutopay.error as Error)?.message}</p>
+                        )}
+                        <Button onClick={() => enrollAutopay.mutate()} disabled={enrollAutopay.isPending || !autopayForm.amount} className="w-full">
+                          {enrollAutopay.isPending ? "Setting up…" : "Enable Autopay"}
                         </Button>
                       </div>
                     )}
