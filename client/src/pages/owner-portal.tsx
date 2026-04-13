@@ -215,6 +215,7 @@ export default function OwnerPortalPage() {
   const [smsOptInPending, setSmsOptInPending] = useState(false);
   const [pushPromptDismissed, setPushPromptDismissed] = useState(() => window.localStorage.getItem("pushPromptDismissed") === "1");
   const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushPending, setPushPending] = useState(false);
   const [maintenanceTitle, setMaintenanceTitle] = useState("");
   const [maintenanceDescription, setMaintenanceDescription] = useState("");
   const [maintenanceLocation, setMaintenanceLocation] = useState("");
@@ -353,10 +354,18 @@ export default function OwnerPortalPage() {
     },
   });
 
-  // Register service worker for push notifications
+  // Register service worker for push notifications and check existing subscription
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("/sw.js").catch(() => {
+    navigator.serviceWorker.register("/sw.js").then(async () => {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) setPushSubscribed(true);
+      } catch {
+        // Non-fatal
+      }
+    }).catch(() => {
       // SW registration failures are non-fatal
     });
   }, []);
@@ -836,6 +845,40 @@ export default function OwnerPortalPage() {
   const dismissPushPrompt = () => {
     setPushPromptDismissed(true);
     window.localStorage.setItem("pushPromptDismissed", "1");
+  };
+
+  const unsubscribeFromPush = async () => {
+    if (!("serviceWorker" in navigator)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        const endpoint = sub.endpoint;
+        await sub.unsubscribe();
+        await portalFetch("/api/portal/push/unsubscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint }),
+        });
+      }
+      setPushSubscribed(false);
+    } catch {
+      // Non-fatal
+    }
+  };
+
+  const togglePushNotifications = async (enable: boolean) => {
+    if (!("Notification" in window) || !("PushManager" in window)) return;
+    setPushPending(true);
+    try {
+      if (enable) {
+        await subscribeToPush();
+      } else {
+        await unsubscribeFromPush();
+      }
+    } finally {
+      setPushPending(false);
+    }
   };
 
   const toggleSmsOptIn = async (value: boolean) => {
@@ -1557,6 +1600,38 @@ export default function OwnerPortalPage() {
                               {me?.smsOptIn ? "SMS notifications enabled" : "SMS notifications disabled"}
                             </span>
                           </label>
+                        </div>
+
+                        {/* Push Notifications */}
+                        <div className="bg-surface-container-low rounded-xl p-6 border border-outline-variant/10 shadow-sm">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="material-symbols-outlined text-primary">notifications_active</span>
+                            <h3 className="font-headline text-xl text-on-surface">Push Notifications</h3>
+                          </div>
+                          {!("Notification" in window) || !("PushManager" in window) ? (
+                            <p className="text-sm text-on-surface-variant">Push notifications are not supported by your browser.</p>
+                          ) : Notification.permission === "denied" ? (
+                            <p className="text-sm text-on-surface-variant">Push notifications are blocked by your browser. To enable them, update your browser site settings and reload this page.</p>
+                          ) : (
+                            <>
+                              <p className="text-sm text-on-surface-variant mb-4">Receive instant browser alerts for urgent notices, emergencies, and community updates — even when you're not actively viewing this page.</p>
+                              <label className="flex items-center gap-3 cursor-pointer select-none">
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={pushSubscribed}
+                                  disabled={pushPending}
+                                  onClick={() => togglePushNotifications(!pushSubscribed)}
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${pushSubscribed ? "bg-primary" : "bg-outline"} disabled:opacity-50`}
+                                >
+                                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${pushSubscribed ? "translate-x-6" : "translate-x-1"}`} />
+                                </button>
+                                <span className="text-sm font-medium text-on-surface">
+                                  {pushSubscribed ? "Push notifications enabled" : "Push notifications disabled"}
+                                </span>
+                              </label>
+                            </>
+                          )}
                         </div>
 
                         {/* Emergency Contact */}
