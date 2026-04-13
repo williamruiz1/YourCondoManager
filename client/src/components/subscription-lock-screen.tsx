@@ -5,6 +5,7 @@ type SubscriptionLockScreenProps = {
   onManageBilling: () => void;
 };
 
+// PRICING STALE — "Enterprise" label superseded. See docs/strategy/pricing-and-positioning.md
 const PLAN_LABELS: Record<string, string> = {
   "self-managed": "Self-Managed",
   "property-manager": "Property Manager",

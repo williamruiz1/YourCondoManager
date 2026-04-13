@@ -12474,7 +12474,8 @@ This is an automated demo request from the Your Condo Manager website.
       const { name, email, organizationName, associationType, unitCount, plan } = req.body as Record<string, string>;
       if (!name || !email || !organizationName || !plan) return res.status(400).json({ message: "name, email, organizationName, and plan are required" });
 
-      // Enterprise → contact sales
+      // PRICING STALE — "enterprise" plan key will change when PM tier naming is finalized.
+      // See docs/strategy/pricing-and-positioning.md
       if (plan === "enterprise") return res.json({ enterpriseContact: true });
 
       const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");

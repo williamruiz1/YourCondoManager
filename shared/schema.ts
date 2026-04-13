@@ -2536,6 +2536,8 @@ export const platformSubscriptionStatusEnum = pgEnum("platform_subscription_stat
   "trialing", "active", "past_due", "canceled", "unpaid", "incomplete",
 ]);
 
+// PRICING STALE — "enterprise" enum value will need migration when
+// PM tier naming is finalized. See docs/strategy/pricing-and-positioning.md
 export const platformPlanEnum = pgEnum("platform_plan", [
   "self-managed", "property-manager", "enterprise",
 ]);

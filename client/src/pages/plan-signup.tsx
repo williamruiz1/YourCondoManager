@@ -39,7 +39,7 @@ const PLANS: Record<
 > = {
   "self-managed": {
     name: "Self-Managed",
-    price: "From $30/mo",
+    price: "From $30/mo", // PRICING STALE — see docs/strategy/pricing-and-positioning.md
     tagline: "For self-managed Boards & Condo Associations",
     features: [
       "Single Association Portal",
@@ -52,7 +52,7 @@ const PLANS: Record<
   },
   "property-manager": {
     name: "Property Manager",
-    price: "$450/mo",
+    price: "$450/mo", // PRICING STALE — see docs/strategy/pricing-and-positioning.md
     tagline: "For growing management firms",
     features: [
       "Manage 5–10 Associations",
@@ -63,6 +63,7 @@ const PLANS: Record<
     ],
     trial: "14-day free trial",
   },
+  // PRICING STALE — "Enterprise" tier name superseded. See docs/strategy/pricing-and-positioning.md
   enterprise: {
     name: "Enterprise",
     price: "Custom",
@@ -77,7 +78,9 @@ const PLANS: Record<
   },
 };
 
-// Canonical pricing: under 30 units → $30/mo, 30+ units → $50/mo
+// PRICING STALE — these are PM per-complex rates, not self-managed rates.
+// Canonical self-managed tiers: Small Community ($89), Mid ($139), Large ($199).
+// See docs/strategy/pricing-and-positioning.md
 const SELF_MANAGED_TIERS = [
   { label: "Under 30 units", min: 1, max: 29, price: "$30/mo" },
   { label: "30 units or more", min: 30, max: Infinity, price: "$50/mo" },

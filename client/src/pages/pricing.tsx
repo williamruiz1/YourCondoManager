@@ -1,3 +1,9 @@
+// ⚠️ PRICING PAGE — BLOCKED
+// This page must not be updated or linked in outreach until payment
+// processing (ACH, autopay, bank reconciliation) is live.
+// Canonical pricing: docs/strategy/pricing-and-positioning.md
+// Restructure task is queued — do not execute until unblocked.
+
 import {
   ArrowRight,
   Check,
@@ -48,6 +54,7 @@ type ComparisonCell = string | boolean;
 
 const comparisonRows: { capability: string; values: [ComparisonCell, ComparisonCell, ComparisonCell] }[] = [
   { capability: "Associations",         values: ["1",                      "5–10",                    "11+"] },
+  // PRICING STALE — see docs/strategy/pricing-and-positioning.md
   { capability: "Unit Pricing",         values: ["$30 / $50 per month",    "Standardized",            "Customized"] },
   { capability: "Multi-Portfolio View", values: [false,                    true,                      true] },
   { capability: "Resident App",         values: ["Standard",               "Standard",                "White-label available"] },
@@ -206,15 +213,18 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               </div>
               <div className="mb-3">
                 <div className="flex items-baseline gap-1">
+                  {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
                   <span className="font-serif text-5xl font-bold text-primary">$30</span>
                   <span className="text-muted-foreground">/month</span>
                 </div>
               </div>
               <div className="mb-7 space-y-0.5">
                 <p className="text-xs text-muted-foreground">
+                  {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
                   Under 30 units: <span className="font-semibold text-foreground">$30/mo</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
+                  {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
                   30 units or more: <span className="font-semibold text-foreground">$50/mo</span>
                 </p>
                 <p className="text-xs text-muted-foreground pt-1">Per association. No per-unit fees.</p>
@@ -240,6 +250,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               </div>
               <div className="mb-7">
                 <div className="flex items-baseline gap-1">
+                  {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
                   <span className="font-serif text-5xl font-bold text-primary">$450</span>
                   <span className="text-muted-foreground">/month</span>
                 </div>
@@ -257,7 +268,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               </Button>
             </div>
 
-            {/* Enterprise */}
+            {/* PRICING STALE — "Enterprise" tier name superseded. See docs/strategy/pricing-and-positioning.md */}
             <div className="bg-card border border-border/70 rounded-2xl p-10 flex flex-col shadow-sm hover:-translate-y-1 transition-transform duration-300">
               <div className="mb-8">
                 <h3 className="font-serif text-2xl text-foreground mb-1.5">Enterprise</h3>

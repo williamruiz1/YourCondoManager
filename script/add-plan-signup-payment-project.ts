@@ -48,6 +48,7 @@ const workstreams: WorkstreamDef[] = [
       {
         title: "Create Stripe Products and Prices for each plan tier",
         description:
+          // PRICING STALE — see docs/strategy/pricing-and-positioning.md
           "In Stripe dashboard: create three Products (Self-Managed, Property Manager, Enterprise). For Self-Managed, create recurring monthly Prices for each unit-count tier (1-25 units: $99/mo, 26-75 units: $149/mo, 76+ units: $199/mo). For Property Manager, create a single $449/mo Price. Enterprise will use custom quotes (no Price needed). Record all Stripe Price IDs in environment config / platform secrets store so checkout sessions can reference them dynamically. Add a STRIPE_PLAN_PRICE_IDS config field (JSON map of plan slug → price ID) to the platform secrets store.",
         effort: "small",
         priority: "critical",

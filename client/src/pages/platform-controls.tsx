@@ -400,6 +400,7 @@ function PlatformStripeConfigCard() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
+                {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
                 <label className="text-xs font-medium">Self-Managed &lt;30 units <span className="text-muted-foreground">($30/mo)</span></label>
                 <Input
                   placeholder="price_…"
@@ -408,6 +409,7 @@ function PlatformStripeConfigCard() {
                 />
               </div>
               <div className="space-y-1">
+                {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
                 <label className="text-xs font-medium">Self-Managed 30+ units <span className="text-muted-foreground">($50/mo)</span></label>
                 <Input
                   placeholder="price_…"
@@ -416,6 +418,7 @@ function PlatformStripeConfigCard() {
                 />
               </div>
               <div className="space-y-1">
+                {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
                 <label className="text-xs font-medium">Property Manager <span className="text-muted-foreground">($450/mo)</span></label>
                 <Input
                   placeholder="price_…"
@@ -438,6 +441,7 @@ function PlatformStripeConfigCard() {
             <li>Create your platform Stripe account at stripe.com and copy your API keys above.</li>
             <li>Set up a webhook endpoint in Stripe pointing to <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">/api/webhooks/platform/stripe</code>.</li>
             <li>Enable events: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">checkout.session.completed</code>, <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">customer.subscription.*</code>, <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">invoice.payment_failed</code>.</li>
+            {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
             <li>In Stripe, create products for Self-Managed ($30/mo under 30 units), Self-Managed ($50/mo, 30+ units), and Property Manager ($450/mo). Copy the monthly Price IDs into the fields above and save.</li>
             <li>Test with a Stripe test-mode key and a test checkout to confirm the full signup flow before going live.</li>
           </ol>

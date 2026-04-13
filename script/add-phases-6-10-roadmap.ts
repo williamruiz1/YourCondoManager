@@ -861,6 +861,7 @@ const projects: ProjectDef[] = [
         tasks: [
           {
             title: "Plan definition and feature flag system",
+            // PRICING STALE — "Starter, Growth, Enterprise" tier names superseded. See docs/strategy/pricing-and-positioning.md
             description: "Define tiered plans (Starter, Growth, Enterprise) with feature entitlements enforced via feature flags across all surfaces.",
             effort: "large",
             priority: "critical",
