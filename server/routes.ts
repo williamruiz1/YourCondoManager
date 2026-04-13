@@ -14159,8 +14159,8 @@ This is an automated demo request from the Your Condo Manager website.
           isEnabled: 0,
           communityDescription: `Welcome to ${assoc.name}. Located in ${assoc.city}, ${assoc.state}.`,
           slug,
-          sectionOrder: ["notices", "quick-actions", "info-blocks", "contacts"],
-          enabledSections: ["notices", "quick-actions", "info-blocks", "contacts"],
+          sectionOrder: ["notices", "quick-actions", "info-blocks", "buildings", "contacts"],
+          enabledSections: ["notices", "quick-actions", "info-blocks", "buildings", "contacts"],
         }).returning();
         results.push("Created hub configuration with slug: " + slug);
       }
@@ -14373,6 +14373,90 @@ This is an automated demo request from the Your Condo Manager website.
         meetings: upcomingMeetings,
         documents: publicDocuments,
       });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET public buildings list for a hub (by slug or association ID)
+  app.get("/api/hub/:identifier/buildings", async (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkHubRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    try {
+      const identifier = getParam(req.params.identifier);
+      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
+      if (!config) {
+        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
+      }
+      if (!config || !config.isEnabled) {
+        return res.status(404).json({ message: "Community hub not found or not enabled" });
+      }
+      const associationId = config.associationId;
+      const buildingsList = await db.select().from(buildings).where(eq(buildings.associationId, associationId));
+      const unitsList = await db.select({
+        id: units.id,
+        buildingId: units.buildingId,
+        unitNumber: units.unitNumber,
+        building: units.building,
+        squareFootage: units.squareFootage,
+      }).from(units).where(eq(units.associationId, associationId));
+
+      const unitsByBuilding = unitsList.reduce<Record<string, typeof unitsList>>((acc, unit) => {
+        const key = unit.buildingId || "__none__";
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(unit);
+        return acc;
+      }, {});
+
+      const result = buildingsList.map((b) => ({
+        id: b.id,
+        name: b.name,
+        address: b.address,
+        totalUnits: b.totalUnits,
+        notes: b.notes,
+        unitCount: (unitsByBuilding[b.id] || []).length,
+      }));
+
+      // Also include units not linked to a building
+      const unlinkedUnits = unitsByBuilding["__none__"] || [];
+      res.json({ buildings: result, unlinkedUnitCount: unlinkedUnits.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET public building detail (single building with its units)
+  app.get("/api/hub/:identifier/buildings/:buildingId", async (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkHubRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    try {
+      const identifier = getParam(req.params.identifier);
+      const buildingId = getParam(req.params.buildingId);
+      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
+      if (!config) {
+        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
+      }
+      if (!config || !config.isEnabled) {
+        return res.status(404).json({ message: "Community hub not found or not enabled" });
+      }
+      const associationId = config.associationId;
+      const [building] = await db.select().from(buildings)
+        .where(and(eq(buildings.id, buildingId), eq(buildings.associationId, associationId)));
+      if (!building) return res.status(404).json({ message: "Building not found" });
+
+      const buildingUnits = await db.select({
+        id: units.id,
+        unitNumber: units.unitNumber,
+        building: units.building,
+        squareFootage: units.squareFootage,
+      }).from(units)
+        .where(and(eq(units.associationId, associationId), eq(units.buildingId, buildingId)));
+
+      res.json({ building, units: buildingUnits });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

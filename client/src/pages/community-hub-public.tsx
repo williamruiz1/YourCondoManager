@@ -6,7 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Bell, ExternalLink, Info, ChevronRight, Building2, Phone, MapPin, Calendar, FileText, Download, Mail, KeyRound, Loader2, CheckCircle2 } from "lucide-react";
+import { Bell, ExternalLink, Info, ChevronRight, Building2, Phone, MapPin, Calendar, FileText, Download, Mail, KeyRound, Loader2, CheckCircle2, Home } from "lucide-react";
+
+type PublicBuilding = {
+  id: string;
+  name: string;
+  address: string;
+  totalUnits: number | null;
+  notes: string | null;
+  unitCount: number;
+};
 
 type PublicHubData = {
   config: {
@@ -79,6 +88,7 @@ const CATEGORY_ICONS: Record<string, typeof Info> = {
 export default function CommunityHubPublicPage() {
   const [, params] = useRoute("/community/:identifier");
   const identifier = params?.identifier || "";
+  const [noticeCategory, setNoticeCategory] = useState<string>("all");
 
   const { data: hub, isLoading, error } = useQuery<PublicHubData>({
     queryKey: [`/api/hub/${identifier}/public`],
@@ -86,6 +96,16 @@ export default function CommunityHubPublicPage() {
     queryFn: async () => {
       const res = await fetch(`/api/hub/${encodeURIComponent(identifier)}/public`);
       if (!res.ok) throw new Error("Hub not found");
+      return res.json();
+    },
+  });
+
+  const { data: buildingsData } = useQuery<{ buildings: PublicBuilding[]; unlinkedUnitCount: number }>({
+    queryKey: [`/api/hub/${identifier}/buildings`],
+    enabled: !!identifier && !!hub,
+    queryFn: async () => {
+      const res = await fetch(`/api/hub/${encodeURIComponent(identifier)}/buildings`);
+      if (!res.ok) return { buildings: [], unlinkedUnitCount: 0 };
       return res.json();
     },
   });
@@ -116,12 +136,14 @@ export default function CommunityHubPublicPage() {
   const themeColor = config.themeColor || "#3b82f6";
   const enabledSections = config.enabledSections || [];
   const sectionOrder = config.sectionOrder || ["notices", "quick-actions", "info-blocks", "map", "contacts"];
+  const publicBuildings = buildingsData?.buildings || [];
 
   // Section rendering engine — renders sections in configurable order
   const sectionRenderers: Record<string, () => React.ReactNode> = {
-    notices: () => <NoticesSection notices={notices} themeColor={themeColor} />,
+    notices: () => <NoticesSection notices={notices} themeColor={themeColor} activeCategory={noticeCategory} onCategoryChange={setNoticeCategory} />,
     "quick-actions": () => <QuickActionsSection actionLinks={actionLinks} />,
     "info-blocks": () => <InfoBlocksSection infoBlocks={infoBlocks} themeColor={themeColor} />,
+    buildings: () => publicBuildings.length > 0 ? <BuildingsSection buildings={publicBuildings} themeColor={themeColor} /> : null,
     events: () => meetings.length > 0 ? (
       <section>
         <div className="flex items-center gap-2 mb-3">
@@ -249,6 +271,7 @@ export default function CommunityHubPublicPage() {
           if (s === "info-blocks" && infoBlocks.length === 0) return true;
           if (s === "events" && meetings.length === 0) return true;
           if (s === "documents" && docs.length === 0) return true;
+          if (s === "buildings" && publicBuildings.length === 0) return true;
           if (s === "map") return true;
           if (s === "contacts") return false;
           return false;
@@ -278,8 +301,23 @@ export default function CommunityHubPublicPage() {
 
 // --- Section Components ---
 
-function NoticesSection({ notices, themeColor }: { notices: PublicHubData["notices"]; themeColor: string }) {
+function NoticesSection({
+  notices,
+  themeColor,
+  activeCategory,
+  onCategoryChange,
+}: {
+  notices: PublicHubData["notices"];
+  themeColor: string;
+  activeCategory: string;
+  onCategoryChange: (cat: string) => void;
+}) {
   if (notices.length === 0) return null;
+
+  const usedCategories = Array.from(new Set(notices.map((n) => n.noticeCategory).filter(Boolean))) as string[];
+  const filteredNotices = activeCategory === "all"
+    ? notices
+    : notices.filter((n) => n.noticeCategory === activeCategory || (!n.noticeCategory && activeCategory === "general"));
 
   const priorityColors: Record<string, string> = {
     urgent: "bg-red-100 text-red-800 border-red-200",
@@ -293,8 +331,29 @@ function NoticesSection({ notices, themeColor }: { notices: PublicHubData["notic
         <Bell className="h-5 w-5" style={{ color: themeColor }} />
         <h2 className="text-lg font-semibold">Notices & Announcements</h2>
       </div>
+      {usedCategories.length > 1 && (
+        <div className="flex gap-2 flex-wrap mb-3">
+          <button
+            onClick={() => onCategoryChange("all")}
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${activeCategory === "all" ? "text-white border-transparent" : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"}`}
+            style={activeCategory === "all" ? { backgroundColor: themeColor, borderColor: themeColor } : {}}
+          >
+            All
+          </button>
+          {usedCategories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => onCategoryChange(cat)}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors capitalize ${activeCategory === cat ? "text-white border-transparent" : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"}`}
+              style={activeCategory === cat ? { backgroundColor: themeColor, borderColor: themeColor } : {}}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="space-y-3">
-        {notices.map((notice) => (
+        {filteredNotices.map((notice) => (
           <Card
             key={notice.id}
             className={notice.isPinned ? "border-l-4" : ""}
@@ -404,6 +463,43 @@ function InfoBlocksSection({ infoBlocks, themeColor }: { infoBlocks: PublicHubDa
             </Card>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+function BuildingsSection({ buildings, themeColor }: { buildings: PublicBuilding[]; themeColor: string }) {
+  if (buildings.length === 0) return null;
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <Building2 className="h-5 w-5" style={{ color: themeColor }} />
+        <h2 className="text-lg font-semibold">Buildings</h2>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {buildings.map((building) => (
+          <Card key={building.id}>
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-start gap-3">
+                <Home className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="font-medium text-sm">{building.name}</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    {building.address}
+                  </p>
+                  {building.unitCount > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">{building.unitCount} unit{building.unitCount !== 1 ? "s" : ""}</p>
+                  )}
+                  {building.notes && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{building.notes}</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
     </section>
   );
