@@ -44,7 +44,7 @@ export default function SolutionsPage({
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrollDepth, setScrollDepth] = useState(0);
-  const [persona, setPersona] = useState<Persona>("manager");
+  const [persona, setPersona] = useState<Persona>("board");
   const [animating, setAnimating] = useState(false);
   const [demoModalOpen, setDemoModalOpen] = useState(false);
 
@@ -231,7 +231,7 @@ export default function SolutionsPage({
           <div className="max-w-screen-2xl mx-auto px-8 flex flex-col md:flex-row items-center justify-center gap-6">
             <span id="persona-toggle-label" className="font-label text-sm font-bold text-on-surface-variant uppercase tracking-widest">Choose your solution:</span>
             <div className="flex p-1 bg-surface-container-high rounded-lg border border-outline-variant/20" role="group" aria-labelledby="persona-toggle-label">
-              {(["manager", "board", "resident"] as Persona[]).map((p) => (
+              {(["board", "manager", "resident"] as Persona[]).map((p) => (
                 <button
                   key={p}
                   onClick={() => switchPersona(p)}
