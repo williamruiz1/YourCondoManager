@@ -27,7 +27,7 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | ID | Name | Status | Decision Doc | PPM Task Card |
 |---|---|---|---|---|
 | 0.1 | Dashboard Resolution | **SPEC LOCKED** · handoff ready | [`decisions/0.1-dashboard-resolution.md`](decisions/0.1-dashboard-resolution.md) | [`ppm/0.1-dashboard-resolution-task.md`](ppm/0.1-dashboard-resolution-task.md) · `a304717b-b18b-4163-9928-5a9ea235d3a7` (queued) · [handoff](handoffs/0.1-dashboard-resolution-handoff.md) |
-| 0.2 | Persona Map | **SPEC LOCKED** | [`decisions/0.2-persona-map.md`](decisions/0.2-persona-map.md) | _pending task card_ |
+| 0.2 | Persona Map | **SPEC LOCKED** | [`decisions/0.2-persona-map.md`](decisions/0.2-persona-map.md) | [`ppm/0.2-persona-map-task.md`](ppm/0.2-persona-map-task.md) · `5fa11c46-1e93-4991-a4c3-a8c8f3d63558` (queued) |
 | 0.3 | Navigation Model | IN SPEC (skeleton) | [`decisions/0.3-navigation-model.md`](decisions/0.3-navigation-model.md) | _pending spec lock_ |
 
 ---
@@ -96,3 +96,4 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 2026-04-14 | Claude documentation agent | Handoff doc published for module 0.1: `handoffs/0.1-dashboard-resolution-handoff.md`. Build gate cleared; Computer may begin on operator activation. |
 | 2026-04-14 | YCM CC + Founder | Module 0.2 (Persona Map) SPEC LOCKED. Three personas confirmed: Manager, Board Admin, Owner. Owner Portal HOA payments and bill history explicitly out of overhaul scope. |
 | 2026-04-14 | Claude documentation agent | Module 0.3 (Navigation Model) skeleton drafted at `decisions/0.3-navigation-model.md`. Status IN SPEC. Nine conflicts enumerated (Q1–Q9); Selected Resolution and Acceptance Criteria marked PENDING YCM CC + Founder decision. Not yet lockable. |
+| 2026-04-14 | Claude documentation agent | PPM task card created for module 0.2 (`5fa11c46-1e93-4991-a4c3-a8c8f3d63558`, queued). Governance card — enforces 0.2 boundary matrix across Layer 2 / Layer 3 work. No direct build; verified as downstream modules close. |
