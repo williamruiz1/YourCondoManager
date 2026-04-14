@@ -99,6 +99,7 @@ async function verifyCodeCoverage() {
   const portal = read("client/src/pages/owner-portal.tsx");
   const routes = read("server/routes.ts");
 
+  // Multi-unit overview and unit focus
   assertCheck(portal.includes('queryKey: ["portal/my-units"]'), "missing owner-unit query wiring");
   assertCheck(portal.includes('queryKey: ["portal/units-balance"]'), "missing per-unit balance query wiring");
   assertCheck(portal.includes('queryKey: ["portal/board-dashboard"]'), "missing board dashboard query wiring");
@@ -111,9 +112,28 @@ async function verifyCodeCoverage() {
   assertCheck(portal.includes("Ledger Summary"), "missing owner ledger summary");
   assertCheck(portal.includes("Manage Payments"), "missing owner financial workspace");
 
+  // Financial surfaces — ledger, financial dashboard, payment history
+  assertCheck(portal.includes('queryKey: ["portal/ledger"]'), "missing ledger query wiring");
+  assertCheck(portal.includes('queryKey: ["portal/financial-dashboard"]'), "missing financial-dashboard query wiring");
+  assertCheck(portal.includes("/api/portal/ledger"), "missing ledger endpoint usage");
+  assertCheck(portal.includes("/api/portal/financial-dashboard"), "missing financial-dashboard endpoint usage");
+  assertCheck(portal.includes("Payment History"), "missing payment history section in financials tab");
+
+  // Elections surface
+  assertCheck(portal.includes('queryKey: ["portal/elections"]'), "missing elections query wiring");
+  assertCheck(portal.includes("/api/portal/elections"), "missing elections endpoint usage");
+
+  // Maintenance request surface
+  assertCheck(portal.includes('queryKey: ["portal/maintenance-requests"]'), "missing maintenance-requests query wiring");
+  assertCheck(portal.includes("/api/portal/maintenance-requests"), "missing maintenance-requests endpoint usage");
+
   assertCheck(routes.includes('"/api/portal/my-units"'), "missing portal multi-unit route");
   assertCheck(routes.includes('"/api/portal/units-balance"'), "missing portal balance route");
   assertCheck(routes.includes('"/api/portal/board/dashboard"'), "missing portal board dashboard route");
+  assertCheck(routes.includes('"/api/portal/ledger"'), "missing portal ledger route");
+  assertCheck(routes.includes('"/api/portal/financial-dashboard"'), "missing portal financial-dashboard route");
+  assertCheck(routes.includes('"/api/portal/elections"'), "missing portal elections route");
+  assertCheck(routes.includes('"/api/portal/maintenance-requests"'), "missing portal maintenance-requests route");
   assertCheck(routes.includes("requirePortalBoard"), "missing board route guard");
   assertCheck(routes.includes("resolvePortalAccessContext"), "missing portal access resolution");
   assertCheck(routes.includes("getOwnedPortalUnitsForAssociation"), "missing owned-unit resolver");
