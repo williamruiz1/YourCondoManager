@@ -1490,6 +1490,9 @@ export const insertWebhookSigningSecretSchema = createInsertSchema(webhookSignin
 
 // Owner saved payment methods — per-owner payment method preferences (no sensitive data stored)
 export const savedPaymentMethodTypeEnum = pgEnum("saved_payment_method_type", ["ach", "check", "zelle", "other"]);
+export const savedPaymentMethodStatusEnum = pgEnum("saved_payment_method_status", [
+  "pending_verification", "active", "inactive", "revoked", "failed",
+]);
 export const savedPaymentMethods = pgTable("saved_payment_methods", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -1499,6 +1502,11 @@ export const savedPaymentMethods = pgTable("saved_payment_methods", {
   last4: text("last4"), // last 4 digits of account (display only)
   bankName: text("bank_name"),
   externalTokenRef: text("external_token_ref"), // reference to payment processor token (no raw account data)
+  provider: paymentGatewayProviderEnum("provider").notNull().default("stripe"),
+  providerCustomerId: text("provider_customer_id"),
+  providerPaymentMethodId: text("provider_payment_method_id"),
+  status: savedPaymentMethodStatusEnum("status").notNull().default("pending_verification"),
+  verifiedAt: timestamp("verified_at"),
   isDefault: integer("is_default").notNull().default(0),
   isActive: integer("is_active").notNull().default(1),
   addedAt: timestamp("added_at").defaultNow().notNull(),
@@ -1516,6 +1524,7 @@ export const autopayEnrollments = pgTable("autopay_enrollments", {
   associationId: varchar("association_id").notNull().references(() => associations.id),
   unitId: varchar("unit_id").notNull().references(() => units.id),
   personId: varchar("person_id").notNull().references(() => persons.id),
+  paymentMethodId: varchar("payment_method_id").references(() => savedPaymentMethods.id),
   amount: real("amount").notNull(),
   frequency: autopayFrequencyEnum("frequency").notNull().default("monthly"),
   dayOfMonth: integer("day_of_month").notNull().default(1),
@@ -1542,6 +1551,7 @@ export const autopayRuns = pgTable("autopay_runs", {
   amount: real("amount").notNull(),
   status: autopayRunStatusEnum("status").notNull().default("success"),
   ledgerEntryId: varchar("ledger_entry_id").references(() => ownerLedgerEntries.id),
+  paymentTransactionId: varchar("payment_transaction_id").references(() => paymentTransactions.id),
   errorMessage: text("error_message"),
   ranAt: timestamp("ran_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -2554,6 +2564,7 @@ export const platformSubscriptions = pgTable("platform_subscriptions", {
   trialEndsAt: timestamp("trial_ends_at"),
   cancelAtPeriodEnd: integer("cancel_at_period_end").notNull().default(0),
   unitTier: integer("unit_tier"),
+  unitCount: integer("unit_count"),
   adminEmail: text("admin_email").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -2766,3 +2777,231 @@ export const amenityBlocks = pgTable("amenity_blocks", {
 export type AmenityBlock = typeof amenityBlocks.$inferSelect;
 export type InsertAmenityBlock = typeof amenityBlocks.$inferInsert;
 export const insertAmenityBlockSchema = createInsertSchema(amenityBlocks);
+
+// ── Billing Data Model (Phase 0) ─────────────────────────────────────────────
+
+export const billingAccountTypeEnum = pgEnum("billing_account_type", [
+  "self_managed", "property_manager",
+]);
+
+export const planCatalogStatusEnum = pgEnum("plan_catalog_status", [
+  "draft", "active", "retired",
+]);
+
+export const pricingModelEnum = pgEnum("pricing_model", [
+  "flat_per_association", "per_complex", "enterprise_manual",
+]);
+
+export const planCatalog = pgTable("plan_catalog", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  planKey: text("plan_key").notNull(),
+  accountType: billingAccountTypeEnum("account_type").notNull(),
+  displayName: text("display_name").notNull(),
+  status: planCatalogStatusEnum("status").notNull().default("draft"),
+  pricingModel: pricingModelEnum("pricing_model").notNull(),
+  unitMin: integer("unit_min"),
+  unitMax: integer("unit_max"),
+  currency: text("currency").notNull().default("USD"),
+  billingFrequencySupported: jsonb("billing_frequency_supported").$type<string[]>().notNull().default(sql`'["monthly"]'::jsonb`),
+  monthlyAmountCents: integer("monthly_amount_cents"),
+  annualEffectiveMonthlyCents: integer("annual_effective_monthly_cents"),
+  annualBilledAmountCents: integer("annual_billed_amount_cents"),
+  recommendedInSignup: integer("recommended_in_signup").notNull().default(0),
+  version: integer("version").notNull().default(1),
+  effectiveFrom: timestamp("effective_from").notNull(),
+  effectiveTo: timestamp("effective_to"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniquePlanKey: uniqueIndex("plan_catalog_plan_key_uq").on(table.planKey),
+}));
+
+export type PlanCatalog = typeof planCatalog.$inferSelect;
+export type InsertPlanCatalog = typeof planCatalog.$inferInsert;
+export const insertPlanCatalogSchema = createInsertSchema(planCatalog);
+
+export const billingAccountStatusEnum = pgEnum("billing_account_status", [
+  "draft", "trialing", "active", "past_due", "canceled",
+]);
+
+export const billingAccounts = pgTable("billing_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  accountType: billingAccountTypeEnum("account_type").notNull(),
+  associationId: varchar("association_id").references(() => associations.id),
+  billingStatus: billingAccountStatusEnum("billing_status").notNull().default("draft"),
+  currency: text("currency").notNull().default("USD"),
+  provider: text("provider"),
+  providerCustomerId: text("provider_customer_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type BillingAccount = typeof billingAccounts.$inferSelect;
+export type InsertBillingAccount = typeof billingAccounts.$inferInsert;
+export const insertBillingAccountSchema = createInsertSchema(billingAccounts);
+
+export const billingIntervalEnum = pgEnum("billing_interval", [
+  "monthly", "annual",
+]);
+
+export const billingSubscriptionStatusEnum = pgEnum("billing_subscription_status", [
+  "pending", "active", "past_due", "canceled",
+]);
+
+export const billingSubscriptions = pgTable("billing_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  billingAccountId: varchar("billing_account_id").notNull().references(() => billingAccounts.id),
+  planCatalogId: varchar("plan_catalog_id").references(() => planCatalog.id),
+  pricingVersion: integer("pricing_version").notNull().default(1),
+  billingInterval: billingIntervalEnum("billing_interval").notNull().default("monthly"),
+  priceSnapshotCents: integer("price_snapshot_cents"),
+  priceSnapshotJson: jsonb("price_snapshot_json"),
+  status: billingSubscriptionStatusEnum("status").notNull().default("pending"),
+  startedAt: timestamp("started_at").notNull(),
+  endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type BillingSubscription = typeof billingSubscriptions.$inferSelect;
+export type InsertBillingSubscription = typeof billingSubscriptions.$inferInsert;
+export const insertBillingSubscriptionSchema = createInsertSchema(billingSubscriptions);
+
+export const billingSubscriptionItems = pgTable("billing_subscription_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  billingSubscriptionId: varchar("billing_subscription_id").notNull().references(() => billingSubscriptions.id),
+  associationId: varchar("association_id").references(() => associations.id),
+  planKey: text("plan_key").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  unitAmountCents: integer("unit_amount_cents"),
+  lineTotalCents: integer("line_total_cents"),
+  pricingSnapshotJson: jsonb("pricing_snapshot_json"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type BillingSubscriptionItem = typeof billingSubscriptionItems.$inferSelect;
+export type InsertBillingSubscriptionItem = typeof billingSubscriptionItems.$inferInsert;
+export const insertBillingSubscriptionItemSchema = createInsertSchema(billingSubscriptionItems);
+
+export const signupPlanSelectionStatusEnum = pgEnum("signup_plan_selection_status", [
+  "draft", "resolved", "converted", "abandoned",
+]);
+
+export const signupPlanSelections = pgTable("signup_plan_selections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  signupSessionId: varchar("signup_session_id").notNull(),
+  accountType: billingAccountTypeEnum("account_type").notNull(),
+  associationUnitCount: integer("association_unit_count"),
+  pmComplexCount: integer("pm_complex_count"),
+  pmComplexSnapshotJson: jsonb("pm_complex_snapshot_json"),
+  resolvedPlanCatalogId: varchar("resolved_plan_catalog_id").references(() => planCatalog.id),
+  resolvedPricingJson: jsonb("resolved_pricing_json"),
+  billingInterval: billingIntervalEnum("billing_interval"),
+  status: signupPlanSelectionStatusEnum("status").notNull().default("draft"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ── Phase 1A: Owner Payment Transactions ────────────────────────────────────
+
+export const paymentTransactionStatusEnum = pgEnum("payment_transaction_status", [
+  "draft", "initiated", "pending", "succeeded", "failed", "canceled", "reversed",
+]);
+
+export const paymentTransactionSourceEnum = pgEnum("payment_transaction_source", [
+  "owner_initiated", "autopay",
+]);
+
+export const failureCategoryEnum = pgEnum("failure_category", ["soft", "hard", "unknown"]);
+
+export const paymentTransactions = pgTable("payment_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  billingAccountId: varchar("billing_account_id").references(() => billingAccounts.id),
+  amountCents: integer("amount_cents").notNull(),
+  currency: text("currency").notNull().default("USD"),
+  status: paymentTransactionStatusEnum("status").notNull().default("draft"),
+  provider: paymentGatewayProviderEnum("provider").notNull().default("stripe"),
+  providerPaymentId: text("provider_payment_id"),
+  providerIntentId: text("provider_intent_id"),
+  providerCustomerId: text("provider_customer_id"),
+  description: text("description"),
+  receiptReference: text("receipt_reference"),
+  failureCode: text("failure_code"),
+  failureReason: text("failure_reason"),
+  submittedAt: timestamp("submitted_at"),
+  confirmedAt: timestamp("confirmed_at"),
+  failedAt: timestamp("failed_at"),
+  metadataJson: jsonb("metadata_json"),
+  source: paymentTransactionSourceEnum("source").notNull().default("owner_initiated"),
+  paymentMethodId: varchar("payment_method_id").references(() => savedPaymentMethods.id),
+  autopayEnrollmentId: varchar("autopay_enrollment_id").references(() => autopayEnrollments.id),
+  isOffSession: integer("is_off_session").notNull().default(0),
+  attemptNumber: integer("attempt_number").notNull().default(1),
+  retryOfTransactionId: varchar("retry_of_transaction_id"),
+  failureCategory: failureCategoryEnum("failure_category"),
+  retryEligible: integer("retry_eligible").notNull().default(0),
+  nextRetryAt: timestamp("next_retry_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueReceiptReference: uniqueIndex("payment_transactions_receipt_ref_uq").on(table.receiptReference),
+}));
+
+export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
+export type InsertPaymentTransaction = typeof paymentTransactions.$inferInsert;
+export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions);
+
+// ── Phase 3: Delinquency Settings & Notices ─────────────────────────────────
+
+export const delinquencySettings = pgTable("delinquency_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").references(() => associations.id),
+  gracePeriodDays: integer("grace_period_days").notNull().default(15),
+  bucketBoundariesJson: jsonb("bucket_boundaries_json").notNull().default(sql`'[30,60,90]'::jsonb`),
+  maxRetryAttempts: integer("max_retry_attempts").notNull().default(3),
+  retryScheduleJson: jsonb("retry_schedule_json").notNull().default(sql`'[3,7,14]'::jsonb`),
+  noticeStagesJson: jsonb("notice_stages_json"),
+  autoLateFeeEnabled: integer("auto_late_fee_enabled").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type DelinquencySettings = typeof delinquencySettings.$inferSelect;
+export type InsertDelinquencySettings = typeof delinquencySettings.$inferInsert;
+export const insertDelinquencySettingsSchema = createInsertSchema(delinquencySettings);
+
+export const delinquencyNoticeStageEnum = pgEnum("delinquency_notice_stage", [
+  "payment_failed_notice", "delinquency_notice_1", "delinquency_notice_2", "final_notice",
+]);
+
+export const delinquencyNoticeStatusEnum = pgEnum("delinquency_notice_status", [
+  "queued", "sent", "skipped", "failed",
+]);
+
+export const delinquencyNotices = pgTable("delinquency_notices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  noticeStage: delinquencyNoticeStageEnum("notice_stage").notNull(),
+  triggerDaysPastDue: integer("trigger_days_past_due").notNull(),
+  amountOwedCents: integer("amount_owed_cents").notNull(),
+  escalationId: varchar("escalation_id").references(() => delinquencyEscalations.id),
+  noticeSendId: varchar("notice_send_id").references(() => noticeSends.id),
+  status: delinquencyNoticeStatusEnum("status").notNull().default("queued"),
+  delinquencyPeriodKey: text("delinquency_period_key").notNull(),
+  payloadSnapshotJson: jsonb("payload_snapshot_json"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueNoticePerPeriod: uniqueIndex("delinquency_notices_dedup_uq").on(
+    table.associationId, table.personId, table.unitId, table.noticeStage, table.delinquencyPeriodKey,
+  ),
+}));
+export type DelinquencyNotice = typeof delinquencyNotices.$inferSelect;
+export type InsertDelinquencyNotice = typeof delinquencyNotices.$inferInsert;
+export const insertDelinquencyNoticeSchema = createInsertSchema(delinquencyNotices);

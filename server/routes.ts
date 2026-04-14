@@ -195,6 +195,10 @@ import {
   insertHubMapLayerSchema,
   insertHubMapNodeSchema,
   insertHubMapIssueSchema,
+  delinquencySettings,
+  insertDelinquencySettingsSchema,
+  delinquencyNotices,
+  autopayEnrollments,
 } from "@shared/schema";
 import {
   ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE,
@@ -203,6 +207,10 @@ import {
 } from "@shared/admin-contextual-feedback";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { registerAutopayRoutes } from "./routes/autopay";
+import { registerPaymentPortalRoutes } from "./routes/payment-portal";
+import { updatePaymentTransactionStatus } from "./services/payment-service";
+import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
+import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
 
 const uploadDir = path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -416,6 +424,7 @@ function normalizeStripeWebhookPayload(payload: unknown): {
   unitId: string | null;
   paymentLinkToken: string | null;
   gatewayReference: string | null;
+  transactionId: string | null;
   rawPayloadJson: unknown;
 } | null {
   if (!isStripeEventPayload(payload)) return null;
@@ -461,6 +470,7 @@ function normalizeStripeWebhookPayload(payload: unknown): {
         : typeof object.id === "string"
           ? object.id
           : null,
+    transactionId: typeof metadata.transactionId === "string" ? metadata.transactionId : null,
     rawPayloadJson: payload,
   };
 }
@@ -1188,6 +1198,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     getAssociationIdQuery,
     assertAssociationScope,
     assertAssociationInputScope,
+  });
+
+  // Phase 1A: Owner Payment Portal routes
+  registerPaymentPortalRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    requirePortal,
+    getAssociationIdQuery,
+    assertAssociationScope,
   });
 
   // Lightweight public health check for monitors, load balancers, and liveness probes
@@ -3288,11 +3307,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // AR aging buckets: current (0-30), 31-60, 61-90, 91-120, 120+
       const buckets = { current: 0, days31to60: 0, days61to90: 0, days91to120: 0, over120: 0 };
-      const unitAging: { unitId: string; balance: number; bucket: string }[] = [];
+      const unitAging: {
+        unitId: string; balance: number; bucket: string; daysPastDue: number;
+        personId: string | null; personName: string | null; unitNumber: string | null;
+        lastPaymentDate: string | null; noticeStage: string | null;
+        nextRetryAt: string | null; autopayEnrolled: boolean;
+      }[] = [];
 
       // Use delinquency escalations for daysPastDue data
       const escalations = await db.select().from(delinquencyEscalations).where(eq(delinquencyEscalations.associationId, associationId));
       const escalationByUnit = new Map(escalations.map(e => [e.unitId, e]));
+
+      // Fetch unit/person info, autopay enrollments, latest notices, retry-eligible txns
+      const allUnits = await db.select({ id: units.id, unitNumber: units.unitNumber }).from(units).where(eq(units.associationId, associationId));
+      const unitInfoMap = new Map(allUnits.map(u => [u.id, u]));
+      const allPersons = await db.select({ id: persons.id, firstName: persons.firstName, lastName: persons.lastName }).from(persons);
+      const personInfoMap = new Map(allPersons.map(p => [p.id, p]));
+      const autopayEnrollmentsList = await db.select().from(autopayEnrollments).where(and(eq(autopayEnrollments.associationId, associationId), eq(autopayEnrollments.status, "active")));
+      const autopayByUnit = new Map(autopayEnrollmentsList.map(e => [e.unitId, true]));
+      const latestNotices = await db.select().from(delinquencyNotices).where(eq(delinquencyNotices.associationId, associationId)).orderBy(desc(delinquencyNotices.createdAt));
+      const noticeByUnit = new Map<string, string>();
+      for (const n of latestNotices) {
+        if (!noticeByUnit.has(n.unitId)) noticeByUnit.set(n.unitId, n.noticeStage);
+      }
+      const retryTxns = await findRetryEligibleTransactions(associationId);
+      const retryByUnit = new Map<string, string>();
+      for (const t of retryTxns) {
+        if (!retryByUnit.has(t.unitId) && t.nextRetryAt) retryByUnit.set(t.unitId, t.nextRetryAt.toISOString());
+      }
+
+      // Find last payment per unit
+      const paymentEntries = entries.filter(e => e.entryType === "payment" && e.amount < 0);
+      const lastPaymentByUnit = new Map<string, Date>();
+      for (const e of paymentEntries) {
+        if (!e.unitId) continue;
+        const existing = lastPaymentByUnit.get(e.unitId);
+        if (!existing || new Date(e.postedAt) > existing) lastPaymentByUnit.set(e.unitId, new Date(e.postedAt));
+      }
 
       for (const [unitId, bal] of Array.from(unitMap.entries())) {
         const balance = bal.charged - bal.paid;
@@ -3305,7 +3356,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         else if (days > 60) { bucket = "days61to90"; buckets.days61to90 += balance; }
         else if (days > 30) { bucket = "days31to60"; buckets.days31to60 += balance; }
         else { buckets.current += balance; }
-        unitAging.push({ unitId, balance, bucket });
+
+        const unitInfo = unitInfoMap.get(unitId);
+        const person = esc?.personId ? personInfoMap.get(esc.personId) : null;
+        const lastPmt = lastPaymentByUnit.get(unitId);
+
+        unitAging.push({
+          unitId,
+          balance,
+          bucket,
+          daysPastDue: days,
+          personId: esc?.personId ?? null,
+          personName: person ? `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim() || null : null,
+          unitNumber: unitInfo?.unitNumber ?? null,
+          lastPaymentDate: lastPmt ? lastPmt.toISOString() : null,
+          noticeStage: noticeByUnit.get(unitId) ?? null,
+          nextRetryAt: retryByUnit.get(unitId) ?? null,
+          autopayEnrolled: autopayByUnit.has(unitId),
+        });
       }
 
       const handoffs = await db.select().from(collectionsHandoffs)
@@ -3319,6 +3387,97 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         activeHandoffs: handoffs.filter(h => h.status === "active" || h.status === "referred").length,
         settledAmount: handoffs.filter(h => h.status === "settled").reduce((a, h) => a + (h.settlementAmount ?? 0), 0),
       });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Phase 3: Delinquency Settings ────────────────────────────────────────
+
+  app.get("/api/financial/delinquency-settings", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const settings = await getDelinquencySettingsForRoute(associationId);
+      res.json(settings);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/financial/delinquency-settings", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const parsed = insertDelinquencySettingsSchema.parse(req.body);
+      if (parsed.associationId) assertAssociationScope(req, parsed.associationId);
+
+      // Upsert: check if settings exist for this association
+      const existing = parsed.associationId
+        ? await db.select().from(delinquencySettings).where(eq(delinquencySettings.associationId, parsed.associationId)).limit(1)
+        : await db.select().from(delinquencySettings).where(sql`${delinquencySettings.associationId} IS NULL`).limit(1);
+
+      if (existing.length > 0) {
+        const [updated] = await db
+          .update(delinquencySettings)
+          .set({ ...parsed, updatedAt: new Date() })
+          .where(eq(delinquencySettings.id, existing[0].id))
+          .returning();
+        return res.json(updated);
+      }
+
+      const [created] = await db.insert(delinquencySettings).values(parsed).returning();
+      res.status(201).json(created);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Phase 3: Delinquency Notices ────────────────────────────────────────
+
+  app.get("/api/financial/delinquency-notices", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const personId = typeof req.query.personId === "string" ? req.query.personId : undefined;
+      const unitId = typeof req.query.unitId === "string" ? req.query.unitId : undefined;
+      const stage = typeof req.query.stage === "string" ? req.query.stage : undefined;
+      const notices = await getNoticeHistory({ associationId, personId, unitId, stage });
+      res.json(notices);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/financial/delinquency-notices/generate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req) || req.body?.associationId;
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const result = await generateDelinquencyNotices(associationId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Phase 3: Retry Management ────────────────────────────────────────
+
+  app.get("/api/financial/retry-eligible", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (associationId) assertAssociationScope(req, associationId);
+      const txns = await findRetryEligibleTransactions(associationId || undefined);
+      res.json(txns);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/financial/retries/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const result = await runAutopayRetries();
+      res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -4687,6 +4846,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           gatewayReference: normalizedStripeEvent.gatewayReference,
           rawPayloadJson: normalizedStripeEvent.rawPayloadJson,
         });
+
+        // Update payment_transactions if this webhook corresponds to a payment
+        if (normalizedStripeEvent.transactionId || normalizedStripeEvent.gatewayReference) {
+          try {
+            const txnStatus =
+              normalizedStripeEvent.status === "succeeded" ? "succeeded" as const
+              : normalizedStripeEvent.status === "failed" ? "failed" as const
+              : "pending" as const;
+
+            const updatedTxn = await updatePaymentTransactionStatus({
+              transactionId: normalizedStripeEvent.transactionId ?? undefined,
+              providerPaymentId: normalizedStripeEvent.gatewayReference ?? undefined,
+              providerIntentId: normalizedStripeEvent.gatewayReference ?? undefined,
+              status: txnStatus,
+            });
+
+            // Phase 2: Create ledger entry for autopay transactions that just succeeded
+            if (updatedTxn && updatedTxn.source === "autopay" && txnStatus === "succeeded") {
+              // Check if a ledger entry already exists for this transaction
+              const [existingLedger] = await db
+                .select()
+                .from(ownerLedgerEntries)
+                .where(
+                  and(
+                    eq(ownerLedgerEntries.referenceType, "autopay_payment_transaction"),
+                    eq(ownerLedgerEntries.referenceId, updatedTxn.id),
+                  ),
+                )
+                .limit(1);
+
+              if (!existingLedger) {
+                await db.insert(ownerLedgerEntries).values({
+                  associationId: updatedTxn.associationId,
+                  unitId: updatedTxn.unitId,
+                  personId: updatedTxn.personId,
+                  entryType: "payment",
+                  amount: -(updatedTxn.amountCents / 100),
+                  postedAt: new Date(),
+                  description: updatedTxn.description || "Autopay payment",
+                  referenceType: "autopay_payment_transaction",
+                  referenceId: updatedTxn.id,
+                });
+              }
+            }
+          } catch (txnUpdateErr) {
+            console.error("[webhook] payment_transactions update failed:", txnUpdateErr);
+          }
+        }
+
         return res.status(200).json(result);
       }
 

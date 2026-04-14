@@ -395,6 +395,8 @@ function PlatformStripeConfigCard() {
             </div>
 
             {/* Stripe Price IDs */}
+            {/* TODO: Stripe Price ID slots need expansion — see plan_catalog seed
+                for full tier list. 3 slots insufficient for canonical pricing model. */}
             <div className="pt-2 pb-1">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Plan Price IDs <span className="normal-case">(from Stripe Products)</span></p>
             </div>

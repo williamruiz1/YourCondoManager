@@ -17,16 +17,25 @@
  */
 
 import type { Express, NextFunction, Request, Response } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   autopayEnrollments,
   autopayRuns,
   insertAutopayEnrollmentSchema,
   ownerLedgerEntries,
+  paymentTransactions,
   persons,
+  savedPaymentMethods,
   units,
 } from "@shared/schema";
+import { storage } from "../storage";
+import {
+  createPaymentTransaction,
+  chargeOffSession,
+  updatePaymentTransactionStatus,
+} from "../services/payment-service";
+import { markTransactionForRetry, getDelinquencySettings } from "../services/retry-service";
 
 // ── Re-usable types (mirrored from routes.ts) ────────────────────────────────
 
@@ -80,6 +89,232 @@ function computeFirstRunDate(dayOfMonth: number): Date {
   return next;
 }
 
+// ── Phase 2: Autopay Collection Runner (exported for automation sweep) ────────
+
+export async function runAutopayCollectionForAssociation(
+  associationId: string,
+): Promise<{ succeeded: number; failed: number; skipped: number }> {
+  const gateway = await storage.getActivePaymentGatewayConnection({
+    associationId,
+    provider: "stripe",
+  });
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const enrollments = await db
+    .select()
+    .from(autopayEnrollments)
+    .where(
+      and(
+        eq(autopayEnrollments.associationId, associationId),
+        eq(autopayEnrollments.status, "active"),
+      ),
+    );
+
+  const dueNow = enrollments.filter(
+    (e) => !e.nextPaymentDate || new Date(e.nextPaymentDate).toISOString().slice(0, 10) <= todayStr,
+  );
+
+  let succeeded = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const enrollment of dueNow) {
+    try {
+      // Dedup: check if already charged this month
+      const [existingRun] = await db
+        .select()
+        .from(autopayRuns)
+        .where(
+          and(
+            eq(autopayRuns.enrollmentId, enrollment.id),
+            eq(autopayRuns.status, "success"),
+            gte(autopayRuns.ranAt, monthStart),
+          ),
+        )
+        .limit(1);
+
+      if (existingRun) {
+        skipped++;
+        continue;
+      }
+
+      // Check for in-flight transaction this month
+      const [existingTxn] = await db
+        .select()
+        .from(paymentTransactions)
+        .where(
+          and(
+            eq(paymentTransactions.autopayEnrollmentId, enrollment.id),
+            inArray(paymentTransactions.status, ["initiated", "pending", "succeeded"]),
+            gte(paymentTransactions.createdAt, monthStart),
+          ),
+        )
+        .limit(1);
+
+      if (existingTxn) {
+        skipped++;
+        continue;
+      }
+
+      // Check payment method
+      if (!enrollment.paymentMethodId) {
+        await db.insert(autopayRuns).values({
+          enrollmentId: enrollment.id,
+          associationId,
+          amount: Math.abs(enrollment.amount),
+          status: "skipped",
+          errorMessage: "No payment method linked — owner must update autopay settings",
+          ranAt: now,
+        });
+        skipped++;
+        continue; // Don't advance nextPaymentDate
+      }
+
+      const [method] = await db
+        .select()
+        .from(savedPaymentMethods)
+        .where(eq(savedPaymentMethods.id, enrollment.paymentMethodId))
+        .limit(1);
+
+      if (!method || method.status !== "active" || !method.providerPaymentMethodId || !method.providerCustomerId) {
+        await db.insert(autopayRuns).values({
+          enrollmentId: enrollment.id,
+          associationId,
+          amount: Math.abs(enrollment.amount),
+          status: "skipped",
+          errorMessage: "Payment method is not active or not verified",
+          ranAt: now,
+        });
+        skipped++;
+        continue;
+      }
+
+      if (!gateway?.secretKey) {
+        await db.insert(autopayRuns).values({
+          enrollmentId: enrollment.id,
+          associationId,
+          amount: Math.abs(enrollment.amount),
+          status: "skipped",
+          errorMessage: "Stripe gateway not configured for association",
+          ranAt: now,
+        });
+        skipped++;
+        continue;
+      }
+
+      const chargeAmount = Math.abs(enrollment.amount);
+      const amountCents = Math.round(chargeAmount * 100);
+
+      // Create payment transaction
+      const txn = await createPaymentTransaction({
+        associationId,
+        unitId: enrollment.unitId,
+        personId: enrollment.personId,
+        amountCents,
+        description: enrollment.description || "Autopay HOA dues",
+        source: "autopay",
+        paymentMethodId: enrollment.paymentMethodId,
+        autopayEnrollmentId: enrollment.id,
+        isOffSession: true,
+      });
+
+      // Charge off-session
+      const chargeResult = await chargeOffSession({
+        secretKey: gateway.secretKey,
+        stripeCustomerId: method.providerCustomerId,
+        stripePaymentMethodId: method.providerPaymentMethodId,
+        amountCents,
+        currency: "usd",
+        description: enrollment.description || "Autopay HOA dues",
+        associationId,
+        personId: enrollment.personId,
+        unitId: enrollment.unitId,
+        transactionId: txn.id,
+        enrollmentId: enrollment.id,
+      });
+
+      // Update transaction with provider info
+      await updatePaymentTransactionStatus({
+        transactionId: txn.id,
+        providerIntentId: chargeResult.intentId || undefined,
+        status: chargeResult.status === "succeeded" ? "succeeded"
+          : chargeResult.status === "pending" ? "pending"
+          : "failed",
+        failureCode: chargeResult.failureCode,
+        failureReason: chargeResult.failureReason,
+      });
+
+      // Create ledger entry only if immediately succeeded
+      let ledgerEntryId: string | null = null;
+      if (chargeResult.status === "succeeded") {
+        const [entry] = await db
+          .insert(ownerLedgerEntries)
+          .values({
+            associationId,
+            unitId: enrollment.unitId,
+            personId: enrollment.personId,
+            entryType: "payment",
+            amount: -chargeAmount,
+            postedAt: now,
+            description: enrollment.description || "Autopay HOA dues",
+            referenceType: "autopay_payment_transaction",
+            referenceId: txn.id,
+          })
+          .returning();
+        ledgerEntryId = entry.id;
+      }
+
+      // Record the run
+      const runStatus = chargeResult.status === "failed" ? "failed" as const : "success" as const;
+      await db.insert(autopayRuns).values({
+        enrollmentId: enrollment.id,
+        associationId,
+        amount: chargeAmount,
+        status: runStatus,
+        ledgerEntryId,
+        paymentTransactionId: txn.id,
+        errorMessage: chargeResult.failureReason ?? null,
+        ranAt: now,
+      });
+
+      // Advance nextPaymentDate
+      const next = advanceDate(now, enrollment.frequency, enrollment.dayOfMonth ?? 1);
+      await db
+        .update(autopayEnrollments)
+        .set({ nextPaymentDate: next, updatedAt: new Date() })
+        .where(eq(autopayEnrollments.id, enrollment.id));
+
+      if (chargeResult.status === "failed") {
+        // Phase 3: classify failure and mark for retry if eligible
+        try {
+          const settings = await getDelinquencySettings(associationId);
+          await markTransactionForRetry(txn.id, chargeResult.failureCode, chargeResult.failureReason, settings);
+        } catch (retryErr) {
+          console.error("[autopay] Failed to mark for retry:", retryErr);
+        }
+        failed++;
+      } else {
+        succeeded++;
+      }
+    } catch (err: any) {
+      await db.insert(autopayRuns).values({
+        enrollmentId: enrollment.id,
+        associationId,
+        amount: Math.abs(enrollment.amount),
+        status: "failed",
+        errorMessage: err.message,
+        ranAt: now,
+      });
+      failed++;
+    }
+  }
+
+  return { succeeded, failed, skipped };
+}
+
 // ── Route registration ────────────────────────────────────────────────────────
 
 export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers): void {
@@ -109,10 +344,12 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
             enrollment: autopayEnrollments,
             unit: { id: units.id, unitNumber: units.unitNumber, building: units.building },
             person: { id: persons.id, firstName: persons.firstName, lastName: persons.lastName, email: persons.email },
+            paymentMethod: { displayName: savedPaymentMethods.displayName, status: savedPaymentMethods.status },
           })
           .from(autopayEnrollments)
           .leftJoin(units, eq(autopayEnrollments.unitId, units.id))
           .leftJoin(persons, eq(autopayEnrollments.personId, persons.id))
+          .leftJoin(savedPaymentMethods, eq(autopayEnrollments.paymentMethodId, savedPaymentMethods.id))
           .where(eq(autopayEnrollments.associationId, associationId))
           .orderBy(desc(autopayEnrollments.enrolledAt));
 
@@ -254,78 +491,8 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
         if (!associationId) return res.status(400).json({ message: "associationId is required" });
         assertAssociationInputScope(req, associationId);
 
-        const now = new Date();
-        const todayStr = now.toISOString().slice(0, 10);
-
-        // Find active enrollments due today or earlier
-        const enrollments = await db
-          .select()
-          .from(autopayEnrollments)
-          .where(
-            and(
-              eq(autopayEnrollments.associationId, associationId),
-              eq(autopayEnrollments.status, "active"),
-            ),
-          );
-
-        const dueNow = enrollments.filter(
-          (e) => !e.nextPaymentDate || new Date(e.nextPaymentDate).toISOString().slice(0, 10) <= todayStr,
-        );
-
-        let succeeded = 0;
-        let failed = 0;
-
-        for (const enrollment of dueNow) {
-          try {
-            // Determine amount: use stored amount (already required not null in schema)
-            const chargeAmount = Math.abs(enrollment.amount);
-
-            const [entry] = await db
-              .insert(ownerLedgerEntries)
-              .values({
-                associationId,
-                unitId: enrollment.unitId,
-                personId: enrollment.personId,
-                entryType: "payment",
-                amount: -chargeAmount,
-                postedAt: now,
-                description: enrollment.description || "Autopay HOA dues",
-                referenceType: "autopay_enrollment",
-                referenceId: enrollment.id,
-              })
-              .returning();
-
-            await db.insert(autopayRuns).values({
-              enrollmentId: enrollment.id,
-              associationId,
-              amount: chargeAmount,
-              status: "success",
-              ledgerEntryId: entry.id,
-              ranAt: now,
-            });
-
-            // Advance nextPaymentDate
-            const next = advanceDate(now, enrollment.frequency, enrollment.dayOfMonth ?? 1);
-            await db
-              .update(autopayEnrollments)
-              .set({ nextPaymentDate: next, updatedAt: new Date() })
-              .where(eq(autopayEnrollments.id, enrollment.id));
-
-            succeeded++;
-          } catch (err: any) {
-            await db.insert(autopayRuns).values({
-              enrollmentId: enrollment.id,
-              associationId,
-              amount: enrollment.amount,
-              status: "failed",
-              errorMessage: err.message,
-              ranAt: now,
-            });
-            failed++;
-          }
-        }
-
-        res.json({ succeeded, failed, totalDue: dueNow.length, processedAt: now.toISOString() });
+        const result = await runAutopayCollectionForAssociation(associationId);
+        res.json({ ...result, totalDue: result.succeeded + result.failed + result.skipped, processedAt: new Date().toISOString() });
       } catch (error: any) {
         res.status(400).json({ message: error.message });
       }
@@ -363,15 +530,33 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
     requirePortal as any,
     async (req: PortalRequest, res: Response) => {
       try {
-        const { amount, frequency, dayOfMonth, description, unitId } = req.body as {
+        const { amount, frequency, dayOfMonth, description, unitId, paymentMethodId } = req.body as {
           amount: number;
           frequency: string;
           dayOfMonth: number;
           description?: string;
           unitId: string;
+          paymentMethodId?: string;
         };
         if (!unitId) return res.status(400).json({ message: "unitId is required" });
         if (!amount || amount <= 0) return res.status(400).json({ message: "amount must be positive" });
+
+        // Validate payment method belongs to this owner if provided
+        if (paymentMethodId) {
+          const [pm] = await db
+            .select()
+            .from(savedPaymentMethods)
+            .where(
+              and(
+                eq(savedPaymentMethods.id, paymentMethodId),
+                eq(savedPaymentMethods.personId, req.portalPersonId!),
+                eq(savedPaymentMethods.associationId, req.portalAssociationId!),
+                eq(savedPaymentMethods.isActive, 1),
+              ),
+            )
+            .limit(1);
+          if (!pm) return res.status(400).json({ message: "Invalid or inactive payment method" });
+        }
 
         // Check for duplicate active enrollment
         const [existing] = await db
@@ -397,6 +582,7 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
             associationId: req.portalAssociationId!,
             unitId,
             personId: req.portalPersonId!,
+            paymentMethodId: paymentMethodId ?? null,
             amount,
             frequency: (frequency || "monthly") as "monthly" | "quarterly" | "annual",
             dayOfMonth: day,

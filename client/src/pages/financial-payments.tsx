@@ -1174,6 +1174,99 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
 
 type PaymentException = { id: string; entryId: string; type: string; description: string; amount: number; unitId: string; personId: string; postedAt: string };
 
+// ── Phase 1A: Payment Transactions Tab ──────────────────────────────────────
+
+type PaymentTxnAdmin = {
+  id: string; associationId: string; unitId: string; personId: string;
+  amountCents: number; currency: string;
+  status: string; provider: string;
+  providerPaymentId: string | null; providerIntentId: string | null;
+  description: string | null; receiptReference: string | null;
+  failureCode: string | null; failureReason: string | null;
+  submittedAt: string | null; confirmedAt: string | null; failedAt: string | null;
+  createdAt: string; updatedAt: string;
+};
+
+function PaymentTransactionsTab({ associationId }: { associationId: string | null }) {
+  const { data, isLoading } = useQuery<{ transactions: PaymentTxnAdmin[]; total: number }>({
+    queryKey: ["/api/admin/payment-transactions", associationId],
+    queryFn: async () => {
+      if (!associationId) return { transactions: [], total: 0 };
+      const res = await apiRequest("GET", `/api/admin/payment-transactions?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const transactions = data?.transactions ?? [];
+
+  const statusBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      succeeded: "bg-green-100 text-green-800",
+      initiated: "bg-amber-100 text-amber-800",
+      pending: "bg-amber-100 text-amber-800",
+      failed: "bg-red-100 text-red-800",
+      canceled: "bg-red-100 text-red-800",
+      reversed: "bg-red-100 text-red-800",
+      draft: "bg-gray-100 text-gray-600",
+    };
+    return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[status] ?? "bg-gray-100 text-gray-600"}`}>{status}</span>;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <CreditCard className="h-4 w-4" /> Payment Transactions
+        </CardTitle>
+        <CardDescription>Owner-initiated ACH payment attempts and their current status.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!associationId ? (
+          <div className="text-sm text-muted-foreground">Select an association to view transactions.</div>
+        ) : isLoading ? (
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : transactions.length === 0 ? (
+          <div className="flex items-center gap-2 rounded-lg border border-muted px-3 py-4 text-sm text-muted-foreground">
+            No payment transactions found.
+          </div>
+        ) : (
+          <div className="overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Amount</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs">Receipt</TableHead>
+                  <TableHead className="text-xs">Provider Ref</TableHead>
+                  <TableHead className="text-xs">Failure Reason</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transactions.map((txn) => (
+                  <TableRow key={txn.id}>
+                    <TableCell className="text-sm whitespace-nowrap">
+                      {txn.submittedAt
+                        ? new Date(txn.submittedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                        : new Date(txn.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                    </TableCell>
+                    <TableCell className="text-sm font-medium tabular-nums">${(txn.amountCents / 100).toFixed(2)}</TableCell>
+                    <TableCell>{statusBadge(txn.status)}</TableCell>
+                    <TableCell className="text-xs font-mono">{txn.receiptReference ?? "—"}</TableCell>
+                    <TableCell className="text-xs font-mono max-w-[140px] truncate">{txn.providerPaymentId ?? txn.providerIntentId ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-red-600 max-w-[200px] truncate">{txn.failureReason ?? "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ExceptionsTab({ associationId }: { associationId: string | null }) {
   const { data: exceptions = [], isLoading } = useQuery<PaymentException[]>({
     queryKey: ["/api/financial/payment-exceptions", associationId],
@@ -1263,6 +1356,7 @@ type AutopayEnrollmentRow = {
     associationId: string;
     unitId: string;
     personId: string;
+    paymentMethodId: string | null;
     amount: number;
     frequency: "monthly" | "quarterly" | "annual";
     dayOfMonth: number;
@@ -1274,6 +1368,7 @@ type AutopayEnrollmentRow = {
   };
   unit: { id: string; unitNumber: string; building: string | null } | null;
   person: { id: string; firstName: string | null; lastName: string | null; email: string | null } | null;
+  paymentMethod: { displayName: string; status: string } | null;
 };
 
 type AutopayRun = {
@@ -1282,6 +1377,7 @@ type AutopayRun = {
   amount: number;
   status: "success" | "failed" | "skipped";
   errorMessage: string | null;
+  paymentTransactionId: string | null;
   ranAt: string;
 };
 
@@ -1296,39 +1392,6 @@ function AutopayRunBadge({ status }: { status: string }) {
   if (status === "failed") return <Badge variant="destructive" className="text-xs">Failed</Badge>;
   return <Badge variant="secondary" className="text-xs">Skipped</Badge>;
 }
-
-// ── Page ──────────────────────────────────────────────────────────────────────
-
-// ── Autopay Admin Tab ─────────────────────────────────────────────────────────
-
-type AutopayEnrollmentRow = {
-  id: string;
-  unitId: string;
-  personId: string;
-  amount: number;
-  frequency: string;
-  dayOfMonth: number | null;
-  status: string;
-  nextPaymentDate: string | null;
-  description: string;
-  enrolledAt: string;
-  cancelledAt: string | null;
-  unitNumber: string | null;
-  building: string | null;
-  personFirstName: string | null;
-  personLastName: string | null;
-  personEmail: string | null;
-};
-
-type AutopayRun = {
-  id: string;
-  enrollmentId: string;
-  associationId: string;
-  amount: number;
-  status: string;
-  errorMessage: string | null;
-  ranAt: string;
-};
 
 function AutopayAdminTab({ associationId }: { associationId: string | null }) {
   const { toast } = useToast();
@@ -1382,7 +1445,7 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
     onError: (e: Error) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
   });
 
-  const filtered = enrollments.filter((e) => statusFilter === "all" || e.status === statusFilter);
+  const filtered = enrollments.filter((e) => statusFilter === "all" || e.enrollment.status === statusFilter);
 
   const statusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     if (status === "active") return "default";
@@ -1443,66 +1506,70 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
                 <TableHead>Resident</TableHead>
                 <TableHead>Frequency</TableHead>
                 <TableHead>Amount</TableHead>
+                <TableHead>Method</TableHead>
                 <TableHead>Next Run</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((enrollment) => (
+              {filtered.map((row) => (
                 <>
-                  <TableRow key={enrollment.id}>
+                  <TableRow key={row.enrollment.id}>
                     <TableCell className="font-medium">
-                      {enrollment.building ? `${enrollment.building} ` : ""}{enrollment.unitNumber ?? enrollment.unitId.slice(0, 8)}
+                      {row.unit?.building ? `${row.unit.building} ` : ""}{row.unit?.unitNumber ?? row.enrollment.unitId.slice(0, 8)}
                     </TableCell>
                     <TableCell>
                       <div>
-                        <span>{enrollment.personFirstName} {enrollment.personLastName}</span>
-                        {enrollment.personEmail && (
-                          <div className="text-xs text-muted-foreground">{enrollment.personEmail}</div>
+                        <span>{row.person?.firstName} {row.person?.lastName}</span>
+                        {row.person?.email && (
+                          <div className="text-xs text-muted-foreground">{row.person.email}</div>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="capitalize">{enrollment.frequency}</TableCell>
-                    <TableCell>${Number(enrollment.amount).toFixed(2)}</TableCell>
+                    <TableCell className="capitalize">{row.enrollment.frequency}</TableCell>
+                    <TableCell>${Number(row.enrollment.amount).toFixed(2)}</TableCell>
+                    <TableCell className="text-xs">
+                      {row.paymentMethod?.displayName ?? <span className="text-muted-foreground">None</span>}
+                    </TableCell>
                     <TableCell>
-                      {enrollment.nextPaymentDate
-                        ? new Date(enrollment.nextPaymentDate).toLocaleDateString()
+                      {row.enrollment.nextPaymentDate
+                        ? new Date(row.enrollment.nextPaymentDate).toLocaleDateString()
                         : "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusBadgeVariant(enrollment.status)} className="capitalize">
-                        {enrollment.status}
+                      <Badge variant={statusBadgeVariant(row.enrollment.status)} className="capitalize">
+                        {row.enrollment.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {enrollment.status === "active" && (
+                        {row.enrollment.status === "active" && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
-                            onClick={() => updateEnrollment.mutate({ id: enrollment.id, updates: { status: "paused" } })}
+                            onClick={() => updateEnrollment.mutate({ id: row.enrollment.id, updates: { status: "paused" } })}
                           >
                             Pause
                           </Button>
                         )}
-                        {enrollment.status === "paused" && (
+                        {row.enrollment.status === "paused" && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
-                            onClick={() => updateEnrollment.mutate({ id: enrollment.id, updates: { status: "active" } })}
+                            onClick={() => updateEnrollment.mutate({ id: row.enrollment.id, updates: { status: "active" } })}
                           >
                             Resume
                           </Button>
                         )}
-                        {enrollment.status !== "cancelled" && (
+                        {row.enrollment.status !== "cancelled" && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs text-destructive hover:text-destructive"
-                            onClick={() => updateEnrollment.mutate({ id: enrollment.id, updates: { status: "cancelled" } })}
+                            onClick={() => updateEnrollment.mutate({ id: row.enrollment.id, updates: { status: "cancelled" } })}
                           >
                             Cancel
                           </Button>
@@ -1511,16 +1578,16 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
                           size="sm"
                           variant="ghost"
                           className="h-7 w-7 p-0"
-                          onClick={() => setExpandedId(expandedId === enrollment.id ? null : enrollment.id)}
+                          onClick={() => setExpandedId(expandedId === row.enrollment.id ? null : row.enrollment.id)}
                         >
-                          {expandedId === enrollment.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          {expandedId === row.enrollment.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                         </Button>
                       </div>
                     </TableCell>
                   </TableRow>
-                  {expandedId === enrollment.id && (
-                    <TableRow key={`${enrollment.id}-runs`}>
-                      <TableCell colSpan={7} className="bg-muted/30 p-4">
+                  {expandedId === row.enrollment.id && (
+                    <TableRow key={`${row.enrollment.id}-runs`}>
+                      <TableCell colSpan={8} className="bg-muted/30 p-4">
                         <div className="text-xs font-semibold mb-2 uppercase tracking-wide text-muted-foreground">Run History</div>
                         {runsLoading ? (
                           <div className="text-xs text-muted-foreground">Loading run history...</div>
@@ -1534,6 +1601,7 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
                                   <TableHead className="text-xs">Date</TableHead>
                                   <TableHead className="text-xs">Amount</TableHead>
                                   <TableHead className="text-xs">Status</TableHead>
+                                  <TableHead className="text-xs">Transaction</TableHead>
                                   <TableHead className="text-xs">Error</TableHead>
                                 </TableRow>
                               </TableHeader>
@@ -1546,6 +1614,9 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
                                       <Badge variant={runStatusBadge(run.status)} className="text-xs capitalize">
                                         {run.status}
                                       </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-xs font-mono">
+                                      {run.paymentTransactionId ? run.paymentTransactionId.slice(0, 8) + "..." : "—"}
                                     </TableCell>
                                     <TableCell className="text-xs text-destructive">{run.errorMessage ?? "—"}</TableCell>
                                   </TableRow>
@@ -1704,6 +1775,10 @@ export default function FinancialPaymentsPage() {
               <AlertCircle className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Exceptions</span>
             </TabsTrigger>
+            <TabsTrigger value="transactions" className="gap-1.5 shrink-0">
+              <CreditCard className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Transactions</span>
+            </TabsTrigger>
           </TabsList>
         )}
 
@@ -1753,6 +1828,10 @@ export default function FinancialPaymentsPage() {
 
         <TabsContent value="exceptions" className="mt-4">
           <ExceptionsTab associationId={selectedAssociationId} />
+        </TabsContent>
+
+        <TabsContent value="transactions" className="mt-4">
+          <PaymentTransactionsTab associationId={selectedAssociationId} />
         </TabsContent>
       </Tabs>
 

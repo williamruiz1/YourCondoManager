@@ -11,7 +11,10 @@ import { seedDatabase } from "./seed";
 import { storage } from "./storage";
 import { pool, db } from "./db";
 import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
-import { recurringChargeSchedules, recurringChargeRuns, ownerships, units, ownerLedgerEntries } from "@shared/schema";
+import { recurringChargeSchedules, recurringChargeRuns, ownerships, units, ownerLedgerEntries, autopayEnrollments, delinquencyEscalations } from "@shared/schema";
+import { runAutopayCollectionForAssociation } from "./routes/autopay";
+import { runAutopayRetries } from "./services/retry-service";
+import { generateDelinquencyNotices } from "./services/delinquency-notice-service";
 import { log } from "./logger";
 import { startElectionScheduler } from "./election-scheduler";
 import { createRateLimiter } from "./rate-limit";
@@ -201,16 +204,67 @@ async function runDueRecurringCharges(): Promise<{ succeeded: number; failed: nu
   return { succeeded, failed, skipped };
 }
 
+async function runDueAutopayCharges(): Promise<{ succeeded: number; failed: number; skipped: number }> {
+  // Find all associations with active autopay enrollments due
+  const dueAssociations = await db
+    .select({ associationId: autopayEnrollments.associationId })
+    .from(autopayEnrollments)
+    .where(eq(autopayEnrollments.status, "active"))
+    .groupBy(autopayEnrollments.associationId);
+
+  let succeeded = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const { associationId } of dueAssociations) {
+    try {
+      const result = await runAutopayCollectionForAssociation(associationId);
+      succeeded += result.succeeded;
+      failed += result.failed;
+      skipped += result.skipped;
+    } catch (err: any) {
+      console.error(`[autopay-sweep] Error for association ${associationId}:`, err);
+      failed++;
+    }
+  }
+
+  return { succeeded, failed, skipped };
+}
+
+async function runAllDelinquencyNotices(): Promise<{ generated: number; skipped: number }> {
+  const associations = await db
+    .select({ associationId: delinquencyEscalations.associationId })
+    .from(delinquencyEscalations)
+    .where(eq(delinquencyEscalations.status, "active"))
+    .groupBy(delinquencyEscalations.associationId);
+
+  let generated = 0;
+  let skipped = 0;
+  for (const { associationId } of associations) {
+    try {
+      const result = await generateDelinquencyNotices(associationId);
+      generated += result.generated;
+      skipped += result.skipped;
+    } catch (err: any) {
+      console.error(`[notice-sweep] Error for association ${associationId}:`, err);
+    }
+  }
+  return { generated, skipped };
+}
+
 async function runAutomationSweep() {
-  const [scheduledResult, escalationResult, boardPackageResult, recurringResult, assessmentResult] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult, recurringResult, assessmentResult, autopayResult, retryResult, noticeResult] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
     storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
     runDueRecurringCharges(),
     runAutomaticSpecialAssessmentInstallments(),
+    runDueAutopayCharges(),
+    runAutopayRetries(),
+    runAllDelinquencyNotices(),
   ]);
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, recurring charges succeeded=${recurringResult.succeeded} failed=${recurringResult.failed} skipped=${recurringResult.skipped}, assessment installments associations=${assessmentResult.associationsProcessed} posted=${assessmentResult.entriesCreated} alreadyPosted=${assessmentResult.alreadyPosted} skipped=${assessmentResult.skippedUnits}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, recurring charges succeeded=${recurringResult.succeeded} failed=${recurringResult.failed} skipped=${recurringResult.skipped}, assessment installments associations=${assessmentResult.associationsProcessed} posted=${assessmentResult.entriesCreated} alreadyPosted=${assessmentResult.alreadyPosted} skipped=${assessmentResult.skippedUnits}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}`,
     "automation",
   );
 }

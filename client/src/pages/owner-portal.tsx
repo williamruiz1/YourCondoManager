@@ -259,6 +259,8 @@ export default function OwnerPortalPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "financials" | "documents" | "maintenance" | "notices" | "communications" | "elections">("overview");
   const [historyTypeFilter, setHistoryTypeFilter] = useState<"all" | "payment" | "charge" | "assessment" | "late-fee" | "credit" | "adjustment">("all");
   const [historyLimit, setHistoryLimit] = useState(20);
+  const [achPaymentBanner, setAchPaymentBanner] = useState<"success" | "cancelled" | "setup_success" | null>(null);
+  const [expandedTxnId, setExpandedTxnId] = useState<string | null>(null);
   const [overviewSubtab, setOverviewSubtab] = useState<"summary" | "owner-info" | "occupancy">("summary");
   const [ownedUnitFocusId, setOwnedUnitFocusId] = useState("");
   const [selectedElectionId, setSelectedElectionId] = useState<string | null>(null);
@@ -630,6 +632,69 @@ export default function OwnerPortalPage() {
     },
   });
 
+  // Phase 1A: Balance summary with open charges and pending payment info
+  type BalanceSummary = {
+    totalBalance: number;
+    totalCharges: number;
+    totalPayments: number;
+    pendingPaymentCents: number;
+    openCharges: Array<{ id: string; entryType: string; amount: number; description: string | null; postedAt: string; unitId: string }>;
+  };
+  const { data: balanceSummary, refetch: refetchBalanceSummary } = useQuery<BalanceSummary>({
+    queryKey: ["portal/balance-summary"],
+    enabled: !!portalAccessId,
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/balance-summary");
+      if (!res.ok) return { totalBalance: 0, totalCharges: 0, totalPayments: 0, pendingPaymentCents: 0, openCharges: [] };
+      return res.json();
+    },
+  });
+
+  // Phase 1A: Payment transaction history (ACH payments)
+  type PaymentTxn = {
+    id: string; amountCents: number; currency: string;
+    status: "draft" | "initiated" | "pending" | "succeeded" | "failed" | "canceled" | "reversed";
+    source: "owner_initiated" | "autopay";
+    description: string | null; receiptReference: string | null;
+    submittedAt: string | null; confirmedAt: string | null; failedAt: string | null;
+    failureReason: string | null; createdAt: string;
+  };
+  const { data: paymentTxns = [], refetch: refetchPaymentTxns } = useQuery<PaymentTxn[]>({
+    queryKey: ["portal/payment-transactions"],
+    enabled: !!portalAccessId,
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/payment-transactions");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Phase 1A: Initiate ACH payment mutation
+  const initiateAchPayment = useMutation({
+    mutationFn: async () => {
+      if (!portalAccessId || !paymentAmount || !ownedUnitFocusId) throw new Error("Missing data");
+      const amountCents = Math.round(parseFloat(paymentAmount) * 100);
+      if (!amountCents || amountCents <= 0) throw new Error("Invalid amount");
+      const res = await portalFetch("/api/portal/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountCents,
+          unitId: ownedUnitFocusId,
+          description: paymentDescription || "HOA dues payment",
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ message: "Payment initiation failed" }));
+        throw new Error(body.message || "Payment initiation failed");
+      }
+      return res.json() as Promise<{ checkoutUrl: string; transactionId: string; receiptReference: string }>;
+    },
+    onSuccess: (result) => {
+      window.location.href = result.checkoutUrl;
+    },
+  });
+
   const { data: boardDashboardData } = useQuery<BoardDashboard | null>({
     queryKey: ["portal/board-dashboard"],
     enabled: !!portalAccessId,
@@ -705,6 +770,23 @@ export default function OwnerPortalPage() {
     },
   });
 
+  // Phase 2: Add bank account via Stripe setup Checkout
+  const addBankAccount = useMutation({
+    mutationFn: async () => {
+      if (!portalAccessId) throw new Error("Not authenticated");
+      const res = await portalFetch("/api/portal/payment-methods/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ message: "Failed to start setup" }));
+        throw new Error(body.message || "Failed to start setup");
+      }
+      const { checkoutUrl } = await res.json();
+      window.location.href = checkoutUrl;
+    },
+  });
+
   const setDefaultMethod = useMutation({
     mutationFn: async (methodId: string) => {
       if (!portalAccessId) throw new Error("Not authenticated");
@@ -768,13 +850,14 @@ export default function OwnerPortalPage() {
           dayOfMonth: parseInt(autopayForm.dayOfMonth, 10) || 1,
           description: autopayForm.description,
           unitId,
+          paymentMethodId: autopayForm.paymentMethodId || undefined,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
     onSuccess: () => {
-      setAutopayForm({ amount: "", frequency: "monthly", dayOfMonth: "1", description: "Autopay HOA dues" });
+      setAutopayForm({ amount: "", frequency: "monthly", dayOfMonth: "1", description: "Autopay HOA dues", paymentMethodId: "" });
       setAutopayFormOpen(false);
       refetchAutopay();
     },
@@ -839,7 +922,7 @@ export default function OwnerPortalPage() {
   const [methodForm, setMethodForm] = useState({ methodType: "ach", displayName: "", last4: "", bankName: "", isDefault: false });
   const [addMethodOpen, setAddMethodOpen] = useState(false);
   const [autopayFormOpen, setAutopayFormOpen] = useState(false);
-  const [autopayForm, setAutopayForm] = useState({ amount: "", frequency: "monthly", dayOfMonth: "1", description: "Autopay HOA dues" });
+  const [autopayForm, setAutopayForm] = useState({ amount: "", frequency: "monthly", dayOfMonth: "1", description: "Autopay HOA dues", paymentMethodId: "" });
 
   const saveOwnerInfo = useMutation({
     mutationFn: async () => {
@@ -1047,6 +1130,34 @@ export default function OwnerPortalPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [activeTab]);
+
+  // Detect return from Stripe Checkout (payment or setup)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get("payment");
+    const setupStatus = params.get("setup");
+    if (paymentStatus === "success") {
+      setActiveTab("financials");
+      setAchPaymentBanner("success");
+      refetchPaymentTxns();
+      refetchBalanceSummary();
+      refetchFinancialDashboard();
+      refetchPortalLedger();
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (paymentStatus === "cancelled") {
+      setActiveTab("financials");
+      setAchPaymentBanner("cancelled");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (setupStatus === "success") {
+      setActiveTab("financials");
+      setAchPaymentBanner("setup_success" as any);
+      refetchMethods();
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (setupStatus === "cancelled") {
+      setActiveTab("financials");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   const markNoticeAsRead = (id: string) => {
     setReadNoticeIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
@@ -2158,6 +2269,56 @@ export default function OwnerPortalPage() {
                 <h1 className="font-headline text-4xl text-on-surface">Manage Payments</h1>
               </div>
 
+              {/* ACH Payment Return Banner */}
+              {achPaymentBanner === "success" && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-start gap-3">
+                  <span className="material-symbols-outlined text-green-600 mt-0.5">check_circle</span>
+                  <div>
+                    <p className="font-medium text-green-800">Payment submitted</p>
+                    <p className="text-sm text-green-700 mt-0.5">Your ACH payment has been submitted. Bank transfers typically take 3-5 business days to process. You'll see the final status in your payment history below.</p>
+                  </div>
+                  <button onClick={() => setAchPaymentBanner(null)} className="ml-auto text-green-600 hover:text-green-800 shrink-0">
+                    <span className="material-symbols-outlined text-lg">close</span>
+                  </button>
+                </div>
+              )}
+              {achPaymentBanner === "cancelled" && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                  <span className="material-symbols-outlined text-amber-600 mt-0.5">info</span>
+                  <div>
+                    <p className="font-medium text-amber-800">Payment cancelled</p>
+                    <p className="text-sm text-amber-700 mt-0.5">No charges have been made. You can try again when ready.</p>
+                  </div>
+                  <button onClick={() => setAchPaymentBanner(null)} className="ml-auto text-amber-600 hover:text-amber-800 shrink-0">
+                    <span className="material-symbols-outlined text-lg">close</span>
+                  </button>
+                </div>
+              )}
+
+              {achPaymentBanner === "setup_success" && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-start gap-3">
+                  <span className="material-symbols-outlined text-green-600 mt-0.5">check_circle</span>
+                  <div>
+                    <p className="font-medium text-green-800">Bank account added</p>
+                    <p className="text-sm text-green-700 mt-0.5">Your bank account has been verified and saved. You can now use it for autopay.</p>
+                  </div>
+                  <button onClick={() => setAchPaymentBanner(null)} className="ml-auto text-green-600 hover:text-green-800 shrink-0">
+                    <span className="material-symbols-outlined text-lg">close</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Pending Payment Banner */}
+              {(balanceSummary?.pendingPaymentCents ?? 0) > 0 && !achPaymentBanner && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
+                  <span className="material-symbols-outlined text-blue-600 mt-0.5">schedule</span>
+                  <div>
+                    <p className="font-medium text-blue-800">Pending ACH payment: ${((balanceSummary?.pendingPaymentCents ?? 0) / 100).toFixed(2)}</p>
+                    <p className="text-sm text-blue-700 mt-0.5">Pending bank confirmation. ACH transfers typically take 3-5 business days to clear.</p>
+                  </div>
+                </div>
+              )}
+
               {/* Unit Selector for Multi-Unit Owners */}
               {myUnits.length > 1 && (
                 <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10">
@@ -2196,54 +2357,104 @@ export default function OwnerPortalPage() {
                     </div>
 
                     <div className="space-y-3">
-                      <h4 className="font-bold">Make a Payment</h4>
-                      <Input type="number" step="0.01" placeholder="Amount" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
-                      <Input placeholder="Description (optional)" value={paymentDescription} onChange={(e) => setPaymentDescription(e.target.value)} />
-                      <Button onClick={() => submitPayment.mutate()} disabled={!paymentAmount || submitPayment.isPending} className="w-full">
-                        {submitPayment.isPending ? 'Processing...' : 'Submit Payment'}
+                      <h4 className="font-bold">Pay via ACH Bank Transfer</h4>
+                      <p className="text-xs text-on-surface-variant">You will be redirected to a secure payment page. ACH transfers typically take 3-5 business days to process.</p>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        placeholder="Amount"
+                        value={paymentAmount}
+                        onChange={(e) => setPaymentAmount(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Description (optional)"
+                        value={paymentDescription}
+                        onChange={(e) => setPaymentDescription(e.target.value)}
+                      />
+                      <Button
+                        onClick={() => initiateAchPayment.mutate()}
+                        disabled={!paymentAmount || !ownedUnitFocusId || initiateAchPayment.isPending}
+                        className="w-full"
+                      >
+                        {initiateAchPayment.isPending ? "Redirecting to payment..." : "Pay Now via ACH"}
                       </Button>
-                      {submitPayment.isError && (
+                      {initiateAchPayment.isError && (
                         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                          Error submitting payment
+                          {(initiateAchPayment.error as Error)?.message || "Error initiating payment"}
                         </div>
                       )}
                     </div>
+
+                    {/* Legacy manual payment recording (kept for non-ACH) */}
+                    <details className="mt-4">
+                      <summary className="text-xs text-on-surface-variant cursor-pointer hover:text-primary">Record a manual payment (check, Zelle, etc.)</summary>
+                      <div className="space-y-3 mt-3 pt-3 border-t border-outline-variant/10">
+                        <Input type="number" step="0.01" placeholder="Amount" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
+                        <Input placeholder="Description (optional)" value={paymentDescription} onChange={(e) => setPaymentDescription(e.target.value)} />
+                        <Button variant="outline" onClick={() => submitPayment.mutate()} disabled={!paymentAmount || submitPayment.isPending} className="w-full">
+                          {submitPayment.isPending ? "Processing..." : "Record Payment"}
+                        </Button>
+                        {submitPayment.isError && (
+                          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                            Error submitting payment
+                          </div>
+                        )}
+                      </div>
+                    </details>
                   </div>
 
-                  {/* Payment Methods */}
+                  {/* Saved Payment Methods */}
                   <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-headline text-lg">Payment Methods</h3>
-                      <Button size="sm" variant={addMethodOpen ? "destructive" : "outline"} onClick={() => setAddMethodOpen(!addMethodOpen)}>
-                        {addMethodOpen ? "Cancel" : "Add Method"}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => addBankAccount.mutate()}
+                        disabled={addBankAccount.isPending}
+                      >
+                        {addBankAccount.isPending ? "Redirecting..." : "Add Bank Account"}
                       </Button>
                     </div>
+                    {addBankAccount.isError && (
+                      <div className="p-3 mb-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                        {(addBankAccount.error as Error)?.message || "Failed to start bank account setup"}
+                      </div>
+                    )}
                     <div className="space-y-3">
-                      {(savedMethods ?? []).map((method) => (
-                        <div key={method.id} className="p-3 bg-surface rounded-lg border border-outline-variant/10 flex justify-between items-center">
-                          <div>
-                            <p className="font-medium">{method.displayName}</p>
-                            <p className="text-xs text-on-surface-variant">•••• {method.last4}</p>
+                      {(savedMethods ?? []).length === 0 && (
+                        <p className="text-sm text-on-surface-variant">No saved payment methods. Add a bank account to enable autopay.</p>
+                      )}
+                      {(savedMethods ?? []).map((method: any) => (
+                        <div key={method.id} className="p-3 bg-surface rounded-lg border border-outline-variant/10 flex justify-between items-center gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium truncate">{method.displayName}</p>
+                              {method.isDefault === 1 && (
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium shrink-0">Default</span>
+                              )}
+                              {method.status === "active" ? (
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-800 font-medium shrink-0">Verified</span>
+                              ) : (
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium shrink-0">{method.status || "Pending"}</span>
+                              )}
+                            </div>
+                            {method.last4 && <p className="text-xs text-on-surface-variant">•••• {method.last4}</p>}
                           </div>
-                          <Button size="sm" variant="outline" onClick={() => removeMethod.mutate(method.id)}>Remove</Button>
+                          <div className="flex gap-1 shrink-0">
+                            {method.isDefault !== 1 && (
+                              <Button size="sm" variant="ghost" onClick={() => setDefaultMethod.mutate(method.id)}>
+                                Set Default
+                              </Button>
+                            )}
+                            <Button size="sm" variant="outline" onClick={() => removeMethod.mutate(method.id)} disabled={removeMethod.isPending}>
+                              Remove
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
-                    {addMethodOpen && (
-                      <div className="mt-4 space-y-3 p-4 bg-surface rounded-lg border border-outline-variant/10">
-                        <Input placeholder="Display name" value={methodForm.displayName} onChange={(e) => setMethodForm((p) => ({ ...p, displayName: e.target.value }))} />
-                        <Select value={methodForm.methodType} onValueChange={(value) => setMethodForm((p) => ({ ...p, methodType: value as any }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ach">Bank Account</SelectItem>
-                            <SelectItem value="card">Credit Card</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button onClick={() => addMethod.mutate()} disabled={addMethod.isPending} className="w-full">
-                          {addMethod.isPending ? "Adding..." : "Add Method"}
-                        </Button>
-                      </div>
-                    )}
                   </div>
 
                   {/* Autopay */}
@@ -2274,6 +2485,11 @@ export default function OwnerPortalPage() {
                             · <span className="capitalize">{activeAutopayEnrollment.frequency}</span>
                             {activeAutopayEnrollment.dayOfMonth && ` on day ${activeAutopayEnrollment.dayOfMonth}`}
                           </p>
+                          {activeAutopayEnrollment.paymentMethodId && (
+                            <p className="text-xs text-on-surface-variant">
+                              Via: {(savedMethods ?? []).find((m: any) => m.id === activeAutopayEnrollment.paymentMethodId)?.displayName ?? "Linked bank account"}
+                            </p>
+                          )}
                           {activeAutopayEnrollment.nextPaymentDate && (
                             <p className="text-xs text-on-surface-variant">
                               Next run: {new Date(activeAutopayEnrollment.nextPaymentDate).toLocaleDateString()}
@@ -2368,6 +2584,24 @@ export default function OwnerPortalPage() {
                       <div className="mt-4 space-y-3 p-4 bg-surface rounded-lg border border-outline-variant/10">
                         <p className="text-sm font-medium">Configure Autopay</p>
                         <div className="space-y-1">
+                          <label className="text-xs text-on-surface-variant">Payment Method</label>
+                          {(savedMethods ?? []).filter((m: any) => m.status === "active" && m.isActive === 1).length === 0 ? (
+                            <p className="text-xs text-destructive">No verified bank accounts. Add a bank account first.</p>
+                          ) : (
+                            <Select
+                              value={autopayForm.paymentMethodId || ""}
+                              onValueChange={(value) => setAutopayForm((p) => ({ ...p, paymentMethodId: value }))}
+                            >
+                              <SelectTrigger><SelectValue placeholder="Select payment method" /></SelectTrigger>
+                              <SelectContent>
+                                {(savedMethods ?? []).filter((m: any) => m.status === "active" && m.isActive === 1).map((m: any) => (
+                                  <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
+                        <div className="space-y-1">
                           <label className="text-xs text-on-surface-variant">Amount (leave blank to pay full balance)</label>
                           <Input
                             type="number"
@@ -2403,7 +2637,11 @@ export default function OwnerPortalPage() {
                         {enrollAutopay.isError && (
                           <p className="text-xs text-destructive">{(enrollAutopay.error as Error)?.message}</p>
                         )}
-                        <Button onClick={() => enrollAutopay.mutate()} disabled={enrollAutopay.isPending} className="w-full">
+                        <Button
+                          onClick={() => enrollAutopay.mutate()}
+                          disabled={enrollAutopay.isPending || !(autopayForm as any).paymentMethodId}
+                          className="w-full"
+                        >
                           {enrollAutopay.isPending ? "Setting up..." : "Enable Autopay"}
                         </Button>
                       </div>
@@ -2432,6 +2670,102 @@ export default function OwnerPortalPage() {
                   </div>
                 </div>
               </div>
+
+              {/* ACH Payment Transactions */}
+              {paymentTxns.length > 0 && (
+                <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10">
+                  <h3 className="font-headline text-lg mb-4">ACH Payment Transactions</h3>
+                  <div className="space-y-3">
+                    {paymentTxns.map((txn) => {
+                      const statusColors: Record<string, string> = {
+                        succeeded: "bg-green-100 text-green-800",
+                        initiated: "bg-amber-100 text-amber-800",
+                        pending: "bg-amber-100 text-amber-800",
+                        failed: "bg-red-100 text-red-800",
+                        canceled: "bg-red-100 text-red-800",
+                        reversed: "bg-red-100 text-red-800",
+                        draft: "bg-gray-100 text-gray-600",
+                      };
+                      const statusLabels: Record<string, string> = {
+                        succeeded: "Completed",
+                        initiated: "Submitted",
+                        pending: "Pending",
+                        failed: "Failed",
+                        canceled: "Cancelled",
+                        reversed: "Reversed",
+                        draft: "Draft",
+                      };
+                      const isExpanded = expandedTxnId === txn.id;
+                      return (
+                        <div key={txn.id} className="bg-surface rounded-xl border border-outline-variant/10 overflow-hidden">
+                          <button
+                            className="w-full p-4 flex items-center justify-between gap-3 text-left hover:bg-surface-container-lowest transition-colors"
+                            onClick={() => setExpandedTxnId(isExpanded ? null : txn.id)}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[txn.status] ?? "bg-gray-100 text-gray-600"}`}>
+                                  {statusLabels[txn.status] ?? txn.status}
+                                </span>
+                                {txn.source === "autopay" && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">Autopay</span>
+                                )}
+                                <span className="text-xs text-on-surface-variant">
+                                  {txn.submittedAt ? new Date(txn.submittedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : new Date(txn.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                                </span>
+                              </div>
+                              <p className="text-sm font-medium mt-1">{txn.description ?? "ACH Payment"}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-bold text-sm tabular-nums">${(txn.amountCents / 100).toFixed(2)}</p>
+                            </div>
+                          </button>
+                          {isExpanded && (
+                            <div className="px-4 pb-4 border-t border-outline-variant/10 pt-3 space-y-2 text-sm">
+                              {txn.receiptReference && (
+                                <div className="flex justify-between">
+                                  <span className="text-on-surface-variant">Receipt</span>
+                                  <span className="font-mono text-xs">{txn.receiptReference}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between">
+                                <span className="text-on-surface-variant">Status</span>
+                                <span>{statusLabels[txn.status] ?? txn.status}</span>
+                              </div>
+                              {txn.submittedAt && (
+                                <div className="flex justify-between">
+                                  <span className="text-on-surface-variant">Submitted</span>
+                                  <span>{new Date(txn.submittedAt).toLocaleString()}</span>
+                                </div>
+                              )}
+                              {txn.confirmedAt && (
+                                <div className="flex justify-between">
+                                  <span className="text-on-surface-variant">Confirmed</span>
+                                  <span>{new Date(txn.confirmedAt).toLocaleString()}</span>
+                                </div>
+                              )}
+                              {txn.failedAt && (
+                                <div className="flex justify-between">
+                                  <span className="text-on-surface-variant">Failed</span>
+                                  <span>{new Date(txn.failedAt).toLocaleString()}</span>
+                                </div>
+                              )}
+                              {txn.failureReason && (
+                                <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                                  {txn.failureReason}
+                                </div>
+                              )}
+                              {(txn.status === "initiated" || txn.status === "pending") && (
+                                <p className="text-xs text-on-surface-variant italic">ACH transfers typically take 3-5 business days to process.</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Payment History */}
               {(() => {

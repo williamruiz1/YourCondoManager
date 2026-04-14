@@ -32,7 +32,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Plus, ScanSearch, Loader2, ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { AlertCircle, Plus, ScanSearch, Loader2, ChevronDown, ChevronRight, Pencil, Trash2, RefreshCw, Download } from "lucide-react";
+import { ExportCsvButton } from "@/components/export-csv-button";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -63,7 +64,7 @@ export function FinancialDelinquencyContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
-  const [activeTab, setActiveTab] = useState<"thresholds" | "escalations">("escalations");
+  const [activeTab, setActiveTab] = useState<"thresholds" | "escalations" | "aging" | "notices" | "settings">("escalations");
 
   // --- Thresholds ---
   const [thresholdDialogOpen, setThresholdDialogOpen] = useState(false);
@@ -421,6 +422,9 @@ export function FinancialDelinquencyContent() {
             items={[
               { id: "escalations", label: "Escalations" },
               { id: "thresholds", label: "Thresholds" },
+              { id: "aging", label: "Aging" },
+              { id: "notices", label: "Notices" },
+              { id: "settings", label: "Settings" },
             ]}
             value={activeTab}
             onChange={setActiveTab}
@@ -430,6 +434,9 @@ export function FinancialDelinquencyContent() {
           <TabsList>
             <TabsTrigger value="escalations">Active Escalations</TabsTrigger>
             <TabsTrigger value="thresholds">Threshold Config</TabsTrigger>
+            <TabsTrigger value="aging">Aging</TabsTrigger>
+            <TabsTrigger value="notices">Notices</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
         )}
 
@@ -753,7 +760,378 @@ export function FinancialDelinquencyContent() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Aging tab ── */}
+        <TabsContent value="aging" className="space-y-4">
+          <AgingDashboard associationId={activeAssociationId} />
+        </TabsContent>
+
+        {/* ── Notices tab ── */}
+        <TabsContent value="notices" className="space-y-4">
+          <NoticesTab associationId={activeAssociationId} />
+        </TabsContent>
+
+        {/* ── Settings tab ── */}
+        <TabsContent value="settings" className="space-y-4">
+          <DelinquencySettingsTab associationId={activeAssociationId} />
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// ── Phase 3: Aging Dashboard ─────────────────────────────────────────────────
+
+type AgingUnit = {
+  unitId: string; balance: number; bucket: string; daysPastDue: number;
+  personId: string | null; personName: string | null; unitNumber: string | null;
+  lastPaymentDate: string | null; noticeStage: string | null;
+  nextRetryAt: string | null; autopayEnrolled: boolean;
+};
+
+type AgingData = {
+  buckets: { current: number; days31to60: number; days61to90: number; days91to120: number; over120: number };
+  unitAging: AgingUnit[];
+  totalDelinquent: number;
+};
+
+function AgingDashboard({ associationId }: { associationId: string | null }) {
+  const [bucketFilter, setBucketFilter] = useState("all");
+  const { data, isLoading } = useQuery<AgingData>({
+    queryKey: ["/api/financial/collections-aging", associationId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/financial/collections-aging?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const { toast } = useToast();
+  const runRetries = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/financial/retries/run");
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: (r) => toast({ title: "Retries complete", description: `${r.retried} retried, ${r.succeeded} succeeded, ${r.failed} failed` }),
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  if (!associationId) return <div className="text-sm text-muted-foreground p-4">Select an association.</div>;
+  if (isLoading) return <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+
+  const buckets = data?.buckets ?? { current: 0, days31to60: 0, days61to90: 0, days91to120: 0, over120: 0 };
+  const units = data?.unitAging ?? [];
+  const filtered = bucketFilter === "all" ? units : units.filter(u => u.bucket === bucketFilter);
+
+  const bucketCards = [
+    { key: "current", label: "Current (0-30)", amount: buckets.current, color: "text-green-700 bg-green-50 border-green-200" },
+    { key: "days31to60", label: "31-60 Days", amount: buckets.days31to60, color: "text-amber-700 bg-amber-50 border-amber-200" },
+    { key: "days61to90", label: "61-90 Days", amount: buckets.days61to90, color: "text-orange-700 bg-orange-50 border-orange-200" },
+    { key: "days91to120", label: "91-120 Days", amount: buckets.days91to120, color: "text-red-600 bg-red-50 border-red-200" },
+    { key: "over120", label: "120+ Days", amount: buckets.over120, color: "text-red-800 bg-red-100 border-red-300" },
+  ];
+
+  const csvHeaders = ["Unit", "Owner", "Balance", "Bucket", "Days Past Due", "Last Payment", "Notice Stage", "Next Retry", "Autopay"];
+  const csvRows = filtered.map(u => [
+    u.unitNumber ?? u.unitId.slice(0, 8),
+    u.personName ?? "—",
+    `$${u.balance.toFixed(2)}`,
+    u.bucket,
+    String(u.daysPastDue),
+    u.lastPaymentDate ? new Date(u.lastPaymentDate).toLocaleDateString() : "—",
+    u.noticeStage ?? "—",
+    u.nextRetryAt ? new Date(u.nextRetryAt).toLocaleDateString() : "—",
+    u.autopayEnrolled ? "Yes" : "No",
+  ]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-sm text-muted-foreground">
+          Total delinquent: <span className="font-bold text-foreground">${(data?.totalDelinquent ?? 0).toFixed(2)}</span>
+          {" · "}{filtered.length} unit{filtered.length !== 1 ? "s" : ""}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => runRetries.mutate()} disabled={runRetries.isPending}>
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${runRetries.isPending ? "animate-spin" : ""}`} />
+            Run Retries
+          </Button>
+          <ExportCsvButton headers={csvHeaders} rows={csvRows} filename={`aging-${associationId}`} size="sm" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {bucketCards.map(b => (
+          <button
+            key={b.key}
+            onClick={() => setBucketFilter(bucketFilter === b.key ? "all" : b.key)}
+            className={`rounded-lg border p-3 text-left transition-all ${b.color} ${bucketFilter === b.key ? "ring-2 ring-primary" : ""}`}
+          >
+            <p className="text-xs font-medium opacity-75">{b.label}</p>
+            <p className="text-lg font-bold tabular-nums">${b.amount.toFixed(2)}</p>
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-sm text-muted-foreground text-center py-8">No delinquent accounts in this bucket.</div>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Unit</TableHead>
+                  <TableHead className="text-xs">Owner</TableHead>
+                  <TableHead className="text-xs text-right">Balance</TableHead>
+                  <TableHead className="text-xs">Bucket</TableHead>
+                  <TableHead className="text-xs">Days</TableHead>
+                  <TableHead className="text-xs">Last Payment</TableHead>
+                  <TableHead className="text-xs">Notice</TableHead>
+                  <TableHead className="text-xs">Next Retry</TableHead>
+                  <TableHead className="text-xs">Autopay</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map(u => (
+                  <TableRow key={u.unitId}>
+                    <TableCell className="text-sm font-medium">{u.unitNumber ?? u.unitId.slice(0, 8)}</TableCell>
+                    <TableCell className="text-sm">{u.personName ?? "—"}</TableCell>
+                    <TableCell className="text-sm text-right font-medium tabular-nums text-destructive">${u.balance.toFixed(2)}</TableCell>
+                    <TableCell><Badge variant={u.bucket === "over120" ? "destructive" : u.bucket === "current" ? "secondary" : "default"} className="text-xs">{u.bucket}</Badge></TableCell>
+                    <TableCell className="text-sm tabular-nums">{u.daysPastDue}</TableCell>
+                    <TableCell className="text-xs">{u.lastPaymentDate ? new Date(u.lastPaymentDate).toLocaleDateString() : "—"}</TableCell>
+                    <TableCell>{u.noticeStage ? <Badge variant="outline" className="text-xs">{u.noticeStage.replace(/_/g, " ")}</Badge> : "—"}</TableCell>
+                    <TableCell className="text-xs">{u.nextRetryAt ? new Date(u.nextRetryAt).toLocaleDateString() : "—"}</TableCell>
+                    <TableCell>{u.autopayEnrolled ? <Badge variant="default" className="text-xs">Yes</Badge> : <span className="text-xs text-muted-foreground">No</span>}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Phase 3: Notices Tab ─────────────────────────────────────────────────────
+
+type NoticeRow = {
+  id: string; noticeStage: string; triggerDaysPastDue: number;
+  amountOwedCents: number; status: string; personId: string; unitId: string;
+  delinquencyPeriodKey: string; createdAt: string;
+};
+
+function NoticesTab({ associationId }: { associationId: string | null }) {
+  const { toast } = useToast();
+  const { data: notices = [], isLoading, refetch } = useQuery<NoticeRow[]>({
+    queryKey: ["/api/financial/delinquency-notices", associationId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/financial/delinquency-notices?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const generateNotices = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/financial/delinquency-notices/generate", { associationId });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: (r) => { toast({ title: "Notices generated", description: `${r.generated} generated, ${r.skipped} skipped` }); refetch(); },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  if (!associationId) return <div className="text-sm text-muted-foreground p-4">Select an association.</div>;
+
+  const stageColors: Record<string, string> = {
+    payment_failed_notice: "bg-amber-100 text-amber-800",
+    delinquency_notice_1: "bg-orange-100 text-orange-800",
+    delinquency_notice_2: "bg-red-100 text-red-800",
+    final_notice: "bg-red-200 text-red-900",
+  };
+
+  const statusColors: Record<string, string> = {
+    queued: "bg-blue-100 text-blue-800",
+    sent: "bg-green-100 text-green-800",
+    skipped: "bg-gray-100 text-gray-600",
+    failed: "bg-red-100 text-red-800",
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">{notices.length} notice{notices.length !== 1 ? "s" : ""}</span>
+        <Button size="sm" onClick={() => generateNotices.mutate()} disabled={generateNotices.isPending}>
+          {generateNotices.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <ScanSearch className="h-3.5 w-3.5 mr-1.5" />}
+          Generate Notices
+        </Button>
+      </div>
+      {isLoading ? (
+        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+      ) : notices.length === 0 ? (
+        <div className="text-sm text-muted-foreground text-center py-8">No notices generated yet.</div>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Stage</TableHead>
+                  <TableHead className="text-xs">Days Overdue</TableHead>
+                  <TableHead className="text-xs text-right">Amount</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs">Period</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {notices.map(n => (
+                  <TableRow key={n.id}>
+                    <TableCell className="text-xs">{new Date(n.createdAt).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stageColors[n.noticeStage] ?? "bg-gray-100 text-gray-600"}`}>
+                        {n.noticeStage.replace(/_/g, " ")}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm tabular-nums">{n.triggerDaysPastDue}</TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">${(n.amountOwedCents / 100).toFixed(2)}</TableCell>
+                    <TableCell>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[n.status] ?? "bg-gray-100 text-gray-600"}`}>
+                        {n.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">{n.delinquencyPeriodKey}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Phase 3: Delinquency Settings Tab ────────────────────────────────────────
+
+type SettingsData = {
+  id: string;
+  gracePeriodDays: number;
+  maxRetryAttempts: number;
+  retryScheduleJson: number[];
+  autoLateFeeEnabled: number;
+};
+
+function DelinquencySettingsTab({ associationId }: { associationId: string | null }) {
+  const { toast } = useToast();
+  const { data: settings, isLoading, refetch } = useQuery<SettingsData>({
+    queryKey: ["/api/financial/delinquency-settings", associationId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/financial/delinquency-settings?associationId=${associationId}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const [form, setForm] = useState({
+    gracePeriodDays: "15",
+    maxRetryAttempts: "3",
+    retrySchedule: "3, 7, 14",
+    autoLateFeeEnabled: false,
+  });
+
+  // Sync form when settings load
+  useMemo(() => {
+    if (settings) {
+      setForm({
+        gracePeriodDays: String(settings.gracePeriodDays ?? 15),
+        maxRetryAttempts: String(settings.maxRetryAttempts ?? 3),
+        retrySchedule: Array.isArray(settings.retryScheduleJson)
+          ? settings.retryScheduleJson.join(", ")
+          : "3, 7, 14",
+        autoLateFeeEnabled: (settings.autoLateFeeEnabled ?? 0) === 1,
+      });
+    }
+  }, [settings]);
+
+  const saveSettings = useMutation({
+    mutationFn: async () => {
+      const retryScheduleJson = form.retrySchedule.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+      const res = await apiRequest("POST", "/api/financial/delinquency-settings", {
+        associationId,
+        gracePeriodDays: parseInt(form.gracePeriodDays, 10) || 15,
+        maxRetryAttempts: parseInt(form.maxRetryAttempts, 10) || 3,
+        retryScheduleJson,
+        autoLateFeeEnabled: form.autoLateFeeEnabled ? 1 : 0,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => { toast({ title: "Settings saved" }); refetch(); },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  if (!associationId) return <div className="text-sm text-muted-foreground p-4">Select an association.</div>;
+  if (isLoading) return <Skeleton className="h-48 w-full" />;
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Grace Period (days)</label>
+            <p className="text-xs text-muted-foreground">Days after charge before it's considered delinquent</p>
+            <Input
+              type="number"
+              min="0"
+              value={form.gracePeriodDays}
+              onChange={e => setForm(f => ({ ...f, gracePeriodDays: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Max Retry Attempts</label>
+            <p className="text-xs text-muted-foreground">Maximum autopay retries for a failed payment</p>
+            <Input
+              type="number"
+              min="0"
+              max="10"
+              value={form.maxRetryAttempts}
+              onChange={e => setForm(f => ({ ...f, maxRetryAttempts: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Retry Schedule (days)</label>
+            <p className="text-xs text-muted-foreground">Comma-separated days between retries (e.g., 3, 7, 14)</p>
+            <Input
+              value={form.retrySchedule}
+              onChange={e => setForm(f => ({ ...f, retrySchedule: e.target.value }))}
+              placeholder="3, 7, 14"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Auto Late Fees</label>
+            <p className="text-xs text-muted-foreground">Automatically post late fees per configured rules</p>
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                checked={form.autoLateFeeEnabled}
+                onChange={e => setForm(f => ({ ...f, autoLateFeeEnabled: e.target.checked }))}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <span className="text-sm">{form.autoLateFeeEnabled ? "Enabled" : "Disabled"}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending}>
+            {saveSettings.isPending ? "Saving..." : "Save Settings"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
