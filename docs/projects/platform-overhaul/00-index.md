@@ -36,10 +36,10 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 
 | ID | Name | Status | Decision Doc |
 |---|---|---|---|
-| 1.1 | Zone taxonomy corrections | QUEUED | _not yet drafted_ |
-| 1.2 | Section hub reclassification | QUEUED | _not yet drafted_ |
-| 1.3 | Breadcrumb label audit | QUEUED | _not yet drafted_ |
-| 1.4 | Page title consistency | QUEUED | _not yet drafted_ |
+| 1.1 | Zone taxonomy corrections | IN SPEC (skeleton) | [`decisions/1.1-zone-taxonomy-corrections.md`](decisions/1.1-zone-taxonomy-corrections.md) |
+| 1.2 | Section hub reclassification | IN SPEC (skeleton) | [`decisions/1.2-section-hub-reclassification.md`](decisions/1.2-section-hub-reclassification.md) |
+| 1.3 | Breadcrumb label audit | IN SPEC (skeleton) | [`decisions/1.3-breadcrumb-label-audit.md`](decisions/1.3-breadcrumb-label-audit.md) |
+| 1.4 | Page title consistency | IN SPEC (skeleton) | [`decisions/1.4-page-title-consistency.md`](decisions/1.4-page-title-consistency.md) |
 
 ---
 
@@ -98,3 +98,4 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 2026-04-14 | Claude documentation agent | Module 0.3 (Navigation Model) skeleton drafted at `decisions/0.3-navigation-model.md`. Status IN SPEC. Nine conflicts enumerated (Q1–Q9); Selected Resolution and Acceptance Criteria marked PENDING YCM CC + Founder decision. Not yet lockable. |
 | 2026-04-14 | Claude documentation agent | PPM task card created for module 0.2 (`5fa11c46-1e93-4991-a4c3-a8c8f3d63558`, queued). Governance card — enforces 0.2 boundary matrix across Layer 2 / Layer 3 work. No direct build; verified as downstream modules close. |
 | 2026-04-14 | Founder (William) + Claude documentation agent | Module 0.3 (Navigation Model) SPEC LOCKED. Nine resolutions recorded: single canonical role-filtered sidebar, functional grouping, distinct persona landings within shared `/app` shell (Q3 reinterpreted to honor locked 0.2), shallow breadcrumbs, strict role isolation, 6–7 section ceiling for Manager/Board with tighter Owner, header association switcher with portfolio page as supporting surface, one canonical home per persona, central updates/inbox. Layer 0 fully locked. |
+| 2026-04-14 | Claude documentation agent | Layer 1 skeletons drafted (1.1 Zone taxonomy, 1.2 Section hub, 1.3 Breadcrumb audit, 1.4 Page title) — all at IN SPEC (skeleton) with Selected Resolution and Acceptance Criteria marked PENDING YCM CC + Founder decision. No resolutions written; conflict analyses and open-question sets enumerated. |
