@@ -2,7 +2,7 @@
 **Initiative:** Spec-First Platform Overhaul
 **Owner:** YCM Command Center
 **Process skill:** [`docs/skills/spec-first-overhaul-process-skill.md`](../../skills/spec-first-overhaul-process-skill.md)
-**Last updated:** 2026-04-14
+**Last updated:** 2026-04-14 (PPM task card published for 0.1)
 
 ---
 
@@ -24,11 +24,11 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 
 ## Layer 0 — Foundational Decisions
 
-| ID | Name | Status | Decision Doc |
-|---|---|---|---|
-| 0.1 | Dashboard Resolution | **SPEC LOCKED** | [`decisions/0.1-dashboard-resolution.md`](decisions/0.1-dashboard-resolution.md) |
-| 0.2 | Persona Map | QUEUED | _not yet drafted_ |
-| 0.3 | Navigation Model | QUEUED | _not yet drafted_ |
+| ID | Name | Status | Decision Doc | PPM Task Card |
+|---|---|---|---|---|
+| 0.1 | Dashboard Resolution | **SPEC LOCKED** | [`decisions/0.1-dashboard-resolution.md`](decisions/0.1-dashboard-resolution.md) | [`ppm/0.1-dashboard-resolution-task.md`](ppm/0.1-dashboard-resolution-task.md) · `a304717b-b18b-4163-9928-5a9ea235d3a7` (queued) |
+| 0.2 | Persona Map | QUEUED | _not yet drafted_ | _pending spec lock_ |
+| 0.3 | Navigation Model | QUEUED | _not yet drafted_ | _pending spec lock_ |
 
 ---
 
@@ -92,3 +92,4 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | Date | Author | Change |
 |---|---|---|
 | 2026-04-14 | Claude documentation agent | Initial publication. Module 0.1 at SPEC LOCKED; all other modules at QUEUED. |
+| 2026-04-14 | Claude documentation agent | PPM task card created for module 0.1 (`a304717b-b18b-4163-9928-5a9ea235d3a7`, queued). Task card file: `ppm/0.1-dashboard-resolution-task.md`. |
