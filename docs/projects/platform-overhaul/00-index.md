@@ -58,10 +58,10 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 
 | ID | Name | Status | Decision Doc |
 |---|---|---|---|
-| 3.1 | Sidebar redesign | QUEUED | _not yet drafted_ |
-| 3.2 | Route restructure | QUEUED | _not yet drafted_ |
-| 3.3 | Role-gating corrections | QUEUED | _not yet drafted_ |
-| 3.4 | Breadcrumb implementation | QUEUED | _not yet drafted_ |
+| 3.1 | Sidebar redesign | IN SPEC (skeleton) | [`decisions/3.1-sidebar-redesign.md`](decisions/3.1-sidebar-redesign.md) |
+| 3.2 | Route restructure | IN SPEC (skeleton) | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) |
+| 3.3 | Role-gating corrections | IN SPEC (skeleton) | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) |
+| 3.4 | Breadcrumb implementation | IN SPEC (skeleton) | [`decisions/3.4-breadcrumb-implementation.md`](decisions/3.4-breadcrumb-implementation.md) |
 
 ---
 
@@ -105,3 +105,5 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 2026-04-15 | Claude documentation agent (index bookkeeping) | Module 2.3 (Permission boundary corrections) row synced to **SPEC LOCKED** — reflects lock committed at `7156c8a`. Amendment to 0.2 (AC 4 + AC 5 PM-managed-mode qualifiers) committed at `58b3a8c` fulfills the follow-up queued in `ae76a3f` (2.2 Q1 resolution). |
 | 2026-04-15 | Founder (William) + Claude documentation agent | Module 2.2 (Owner Portal access boundaries) SPEC LOCKED. Q2–Q7 all derived from locked content (no new founder judgment): Q2 portal role enum collapses to `owner` (from 2.1 Q3); Q3 owner-mutation approval gates status-quo preserved (from 0.2 §Persona 3 live capability list); Q4 portalHasBoardAccess branching moot via 2.2 Q1 + 2.1 containment; Q5 public payment-link namespace status-quo preserved; Q6 `/portal/amenities` inherits `/portal` session-redirect pattern (from 0.2 + 0.3 Q5); Q7 1.x ↔ 2.2 sequencing deferred to build-phase coordination. Layer 2 now: 2.1/2.2/2.3 LOCKED; 2.4 remaining. |
 | 2026-04-15 | Founder (William) + Claude documentation agent | Module 2.4 (Platform-admin surface audit) SPEC LOCKED. Q1–Q7 derived from locked content and the 2.1 Q1 operator-tier formalization: Q1 folds into the 2.1-queued 0.2 Persona 4 amendment (single amendment, not fragmented); Q2 adopts 2.3's `<RouteGuard>` pattern; Q3 and Q7 narrow all platform/admin/ai endpoints (reads + writes + diagnostics) to `["platform-admin"]` per 0.3 Q5 AC 22; Q4 narrows `platformSubPages` tab-bar lists to match sidebar; Q5 removes the Owner Portal launcher from platform nav per 0.2 persona isolation; Q6 amends 1.1 to add a sixth zone **Platform** (separate-commit follow-up). **Layer 2 fully locked (2.1, 2.2, 2.3, 2.4).** Queued Layer-0/1 amendments: (a) 0.2 Persona 4 Platform Admin, (b) 1.1 sixth zone Platform. |
+| 2026-04-15 | YCM CC (William confirmed) | 0.2 amended at `f8dbf76` — Persona 4 Platform Admin added; boundary matrix extended with Platform Admin column; ACs 11/12/13 added. 1.1 amended at `ac446c0` — sixth zone Platform added to Q1/Q3/Q4. Both amendments triggered by 2.1 Q1 + 2.4 Q1 + 2.4 Q6 resolutions. Layer 0 + Layer 1 now fully aligned with 4-persona / 6-zone model. |
+| 2026-04-15 | Claude documentation agent (4 parallel agents) | Layer 3 skeletons drafted (3.1 Sidebar redesign, 3.2 Route restructure, 3.3 Role-gating corrections, 3.4 Breadcrumb implementation). All IN SPEC (skeleton); every Selected Resolution + Acceptance Criteria PENDING. 3.1 enumerates 12 Qs (zone-group labels, active-association grouping, zone-click behavior, Home placement, Board Admin mode branching, PM toggle runtime, toggle config surface, Platform zone visibility, RouteGuard↔sidebar SoT, association switcher placement, Owner Portal launcher retirement scope, legacy zone assignment); 3.2 enumerates 7 Qs across 52 route entries + 43 legacy redirects; 3.3 enumerates 12 Qs sequencing remediation across 2.1/2.2/2.3/2.4; 3.4 enumerates 10 Qs against 37 breadcrumb surfaces. Cross-Reference Notices embedded in all four modules guarding against re-deciding locked Layer 0/1/2 content. |
