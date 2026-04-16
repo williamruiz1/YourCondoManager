@@ -58,10 +58,10 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 
 | ID | Name | Status | Decision Doc |
 |---|---|---|---|
-| 3.1 | Sidebar redesign | IN SPEC (skeleton) | [`decisions/3.1-sidebar-redesign.md`](decisions/3.1-sidebar-redesign.md) |
-| 3.2 | Route restructure | IN SPEC (skeleton) | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) |
-| 3.3 | Role-gating corrections | IN SPEC (skeleton) | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) |
-| 3.4 | Breadcrumb implementation | IN SPEC (skeleton) | [`decisions/3.4-breadcrumb-implementation.md`](decisions/3.4-breadcrumb-implementation.md) |
+| 3.1 | Sidebar redesign | **SPEC LOCKED** | [`decisions/3.1-sidebar-redesign.md`](decisions/3.1-sidebar-redesign.md) |
+| 3.2 | Route restructure | **SPEC LOCKED** | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) |
+| 3.3 | Role-gating corrections | **SPEC LOCKED** | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) |
+| 3.4 | Breadcrumb implementation | **SPEC LOCKED** | [`decisions/3.4-breadcrumb-implementation.md`](decisions/3.4-breadcrumb-implementation.md) |
 
 ---
 
