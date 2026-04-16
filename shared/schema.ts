@@ -158,7 +158,7 @@ export const documentVersions = pgTable("document_versions", {
   uniqueVersionPerDocument: uniqueIndex("document_versions_document_version_uq").on(table.documentId, table.versionNumber),
 }));
 
-export const adminUserRoleEnum = pgEnum("admin_user_role", ["platform-admin", "board-admin", "manager", "viewer"]);
+export const adminUserRoleEnum = pgEnum("admin_user_role", ["platform-admin", "board-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]);
 export const adminUsers = pgTable("admin_users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull(),
