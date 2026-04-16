@@ -2,7 +2,7 @@
 **Initiative:** Spec-First Platform Overhaul
 **Owner:** YCM Command Center
 **Process skill:** [`docs/skills/spec-first-overhaul-process-skill.md`](../../skills/spec-first-overhaul-process-skill.md)
-**Last updated:** 2026-04-14 (PPM task card published for 0.1)
+**Last updated:** 2026-04-16 (Task 0 merged; Tasks 1+2 handoffs pushed)
 
 ---
 
@@ -60,7 +60,7 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 |---|---|---|---|
 | 3.1 | Sidebar redesign | **SPEC LOCKED** | [`decisions/3.1-sidebar-redesign.md`](decisions/3.1-sidebar-redesign.md) |
 | 3.2 | Route restructure | **SPEC LOCKED** | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) |
-| 3.3 | Role-gating corrections | **SPEC LOCKED** | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) |
+| 3.3 | Role-gating corrections | **IN BUILD** | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) |
 | 3.4 | Breadcrumb implementation | **SPEC LOCKED** | [`decisions/3.4-breadcrumb-implementation.md`](decisions/3.4-breadcrumb-implementation.md) |
 
 ---
@@ -72,7 +72,7 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 4.1 | Cross-association alert engine | IN SPEC (skeleton) | [`decisions/4.1-cross-association-alert-engine.md`](decisions/4.1-cross-association-alert-engine.md) |
 | 4.2 | Owner portal gaps | IN SPEC (skeleton) | [`decisions/4.2-owner-portal-gaps.md`](decisions/4.2-owner-portal-gaps.md) |
 | 4.3 | Recurring assessment rules engine | IN SPEC (skeleton) | [`decisions/4.3-recurring-assessment-rules-engine.md`](decisions/4.3-recurring-assessment-rules-engine.md) |
-| 4.4 | Signup and checkout flow | IN SPEC (skeleton) | [`decisions/4.4-signup-and-checkout-flow.md`](decisions/4.4-signup-and-checkout-flow.md) |
+| 4.4 | Signup and checkout flow | IN SPEC (skeleton, Q1+Q3 resolved) | [`decisions/4.4-signup-and-checkout-flow.md`](decisions/4.4-signup-and-checkout-flow.md) |
 
 ---
 
@@ -84,6 +84,25 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 5.2 | Error states | QUEUED | _not yet drafted_ |
 | 5.3 | Mobile audit | QUEUED | _not yet drafted_ |
 | 5.4 | Performance audit | QUEUED | _not yet drafted_ |
+
+---
+
+## CPU Execution Status (3.3 + 4.4 Q3)
+
+The YCM Computer Executor is running the 3.3 role-gating rollout + 4.4 Q3 planCatalog wiring. Execution is zone-by-zone per the 3.3 Q5 landing sequence.
+
+| # | Task | Status | PR | Handoff |
+|---|---|---|---|---|
+| 0 | Vitest test infrastructure (3.3 Q4 pre-req) | **COMPLETE** | [#8](https://github.com/williamruiz1/YourCondoManager/pull/8) merged | [`handoffs/task-0-vitest-infrastructure-handoff.md`](handoffs/task-0-vitest-infrastructure-handoff.md) |
+| 1 | Wire planCatalog as pricing source of truth (4.4 Q3) | **HANDOFF READY** | — | [`handoffs/task-1-plancatalog-wiring-handoff.md`](handoffs/task-1-plancatalog-wiring-handoff.md) |
+| 2 | Parity harness — Tier 1/2/3 tests (3.3 Q4) | **HANDOFF READY** | — | [`handoffs/task-2-parity-harness-handoff.md`](handoffs/task-2-parity-harness-handoff.md) |
+| 3 | Zone 1 — Financials (Q2 + Q3 + RouteGuard) | QUEUED | — | — |
+| 4 | Zone 2 — Operations (AdminRole dedup + RouteGuard + shunt) | QUEUED | — | — |
+| 5 | Zone 3 — Governance (RouteGuard + normalizeAdminRole) | QUEUED | — | — |
+| 6 | Zone 4 — Communications (RouteGuard) | QUEUED | — | — |
+| 7 | Zone 5 — Platform (atomic Q8) | QUEUED | — | — |
+
+**Execution rules:** Tasks 1+2 dispatch in parallel (no dependency between them). Tasks 3–7 are sequential per 3.3 Q5 landing order. Each zone landing must pass Q9 test gates + Q11 observability checks before the next zone merges.
 
 ---
 
@@ -108,3 +127,6 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 2026-04-15 | YCM CC (William confirmed) | 0.2 amended at `f8dbf76` — Persona 4 Platform Admin added; boundary matrix extended with Platform Admin column; ACs 11/12/13 added. 1.1 amended at `ac446c0` — sixth zone Platform added to Q1/Q3/Q4. Both amendments triggered by 2.1 Q1 + 2.4 Q1 + 2.4 Q6 resolutions. Layer 0 + Layer 1 now fully aligned with 4-persona / 6-zone model (later expanded to 6-persona model on 2026-04-16). |
 | 2026-04-15 | Claude documentation agent (4 parallel agents) | Layer 3 skeletons drafted (3.1 Sidebar redesign, 3.2 Route restructure, 3.3 Role-gating corrections, 3.4 Breadcrumb implementation). All IN SPEC (skeleton); every Selected Resolution + Acceptance Criteria PENDING. 3.1 enumerates 12 Qs (zone-group labels, active-association grouping, zone-click behavior, Home placement, Board Officer / Assisted Board mode branching, PM toggle runtime, toggle config surface, Platform zone visibility, RouteGuard↔sidebar SoT, association switcher placement, Owner Portal launcher retirement scope, legacy zone assignment); 3.2 enumerates 7 Qs across 52 route entries + 43 legacy redirects; 3.3 enumerates 12 Qs sequencing remediation across 2.1/2.2/2.3/2.4; 3.4 enumerates 10 Qs against 37 breadcrumb surfaces. Cross-Reference Notices embedded in all four modules guarding against re-deciding locked Layer 0/1/2 content. |
 | 2026-04-15 | YCM CC (William confirmed) | 6-persona model rename: board-admin split into board-officer (self-managed), assisted-board (PM-managed), pm-assistant (PM junior staff). 0.2 restructured. All decision docs updated. |
+| 2026-04-16 | Founder (William) + YCM CC | 3.3 fully locked (12 Qs resolved). 4.4 Q1 + Q3 resolved. Signup role bug fixed (commit `aa30fa2`). 3.3 spec aligned (commit `7f49e17`). CPU execution plan approved: 8-task sequence covering test infra, planCatalog wiring, parity harness, and 5 zone landings. |
+| 2026-04-16 | YCM CPU (Computer Executor) | Task 0 (Vitest infrastructure) dispatched → PR #8 opened by VS Code Claude → reviewed and merged. 14 tests, 10 files, 1673 insertions. All 9 AC verified. |
+| 2026-04-16 | YCM CPU (Computer Executor) | Task 1 (planCatalog wiring) and Task 2 (parity harness) handoff specs pushed to `docs/projects/platform-overhaul/handoffs/`. Both ready for dispatch. Tasks 1+2 run in parallel after Task 0 merge. |
