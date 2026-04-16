@@ -69,10 +69,10 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 
 | ID | Name | Status | Decision Doc |
 |---|---|---|---|
-| 4.1 | Cross-association alert engine | QUEUED | _not yet drafted_ |
-| 4.2 | Owner portal gaps | QUEUED | _not yet drafted_ |
-| 4.3 | Recurring assessment rules engine | QUEUED | _not yet drafted_ |
-| 4.4 | Signup and checkout flow | QUEUED | _not yet drafted_ |
+| 4.1 | Cross-association alert engine | IN SPEC (skeleton) | [`decisions/4.1-cross-association-alert-engine.md`](decisions/4.1-cross-association-alert-engine.md) |
+| 4.2 | Owner portal gaps | IN SPEC (skeleton) | [`decisions/4.2-owner-portal-gaps.md`](decisions/4.2-owner-portal-gaps.md) |
+| 4.3 | Recurring assessment rules engine | IN SPEC (skeleton) | [`decisions/4.3-recurring-assessment-rules-engine.md`](decisions/4.3-recurring-assessment-rules-engine.md) |
+| 4.4 | Signup and checkout flow | IN SPEC (skeleton) | [`decisions/4.4-signup-and-checkout-flow.md`](decisions/4.4-signup-and-checkout-flow.md) |
 
 ---
 
