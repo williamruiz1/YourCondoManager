@@ -26,7 +26,7 @@ import {
   PieChart, Pie,
 } from "recharts";
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 type AuthSession = { authenticated: boolean; admin?: { role: AdminRole } | null };
 
 type TokenDetail = {

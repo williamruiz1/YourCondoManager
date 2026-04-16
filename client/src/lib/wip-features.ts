@@ -1,4 +1,4 @@
-export type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+export type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 const wipRouteRoleAllowlist: Record<string, AdminRole[]> = {
   "/app/ai/ingestion": ["platform-admin"],

@@ -48,7 +48,7 @@ import {
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { canAccessWipRoute } from "@/lib/wip-features";
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 type NavLink = {
   title: string;
@@ -73,7 +73,7 @@ const overviewModules: NavModule[] = [
     icon: Layers,
     materialIcon: "layers",
     activePrefix: "/app/portfolio",
-    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
   },
   {
     title: "Associations",
@@ -92,9 +92,9 @@ const associationModules: NavModule[] = [
     icon: DoorOpen,
     materialIcon: "door_front",
     activePrefix: "/app/units",
-    roles: ["platform-admin", "board-admin", "manager"],
+    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"],
     children: [
-      { title: "People", url: "/app/persons", icon: Contact, materialIcon: "contacts", roles: ["platform-admin", "board-admin", "manager"] },
+      { title: "People", url: "/app/persons", icon: Contact, materialIcon: "contacts", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
     ],
   },
   {
@@ -103,12 +103,12 @@ const associationModules: NavModule[] = [
     icon: CircleDollarSign,
     materialIcon: "payments",
     activePrefix: "/app/financial",
-    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
     children: [
-      { title: "Billing", url: "/app/financial/billing", icon: CircleDollarSign, materialIcon: "receipt_long", activePrefix: "/app/financial/billing", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Payments", url: "/app/financial/payments", icon: CircleDollarSign, materialIcon: "credit_card", activePrefix: "/app/financial/payments", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Expenses", url: "/app/financial/expenses", icon: CircleDollarSign, materialIcon: "account_balance", activePrefix: "/app/financial/expenses", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Reports", url: "/app/financial/reports", icon: CircleDollarSign, materialIcon: "summarize", activePrefix: "/app/financial/reports", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Billing", url: "/app/financial/billing", icon: CircleDollarSign, materialIcon: "receipt_long", activePrefix: "/app/financial/billing", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { title: "Payments", url: "/app/financial/payments", icon: CircleDollarSign, materialIcon: "credit_card", activePrefix: "/app/financial/payments", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { title: "Expenses", url: "/app/financial/expenses", icon: CircleDollarSign, materialIcon: "account_balance", activePrefix: "/app/financial/expenses", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { title: "Reports", url: "/app/financial/reports", icon: CircleDollarSign, materialIcon: "summarize", activePrefix: "/app/financial/reports", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
     ],
   },
   {
@@ -116,11 +116,11 @@ const associationModules: NavModule[] = [
     url: "/app/board",
     icon: UserCheck,
     materialIcon: "groups",
-    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
     children: [
-      { title: "Governance", url: "/app/governance", icon: ClipboardCheck, materialIcon: "gavel", activePrefix: "/app/governance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Communications", url: "/app/communications", icon: MessageSquare, materialIcon: "forum", activePrefix: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Announcements", url: "/app/announcements", icon: Megaphone, materialIcon: "campaign", activePrefix: "/app/announcements", roles: ["platform-admin", "board-admin", "manager"] },
+      { title: "Governance", url: "/app/governance", icon: ClipboardCheck, materialIcon: "gavel", activePrefix: "/app/governance", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { title: "Communications", url: "/app/communications", icon: MessageSquare, materialIcon: "forum", activePrefix: "/app/communications", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { title: "Announcements", url: "/app/announcements", icon: Megaphone, materialIcon: "campaign", activePrefix: "/app/announcements", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
     ],
   },
   {
@@ -129,7 +129,7 @@ const associationModules: NavModule[] = [
     icon: FileText,
     materialIcon: "description",
     activePrefix: "/app/documents",
-    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
   },
   {
     title: "Insurance",
@@ -137,7 +137,7 @@ const associationModules: NavModule[] = [
     icon: ShieldCheck,
     materialIcon: "verified_user",
     activePrefix: "/app/insurance",
-    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
   },
   {
     title: "Operations",
@@ -145,13 +145,13 @@ const associationModules: NavModule[] = [
     icon: ClipboardList,
     materialIcon: "engineering",
     activePrefix: "/app/operations",
-    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
     children: [
-      { title: "Work Orders", url: "/app/work-orders", icon: ClipboardList, materialIcon: "build", activePrefix: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Maintenance", url: "/app/maintenance-schedules", icon: Wrench, materialIcon: "handyman", activePrefix: "/app/maintenance-schedules", roles: ["platform-admin", "board-admin", "manager"] },
-      { title: "Inspections", url: "/app/inspections", icon: SearchCheck, materialIcon: "fact_check", activePrefix: "/app/inspections", roles: ["platform-admin", "board-admin", "manager"] },
-      { title: "Vendors", url: "/app/vendors", icon: BriefcaseBusiness, materialIcon: "storefront", activePrefix: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { title: "Feedback", url: "/app/resident-feedback", icon: MessageCircle, materialIcon: "rate_review", activePrefix: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { title: "Work Orders", url: "/app/work-orders", icon: ClipboardList, materialIcon: "build", activePrefix: "/app/work-orders", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { title: "Maintenance", url: "/app/maintenance-schedules", icon: Wrench, materialIcon: "handyman", activePrefix: "/app/maintenance-schedules", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { title: "Inspections", url: "/app/inspections", icon: SearchCheck, materialIcon: "fact_check", activePrefix: "/app/inspections", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { title: "Vendors", url: "/app/vendors", icon: BriefcaseBusiness, materialIcon: "storefront", activePrefix: "/app/vendors", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { title: "Feedback", url: "/app/resident-feedback", icon: MessageCircle, materialIcon: "rate_review", activePrefix: "/app/resident-feedback", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
     ],
   },
   {
@@ -160,7 +160,7 @@ const associationModules: NavModule[] = [
     icon: CalendarCheck,
     materialIcon: "event_available",
     activePrefix: "/app/amenities",
-    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
   },
   {
     title: "Community Hub",
@@ -168,7 +168,7 @@ const associationModules: NavModule[] = [
     icon: Globe,
     materialIcon: "language",
     activePrefix: "/app/community-hub",
-    roles: ["platform-admin", "board-admin", "manager", "viewer"],
+    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
   },
 ];
 
@@ -213,7 +213,7 @@ function canAccess(item: NavLink, role?: AdminRole | null) {
 }
 
 function isSingleAssociationBoardExperience(adminRole: AdminRole | null | undefined, associationCount: number) {
-  return adminRole === "board-admin" && associationCount <= 1;
+  return (adminRole === "board-officer" || adminRole === "assisted-board") && associationCount <= 1;
 }
 
 function filterModules(modules: NavModule[], adminRole?: AdminRole | null): NavModule[] {

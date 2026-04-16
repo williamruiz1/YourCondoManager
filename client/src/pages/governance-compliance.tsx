@@ -32,7 +32,7 @@ function downloadCsv(rows: string[][], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 type AuthSession = {
   authenticated: boolean;

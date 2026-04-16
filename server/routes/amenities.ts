@@ -10,7 +10,7 @@ import {
   insertAmenityReservationSchema,
 } from "@shared/schema";
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 type AdminRequest = Request & {
   adminUserId?: string;
   adminUserEmail?: string;
@@ -46,7 +46,7 @@ export function registerAmenityRoutes(
 ) {
   // ── Admin: amenity CRUD ──────────────────────────────────────────────────────
 
-  app.get("/api/amenities", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res: Response) => {
+  app.get("/api/amenities", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res: Response) => {
     try {
       const associationId = p(req.query.associationId as string | string[] | undefined);
       if (!associationId) return res.status(400).json({ message: "associationId required" });
@@ -59,7 +59,7 @@ export function registerAmenityRoutes(
     }
   });
 
-  app.post("/api/amenities", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res: Response) => {
+  app.post("/api/amenities", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const parsed = insertAmenitySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.flatten() });
@@ -70,7 +70,7 @@ export function registerAmenityRoutes(
     }
   });
 
-  app.patch("/api/amenities/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res: Response) => {
+  app.patch("/api/amenities/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
       const [updated] = await db.update(amenities)
@@ -84,7 +84,7 @@ export function registerAmenityRoutes(
     }
   });
 
-  app.delete("/api/amenities/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res: Response) => {
+  app.delete("/api/amenities/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
       const [updated] = await db.update(amenities)
@@ -100,7 +100,7 @@ export function registerAmenityRoutes(
 
   // ── Admin: reservations ──────────────────────────────────────────────────────
 
-  app.get("/api/amenities/:id/reservations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res: Response) => {
+  app.get("/api/amenities/:id/reservations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
       const from = p(req.query.from as string | string[] | undefined);
@@ -117,7 +117,7 @@ export function registerAmenityRoutes(
     }
   });
 
-  app.patch("/api/amenity-reservations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res: Response) => {
+  app.patch("/api/amenity-reservations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
       const { status, notes } = req.body as { status?: string; notes?: string };
@@ -140,7 +140,7 @@ export function registerAmenityRoutes(
 
   // ── Admin: blocks ────────────────────────────────────────────────────────────
 
-  app.get("/api/amenities/:id/blocks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res: Response) => {
+  app.get("/api/amenities/:id/blocks", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
       const rows = await db.select().from(amenityBlocks)
@@ -152,7 +152,7 @@ export function registerAmenityRoutes(
     }
   });
 
-  app.post("/api/amenities/:id/blocks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res: Response) => {
+  app.post("/api/amenities/:id/blocks", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
       const parsed = insertAmenityBlockSchema.safeParse({ ...req.body, amenityId: id });
@@ -164,7 +164,7 @@ export function registerAmenityRoutes(
     }
   });
 
-  app.delete("/api/amenity-blocks/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res: Response) => {
+  app.delete("/api/amenity-blocks/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
       const [deleted] = await db.delete(amenityBlocks)

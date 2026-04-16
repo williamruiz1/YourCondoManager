@@ -39,7 +39,7 @@ import { markTransactionForRetry, getDelinquencySettings } from "../services/ret
 
 // ── Re-usable types (mirrored from routes.ts) ────────────────────────────────
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 export type AdminRequest = Request & {
   adminUserId?: string;
@@ -332,7 +332,7 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
   app.get(
     "/api/financial/autopay/enrollments",
     requireAdmin as any,
-    requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]),
     async (req: AdminRequest, res: Response) => {
       try {
         const associationId = getAssociationIdQuery(req);
@@ -365,7 +365,7 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
   app.post(
     "/api/financial/autopay/enrollments",
     requireAdmin as any,
-    requireAdminRole(["platform-admin", "board-admin", "manager"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
     async (req: AdminRequest, res: Response) => {
       try {
         const parsed = insertAutopayEnrollmentSchema.parse({
@@ -390,7 +390,7 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
   app.patch(
     "/api/financial/autopay/enrollments/:id",
     requireAdmin as any,
-    requireAdminRole(["platform-admin", "board-admin", "manager"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
     async (req: AdminRequest, res: Response) => {
       try {
         const id = req.params.id as string;
@@ -432,7 +432,7 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
   app.get(
     "/api/financial/autopay/enrollments/:id/runs",
     requireAdmin as any,
-    requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]),
     async (req: AdminRequest, res: Response) => {
       try {
         const id = req.params.id as string;
@@ -461,7 +461,7 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
   app.get(
     "/api/financial/autopay/runs",
     requireAdmin as any,
-    requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]),
     async (req: AdminRequest, res: Response) => {
       try {
         const associationId = getAssociationIdQuery(req);
@@ -484,7 +484,7 @@ export function registerAutopayRoutes(app: Express, helpers: AutopayRouteHelpers
   app.post(
     "/api/financial/autopay/run",
     requireAdmin as any,
-    requireAdminRole(["platform-admin", "board-admin", "manager"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
     async (req: AdminRequest, res: Response) => {
       try {
         const { associationId } = req.body as { associationId: string };

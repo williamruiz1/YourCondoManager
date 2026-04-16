@@ -36,7 +36,16 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { platformSubPages } from "@/lib/sub-page-nav";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
 
-const roleOptions = ["platform-admin", "board-admin", "manager", "viewer"] as const;
+const roleOptions = ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] as const;
+
+const roleLabels: Record<string, string> = {
+  "platform-admin": "Platform Admin",
+  "board-officer": "Board Officer",
+  "assisted-board": "Assisted Board",
+  "pm-assistant": "PM Assistant",
+  "manager": "Manager",
+  "viewer": "Viewer",
+};
 
 export default function AdminUsersPage() {
   const isMobile = useIsMobile();
@@ -156,7 +165,7 @@ export default function AdminUsersPage() {
                   <SelectContent>
                     {roleOptions.map((role) => (
                       <SelectItem key={role} value={role}>
-                        {role}
+                        {roleLabels[role] ?? role}
                       </SelectItem>
                     ))}
                   </SelectContent>

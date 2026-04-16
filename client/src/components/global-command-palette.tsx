@@ -16,7 +16,7 @@ import {
 import { useAssociationContext } from "@/context/association-context";
 import { canAccessWipRoute } from "@/lib/wip-features";
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 type CommandLink = {
   label: string;
@@ -57,7 +57,7 @@ function canAccess(item: CommandLink, role?: AdminRole | null) {
 }
 
 function isSingleAssociationBoardExperience(adminRole: AdminRole | null | undefined, associationCount: number) {
-  return adminRole === "board-admin" && associationCount <= 1;
+  return (adminRole === "board-officer" || adminRole === "assisted-board") && associationCount <= 1;
 }
 
 type SearchResult = { type: string; id: string; label: string; href: string };

@@ -243,7 +243,7 @@ function ActiveElectionsCard({
   );
 }
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 function QuickActions({
   activeAssociationId,

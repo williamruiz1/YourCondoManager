@@ -30,7 +30,7 @@ import {
 
 // ── Types (mirrored from routes.ts / autopay.ts) ────────────────────────────
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 type AdminRequest = Request & {
   adminUserId?: string;
@@ -382,7 +382,7 @@ export function registerPaymentPortalRoutes(
   app.get(
     "/api/admin/payment-transactions",
     requireAdmin,
-    requireAdminRole(["platform-admin", "board-admin", "manager"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
     async (req: AdminRequest, res: Response) => {
       try {
         const associationId = getAssociationIdQuery(req as any);

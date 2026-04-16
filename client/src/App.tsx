@@ -86,7 +86,7 @@ const AmenitiesPage = lazy(() => import("@/pages/amenities"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const AdminContextualFeedbackWidget = lazy(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })));
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 type AuthSession = {
   authenticated: boolean;
@@ -120,8 +120,8 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
     matchPrefixes: ["/app/units", "/app/persons"],
     testId: "tabs-residential-inpage",
     tabs: [
-      { label: "Buildings & Units", href: "/app/units", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "People", href: "/app/persons", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Buildings & Units", href: "/app/units", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { label: "People", href: "/app/persons", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
     ],
   },
   {
@@ -129,10 +129,10 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
     matchPrefixes: ["/app/board", "/app/governance", "/app/communications", "/app/announcements"],
     testId: "tabs-governance-inpage",
     tabs: [
-      { label: "Board Members", href: "/app/board", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Governance", href: "/app/governance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Communications", href: "/app/communications", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Announcements", href: "/app/announcements", roles: ["platform-admin", "board-admin", "manager"] },
+      { label: "Board Members", href: "/app/board", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Governance", href: "/app/governance", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Communications", href: "/app/communications", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Announcements", href: "/app/announcements", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
     ],
   },
   {
@@ -140,11 +140,11 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
     matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports"],
     testId: "tabs-finance-inpage",
     tabs: [
-      { label: "Chart of Accounts", href: "/app/financial/foundation", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "Billing", href: "/app/financial/billing", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Payments", href: "/app/financial/payments", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "Expenses", href: "/app/financial/expenses", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "Reports", href: "/app/financial/reports", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Chart of Accounts", href: "/app/financial/foundation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { label: "Billing", href: "/app/financial/billing", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Payments", href: "/app/financial/payments", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { label: "Expenses", href: "/app/financial/expenses", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { label: "Reports", href: "/app/financial/reports", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
     ],
   },
   {
@@ -152,11 +152,11 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
     matchPrefixes: ["/app/work-orders", "/app/vendors", "/app/resident-feedback", "/app/maintenance-schedules", "/app/inspections"],
     testId: "tabs-operations-inpage",
     tabs: [
-      { label: "Work Orders", href: "/app/work-orders", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Maintenance", href: "/app/maintenance-schedules", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "Inspections", href: "/app/inspections", roles: ["platform-admin", "board-admin", "manager"] },
-      { label: "Vendors", href: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Feedback", href: "/app/resident-feedback", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Work Orders", href: "/app/work-orders", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Maintenance", href: "/app/maintenance-schedules", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { label: "Inspections", href: "/app/inspections", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { label: "Vendors", href: "/app/vendors", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Feedback", href: "/app/resident-feedback", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
     ],
   },
   {
@@ -164,8 +164,8 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
     matchPrefixes: ["/app/vendors", "/app/insurance"],
     testId: "tabs-vendor-risk-inpage",
     tabs: [
-      { label: "Vendors", href: "/app/vendors", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
-      { label: "Insurance Policies", href: "/app/insurance", roles: ["platform-admin", "board-admin", "manager", "viewer"] },
+      { label: "Vendors", href: "/app/vendors", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Insurance Policies", href: "/app/insurance", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
     ],
   },
   {
@@ -174,8 +174,8 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
     testId: "tabs-platform-inpage",
     tabs: [
       { label: "Platform Controls", href: "/app/platform/controls", roles: ["platform-admin"] },
-      { label: "Admin Roadmap", href: "/app/admin/roadmap", matchPrefixes: ["/app/admin", "/app/admin/roadmap"], roles: ["platform-admin", "board-admin"] },
-      { label: "Executive", href: "/app/admin/executive", roles: ["platform-admin", "board-admin"] },
+      { label: "Admin Roadmap", href: "/app/admin/roadmap", matchPrefixes: ["/app/admin", "/app/admin/roadmap"], roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant"] },
+      { label: "Executive", href: "/app/admin/executive", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant"] },
       { label: "Admin Users", href: "/app/admin/users", roles: ["platform-admin"] },
       { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
     ],
@@ -190,7 +190,7 @@ function formatAdminRole(role: AdminRole) {
 }
 
 function isSingleAssociationBoardExperience(adminRole: AdminRole | null, associationCount: number) {
-  return adminRole === "board-admin" && associationCount <= 1;
+  return (adminRole === "board-officer" || adminRole === "assisted-board") && associationCount <= 1;
 }
 
 function getUserInitials(email?: string | null) {
@@ -1040,18 +1040,18 @@ function AuthAwareApp() {
 
   const adminRole = authSession?.admin?.role ?? null;
   const hasWorkspaceAccess = Boolean(authSession?.authenticated && authSession.admin);
-  const isBoardAdmin = adminRole === "board-admin";
+  const isBoardMember = adminRole === "board-officer" || adminRole === "assisted-board";
   const isWorkspaceRoute = location === "/app" || location.startsWith("/app/");
 
   if (isWorkspaceRoute && authSessionLoading) {
     return <RouteFallback />;
   }
 
-  // Board-admin Google sign-in → show BoardPortal with session-based auth
-  if (hasWorkspaceAccess && isBoardAdmin) {
+  // Board-member Google sign-in → show BoardPortal with session-based auth
+  if (hasWorkspaceAccess && isBoardMember) {
     return (
       <AssociationProvider>
-        <BoardAdminPortalShell onLogout={logoutGoogleSession} />
+        <BoardMemberPortalShell onLogout={logoutGoogleSession} />
       </AssociationProvider>
     );
   }
@@ -1093,7 +1093,7 @@ function AuthAwareApp() {
   );
 }
 
-function BoardAdminPortalShell({ onLogout }: { onLogout: () => Promise<void> }) {
+function BoardMemberPortalShell({ onLogout }: { onLogout: () => Promise<void> }) {
   const { activeAssociationId, associationResolved, associations } = useAssociationContext();
 
   if (!associationResolved || !activeAssociationId) {

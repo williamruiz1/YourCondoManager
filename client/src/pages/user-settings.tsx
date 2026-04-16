@@ -196,13 +196,17 @@ const NOTIFICATION_GROUPS: Array<{
 
 function roleBadgeVariant(role: string) {
   if (role === "platform-admin") return "default" as const;
-  if (role === "board-admin") return "secondary" as const;
+  if (role === "board-officer") return "secondary" as const;
+  if (role === "assisted-board") return "secondary" as const;
+  if (role === "pm-assistant") return "secondary" as const;
   return "outline" as const;
 }
 
 function roleLabel(role: string) {
   if (role === "platform-admin") return "Platform Admin";
-  if (role === "board-admin") return "Board Admin";
+  if (role === "board-officer") return "Board Officer";
+  if (role === "assisted-board") return "Assisted Board";
+  if (role === "pm-assistant") return "PM Assistant";
   if (role === "manager") return "Manager";
   return "Viewer";
 }

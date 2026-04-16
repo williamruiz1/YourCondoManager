@@ -14733,7 +14733,7 @@ export class DatabaseStorage implements IStorage {
       new Set(
         rows
           .filter((row) => row.isActive === 1)
-          .filter((row) => row.role === "platform-admin" || row.role === "board-admin" || row.role === "viewer")
+          .filter((row) => row.role === "platform-admin" || row.role === "board-officer" || row.role === "assisted-board" || row.role === "pm-assistant" || row.role === "viewer")
           .filter((row) => {
             const preferences = normalizeAdminNotificationPreferences({
               emailNotifications: row.emailNotifications,

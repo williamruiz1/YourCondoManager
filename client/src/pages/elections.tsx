@@ -23,7 +23,7 @@ import { Vote, Plus, Download, FileText, Users, CheckCircle, Clock, BarChart2, T
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 type AuthSession = { authenticated: boolean; admin?: { role: AdminRole } | null };
 
 const electionSchema = z.object({

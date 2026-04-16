@@ -751,7 +751,7 @@ function validateExecutiveSlidePayload(payload: Record<string, unknown>, options
   }
 }
 
-type AdminRole = "platform-admin" | "board-admin" | "manager" | "viewer";
+type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 type AdminRequest = Request & {
   adminUserId?: string;
   adminUserEmail?: string;
@@ -777,14 +777,15 @@ function normalizeAiIngestionRolloutMode(value: unknown): AiIngestionRolloutMode
 
 function normalizeAdminRole(value: unknown): AdminRole {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (normalized === "platform-admin" || normalized === "board-admin" || normalized === "manager" || normalized === "viewer") {
+  if (normalized === "platform-admin" || normalized === "board-officer" || normalized === "assisted-board" || normalized === "pm-assistant" || normalized === "manager" || normalized === "viewer") {
     return normalized;
   }
   if (normalized === "admin" || normalized === "super-admin" || normalized === "superadmin" || normalized === "platform_admin") {
     return "platform-admin";
   }
-  if (normalized === "association-admin" || normalized === "board_admin" || normalized === "board-member" || normalized === "boardmember") {
-    return "board-admin";
+  // Legacy "board-admin" and variants map to "assisted-board" (conservative default)
+  if (normalized === "board-admin" || normalized === "association-admin" || normalized === "board_admin" || normalized === "board-member" || normalized === "boardmember") {
+    return "assisted-board";
   }
   if (normalized === "association-manager" || normalized === "operator") {
     return "manager";
@@ -1273,7 +1274,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/dashboard/stats", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/dashboard/stats", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const scopedAssociationIds = req.adminRole === "platform-admin" ? undefined : (req.adminScopedAssociationIds ?? []);
       const stats = await storage.getDashboardStats({
@@ -1286,7 +1287,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/dashboard/alerts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/dashboard/alerts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       const now = new Date();
@@ -1393,7 +1394,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/portfolio/summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/portfolio/summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: false });
       const visibleAssociations = req.adminRole === "platform-admin"
@@ -1441,7 +1442,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Portfolio-level threshold alerts
-  app.get("/api/portfolio/threshold-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/portfolio/threshold-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: false });
       const visibleAssociations = req.adminRole === "platform-admin"
@@ -1493,7 +1494,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/associations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/associations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getAssociations({ includeArchived: getIncludeArchivedQuery(req) });
       const adminReq = req as AdminRequest;
@@ -1524,7 +1525,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/associations/search", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/associations/search", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const query = typeof req.query.query === "string" ? req.query.query.trim() : "";
       if (query.length < 3) {
@@ -1561,7 +1562,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/addresses/search", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/addresses/search", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const query = typeof req.query.query === "string" ? req.query.query.trim() : "";
       if (query.length < 3) {
@@ -1595,7 +1596,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/debug/admin-context", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/debug/admin-context", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: true });
       const scopedAssociationIds = req.adminRole === "platform-admin"
@@ -1630,7 +1631,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/associations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertAssociationSchema.parse(req.body);
       const result = await storage.createAssociation(parsed, req.adminUserEmail);
@@ -1640,7 +1641,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/associations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/associations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       assertAssociationScope(req, getParam(req.params.id));
       const body = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};
@@ -1664,7 +1665,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/associations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/associations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       assertAssociationScope(req, getParam(req.params.id));
       const deleted = await storage.deleteAssociation(getParam(req.params.id), req.adminUserEmail);
@@ -1679,7 +1680,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/associations/:id/archive", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations/:id/archive", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       assertAssociationScope(req, getParam(req.params.id));
       const result = await storage.updateAssociation(
@@ -1694,7 +1695,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/associations/:id/restore", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations/:id/restore", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       assertAssociationScope(req, getParam(req.params.id));
       const result = await storage.updateAssociation(
@@ -1710,7 +1711,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Insurance policies
-  app.get("/api/associations/:id/insurance", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/associations/:id/insurance", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -1721,7 +1722,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/associations/:id/insurance", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations/:id/insurance", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -1749,7 +1750,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/associations/:id/insurance/:policyId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/associations/:id/insurance/:policyId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -1782,7 +1783,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/associations/:id/insurance/:policyId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/associations/:id/insurance/:policyId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -1794,7 +1795,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/buildings", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/buildings", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getBuildings(getAssociationIdQuery(req));
       res.json(result);
@@ -1803,7 +1804,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/buildings", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/buildings", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertBuildingSchema.parse(req.body);
       assertAssociationScope(req, parsed.associationId);
@@ -1817,7 +1818,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/buildings/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/buildings/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const buildingId = getParam(req.params.id);
       const existing = await storage.getBuildingById(buildingId);
@@ -1840,7 +1841,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/units", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/units", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getUnits(getAssociationIdQuery(req));
       res.json(result);
@@ -1849,7 +1850,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/units", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/units", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertUnitSchema.parse(req.body);
       assertAssociationScope(req, parsed.associationId);
@@ -1863,7 +1864,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/units/import", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/units/import", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const rows = z.array(insertUnitSchema).parse(req.body.rows);
       assertAssociationScope(req, rows[0]?.associationId ?? "");
@@ -1884,7 +1885,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/units/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/units/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const unitId = getParam(req.params.id);
       const existing = await storage.getUnitById(unitId);
@@ -1907,7 +1908,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/units/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/units/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const unitId = getParam(req.params.id);
       const existing = await storage.getUnitById(unitId);
@@ -1922,7 +1923,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/units/:id/history", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/units/:id/history", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const unitId = getParam(req.params.id);
       const existing = await storage.getUnitById(unitId);
@@ -1936,7 +1937,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/persons", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/persons", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getPersons(getAssociationIdQuery(req));
       res.json(result);
@@ -1945,7 +1946,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/persons", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/persons", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertPersonSchema.parse(req.body);
       if (parsed.phone) parsed.phone = normalizePhoneNumber(parsed.phone) || null;
@@ -1957,7 +1958,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/persons/import", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/persons/import", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const rows = z.array(insertPersonSchema).parse(req.body.rows);
       const results: Array<{ index: number; name: string; status: "created" | "skipped"; error?: string }> = [];
@@ -1976,7 +1977,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/persons/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/persons/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertPersonSchema.partial().parse(req.body);
       const result = await storage.updatePerson(getParam(req.params.id), parsed, req.adminUserEmail);
@@ -1987,7 +1988,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/persons/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/persons/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const personId = getParam(req.params.id);
       // Relationship validation — warn if person has dependent records
@@ -2017,7 +2018,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Global cross-module search
-  app.get("/api/search", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/search", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
       if (!q || q.length < 2) return res.json({ results: [] });
@@ -2069,7 +2070,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ownerships", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ownerships", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getOwnerships(getAssociationIdQuery(req));
       res.json(result);
@@ -2078,7 +2079,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ownerships", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/ownerships", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertOwnershipSchema.parse({
         unitId: req.body?.unitId,
@@ -2094,7 +2095,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/ownerships/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/ownerships/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertOwnershipSchema.partial().parse({
         ...req.body,
@@ -2109,7 +2110,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/owners/bulk-update", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/owners/bulk-update", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
       if (!rows || rows.length === 0) {
@@ -2168,7 +2169,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/ownerships/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/ownerships/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const deleted = await storage.deleteOwnership(getParam(req.params.id), req.adminUserEmail);
       if (!deleted) return res.status(404).json({ message: "Not found" });
@@ -2178,7 +2179,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/occupancies", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/occupancies", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getOccupancies(getAssociationIdQuery(req));
       res.json(result);
@@ -2187,7 +2188,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/occupancies", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/occupancies", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertOccupancySchema.parse({
         unitId: req.body?.unitId,
@@ -2222,7 +2223,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/occupancies/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/occupancies/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(occupancies).where(eq(occupancies.id, id));
@@ -2254,7 +2255,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/occupancies/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/occupancies/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const deleted = await storage.deleteOccupancy(getParam(req.params.id), req.adminUserEmail);
       if (!deleted) return res.status(404).json({ message: "Not found" });
@@ -2264,7 +2265,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/residential/dataset", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/residential/dataset", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getResidentialDataset(getAssociationIdQuery(req));
       res.json(result);
@@ -2273,7 +2274,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/board-roles", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/board-roles", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getBoardRoles(getAssociationIdQuery(req));
       res.json(result);
@@ -2282,7 +2283,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/board-roles", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/board-roles", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertBoardRoleSchema.parse({
         ...req.body,
@@ -2297,7 +2298,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/board-roles/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/board-roles/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "board-role", getParam(req.params.id));
       const deleted = await storage.deleteBoardRole(getParam(req.params.id), req.adminUserEmail);
@@ -2308,7 +2309,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/board-roles/:id/invite-access", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/board-roles/:id/invite-access", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "board-role", getParam(req.params.id));
       const roleId = getParam(req.params.id);
@@ -2333,7 +2334,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/documents", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getDocuments(getAssociationIdQuery(req));
       // Enrich with version count and current version info
@@ -2348,7 +2349,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/documents/missing-files", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.get("/api/documents/missing-files", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const docs = await storage.getDocuments(getAssociationIdQuery(req));
       const missingIds: string[] = [];
@@ -2370,7 +2371,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+  app.post("/api/documents", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
     try {
       const file = req.file;
       if (!file) {
@@ -2462,7 +2463,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/documents/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/documents/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "document", getParam(req.params.id));
       const deleted = await storage.deleteDocument(getParam(req.params.id), req.adminUserEmail);
@@ -2473,7 +2474,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/documents/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/documents/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "document", getParam(req.params.id));
       const parsed = insertDocumentSchema.partial().parse(req.body);
@@ -2488,7 +2489,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/documents/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/documents/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "document", getParam(req.params.id));
       const result = await storage.getDocumentTags(getParam(req.params.id));
@@ -2498,7 +2499,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/documents/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/documents/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "document", getParam(req.params.id));
       const parsed = insertDocumentTagSchema.parse({
@@ -2515,7 +2516,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/documents/:id/versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/documents/:id/versions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "document", getParam(req.params.id));
       const result = await storage.getDocumentVersions(getParam(req.params.id));
@@ -2525,7 +2526,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/documents/:id/versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+  app.post("/api/documents/:id/versions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
     try {
       const documentId = getParam(req.params.id);
       await assertResourceScope(req, "document", documentId);
@@ -2581,7 +2582,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/documents/:id/versions/:versionId/set-current", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/documents/:id/versions/:versionId/set-current", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const documentId = getParam(req.params.id);
       const versionId = getParam(req.params.versionId);
@@ -2618,7 +2619,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/documents/:id/versions/export", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/documents/:id/versions/export", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const documentId = getParam(req.params.id);
       await assertResourceScope(req, "document", documentId);
@@ -2651,7 +2652,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Financial alerts
-  app.get("/api/financial/alerts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/alerts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -2665,7 +2666,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/alerts/generate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/alerts/generate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = req.body.associationId as string;
       assertAssociationInputScope(req, associationId);
@@ -2740,7 +2741,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/alerts/:id/dismiss", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/alerts/:id/dismiss", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = req.params.id as string;
       const [existing] = await db.select().from(financialAlerts).where(eq(financialAlerts.id, id)).limit(1);
@@ -2757,7 +2758,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/audit-logs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/audit-logs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getAuditLogs(getAssociationIdQuery(req));
       res.json(result);
@@ -2851,7 +2852,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/fee-schedules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/fee-schedules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getHoaFeeSchedules(getAssociationIdQuery(req));
       res.json(result);
@@ -2860,7 +2861,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/fee-schedules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/fee-schedules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertHoaFeeScheduleSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
@@ -2871,7 +2872,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/fee-schedules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/fee-schedules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "hoa-fee-schedule", getParam(req.params.id));
       const parsed = insertHoaFeeScheduleSchema.partial().parse(req.body);
@@ -2886,7 +2887,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/assessments", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/assessments", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getSpecialAssessments(getAssociationIdQuery(req));
       res.json(result);
@@ -2895,7 +2896,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/assessments", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/assessments", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertSpecialAssessmentSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
@@ -2923,7 +2924,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/assessments/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/assessments/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "special-assessment", getParam(req.params.id));
       const parsed = insertSpecialAssessmentSchema.partial().parse(req.body);
@@ -2955,7 +2956,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/assessments/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/assessments/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = typeof req.body?.associationId === "string" ? req.body.associationId : "";
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -2967,7 +2968,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/late-fee-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/late-fee-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getLateFeeRules(getAssociationIdQuery(req));
       res.json(result);
@@ -2976,7 +2977,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/late-fee-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/late-fee-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertLateFeeRuleSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
@@ -3001,7 +3002,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/late-fee-rules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/late-fee-rules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "late-fee-rule", getParam(req.params.id));
       const parsed = insertLateFeeRuleSchema.partial().parse(req.body);
@@ -3030,7 +3031,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/late-fee-events", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/late-fee-events", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getLateFeeEvents(getAssociationIdQuery(req));
       res.json(result);
@@ -3039,7 +3040,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/late-fees/calculate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/late-fees/calculate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req as AdminRequest, associationId);
@@ -3082,7 +3083,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Delinquency thresholds
-  app.get("/api/financial/delinquency-thresholds", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/delinquency-thresholds", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3094,7 +3095,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/delinquency-thresholds", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/delinquency-thresholds", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertDelinquencyThresholdSchema.parse(req.body);
       assertAssociationScope(req, parsed.associationId);
@@ -3105,7 +3106,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/delinquency-thresholds/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/delinquency-thresholds/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(delinquencyThresholds).where(eq(delinquencyThresholds.id, id)).limit(1);
@@ -3119,7 +3120,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/financial/delinquency-thresholds/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/financial/delinquency-thresholds/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(delinquencyThresholds).where(eq(delinquencyThresholds.id, id)).limit(1);
@@ -3133,7 +3134,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Delinquency escalations
-  app.get("/api/financial/delinquency-escalations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/delinquency-escalations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3145,7 +3146,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/delinquency-escalations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/delinquency-escalations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(delinquencyEscalations).where(eq(delinquencyEscalations.id, id)).limit(1);
@@ -3160,7 +3161,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Run delinquency escalation scan – finds owners exceeding any threshold and creates/updates escalations
-  app.post("/api/financial/delinquency-escalations/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/delinquency-escalations/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req) || req.body?.associationId;
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3244,7 +3245,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Collections handoff records
-  app.get("/api/financial/collections-handoffs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/collections-handoffs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3258,7 +3259,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/collections-handoffs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/collections-handoffs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertCollectionsHandoffSchema.parse(req.body);
       assertAssociationInputScope(req, parsed.associationId);
@@ -3269,7 +3270,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/collections-handoffs/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/collections-handoffs/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = req.params.id as string;
       const [existing] = await db.select().from(collectionsHandoffs).where(eq(collectionsHandoffs.id, id)).limit(1);
@@ -3288,7 +3289,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Collections aging dashboard
-  app.get("/api/financial/collections-aging", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/collections-aging", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3394,7 +3395,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Phase 3: Delinquency Settings ────────────────────────────────────────
 
-  app.get("/api/financial/delinquency-settings", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/delinquency-settings", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3406,7 +3407,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/delinquency-settings", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/delinquency-settings", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertDelinquencySettingsSchema.parse(req.body);
       if (parsed.associationId) assertAssociationScope(req, parsed.associationId);
@@ -3434,7 +3435,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Phase 3: Delinquency Notices ────────────────────────────────────────
 
-  app.get("/api/financial/delinquency-notices", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/delinquency-notices", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3449,7 +3450,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/delinquency-notices/generate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/delinquency-notices/generate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req) || req.body?.associationId;
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3463,7 +3464,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Phase 3: Retry Management ────────────────────────────────────────
 
-  app.get("/api/financial/retry-eligible", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/retry-eligible", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (associationId) assertAssociationScope(req, associationId);
@@ -3474,7 +3475,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/retries/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/retries/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const result = await runAutopayRetries();
       res.json(result);
@@ -3484,7 +3485,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Payment plans
-  app.get("/api/financial/payment-plans", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/payment-plans", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3496,7 +3497,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/payment-plans", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/payment-plans", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertPaymentPlanSchema.parse({ ...req.body, createdBy: req.adminUserEmail ?? null });
       assertAssociationInputScope(req, parsed.associationId);
@@ -3507,7 +3508,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/payment-plans/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/payment-plans/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(paymentPlans).where(eq(paymentPlans.id, id)).limit(1);
@@ -3522,7 +3523,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── Recurring charge schedules ──────────────────────────────────────────
-  app.get("/api/financial/recurring-charges/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/recurring-charges/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3534,7 +3535,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/recurring-charges/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/recurring-charges/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const body = { ...req.body, createdBy: req.adminUserEmail || req.body.createdBy || "unknown" };
       const parsed = insertRecurringChargeScheduleSchema.parse(body);
@@ -3553,7 +3554,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/recurring-charges/schedules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/recurring-charges/schedules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = req.params.id as string;
       const [existing] = await db.select().from(recurringChargeSchedules).where(eq(recurringChargeSchedules.id, id)).limit(1);
@@ -3568,7 +3569,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Run due recurring charges — processes all active schedules for an association whose nextRunDate <= now
-  app.post("/api/financial/recurring-charges/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/recurring-charges/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const { associationId } = req.body as { associationId: string };
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3662,7 +3663,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // List run history for an association
-  app.get("/api/financial/recurring-charges/runs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/recurring-charges/runs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3678,7 +3679,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Retry a failed run
-  app.post("/api/financial/recurring-charges/runs/:id/retry", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/recurring-charges/runs/:id/retry", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = req.params.id as string;
       const [run] = await db.select().from(recurringChargeRuns).where(eq(recurringChargeRuns.id, id)).limit(1);
@@ -3723,7 +3724,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Financial approvals (two-person approval for material financial changes)
-  app.get("/api/financial/approvals", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/approvals", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3738,7 +3739,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/approvals", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/approvals", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertFinancialApprovalSchema.parse({ ...req.body, requestedBy: req.adminUserEmail || req.body.requestedBy || "unknown" });
       assertAssociationInputScope(req, parsed.associationId);
@@ -3749,7 +3750,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/approvals/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/approvals/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(financialApprovals).where(eq(financialApprovals.id, id)).limit(1);
@@ -3777,7 +3778,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Payment reminder rules
-  app.get("/api/financial/reminder-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/reminder-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -3789,7 +3790,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/reminder-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/reminder-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertPaymentReminderRuleSchema.parse(req.body);
       assertAssociationInputScope(req, parsed.associationId);
@@ -3800,7 +3801,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/reminder-rules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/reminder-rules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(paymentReminderRules).where(eq(paymentReminderRules.id, id)).limit(1);
@@ -3814,7 +3815,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/reminder-rules/:id/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/reminder-rules/:id/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [rule] = await db.select().from(paymentReminderRules).where(eq(paymentReminderRules.id, id)).limit(1);
@@ -3916,7 +3917,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/accounts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/accounts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getFinancialAccounts(getAssociationIdQuery(req));
       res.json(result);
@@ -3925,7 +3926,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/accounts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/accounts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertFinancialAccountSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -3936,7 +3937,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/accounts/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/accounts/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "financial-account", getParam(req.params.id));
       const parsed = insertFinancialAccountSchema.partial().parse(req.body);
@@ -3954,7 +3955,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // GET /api/financial/accounts/activity — Per-account budget vs actual roll-up
   // Aggregates planned amounts (latest ratified budget version) and committed
   // invoice amounts (status in approved|paid) per chart-of-accounts entry.
-  app.get("/api/financial/accounts/activity", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/accounts/activity", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -4055,7 +4056,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/categories", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/categories", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getFinancialCategories(getAssociationIdQuery(req));
       res.json(result);
@@ -4064,7 +4065,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/categories", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/categories", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertFinancialCategorySchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -4075,7 +4076,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/categories/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/categories/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "financial-category", getParam(req.params.id));
       const parsed = insertFinancialCategorySchema.partial().parse(req.body);
@@ -4090,7 +4091,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/budgets", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/budgets", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getBudgets(getAssociationIdQuery(req));
       res.json(result);
@@ -4099,7 +4100,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/budgets", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/budgets", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertBudgetSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -4110,7 +4111,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/budgets/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/budgets/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "budget", getParam(req.params.id));
       const parsed = insertBudgetSchema.partial().parse(req.body);
@@ -4125,7 +4126,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/budgets/:budgetId/versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/budgets/:budgetId/versions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "budget", getParam(req.params.budgetId));
       const result = await storage.getBudgetVersions(getParam(req.params.budgetId));
@@ -4135,7 +4136,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/budget-versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/budget-versions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertBudgetVersionSchema.parse(req.body);
       await assertResourceScope(req as AdminRequest, "budget", parsed.budgetId);
@@ -4146,7 +4147,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/budget-versions/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/budget-versions/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "budget-version", getParam(req.params.id));
       const parsed = insertBudgetVersionSchema.partial().parse(req.body);
@@ -4158,7 +4159,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/budget-versions/:budgetVersionId/lines", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/budget-versions/:budgetVersionId/lines", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "budget-version", getParam(req.params.budgetVersionId));
       const result = await storage.getBudgetLines(getParam(req.params.budgetVersionId));
@@ -4168,7 +4169,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/budget-lines", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/budget-lines", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertBudgetLineSchema.parse(req.body);
       await assertResourceScope(req as AdminRequest, "budget-version", parsed.budgetVersionId);
@@ -4179,7 +4180,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/budget-lines/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/budget-lines/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "budget-line", getParam(req.params.id));
       const parsed = insertBudgetLineSchema.partial().parse(req.body);
@@ -4191,7 +4192,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/budgets/:associationId/variance/:budgetVersionId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/budgets/:associationId/variance/:budgetVersionId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       assertAssociationScope(req as AdminRequest, getParam(req.params.associationId));
       const result = await storage.getBudgetVariance(
@@ -4204,7 +4205,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/vendors", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/vendors", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getVendors(getAssociationIdQuery(req));
       res.json(result);
@@ -4213,7 +4214,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/vendors/:id/metrics", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/vendors/:id/metrics", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const vendorId = getParam(req.params.id);
       const allWorkOrders = await storage.getWorkOrders({});
@@ -4254,7 +4255,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/vendors", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/vendors", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertVendorSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -4265,7 +4266,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/vendors/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/vendors/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "vendor", getParam(req.params.id));
       const parsed = insertVendorSchema.partial().parse(req.body);
@@ -4280,7 +4281,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/vendors/renewal-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/vendors/renewal-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getVendorRenewalAlerts(getAssociationIdQuery(req));
       res.json(result);
@@ -4289,7 +4290,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/vendors/:id/documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/vendors/:id/documents", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "vendor", getParam(req.params.id));
       const result = await storage.getVendorDocuments(getParam(req.params.id));
@@ -4299,7 +4300,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/vendors/:id/documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+  app.post("/api/vendors/:id/documents", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
     try {
       const vendorId = getParam(req.params.id);
       await assertResourceScope(req, "vendor", vendorId);
@@ -4330,7 +4331,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/invoices", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/invoices", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getVendorInvoices(getAssociationIdQuery(req));
       res.json(result);
@@ -4339,7 +4340,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/invoices", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/invoices", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertVendorInvoiceSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -4364,7 +4365,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/invoices/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/invoices/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "vendor-invoice", getParam(req.params.id));
       const parsed = insertVendorInvoiceSchema.partial().parse(req.body);
@@ -4393,7 +4394,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/utilities", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/utilities", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getUtilityPayments(getAssociationIdQuery(req));
       res.json(result);
@@ -4402,7 +4403,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/utilities", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/utilities", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertUtilityPaymentSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -4413,7 +4414,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/utilities/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/utilities/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "utility-payment", getParam(req.params.id));
       const parsed = insertUtilityPaymentSchema.partial().parse(req.body);
@@ -4428,7 +4429,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/payment-methods", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/payment-methods", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getPaymentMethodConfigs(getAssociationIdQuery(req));
       res.json(result);
@@ -4437,7 +4438,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/payment-methods", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/payment-methods", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertPaymentMethodConfigSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -4462,7 +4463,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/payment-methods/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/financial/payment-methods/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "payment-method-config", getParam(req.params.id));
       const parsed = insertPaymentMethodConfigSchema.partial().parse(req.body);
@@ -4491,7 +4492,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/payment-gateway/connections", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/payment-gateway/connections", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getPaymentGatewayConnections(getAssociationIdQuery(req));
       res.json(result);
@@ -4500,7 +4501,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/payment-gateway/validate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/payment-gateway/validate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req as AdminRequest, associationId);
@@ -4525,7 +4526,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/owner-payment-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/owner-payment-links", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req, associationId);
@@ -4965,7 +4966,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/payment-instructions/send", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/payment-instructions/send", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req, associationId);
@@ -5001,7 +5002,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/expense-attachments", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/expense-attachments", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const expenseType = typeof req.query.expenseType === "string" ? req.query.expenseType : undefined;
       const expenseId = typeof req.query.expenseId === "string" ? req.query.expenseId : undefined;
@@ -5016,7 +5017,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/expense-attachments", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+  app.post("/api/financial/expense-attachments", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
     try {
       const file = req.file;
       if (!file) {
@@ -5038,7 +5039,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/owner-ledger/entries", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/owner-ledger/entries", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getOwnerLedgerEntries(getAssociationIdQuery(req));
       res.json(result);
@@ -5047,7 +5048,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/owner-ledger/entries", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/financial/owner-ledger/entries", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertOwnerLedgerEntrySchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -5059,7 +5060,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Admin payment activity feed
-  app.get("/api/financial/payment-activity", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/payment-activity", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -5084,7 +5085,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Admin payment exceptions: large payments, negative adjustments, duplicate-day entries
-  app.get("/api/financial/payment-exceptions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/payment-exceptions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -5127,7 +5128,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Bank statement reconciliation
-  app.get("/api/financial/reconciliation/imports", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/reconciliation/imports", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -5139,7 +5140,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/reconciliation/imports", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/reconciliation/imports", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = req.body.associationId as string;
       assertAssociationInputScope(req, associationId);
@@ -5188,7 +5189,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/reconciliation/transactions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/reconciliation/transactions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -5208,7 +5209,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Auto-match: find ledger entries close in date and amount
-  app.post("/api/financial/reconciliation/auto-match", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/reconciliation/auto-match", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = req.body.associationId as string;
       assertAssociationInputScope(req, associationId);
@@ -5248,7 +5249,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Reconciliation period close controls
-  app.get("/api/financial/reconciliation/periods", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/reconciliation/periods", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -5260,7 +5261,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/reconciliation/periods", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/reconciliation/periods", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertReconciliationPeriodSchema.parse(req.body);
       assertAssociationInputScope(req, parsed.associationId);
@@ -5285,7 +5286,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/financial/reconciliation/periods/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/reconciliation/periods/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = req.params.id as string;
       const [existing] = await db.select().from(reconciliationPeriods).where(eq(reconciliationPeriods.id, id)).limit(1);
@@ -5335,7 +5336,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Manual match
-  app.patch("/api/financial/reconciliation/transactions/:id/match", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/financial/reconciliation/transactions/:id/match", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = req.params.id as string;
       const [tx] = await db.select().from(bankStatementTransactions).where(eq(bankStatementTransactions.id, id)).limit(1);
@@ -5355,7 +5356,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/financial/owner-ledger/import", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/financial/owner-ledger/import", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = req.body.associationId as string;
       assertAssociationScope(req, associationId);
@@ -5408,7 +5409,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/financial/owner-ledger/summary/:associationId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/financial/owner-ledger/summary/:associationId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       assertAssociationScope(req as AdminRequest, getParam(req.params.associationId));
       const result = await storage.getOwnerLedgerSummary(getParam(req.params.associationId));
@@ -5419,7 +5420,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // GET /api/financial/reports/profit-loss?startDate&endDate&associationId
-  app.get("/api/financial/reports/profit-loss", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/reports/profit-loss", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -5501,7 +5502,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // GET /api/financial/reports/ar-aging?associationId
-  app.get("/api/financial/reports/ar-aging", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/reports/ar-aging", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -5598,7 +5599,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // GET /api/financial/reports/board-summary?month&year&associationId
-  app.get("/api/financial/reports/board-summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/reports/board-summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -5690,7 +5691,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/meetings", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/governance/meetings", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getGovernanceMeetings(getAssociationIdQuery(req));
       res.json(result);
@@ -5699,7 +5700,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/meetings", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/governance/meetings", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertGovernanceMeetingSchema.parse({
         ...req.body,
@@ -5713,7 +5714,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/governance/meetings/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/governance/meetings/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "governance-meeting", getParam(req.params.id));
       const parsed = insertGovernanceMeetingSchema.partial().parse({
@@ -5731,7 +5732,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/meetings/:id/agenda-items", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/governance/meetings/:id/agenda-items", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "governance-meeting", getParam(req.params.id));
       const result = await storage.getMeetingAgendaItems(getParam(req.params.id));
@@ -5741,7 +5742,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/meetings/:id/agenda-items", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/governance/meetings/:id/agenda-items", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "governance-meeting", getParam(req.params.id));
       const parsed = insertMeetingAgendaItemSchema.parse({
@@ -5755,7 +5756,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/meetings/:id/notes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/governance/meetings/:id/notes", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "governance-meeting", getParam(req.params.id));
       const result = await storage.getMeetingNotes(getParam(req.params.id));
@@ -5765,7 +5766,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/meetings/:id/notes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/governance/meetings/:id/notes", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "governance-meeting", getParam(req.params.id));
       const parsed = insertMeetingNoteSchema.parse({
@@ -5780,7 +5781,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/governance/meeting-notes/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/governance/meeting-notes/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "meeting-note", getParam(req.params.id));
       const parsed = insertMeetingNoteSchema.partial().parse(req.body);
@@ -5792,7 +5793,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/resolutions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/governance/resolutions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getResolutions(getAssociationIdQuery(req));
       res.json(result);
@@ -5801,7 +5802,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/resolutions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/governance/resolutions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertResolutionSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -5812,7 +5813,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/governance/resolutions/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/governance/resolutions/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "resolution", getParam(req.params.id));
       const parsed = insertResolutionSchema.partial().parse(req.body);
@@ -5827,7 +5828,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/resolutions/:id/votes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/governance/resolutions/:id/votes", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "resolution", getParam(req.params.id));
       const result = await storage.getVoteRecords(getParam(req.params.id));
@@ -5837,7 +5838,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/resolutions/:id/votes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/governance/resolutions/:id/votes", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const resolutionId = getParam(req.params.id);
       await assertResourceScope(req as AdminRequest, "resolution", resolutionId);
@@ -5880,7 +5881,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/calendar/events", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/governance/calendar/events", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getCalendarEvents(getAssociationIdQuery(req));
       res.json(result);
@@ -5889,7 +5890,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/calendar/events", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/governance/calendar/events", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertCalendarEventSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -5900,7 +5901,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/governance/calendar/events/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/governance/calendar/events/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "calendar-event", getParam(req.params.id));
       const parsed = insertCalendarEventSchema.partial().parse(req.body);
@@ -5917,7 +5918,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ─── Elections ─────────────────────────────────────────────────────────────
 
-  app.get("/api/elections", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const meetingId = typeof req.query.meetingId === "string" ? req.query.meetingId : undefined;
       const result = await storage.getElections(getAssociationIdQuery(req), meetingId);
@@ -5927,7 +5928,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/elections", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/elections", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertElectionSchema.parse({ ...req.body, createdBy: req.adminUserEmail || null });
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -5943,7 +5944,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // 11.3: Election compliance summary for governance page
-  app.get("/api/elections/compliance-summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/compliance-summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -5954,7 +5955,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/elections/active-summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/active-summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getActiveElectionsSummary(getAssociationIdQuery(req));
       res.json(result);
@@ -5964,7 +5965,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Cross-election participation analytics
-  app.get("/api/elections/analytics", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/elections/analytics", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId query parameter is required" });
@@ -5975,7 +5976,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getElection(getParam(req.params.id));
       if (!result) return res.status(404).json({ message: "Election not found" });
@@ -5985,7 +5986,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertElectionSchema.partial().parse(req.body);
       const electionId = getParam(req.params.id);
@@ -6131,7 +6132,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.delete("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await storage.deleteElection(getParam(req.params.id));
       res.json({ ok: true });
@@ -6140,7 +6141,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/elections/:id/tokens-detail", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id/tokens-detail", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getBallotTokensWithNames(getParam(req.params.id));
       res.json(result);
@@ -6149,7 +6150,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/elections/:id/options", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id/options", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getElectionOptions(getParam(req.params.id));
       res.json(result);
@@ -6158,7 +6159,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/elections/:id/options", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/elections/:id/options", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertElectionOptionSchema.parse({ ...req.body, electionId: getParam(req.params.id) });
       const result = await storage.createElectionOption(parsed);
@@ -6168,7 +6169,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/elections/:id/options/:optionId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.delete("/api/elections/:id/options/:optionId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await storage.deleteElectionOption(getParam(req.params.optionId));
       res.json({ ok: true });
@@ -6178,7 +6179,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── Nomination management (admin) ──────────────────────────────────────────
-  app.get("/api/elections/:id/nominations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id/nominations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const nominations = await storage.getNominationsForElection(getParam(req.params.id));
       res.json(nominations);
@@ -6187,7 +6188,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/elections/:id/nominations/:optionId/approve", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/elections/:id/nominations/:optionId/approve", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.approveNomination(getParam(req.params.optionId));
       if (!result) return res.status(404).json({ message: "Nomination not found" });
@@ -6197,7 +6198,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/elections/:id/nominations/:optionId/reject", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/elections/:id/nominations/:optionId/reject", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.rejectNomination(getParam(req.params.optionId));
       if (!result) return res.status(404).json({ message: "Nomination not found" });
@@ -6207,7 +6208,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/elections/:id/generate-tokens", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/elections/:id/generate-tokens", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const result = await storage.generateBallotTokens(getParam(req.params.id), req.adminUserEmail || undefined);
       if (result.created === 0) {
@@ -6219,7 +6220,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/elections/:id/tokens", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id/tokens", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getBallotTokens(getParam(req.params.id));
       res.json(result);
@@ -6228,7 +6229,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/elections/:id/casts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id/casts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getBallotCasts(getParam(req.params.id));
       res.json(result);
@@ -6237,7 +6238,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/elections/:id/tally", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id/tally", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getElectionTally(getParam(req.params.id));
       res.json(result);
@@ -6246,7 +6247,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/elections/:id/certify", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/elections/:id/certify", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const election = await storage.getElection(getParam(req.params.id));
       if (!election) return res.status(404).json({ message: "Election not found" });
@@ -6407,7 +6408,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // 9.2: Send reminders to pending voters
-  app.post("/api/elections/:id/send-reminders", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/elections/:id/send-reminders", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const election = await storage.getElection(getParam(req.params.id));
       if (!election) return res.status(404).json({ message: "Election not found" });
@@ -6455,7 +6456,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // WS1.3: Per-token ballot resend
-  app.post("/api/elections/:id/tokens/:tokenId/resend", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/elections/:id/tokens/:tokenId/resend", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const electionId = getParam(req.params.id);
       const tokenId = getParam(req.params.tokenId);
@@ -6504,7 +6505,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/elections/:id/proxies", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id/proxies", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getProxyDesignations(getParam(req.params.id));
       res.json(result);
@@ -6513,7 +6514,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/elections/:id/proxies", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/elections/:id/proxies", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertElectionProxyDesignationSchema.parse({ ...req.body, electionId: getParam(req.params.id) });
       const result = await storage.createProxyDesignation(parsed);
@@ -6523,7 +6524,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/elections/proxies/:proxyId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.delete("/api/elections/proxies/:proxyId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.revokeProxyDesignation(getParam(req.params.proxyId));
       if (!result) return res.status(404).json({ message: "Proxy designation not found" });
@@ -6533,7 +6534,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/elections/:id/proxy-documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id/proxy-documents", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getProxyDocuments(getParam(req.params.id));
       res.json(result);
@@ -6542,7 +6543,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/elections/:id/proxy-documents", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+  app.post("/api/elections/:id/proxy-documents", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "File is required" });
       const fileUrl = `/uploads/${req.file.filename}`;
@@ -6807,7 +6808,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // HTML result report export (print as PDF via browser)
-  app.get("/api/elections/:id/result-report", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/elections/:id/result-report", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const election = await storage.getElection(getParam(req.params.id));
       if (!election) return res.status(404).json({ message: "Election not found" });
@@ -6931,7 +6932,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Voter eligibility audit report (HTML, printable)
-  app.get("/api/elections/:id/eligibility-report", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/elections/:id/eligibility-report", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const election = await storage.getElection(getParam(req.params.id));
       if (!election) return res.status(404).json({ message: "Election not found" });
@@ -7048,7 +7049,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Audit trail export
-  app.get("/api/elections/:id/audit-export", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/elections/:id/audit-export", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const election = await storage.getElection(getParam(req.params.id));
       if (!election) return res.status(404).json({ message: "Election not found" });
@@ -7130,7 +7131,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ────────────────────────────────────────────────────────────────────────────
 
-  app.get("/api/governance/templates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/governance/templates", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getGovernanceComplianceTemplates(getAssociationIdQuery(req));
       res.json(result);
@@ -7139,7 +7140,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/templates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/governance/templates", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertGovernanceComplianceTemplateSchema.parse({
         ...req.body,
@@ -7161,7 +7162,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/governance/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/governance/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "governance-template", getParam(req.params.id));
       const parsed = insertGovernanceComplianceTemplateSchema.partial().parse(req.body);
@@ -7191,7 +7192,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/templates/:templateId/items", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/governance/templates/:templateId/items", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId));
       const result = await storage.getGovernanceTemplateItems(getParam(req.params.templateId));
@@ -7201,7 +7202,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/templates/:templateId/items", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/governance/templates/:templateId/items", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId));
       const parsed = insertGovernanceTemplateItemSchema.parse({
@@ -7216,7 +7217,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Association-level template assignment: assign a state library template to an association
-  app.post("/api/governance/templates/:templateId/assign", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/governance/templates/:templateId/assign", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const baseTemplateId = getParam(req.params.templateId);
       const associationId = req.body.associationId as string;
@@ -7268,7 +7269,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Template version history: list all versions of a template (same baseTemplateId or same name/stateCode)
-  app.get("/api/governance/templates/:templateId/versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/governance/templates/:templateId/versions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const templateId = getParam(req.params.templateId);
       const [template] = await db.select().from(governanceComplianceTemplates).where(eq(governanceComplianceTemplates.id, templateId)).limit(1);
@@ -7290,7 +7291,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Create new version of a template
-  app.post("/api/governance/templates/:templateId/new-version", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/governance/templates/:templateId/new-version", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const templateId = getParam(req.params.templateId);
       const [existing] = await db.select().from(governanceComplianceTemplates).where(eq(governanceComplianceTemplates.id, templateId)).limit(1);
@@ -7333,7 +7334,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/tasks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/governance/tasks", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getAnnualGovernanceTasks(getAssociationIdQuery(req));
       res.json(result);
@@ -7342,7 +7343,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/tasks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/governance/tasks", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertAnnualGovernanceTaskSchema.parse({
         ...req.body,
@@ -7370,7 +7371,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/governance/tasks/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/governance/tasks/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "annual-governance-task", getParam(req.params.id));
       const parsed = insertAnnualGovernanceTaskSchema.partial().parse({
@@ -7402,7 +7403,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/tasks/:id/evidence", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+  app.post("/api/governance/tasks/:id/evidence", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
     try {
       const taskId = getParam(req.params.id);
       const file = req.file;
@@ -7419,7 +7420,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/tasks/generate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/governance/tasks/generate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req as AdminRequest, associationId);
@@ -7441,7 +7442,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/jobs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/jobs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getAiIngestionJobs(getAssociationIdQuery(req));
       res.json(result);
@@ -7450,7 +7451,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/runtime-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
+  app.get("/api/ai/ingestion/runtime-status", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (_req, res) => {
     const aiConfigured = Boolean(process.env.OPENAI_API_KEY || process.env.AI_API_KEY);
     res.json({
       aiConfigured,
@@ -7459,7 +7460,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
-  app.get("/api/ai/ingestion/monitoring", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/monitoring", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const windowDaysRaw = typeof req.query.windowDays === "string" ? Number(req.query.windowDays) : undefined;
       const windowDays = Number.isFinite(windowDaysRaw) ? Math.max(1, Math.min(90, Math.round(windowDaysRaw!))) : 14;
@@ -7470,7 +7471,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/superseded-cleanup-preview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/superseded-cleanup-preview", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const retentionDaysRaw = typeof req.query.retentionDays === "string" ? Number(req.query.retentionDays) : undefined;
       const retentionDays = Number.isFinite(retentionDaysRaw) ? Math.max(1, Math.min(365, Math.round(retentionDaysRaw!))) : 30;
@@ -7481,7 +7482,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ai/ingestion/superseded-cleanup", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/ai/ingestion/superseded-cleanup", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const retentionDaysRaw = typeof req.body?.retentionDays === "number"
         ? req.body.retentionDays
@@ -7496,7 +7497,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/rollout-policy", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/rollout-policy", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = typeof req.query.associationId === "string" ? req.query.associationId : "";
       assertAssociationInputScope(req as AdminRequest, associationId || null);
@@ -7515,7 +7516,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ai/ingestion/rollout-policy", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/ai/ingestion/rollout-policy", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = typeof req.body.associationId === "string" ? req.body.associationId : "";
       assertAssociationInputScope(req, associationId || null);
@@ -7547,7 +7548,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ai/ingestion/jobs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+  app.post("/api/ai/ingestion/jobs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
     try {
       const sourceText = typeof req.body.sourceText === "string" ? req.body.sourceText.trim() : "";
       const contextNotes = typeof req.body.contextNotes === "string" ? req.body.contextNotes.trim() : "";
@@ -7635,7 +7636,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ai/ingestion/jobs/:id/process", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/ai/ingestion/jobs/:id/process", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "ai-ingestion-job", getParam(req.params.id));
       const result = await storage.processAiIngestionJob(getParam(req.params.id));
@@ -7645,7 +7646,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/jobs/:id/records", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/jobs/:id/records", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "ai-ingestion-job", getParam(req.params.id));
       const includeSuperseded = req.query.includeSuperseded === "1" || req.query.includeSuperseded === "true";
@@ -7656,7 +7657,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/jobs/:id/history-summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/jobs/:id/history-summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "ai-ingestion-job", getParam(req.params.id));
       const result = await storage.getAiIngestionJobHistorySummary(getParam(req.params.id));
@@ -7666,7 +7667,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/ai/ingestion/records/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/ai/ingestion/records/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "ai-extracted-record", getParam(req.params.id));
       const status = req.body?.reviewStatus;
@@ -7731,7 +7732,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/records/:id/import-runs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/records/:id/import-runs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "ai-extracted-record", getParam(req.params.id));
       const result = await storage.getAiIngestionImportRuns(getParam(req.params.id));
@@ -7741,7 +7742,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/records/:id/bank-resolution", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/records/:id/bank-resolution", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "ai-extracted-record", getParam(req.params.id));
       const result = await storage.getBankStatementResolutionHints(getParam(req.params.id));
@@ -7751,7 +7752,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ai/ingestion/import-runs/:runId/rollback", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/ai/ingestion/import-runs/:runId/rollback", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "ai-ingestion-import-run", getParam(req.params.runId));
       const result = await storage.rollbackAiIngestionImportRun(getParam(req.params.runId), req.adminUserEmail || undefined);
@@ -7761,7 +7762,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/import-runs/:runId/rollback-preview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/import-runs/:runId/rollback-preview", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "ai-ingestion-import-run", getParam(req.params.runId));
       const result = await storage.previewRollbackAiIngestionImportRun(getParam(req.params.runId));
@@ -7771,7 +7772,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ai/ingestion/import-runs/:runId/reprocess", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/ai/ingestion/import-runs/:runId/reprocess", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "ai-ingestion-import-run", getParam(req.params.runId));
       const result = await storage.reprocessAiIngestionImportRun(getParam(req.params.runId), {
@@ -7784,7 +7785,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/clauses", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/clauses", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const ingestionJobId = typeof req.query.ingestionJobId === "string" ? req.query.ingestionJobId : undefined;
       const associationId = getAssociationIdQuery(req);
@@ -7804,7 +7805,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/compliance-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/compliance-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (associationId) {
@@ -7821,7 +7822,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ai/ingestion/compliance-rules/extract", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/ai/ingestion/compliance-rules/extract", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = typeof req.body?.associationId === "string" ? req.body.associationId : getAssociationIdQuery(req);
       if (associationId) {
@@ -7837,7 +7838,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/compliance-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/governance/compliance-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) {
@@ -7851,7 +7852,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/governance/platform-gaps", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/governance/platform-gaps", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -7930,7 +7931,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/compliance-alert-overrides", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/governance/compliance-alert-overrides", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertComplianceAlertOverrideSchema.parse({
         ...req.body,
@@ -7960,7 +7961,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Governance reminder cadence rules
-  app.get("/api/governance/reminder-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/governance/reminder-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -7972,7 +7973,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/reminder-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/governance/reminder-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertGovernanceReminderRuleSchema.parse(req.body);
       assertAssociationScope(req, parsed.associationId);
@@ -7983,7 +7984,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/governance/reminder-rules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/governance/reminder-rules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(governanceReminderRules).where(eq(governanceReminderRules.id, id)).limit(1);
@@ -7997,7 +7998,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/governance/reminder-rules/:id/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/governance/reminder-rules/:id/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [rule] = await db.select().from(governanceReminderRules).where(eq(governanceReminderRules.id, id)).limit(1);
@@ -8094,7 +8095,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/ai/ingestion/clauses/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/ai/ingestion/clauses/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "clause-record", getParam(req.params.id));
       const status = req.body?.reviewStatus;
@@ -8116,7 +8117,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/clauses/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/clauses/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
       const result = await storage.getClauseTags(getParam(req.params.id));
@@ -8126,7 +8127,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ai/ingestion/clauses/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/ai/ingestion/clauses/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
       const parsed = insertClauseTagSchema.parse({
@@ -8140,7 +8141,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/clauses/:id/suggested-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/clauses/:id/suggested-links", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
       const result = await storage.getSuggestedLinks(getParam(req.params.id));
@@ -8150,7 +8151,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ai/ingestion/clauses/:id/suggested-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/ai/ingestion/clauses/:id/suggested-links", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
       const parsed = insertSuggestedLinkSchema.parse({
@@ -8166,7 +8167,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/ai/ingestion/suggested-links/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/ai/ingestion/suggested-links/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "suggested-link", getParam(req.params.id));
       const payload: { isApproved?: number; confidenceScore?: number | null } = {};
@@ -8186,7 +8187,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/ai/ingestion/governance/approved-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/ai/ingestion/governance/approved-links", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getApprovedClauseLinksForGovernance(getAssociationIdQuery(req));
       res.json(result);
@@ -8195,7 +8196,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/communications/templates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/communications/templates", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getNoticeTemplates(getAssociationIdQuery(req));
       res.json(result);
@@ -8204,7 +8205,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/communications/templates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/communications/templates", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertNoticeTemplateSchema.parse(req.body);
       if (parsed.associationId) assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -8215,7 +8216,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/communications/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/communications/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "notice-template", getParam(req.params.id));
       const parsed = insertNoticeTemplateSchema.partial().parse(req.body);
@@ -8230,7 +8231,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/communications/send", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/communications/send", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const recipientEmail = getParam(req.body.recipientEmail);
       if (!recipientEmail) {
@@ -8265,7 +8266,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/communications/recipients/preview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/communications/recipients/preview", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       const targetType = typeof req.query.targetType === "string" ? req.query.targetType : "all-occupants";
@@ -8301,7 +8302,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/communications/send-targeted", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/communications/send-targeted", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req, associationId);
@@ -8350,7 +8351,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // SMS broadcast — send to all opted-in residents of an association
-  app.post("/api/communications/send-sms", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/communications/send-sms", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req, associationId);
@@ -8475,7 +8476,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Web Push broadcast — send to all active push subscriptions of an association
-  app.post("/api/communications/send-push", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/communications/send-push", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req, associationId);
@@ -8527,7 +8528,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Preview push subscription count for an association
-  app.get("/api/communications/push-subscriber-count", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/communications/push-subscriber-count", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       assertAssociationInputScope(req, associationId || null);
@@ -8541,7 +8542,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Preview SMS recipient count (opted-in with phone numbers)
-  app.get("/api/communications/sms-recipient-count", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/communications/sms-recipient-count", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       assertAssociationInputScope(req, associationId || null);
@@ -8560,7 +8561,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/communications/readiness", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/communications/readiness", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       assertAssociationInputScope(req as AdminRequest, associationId || null);
@@ -8572,7 +8573,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/onboarding/completeness", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/onboarding/completeness", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       assertAssociationInputScope(req as AdminRequest, associationId || null);
@@ -8584,7 +8585,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/onboarding/state", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/onboarding/state", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       assertAssociationInputScope(req as AdminRequest, associationId || null);
@@ -8596,7 +8597,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/onboarding/invites", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/onboarding/invites", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       assertAssociationInputScope(req as AdminRequest, associationId || null);
@@ -8608,7 +8609,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/onboarding/invites", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/onboarding/invites", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertOnboardingInviteSchema.parse({
         associationId: req.body.associationId,
@@ -8631,7 +8632,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/onboarding/unit-links/ensure", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/onboarding/unit-links/ensure", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       const unitId = getParam(req.body.unitId);
@@ -8658,7 +8659,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/onboarding/unit-links/regenerate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/onboarding/unit-links/regenerate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       const unitId = getParam(req.body.unitId);
@@ -8685,7 +8686,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/onboarding/submissions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/onboarding/submissions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       assertAssociationInputScope(req as AdminRequest, associationId || null);
@@ -8697,7 +8698,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/onboarding/invites/:id/send", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/onboarding/invites/:id/send", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       await assertResourceScope(req, "onboarding-invite", id);
@@ -8708,7 +8709,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/onboarding/invites/reminders/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/onboarding/invites/reminders/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.body?.associationId);
       assertAssociationScope(req, associationId);
@@ -8725,7 +8726,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/onboarding/intake", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/onboarding/intake", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const associationId = getParam(req.body.associationId);
       assertAssociationScope(req as AdminRequest, associationId);
@@ -8764,7 +8765,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/onboarding/submissions/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/onboarding/submissions/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const decision = req.body?.decision;
@@ -8858,7 +8859,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/associations/:id/overview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/associations/:id/overview", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getParam(req.params.id);
       const startedAt = Date.now();
@@ -8928,7 +8929,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/communications/sends", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/communications/sends", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
       const result = await storage.getNoticeSends(getAssociationIdQuery(req), status);
@@ -8938,7 +8939,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/communications/sends/:id/approval", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/communications/sends/:id/approval", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "notice-send", getParam(req.params.id));
       const decision = req.body?.decision;
@@ -8956,7 +8957,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/communications/run-scheduled", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/communications/run-scheduled", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req) || req.body?.associationId || undefined;
       assertAssociationInputScope(req, associationId ?? null);
@@ -8971,7 +8972,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // Delivery tracking: mark delivered, opened, or bounced
-  app.patch("/api/communications/sends/:id/delivery", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/communications/sends/:id/delivery", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(noticeSends).where(eq(noticeSends.id, id)).limit(1);
@@ -9013,7 +9014,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // Delivery stats for a campaign or association
-  app.get("/api/communications/delivery-stats", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/communications/delivery-stats", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -9059,7 +9060,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/communications/history", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/communications/history", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getCommunicationHistory(getAssociationIdQuery(req));
       res.json(result);
@@ -9068,7 +9069,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/maintenance/requests", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/maintenance/requests", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
       const result = await storage.getMaintenanceRequests({
@@ -9081,7 +9082,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/maintenance/requests", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/maintenance/requests", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertMaintenanceRequestSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -9092,7 +9093,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/maintenance/requests/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/maintenance/requests/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "maintenance-request", getParam(req.params.id));
       const parsed = insertMaintenanceRequestSchema.partial().parse(req.body);
@@ -9107,7 +9108,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/maintenance/escalations/run", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/maintenance/escalations/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       assertAssociationInputScope(req, (getAssociationIdQuery(req) || req.body?.associationId || null) as string | null);
       const result = await storage.runMaintenanceEscalationSweep({
@@ -9120,7 +9121,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/work-orders", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/work-orders", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getWorkOrders({
         associationId: getAssociationIdQuery(req),
@@ -9135,7 +9136,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/work-orders", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/work-orders", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertWorkOrderSchema.parse(req.body);
       assertAssociationScope(req, parsed.associationId);
@@ -9146,7 +9147,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/work-orders/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/work-orders/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const workOrderId = getParam(req.params.id);
       await assertResourceScope(req, "work-order", workOrderId);
@@ -9212,7 +9213,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/work-orders/:id/photos", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
+  app.post("/api/work-orders/:id/photos", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
     try {
       const workOrderId = getParam(req.params.id);
       await assertResourceScope(req, "work-order", workOrderId);
@@ -9232,7 +9233,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.delete("/api/work-orders/:id/photos", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/work-orders/:id/photos", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const workOrderId = getParam(req.params.id);
       await assertResourceScope(req, "work-order", workOrderId);
@@ -9252,7 +9253,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/maintenance/requests/:id/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/maintenance/requests/:id/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const requestId = getParam(req.params.id);
       await assertResourceScope(req, "maintenance-request", requestId);
@@ -9290,7 +9291,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/inspections", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/inspections", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getInspectionRecords({
         associationId: getAssociationIdQuery(req),
@@ -9303,7 +9304,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/inspections", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/inspections", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertInspectionRecordSchema.parse(req.body);
       assertAssociationScope(req, parsed.associationId);
@@ -9334,7 +9335,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/inspections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/inspections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "inspection-record", getParam(req.params.id));
       const parsed = insertInspectionRecordSchema.partial().parse(req.body);
@@ -9349,7 +9350,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/inspections/:id/findings/:findingIndex/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/inspections/:id/findings/:findingIndex/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "inspection-record", getParam(req.params.id));
       const parsed = insertWorkOrderSchema.partial().parse({
@@ -9371,7 +9372,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/maintenance/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/maintenance/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       const [templates, instances] = await Promise.all([
@@ -9392,7 +9393,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/maintenance/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/maintenance/schedules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertMaintenanceScheduleTemplateSchema.parse(req.body);
       assertAssociationScope(req, parsed.associationId);
@@ -9403,7 +9404,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/maintenance/schedules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/maintenance/schedules/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "maintenance-schedule-template", getParam(req.params.id));
       const parsed = insertMaintenanceScheduleTemplateSchema.partial().parse(req.body);
@@ -9418,7 +9419,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/maintenance/schedules/:id/generate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/maintenance/schedules/:id/generate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "maintenance-schedule-template", getParam(req.params.id));
       const throughDate = req.body?.throughDate ? new Date(req.body.throughDate) : undefined;
@@ -9432,7 +9433,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/maintenance/instances/:id/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/maintenance/instances/:id/convert-to-work-order", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "maintenance-schedule-instance", getParam(req.params.id));
       const parsed = insertWorkOrderSchema.partial().parse({
@@ -9450,7 +9451,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // Asset registry
-  app.get("/api/assets", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/assets", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -9462,7 +9463,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/assets", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/assets", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertAssociationAssetSchema.parse({ ...req.body });
       assertAssociationInputScope(req, parsed.associationId);
@@ -9473,7 +9474,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/assets/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/assets/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(associationAssets).where(eq(associationAssets.id, id)).limit(1);
@@ -9487,7 +9488,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.delete("/api/assets/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/assets/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(associationAssets).where(eq(associationAssets.id, id)).limit(1);
@@ -9501,7 +9502,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // Resident feedback
-  app.get("/api/feedback", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/feedback", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -9513,7 +9514,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/feedback/analytics", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/feedback/analytics", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -9539,7 +9540,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/feedback", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/feedback", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertResidentFeedbackSchema.parse(req.body);
       assertAssociationInputScope(req, parsed.associationId);
@@ -9550,7 +9551,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/feedback/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/feedback/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(residentFeedbacks).where(eq(residentFeedbacks.id, id)).limit(1);
@@ -9587,7 +9588,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // Community announcements (admin CRUD)
-  app.get("/api/announcements", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/announcements", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -9599,7 +9600,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/announcements", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/announcements", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertCommunityAnnouncementSchema.parse({ ...req.body, createdBy: req.adminUserEmail ?? null });
       assertAssociationInputScope(req, parsed.associationId);
@@ -9629,7 +9630,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/announcements/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/announcements/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(communityAnnouncements).where(eq(communityAnnouncements.id, id)).limit(1);
@@ -9643,7 +9644,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.delete("/api/announcements/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/announcements/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const id = getParam(req.params.id);
       const [existing] = await db.select().from(communityAnnouncements).where(eq(communityAnnouncements.id, id)).limit(1);
@@ -9673,7 +9674,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/permission-envelopes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/platform/permission-envelopes", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getPermissionEnvelopes(getAssociationIdQuery(req));
       res.json(result);
@@ -9682,7 +9683,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/platform/permission-envelopes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/platform/permission-envelopes", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertPermissionEnvelopeSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
@@ -9693,7 +9694,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/platform/permission-envelopes/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/platform/permission-envelopes/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "permission-envelope", getParam(req.params.id));
       const parsed = insertPermissionEnvelopeSchema.partial().parse(req.body);
@@ -9727,7 +9728,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/tenant-config", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/platform/tenant-config", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -9738,7 +9739,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/platform/tenant-config", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/platform/tenant-config", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertTenantConfigSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
@@ -9764,7 +9765,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // ── Webhook signing secrets management ──────────────────────────────────
-  app.get("/api/admin/webhook-secrets", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/webhook-secrets", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -9815,7 +9816,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // Payment event state transitions — admin can force-transition an event state
-  app.get("/api/admin/payment-events", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/payment-events", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -9853,7 +9854,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/payment-events/:id/transitions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/payment-events/:id/transitions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const id = req.params.id as string;
       const rows = await db.select().from(paymentEventTransitions).where(eq(paymentEventTransitions.webhookEventId, id));
@@ -9959,7 +9960,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // ── Partial payment rules ────────────────────────────────────────────────
-  app.get("/api/financial/partial-payment-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/financial/partial-payment-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -9971,7 +9972,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.put("/api/financial/partial-payment-rules", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.put("/api/financial/partial-payment-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const body = { ...req.body };
       const parsed = insertPartialPaymentRuleSchema.parse(body);
@@ -10027,7 +10028,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/email-threads", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/platform/email-threads", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getEmailThreads(getAssociationIdQuery(req));
       res.json(result);
@@ -10036,7 +10037,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/email/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
+  app.get("/api/platform/email/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (_req, res) => {
     try {
       res.json(getEmailProviderStatus());
     } catch (error: any) {
@@ -10044,7 +10045,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/sms/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
+  app.get("/api/platform/sms/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (_req, res) => {
     try {
       res.json(await getSmsProviderStatus());
     } catch (error: any) {
@@ -10074,7 +10075,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/push/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
+  app.get("/api/platform/push/provider-status", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (_req, res) => {
     try {
       res.json(await getPushProviderStatus());
     } catch (error: any) {
@@ -10158,7 +10159,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/auth/google-status", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/platform/auth/google-status", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       res.json(getGoogleOAuthStatus(req));
     } catch (error: any) {
@@ -10166,7 +10167,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/email/policy", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
+  app.get("/api/platform/email/policy", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (_req, res) => {
     try {
       res.json(getEmailPolicy());
     } catch (error: any) {
@@ -10174,7 +10175,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/platform/email/verify", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (_req, res) => {
+  app.post("/api/platform/email/verify", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (_req, res) => {
     try {
       const result = await verifyEmailConnection();
       res.status(200).json(result);
@@ -10183,7 +10184,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/platform/email/test", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/platform/email/test", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const to = getParam(req.body?.to);
       if (!to) return res.status(400).json({ message: "to is required" });
@@ -10205,7 +10206,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/email/logs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/platform/email/logs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req) || undefined;
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
@@ -10216,7 +10217,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/platform/email/logs/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/platform/email/logs/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await getEmailLog(getParam(req.params.id));
       if (!result) return res.status(404).json({ message: "Email log not found" });
@@ -10227,7 +10228,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/platform/email/tracking/purge", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/platform/email/tracking/purge", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const olderThan =
         typeof req.body?.olderThan === "string" && req.body.olderThan.trim()
@@ -10271,7 +10272,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/access", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/portal/access", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getPortalAccesses(getAssociationIdQuery(req));
       res.json(result);
@@ -10280,7 +10281,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/portal/access", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/portal/access", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertPortalAccessSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
@@ -10291,7 +10292,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/access/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/portal/access/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "portal-access", getParam(req.params.id));
       const parsed = insertPortalAccessSchema.partial().parse(req.body);
@@ -10306,7 +10307,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/memberships", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/portal/memberships", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getAssociationMemberships(getAssociationIdQuery(req));
       res.json(result);
@@ -10315,7 +10316,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/portal/memberships", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/portal/memberships", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertAssociationMembershipSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
@@ -10326,7 +10327,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/contact-updates/admin", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/portal/contact-updates/admin", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getContactUpdateRequests({ associationId: getAssociationIdQuery(req) });
       res.json(result);
@@ -10335,7 +10336,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/contact-updates/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.patch("/api/portal/contact-updates/:id/review", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       await assertResourceScope(req, "contact-update-request", getParam(req.params.id));
       const reviewStatus = req.body?.reviewStatus;
@@ -10854,7 +10855,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // Admin: view SMS delivery logs for an association
-  app.get("/api/communications/sms-delivery-logs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/communications/sms-delivery-logs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       assertAssociationInputScope(req as AdminRequest, associationId || null);
@@ -11770,8 +11771,8 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  // Session-authenticated board endpoints (for Google sign-in board-admin users)
-  app.get("/api/board/overview", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  // Session-authenticated board endpoints (for Google sign-in board-officer / assisted-board users)
+  app.get("/api/board/overview", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -11783,7 +11784,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/board/dashboard", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/board/dashboard", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -11858,7 +11859,7 @@ This is an automated demo request from the Your Condo Manager website.
         financial: { budgetCount: budgets.length, ledgerEntryCount: ledgerEntries.length, totalCharges, totalPayments, openBalance: Number((totalCharges - totalPayments).toFixed(2)), totalInvoices: Number(totalInvoices.toFixed(2)), totalUtilities: Number(totalUtilities.toFixed(2)), recentLedgerEntries: ledgerEntries.slice(0, 10), recentInvoices: vendorInvoices.slice(0, 10) },
         governance: { meetingCount: governanceMeetings.length, upcomingMeetings: upcomingMeetings.map((m) => ({ id: m.id, title: m.title, scheduledAt: m.scheduledAt.toISOString(), meetingType: m.meetingType, status: m.status, summaryStatus: m.summaryStatus })), taskCount: governanceTasks.length, openTaskCount: openTasks.length, openTasks: openTasks.slice(0, 10).map((t) => ({ id: t.id, title: t.title, dueDate: t.dueDate ? t.dueDate.toISOString() : null, status: t.status })) },
         workflowStates: {
-          access: { status: "active", effectiveRole: "board-admin", boardRole: null, boardTerm: null },
+          access: { status: "active", effectiveRole: "board-officer", boardRole: null, boardTerm: null },
           governance: { meetingsByStatus: { scheduled: governanceMeetings.filter((m) => m.status === "scheduled").length, "in-progress": governanceMeetings.filter((m) => m.status === "in-progress").length, completed: governanceMeetings.filter((m) => m.status === "completed").length, cancelled: governanceMeetings.filter((m) => m.status === "cancelled").length }, summariesByStatus: { draft: draftMeetings.length, published: governanceMeetings.filter((m) => m.summaryStatus === "published").length }, tasksByStatus: { todo: governanceTasks.filter((t) => t.status === "todo").length, "in-progress": governanceTasks.filter((t) => t.status === "in-progress").length, done: governanceTasks.filter((t) => t.status === "done").length } },
           maintenance: { requestsByStatus: { submitted: maintenanceRequests.filter((r) => r.status === "submitted").length, triaged: maintenanceRequests.filter((r) => r.status === "triaged").length, "in-progress": maintenanceRequests.filter((r) => r.status === "in-progress").length, resolved: maintenanceRequests.filter((r) => r.status === "resolved").length, closed: maintenanceRequests.filter((r) => r.status === "closed").length, rejected: maintenanceRequests.filter((r) => r.status === "rejected").length }, urgentOpenCount: urgentOpenMaintenanceCount, recent: recentMaintenanceRequests.map((r) => ({ id: r.id, title: r.title, priority: r.priority, status: r.status, responseDueAt: r.responseDueAt ? r.responseDueAt.toISOString() : null, locationText: r.locationText, createdAt: r.createdAt.toISOString() })) },
           communications: { noticesByStatus: noticeSends.reduce<Record<string, number>>((acc, s) => { acc[s.status] = (acc[s.status] ?? 0) + 1; return acc; }, {}), documentsPortalVisible: documents.filter((d) => d.isPortalVisible === 1).length, documentsInternalOnly: documents.filter((d) => d.isPortalVisible !== 1).length, boardPackagesByStatus: { draft: boardPackages.filter((b) => b.status === "draft").length, approved: boardPackages.filter((b) => b.status === "approved").length, distributed: boardPackages.filter((b) => b.status === "distributed").length } },
@@ -12361,30 +12362,39 @@ This is an automated demo request from the Your Condo Manager website.
     try {
       const targetAdminUserId = getParam(req.params.id);
       const role = req.body?.role;
-      const allowedRoles = ["platform-admin", "board-admin", "manager", "viewer"];
+      const allowedRoles = ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"];
       if (!allowedRoles.includes(role)) {
         return res.status(400).json({ message: "Invalid role" });
       }
       const reason = req.body?.reason;
       const result = await storage.updateAdminUserRole(
         targetAdminUserId,
-        role as "platform-admin" | "board-admin" | "manager" | "viewer",
+        role as "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer",
         req.adminUserEmail || "system",
         reason,
       );
       if (!result) return res.status(404).json({ message: "Admin user not found" });
       res.json(result);
 
+      const roleDisplayLabels: Record<string, string> = {
+        "platform-admin": "Platform Admin",
+        "board-officer": "Board Officer",
+        "assisted-board": "Assisted Board",
+        "pm-assistant": "PM Assistant",
+        "manager": "Manager",
+        "viewer": "Viewer",
+      };
+      const roleLabel = roleDisplayLabels[role] ?? role;
       sendDirectAdminEmailNotification({
         adminUserId: result.id,
         category: "adminAccess",
         priority: "realtime",
         email: {
-          subject: `Your Condo Manager admin role is now ${role}`,
-          html: `<p>Your Condo Manager admin role has been updated to <strong>${role}</strong>.</p>
+          subject: `Your Condo Manager admin role is now ${roleLabel}`,
+          html: `<p>Your Condo Manager admin role has been updated to <strong>${roleLabel}</strong>.</p>
             <p>Changed by: ${req.adminUserEmail || "system"}</p>
             <p>Reason: ${typeof reason === "string" && reason.trim() ? reason.trim() : "No reason provided"}</p>`,
-          text: `Your Condo Manager admin role has been updated to ${role}.\nChanged by: ${req.adminUserEmail || "system"}\nReason: ${typeof reason === "string" && reason.trim() ? reason.trim() : "No reason provided"}`,
+          text: `Your Condo Manager admin role has been updated to ${roleLabel}.\nChanged by: ${req.adminUserEmail || "system"}\nReason: ${typeof reason === "string" && reason.trim() ? reason.trim() : "No reason provided"}`,
         },
       }).catch((error) => console.error("[admin-access] Failed to send role change notification:", error));
     } catch (error: any) {
@@ -12479,7 +12489,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/executive/updates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (_req, res) => {
+  app.get("/api/admin/executive/updates", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (_req, res) => {
     try {
       const result = await storage.getExecutiveUpdates();
       res.json(result);
@@ -12488,7 +12498,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/executive/updates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/admin/executive/updates", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       validateExecutiveSlidePayload(req.body as Record<string, unknown>, { partial: false });
       const parsed = insertExecutiveUpdateSchema.parse({
@@ -12502,7 +12512,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/admin/executive/updates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/admin/executive/updates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       validateExecutiveSlidePayload(req.body as Record<string, unknown>, { partial: true });
       const parsed = insertExecutiveUpdateSchema.partial().parse(req.body);
@@ -12514,7 +12524,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/executive/updates/:id/evidence", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/admin/executive/updates/:id/evidence", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getExecutiveEvidence(getParam(req.params.id));
       res.json(result);
@@ -12523,7 +12533,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/executive/updates/:id/evidence", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/admin/executive/updates/:id/evidence", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertExecutiveEvidenceSchema.parse({
         ...req.body,
@@ -12536,7 +12546,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/executive/sync", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (_req, res) => {
+  app.post("/api/admin/executive/sync", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (_req, res) => {
     try {
       const result = await storage.syncExecutiveFromRoadmap();
       res.status(201).json(result);
@@ -12852,7 +12862,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/roadmap", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (_req, res) => {
+  app.get("/api/admin/roadmap", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (_req, res) => {
     try {
       const result = await storage.getRoadmap();
       res.json(result);
@@ -12952,7 +12962,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/roadmap/feature-tree", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (_req, res) => {
+  app.get("/api/admin/roadmap/feature-tree", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (_req, res) => {
     try {
       const result = await buildFtphDocumentationFeatureTree();
       res.json(result);
@@ -12961,7 +12971,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/projects", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/admin/projects", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertRoadmapProjectSchema.parse(req.body);
       const result = await storage.createRoadmapProject(parsed);
@@ -12971,7 +12981,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/workstreams", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/admin/workstreams", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertRoadmapWorkstreamSchema.parse(req.body);
       const result = await storage.createRoadmapWorkstream(parsed);
@@ -12981,7 +12991,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/tasks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/admin/tasks", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertRoadmapTaskSchema.parse(req.body);
       const result = await storage.createRoadmapTask(parsed);
@@ -12991,7 +13001,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/admin/tasks/:taskId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/admin/tasks/:taskId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertRoadmapTaskSchema.partial().parse(req.body);
       const result = await storage.updateRoadmapTask(getParam(req.params.taskId), parsed);
@@ -13002,7 +13012,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/admin/projects/:projectId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/admin/projects/:projectId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertRoadmapProjectSchema.partial().parse(req.body);
       const result = await storage.updateRoadmapProject(getParam(req.params.projectId), parsed);
@@ -13013,7 +13023,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/admin/workstreams/:workstreamId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/admin/workstreams/:workstreamId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertRoadmapWorkstreamSchema.partial().parse(req.body);
       const result = await storage.updateRoadmapWorkstream(getParam(req.params.workstreamId), parsed);
@@ -13024,7 +13034,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/projects/:projectId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.get("/api/admin/projects/:projectId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.getRoadmapProject(getParam(req.params.projectId));
       if (!result) return res.status(404).json({ message: "Project not found" });
@@ -13034,7 +13044,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/workstreams/:workstreamId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.get("/api/admin/workstreams/:workstreamId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.getRoadmapWorkstream(getParam(req.params.workstreamId));
       if (!result) return res.status(404).json({ message: "Workstream not found" });
@@ -13044,7 +13054,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/tasks/:taskId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.get("/api/admin/tasks/:taskId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.getRoadmapTask(getParam(req.params.taskId));
       if (!result) return res.status(404).json({ message: "Task not found" });
@@ -13054,7 +13064,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.delete("/api/admin/projects/:projectId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.delete("/api/admin/projects/:projectId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.getRoadmapProject(getParam(req.params.projectId));
       if (!result) return res.status(404).json({ message: "Project not found" });
@@ -13065,7 +13075,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.delete("/api/admin/workstreams/:workstreamId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.delete("/api/admin/workstreams/:workstreamId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.getRoadmapWorkstream(getParam(req.params.workstreamId));
       if (!result) return res.status(404).json({ message: "Workstream not found" });
@@ -13076,7 +13086,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.delete("/api/admin/tasks/:taskId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.delete("/api/admin/tasks/:taskId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.getRoadmapTask(getParam(req.params.taskId));
       if (!result) return res.status(404).json({ message: "Task not found" });
@@ -13087,7 +13097,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/tasks/:taskId/attachments", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.get("/api/admin/tasks/:taskId/attachments", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const task = await storage.getRoadmapTask(getParam(req.params.taskId));
       if (!task) return res.status(404).json({ message: "Task not found" });
@@ -13136,7 +13146,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/analysis/:resourceId/history/:module", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.get("/api/analysis/:resourceId/history/:module", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.getAnalysisHistory(getParam(req.params.resourceId), getParam(req.params.module));
       res.json(result);
@@ -13145,7 +13155,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/analysis/:resourceId/history/:module/:versionId/revert", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/analysis/:resourceId/history/:module/:versionId/revert", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const result = await storage.revertAnalysisVersion(
         getParam(req.params.resourceId),
@@ -13158,7 +13168,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/analysis/:resourceId/history/:module/versions", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/analysis/:resourceId/history/:module/versions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertAnalysisVersionSchema.parse({
         ...req.body,
@@ -13172,7 +13182,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/analysis/:resourceId/history/:module/runs", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/analysis/:resourceId/history/:module/runs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertAnalysisRunSchema.parse({
         ...req.body,
@@ -13186,7 +13196,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/analytics", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.get("/api/admin/analytics", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const days = Number(req.query.days ?? 30);
       const associationId = getAssociationIdQuery(req);
@@ -13200,7 +13210,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/board-packages/templates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/admin/board-packages/templates", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       res.json(await storage.getBoardPackageTemplates(getAssociationIdQuery(req)));
     } catch (error: any) {
@@ -13208,7 +13218,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/board-packages/templates", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/admin/board-packages/templates", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const parsed = insertBoardPackageTemplateSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
@@ -13218,7 +13228,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/admin/board-packages/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/admin/board-packages/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "board-package-template", getParam(req.params.id));
       const parsed = insertBoardPackageTemplateSchema.partial().parse(req.body);
@@ -13230,7 +13240,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/admin/board-packages", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/admin/board-packages", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       res.json(await storage.getBoardPackages(getAssociationIdQuery(req)));
     } catch (error: any) {
@@ -13238,7 +13248,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/board-packages/generate/:templateId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/admin/board-packages/generate/:templateId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "board-package-template", getParam(req.params.templateId));
       res.status(201).json(await storage.generateBoardPackage(getParam(req.params.templateId), {
@@ -13251,7 +13261,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // Board package distribution history
-  app.get("/api/admin/board-packages/distribution-history", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/board-packages/distribution-history", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
@@ -13280,7 +13290,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/board-packages/run-scheduled", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/admin/board-packages/run-scheduled", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req) || req.body?.associationId;
       if (associationId) {
@@ -13295,7 +13305,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/admin/board-packages/:id/distribute", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.post("/api/admin/board-packages/:id/distribute", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "board-package", getParam(req.params.id));
       const recipientEmails = Array.isArray(req.body?.recipientEmails)
@@ -13311,7 +13321,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/admin/board-packages/:id", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req, res) => {
+  app.patch("/api/admin/board-packages/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "board-package", getParam(req.params.id));
       const parsed = insertBoardPackageSchema.partial().parse(req.body);
@@ -13323,7 +13333,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/operations/dashboard", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/operations/dashboard", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getOperationsDashboard(getAssociationIdQuery(req));
       res.json(result);
@@ -13332,7 +13342,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/operations/reports/:reportType", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req, res) => {
+  app.get("/api/operations/reports/:reportType", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const reportType = getParam(req.params.reportType);
       if (reportType !== "vendors" && reportType !== "work-orders" && reportType !== "maintenance") {
@@ -13383,7 +13393,7 @@ This is an automated demo request from the Your Condo Manager website.
   app.post(
     "/api/vendors/:id/portal-invite",
     requireAdmin,
-    requireAdminRole(["platform-admin", "board-admin", "manager"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
     async (req: AdminRequest, res) => {
       try {
         const vendorId = getParam(req.params.id);
@@ -13437,7 +13447,7 @@ This is an automated demo request from the Your Condo Manager website.
   app.get(
     "/api/vendors/:id/portal-credential",
     requireAdmin,
-    requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]),
     async (req: AdminRequest, res) => {
       try {
         const vendorId = getParam(req.params.id);
@@ -13454,7 +13464,7 @@ This is an automated demo request from the Your Condo Manager website.
   app.patch(
     "/api/vendors/:id/portal-credential/:credentialId/revoke",
     requireAdmin,
-    requireAdminRole(["platform-admin", "board-admin", "manager"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
     async (req: AdminRequest, res) => {
       try {
         const vendorId = getParam(req.params.id);
@@ -13910,7 +13920,7 @@ This is an automated demo request from the Your Condo Manager website.
   app.get(
     "/api/work-orders/:id/vendor-activity",
     requireAdmin,
-    requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]),
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]),
     async (req: AdminRequest, res) => {
       try {
         const workOrderId = getParam(req.params.id);
@@ -13929,7 +13939,7 @@ This is an automated demo request from the Your Condo Manager website.
   // ── Workstream 5: Enhanced Portfolio & Association Workspace APIs ──────────
 
   // 1. GET /api/admin/portfolio/summary — Portfolio-level financial aggregation
-  app.get("/api/admin/portfolio/summary", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/portfolio/summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: false });
       const visibleAssociations = req.adminRole === "platform-admin"
@@ -13977,7 +13987,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // 2. GET /api/admin/portfolio/associations — Enhanced association list with computed health
-  app.get("/api/admin/portfolio/associations", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/portfolio/associations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: false });
       const visibleAssociations = req.adminRole === "platform-admin"
@@ -14025,7 +14035,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // 3. GET /api/admin/portfolio/alerts — Critical alerts aggregation
-  app.get("/api/admin/portfolio/alerts", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/portfolio/alerts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: false });
       const visibleAssociations = req.adminRole === "platform-admin"
@@ -14098,7 +14108,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // 4. GET /api/admin/associations/:id/workspace — Single-request workspace data
-  app.get("/api/admin/associations/:id/workspace", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/associations/:id/workspace", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       const [assocRows, overview, onboardingState, wos] = await Promise.all([
@@ -14142,7 +14152,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // 5. GET /api/admin/associations/:id/activity — Recent activity feed
-  app.get("/api/admin/associations/:id/activity", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/associations/:id/activity", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       const events: Array<{
@@ -14209,7 +14219,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // 6. GET /api/admin/portfolio/recent-activity — Portfolio-wide activity feed
-  app.get("/api/admin/portfolio/recent-activity", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/admin/portfolio/recent-activity", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: false });
       const visibleAssociations = req.adminRole === "platform-admin"
@@ -14285,7 +14295,7 @@ This is an automated demo request from the Your Condo Manager website.
   // ═══════════════════════════════════════════════════════════════════════════
 
   // GET hub config for an association
-  app.get("/api/associations/:id/hub/config", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/associations/:id/hub/config", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14297,7 +14307,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // PUT (upsert) hub config
-  app.put("/api/associations/:id/hub/config", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.put("/api/associations/:id/hub/config", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14319,7 +14329,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // GET action links for an association
-  app.get("/api/associations/:id/hub/action-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/associations/:id/hub/action-links", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14333,7 +14343,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // POST create action link
-  app.post("/api/associations/:id/hub/action-links", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations/:id/hub/action-links", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14348,7 +14358,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // PUT update action link
-  app.put("/api/associations/:id/hub/action-links/:linkId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.put("/api/associations/:id/hub/action-links/:linkId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14364,7 +14374,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // DELETE action link
-  app.delete("/api/associations/:id/hub/action-links/:linkId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/associations/:id/hub/action-links/:linkId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14379,7 +14389,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // GET info blocks for an association
-  app.get("/api/associations/:id/hub/info-blocks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/associations/:id/hub/info-blocks", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14393,7 +14403,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // POST create info block
-  app.post("/api/associations/:id/hub/info-blocks", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations/:id/hub/info-blocks", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14405,7 +14415,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // PUT update info block
-  app.put("/api/associations/:id/hub/info-blocks/:blockId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.put("/api/associations/:id/hub/info-blocks/:blockId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14421,7 +14431,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // DELETE info block
-  app.delete("/api/associations/:id/hub/info-blocks/:blockId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/associations/:id/hub/info-blocks/:blockId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14440,7 +14450,7 @@ This is an automated demo request from the Your Condo Manager website.
   // ═══════════════════════════════════════════════════════════════════════════
 
   // GET map layers
-  app.get("/api/associations/:id/hub/map/layers", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/associations/:id/hub/map/layers", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14452,7 +14462,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // POST create map layer
-  app.post("/api/associations/:id/hub/map/layers", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations/:id/hub/map/layers", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14464,7 +14474,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // PUT update map layer
-  app.put("/api/associations/:id/hub/map/layers/:layerId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.put("/api/associations/:id/hub/map/layers/:layerId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14480,7 +14490,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // GET map nodes for a layer
-  app.get("/api/associations/:id/hub/map/layers/:layerId/nodes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/associations/:id/hub/map/layers/:layerId/nodes", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14493,7 +14503,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // POST create map node
-  app.post("/api/associations/:id/hub/map/nodes", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations/:id/hub/map/nodes", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14505,7 +14515,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // PUT update map node
-  app.put("/api/associations/:id/hub/map/nodes/:nodeId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.put("/api/associations/:id/hub/map/nodes/:nodeId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14521,7 +14531,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // DELETE map node
-  app.delete("/api/associations/:id/hub/map/nodes/:nodeId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/associations/:id/hub/map/nodes/:nodeId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14536,7 +14546,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // GET map issues (admin view — all issues for the association)
-  app.get("/api/associations/:id/hub/map/issues", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/associations/:id/hub/map/issues", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14555,7 +14565,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // PUT update map issue status (admin review)
-  app.put("/api/associations/:id/hub/map/issues/:issueId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.put("/api/associations/:id/hub/map/issues/:issueId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14583,7 +14593,7 @@ This is an automated demo request from the Your Condo Manager website.
   // ═══════════════════════════════════════════════════════════════════════════
 
   // GET hub notices for admin
-  app.get("/api/associations/:id/hub/notices", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager", "viewer"]), async (req: AdminRequest, res) => {
+  app.get("/api/associations/:id/hub/notices", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14597,7 +14607,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // POST create hub notice
-  app.post("/api/associations/:id/hub/notices", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations/:id/hub/notices", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14613,7 +14623,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // PUT update hub notice
-  app.put("/api/associations/:id/hub/notices/:noticeId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.put("/api/associations/:id/hub/notices/:noticeId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14629,7 +14639,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // DELETE hub notice
-  app.delete("/api/associations/:id/hub/notices/:noticeId", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.delete("/api/associations/:id/hub/notices/:noticeId", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
@@ -14644,7 +14654,7 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // POST auto-populate hub from existing association data
-  app.post("/api/associations/:id/hub/auto-populate", requireAdmin, requireAdminRole(["platform-admin", "board-admin", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations/:id/hub/auto-populate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
