@@ -12728,7 +12728,10 @@ This is an automated demo request from the Your Condo Manager website.
 
       // Create stub association + admin user
       const [assoc] = await db.insert(associations).values({ name: organizationName, associationType: associationType || "HOA", address: "TBD", city: "TBD", state: "TBD", country: "USA" }).returning();
-      const [adminUser] = await db.insert(adminUsers).values({ email: email.toLowerCase().trim(), role: "platform-admin", isActive: 0 }).returning();
+      // Signup default role is always "manager". Platform-admin accounts are created
+      // only through internal tooling or platform-admin seeding, never via public signup.
+      // See: docs/projects/platform-overhaul/decisions/4.4-signup-and-checkout-flow.md Q1
+      const [adminUser] = await db.insert(adminUsers).values({ email: email.toLowerCase().trim(), role: "manager", isActive: 0 }).returning();
 
       // Create Stripe Checkout Session
       const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.yourcondomanager.org";
