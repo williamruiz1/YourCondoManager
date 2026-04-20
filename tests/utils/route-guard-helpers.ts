@@ -1,11 +1,12 @@
 /**
  * Route-guard assertion helpers for the 3.3 Q4 parity harness.
  *
- * These work with the existing canAccessTab/canAccessWipRoute functions
+ * Works with the existing canAccessWipRoute function (client/src/lib/wip-features.ts)
  * and the future <RouteGuard> component from 2.3 Q9.
  */
 
 import type { AdminRole } from "./auth-helpers";
+import { canAccessWipRoute } from "@/lib/wip-features";
 
 /**
  * Assert that a given role should be ALLOWED to access a route.
@@ -47,6 +48,29 @@ export function assertRouteBlocked(
   if (allowedRoles.includes(role)) {
     throw new Error(
       `Expected role "${role}" to be BLOCKED from route "${route}", but it IS in the allowed list: [${allowedRoles.join(", ")}]`,
+    );
+  }
+}
+
+/**
+ * Assert a role is allowed on a WIP route via the existing canAccessWipRoute
+ * function. Use this for routes governed by the wipRouteRoleAllowlist.
+ */
+export function assertWipRouteAllowed(route: string, role: AdminRole): void {
+  if (!canAccessWipRoute(route, role)) {
+    throw new Error(
+      `Expected role "${role}" to be ALLOWED on WIP route "${route}" by canAccessWipRoute, but it was blocked.`,
+    );
+  }
+}
+
+/**
+ * Assert a role is blocked from a WIP route via canAccessWipRoute.
+ */
+export function assertWipRouteBlocked(route: string, role: AdminRole): void {
+  if (canAccessWipRoute(route, role)) {
+    throw new Error(
+      `Expected role "${role}" to be BLOCKED from WIP route "${route}" by canAccessWipRoute, but it was allowed.`,
     );
   }
 }
