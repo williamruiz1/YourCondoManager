@@ -11,6 +11,7 @@ vite.config.ts.*
 .ai-home/
 *.code-workspace
 .claude/worktrees/
+coverage/
 
 .pocketpm/
 # PPM:START v1
