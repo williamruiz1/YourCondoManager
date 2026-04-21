@@ -1,10 +1,8 @@
 # Hub-Visibility Rename Migration — Scope Audit
 
-**Scope:** YCM Platform Overhaul — deferred-from-Phase-4 (1.1) `hubVisibilityLevelEnum` rename.
-**Status:** Read-only audit. No schema, data, or code modified.
-**Upstream gate:** 2.1 Q11 policy LOCKED ("decouple hub-visibility vocabulary from role enums"); target vocabulary NOT formally locked.
-**Human task:** PPM `a02f1d92-c5ba-4840-a1f5-0d7c7ac3fb29`.
-**Trigger:** Wave 8 agent surveyed 1.1 handoff AC 6 ("Small hub-visibility rename migration executed (labels only)"), flagged as NOT SMALL — this audit produces the scope map for William's resolution session.
+**Scope:** Deferred-from-Phase-4 (1.1) `hubVisibilityLevelEnum` rename. Read-only audit.
+**Upstream:** 2.1 Q11 policy LOCKED (decouple from role enums); target vocabulary NOT locked.
+**Human task:** PPM `a02f1d92-c5ba-4840-a1f5-0d7c7ac3fb29`. **Trigger:** Wave 8 flagged 1.1 handoff AC 6 ("Small hub-visibility rename migration executed (labels only)") as NOT SMALL.
 
 ---
 
@@ -41,55 +39,36 @@ export const hubVisibilityLevelEnum = pgEnum("hub_visibility_level",
 
 ## 2. Target Vocabulary
 
-**2.1 Q11 resolution (LOCKED):** Decouple. Example given: `public | residents | unit-owners | board-only | operator-only`. The word "e.g." matters — the target vocabulary is NOT locked, only the decoupling policy is.
+**2.1 Q11 (LOCKED):** Decouple from role enums. Example `public | residents | unit-owners | board-only | operator-only` — "e.g." wording; target vocab is NOT locked, only the policy is.
 
-**1.1 Q4 does NOT define the rename target.** 1.1 Q4 locks the `// zone:` + `// persona:` comment block on page files. The "small hub-visibility rename migration" appears only in:
-- `1.1-zone-taxonomy-handoff.md:30, 81, 95` (handoff doc — "one small hub-visibility rename migration")
-- `2.1-role-model-audit.md:201, 259–262, 284` (2.1 Q11 — policy-locked, target vocab illustrative)
-- `layer-2-primitives-task.md:48` (AC 9 — tracked under Layer 2 bundle)
+**1.1 Q4 does NOT define the rename target.** 1.1 Q4 locks page-file `// zone:` / `// persona:` comments. "Small hub-visibility rename migration" appears only in: `1.1-zone-taxonomy-handoff.md` (30, 81, 95), `2.1-role-model-audit.md` (201, 259–262, 284 — policy only), `layer-2-primitives-task.md:48` (AC 9).
 
-⚠️ **FLAG 2:** The 1.1 handoff describes this as a "labels only" migration, implying low scope. That is inaccurate — a pgEnum rename plus data migration plus 17 code-site updates is not "labels only." The 1.1 handoff AC 6 text should be amended to either (a) remove the AC and move it to a dedicated module, or (b) explicitly scope it to "Phase HV-1 only — schema addition + flag plumbing."
+⚠️ **FLAG 2:** 1.1 handoff calls this "labels only" — inaccurate. pgEnum rename + data migration + 17 code-site updates is not labels only. 1.1 handoff AC 6 should be struck or rescoped.
 
-⚠️ **FLAG 3:** Target vocabulary is ambiguous. Candidates:
-- **2.1 Q11 example:** `public | residents | unit-owners | board-only | operator-only` (5 values, 1:1 map).
-- **Zone-aligned option:** `public | residents | owners | governance | platform` (maps to 1.1 zones for Communications hub).
-- **Numeric-tier option:** `tier-0 | tier-1 | tier-2 | tier-3 | tier-4` (fully abstract, zero overlap risk).
-
-William must pick one before migration can start. Cardinality must also be confirmed — is `admin` (distinct from `board`) still semantically needed, or does it collapse given post-Phase-8a portal collapse? Prefer keeping 5 values 1:1 to avoid semantic-loss questions; any reduction to 4 creates a many-to-one migration with a policy decision per row.
+⚠️ **FLAG 3:** Target vocabulary ambiguous. Candidates: (i) 2.1 Q11 illustrative `public | residents | unit-owners | board-only | operator-only` (5 values, 1:1); (ii) zone-aligned `public | residents | owners | governance | platform`; (iii) abstract `tier-0 … tier-4`. William must pick before migration starts. Cardinality also open — keep `admin` tier or collapse it? 1:1 mapping preferred to avoid per-row semantic-loss decisions.
 
 ---
 
 ## 3. Production Data Implications
 
-- `hub_visibility_level` is a **Postgres enum type** (pg declarative) — adding values requires `ALTER TYPE ... ADD VALUE`, removing values requires enum drop+recreate with column re-cast.
-- `community_announcements.visibility_level` is `text` — trivially updatable via `UPDATE` statement, no type alteration needed.
-- **Row counts unknown.** ⚠️ **FLAG 4:** William must run an audit query: `SELECT visibility_level, COUNT(*) FROM hub_map_issues GROUP BY visibility_level;` and same for `community_announcements`. Data volume determines dual-write window length.
-- **1:1 mapping is feasible** if the selected target keeps 5 values. **Semantic loss** arises only if target has 4 values (e.g., collapsing `admin` into `board-only`) — a policy call, not a data call.
-- **Existing NULL rows** in `community_announcements.visibility_level` are treated as "public-ish" in `routes.ts:15091` (`isNull || eq "public"`) — the migration must preserve this NULL-tolerant read path or explicitly backfill NULLs first.
+- `hub_visibility_level` is a **pg enum** — `ADD VALUE` works in-place; removal requires drop+recreate with column re-cast.
+- `community_announcements.visibility_level` is `text` — trivially `UPDATE`able, no type alteration.
+- **Row counts unknown.** ⚠️ **FLAG 4:** William runs `SELECT visibility_level, COUNT(*) FROM hub_map_issues GROUP BY 1` plus same on `community_announcements`. Volume sets dual-write window length.
+- **1:1 mapping feasible** if target keeps 5 values. Dropping to 4 (e.g., collapse `admin` into `board-only`) is a policy decision, not a data one.
+- **NULLs** in `community_announcements.visibility_level` read as public-ish today (`routes.ts:15091`: `isNull || eq "public"`). Migration must preserve that read path or backfill NULLs explicitly.
 
 ---
 
 ## 4. Behavioral Impact
 
-The enum gates two surfaces:
+The enum gates two surfaces: community announcements (`/api/hub/:identifier/public` + authed portal endpoint) and hub map issues. Hierarchy: `public` (anonymous read) → `resident` (any portal role) → `owner` (`owner | board-member`) → `board` (`board-member` or `portalHasBoardAccess`) → `admin` (never pushed into bucket; operator-write-only).
 
-**Community announcements (`/api/hub/.../public` and `/api/hub/portal/...`)**
-- `public` — rendered on anonymous public hub endpoint (no auth).
-- `resident` — visible to portal roles `tenant | owner | board-member | readonly`.
-- `owner` — visible to `owner | board-member`.
-- `board` — visible to `board-member` or `portalHasBoardAccess`.
-- `admin` — never pushed into `visibilityLevels` array (only operator-side UI can select it; effectively operator-only).
+Pure label rename does not change runtime behavior, but two couplings matter:
 
-**Hub map issues (`/api/hub/portal/map/issues`)**
-- Same hierarchy. Default on creation is `"board"` (`routes.ts:15356`).
+1. `routes.ts:15268–15270` reads **portal-role string literals** (`tenant | owner | board-member | readonly`). Phase 8a collapses those role strings. The hub-visibility rename cannot ship independently of 8a without a rebase conflict.
+2. `admin` tier is unreachable via portal code paths — only operator-side UI writes it. If retained, operator-write at `routes.ts:15020` must continue writing the renamed equivalent; otherwise the value is dead weight.
 
-**Runtime behavior:** Pure label rename does not change behavior. However:
-- `routes.ts:15268–15270` uses **portal-role string literals** (`tenant`, `owner`, `board-member`, `readonly`) in the bucket computation. Post-Phase-8a these role strings collapse — the hub-visibility rename must NOT be attempted in isolation from 8a, because the bucket logic is coupled to the old portal-role vocabulary.
-- The `admin` visibility tier is unreachable via portal-role code paths today (no branch pushes it). If kept in the target vocab, the operator-write path (`routes.ts:15020`) must continue writing it; otherwise the value is dead.
-
-⚠️ **FLAG 5:** The portal-public endpoint (`routes.ts:15091`) exposes `"public"` visibility data with no auth. Any rename that changes the literal `"public"` changes the anonymous-read contract. An external consumer (partner embed, search crawler, portal preview) keyed on `visibility_level === "public"` would break. William must confirm no external consumer exists before literal change.
-
-**API consumer audit:** No OpenAPI/spec file exports the enum; no tRPC contract tested; but the public hub JSON response includes announcement rows verbatim — the `visibilityLevel` string IS in the public response shape at `routes.ts:15319–15337`. Treat as a public-API breaking change until proven otherwise.
+⚠️ **FLAG 5:** `routes.ts:15091` exposes `"public"`-visibility rows on an **anonymous public endpoint** (rate-limited, no auth). The `visibilityLevel` string appears verbatim in the public JSON response (`routes.ts:15319–15337`). Any change to the `"public"` literal is a public-API break. No OpenAPI/tRPC spec formalizes the contract, but partner embeds, portal previews, or search crawlers keyed on the string would regress silently. William must confirm no external consumer before the literal changes.
 
 ---
 
@@ -111,15 +90,14 @@ Model after `PORTAL_ROLE_COLLAPSE` (`shared/feature-flags.ts:35, 45`). New flag 
 
 **Recommended: (a) Standalone module — new 1.5 Hub Visibility Rename.**
 
-Rationale:
-- **Not absorbable into 1.1.** 1.1 Q4 scope is `// zone:` / `// persona:` page-file comments. The rename migration has no shared work surface, no shared file touches, and no shared acceptance criterion with 1.1 Q4. Handoff-AC-6 was a drafting error.
-- **Not appropriate for Phase 15 Communications zone landing.** Phase 15 ships Communications zone UI; a pgEnum+data migration is infrastructure plumbing, not zone landing. Coupling them risks blocking Phase 15 on a prod-data audit.
-- **Not deferrable post-overhaul.** 2.1 Q11 is SPEC LOCKED. Layer 2 primitives task AC 9 already includes this rename as a layer-2 exit gate (`layer-2-primitives-task.md:48`). Deferring post-overhaul breaks 2.1 SPEC LOCKED status.
-- **Standalone 1.5 is the right wrapper** because: (i) it has its own decision doc for target-vocabulary resolution, (ii) it has its own feature flag, (iii) it has a single-phase 3-step migration with its own exit gate, and (iv) it can be sequenced after Phase 8a (the portal-role collapse) cleanly without re-opening 1.1 or blocking Phase 15.
+- **Not absorbable into 1.1.** 1.1 Q4 scope is `// zone:` / `// persona:` page-file comments — zero shared file touches with the enum migration. Handoff-AC-6 was a drafting error.
+- **Not Phase 15.** Phase 15 ships Communications zone UI; coupling a pgEnum+data migration to it risks blocking the zone landing on a prod-data audit.
+- **Not deferrable post-overhaul.** 2.1 Q11 SPEC LOCKED. Layer 2 primitives AC 9 (`layer-2-primitives-task.md:48`) lists the rename as a layer-2 exit gate. Deferral breaks 2.1 lock status.
+- **Standalone 1.5** owns: target-vocab decision doc, its own feature flag, 3-phase migration, single exit gate. Sequences cleanly after Phase 8a without re-opening 1.1 or blocking Phase 15.
 
-**Sequencing:** Run as a post-8a, pre-Phase-15 module. Dependencies: Phase 8a complete (portal-role collapse), 2.1 Q11 vocabulary locked (⚠️ FLAG 3), prod-data audit complete (⚠️ FLAG 4).
+**Sequencing:** Post-8a, pre-Phase-15. Dependencies: 8a complete, 2.1 Q11 vocab locked (⚠️ FLAG 3), prod-data audit complete (⚠️ FLAG 4).
 
-**Amendment required:** 1.1 handoff AC 6 should be struck; 2.1 Q11 implementation note should point to the new 1.5 module; 1.1 decision doc Decision Log should record the scope split.
+**Amendments required:** strike 1.1 handoff AC 6; point 2.1 Q11 note at new 1.5 module; record scope split in 1.1 decision log.
 
 ---
 
