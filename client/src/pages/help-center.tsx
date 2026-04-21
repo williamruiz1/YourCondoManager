@@ -10,6 +10,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type FaqItem = {
   question: string;
@@ -152,6 +153,7 @@ const faqCategories: FaqCategory[] = [
 ];
 
 export default function HelpCenterPage() {
+  useDocumentTitle("Help Center");
   const [search, setSearch] = useState("");
 
   const filteredCategories = faqCategories

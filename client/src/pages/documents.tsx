@@ -50,6 +50,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { DataTableShell } from "@/components/data-table-shell";
 import { TaskFlowChecklist } from "@/components/task-flow-checklist";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const documentTypes = ["Meeting Minutes", "Bylaws", "Financial Report", "Insurance", "Legal", "Maintenance", "Operations", "Other"];
 
@@ -80,6 +81,9 @@ const addVersionSchema = z.object({
 
 
 export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = {}) {
+  // Row 24 (⚠️) /app/operations/records reuses this component with typeFilter="Operations";
+  // row 42 /app/documents uses no filter. See docs/projects/platform-overhaul/implementation-artifacts/1.4-route-title-table.md.
+  useDocumentTitle(typeFilter === "Operations" ? "Operations Records" : "Documents");
   const [open, setOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);

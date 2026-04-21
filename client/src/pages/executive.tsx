@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import type { ExecutiveEvidence, ExecutiveUpdate } from "@shared/schema";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type EvidenceForm = {
   evidenceType: "release-note" | "metric" | "screenshot" | "link" | "note";
@@ -53,6 +54,7 @@ function renderBoldLabelText(text: string) {
 }
 
 export default function ExecutivePage() {
+  useDocumentTitle("Executive");
   const { toast } = useToast();
   const { data: updates = [], isLoading } = useQuery<ExecutiveUpdate[]>({ queryKey: ["/api/admin/executive/updates"] });
 

@@ -35,6 +35,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { platformSubPages } from "@/lib/sub-page-nav";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const roleOptions = ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] as const;
 
@@ -48,6 +49,7 @@ const roleLabels: Record<string, string> = {
 };
 
 export default function AdminUsersPage() {
+  useDocumentTitle("Admin Users");
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);

@@ -31,6 +31,7 @@ import {
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const unitFormSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -59,6 +60,7 @@ const buildingFormSchema = z.object({
 });
 
 export default function UnitsPage() {
+  useDocumentTitle("Buildings & Units");
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);

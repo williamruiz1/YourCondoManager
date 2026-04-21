@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { useAssociationContext } from "@/context/association-context";
@@ -1639,6 +1640,7 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
 }
 
 export default function FinancialPaymentsPage() {
+  useDocumentTitle("Payments");
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { setActiveAssociationId } = useAssociationContext();
   const { toast } = useToast();

@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { AlertTriangle, Download, Info, Printer } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1236,6 +1237,7 @@ function FinancialSummaryReports() {
 }
 
 export default function FinancialReportsPage() {
+  useDocumentTitle("Financial Reports");
   return (
     <div className="flex flex-col min-h-0">
       <div className="p-6 space-y-6">

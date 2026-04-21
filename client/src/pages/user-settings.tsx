@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AdminNotificationPreferences } from "@shared/admin-notification-preferences";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type AuthSession = {
   authenticated: boolean;
@@ -212,6 +213,7 @@ function roleLabel(role: string) {
 }
 
 export default function UserSettingsPage() {
+  useDocumentTitle("Settings");
   const { toast } = useToast();
   const currentSettings = useUserSettings();
   const [activeTab, setActiveTab] = useState("profile");
