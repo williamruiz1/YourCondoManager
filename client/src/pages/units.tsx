@@ -660,14 +660,14 @@ export default function UnitsPage() {
 
   return (
     <div className="space-y-8 p-4 sm:p-6">
-      <section className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(145deg,hsl(var(--primary))_0%,hsl(217_78%_34%)_48%,hsl(221_45%_18%)_100%)] p-6 text-primary-foreground md:rounded-[24px] md:border md:border-outline-variant/30 md:bg-surface-container-lowest md:text-on-surface">
+      <section className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(145deg,hsl(217_84%_26%)_0%,hsl(219_64%_20%)_55%,hsl(221_48%_12%)_100%)] p-6 text-primary-foreground md:rounded-[24px] md:border md:border-outline-variant/30 md:bg-surface-container-lowest md:text-on-surface">
         <div className="absolute inset-0 md:hidden">
           <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/10 blur-3xl" />
           <div className="absolute -left-12 bottom-0 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
         </div>
         <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75 md:hidden">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white md:hidden">
               <DoorOpen className="h-3.5 w-3.5" />
               Lease Workspace
             </div>
@@ -677,13 +677,13 @@ export default function UnitsPage() {
             >
               Buildings &amp; Units
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/80 md:text-on-surface/60">
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/95 md:text-on-surface/60">
               Manage buildings, unit records, owners, and live occupancy for {activeAssociationName || "the current association"} without leaving the workspace.
             </p>
 
-            <div className="mt-5 rounded-[22px] border border-white/15 bg-white/10 p-4 backdrop-blur-sm md:hidden">
-              <div className="label-caps text-white/70">Current Snapshot</div>
-              <p className="mt-2 text-sm leading-relaxed text-white/90">
+            <div className="mt-5 rounded-[22px] border border-white/25 bg-white/15 p-4 backdrop-blur-sm md:hidden">
+              <div className="label-caps text-white/90">Current Snapshot</div>
+              <p className="mt-2 text-sm leading-relaxed text-white">
                 {summaryCounts.units > 0
                   ? `${summaryCounts.units} units across ${summaryCounts.buildings} buildings, with ${summaryCounts.tenants} active tenant records and ${summaryCounts.ownerOccupiedPct}% owner occupancy.`
                   : "Start by creating a building shell, then add units and assign owners or tenants as leases change."}
