@@ -1,11 +1,9 @@
 ---
 title: "ADR 0b — RouteGuard + persona-access contract"
-status: PROPOSED (pending William sign-off)
+status: ACCEPTED
 author: Claude (Phase 0b.1 drafting agent)
-date: 2026-04-21
+accepted_by: William
 plan_phase: 0b.1
-reviewers_required:
-  - William (founder sign-off)
 supersedes: none
 superseded_by: none
 ---
@@ -14,7 +12,7 @@ superseded_by: none
 
 ## Status
 
-**PROPOSED** — awaiting William's sign-off. Phase 0b.2 stub implementation is blocked on acceptance of this ADR.
+**ACCEPTED** by William. All 5 open questions resolved (OQ-1 through OQ-5: **Option A across the board**). Phase 0b.2 stub implementation is unblocked.
 
 ## Context
 
@@ -344,22 +342,21 @@ Rejected. This is the pattern currently used in 2.3 Q6/Q9/Q11 prose ("`<RouteGua
 - **Phase 11 (sidebar rewrite).** `AppSidebar` imports `canAccess` and `usePersonaToggles`. Removes the four parallel `AdminRole` type declarations (per 3.3 Q2 AC-Q2-6). Removes the inline `roles: [...]` literals on nav items. Removes the duplicate `isSingleAssociationBoardExperience` at `app-sidebar.tsx:216`.
 - **Phases 12–16 (zone landings).** Each zone PR wraps its routes: `<RouteGuard route="/app/financial/billing"><FinancialBillingPage /></RouteGuard>` and the equivalent for every route in the zone. No inline role ternaries (retires `App.tsx:293`, `App.tsx:297`). No `canAccessWipRoute` call sites (retires `client/src/lib/wip-features.ts` entirely — its one route, `/app/ai/ingestion`, migrates into `ROUTE_MANIFEST`).
 
-## Open questions (flagged for William's sign-off)
+## Open questions — RESOLVED
 
-These are minor judgment calls the drafting agent could not determine unilaterally. Each is restated here and needs William's yes/no (or revised direction) before Phase 0b.2 begins.
+All 5 OQs resolved by William with **Option A across the board**.
 
-- **OQ-1. AuthContext vs existing query.** The task prompt says RouteGuard "reads current admin role from AuthContext (reuse existing shape — do NOT invent)." There is no `AuthContext` in `client/src/contexts/` today; auth lives in a `useQuery<AuthSession>(["/api/auth/me", "session"])` call at `App.tsx:909`. This ADR proposes Option 1: a thin `useAdminRole()` hook that reuses the query (no new context). If William wants Option 2 (introduce a real `AuthContext.Provider`), Phase 0b.2 expands scope accordingly.
+- **OQ-1. AuthContext vs existing query — RESOLVED: Option A (thin `useAdminRole()` hook).** Phase 0b.2 authors a small hook co-located with `RouteGuard.tsx` (or in a neighbor file) that wraps the existing `useQuery<AuthSession>(["/api/auth/me", "session"])` call. No new `AuthContext.Provider`. Reuses the react-query cache; single subscription point. Rationale: minimum-viable shape; preserves the existing pattern; avoids a speculative refactor.
 
-- **OQ-2. `usePersonaToggles` signature.** Parameterless (task prompt, proposed in this ADR) vs `(activeAssociationId, adminRole)` (3.1 Q6 AC-26 literal). Phase 0b.1 proposes parameterless because the hook can read both values from its internal subscriptions. William to confirm.
+- **OQ-2. `usePersonaToggles` signature — RESOLVED: Option A (parameterless).** Contract is `usePersonaToggles(): PersonaToggleState`. The hook reads the active association ID and the current adminRole from internal subscriptions. Call sites do not plumb those values. **Follow-up:** 3.1 Q6 AC-26's `(activeAssociationId, adminRole)` phrasing was spec-prose shorthand; a one-line amendment to 3.1 Q6 notes that the ADR overrides the literal signature. Filed as a post-ADR Phase 9 amendment task.
 
-- **OQ-3. Empty-manifest lookup semantics.** `canAccess(role, route)` when `route` is NOT in `ROUTE_MANIFEST`: this ADR proposes returning `false` (strict default-deny, fail-closed). An alternative is to `throw` in development to catch typos in `route` props. William to confirm default-deny vs development-throw-with-prod-deny. Phase 0b.1 recommends default-deny in both modes; typos are caught by TypeScript if we later narrow `route` to a literal union derived from `ROUTE_MANIFEST` keys.
+- **OQ-3. Empty-manifest lookup semantics — RESOLVED: Option A (strict default-deny everywhere).** `canAccess(role, route)` returns `false` when `route` is not in `ROUTE_MANIFEST`. No dev-mode throw. Fail-closed. Typo safety comes later via a literal-union narrowing of `route` derived from `ROUTE_MANIFEST` keys (Phase 9 or later polish).
 
-- **OQ-4. `viewer` persona in fixtures.** 2.1 Q2 and 0.2 Persona 6 treat `viewer` as a capability variant, not a full persona. Should `tests/fixtures/personas.ts` expose `viewer` as a standalone fixture (for parity-harness tests) or only as a modifier on other personas? Phase 0b.1 proposes standalone fixture for simplicity (six operator persona fixtures + owner fixture = seven total). William to confirm.
+- **OQ-4. `viewer` persona in fixtures — RESOLVED: Option A (standalone fixture).** `tests/fixtures/personas.ts` exports 7 fixtures: 6 operator personas (Manager, Board Officer, Assisted Board, PM Assistant, Platform Admin, Viewer) + Owner portal persona. Parity harness iterates all 6 operator roles directly without composing modifiers inline.
 
-- **OQ-5. `RouteGuard` return type — allow `Promise`?** No. Explicitly `JSX.Element | null`. But if Phase 0b.2 integrates with React Suspense, a `throw promise` pattern inside the component may be desirable. Phase 0b.1 proposes no Suspense in the initial stub (explicit `null` on loading is simpler). William to confirm.
+- **OQ-5. `RouteGuard` Suspense integration — RESOLVED: Option A (no Suspense).** Return type is `JSX.Element | null`. During loading, RouteGuard renders `null`. No `throw promise` pattern. The app does not adopt Suspense elsewhere yet; adding it here is speculative complexity. Revisit only if the app adopts Suspense broadly later.
 
 ## Decision record log
 
-- **2026-04-21** — ADR drafted by Phase 0b.1 drafting agent (Claude). All contract surfaces specified. Five open questions flagged for William's sign-off. Phase 0b.2 blocked on acceptance.
-- **TBD** — William sign-off OR revision request.
-- **TBD** — ADR Status advanced to ACCEPTED (or REJECTED + revised version drafted). Phase 0b.2 unblocked.
+- **Drafted** — Phase 0b.1 drafting agent (Claude). All contract surfaces specified. Five open questions flagged for William's sign-off.
+- **ACCEPTED** — William signed off all 5 OQs as Option A. ADR status advanced from PROPOSED to ACCEPTED. Phase 0b.2 stub implementation unblocked.
