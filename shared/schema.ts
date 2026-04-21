@@ -159,6 +159,18 @@ export const documentVersions = pgTable("document_versions", {
 }));
 
 export const adminUserRoleEnum = pgEnum("admin_user_role", ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]);
+
+/**
+ * Canonical TypeScript type for admin user roles.
+ *
+ * Derived from `adminUserRoleEnum.enumValues` so the type and the Drizzle
+ * pgEnum can never drift. This is THE source of truth for the `AdminRole`
+ * type — all other local declarations across client/, server/, and tests
+ * should import from here. Phase 8c cleanup consolidates the remaining
+ * parallel declarations identified in the Phase 8 audit.
+ */
+export type AdminRole = (typeof adminUserRoleEnum.enumValues)[number];
+
 export const adminUsers = pgTable("admin_users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull(),
