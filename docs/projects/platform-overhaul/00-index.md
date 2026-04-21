@@ -59,9 +59,10 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | ID | Name | Status | Decision Doc |
 |---|---|---|---|
 | 3.1 | Sidebar redesign | **SPEC LOCKED** | [`decisions/3.1-sidebar-redesign.md`](decisions/3.1-sidebar-redesign.md) |
-| 3.2 | Route restructure | **SPEC LOCKED** | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) |
+| 3.2 | Route restructure | **SPEC LOCKED** (amendment pending — `/app/settings/billing` from 4.4 Q6) | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) |
 | 3.3 | Role-gating corrections | **SPEC LOCKED** | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) |
 | 3.4 | Breadcrumb implementation | **SPEC LOCKED** | [`decisions/3.4-breadcrumb-implementation.md`](decisions/3.4-breadcrumb-implementation.md) |
+| 3.5 | Owner Portal restructure | QUEUED (skeleton pending — created by 4.2 Q1 resolution) | _not yet drafted_ |
 
 ---
 
@@ -69,10 +70,10 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 
 | ID | Name | Status | Decision Doc |
 |---|---|---|---|
-| 4.1 | Cross-association alert engine | IN SPEC (skeleton) | [`decisions/4.1-cross-association-alert-engine.md`](decisions/4.1-cross-association-alert-engine.md) |
-| 4.2 | Owner portal gaps | IN SPEC (skeleton) | [`decisions/4.2-owner-portal-gaps.md`](decisions/4.2-owner-portal-gaps.md) |
-| 4.3 | Recurring assessment rules engine | IN SPEC (skeleton) | [`decisions/4.3-recurring-assessment-rules-engine.md`](decisions/4.3-recurring-assessment-rules-engine.md) |
-| 4.4 | Signup and checkout flow | IN SPEC (skeleton) | [`decisions/4.4-signup-and-checkout-flow.md`](decisions/4.4-signup-and-checkout-flow.md) |
+| 4.1 | Cross-association alert engine | IN SPEC (partial — Q2/Q3/Q4 resolved; Q1, Q5–Q9 PENDING) | [`decisions/4.1-cross-association-alert-engine.md`](decisions/4.1-cross-association-alert-engine.md) |
+| 4.2 | Owner portal gaps | IN SPEC (partial — Q1/Q4/Q5 resolved; Q2, Q3, Q6 PENDING) | [`decisions/4.2-owner-portal-gaps.md`](decisions/4.2-owner-portal-gaps.md) |
+| 4.3 | Recurring assessment rules engine | IN SPEC (partial — Q1/Q2/Q4 resolved; Q3, Q5–Q9 PENDING) | [`decisions/4.3-recurring-assessment-rules-engine.md`](decisions/4.3-recurring-assessment-rules-engine.md) |
+| 4.4 | Signup and checkout flow | IN SPEC (partial — Q1/Q2/Q3/Q5/Q6/Q7 resolved; Q4 PENDING) | [`decisions/4.4-signup-and-checkout-flow.md`](decisions/4.4-signup-and-checkout-flow.md) |
 
 ---
 
@@ -108,3 +109,4 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 2026-04-15 | YCM CC (William confirmed) | 0.2 amended at `f8dbf76` — Persona 4 Platform Admin added; boundary matrix extended with Platform Admin column; ACs 11/12/13 added. 1.1 amended at `ac446c0` — sixth zone Platform added to Q1/Q3/Q4. Both amendments triggered by 2.1 Q1 + 2.4 Q1 + 2.4 Q6 resolutions. Layer 0 + Layer 1 now fully aligned with 4-persona / 6-zone model (later expanded to 6-persona model on 2026-04-16). |
 | 2026-04-15 | Claude documentation agent (4 parallel agents) | Layer 3 skeletons drafted (3.1 Sidebar redesign, 3.2 Route restructure, 3.3 Role-gating corrections, 3.4 Breadcrumb implementation). All IN SPEC (skeleton); every Selected Resolution + Acceptance Criteria PENDING. 3.1 enumerates 12 Qs (zone-group labels, active-association grouping, zone-click behavior, Home placement, Board Officer / Assisted Board mode branching, PM toggle runtime, toggle config surface, Platform zone visibility, RouteGuard↔sidebar SoT, association switcher placement, Owner Portal launcher retirement scope, legacy zone assignment); 3.2 enumerates 7 Qs across 52 route entries + 43 legacy redirects; 3.3 enumerates 12 Qs sequencing remediation across 2.1/2.2/2.3/2.4; 3.4 enumerates 10 Qs against 37 breadcrumb surfaces. Cross-Reference Notices embedded in all four modules guarding against re-deciding locked Layer 0/1/2 content. |
 | 2026-04-15 | YCM CC (William confirmed) | 6-persona model rename: board-admin split into board-officer (self-managed), assisted-board (PM-managed), pm-assistant (PM junior staff). 0.2 restructured. All decision docs updated. |
+| 2026-04-21 | Founder (William) + Claude documentation agent | Layer 4 partial locks: **4.1 Q2/Q3/Q4** (dual Home-panel + `/app/communications/inbox` inbox; single-zone alert ownership), **4.2 Q1/Q4/Q5** (new Layer-3 module 3.5 Owner Portal Restructure owns mega-file split; hybrid Community integration; session-gate + title-parity patches land in-place), **4.3 Q1/Q2/Q4** (retire `hoaFeeSchedules` → migrate into `recurringChargeSchedules`; status-quo sweep-based delinquency), **4.4 Q2/Q5/Q6/Q7** (banner-on-Home onboarding; 14-day trial + 7-day grace + hard lock; Manager-only `/app/settings/billing` surface; auto-authenticate on signup complete with magic-link fallback). Consolidated follow-ups: (a) create `decisions/3.5-owner-portal-restructure.md` skeleton, (b) 3.2 route-table amendment for `/app/settings/billing`, (c) PPM workitem for `hoaFeeSchedules` → `recurringChargeSchedules` migration, (d) PPM workitem for signup session-continuity wiring, (e) 4.4 Q4 (Phase 0 billing table migration) remains open. All other PENDING Qs (4.1 Q1/Q5–Q9, 4.2 Q2/Q3/Q6, 4.3 Q3/Q5–Q9, 4.4 Q4) stay PENDING. |
