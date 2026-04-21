@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -82,6 +83,7 @@ function formatTimeRemaining(ms: number): string {
 }
 
 export default function ElectionBallotPage({ token }: { token: string }) {
+  useDocumentTitle("Cast Your Vote");
   const { toast } = useToast();
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);

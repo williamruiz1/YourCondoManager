@@ -3,12 +3,14 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { MeetingsContent } from "./meetings";
 import { BoardPackagesContent } from "./board-packages";
 import { ElectionsContent } from "./elections";
 import { GovernanceComplianceContent } from "./governance-compliance";
 
 export default function GovernancePage() {
+  useDocumentTitle("Governance Overview");
   return (
     <div className="flex flex-col min-h-0">
       <div className="p-6 space-y-6">

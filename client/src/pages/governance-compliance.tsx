@@ -125,7 +125,7 @@ export function GovernanceComplianceContent() {
     if (activeAssociationId && activeAssociationId !== associationFilter) {
       setAssociationFilter(activeAssociationId);
     }
-  }, [activeAssociationId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeAssociationId]);
 
   const [openTemplate, setOpenTemplate] = useState(false);
   const [openTask, setOpenTask] = useState(false);
