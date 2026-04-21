@@ -8664,6 +8664,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // [4.4 Q2 AC 1-5] Post-signup onboarding banner checklist.
+  // Four locked items: association-details (replace "TBD" stub), board-officer
+  // invited, units added, first governing document uploaded. Scoped to all
+  // associations the current admin user manages — aggregated booleans, so a
+  // manager with many associations sees "complete" once any one of them
+  // satisfies the item. Dismissal is persisted per-admin-user via
+  // admin_users.onboarding_dismissed_at (AC 5).
+  app.get("/api/onboarding/signup-checklist", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const result = await storage.getSignupOnboardingChecklist(req.adminUserId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // [4.4 Q2 AC 5] Persist per-admin-user dismissal of the onboarding banner.
+  // Idempotent — sets admin_users.onboarding_dismissed_at = NOW() if still null.
+  app.post("/api/onboarding/dismiss", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      await storage.dismissSignupOnboardingBanner(req.adminUserId);
+      res.status(204).end();
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.get("/api/onboarding/invites", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);

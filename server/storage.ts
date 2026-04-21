@@ -3687,6 +3687,17 @@ export interface IStorage {
       communicationTemplatesConfigured: { score: number; total: number; completed: number };
     };
   }>;
+  // [4.4 Q2 AC 1-5] Post-signup Home-banner checklist — 4 locked items +
+  // per-admin-user dismissal state.
+  getSignupOnboardingChecklist(adminUserId: string): Promise<{
+    associationDetailsComplete: boolean;
+    boardOfficerInvited: boolean;
+    unitsAdded: boolean;
+    firstDocumentUploaded: boolean;
+    dismissed: boolean;
+    dismissedAt: string | null;
+  }>;
+  dismissSignupOnboardingBanner(adminUserId: string): Promise<void>;
   getAssociationOverview(associationId: string): Promise<{
     associationId: string;
     units: number;
@@ -6401,6 +6412,129 @@ export class DatabaseStorage implements IStorage {
       scorePercent: completeness.scorePercent,
       components: completeness.components,
     };
+  }
+
+  // [4.4 Q2 AC 1-5] Four-item signup onboarding checklist used by the Home
+  // banner. Aggregates state across ALL associations scoped to the admin
+  // user; each item is complete when ANY scoped association satisfies it
+  // (a single workspace-level checklist, not per-association). Platform-
+  // admins fall back to "all associations" since they are not required to
+  // carry admin_association_scopes rows.
+  async getSignupOnboardingChecklist(adminUserId: string): Promise<{
+    associationDetailsComplete: boolean;
+    boardOfficerInvited: boolean;
+    unitsAdded: boolean;
+    firstDocumentUploaded: boolean;
+    dismissed: boolean;
+    dismissedAt: string | null;
+  }> {
+    const [adminUser] = await db.select().from(adminUsers).where(eq(adminUsers.id, adminUserId));
+    if (!adminUser) {
+      return {
+        associationDetailsComplete: false,
+        boardOfficerInvited: false,
+        unitsAdded: false,
+        firstDocumentUploaded: false,
+        dismissed: false,
+        dismissedAt: null,
+      };
+    }
+
+    // Resolve the association set the admin user can see.
+    // Platform-admin → all associations; everyone else → admin_association_scopes rows.
+    let associationIds: string[] = [];
+    if (adminUser.role === "platform-admin") {
+      const all = await db.select({ id: associations.id }).from(associations).where(eq(associations.isArchived, 0));
+      associationIds = all.map((row) => row.id);
+    } else {
+      const scopes = await db
+        .select({ associationId: adminAssociationScopes.associationId })
+        .from(adminAssociationScopes)
+        .where(eq(adminAssociationScopes.adminUserId, adminUserId));
+      associationIds = Array.from(new Set(scopes.map((row) => row.associationId)));
+    }
+
+    const dismissedAt = adminUser.onboardingDismissedAt;
+
+    if (associationIds.length === 0) {
+      return {
+        associationDetailsComplete: false,
+        boardOfficerInvited: false,
+        unitsAdded: false,
+        firstDocumentUploaded: false,
+        dismissed: Boolean(dismissedAt),
+        dismissedAt: dismissedAt ? dismissedAt.toISOString() : null,
+      };
+    }
+
+    // Item 1 — association details: complete if ANY scoped association has
+    // a non-"TBD" address/city/state (matches the signup stub sentinel at
+    // server/routes.ts :: /api/public/signup/start).
+    const assocRows = await db
+      .select({ address: associations.address, city: associations.city, state: associations.state })
+      .from(associations)
+      .where(inArray(associations.id, associationIds));
+    const associationDetailsComplete = assocRows.some(
+      (row) => row.address !== "TBD" && row.city !== "TBD" && row.state !== "TBD",
+    );
+
+    // Item 2 — board officer invited. Two signals (OR):
+    //   (a) a board_roles row exists for one of the scoped associations
+    //   (the existing "add board member" workflow writes here), OR
+    //   (b) an admin_users row with role=board-officer is scoped to one of
+    //   the associations (admin-level invite).
+    const boardRoleRows = await db
+      .select({ id: boardRoles.id })
+      .from(boardRoles)
+      .where(inArray(boardRoles.associationId, associationIds))
+      .limit(1);
+    let boardOfficerInvited = boardRoleRows.length > 0;
+    if (!boardOfficerInvited) {
+      const officerScopes = await db
+        .select({ adminUserId: adminAssociationScopes.adminUserId })
+        .from(adminAssociationScopes)
+        .innerJoin(adminUsers, eq(adminUsers.id, adminAssociationScopes.adminUserId))
+        .where(
+          and(
+            inArray(adminAssociationScopes.associationId, associationIds),
+            eq(adminUsers.role, "board-officer"),
+          ),
+        )
+        .limit(1);
+      boardOfficerInvited = officerScopes.length > 0;
+    }
+
+    // Item 3 — units added.
+    const unitRows = await db
+      .select({ id: units.id })
+      .from(units)
+      .where(inArray(units.associationId, associationIds))
+      .limit(1);
+    const unitsAdded = unitRows.length > 0;
+
+    // Item 4 — first governing document uploaded.
+    const docRows = await db
+      .select({ id: documents.id })
+      .from(documents)
+      .where(inArray(documents.associationId, associationIds))
+      .limit(1);
+    const firstDocumentUploaded = docRows.length > 0;
+
+    return {
+      associationDetailsComplete,
+      boardOfficerInvited,
+      unitsAdded,
+      firstDocumentUploaded,
+      dismissed: Boolean(dismissedAt),
+      dismissedAt: dismissedAt ? dismissedAt.toISOString() : null,
+    };
+  }
+
+  async dismissSignupOnboardingBanner(adminUserId: string): Promise<void> {
+    await db
+      .update(adminUsers)
+      .set({ onboardingDismissedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(adminUsers.id, adminUserId), isNull(adminUsers.onboardingDismissedAt)));
   }
 
   async getAssociationOverview(associationId: string): Promise<{
