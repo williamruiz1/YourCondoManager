@@ -169,13 +169,15 @@ When a zone PR fails post-merge, the queue halts. No Phase N+1 PR opens until Ph
 
 ---
 
-## Caveats flagged for William's reconciliation
+## Caveats — RESOLVED (Session E, William)
 
-Tensions between the 3.3 handoff text and the Phase 9 manifest / plan amendments. None block Phase 12 on their own; surfaced here so zone authors stop and file a human task rather than choosing ad hoc.
+All 6 resolved. Resolutions inlined below; manifest + sidebar + plan must conform.
 
-1. **D1 — `/app/financial/*` Platform Admin access.** Manifest rows 8–12 show Platform Admin ✓ (sidebar precedent), but 0.2 §Persona 6 says Platform Admin does not own customer association content. Handoff §Zone 1 does not explicitly exclude Platform Admin. Decision needed before Phase 12.
-2. **D4 — Viewer on `/app/maintenance-schedules` + `/app/inspections`.** Manifest marks Viewer ✓; current sidebar omits Viewer. Minor sidebar oversight (Part 5 of manifest doc). Phase 13 should reconcile to manifest.
-3. **`/app/settings/billing` Platform Admin (A3).** 4.4 Q6 says Manager-only, silent on Platform Admin. Manifest resolves ✗. If Platform Admin needs tenant-billing ops, that belongs on a separate platform surface. Confirm before Phase 16 close.
-4. **`/app/communications/inbox` Platform Admin (A2).** 4.1 Q4 lists five personas, not Platform Admin. Manifest extrapolates ✓. Phase 15 activation should confirm or reverse to ✗ before PR opens.
-5. **`/app/new-association` Manager access (A7).** Sidebar footer shows button to `platform-admin` only today; Manager needs it for multi-association creation. Manifest resolves Manager ✓ + Platform Admin ✓. Confirm Manager actually reaches this page, or restrict to Platform Admin by design.
-6. **`PORTAL_ROLE_COLLAPSE` timing.** Handoff schedules flag removal in Phase 8c, before Phase 12 opens. Plan §8 R8 makes this a merge-blocker. Confirm Phase 8c shipped clean before Phase 12 kickoff; otherwise pause.
+1. **D1 — `/app/financial/*` Platform Admin access — RESOLVED: ✓ (Platform Admin sees Financials).** Rationale: support / debugging use case. When a customer reports a billing problem, Platform Admin needs read-through to the same UI. Action: manifest rows 8–12 keep Platform Admin ✓; handoff §Zone 1 amended to explicitly include Platform Admin.
+2. **D4 — Viewer on `/app/maintenance-schedules` + `/app/inspections` — RESOLVED: ✓ (Viewer sees these pages).** Consistency fix: Viewer is "read-only Manager"; these pages are in Operations zone which Manager owns. Sidebar drift bug — sidebar to add Viewer during Phase 13 Operations zone landing.
+3. **`/app/settings/billing` Platform Admin (A3) — RESOLVED: ✗ (Manager-only, strict).** Rationale: customer account management surface. Platform Admin uses Stripe dashboard directly, not the customer-facing billing page. Manifest keeps Platform Admin ✗ at `/app/settings/billing`.
+4. **`/app/communications/inbox` Platform Admin (A2) — RESOLVED: ✗ (blocked).** Rationale: inbox surfaces customer-tenant operational signals; Platform Admin doesn't own associations. Manifest extrapolation reversed; `/app/communications/inbox` permits only Manager / Board Officer / Assisted Board / PM Assistant / Viewer. Phase 15 activation respects this.
+5. **`/app/new-association` Manager access (A7) — RESOLVED: ✓ (Manager self-serve).** Rationale: multi-association managers should be able to spin up new associations without Platform Admin involvement. Assumes no billing-tier gate on association creation (confirm at implementation; if association creation changes billing tier, route through billing surface first). Sidebar footer amended during Phase 11 sidebar rewrite.
+6. **`PORTAL_ROLE_COLLAPSE` timing — RESOLVED: strict (Phase 8c must merge before Phase 12 opens).** Rationale: clean separation; no flag contamination in Phase 12 reasoning. Phase 12 PR is blocked on Phase 8c green.
+
+All resolutions recorded 2026-04-21 via in-chat Session E with William. Filed against this doc, the Phase 9 manifest data artifact, and (as applicable) 0.2 / 4.1 / 4.4 decision docs in a companion amendment pass.
