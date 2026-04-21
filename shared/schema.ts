@@ -1096,7 +1096,10 @@ export const adminAssociationScopes = pgTable("admin_association_scopes", {
   uniqueAdminAssociationScope: uniqueIndex("admin_association_scopes_unique_uq").on(table.adminUserId, table.associationId),
 }));
 
-export const portalAccessRoleEnum = pgEnum("portal_access_role", ["owner", "tenant", "readonly", "board-member"]);
+// Phase 8a (2026-04-21): collapsed from {owner, tenant, readonly, board-member} to {owner}
+// per 2.1 Q3 / 2.2 Q2 resolutions. Board access lives in portal_access.board_role_id, not here.
+// See migrations/0008_portal_enum_collapse.sql + baselines/portal-enum-audit-2026-04.md.
+export const portalAccessRoleEnum = pgEnum("portal_access_role", ["owner"]);
 export const portalAccessStatusEnum = pgEnum("portal_access_status", ["invited", "active", "suspended", "revoked", "expired"]);
 export const portalAccess = pgTable("portal_access", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

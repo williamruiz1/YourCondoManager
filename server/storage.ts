@@ -4700,13 +4700,14 @@ export class DatabaseStorage implements IStorage {
     const email = (input.email || "").trim();
     if (!email) return;
     const existingPortalAccess = await this.getPortalAccessByAssociationEmail(input.associationId, email);
+    // Phase 8a: role enum collapsed to "owner"; any inbound "tenant" from input type flattens to owner.
     if (!existingPortalAccess) {
       await this.createPortalAccess({
         associationId: input.associationId,
         personId: input.personId,
         unitId: input.unitId,
         email,
-        role: input.role,
+        role: "owner",
         status: "active",
       }, "system");
       return;
@@ -4715,7 +4716,7 @@ export class DatabaseStorage implements IStorage {
     await this.updatePortalAccess(existingPortalAccess.id, {
       personId: input.personId,
       unitId: input.unitId,
-      role: input.role,
+      role: "owner",
       status: "active",
     }, "system");
   }
@@ -12694,7 +12695,10 @@ export class DatabaseStorage implements IStorage {
           role: "owner",
           boardRoleId: null,
         }, "system")) ?? access;
-      } else if (access.role === "board-member") {
+      } else {
+        // Phase 8a: role enum collapsed. Board-only access (boardRoleId set, no ownership)
+        // was previously signaled by role === "board-member"; now detected via
+        // "has boardRoleId but no owner access" — the surrounding branch already filtered that.
         await this.updatePortalAccess(access.id, {
           status: "expired",
         }, "system");
@@ -12760,7 +12764,8 @@ export class DatabaseStorage implements IStorage {
       );
 
     const existing = await this.getPortalAccessByAssociationEmail(input.associationId, normalizedEmail);
-    const nextRole = ownerMembership || existing?.role === "owner" ? "owner" : "board-member";
+    // Phase 8a enum collapse: only "owner" remains. Board access is carried via boardRoleId, not role.
+    const nextRole = "owner" as const;
     const nextStatus = existing?.status === "active" ? "active" : "invited";
 
     if (!existing) {
@@ -13802,9 +13807,8 @@ export class DatabaseStorage implements IStorage {
       .from(documents)
       .where(and(eq(documents.associationId, access.associationId), eq(documents.isPortalVisible, 1)));
 
-    if (access.role === "tenant") {
-      return base.filter((doc) => doc.portalAudience !== "owner");
-    }
+    // Phase 8a: portal role enum collapsed to "owner" only. Tenant-specific doc filtering
+    // was dead code after the collapse; all portal users are "owner" now.
     return base;
   }
 

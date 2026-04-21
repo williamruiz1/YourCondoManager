@@ -10460,7 +10460,8 @@ This is an automated demo request from the Your Condo Manager website.
       const accesses = await storage.getPortalAccessesByEmail(email);
       const activeAccesses = accesses.filter((a) => {
         if (a.status !== "active" && a.status !== "invited") return false;
-        if (a.role !== "board-member" && !a.unitId) return false;
+        // Phase 8a: role collapsed to "owner". Board access now signaled by boardRoleId.
+        if (!a.boardRoleId && !a.unitId) return false;
         return true;
       });
 
@@ -10527,7 +10528,8 @@ This is an automated demo request from the Your Condo Manager website.
             activeAccesses.push(
               ...refreshed.filter((a) => {
                 if (a.status !== "active" && a.status !== "invited") return false;
-                if (a.role !== "board-member" && !a.unitId) return false;
+                // Phase 8a: role collapsed to "owner". Board access now signaled by boardRoleId.
+                if (!a.boardRoleId && !a.unitId) return false;
                 return true;
               })
             );
@@ -10675,8 +10677,9 @@ This is an automated demo request from the Your Condo Manager website.
       const allAccesses = await storage.getPortalAccessesByEmail(email);
       const activeAccesses = allAccesses.filter((a) => {
         if (a.status !== "active" && a.status !== "invited") return false;
+        // Phase 8a: role collapsed to "owner". Board access now signaled by boardRoleId.
         // Non-board accounts must have a unit linked — no unit means nothing useful to show
-        if (a.role !== "board-member" && !a.unitId) return false;
+        if (!a.boardRoleId && !a.unitId) return false;
         return true;
       });
       debug("[portal-verify] Active accesses after OTP", { email, count: activeAccesses.length, accesses: activeAccesses.map((a) => ({ id: a.id, unitId: a.unitId, associationId: a.associationId, status: a.status })) });

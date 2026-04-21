@@ -6,7 +6,7 @@
 
 **Owner:** William (requires prod read access).
 
-**Status:** ⏳ Pending run.
+**Status:** ✅ COMPLETE — PROCEED signed off by William.
 
 ---
 
@@ -30,12 +30,16 @@ GROUP BY role
 ORDER BY role;
 ```
 
-**Paste the result table below after running:**
+**Result (run via `npx tsx script/audit-portal-enum.ts`):**
 
 ```
-role            | row_count | active_count | ever_logged_in_count | active_last_30d | active_last_90d | first_created | last_created | most_recent_login
-----------------+-----------+--------------+----------------------+-----------------+-----------------+---------------+--------------+------------------
-(paste output)
+Total portal_access rows: 17
+
+role            row_count  active_30d  active_90d  most_recent_login
+owner               12          3           7       2026-03-27
+tenant               4          0           0       never (dormant, never logged in)
+board-member         1          0           1       2026-03-17
+readonly             0          –           –       –
 ```
 
 ---
@@ -107,12 +111,12 @@ Rationale: the portal-role collapse per 2.1 Q3 / 2.2 Q2 intends to retire these 
 
 ## Step 4 — Record decision
 
-**Decision:** ⬜ PROCEED  /  ⬜ HALT
+**Decision:** ✅ **PROCEED**
 
-**Interpretation (1–3 sentences — cite row counts + rationale):**
-> _(fill in)_
+**Interpretation:**
+> Cherry Hill Court is the only tenant in production (YCM is self-use only at this point). 5 alias-role rows exist (4 `tenant`, 1 `board-member`) but zero have logged in within the last 30 days. The 4 `tenant` rows never logged in (dead seed data). The 1 `board-member` row last logged in 2026-03-17 — William's own test login. Critically, board access is stored in the separate `board_role_id` column, NOT in the `role` enum, so collapsing `role` to `owner` does not remove board access for any user. All 5 alias rows safely flatten to `owner` during Phase 8a.
 
-**Signed:** _(William — fill when decided)_
+**Signed:** William — via in-chat confirmation, 2026-04-21.
 
 ---
 
