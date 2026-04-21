@@ -8,7 +8,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
-import { getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
+import { createAuthRestoreToken, getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import {
   sendAssociationAdminEmailNotification,
   sendDirectAdminEmailNotification,
@@ -181,6 +181,7 @@ import {
   roadmapWorkstreams,
   tenantConfigs,
   adminUsers,
+  authUsers,
   meetingNotes,
   electionBallotTokens,
   hubPageConfigs,
@@ -12643,17 +12644,51 @@ This is an automated demo request from the Your Condo Manager website.
     return data;
   }
 
-  // Provision a new workspace after successful checkout
-  async function provisionWorkspace(sessionData: Record<string, unknown>): Promise<void> {
+  // Result returned from provisionWorkspace — callers that pass a `req` use this
+  // to decide whether to proceed (session set, cookie on response) or trigger the
+  // magic-link fallback (AC 20).
+  type ProvisionResult = {
+    provisioned: boolean;          // db-level provisioning succeeded (idempotent)
+    adminUserId: string | null;    // newly-provisioned admin (if any)
+    authUserId: string | null;     // resolved authUsers row id (if any)
+    email: string | null;
+    sessionEstablished: boolean;   // req.login() succeeded and sid cookie was set
+    sessionError: string | null;   // machine-readable reason on failure
+  };
+  const emptyResult = (): ProvisionResult => ({
+    provisioned: false,
+    adminUserId: null,
+    authUserId: null,
+    email: null,
+    sessionEstablished: false,
+    sessionError: null,
+  });
+
+  // Provision a new workspace after successful checkout.
+  //
+  // When `opts.req` is supplied (the interactive `/api/public/signup/complete`
+  // path), this function additionally:
+  //   1. Ensures an `authUsers` row exists for the newly-provisioned admin and
+  //      that `authUsers.adminUserId` links to the admin row. This reconciles
+  //      with a Google-OAuth-created authUsers row from the signup screen
+  //      (4.4 Q7 AC 21) — no duplicate records because adminUsers.email is
+  //      unique-indexed and the authUsers.email lookup is email-keyed.
+  //   2. Calls `req.login(authUser)` so passport serializes the authUsers id
+  //      into req.session.passport.user; express-session then emits the
+  //      Set-Cookie: sid=… header on the response (4.4 Q7 AC 18).
+  //
+  // The webhook path (`checkout.session.completed` — routes.ts:12881) does NOT
+  // pass `req`, so it remains cookie-less and session-less (expected: only the
+  // interactive path sets the session).
+  async function provisionWorkspace(
+    sessionData: Record<string, unknown>,
+    opts: { req?: Request } = {},
+  ): Promise<ProvisionResult> {
     const meta = (sessionData.metadata ?? {}) as Record<string, string>;
     const associationId = meta.associationId;
     const adminUserId = meta.adminUserId;
     const plan = (meta.plan ?? "self-managed") as "self-managed" | "property-manager" | "enterprise";
-    if (!associationId || !adminUserId) return;
-
-    // Idempotency: skip if already provisioned
-    const existing = await storage.getPlatformSubscription(associationId);
-    if (existing) return;
+    if (!associationId || !adminUserId) return emptyResult();
 
     const customerId = typeof sessionData.customer === "string" ? sessionData.customer : "";
     const subscription = sessionData.subscription as Record<string, unknown> | null;
@@ -12663,26 +12698,110 @@ This is an automated demo request from the Your Condo Manager website.
     const status = trialEnd ? "trialing" : "active";
 
     const adminUser = await db.select().from(adminUsers).where(eq(adminUsers.id, adminUserId)).then(r => r[0]);
-    if (!adminUser) return;
+    if (!adminUser) return emptyResult();
 
-    await db.update(adminUsers).set({ isActive: 1 }).where(eq(adminUsers.id, adminUserId));
+    // Idempotency: skip DB-level provisioning if already done. We still proceed
+    // to the session-set path below so interactive re-hits (e.g. user reloads
+    // /signup/success) can still authenticate.
+    const existing = await storage.getPlatformSubscription(associationId);
+    if (!existing) {
+      await db.update(adminUsers).set({ isActive: 1 }).where(eq(adminUsers.id, adminUserId));
 
-    await storage.createPlatformSubscription({
-      associationId,
-      plan,
-      status: status as any,
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: subId,
-      currentPeriodEnd: periodEnd,
-      trialEndsAt: trialEnd,
-      adminEmail: adminUser.email,
-    });
+      await storage.createPlatformSubscription({
+        associationId,
+        plan,
+        status: status as any,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subId,
+        currentPeriodEnd: periodEnd,
+        trialEndsAt: trialEnd,
+        adminEmail: adminUser.email,
+      });
 
-    // Create TenantConfig if missing
-    const existingConfig = await db.select().from(tenantConfigs).where(eq(tenantConfigs.associationId, associationId)).then(r => r[0]);
-    if (!existingConfig) {
-      await db.insert(tenantConfigs).values({ associationId, portalName: "Owner Portal", supportEmail: adminUser.email }).catch(() => {});
+      // Create TenantConfig if missing
+      const existingConfig = await db.select().from(tenantConfigs).where(eq(tenantConfigs.associationId, associationId)).then(r => r[0]);
+      if (!existingConfig) {
+        await db.insert(tenantConfigs).values({ associationId, portalName: "Owner Portal", supportEmail: adminUser.email }).catch(() => {});
+      }
     }
+
+    const result: ProvisionResult = {
+      provisioned: true,
+      adminUserId: adminUser.id,
+      authUserId: null,
+      email: adminUser.email,
+      sessionEstablished: false,
+      sessionError: null,
+    };
+
+    // Webhook (no req) — stop here. DB-level provisioning is all that's
+    // possible without an HTTP request/response to attach a session to.
+    if (!opts.req) return result;
+
+    // Interactive path — ensure authUsers row + link, then req.login().
+    try {
+      let authUser = await storage.getAuthUserByEmail(adminUser.email);
+      if (!authUser) {
+        authUser = await storage.createAuthUser({
+          adminUserId: adminUser.id,
+          email: adminUser.email,
+          firstName: null,
+          lastName: null,
+          avatarUrl: null,
+          isActive: 1,
+        });
+      } else if (authUser.adminUserId !== adminUser.id || authUser.isActive !== 1) {
+        // Reconciles with Google-OAuth-created authUsers row from the signup
+        // screen (4.4 Q7 AC 21). Relinks to the newly-provisioned admin and
+        // ensures active — the same pattern as auth.ts Google strategy.
+        authUser = (await storage.updateAuthUser(authUser.id, {
+          adminUserId: adminUser.id,
+          isActive: 1,
+        })) ?? authUser;
+      }
+      result.authUserId = authUser.id;
+
+      await storage.touchAuthUserLogin(authUser.id);
+
+      // Wrap req.login in a Promise. On success, express-session writes the
+      // session to the pg store and Set-Cookie's the `sid` on the response
+      // (configured at server/index.ts:76-97).
+      await new Promise<void>((resolve, reject) => {
+        const req = opts.req!;
+        if (typeof req.login !== "function") {
+          return reject(new Error("passport not initialized on request"));
+        }
+        req.login(authUser as Express.User, (error) => {
+          if (error) return reject(error);
+          resolve();
+        });
+      });
+      result.sessionEstablished = true;
+    } catch (error: any) {
+      result.sessionError = error?.message || "session-establishment-failed";
+      console.error("[signup-complete][session-error]", {
+        adminUserId: adminUser.id,
+        email: adminUser.email,
+        error: result.sessionError,
+      });
+    }
+
+    return result;
+  }
+
+  // Send the signup magic-link fallback email (4.4 Q7 AC 20).
+  // The token is the same HMAC-signed auth-restore token used elsewhere
+  // (server/auth.ts:72-83). TTL is 15 minutes by default
+  // (AUTH_RESTORE_TTL_SECONDS). Consumed at GET /api/auth/magic/:token.
+  async function sendSignupMagicLinkEmail(params: { email: string; token: string }): Promise<void> {
+    const baseUrl = ((await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.yourcondomanager.org").replace(/\/$/, "");
+    const magicUrl = `${baseUrl}/api/auth/magic/${encodeURIComponent(params.token)}`;
+    await sendPlatformEmail({
+      to: params.email,
+      subject: "Sign in to Your Condo Manager",
+      html: `<p>Hi,</p><p>Your workspace is ready. Click the link below to sign in — the link is valid for 15 minutes.</p><p><a href="${magicUrl}" style="display:inline-block;padding:10px 20px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px">Sign in to your workspace</a></p><p>If the button doesn't work, copy and paste this URL into your browser:<br/><a href="${magicUrl}">${magicUrl}</a></p><p>If you didn't sign up, you can safely ignore this email.</p>`,
+      text: `Your workspace is ready. Open this link within 15 minutes to sign in:\n\n${magicUrl}\n\nIf you didn't sign up, you can safely ignore this email.`,
+    });
   }
 
   // GET /api/admin/billing/subscription — current subscription for the active association
@@ -12825,7 +12944,13 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  // GET /api/public/signup/complete — provision workspace after checkout
+  // GET /api/public/signup/complete — provision workspace after checkout.
+  //
+  // 4.4 Q7 AC 18 — on success, sets an authenticated admin session cookie
+  // (sid=) so the subsequent navigation to /app carries the session.
+  // AC 20 — if session-establishment fails for any reason, sends a
+  // magic-link email (15-min TTL) and returns `{ fallback: "magic-link" }`.
+  // AC 22 — no password fallback (OTP-first signup preserved).
   app.get("/api/public/signup/complete", async (req, res) => {
     try {
       const sessionId = req.query.session_id as string;
@@ -12834,10 +12959,56 @@ This is an automated demo request from the Your Condo Manager website.
       if (session.status !== "complete" && (session as any).payment_status !== "no_payment_required" && (session as any).payment_status !== "paid") {
         return res.status(400).json({ message: "Checkout not completed" });
       }
-      await provisionWorkspace(session);
+      const provision = await provisionWorkspace(session, { req });
       const meta = (session.metadata ?? {}) as Record<string, string>;
-      const adminUser = meta.adminUserId ? await db.select().from(adminUsers).where(eq(adminUsers.id, meta.adminUserId)).then(r => r[0]) : null;
-      res.json({ success: true, email: adminUser?.email ?? null, associationId: meta.associationId });
+      const email = provision.email
+        ?? (meta.adminUserId
+          ? (await db.select().from(adminUsers).where(eq(adminUsers.id, meta.adminUserId)).then(r => r[0]))?.email ?? null
+          : null);
+
+      if (provision.sessionEstablished) {
+        return res.json({
+          success: true,
+          email,
+          associationId: meta.associationId,
+          authenticated: true,
+        });
+      }
+
+      // Fallback (AC 20) — session-establishment failed. Send a magic-link
+      // email if we have an authUsers row to reference. Don't fail the
+      // request — the client renders "check your email" messaging.
+      if (provision.authUserId && email) {
+        try {
+          const token = createAuthRestoreToken(provision.authUserId);
+          await sendSignupMagicLinkEmail({ email, token });
+          return res.json({
+            success: true,
+            email,
+            associationId: meta.associationId,
+            authenticated: false,
+            fallback: "magic-link",
+          });
+        } catch (emailError: any) {
+          console.error("[signup-complete][magic-link-send-error]", {
+            authUserId: provision.authUserId,
+            email,
+            error: emailError?.message || String(emailError),
+          });
+        }
+      }
+
+      // Terminal fallback — provisioning succeeded, but no authUser and no
+      // email could be used. Respond with a soft success so the user isn't
+      // blocked, flagging the condition for follow-up.
+      return res.json({
+        success: true,
+        email,
+        associationId: meta.associationId,
+        authenticated: false,
+        fallback: "none",
+        sessionError: provision.sessionError ?? "authUser-not-resolved",
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

@@ -69,7 +69,7 @@ function clearAuthRestoreCookie(req: Request, res: Response) {
   });
 }
 
-function createAuthRestoreToken(userId: string): string {
+export function createAuthRestoreToken(userId: string): string {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     sub: userId,
@@ -82,7 +82,7 @@ function createAuthRestoreToken(userId: string): string {
   return `${payloadB64}.${signature}`;
 }
 
-function verifyAuthRestoreToken(token: string): { userId: string } | null {
+export function verifyAuthRestoreToken(token: string): { userId: string } | null {
   if (!token || !AUTH_RESTORE_SECRET) return null;
   const [payloadB64, signature] = token.split(".");
   if (!payloadB64 || !signature) return null;
@@ -439,6 +439,39 @@ export function registerAuthRoutes(app: Express) {
   app.get("/api/auth/google/callback", handleGoogleOAuthCallback);
   app.get("/callback/google", handleGoogleOAuthCallback);
   app.get("/api/callback/google", handleGoogleOAuthCallback);
+
+  // GET /api/auth/magic/:token — signup magic-link fallback (4.4 Q7 AC 20)
+  //
+  // Consumed by the email sent from /api/public/signup/complete when auto-session
+  // establishment fails. Verifies the HMAC-signed token (15-min TTL per
+  // AUTH_RESTORE_TTL_SECONDS), calls req.login() to set the sid cookie, and
+  // redirects to /app. No password prompt (AC 22 — OTP-first signup preserved).
+  const handleMagicLinkConsume = async (req: Request, res: Response) => {
+    const token = typeof req.params.token === "string" ? req.params.token : "";
+    const verified = verifyAuthRestoreToken(token);
+    if (!verified) {
+      log("[auth][magic] token invalid or expired", "auth");
+      return res.redirect("/pricing?auth=magic-expired");
+    }
+
+    const user = await storage.getAuthUserById(verified.userId);
+    if (!user || user.isActive !== 1) {
+      log(`[auth][magic] user missing or inactive userId=${verified.userId}`, "auth");
+      return res.redirect("/pricing?auth=magic-invalid");
+    }
+
+    req.login(user as Express.User, async (error) => {
+      if (error) {
+        log(`[auth][magic] req.login failed userId=${user.id} err=${error.message}`, "auth");
+        return res.redirect("/pricing?auth=magic-failed");
+      }
+      await storage.touchAuthUserLogin(user.id);
+      log(`[auth][magic] session established userId=${user.id} email=${user.email} adminUserId=${user.adminUserId ?? "null"}`, "auth");
+      return res.redirect("/app?auth=magic-success");
+    });
+  };
+  app.get("/api/auth/magic/:token", handleMagicLinkConsume);
+  app.get("/auth/magic/:token", handleMagicLinkConsume);
 
   app.post("/api/auth/session/restore", async (req: Request, res: Response) => {
     const payload = readCookie(req, AUTH_RESTORE_COOKIE);
