@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MaintenanceSchedulesContent } from "./maintenance-schedules";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type WorkOrderStatus = "open" | "assigned" | "in-progress" | "pending-review" | "closed" | "cancelled";
 type WorkOrderPriority = "low" | "medium" | "high" | "urgent";
@@ -998,6 +999,7 @@ export function WorkOrdersContent() {
 }
 
 export default function WorkOrdersPage() {
+  useDocumentTitle("Work Orders");
   return (
     <div className="flex flex-col min-h-0">
       <div className="p-6 space-y-6">

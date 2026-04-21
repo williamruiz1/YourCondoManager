@@ -13,6 +13,7 @@ import { OwnerPortalLoginContainer } from "@/components/owner-portal-login-conta
 import { Link } from "wouter";
 import { ChevronLeft, Clock, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 // One week of 1-hour slots displayed as a simple grid
 function WeekGrid({ busyWindows, weekStart }: { busyWindows: { type: string; startAt: string | Date; endAt: string | Date; reason?: string | null }[]; weekStart: Date }) {
@@ -336,6 +337,7 @@ function AmenitiesPortalContent({ portalAccessId }: { portalAccessId: string }) 
 }
 
 export default function AmenitiesPage() {
+  useDocumentTitle("Amenities");
   const [portalAccessId, setPortalAccessId] = useState<string | null>(() => window.localStorage.getItem("portalAccessId"));
 
   if (!portalAccessId) {

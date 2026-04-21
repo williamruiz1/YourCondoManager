@@ -35,6 +35,7 @@ import { useAssociationContext } from "@/context/association-context";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 interface DashboardStats {
   totalAssociations: number;
@@ -526,6 +527,7 @@ function AlertsPanel({
 type AuthSession = { authenticated: boolean; admin?: { role: AdminRole } | null };
 
 export default function DashboardPage() {
+  useDocumentTitle("Home");
   const [wizardOpen, setWizardOpen] = useState(false);
   const { activeAssociationId, setActiveAssociationId } = useAssociationContext();
   const { data: authSession } = useQuery<AuthSession>({ queryKey: ["/api/auth/session"] });

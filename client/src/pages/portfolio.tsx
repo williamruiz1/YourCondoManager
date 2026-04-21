@@ -11,6 +11,7 @@ import {
   ShieldAlert,
   TrendingUp,
 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type PortfolioActivityEvent = {
   type: "work_order" | "financial" | "document";
@@ -154,6 +155,7 @@ function StatusBadge({ health }: { health: AssociationKPI["health"] }) {
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
+  useDocumentTitle("Portfolio Health");
   const { data: summaries = [], isLoading } = useQuery<AssociationKPI[]>({
     queryKey: ["/api/portfolio/summary"],
     staleTime: 5 * 60 * 1000,

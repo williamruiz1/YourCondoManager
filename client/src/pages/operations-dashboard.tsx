@@ -10,6 +10,7 @@ import { RecommendedActionsPanel } from "@/components/recommended-actions-panel"
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type OperationsDashboardData = {
   totals: {
@@ -29,6 +30,7 @@ type OperationsDashboardData = {
 };
 
 export default function OperationsDashboardPage() {
+  useDocumentTitle("Operations Overview");
   const isMobile = useIsMobile();
   const { data, isLoading } = useQuery<OperationsDashboardData>({
     queryKey: ["/api/operations/dashboard"],

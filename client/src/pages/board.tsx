@@ -29,6 +29,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const boardRoleOptions = ["President", "Vice President", "Treasurer", "Secretary", "Board Member"];
 
@@ -43,6 +44,7 @@ const formSchema = z.object({
 });
 
 export default function BoardPage() {
+  useDocumentTitle("Board Members");
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const { toast } = useToast();

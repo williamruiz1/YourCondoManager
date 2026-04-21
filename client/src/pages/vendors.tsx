@@ -28,6 +28,7 @@ import { ExportCsvButton } from "@/components/export-csv-button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { InspectionsContent } from "./inspections";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const vendorDocumentTypes = ["Insurance", "Contract", "W-9", "License", "Compliance", "Other"];
 
@@ -989,6 +990,7 @@ export function VendorsContent() {
 }
 
 export default function VendorsPage() {
+  useDocumentTitle("Vendors");
   return (
     <div className="flex flex-col min-h-0">
       <div className="p-6 space-y-6">

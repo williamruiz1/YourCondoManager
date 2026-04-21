@@ -1,11 +1,13 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { FinancialInvoicesContent } from "./financial-invoices";
 import { FinancialUtilitiesContent } from "./financial-utilities";
 import { FinancialBudgetsContent } from "./financial-budgets";
 
 export default function FinancialExpensesPage() {
+  useDocumentTitle("Expenses");
   return (
     <div className="flex flex-col min-h-0">
       <div className="p-6 space-y-6">

@@ -65,6 +65,7 @@ import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type AssociationOverview = {
   associationId: string;
@@ -103,6 +104,7 @@ const profileFormSchema = z.object({
 });
 
 export default function AssociationContextPage() {
+  useDocumentTitle("Association Settings");
   const userSettings = useUserSettings();
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<"overview" | "onboarding" | "records">("overview");

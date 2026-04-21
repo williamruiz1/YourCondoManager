@@ -26,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 // ── Twilio Config Card ────────────────────────────────────────────────────────
 
@@ -454,6 +455,7 @@ function PlatformStripeConfigCard() {
 }
 
 export default function PlatformControlsPage() {
+  useDocumentTitle("Platform Controls");
   const { toast } = useToast();
   const [envelopeForm, setEnvelopeForm] = useState({ associationId: "", name: "", audience: "owner-self-service", permissionsJson: "{\n  \"documents\": true,\n  \"notices\": true,\n  \"contactUpdate\": true\n}" });
   const [scopeForm, setScopeForm] = useState({ adminUserId: "", associationId: "", scope: "read-write" });

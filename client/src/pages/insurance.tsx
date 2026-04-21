@@ -46,6 +46,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { AlertTriangle, Plus, Shield, Trash2 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const POLICY_TYPES = [
   { value: "master", label: "Master Policy" },
@@ -81,6 +82,7 @@ function slaStatus(policy: AssociationInsurancePolicy) {
 }
 
 export default function InsurancePage() {
+  useDocumentTitle("Insurance");
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();

@@ -39,6 +39,7 @@ import { Plus, Building2, MapPin, Search, Archive, ArchiveRestore, Trash2, Penci
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAssociationContext } from "@/context/association-context";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -68,6 +69,7 @@ function isAssociationArchived(association: Association): boolean {
 }
 
 export default function AssociationsPage() {
+  useDocumentTitle("Associations");
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

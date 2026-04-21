@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { operationsSubPages } from "@/lib/sub-page-nav";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type FeedbackAnalytics = {
   total: number;
@@ -28,6 +29,7 @@ const SCORE_LABELS: Record<number, string> = { 1: "Very Poor", 2: "Poor", 3: "Ne
 const CATEGORIES = ["maintenance", "management", "amenities", "communication", "neighbor", "financial", "general"] as const;
 
 export default function ResidentFeedbackPage() {
+  useDocumentTitle("Resident Feedback");
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId } = useActiveAssociation();

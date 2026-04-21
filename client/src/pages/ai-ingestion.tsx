@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAssociationContext } from "@/context/association-context";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type ImportSummaryView = {
   imported: boolean;
@@ -482,6 +483,7 @@ function getDestinationPlan(payloadJson: unknown): {
 
 
 export default function AiIngestionPage() {
+  useDocumentTitle("AI Ingestion");
   const { toast } = useToast();
   const [sourceText, setSourceText] = useState("");
   const [contextNotes, setContextNotes] = useState("");

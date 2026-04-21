@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const CATEGORIES = ["general", "pool", "gym", "community-room", "bbq", "tennis-court", "clubhouse", "other"];
 
@@ -43,6 +44,7 @@ function formatDt(dt: string | Date | null | undefined): string {
 }
 
 export default function AmenitiesAdminPage() {
+  useDocumentTitle("Amenities");
   const { toast } = useToast();
   const { activeAssociationId } = useActiveAssociation();
   const [tab, setTab] = useState("amenities");

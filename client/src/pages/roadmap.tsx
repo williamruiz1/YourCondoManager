@@ -19,6 +19,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { RefreshCw, ChevronDown, ChevronRight, Plus, Calendar, Link2, GitBranch, Bookmark, BookmarkCheck, Layers3 } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { platformSubPages } from "@/lib/sub-page-nav";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type TaskStatus = "todo" | "in-progress" | "done";
 type ProjectStatus = "active" | "complete" | "archived";
@@ -251,6 +252,7 @@ type FeatureTreePreferenceState = {
 const ALL_FEATURE_STATUSES: FeatureStatus[] = ["active", "partial", "inactive"];
 
 export default function RoadmapPage() {
+  useDocumentTitle("Admin Roadmap");
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { toast } = useToast();
   const [taskModalOpen, setTaskModalOpen] = useState(false);
