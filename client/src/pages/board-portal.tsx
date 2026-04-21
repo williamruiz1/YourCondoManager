@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Election } from "@shared/schema";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type BoardDashboard = any;
 type AssociationOverview = any;
@@ -186,6 +187,7 @@ function SidebarContents({
 }
 
 export function BoardPortal({ portalAccessId, associationId, associationName, me, onLogout }: BoardPortalProps) {
+  useDocumentTitle("Home");
   const isSessionMode = !!associationId;
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);

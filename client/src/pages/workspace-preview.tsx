@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type WorkspacePreviewPageProps = {
   onStartGoogleSignIn: () => void;
@@ -24,6 +25,7 @@ const workspaceSignals = [
 export default function WorkspacePreviewPage({
   onStartGoogleSignIn,
 }: WorkspacePreviewPageProps) {
+  useDocumentTitle("Workspace Preview");
   return (
     <main className="min-h-screen bg-[linear-gradient(135deg,_rgba(20,83,45,0.08),_transparent_26%),linear-gradient(180deg,_hsl(var(--muted)),_hsl(var(--background)))]">
       <section className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 md:px-10">

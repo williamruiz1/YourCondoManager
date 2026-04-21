@@ -36,6 +36,7 @@ import { ChevronDown, ChevronUp, AlertTriangle, Zap } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnnouncementsContent } from "./announcements";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const standardTemplateDefinitions = [
   // Payments & Finance
@@ -2327,6 +2328,7 @@ export function CommunicationsContent() {
 }
 
 export default function CommunicationsPage() {
+  useDocumentTitle("Communications Overview");
   return (
     <div className="p-6 space-y-6">
       <WorkspacePageHeader

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute } from "wouter";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +89,7 @@ const CATEGORY_ICONS: Record<string, typeof Info> = {
 };
 
 export default function CommunityHubPublicPage() {
+  useDocumentTitle("Community Hub");
   const [, params] = useRoute("/community/:identifier");
   const identifier = params?.identifier || "";
   const [noticeCategory, setNoticeCategory] = useState<string>("all");
