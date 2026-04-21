@@ -1,3 +1,5 @@
+// zone: Communications
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";

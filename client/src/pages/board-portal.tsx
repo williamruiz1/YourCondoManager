@@ -1,3 +1,5 @@
+// zone: Home
+// persona: Board Officer, Assisted Board
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Election } from "@shared/schema";

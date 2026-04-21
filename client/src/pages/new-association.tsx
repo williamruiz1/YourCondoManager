@@ -1,3 +1,5 @@
+// zone: Home
+// persona: Manager, Platform Admin
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
