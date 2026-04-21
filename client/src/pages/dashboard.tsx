@@ -16,9 +16,6 @@ import {
   UserPlus,
   CircleDollarSign,
   Sparkles,
-  CheckCircle2,
-  Circle,
-  ChevronRight,
   Vote,
   Timer,
   ClipboardCheck,
@@ -27,6 +24,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { SetupWizard } from "@/components/setup-wizard";
+import { SignupOnboardingChecklist } from "@/components/signup-onboarding-checklist";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -551,21 +549,12 @@ export default function DashboardPage() {
     queryKey: electionsQueryKey,
   });
 
-  const { data: onboardingState } = useQuery<{
-    state: "not-started" | "in-progress" | "blocked" | "complete";
-    scorePercent: number;
-    remediationItems: Array<{ label: string; href: string; summary: string }>;
-    components: {
-      unitsConfigured: { score: number; total: number; completed: number };
-      ownerDataCollected: { score: number; total: number; completed: number };
-      boardMembersConfigured: { score: number; total: number; completed: number };
-      paymentMethodsConfigured: { score: number; total: number; completed: number };
-      communicationTemplatesConfigured: { score: number; total: number; completed: number };
-    };
-  }>({
-    queryKey: [activeAssociationId ? `/api/onboarding/state?associationId=${activeAssociationId}` : null],
-    enabled: Boolean(activeAssociationId),
-  });
+  // [4.4 Q2 AC 1-5] The prior per-association 5-item "Association Setup" card
+  // that consumed /api/onboarding/state was replaced by SignupOnboardingChecklist
+  // below, which consumes /api/onboarding/signup-checklist and enforces the
+  // locked 4-item Q2 list (association-details / board-officer / units /
+  // first document). The underlying /api/onboarding/state endpoint is
+  // preserved — it is still consumed by getAssociationOverview on the server.
 
   // [0.1 AC 2] Derive "no associations" state from the already-queried associations
   // list (the /api/dashboard/stats query has been removed from Home — see AC 2 above).
@@ -628,6 +617,12 @@ export default function DashboardPage() {
         }
       />
 
+      {/* [4.4 Q2 AC 1-5] Post-signup onboarding banner — 4-item locked
+          checklist, dismissible per admin user, no new /app/onboarding
+          route. Self-hides when dismissed or all items complete. Placed
+          at the top of Home per 4.4 Q2 design intent. */}
+      <SignupOnboardingChecklist />
+
       {/* [0.1 AC 3] Visible link to /app/portfolio ("Portfolio Health") from Home.
           Per 0.1 decision, aggregate stat cards (associations/units/owners/tenants/
           board members/documents) moved to Portfolio Health; this link is the
@@ -655,53 +650,6 @@ export default function DashboardPage() {
       <QuickActions activeAssociationId={activeAssociationId} onNewAssociation={() => setWizardOpen(true)} adminRole={adminRole} />
 
       <ActiveElectionsCard elections={activeElections} loading={electionsLoading} />
-
-      {activeAssociationId && onboardingState && onboardingState.state !== "complete" && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-primary" />
-                Association Setup
-              </CardTitle>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <div className="text-sm font-medium">{onboardingState.scorePercent}%</div>
-                <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${onboardingState.scorePercent}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Complete these steps to fully configure your association.
-            </p>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-1">
-              {[
-                { label: "Units configured", done: onboardingState.components.unitsConfigured.completed > 0, href: "/app/units" },
-                { label: "Owner data collected", done: onboardingState.components.ownerDataCollected.total === onboardingState.components.ownerDataCollected.completed, href: "/app/association-context" },
-                { label: "Board members configured", done: onboardingState.components.boardMembersConfigured.completed > 0, href: "/app/board" },
-                { label: "Payment methods configured", done: onboardingState.components.paymentMethodsConfigured.completed > 0, href: "/app/financial/foundation" },
-                { label: "Communication templates configured", done: onboardingState.components.communicationTemplatesConfigured.completed > 0, href: "/app/communications" },
-              ].map((step) => (
-                <Link key={step.label} href={step.href}>
-                  <div className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors hover:bg-muted/50 ${step.done ? "text-muted-foreground" : ""}`}>
-                    {step.done
-                      ? <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
-                      : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    }
-                    <span className={step.done ? "line-through" : "font-medium"}>{step.label}</span>
-                    {!step.done && <ChevronRight className="h-3 w-3 ml-auto text-muted-foreground" />}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <AlertsPanel
         alerts={alerts}

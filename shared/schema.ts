@@ -164,6 +164,9 @@ export const adminUsers = pgTable("admin_users", {
   email: text("email").notNull(),
   role: adminUserRoleEnum("role").notNull().default("viewer"),
   isActive: integer("is_active").notNull().default(1),
+  // 4.4 Q2 AC 5 — per-admin-user dismissal of the post-signup onboarding banner on Home.
+  // NULL = never dismissed; any timestamp = banner hidden from that moment forward.
+  onboardingDismissedAt: timestamp("onboarding_dismissed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
