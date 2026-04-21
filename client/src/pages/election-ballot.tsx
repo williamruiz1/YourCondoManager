@@ -1,3 +1,5 @@
+// zone: My Community
+// persona: Owner
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";

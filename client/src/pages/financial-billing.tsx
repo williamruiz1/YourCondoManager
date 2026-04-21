@@ -1,3 +1,5 @@
+// zone: Financials
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";

@@ -1,3 +1,5 @@
+// zone: My Community
+// persona: Owner
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Amenity, AmenityReservation } from "@shared/schema";

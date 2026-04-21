@@ -1,3 +1,5 @@
+// zone: Home
+// persona: Manager
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Document, OnboardingInvite, OnboardingSubmission, ResidentialDatasetUnitDirectoryItem } from "@shared/schema";

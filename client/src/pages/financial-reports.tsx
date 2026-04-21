@@ -1,3 +1,5 @@
+// zone: Financials
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Budget, BudgetLine, BudgetVersion, OwnerLedgerEntry } from "@shared/schema";

@@ -1,3 +1,5 @@
+// zone: Home
+// persona: Manager, Board Officer, Assisted Board, PM Assistant, Platform Admin
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
