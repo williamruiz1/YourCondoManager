@@ -1,6 +1,6 @@
 // zone: My Community
 // persona: Owner
-import { Fragment, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Amenity, AmenityReservation } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -340,7 +340,31 @@ function AmenitiesPortalContent({ portalAccessId }: { portalAccessId: string }) 
 
 export default function AmenitiesPage() {
   useDocumentTitle("Amenities");
+  // 2.2 Q6 (LOCKED): /portal/amenities must inherit /portal session-redirect pattern.
+  // T4 quick-win fix — superseded by 3.5 Owner Portal Restructure per 4.2 Q5.
   const [portalAccessId, setPortalAccessId] = useState<string | null>(() => window.localStorage.getItem("portalAccessId"));
+
+  // 2.2 Q6 (LOCKED): mirror /portal — validate portalAccessId via /api/portal/me
+  // before rendering portal content. A stale/revoked id in localStorage must
+  // surface the same "Unable to load portal" + Sign Out UX as /portal, not
+  // silently load the page and let API calls fail. See owner-portal.tsx lines
+  // 352–362 + 1217–1237 for the canonical pattern this mirrors.
+  const { refetch: refetchMe, error: meError, isError: isMeError } = useQuery<unknown>({
+    queryKey: ["portal/me", portalAccessId],
+    enabled: !!portalAccessId,
+    retry: 2,
+    queryFn: async () => {
+      if (!portalAccessId) return null;
+      const res = await fetch(`/api/portal/me`, { headers: { "x-portal-access-id": portalAccessId } });
+      if (!res.ok) throw new Error(`Portal session failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const handleLogout = useCallback(() => {
+    window.localStorage.removeItem("portalAccessId");
+    setPortalAccessId(null);
+  }, []);
 
   if (!portalAccessId) {
     return (
@@ -348,6 +372,21 @@ export default function AmenitiesPage() {
         setPortalAccessId(id);
         window.localStorage.setItem("portalAccessId", id);
       }} />
+    );
+  }
+
+  if (isMeError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-container-low">
+        <div className="text-center max-w-md p-8">
+          <h2 className="text-xl font-semibold text-on-surface mb-2">Unable to load portal</h2>
+          <p className="text-sm text-on-surface-variant mb-4">{(meError as Error | undefined)?.message || "An unexpected error occurred. Please try again."}</p>
+          <div className="flex gap-2 justify-center">
+            <button className="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-semibold" onClick={() => refetchMe()}>Retry</button>
+            <button className="px-4 py-2 border border-outline-variant rounded-lg text-sm font-medium text-on-surface-variant" onClick={handleLogout}>Sign Out</button>
+          </div>
+        </div>
+      </div>
     );
   }
 
