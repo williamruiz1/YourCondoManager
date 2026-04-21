@@ -6,11 +6,6 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Building2,
-  DoorOpen,
-  Users,
-  Home,
-  UserCheck,
-  FileText,
   AlertTriangle,
   Clock,
   ShieldAlert,
@@ -19,7 +14,7 @@ import {
   Wrench,
   CalendarPlus,
   UserPlus,
-  BookOpen,
+  CircleDollarSign,
   Sparkles,
   CheckCircle2,
   Circle,
@@ -27,6 +22,9 @@ import {
   Vote,
   Timer,
   ClipboardCheck,
+  Layers,
+  CalendarClock,
+  ArrowRight,
 } from "lucide-react";
 import { SetupWizard } from "@/components/setup-wizard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,15 +36,6 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-
-interface DashboardStats {
-  totalAssociations: number;
-  totalUnits: number;
-  totalOwners: number;
-  totalTenants: number;
-  totalBoardMembers: number;
-  totalDocuments: number;
-}
 
 interface AssociationSummary {
   id: string;
@@ -62,6 +51,13 @@ interface DashboardAlerts {
     totalOpen: number;
     items: Array<{ id: string; title: string; priority: string; status: string; associationId: string }>;
   };
+  // Signal 1 (0.1 AC 4): overdue work orders — cross-association, surfaced on Home
+  // regardless of active association context. Active/not-completed WOs whose scheduled
+  // date has passed.
+  overdueWorkOrders: {
+    count: number;
+    items: Array<{ id: string; title: string; scheduledFor: string | null; associationId: string }>;
+  };
   complianceTasks: {
     overdue: number;
     dueSoon: number;
@@ -75,42 +71,13 @@ interface DashboardAlerts {
   delinquentAccounts: {
     count: number;
   };
+  // Signal 2 (0.1 AC 4): maintenance schedule instances due within the next 7 days —
+  // cross-association, surfaced on Home regardless of active association context.
+  dueMaintenanceInstances: {
+    count: number;
+    items: Array<{ id: string; title: string; dueAt: string; associationId: string }>;
+  };
   orphanWarnings?: Array<{ type: string; message: string; count: number }>;
-}
-
-function StatCard({
-  title,
-  value,
-  icon: Icon,
-  description,
-  loading,
-  testId,
-}: {
-  title: string;
-  value: number;
-  icon: typeof Building2;
-  description: string;
-  loading: boolean;
-  testId: string;
-}) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <Skeleton className="h-8 w-16" />
-        ) : (
-          <div className="text-2xl font-bold" data-testid={testId}>
-            {value}
-          </div>
-        )}
-        <p className="text-xs text-muted-foreground mt-1">{description}</p>
-      </CardContent>
-    </Card>
-  );
 }
 
 function AlertRow({
@@ -281,9 +248,11 @@ function QuickActions({
       title: isViewer ? "Read-only access" : (activeAssociationId ? undefined : "Select an association first"),
     },
     {
-      label: "Post Ledger Entry",
-      icon: BookOpen,
-      href: "/app/financial/ledger",
+      // [0.1 AC 10] Billing quick-action points directly at /app/financial/billing,
+      // not the legacy /app/financial/ledger redirect.
+      label: "Billing",
+      icon: CircleDollarSign,
+      href: "/app/financial/billing",
       disabled: !activeAssociationId || isViewer,
       title: isViewer ? "Read-only access" : (activeAssociationId ? undefined : "Select an association first"),
     },
@@ -364,6 +333,8 @@ function AlertsPanel({
   const totalAlerts =
     (alerts?.workOrders.urgent ?? 0) +
     (alerts?.workOrders.stalledOpen ?? 0) +
+    (alerts?.overdueWorkOrders?.count ?? 0) +
+    (alerts?.dueMaintenanceInstances?.count ?? 0) +
     (alerts?.complianceTasks.overdue ?? 0) +
     (alerts?.complianceTasks.dueSoon ?? 0) +
     (alerts?.vendorInsurance.expired ?? 0) +
@@ -380,7 +351,7 @@ function AlertsPanel({
           <div className="text-sm font-semibold">Attention Required</div>
           <div className="text-xs text-muted-foreground">
             {activeAssociationId
-              ? "Live alerts scoped to the selected association."
+              ? "Live alerts scoped to the selected association, plus cross-association operational signals."
               : "Portfolio-wide alerts across all associations."}
           </div>
         </div>
@@ -400,11 +371,32 @@ function AlertsPanel({
         <div className="rounded-lg border bg-background p-4 text-center">
           <div className="text-sm font-medium text-green-700 dark:text-green-400">All clear</div>
           <div className="mt-1 text-xs text-muted-foreground">
-            No urgent work orders, overdue compliance tasks, or insurance alerts.
+            No overdue work orders, due maintenance, urgent items, or insurance alerts.
           </div>
         </div>
       ) : (
         <div className="space-y-2">
+          {/* [0.1 AC 4 — Signal 1] Cross-association overdue work orders — active/not-closed
+              work orders whose scheduled date has passed. Surfaces regardless of active
+              association context. */}
+          <AlertRow
+            icon={AlertTriangle}
+            iconClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+            label="Overdue work orders"
+            count={alerts?.overdueWorkOrders?.count ?? 0}
+            sublabel="Work orders past their scheduled date across all associations — need resolution"
+            href="/app/work-orders"
+          />
+          {/* [0.1 AC 4 — Signal 2] Cross-association maintenance schedule instances due
+              within 7 days. Surfaces regardless of active association context. */}
+          <AlertRow
+            icon={CalendarClock}
+            iconClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+            label="Maintenance due within 7 days"
+            count={alerts?.dueMaintenanceInstances?.count ?? 0}
+            sublabel="Scheduled preventive maintenance across all associations — convert to work orders"
+            href="/app/maintenance-schedules"
+          />
           <AlertRow
             icon={AlertTriangle}
             iconClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
@@ -535,9 +527,9 @@ export default function DashboardPage() {
   const { data: authSession } = useQuery<AuthSession>({ queryKey: ["/api/auth/session"] });
   const adminRole: AdminRole | null = authSession?.admin?.role ?? null;
 
-  const { data: stats, isLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/dashboard/stats", activeAssociationId],
-  });
+  // [0.1 AC 2] Portfolio-level aggregate stat cards moved to /app/portfolio.
+  // Home no longer fetches /api/dashboard/stats — see portfolio.tsx for the
+  // aggregate counts (associations, units, owners, tenants, board members, documents).
 
   const { data: associations = [], isLoading: associationsLoading } = useQuery<AssociationSummary[]>({
     queryKey: ["/api/associations", activeAssociationId],
@@ -575,52 +567,9 @@ export default function DashboardPage() {
     enabled: Boolean(activeAssociationId),
   });
 
-  const cards = [
-    {
-      title: "Associations",
-      value: stats?.totalAssociations ?? 0,
-      icon: Building2,
-      description: "Active condo associations",
-      testId: "stat-associations",
-    },
-    {
-      title: "Units",
-      value: stats?.totalUnits ?? 0,
-      icon: DoorOpen,
-      description: "Registered units",
-      testId: "stat-units",
-    },
-    {
-      title: "Owners",
-      value: stats?.totalOwners ?? 0,
-      icon: Users,
-      description: "Property owners",
-      testId: "stat-owners",
-    },
-    {
-      title: "Tenants",
-      value: stats?.totalTenants ?? 0,
-      icon: Home,
-      description: "Active tenants",
-      testId: "stat-tenants",
-    },
-    {
-      title: "Board Members",
-      value: stats?.totalBoardMembers ?? 0,
-      icon: UserCheck,
-      description: "Active board members",
-      testId: "stat-board",
-    },
-    {
-      title: "Documents",
-      value: stats?.totalDocuments ?? 0,
-      icon: FileText,
-      description: "Uploaded documents",
-      testId: "stat-documents",
-    },
-  ];
-
-  const noAssociations = !isLoading && (stats?.totalAssociations ?? 0) === 0;
+  // [0.1 AC 2] Derive "no associations" state from the already-queried associations
+  // list (the /api/dashboard/stats query has been removed from Home — see AC 2 above).
+  const noAssociations = !associationsLoading && associations.length === 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -630,11 +579,13 @@ export default function DashboardPage() {
         onAssociationCreated={(id) => setActiveAssociationId(id)}
       />
 
+      {/* [0.1 AC 1] Page title, breadcrumb, and nav label all read "Home" — the word
+          "Dashboard" is intentionally absent from this surface per the 0.1 decision. */}
       <WorkspacePageHeader
-        title="Dashboard"
-        summary="Portfolio overview across all managed associations, with direct access into the current in-context workspace."
+        title="Home"
+        summary="Today's action surface — alerts, quick actions, and elections. Drill into Portfolio Health for aggregate counts across all associations."
         eyebrow="Workspace"
-        breadcrumbs={[{ label: "Dashboard" }]}
+        breadcrumbs={[{ label: "Home" }]}
         shortcuts={[
           { label: "Open Association Context", href: "/app/association-context" },
           { label: "Review Documents", href: "/app/documents" },
@@ -677,11 +628,29 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map((card) => (
-          <StatCard key={card.title} {...card} loading={isLoading} />
-        ))}
-      </div>
+      {/* [0.1 AC 3] Visible link to /app/portfolio ("Portfolio Health") from Home.
+          Per 0.1 decision, aggregate stat cards (associations/units/owners/tenants/
+          board members/documents) moved to Portfolio Health; this link is the
+          primary entry point from Home into the analytical view. */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Layers className="h-4 w-4" />
+            Portfolio Health
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Aggregate counts and comparative health across all associations — associations, units, owners, tenants, board members, and documents.
+          </p>
+          <Button asChild variant="outline" size="sm" className="shrink-0" data-testid="link-home-to-portfolio-health">
+            <Link href="/app/portfolio">
+              Open Portfolio Health
+              <ArrowRight className="ml-1 h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <QuickActions activeAssociationId={activeAssociationId} onNewAssociation={() => setWizardOpen(true)} adminRole={adminRole} />
 

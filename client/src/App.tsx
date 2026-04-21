@@ -297,6 +297,18 @@ function WorkspaceRouter({
           {adminRole === "platform-admin" ? <PlatformControlsPage /> : <NotFound />}
         </Route>
         <Route path="/app/insurance" component={InsurancePage} />
+        {/*
+          [0.1 AC 9 — spec-locked] Board Officer / Assisted Board users (old
+          board-admin role) with ≤1 association are redirected from Portfolio
+          Health (/app/portfolio) to Home (/app). This is intentional per the
+          0.1 decision: a single-association board member's action surface is
+          Home, not the multi-association analytical view — Portfolio Health is
+          designed for managers with multiple associations to compare. The
+          single-association scenario has nothing meaningful to compare against,
+          so landing on Home keeps the user on the action surface that serves
+          them. Do NOT "fix" this as a bug. See
+          docs/projects/platform-overhaul/decisions/0.1-dashboard-resolution.md.
+        */}
         <Route path="/app/portfolio">
           {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <PortfolioPage />}
         </Route>
