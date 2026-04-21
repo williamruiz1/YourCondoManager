@@ -23,22 +23,17 @@ Not a spec; no new rules. Every rule here is already locked by 3.3 / 0.2 / 2.x /
 
 ## Section 1 — Zone landing PR checklist (universal template)
 
-Each zone PR follows these nine steps in order. Do not skip; do not reorder. Every step maps to one or more AC rows in 3.3 and to specific plan phases.
+Nine steps per zone PR, in order. Each maps to AC rows in 3.3 and specific plan phases.
 
-1. **Wrap routes with `<RouteGuard>`.** Every route in the zone's scope is wrapped: `<RouteGuard route="..."><PageComponent/></RouteGuard>`. The route list is Section 2's per-zone table. `<RouteGuard>` consults `shared/persona-access.ts` (Phase 9 output) and returns `<NotFound/>` for denied personas. Maps to 3.3 Step 5, AC-Q5-1.
-2. **Add breadcrumb paths.** Every page route in the zone gets an entry in `client/src/lib/breadcrumb-paths.ts` so the Phase 6 `<Breadcrumb/>` component renders labels. Single-file discipline per Plan §Phase 6 — resolve merge conflicts by appending.
-3. **Apply `useIsReadOnly()` on write actions.** For every Assisted Board write surface in the zone (tables, form submit buttons, action menus), wire the 2.3 Q7 hook so Assisted Board sees read-only UI by default and toggled write when the PM toggle permits. Viewer always read-only.
-4. **Populate `shared/persona-access.ts` manifest entries.** Phase 9 ships the full manifest; if a zone ships before Phase 9 finishes a row (edge case), add the row inline in the zone PR and cross-reference `phase-9-persona-access-manifest-data.md` rows 1–64. Do not invent new persona mappings — every row traces to 0.2 matrix or a 2.x amendment.
-5. **Parity tests — three tiers per zone.**
-   - **Tier 1 (exhaustive):** zone routes × six personas. AC-Q4-1.
-   - **Tier 2 (happy-path):** one pass per persona pair (Manager + Board Officer, Manager + Assisted Board read-only). AC-Q4-4.
-   - **Tier 3 (sidebar smoke):** sidebar ships in Phase 11 unchanged; this tier should pass without new code. AC-Q4-5.
-6. **Fill Q11 observability checklist.** Copy `docs/projects/platform-overhaul/checklists/zone-landing-q11-checklist.md` into the PR, fill all three gates, attach baseline comparison. Three gates: zero 401/403 on permitted routes, zero unguarded access on blocked routes, no net-new console errors vs. `docs/projects/platform-overhaul/baselines/pre-phase-12-baseline.md`.
-7. **Document rollback plan in PR description.** Per 3.3 Q10. The Section 4 template has a Rollback block — fill it. For zones with flags (Phase 13's `BOARD_SHUNT_ACTIVE`), the flag-flip is the first lever; PR revert is the second.
-8. **Founder sign-off gate.** William approves each zone PR before the next zone's PR opens (AC-Q5-3, AC-Q9-3). No exceptions. Do not open Phase N+1's PR while Phase N sits unapproved.
-9. **Replace `canAccessWipRoute` call sites.** Any remaining `canAccessWipRoute` references in the zone's files get replaced with `<RouteGuard>` + `canAccess()` from `shared/persona-access.ts`. The WIP allowlist in `client/src/lib/wip-features.ts` is retired zone-by-zone as Phases 12–16 sweep through; final deletion of the allowlist is a cleanup PR after Phase 16.
-
-Cross-reference: steps 1, 3, 5, 9 land the 3.3 Q1 Step 5 (RouteGuard rollout) and Step 6 (BoardPortal retirement / Operations-specific) per phase. Step 8 is the stop-the-line gate (see Section 5).
+1. **Wrap routes with `<RouteGuard>`.** Every route in the zone: `<RouteGuard route="..."><PageComponent/></RouteGuard>`. Consults `shared/persona-access.ts` (Phase 9); returns `<NotFound/>` for denied. AC-Q5-1.
+2. **Add breadcrumb paths.** Every page route gets an entry in `client/src/lib/breadcrumb-paths.ts` for the Phase 6 `<Breadcrumb/>` component. Single-file discipline per Plan §Phase 6 — append on conflict.
+3. **Apply `useIsReadOnly()` on write actions.** Every Assisted Board write surface (tables, submit buttons, action menus) wires the 2.3 Q7 hook. Viewer always read-only.
+4. **Populate `shared/persona-access.ts` entries.** Phase 9 ships the manifest; if a row is missing, inline it in the zone PR cross-referencing `phase-9-persona-access-manifest-data.md`. No invented mappings — every row traces to 0.2 or a 2.x amendment.
+5. **Parity tests — three tiers.** Tier 1 exhaustive (zone routes × six personas, AC-Q4-1); Tier 2 happy-path per persona pair (AC-Q4-4); Tier 3 sidebar smoke (ships unchanged from Phase 11, AC-Q4-5).
+6. **Fill Q11 checklist.** Copy `checklists/zone-landing-q11-checklist.md` into the PR; fill the three gates: zero 401/403 on permitted routes, zero unguarded access on blocked routes, no net-new console errors vs. `baselines/pre-phase-12-baseline.md`.
+7. **Document rollback plan.** Section 4 template has a Rollback block — fill it. For flagged zones (Phase 13's `BOARD_SHUNT_ACTIVE`), flag-flip is lever 1; PR revert is lever 2.
+8. **Founder sign-off gate.** William approves before the next zone's PR opens (AC-Q5-3, AC-Q9-3). No exceptions.
+9. **Replace `canAccessWipRoute` call sites.** Zone files swap remaining calls for `<RouteGuard>` + `canAccess()`. The WIP allowlist in `client/src/lib/wip-features.ts` retires zone-by-zone; final deletion is a cleanup PR after Phase 16.
 
 ---
 
@@ -90,46 +85,26 @@ This section is a lookup — one subsection per zone. Detailed persona mapping l
 
 ## Section 3 — Revert chain policy (Plan §8 R7)
 
-Per the plan's rollback cascade amendment, zone landings are serially revert-dependent. The rule: **Phase N revert halts Phase N+1** until Phase N re-lands clean.
+Zone landings are serially revert-dependent. **Phase N revert halts Phase N+1** until Phase N re-lands clean.
 
-### Trigger — what causes a zone revert
-
-Per 3.3 Q10 revert triggers, any one of the following:
-- Any 401/403 on a permitted route for any persona (Q11 Gate 1 fails).
-- Any unguarded access discovered on a blocked route (Q11 Gate 2 fails).
-- Two or more net-new JS console errors vs. baseline (Q11 Gate 3 fails).
+**Trigger (any of these, per 3.3 Q10):**
+- 401/403 on a permitted route for any persona (Q11 Gate 1).
+- Unguarded access discovered on a blocked route (Q11 Gate 2).
+- Two or more net-new JS console errors vs. baseline (Q11 Gate 3).
 - A Tier 1 parity test that passed pre-deploy fails post-deploy in CI.
 
-### Who calls it
+**Who calls it:** zone PR author surfaces the failure; William signals go/no-go on revert. Not a unilateral call — a declared step.
 
-The zone PR author and William jointly. The author surfaces the failure (from Q11 checklist or CI), William signals go/no-go on revert. Do not revert unilaterally — the rollback procedure is a declared step, not a reflex.
+**Downstream halt:** Phase 12 revert halts Phase 13; Phase 13 halts 14; 14 halts 15; 15 halts 16. "Halt" = next PR does not open (or if already open, does not merge). Fix-forward work on the halted phase may continue in-branch.
 
-### What downstream phases pause
+**Escalation (AC-Q10-4):** two consecutive zone failures → full pause of all subsequent landings + cross-zone RCA. File a human task; do not open Phase N+2.
 
-- Phase 12 revert → Phase 13 halts
-- Phase 13 revert → Phase 14 halts
-- Phase 14 revert → Phase 15 halts
-- Phase 15 revert → Phase 16 halts
+**Resume:** (1) revert deployed, (2) post-mortem filed in PPM, (3) fix-forward PR with Q9 + Q11 re-run, (4) zone re-lands passing all three gates, (5) downstream PR re-opens or merges.
 
-"Halt" means: the next phase's PR does not open. If it is already open but unmerged, it stays open but no additional review/merge activity proceeds. Work on the halted phase may continue (branch, rebase, fix forward) — but it does not merge until the upstream zone is restored.
-
-### Escalation — two consecutive zone failures
-
-Per AC-Q10-4, two consecutive zone failures trigger a full pause of all subsequent landings. File a human task; do not open Phase N+2's PR. A cross-zone root-cause analysis is required before resuming.
-
-### Resume — how the queue unblocks
-
-1. Revert is deployed; zone returns to pre-landing state.
-2. Author files a post-mortem issue in PPM documenting root cause.
-3. Author fixes forward in a new PR; re-runs Q9 gates + Q11 observability.
-4. Zone re-lands, passing all three gates.
-5. Downstream zone's PR re-opens (or its review resumes if it was already open).
-
-### Data-side caveats
-
-- Phase 13 rollback: `BOARD_SHUNT_ACTIVE` flag flip is the first lever (flip back to `true` restores shunt behavior). Code revert is second lever if flag-flip alone does not restore parity.
-- Phase 14 rollback: `normalizeAdminRole` deletion is **not** revertible by PR revert alone. Restore the function from git history. Data migration is idempotent — no data rollback required.
-- Phase 16 rollback: atomic revert of the single PR. No partial revert.
+**Data-side caveats:**
+- Phase 13: `BOARD_SHUNT_ACTIVE=true` is first revert lever; code revert is second.
+- Phase 14: `normalizeAdminRole` deletion not PR-revertible alone — restore function from git history; data migration idempotent.
+- Phase 16: atomic all-four-surfaces revert; no partial revert.
 
 ---
 
