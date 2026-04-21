@@ -92,6 +92,18 @@ type PortfolioFinancialSummary = {
   totalOwnerAccounts: number;
 };
 
+// [0.1 AC 5] Aggregate stat shape transplanted from Home (dashboard.tsx) — the six
+// portfolio-level counts (associations, units, owners, tenants, board members,
+// documents) now live on Portfolio Health per the 0.1 decision.
+type DashboardStats = {
+  totalAssociations: number;
+  totalUnits: number;
+  totalOwners: number;
+  totalTenants: number;
+  totalBoardMembers: number;
+  totalDocuments: number;
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function downloadCsv(rows: string[][], filename: string) {
@@ -183,6 +195,14 @@ export default function PortfolioPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // [0.1 AC 5] Portfolio-level aggregate counts — these 6 cards moved from Home
+  // (dashboard.tsx) to Portfolio Health per the 0.1 decision. Keyed without an
+  // active-association param so they remain portfolio-wide.
+  const { data: dashboardStats } = useQuery<DashboardStats>({
+    queryKey: ["/api/dashboard/stats"],
+    staleTime: 5 * 60 * 1000,
+  });
+
   const mergedAlerts = useMemo<ThresholdAlert[]>(() => {
     const normalized: ThresholdAlert[] = portfolioRiskAlerts.map((a, idx) => ({
       id: `portfolio-${a.associationId}-${a.type}-${idx}`,
@@ -264,8 +284,9 @@ export default function PortfolioPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 max-w-screen-2xl">
           <div>
             <p className="text-xs font-label uppercase tracking-widest text-on-surface-variant dark:text-slate-400 mb-2">Overview</p>
+            {/* [0.1 AC 5] Page header reads "Portfolio Health" per the 0.1 decision. */}
             <h1 className="font-headline text-4xl font-bold tracking-tight text-on-surface dark:text-slate-100 leading-tight">
-              Portfolio at a Glance
+              Portfolio Health
             </h1>
             <p className="text-on-surface-variant dark:text-slate-400 font-body mt-1.5 text-sm">
               Global performance overview across{" "}
@@ -290,6 +311,36 @@ export default function PortfolioPage() {
               </button>
             </div>
           )}
+        </div>
+
+        {/* [0.1 AC 5] Header summary row — the six aggregate stat cards transplanted
+            from the old Home (dashboard.tsx): associations, units, owners, tenants,
+            board members, documents. Styled to match Portfolio's bento grid so the
+            visual system stays coherent. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-8 max-w-screen-2xl" data-testid="section-portfolio-aggregate-stats">
+          {[
+            { label: "Associations", value: dashboardStats?.totalAssociations ?? 0, testId: "stat-associations" },
+            { label: "Units", value: dashboardStats?.totalUnits ?? 0, testId: "stat-units" },
+            { label: "Owners", value: dashboardStats?.totalOwners ?? 0, testId: "stat-owners" },
+            { label: "Tenants", value: dashboardStats?.totalTenants ?? 0, testId: "stat-tenants" },
+            { label: "Board Members", value: dashboardStats?.totalBoardMembers ?? 0, testId: "stat-board" },
+            { label: "Documents", value: dashboardStats?.totalDocuments ?? 0, testId: "stat-documents" },
+          ].map((s) => (
+            <div
+              key={s.label}
+              className="bg-surface-container-lowest dark:bg-slate-900 p-4 rounded-xl editorial-shadow border-b-2 border-outline-variant/20"
+            >
+              <span className="text-[10px] font-label uppercase tracking-widest text-on-surface-variant dark:text-slate-400 block mb-1.5">
+                {s.label}
+              </span>
+              <span
+                className="font-headline text-2xl font-bold text-on-surface dark:text-slate-100 tabular-nums"
+                data-testid={s.testId}
+              >
+                {s.value.toLocaleString()}
+              </span>
+            </div>
+          ))}
         </div>
 
         {/* KPI Bento Grid */}
