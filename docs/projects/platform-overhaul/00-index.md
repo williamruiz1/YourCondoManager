@@ -2,7 +2,7 @@
 **Initiative:** Spec-First Platform Overhaul
 **Owner:** YCM Command Center
 **Process skill:** [`docs/skills/spec-first-overhaul-process-skill.md`](../../skills/spec-first-overhaul-process-skill.md)
-**Last updated:** 2026-04-16 (Task 0 merged; Tasks 1+2 handoffs pushed)
+**Last updated:** 2026-04-22 (Phase 1 paper-trail sweep reconciled; Task 0 merged via PR #8; waves 1-27 reconciliation in flight)
 
 ---
 
@@ -24,44 +24,45 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 
 ## Layer 0 — Foundational Decisions
 
-| ID | Name | Status | Decision Doc | PPM Task Card |
-|---|---|---|---|---|
-| 0.1 | Dashboard Resolution | **SPEC LOCKED** · handoff ready | [`decisions/0.1-dashboard-resolution.md`](decisions/0.1-dashboard-resolution.md) | [`ppm/0.1-dashboard-resolution-task.md`](ppm/0.1-dashboard-resolution-task.md) · `a304717b-b18b-4163-9928-5a9ea235d3a7` (queued) · [handoff](handoffs/0.1-dashboard-resolution-handoff.md) |
-| 0.2 | Persona Map | **SPEC LOCKED** | [`decisions/0.2-persona-map.md`](decisions/0.2-persona-map.md) | [`ppm/0.2-persona-map-task.md`](ppm/0.2-persona-map-task.md) · `5fa11c46-1e93-4991-a4c3-a8c8f3d63558` (queued) |
-| 0.3 | Navigation Model | **SPEC LOCKED** | [`decisions/0.3-navigation-model.md`](decisions/0.3-navigation-model.md) | _pending task card_ |
+| ID | Name | Status | Decision Doc | Handoff | PPM Task Card |
+|---|---|---|---|---|---|
+| 0.1 | Dashboard Resolution | **SPEC LOCKED** · handoff ready | [`decisions/0.1-dashboard-resolution.md`](decisions/0.1-dashboard-resolution.md) | [`handoffs/0.1-dashboard-resolution-handoff.md`](handoffs/0.1-dashboard-resolution-handoff.md) | [`ppm/0.1-dashboard-resolution-task.md`](ppm/0.1-dashboard-resolution-task.md) · `a304717b-b18b-4163-9928-5a9ea235d3a7` (queued) |
+| 0.2 | Persona Map | **SPEC LOCKED** | [`decisions/0.2-persona-map.md`](decisions/0.2-persona-map.md) | [`handoffs/0.2-persona-map-handoff.md`](handoffs/0.2-persona-map-handoff.md) | [`ppm/0.2-persona-map-task.md`](ppm/0.2-persona-map-task.md) · `5fa11c46-1e93-4991-a4c3-a8c8f3d63558` (queued) |
+| 0.3 | Navigation Model | **SPEC LOCKED** | [`decisions/0.3-navigation-model.md`](decisions/0.3-navigation-model.md) | [`handoffs/0.3-navigation-model-handoff.md`](handoffs/0.3-navigation-model-handoff.md) | _pending task card_ |
 
 ---
 
 ## Layer 1 — IA Taxonomy Cleanup
 
-| ID | Name | Status | Decision Doc |
-|---|---|---|---|
-| 1.1 | Zone taxonomy corrections | **SPEC LOCKED** | [`decisions/1.1-zone-taxonomy-corrections.md`](decisions/1.1-zone-taxonomy-corrections.md) |
-| 1.2 | Section hub reclassification | **SPEC LOCKED** | [`decisions/1.2-section-hub-reclassification.md`](decisions/1.2-section-hub-reclassification.md) |
-| 1.3 | Breadcrumb label audit | **SPEC LOCKED** | [`decisions/1.3-breadcrumb-label-audit.md`](decisions/1.3-breadcrumb-label-audit.md) |
-| 1.4 | Page title consistency | **SPEC LOCKED** | [`decisions/1.4-page-title-consistency.md`](decisions/1.4-page-title-consistency.md) |
+| ID | Name | Status | Decision Doc | Handoff | PPM Task Card |
+|---|---|---|---|---|---|
+| 1.1 | Zone taxonomy corrections | **SPEC LOCKED** | [`decisions/1.1-zone-taxonomy-corrections.md`](decisions/1.1-zone-taxonomy-corrections.md) | [`handoffs/1.1-zone-taxonomy-handoff.md`](handoffs/1.1-zone-taxonomy-handoff.md) | `38dca9eb-b494-425d-b16a-f34e70d1ab3a` (queued, medium) — card file pending |
+| 1.2 | Section hub reclassification | **SPEC LOCKED** | [`decisions/1.2-section-hub-reclassification.md`](decisions/1.2-section-hub-reclassification.md) | [`handoffs/1.2-section-hub-handoff.md`](handoffs/1.2-section-hub-handoff.md) | `e8cdef51-ea22-40b5-8545-fa050efc8b94` (queued, medium) — card file pending |
+| 1.3 | Breadcrumb label audit | **SPEC LOCKED** | [`decisions/1.3-breadcrumb-label-audit.md`](decisions/1.3-breadcrumb-label-audit.md) | [`handoffs/1.3-breadcrumb-label-audit-handoff.md`](handoffs/1.3-breadcrumb-label-audit-handoff.md) | `ac0734d2-88e3-412c-97b7-3e497fd936e1` (queued, medium) — card file pending |
+| 1.4 | Page title consistency | **SPEC LOCKED** | [`decisions/1.4-page-title-consistency.md`](decisions/1.4-page-title-consistency.md) | [`handoffs/1.4-page-title-consistency-handoff.md`](handoffs/1.4-page-title-consistency-handoff.md) | `bbcc9c73-7d89-4359-a87c-5ad6e9521f9c` (queued, high) — card file pending |
 
 ---
 
 ## Layer 2 — Role & Permission Model
 
-| ID | Name | Status | Decision Doc |
-|---|---|---|---|
-| 2.1 | Role model audit | **SPEC LOCKED** | [`decisions/2.1-role-model-audit.md`](decisions/2.1-role-model-audit.md) |
-| 2.2 | Owner Portal access boundaries | **SPEC LOCKED** | [`decisions/2.2-owner-portal-access-boundaries.md`](decisions/2.2-owner-portal-access-boundaries.md) |
-| 2.3 | Permission boundary corrections | **SPEC LOCKED** | [`decisions/2.3-permission-boundary-corrections.md`](decisions/2.3-permission-boundary-corrections.md) |
-| 2.4 | Platform-admin surface audit | **SPEC LOCKED** | [`decisions/2.4-platform-admin-surface-audit.md`](decisions/2.4-platform-admin-surface-audit.md) |
+| ID | Name | Status | Decision Doc | Handoff | PPM Task Card |
+|---|---|---|---|---|---|
+| 2.1 | Role model audit | **SPEC LOCKED** | [`decisions/2.1-role-model-audit.md`](decisions/2.1-role-model-audit.md) | [`handoffs/layer-2-primitives-handoff.md`](handoffs/layer-2-primitives-handoff.md) (bundle) | `a84162c2-cb6d-4bb0-b889-29a953b75f20` (queued, critical) — Layer-2 Primitives Bundle; card file pending |
+| 2.2 | Owner Portal access boundaries | **SPEC LOCKED** | [`decisions/2.2-owner-portal-access-boundaries.md`](decisions/2.2-owner-portal-access-boundaries.md) | [`handoffs/layer-2-primitives-handoff.md`](handoffs/layer-2-primitives-handoff.md) (bundle) | `a84162c2-cb6d-4bb0-b889-29a953b75f20` (queued, critical) — Layer-2 Primitives Bundle; card file pending |
+| 2.3 | Permission boundary corrections | **SPEC LOCKED** | [`decisions/2.3-permission-boundary-corrections.md`](decisions/2.3-permission-boundary-corrections.md) | [`handoffs/layer-2-primitives-handoff.md`](handoffs/layer-2-primitives-handoff.md) (bundle) | `a84162c2-cb6d-4bb0-b889-29a953b75f20` (queued, critical) — Layer-2 Primitives Bundle; card file pending |
+| 2.4 | Platform-admin surface audit | **SPEC LOCKED** | [`decisions/2.4-platform-admin-surface-audit.md`](decisions/2.4-platform-admin-surface-audit.md) | [`handoffs/2.4-platform-admin-surface-audit-handoff.md`](handoffs/2.4-platform-admin-surface-audit-handoff.md) | `043c1502-ab03-4e3e-a66e-49dae5f9840b` (queued, high) — card file pending |
 
 ---
 
 ## Layer 3 — Navigation Restructure
 
-| ID | Name | Status | Decision Doc |
-|---|---|---|---|
-| 3.1 | Sidebar redesign | **SPEC LOCKED** | [`decisions/3.1-sidebar-redesign.md`](decisions/3.1-sidebar-redesign.md) |
-| 3.2 | Route restructure | **SPEC LOCKED** | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) |
-| 3.3 | Role-gating corrections | **IN BUILD** | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) |
-| 3.4 | Breadcrumb implementation | **SPEC LOCKED** | [`decisions/3.4-breadcrumb-implementation.md`](decisions/3.4-breadcrumb-implementation.md) |
+| ID | Name | Status | Decision Doc | Handoff | PPM Task Card |
+|---|---|---|---|---|---|
+| 3.1 | Sidebar redesign | **SPEC LOCKED** | [`decisions/3.1-sidebar-redesign.md`](decisions/3.1-sidebar-redesign.md) | [`handoffs/3.1-sidebar-redesign-handoff.md`](handoffs/3.1-sidebar-redesign-handoff.md) | `bb5baae3-7daf-4503-8767-1ee182b4b4e0` (queued, high) — card file pending |
+| 3.2 | Route restructure | **SPEC LOCKED** (amendment pending — `/app/settings/billing` from 4.4 Q6) | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) | [`handoffs/3.2-route-restructure-handoff.md`](handoffs/3.2-route-restructure-handoff.md) | `b38ac77c-dc83-4076-9bb8-a62d8ff9e5fb` (queued, high) — card file pending |
+| 3.3 | Role-gating corrections | **SPEC LOCKED** | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) | [`handoffs/3.3-role-gating-corrections-handoff.md`](handoffs/3.3-role-gating-corrections-handoff.md) | `7b23d9c6-b087-4063-9c70-ec3e731c7963` (queued, high) — card file pending |
+| 3.4 | Breadcrumb implementation | **SPEC LOCKED** | [`decisions/3.4-breadcrumb-implementation.md`](decisions/3.4-breadcrumb-implementation.md) | [`handoffs/3.4-breadcrumb-implementation-handoff.md`](handoffs/3.4-breadcrumb-implementation-handoff.md) | `c23a5d54-f784-476b-8f8f-3dcc78024c17` (queued, medium) — card file pending |
+| 3.5 | Owner Portal restructure | **IN SPEC** (skeleton) | [`decisions/3.5-owner-portal-restructure.md`](decisions/3.5-owner-portal-restructure.md) | [`handoffs/3.5-owner-portal-restructure-handoff.md`](handoffs/3.5-owner-portal-restructure-handoff.md) | skeleton/decision: `65ae5d6b-9eee-407d-ac7e-c3fdd64aa67c`; build: `ca6972a3-6b9e-4620-9358-c1cc6c9f42e3` (queued, medium) — card files pending |
 
 ---
 
@@ -87,22 +88,13 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 
 ---
 
-## CPU Execution Status (3.3 + 4.4 Q3)
+## ADRs — Architectural Decision Records
 
-The YCM Computer Executor is running the 3.3 role-gating rollout + 4.4 Q3 planCatalog wiring. Execution is zone-by-zone per the 3.3 Q5 landing sequence.
+Cross-cutting architectural decisions that span multiple modules are captured as ADRs under `adrs/`. These are distinct from per-module decision docs: they define contracts and primitives that individual module specs depend on.
 
-| # | Task | Status | PR | Handoff |
-|---|---|---|---|---|
-| 0 | Vitest test infrastructure (3.3 Q4 pre-req) | **COMPLETE** | [#8](https://github.com/williamruiz1/YourCondoManager/pull/8) merged | [`handoffs/task-0-vitest-infrastructure-handoff.md`](handoffs/task-0-vitest-infrastructure-handoff.md) |
-| 1 | Wire planCatalog as pricing source of truth (4.4 Q3) | **HANDOFF READY** | — | [`handoffs/task-1-plancatalog-wiring-handoff.md`](handoffs/task-1-plancatalog-wiring-handoff.md) |
-| 2 | Parity harness — Tier 1/2/3 tests (3.3 Q4) | **HANDOFF READY** | — | [`handoffs/task-2-parity-harness-handoff.md`](handoffs/task-2-parity-harness-handoff.md) |
-| 3 | Zone 1 — Financials (Q2 + Q3 + RouteGuard) | QUEUED | — | — |
-| 4 | Zone 2 — Operations (AdminRole dedup + RouteGuard + shunt) | QUEUED | — | — |
-| 5 | Zone 3 — Governance (RouteGuard + normalizeAdminRole) | QUEUED | — | — |
-| 6 | Zone 4 — Communications (RouteGuard) | QUEUED | — | — |
-| 7 | Zone 5 — Platform (atomic Q8) | QUEUED | — | — |
-
-**Execution rules:** Tasks 1+2 dispatch in parallel (no dependency between them). Tasks 3–7 are sequential per 3.3 Q5 landing order. Each zone landing must pass Q9 test gates + Q11 observability checks before the next zone merges.
+| ID | Title | Status | Doc |
+|---|---|---|---|
+| 0b | RouteGuard + persona-access contract | **PROPOSED** · pending William signoff | [`adrs/0b-routeguard-personaaccess-contract.md`](adrs/0b-routeguard-personaaccess-contract.md) |
 
 ---
 
@@ -130,3 +122,7 @@ The YCM Computer Executor is running the 3.3 role-gating rollout + 4.4 Q3 planCa
 | 2026-04-16 | Founder (William) + YCM CC | 3.3 fully locked (12 Qs resolved). 4.4 Q1 + Q3 resolved. Signup role bug fixed (commit `aa30fa2`). 3.3 spec aligned (commit `7f49e17`). CPU execution plan approved: 8-task sequence covering test infra, planCatalog wiring, parity harness, and 5 zone landings. |
 | 2026-04-16 | YCM CPU (Computer Executor) | Task 0 (Vitest infrastructure) dispatched → PR #8 opened by VS Code Claude → reviewed and merged. 14 tests, 10 files, 1673 insertions. All 9 AC verified. |
 | 2026-04-16 | YCM CPU (Computer Executor) | Task 1 (planCatalog wiring) and Task 2 (parity harness) handoff specs pushed to `docs/projects/platform-overhaul/handoffs/`. Both ready for dispatch. Tasks 1+2 run in parallel after Task 0 merge. |
+| 2026-04-21 | Founder (William) + Claude documentation agent | Layer 4 partial locks: **4.1 Q2/Q3/Q4** (dual Home-panel + `/app/communications/inbox` inbox; single-zone alert ownership), **4.2 Q1/Q4/Q5** (new Layer-3 module 3.5 Owner Portal Restructure owns mega-file split; hybrid Community integration; session-gate + title-parity patches land in-place), **4.3 Q1/Q2/Q4** (retire `hoaFeeSchedules` → migrate into `recurringChargeSchedules`; status-quo sweep-based delinquency), **4.4 Q2/Q5/Q6/Q7** (banner-on-Home onboarding; 14-day trial + 7-day grace + hard lock; Manager-only `/app/settings/billing` surface; auto-authenticate on signup complete with magic-link fallback). Consolidated follow-ups: (a) create `decisions/3.5-owner-portal-restructure.md` skeleton, (b) 3.2 route-table amendment for `/app/settings/billing`, (c) PPM workitem for `hoaFeeSchedules` → `recurringChargeSchedules` migration, (d) PPM workitem for signup session-continuity wiring, (e) 4.4 Q4 (Phase 0 billing table migration) remains open. All other PENDING Qs (4.1 Q1/Q5–Q9, 4.2 Q2/Q3/Q6, 4.3 Q3/Q5–Q9, 4.4 Q4) stay PENDING. |
+| 2026-04-21 | Claude documentation agent (Phase 1 paper-trail sweep, 3 waves) | Drafted 13 handoff docs — bespoke for 3.3, 3.2, 3.1, 3.5, layer-2-primitives; parallel mechanical for 0.2, 0.3, 1.1, 1.2, 1.3, 1.4, 2.4, 3.4. Drafted 3.5 Owner Portal Restructure decision doc skeleton (IN SPEC, Q1–Q8 PENDING). Authored ADR 0b (RouteGuard + persona-access contract) in `adrs/` — PROPOSED pending William signoff with 5 flagged open questions (OQ-1 through OQ-5). Updated all affected module status rows. Paper-trail bucket complete; Phase 0b.2 stub implementation blocked on ADR signoff. |
+| 2026-04-21 | Claude documentation agent (Phase 1 paper-trail sweep — PPM workitem filings) | Filed 12 PPM workitems (one per module without an existing card) covering 0.3, 1.1–1.4, 2.1–2.4 (as Layer-2 bundle), 3.1–3.5. IDs captured in layer tables. Task card .md files pending next wave. |
+| 2026-04-22 | Claude Code + 4 agents | PR 1 of 5-PR reconciliation: cherry-picked Task 0 Vitest ACs (`2d72e1a`) + Phase 1 paper-trail sweep (`ade73f7`) + Layer 4 partial locks (`5d6e619`) + migration journal cleanup for 0002-0007 drift. Resolved 00-index conflicts by taking superset of HEAD + branch histories. Replaces the interim "CPU Execution Status" section (Tasks 1-7) with this 5-PR reconciliation. |

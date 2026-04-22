@@ -15,6 +15,41 @@
       "when": 1775880344622,
       "tag": "0001_amenity_booking",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776000000000,
+      "tag": "0002_billing_data_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776100000000,
+      "tag": "0003_payment_transactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776200000000,
+      "tag": "0004_phase2_saved_methods_autopay",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776300000000,
+      "tag": "0005_phase3_delinquency_retries",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776400000000,
+      "tag": "0006_role_rename_board_admin",
+      "breakpoints": true
     }
   ]
 }
