@@ -38,6 +38,19 @@ describe("breadcrumb-paths: getBreadcrumbTrail", () => {
     expect(trail[1].href).toBeUndefined();
   });
 
+  it("seeds /app/portfolio with Home as the zone-label root (1.3 Q1 amendment 2026-04-23)", () => {
+    // Per 1.3 Q1 as amended 2026-04-23, "Home" is permitted as a
+    // breadcrumb root when it is the Home-zone label per 1.1 Q3.
+    // Portfolio Health lives in the Home zone, so its canonical trail
+    // is `Home > Portfolio Health`.
+    const trail = getBreadcrumbTrail("/app/portfolio");
+    expect(trail).toHaveLength(2);
+    expect(trail[0].label).toBe("Home");
+    expect(trail[0].href).toBe("/app");
+    expect(trail[1].label).toBe("Portfolio Health");
+    expect(trail[1].href).toBeUndefined();
+  });
+
   it("returns an empty trail for an unknown route", () => {
     expect(getBreadcrumbTrail("/app/no-such-route")).toEqual([]);
     expect(getBreadcrumbTrail("")).toEqual([]);
@@ -70,15 +83,13 @@ describe("breadcrumb-paths: 1.3 invariants on seeded entries", () => {
     }
   });
 
-  it("no seeded root label is a forbidden generic (1.3 Q1)", () => {
-    // Root must never be "Home", "Dashboard", or "App" as a generic
-    // top-level label. NOTE: the seed entry "/app" uses "Home" as the
-    // *zone label* for the Home zone, which is the canonical zone name
-    // per 1.1 — it is not a generic "Home" root. We assert via the
-    // trail shape: a single-segment hub whose label matches a zone
-    // label is fine (1.3 Q3). Forbidden-root enforcement applies when
-    // a trail has MORE than one segment, i.e., when the root is a
-    // *root-of-chain*, not a leaf hub indicator.
+  it("no seeded root label is a forbidden generic (1.3 Q1 as amended 2026-04-23)", () => {
+    // Root must never be "Dashboard" or "App" as a generic top-level
+    // label. "Home" was previously in this list but was removed by the
+    // 1.3 Q1 amendment (2026-04-23) — "Home" is permitted as a root
+    // when it is the Home-zone label per 1.1 Q3 (e.g., /app/portfolio
+    // → `Home > Portfolio Health`). The single-segment "/app" hub seed
+    // is also allowed per 1.3 Q3 (hub leaf, not root-of-chain).
     for (const [route, trail] of seededEntries) {
       if (trail.length < 2) continue;
       const root = trail[0];

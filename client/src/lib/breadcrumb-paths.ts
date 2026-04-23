@@ -16,7 +16,9 @@
 //
 // Invariants enforced by this module and consumers:
 //  - ≤ 3 segments per trail (1.3 Q4).
-//  - Root is association-name or zone label, never "Home"/"Dashboard"/"App"
+//  - Root is association-name or zone label, never "Dashboard"/"App".
+//    "Home" is permitted as a root only when it is the Home-zone label
+//    (per 1.3 Q1 amendment 2026-04-23 + 1.1 Q3 — see /app/portfolio).
 //    (1.3 Q1). The `{associationName}` sentinel is substituted at resolve time.
 //  - Exactly two valid patterns (1.3 Q2):
 //      association-scoped:  Association Name > Zone Label > Page Title
@@ -68,9 +70,15 @@ export const ASSOCIATION_NAME_SENTINEL = "{associationName}";
 /**
  * Forbidden root labels per 1.3 Q1. Never used as a breadcrumb root.
  * Exported so downstream lint/test hooks can assert against it.
+ *
+ * Per the 1.3 Q1 amendment (2026-04-23), "Home" is permitted as a root
+ * when it is the Home-zone label per 1.1 Q3 (e.g., `/app/portfolio` →
+ * `Home > Portfolio Health`). "Home" is therefore NOT listed here;
+ * generic/placeholder "Home" uses are caught at code review + via zone-tag
+ * alignment, not by this list. "Dashboard" and "App" remain categorically
+ * forbidden.
  */
 export const FORBIDDEN_ROOT_LABELS: ReadonlyArray<string> = Object.freeze([
-  "Home",
   "Dashboard",
   "App",
 ]);
@@ -101,10 +109,7 @@ export const MAX_BREADCRUMB_DEPTH = 3;
  */
 export const BREADCRUMB_PATHS: Readonly<Record<string, BreadcrumbTrail>> = Object.freeze({
   // Seed — portfolio-scoped Home hub. The Home zone label is the
-  // current-page indicator (hub, per 1.3 Q3), not a root-of-chain. This
-  // is the single legal use of "Home" in any breadcrumb: as a Home-zone
-  // hub leaf. 1.3 Q1 forbids "Home" as the root of a chain — a single
-  // non-linked segment is a leaf, not a chain root.
+  // current-page indicator (hub, per 1.3 Q3), not a root-of-chain.
   "/app": [{ label: "Home" }],
 
   // Seed — portfolio-scoped Operations overview (zone > page). Lands
@@ -116,12 +121,15 @@ export const BREADCRUMB_PATHS: Readonly<Record<string, BreadcrumbTrail>> = Objec
     { label: "Operations Overview" },
   ],
 
-  // NOTE: `/app/portfolio` deliberately omitted from the Phase 6 seed.
-  // Its correct root label is unresolved because it sits inside the
-  // Home zone but 1.3 Q1 forbids "Home" as a root-of-chain label.
-  // Assigning a root requires founder resolution; 0.1 / 1.1 / 1.3
-  // amendment or the Phase 12 zone PR will settle it. For now the
-  // route resolves to an empty trail (caller must not render one).
+  // Seed — portfolio-scoped Portfolio Health (Home > Portfolio Health).
+  // Per 1.3 Q1 amendment (2026-04-23): "Home" is permitted as a root
+  // label when it refers to the Home-zone label per 1.1 Q3. Portfolio
+  // Health sits in the Home zone, so the canonical trail is
+  // `Home > Portfolio Health`.
+  "/app/portfolio": [
+    { label: "Home", href: "/app" },
+    { label: "Portfolio Health" },
+  ],
 });
 
 /**
