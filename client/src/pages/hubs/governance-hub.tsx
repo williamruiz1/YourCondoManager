@@ -1,0 +1,41 @@
+// @zone: Governance
+// @persona: Manager, Board Officer, Assisted Board, PM Assistant, Viewer
+//
+// 3.2 Q1 Governance zone hub — Phase 11 placeholder.
+// Activates when hub content is designed; route wiring lands in Phase 14.
+// No business logic, no data fetch. See plan §3 Phase 11.
+
+import { Link } from "wouter";
+import { ArrowLeft } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { Card, CardContent } from "@/components/ui/card";
+
+export default function GovernanceHub() {
+  useDocumentTitle("Governance");
+
+  return (
+    <div className="container mx-auto py-6 space-y-6">
+      <WorkspacePageHeader
+        title="Governance"
+        summary="Upcoming overview of board activities, elections, meetings, and compliance."
+        breadcrumbs={[{ label: "Home", href: "/app" }, { label: "Governance" }]}
+      />
+      <Card>
+        <CardContent className="py-12 text-center space-y-4">
+          <p className="text-lg text-muted-foreground">
+            Governance zone hub — upcoming overview of board activities, elections, meetings, and compliance.
+          </p>
+          <p className="text-sm text-muted-foreground">This feature is coming soon.</p>
+          <Link
+            href="/app"
+            className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+            data-testid="link-governance-hub-return-home"
+          >
+            <ArrowLeft className="h-4 w-4" /> Return to Home
+          </Link>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

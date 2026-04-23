@@ -152,6 +152,11 @@ const associationModules: NavModule[] = [
   {
     // [0.1 AC 7] Sidebar label reads "Operations Overview" (matching the page
     // title and breadcrumb) — the word "Dashboard" is intentionally absent.
+    // [1.2 Q7 exception] "Overview" suffix on nav labels is forbidden; the
+    // Operations Overview dashboard is the single allowed exception, locked
+    // by 0.1 AC 7. See docs/projects/platform-overhaul/implementation-
+    // artifacts/1.2-hub-contract.md §4.
+    // eslint-disable-next-line no-restricted-syntax
     title: "Operations Overview",
     url: "/app/operations/dashboard",
     icon: ClipboardList,
@@ -175,6 +180,12 @@ const associationModules: NavModule[] = [
     roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
   },
   {
+    // TODO(1.2 Phase 11): 1.2 Q7 forbids "Hub" as a nav-label suffix. Rename
+    // candidate flagged in docs/projects/platform-overhaul/implementation-
+    // artifacts/1.2-hub-contract.md §7.1 — Phase 11 / 3.1 sidebar redesign
+    // resolves this (either rename to "Community" under /app/communications
+    // or fold into the Communications hub). Temporary suppression.
+    // eslint-disable-next-line no-restricted-syntax
     title: "Community Hub",
     url: "/app/community-hub",
     icon: Globe,

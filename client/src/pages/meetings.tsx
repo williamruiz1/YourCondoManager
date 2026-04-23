@@ -103,7 +103,6 @@ function MeetingNoticeDialog({
       setSubject(defaultSubject);
       setBody(defaultBody);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const sendMutation = useMutation({
@@ -586,7 +585,6 @@ export function MeetingsContent() {
         summaryText: expandedMeeting.summaryText || "",
       });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedMeetingId]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
