@@ -1,3 +1,5 @@
+// zone: Financials
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";

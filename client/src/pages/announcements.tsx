@@ -1,3 +1,5 @@
+// zone: Communications
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { CommunityAnnouncement } from "@shared/schema";
@@ -15,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const emptyForm = {
   title: "",
@@ -374,6 +377,7 @@ export function AnnouncementsContent() {
 }
 
 export default function AnnouncementsPage() {
+  useDocumentTitle("Announcements");
   return (
     <div className="p-6 space-y-6">
       <WorkspacePageHeader

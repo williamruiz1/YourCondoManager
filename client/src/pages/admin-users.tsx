@@ -1,3 +1,5 @@
+// zone: Platform
+// persona: Platform Admin
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -35,6 +37,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { platformSubPages } from "@/lib/sub-page-nav";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const roleOptions = ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] as const;
 
@@ -48,6 +51,7 @@ const roleLabels: Record<string, string> = {
 };
 
 export default function AdminUsersPage() {
+  useDocumentTitle("Admin Users");
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);

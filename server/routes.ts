@@ -1292,6 +1292,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const associationId = getAssociationIdQuery(req);
       const now = new Date();
       const in14Days = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+      const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      // [0.1 AC 4] Scope cross-association aggregations to the admin's accessible
+      // associations. Platform-admins see all; other roles see only their scoped ids.
+      // This also fixes a pre-existing latent bug where the alerts endpoint did not
+      // apply adminScopedAssociationIds filtering when no associationId was provided.
+      const scopedAssociationIds =
+        req.adminRole === "platform-admin"
+          ? undefined
+          : (req.adminScopedAssociationIds ?? []);
 
       const [workOrders, complianceTasks, vendorAlerts] = await Promise.all([
         storage.getWorkOrders({ associationId }),
@@ -1304,7 +1314,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         (wo) => wo.status !== "closed" && wo.status !== "cancelled",
       );
       const urgentWorkOrders = openWorkOrders.filter((wo) => wo.priority === "urgent");
-      const overdueWorkOrders = openWorkOrders.filter((wo) => {
+      const stalledOpenWorkOrders = openWorkOrders.filter((wo) => {
         const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         return new Date(wo.createdAt) < sevenDaysAgo && wo.status === "open";
       });
@@ -1321,6 +1331,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const expiredVendors = vendorAlerts.filter((v) => v.severity === "expired");
       const dueSoonVendors = vendorAlerts.filter((v) => v.severity === "due-soon");
 
+      // [0.1 AC 4 — Signal 1] Cross-association overdue work orders.
+      // Spec: status IN ('open','in-progress','pending') AND due_date < NOW()
+      // YCM schema note: work_orders has no due_date column; the closest scheduled-
+      // date field is scheduled_for. We treat "overdue" as active work orders
+      // (open / assigned / in-progress / pending-review — i.e. not closed/cancelled)
+      // whose scheduled_for has passed. This surfaces the same class of signal the
+      // Phase 5 spec targets while matching YCM's actual schema.
+      // Scope: all admin-accessible associations, regardless of active-association
+      // context (AC 4 requires cross-association visibility on Home).
+      const allWorkOrdersForScope = await storage.getWorkOrders({});
+      const accessibleWorkOrders = scopedAssociationIds
+        ? allWorkOrdersForScope.filter((wo) => scopedAssociationIds.includes(wo.associationId))
+        : allWorkOrdersForScope;
+      const activeWorkOrderStatuses = new Set(["open", "assigned", "in-progress", "pending-review"]);
+      const overdueWorkOrdersCross = accessibleWorkOrders.filter((wo) => {
+        if (!activeWorkOrderStatuses.has(wo.status)) return false;
+        if (!wo.scheduledFor) return false;
+        return new Date(wo.scheduledFor) < now;
+      });
+
+      // [0.1 AC 4 — Signal 2] Cross-association maintenance schedule instances due
+      // within the next 7 days.
+      // Spec: due_date < NOW() + INTERVAL '7 days' AND status != 'completed'
+      // Scope: all admin-accessible associations, regardless of active-association
+      // context (AC 4 requires cross-association visibility on Home).
+      const allMaintenanceInstances = await storage.getMaintenanceScheduleInstances({});
+      const accessibleMaintenanceInstances = scopedAssociationIds
+        ? allMaintenanceInstances.filter((msi) => scopedAssociationIds.includes(msi.associationId))
+        : allMaintenanceInstances;
+      const dueMaintenanceInstancesCross = accessibleMaintenanceInstances.filter((msi) => {
+        if (msi.status === "completed") return false;
+        return new Date(msi.dueAt) < in7Days;
+      });
+
       // Delinquent accounts (only when associationId scoped)
       let delinquentCount = 0;
       let orphanWarnings: Array<{ type: string; message: string; count: number }> = [];
@@ -1329,12 +1373,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         delinquentCount = ledger.filter((entry) => entry.balance > 0).length;
 
         // Orphan detection sweep
-        const [allWorkOrders, allVendors] = await Promise.all([
+        const [allAssocWorkOrders, allVendors] = await Promise.all([
           storage.getWorkOrders({ associationId }),
           storage.getVendors(associationId),
         ]);
         const vendorIds = new Set(allVendors.map((v) => v.id));
-        const woWithMissingVendor = allWorkOrders.filter(
+        const woWithMissingVendor = allAssocWorkOrders.filter(
           (wo) => wo.vendorId && !vendorIds.has(wo.vendorId) && wo.status !== "closed" && wo.status !== "cancelled",
         );
         if (woWithMissingVendor.length > 0) {
@@ -1354,13 +1398,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({
         workOrders: {
           urgent: urgentWorkOrders.length,
-          stalledOpen: overdueWorkOrders.length,
+          stalledOpen: stalledOpenWorkOrders.length,
           totalOpen: openWorkOrders.length,
           items: urgentWorkOrders.slice(0, 5).map((wo) => ({
             id: wo.id,
             title: wo.title,
             priority: wo.priority,
             status: wo.status,
+            associationId: wo.associationId,
+          })),
+        },
+        // [0.1 AC 4 — Signal 1] Cross-association overdue work orders, scoped to
+        // admin's accessible associations.
+        overdueWorkOrders: {
+          count: overdueWorkOrdersCross.length,
+          items: overdueWorkOrdersCross.slice(0, 5).map((wo) => ({
+            id: wo.id,
+            title: wo.title,
+            scheduledFor: wo.scheduledFor ? wo.scheduledFor.toISOString() : null,
             associationId: wo.associationId,
           })),
         },
@@ -1386,6 +1441,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
         delinquentAccounts: {
           count: delinquentCount,
+        },
+        // [0.1 AC 4 — Signal 2] Cross-association maintenance schedule instances due
+        // within 7 days, scoped to admin's accessible associations.
+        dueMaintenanceInstances: {
+          count: dueMaintenanceInstancesCross.length,
+          items: dueMaintenanceInstancesCross.slice(0, 5).map((msi) => ({
+            id: msi.id,
+            title: msi.title,
+            dueAt: msi.dueAt.toISOString(),
+            associationId: msi.associationId,
+          })),
         },
         orphanWarnings,
       });

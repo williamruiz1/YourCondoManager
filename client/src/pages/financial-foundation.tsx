@@ -1,3 +1,5 @@
+// zone: Financials
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,6 +20,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
@@ -630,6 +633,7 @@ export function AccountActivityContent() {
 }
 
 export default function FinancialFoundationPage() {
+  useDocumentTitle("Chart of Accounts");
   return (
     <div className="flex flex-col min-h-0">
       <div className="p-6 space-y-6">

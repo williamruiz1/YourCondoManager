@@ -1,3 +1,5 @@
+// zone: Operations
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { InspectionFindingItem, InspectionRecord, Unit } from "@shared/schema";
@@ -16,6 +18,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { operationsSubPages } from "@/lib/sub-page-nav";
 import { Link } from "wouter";
 import { Wrench, ExternalLink } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type FindingSeverity = "low" | "medium" | "high" | "critical";
 type FindingStatus = "open" | "monitoring" | "resolved";
@@ -399,6 +402,7 @@ export function InspectionsContent() {
 }
 
 export default function InspectionsPage() {
+  useDocumentTitle("Inspections");
   return (
     <div className="p-6 space-y-6">
       <WorkspacePageHeader

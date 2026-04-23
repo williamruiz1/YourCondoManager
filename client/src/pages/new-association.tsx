@@ -1,3 +1,5 @@
+// zone: Home
+// persona: Manager, Platform Admin
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
@@ -21,6 +23,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const formSchema = z.object({
   name: z.string().min(1, "Association name is required"),
@@ -81,6 +84,7 @@ const STEP1_FIELDS: (keyof FormValues)[] = ["name", "associationType"];
 const ASSOCIATION_TYPES = ["HOA", "Condo", "Co-op", "Townhome", "Mixed-Use"];
 
 export default function NewAssociationPage() {
+  useDocumentTitle("New Association");
   const [, navigate] = useLocation();
   const { setActiveAssociationId } = useAssociationContext();
   const { toast } = useToast();

@@ -65,15 +65,25 @@ type NavModule = NavLink & {
 
 
 // Top-level platform overview — always visible
+// [0.1 AC 1, AC 6] "Home" replaces "Dashboard" as the root /app label.
+// "Portfolio Health" is subordinate to Home (rendered as a persistent indented
+// child in the Overview group), not a peer. "Associations" remains a peer.
 const overviewModules: NavModule[] = [
-  { title: "Dashboard", url: "/app", icon: LayoutDashboard, materialIcon: "dashboard" },
   {
-    title: "Portfolio",
-    url: "/app/portfolio",
-    icon: Layers,
-    materialIcon: "layers",
-    activePrefix: "/app/portfolio",
-    roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
+    title: "Home",
+    url: "/app",
+    icon: LayoutDashboard,
+    materialIcon: "home",
+    children: [
+      {
+        title: "Portfolio Health",
+        url: "/app/portfolio",
+        icon: Layers,
+        materialIcon: "layers",
+        activePrefix: "/app/portfolio",
+        roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
+      },
+    ],
   },
   {
     title: "Associations",
@@ -140,7 +150,9 @@ const associationModules: NavModule[] = [
     roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
   },
   {
-    title: "Operations",
+    // [0.1 AC 7] Sidebar label reads "Operations Overview" (matching the page
+    // title and breadcrumb) — the word "Dashboard" is intentionally absent.
+    title: "Operations Overview",
     url: "/app/operations/dashboard",
     icon: ClipboardList,
     materialIcon: "engineering",
@@ -229,12 +241,19 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
   const [location] = useLocation();
   const { associations, activeAssociationId, activeAssociationName } = useActiveAssociation();
   const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
-  const visibleOverview = filterModules(
-    singleAssociationBoardExperience
-      ? overviewModules.filter((module) => module.url !== "/app/portfolio" && module.url !== "/app/associations")
-      : overviewModules,
-    adminRole,
-  );
+  // [0.1 AC 6 + AC 8] For single-association board users, hide both the
+  // "Associations" peer entry and the "Portfolio Health" child of Home — these
+  // users are redirected from /app/portfolio to /app (see App.tsx), so the link
+  // shouldn't appear. The Home parent itself remains visible.
+  const overviewSource = singleAssociationBoardExperience
+    ? overviewModules
+        .filter((module) => module.url !== "/app/associations")
+        .map((module) => ({
+          ...module,
+          children: module.children?.filter((child) => child.url !== "/app/portfolio"),
+        }))
+    : overviewModules;
+  const visibleOverview = filterModules(overviewSource, adminRole);
   const visibleAssociation = filterModules(associationModules, adminRole);
   const visiblePlatform = filterModules(platformModules, adminRole);
 
@@ -290,7 +309,11 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {/* Overview: Dashboard, Portfolio, Associations */}
+        {/* Overview: Home (+ Portfolio Health as subordinate), Associations
+            [0.1 AC 6] Portfolio Health renders as a persistent indented child of
+            Home so its subordination is visible even when Home is not the active
+            route — the nav hierarchy is conveyed structurally rather than being
+            gated on active-state reveal. */}
         <SidebarGroup>
           <SidebarGroupLabel className="label-caps text-muted-foreground/70">Overview</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -314,6 +337,23 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
                         <span className="font-body text-sm tracking-tight">{module.title}</span>
                       </Link>
                     </SidebarMenuButton>
+                    {module.children?.length ? (
+                      <SidebarMenuSub>
+                        {module.children.map((child) => (
+                          <SidebarMenuSubItem key={child.title}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={isLinkActive(location, child)}
+                            >
+                              <Link href={child.url} data-testid={`link-nav-${child.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                                <span className="material-symbols-outlined text-[16px]">{child.materialIcon}</span>
+                                <span className="font-body text-sm tracking-tight">{child.title}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    ) : null}
                   </SidebarMenuItem>
                 );
               })}

@@ -1,3 +1,5 @@
+// zone: Home
+// persona: Owner
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AnnualGovernanceTask, Association, BoardRole, CommunicationHistory, ContactUpdateRequest, Document, Election, ElectionOption, GovernanceMeeting, MaintenanceRequest, NoticeSend, OwnerLedgerEntry, Person, PortalAccess, Unit, VendorInvoice } from "@shared/schema";
@@ -13,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { OwnerPortalLoginContainer } from "@/components/owner-portal-login-container";
 import { formatPhoneNumber, getPhoneDigits } from "@/lib/phone-formatter";
 
@@ -1130,6 +1133,32 @@ export default function OwnerPortalPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [activeTab]);
+
+  // Per 1.4 route-title artifact rows P1–P7 (2026-04-21): sprinkle useDocumentTitle
+  // on the 7 tab-switched views of this mega-file as an interim measure per 4.2 Q5
+  // lock. Phase 18 (T1 / module 3.5) will supersede when the mega-file decomposes.
+  // Row P1 "Home" vs "My Home" is flagged in the artifact (founder call); default "Home".
+  const tabTitle = useMemo(() => {
+    switch (activeTab) {
+      case "overview":
+        return "Home";
+      case "financials":
+        return "My Finances";
+      case "documents":
+        return "My Documents";
+      case "maintenance":
+        return "My Requests";
+      case "notices":
+        return "Notices";
+      case "communications":
+        return "Messages";
+      case "elections":
+        return "My Ballots";
+      default:
+        return "Home";
+    }
+  }, [activeTab]);
+  useDocumentTitle(tabTitle);
 
   // Detect return from Stripe Checkout (payment or setup)
   useEffect(() => {

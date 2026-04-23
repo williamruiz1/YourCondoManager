@@ -1,3 +1,5 @@
+// zone: Operations
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { AssociationAsset, MaintenanceScheduleInstance, MaintenanceScheduleTemplate, Unit, Vendor } from "@shared/schema";
@@ -14,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { operationsSubPages } from "@/lib/sub-page-nav";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type FrequencyUnit = "month" | "quarter" | "year";
 type TemplateStatus = "active" | "paused" | "archived";
@@ -509,6 +512,7 @@ export function MaintenanceSchedulesContent() {
 }
 
 export default function MaintenanceSchedulesPage() {
+  useDocumentTitle("Maintenance Schedules");
   return (
     <div className="p-6 space-y-6">
       <WorkspacePageHeader

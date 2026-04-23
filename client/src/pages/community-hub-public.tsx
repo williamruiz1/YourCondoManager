@@ -1,3 +1,5 @@
+// zone: My Community
+// persona: Owner
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute } from "wouter";

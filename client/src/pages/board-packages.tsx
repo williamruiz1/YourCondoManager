@@ -1,3 +1,5 @@
+// zone: Governance
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Association, BoardPackage, BoardPackageTemplate } from "@shared/schema";

@@ -1,3 +1,5 @@
+// zone: Governance
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -7,6 +9,7 @@ import { z } from "zod";
 import type { Election, ElectionOption } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -624,6 +627,7 @@ function NominationsSection({ electionId }: { electionId: string }) {
 }
 
 export default function ElectionDetailPage({ id }: { id: string }) {
+  useDocumentTitle("Election Details");
   const [, navigate] = useLocation();
   const { toast } = useToast();
 

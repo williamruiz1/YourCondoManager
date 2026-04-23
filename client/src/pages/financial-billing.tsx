@@ -1,5 +1,8 @@
+// zone: Financials
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { FinancialLedgerContent } from "./financial-ledger";
 import { FinancialAssessmentsContent } from "./financial-assessments";
@@ -7,6 +10,7 @@ import { FinancialLateFeesContent } from "./financial-late-fees";
 import { FinancialDelinquencyContent } from "./financial-delinquency";
 
 export default function FinancialBillingPage() {
+  useDocumentTitle("Billing");
   return (
     <div className="flex flex-col min-h-0">
       <div className="p-6 space-y-6">

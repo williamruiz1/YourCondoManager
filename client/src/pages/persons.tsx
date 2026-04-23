@@ -1,3 +1,5 @@
+// zone: Operations
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -34,6 +36,7 @@ import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import type { ResidentialDatasetPersonDirectoryItem } from "@shared/schema";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -61,6 +64,7 @@ function getStreetAddressLine(address: string | null | undefined) {
 }
 
 export default function PersonsPage() {
+  useDocumentTitle("People");
   const isMobile = useIsMobile();
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);

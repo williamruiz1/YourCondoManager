@@ -1,3 +1,5 @@
+// zone: Operations
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -31,6 +33,7 @@ import {
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const unitFormSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -59,6 +62,7 @@ const buildingFormSchema = z.object({
 });
 
 export default function UnitsPage() {
+  useDocumentTitle("Buildings & Units");
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);

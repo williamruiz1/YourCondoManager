@@ -1,3 +1,5 @@
+// zone: Operations
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useQuery } from "@tanstack/react-query";
 import type { InspectionRecord, MaintenanceScheduleInstance, WorkOrder } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +12,7 @@ import { RecommendedActionsPanel } from "@/components/recommended-actions-panel"
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type OperationsDashboardData = {
   totals: {
@@ -29,6 +32,7 @@ type OperationsDashboardData = {
 };
 
 export default function OperationsDashboardPage() {
+  useDocumentTitle("Operations Overview");
   const isMobile = useIsMobile();
   const { data, isLoading } = useQuery<OperationsDashboardData>({
     queryKey: ["/api/operations/dashboard"],
@@ -94,11 +98,15 @@ export default function OperationsDashboardPage() {
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
+      {/* [0.1 AC 7] Title and breadcrumb read "Operations Overview" — the word
+          "Dashboard" is intentionally absent from this surface per the 0.1
+          decision. The root breadcrumb reads "Home" to match the renamed /app
+          landing page. */}
       <WorkspacePageHeader
-        title="Operations Dashboard"
+        title="Operations Overview"
         summary="Monitor active work, preventive maintenance pressure, vendor risk, and inspection follow-up from one operations view."
         eyebrow="Operations"
-        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Operations Dashboard" }]}
+        breadcrumbs={[{ label: "Home", href: "/app" }, { label: "Operations Overview" }]}
         shortcuts={[
           { label: "Open Work Orders", href: "/app/work-orders" },
           { label: "Open Vendors", href: "/app/vendors" },

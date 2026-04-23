@@ -1,3 +1,5 @@
+// zone: Platform
+// persona: Manager, Board Officer, Assisted Board, PM Assistant, Platform Admin
 import { useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -10,6 +12,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type FaqItem = {
   question: string;
@@ -152,6 +155,7 @@ const faqCategories: FaqCategory[] = [
 ];
 
 export default function HelpCenterPage() {
+  useDocumentTitle("Help Center");
   const [search, setSearch] = useState("");
 
   const filteredCategories = faqCategories

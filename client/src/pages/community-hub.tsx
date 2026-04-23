@@ -1,3 +1,5 @@
+// zone: Communications
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -19,6 +21,7 @@ import {
   Plus, Trash2, ExternalLink, Globe, Settings, FileText, MapPin, Link2,
   Bell, GripVertical, ChevronUp, ChevronDown, Eye, EyeOff, Calendar, Pin, Building2, Home
 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type HubConfig = {
   id: string;
@@ -94,6 +97,7 @@ const SECTION_LABELS: Record<string, string> = {
 const ALL_SECTIONS = ["notices", "quick-actions", "info-blocks", "buildings", "map", "contacts"];
 
 export default function CommunityHubPage() {
+  useDocumentTitle("Community Hub");
   const { toast } = useToast();
   const { activeAssociation } = useActiveAssociation();
   const associationId = activeAssociation?.id;
