@@ -18,6 +18,20 @@
 //   - BOARD_SHUNT_ACTIVE:   introduced Phase 13 dark-launch (default ON), flipped
 //                           OFF via follow-up PR after one clean release cycle,
 //                           then removed entirely.
+//   - ASSESSMENT_EXECUTION_UNIFIED: introduced Wave 7 (default OFF); gates the
+//                           unified assessment-execution orchestrator
+//                           (server/assessment-execution.ts). While OFF the
+//                           orchestrator runs in SHADOW-WRITE dry-run mode only
+//                           (writes assessment_run_log rows with status =
+//                           'deferred'; does NOT write owner_ledger_entries and
+//                           emits no customer-visible side effects). The legacy
+//                           functions (runDueRecurringCharges,
+//                           processSpecialAssessmentInstallments) continue to own
+//                           real posting. When flipped ON (globally or per
+//                           association) the orchestrator takes over real posting
+//                           for that scope and the legacy functions skip that
+//                           association. Supports per-association override via
+//                           FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_<associationId>.
 //
 // Do NOT wire this helper into existing code yet. Phase 8a is the first consumer.
 
@@ -36,7 +50,11 @@ export type FeatureFlagKey =
   // Phase 13 dark-launch — default ON; when flipped OFF, board-officer /
   // assisted-board sessions fall through to WorkspaceShell + AppSidebar
   // instead of the shunt at client/src/App.tsx:1051-1057.
-  | "BOARD_SHUNT_ACTIVE";
+  | "BOARD_SHUNT_ACTIVE"
+  // Wave 7 (4.3 Q3) — default OFF; gates the unified assessment-execution
+  // orchestrator. Per-association override supported via
+  // getFeatureFlagForAssociation().
+  | "ASSESSMENT_EXECUTION_UNIFIED";
 
 /**
  * Compile-time defaults. Used when no env override is present.
@@ -44,6 +62,7 @@ export type FeatureFlagKey =
 const DEFAULTS: Record<FeatureFlagKey, boolean> = {
   PORTAL_ROLE_COLLAPSE: false,
   BOARD_SHUNT_ACTIVE: true,
+  ASSESSMENT_EXECUTION_UNIFIED: false,
 };
 
 /**
@@ -103,6 +122,36 @@ export function getFeatureFlag(key: FeatureFlagKey): boolean {
   if (fromVite === "false") return false;
 
   return DEFAULTS[key];
+}
+
+/**
+ * Per-association feature-flag resolution.
+ *
+ * Precedence (first explicit "true"/"false" wins, otherwise fall through):
+ *   1. process.env.FEATURE_FLAG_<KEY>_<ASSOCIATION_ID>     (per-association)
+ *   2. process.env.FEATURE_FLAG_<KEY>                      (global server)
+ *   3. import.meta.env.VITE_FEATURE_FLAG_<KEY>             (client bundle)
+ *   4. DEFAULTS[key]
+ *
+ * Association IDs are uuids containing hyphens; env-var names uppercase the
+ * key and replace `-` with `_` in the association id, matching existing
+ * docs/infra conventions.
+ *
+ * Use this for flags that support per-association rollout (e.g.
+ * ASSESSMENT_EXECUTION_UNIFIED). For global-only flags, use getFeatureFlag.
+ */
+export function getFeatureFlagForAssociation(
+  key: FeatureFlagKey,
+  associationId: string,
+): boolean {
+  const safeId = (associationId ?? "").replace(/-/g, "_").toUpperCase();
+  if (safeId) {
+    const perAssociationEnvKey = `FEATURE_FLAG_${key}_${safeId}`;
+    const perAssociationValue = readProcessEnv(perAssociationEnvKey);
+    if (perAssociationValue === "true") return true;
+    if (perAssociationValue === "false") return false;
+  }
+  return getFeatureFlag(key);
 }
 
 /**

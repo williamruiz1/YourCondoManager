@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp, pgEnum, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, pgEnum, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -681,6 +681,47 @@ export const recurringChargeRuns = pgTable("recurring_charge_runs", {
 export type RecurringChargeRun = typeof recurringChargeRuns.$inferSelect;
 export type InsertRecurringChargeRun = typeof recurringChargeRuns.$inferInsert;
 export const insertRecurringChargeRunSchema = createInsertSchema(recurringChargeRuns);
+
+// 4.3 Q3 Wave 7 — Unified assessment-execution run log.
+// Canonical audit trail for the assessment orchestrator
+// (server/assessment-execution.ts). Written by both the recurring-charge and
+// special-assessment handlers via the orchestrator. See
+// docs/projects/platform-overhaul/decisions/4.3-recurring-assessment-rules-engine.md#q3.
+export const assessmentRuleTypeEnum = pgEnum("assessment_rule_type_enum", [
+  "recurring",
+  "special-assessment",
+]);
+export const assessmentRunStatusEnum = pgEnum("assessment_run_status_enum", [
+  "success",
+  "failed",
+  "retrying",
+  "skipped",
+  "deferred",
+]);
+export const assessmentRunLog = pgTable("assessment_run_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  ruleType: assessmentRuleTypeEnum("rule_type").notNull(),
+  ruleId: varchar("rule_id").notNull(),
+  unitId: varchar("unit_id"),
+  runStartedAt: timestamp("run_started_at").defaultNow().notNull(),
+  runCompletedAt: timestamp("run_completed_at"),
+  status: assessmentRunStatusEnum("status").notNull(),
+  amount: real("amount"),
+  ledgerEntryId: varchar("ledger_entry_id"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  retryAttempt: integer("retry_attempt").notNull().default(0),
+}, (table) => ({
+  assessmentRunLogAssociationIdx: index("assessment_run_log_association_idx")
+    .on(table.associationId),
+  assessmentRunLogRuleIdx: index("assessment_run_log_rule_idx")
+    .on(table.ruleType, table.ruleId),
+  assessmentRunLogStartedAtIdx: index("assessment_run_log_started_at_idx")
+    .on(table.runStartedAt),
+}));
+export type AssessmentRunLogRow = typeof assessmentRunLog.$inferSelect;
+export type InsertAssessmentRunLogRow = typeof assessmentRunLog.$inferInsert;
 
 export const meetingStatusEnum = pgEnum("meeting_status", ["scheduled", "in-progress", "completed", "cancelled"]);
 export const meetingSummaryStatusEnum = pgEnum("meeting_summary_status", ["draft", "published"]);
