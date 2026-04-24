@@ -201,6 +201,7 @@ import {
   insertDelinquencySettingsSchema,
   delinquencyNotices,
   autopayEnrollments,
+  alertReadStates,
 } from "@shared/schema";
 import {
   ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE,
@@ -1507,6 +1508,95 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         res.status(500).json({ message: error.message });
       }
     },
+  );
+
+  // -------------------------------------------------------------------------
+  // 4.1 Wave 3 — read-state mutations (Q7).
+  // POST /api/alerts/:alertId/read     — mark the alert as seen (readAt)
+  // POST /api/alerts/:alertId/dismiss  — explicitly dismiss (dismissedAt)
+  //
+  // Both endpoints upsert into `alertReadStates` keyed on
+  // (alertId, adminUserId) so read/dismiss state is per-user. The
+  // `canAccessAlert` predicate (server/alerts/can-access-alert.ts) is
+  // applied against the alertId's implicit featureDomain — clients cannot
+  // mark/dismiss alerts for feature domains their persona does not see.
+  //
+  // After any write we call `invalidateAlertCache()` so the next GET
+  // returns fresh read-state (the 60s aggregation cache would otherwise
+  // serve stale unread counts to the UI).
+  // -------------------------------------------------------------------------
+  const alertMutationRoleGate = requireAdminRole([
+    "platform-admin",
+    "board-officer",
+    "assisted-board",
+    "pm-assistant",
+    "manager",
+    "viewer",
+  ]);
+
+  async function handleAlertReadStateMutation(
+    req: AdminRequest,
+    res: Response,
+    field: "read" | "dismiss",
+  ) {
+    try {
+      const { alertId } = req.params;
+      if (!alertId || typeof alertId !== "string") {
+        return res.status(400).json({ message: "alertId is required" });
+      }
+
+      const { canAccessAlert } = await import("./alerts/can-access-alert");
+      const { parseAlertId, RULE_TYPE_FEATURE_DOMAIN } = await import("./alerts/types");
+      const { invalidateAlertCache } = await import("./alerts");
+
+      const parsed = parseAlertId(alertId);
+      if (!parsed) {
+        return res.status(404).json({ message: "Alert not found" });
+      }
+      const featureDomain = RULE_TYPE_FEATURE_DOMAIN[parsed.ruleType];
+      if (!canAccessAlert(req.adminRole!, featureDomain, {})) {
+        return res.status(403).json({
+          message: "You do not have access to this alert",
+          code: "ALERT_FEATURE_DOMAIN_FORBIDDEN",
+        });
+      }
+
+      const now = new Date();
+      const insertValues =
+        field === "read"
+          ? { alertId, adminUserId: req.adminUserId!, readAt: now, dismissedAt: null }
+          : { alertId, adminUserId: req.adminUserId!, readAt: null, dismissedAt: now };
+      const updateSet =
+        field === "read" ? { readAt: now } : { dismissedAt: now };
+
+      await db
+        .insert(alertReadStates)
+        .values(insertValues)
+        .onConflictDoUpdate({
+          target: [alertReadStates.alertId, alertReadStates.adminUserId],
+          set: updateSet,
+        });
+
+      invalidateAlertCache();
+      return res.json({ alertId, [`${field}At`]: now.toISOString() });
+    } catch (error: any) {
+      console.error(`[alerts][${field}][error]`, error);
+      return res.status(500).json({ message: error.message });
+    }
+  }
+
+  app.post(
+    "/api/alerts/:alertId/read",
+    requireAdmin,
+    alertMutationRoleGate,
+    async (req: AdminRequest, res) => handleAlertReadStateMutation(req, res, "read"),
+  );
+
+  app.post(
+    "/api/alerts/:alertId/dismiss",
+    requireAdmin,
+    alertMutationRoleGate,
+    async (req: AdminRequest, res) => handleAlertReadStateMutation(req, res, "dismiss"),
   );
 
   app.get("/api/portfolio/summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
