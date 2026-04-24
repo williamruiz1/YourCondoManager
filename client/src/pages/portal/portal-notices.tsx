@@ -15,11 +15,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { Mail, Megaphone, Vote } from "lucide-react";
 import type { CommunicationHistory } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/empty-state";
+import { ErrorState } from "@/components/error-state";
 import { PortalShell, usePortalContext } from "./portal-shell";
 
 type NoticeEntry = {
@@ -63,11 +66,12 @@ function NoticesSection({
 
   if (notices.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center text-sm text-on-surface-variant">
-          No notices right now. You're all caught up.
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={Megaphone}
+        title="No notices right now"
+        description="You're all caught up. Announcements from your manager will show here."
+        testId="portal-notices-empty"
+      />
     );
   }
 
@@ -137,11 +141,12 @@ function ElectionsSection({
   return (
     <div className="space-y-4" data-testid="portal-notices-elections">
       {active.length === 0 && history.length === 0 ? (
-        <Card>
-          <CardContent className="py-6 text-sm text-on-surface-variant">
-            No elections or ballots right now.
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Vote}
+          title="No elections or ballots"
+          description="Active ballots and voting history will show here."
+          testId="portal-notices-ballots-empty"
+        />
       ) : null}
 
       {active.length > 0 ? (
@@ -209,11 +214,12 @@ function ElectionsSection({
 function MessagesSection({ messages }: { messages: CommunicationHistory[] }) {
   if (messages.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-6 text-sm text-on-surface-variant" data-testid="portal-notices-messages-empty">
-          No messages yet.
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={Mail}
+        title="No messages yet"
+        description="Direct messages from your manager will appear here."
+        testId="portal-notices-messages-empty"
+      />
     );
   }
 
@@ -249,11 +255,15 @@ function MessagesSection({ messages }: { messages: CommunicationHistory[] }) {
 function NoticesContent() {
   const { portalAccessId, portalFetch, session } = usePortalContext();
 
-  const { data: notices = [] } = useQuery<NoticeEntry[]>({
+  const {
+    data: notices = [],
+    error: noticesError,
+    refetch: refetchNotices,
+  } = useQuery<NoticeEntry[]>({
     queryKey: ["portal/notices", session.id],
     queryFn: async () => {
       const res = await portalFetch("/api/portal/notices");
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
   });
@@ -334,7 +344,17 @@ function NoticesContent() {
           <TabsTrigger value="messages">Messages</TabsTrigger>
         </TabsList>
         <TabsContent value="notices" className="mt-4">
-          <NoticesSection notices={notices} readIds={readIds} markAsRead={markAsRead} />
+          {noticesError ? (
+            <ErrorState
+              title="Couldn't load notices"
+              description="We hit an error loading association notices. Try again or refresh the page."
+              retry={() => refetchNotices()}
+              details={noticesError instanceof Error ? noticesError.message : undefined}
+              testId="portal-notices-error"
+            />
+          ) : (
+            <NoticesSection notices={notices} readIds={readIds} markAsRead={markAsRead} />
+          )}
         </TabsContent>
         <TabsContent value="ballots" className="mt-4">
           <ElectionsSection electionHistory={electionHistory} activeElections={activeElections} />

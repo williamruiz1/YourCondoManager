@@ -11,6 +11,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MaintenanceRequest } from "@shared/schema";
+import { Inbox as InboxIcon } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyState } from "@/components/empty-state";
+import { ErrorState } from "@/components/error-state";
 import { PortalShell, usePortalContext } from "./portal-shell";
 
 const CATEGORIES = ["general", "plumbing", "electrical", "hvac", "common-area", "security", "other"];
@@ -52,11 +55,15 @@ function RequestsHubContent() {
   const [category, setCategory] = useState("general");
   const [priority, setPriority] = useState("medium");
 
-  const { data: requests = [] } = useQuery<MaintenanceRequest[]>({
+  const {
+    data: requests = [],
+    error: requestsError,
+    refetch: refetchRequests,
+  } = useQuery<MaintenanceRequest[]>({
     queryKey: ["portal/maintenance-requests", session.id],
     queryFn: async () => {
       const res = await portalFetch("/api/portal/maintenance-requests");
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
   });
@@ -158,12 +165,21 @@ function RequestsHubContent() {
 
       <section data-testid="portal-requests-open">
         <h2 className="mb-3 font-headline text-lg">Open ({open.length})</h2>
-        {open.length === 0 ? (
-          <Card>
-            <CardContent className="py-6 text-sm text-on-surface-variant">
-              No open requests. When you submit one it will show here.
-            </CardContent>
-          </Card>
+        {requestsError ? (
+          <ErrorState
+            title="Couldn't load your requests"
+            description="We hit an error loading your maintenance requests. Try again or refresh the page."
+            retry={() => refetchRequests()}
+            details={requestsError instanceof Error ? requestsError.message : undefined}
+            testId="portal-requests-error"
+          />
+        ) : open.length === 0 ? (
+          <EmptyState
+            icon={InboxIcon}
+            title="No open requests"
+            description="When you submit a maintenance or community request it will show up here."
+            testId="portal-requests-empty-open"
+          />
         ) : (
           <div className="space-y-2">
             {open.map((r) => (

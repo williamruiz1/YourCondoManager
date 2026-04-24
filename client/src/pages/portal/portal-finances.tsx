@@ -13,6 +13,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Receipt } from "lucide-react";
 import type { OwnerLedgerEntry } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/empty-state";
 import { PortalAssessmentDetailDialog } from "@/components/portal-assessment-detail-dialog";
 import { PortalShell, usePortalContext } from "./portal-shell";
 
@@ -467,42 +469,53 @@ function LedgerContent() {
           </button>
         ))}
       </div>
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
+      {ledger.length === 0 ? (
+        <EmptyState
+          icon={Receipt}
+          title="No transactions yet"
+          description="Charges, assessments, payments, and adjustments will appear here once your account has activity."
+          testId="portal-finances-ledger-empty"
+        />
+      ) : (
+        <Card>
+          {/* 5.3 — table scrolls horizontally on narrow screens rather
+              than bursting the container at 375px. */}
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="py-6 text-center text-sm text-on-surface-variant">
-                    No ledger entries match this filter.
-                  </TableCell>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
-              ) : (
-                filtered.map((entry) => (
-                  <TableRow key={entry.id} data-testid={`ledger-row-${entry.id}`}>
-                    <TableCell className="text-xs">
-                      {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="py-6 text-center text-sm text-on-surface-variant">
+                      No ledger entries match this filter.
                     </TableCell>
-                    <TableCell className="text-xs">
-                      <Badge variant="outline">{entry.entryType.replace(/-/g, " ")}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
-                    <TableCell className="text-right text-xs">${Number(entry.amount).toFixed(2)}</TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                ) : (
+                  filtered.map((entry) => (
+                    <TableRow key={entry.id} data-testid={`ledger-row-${entry.id}`}>
+                      <TableCell className="text-xs">
+                        {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <Badge variant="outline">{entry.entryType.replace(/-/g, " ")}</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
+                      <TableCell className="text-right text-xs">${Number(entry.amount).toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
