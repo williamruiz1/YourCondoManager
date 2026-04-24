@@ -38,6 +38,19 @@ describe("breadcrumb-paths: getBreadcrumbTrail", () => {
     expect(trail[1].href).toBeUndefined();
   });
 
+  it("seeds /app/communications/inbox as Communications > Inbox (4.1 Wave 4)", () => {
+    // 4.1 Q4 (2026-04-21): central inbox lives under Communications zone
+    // (`/app/communications/inbox`). Canonical trail is portfolio-scoped
+    // leaf `Communications > Inbox` — zone label as root (linked to the
+    // Communications hub) and the page title as the non-linked leaf.
+    const trail = getBreadcrumbTrail("/app/communications/inbox");
+    expect(trail).toHaveLength(2);
+    expect(trail[0].label).toBe("Communications");
+    expect(trail[0].href).toBe("/app/communications");
+    expect(trail[1].label).toBe("Inbox");
+    expect(trail[1].href).toBeUndefined();
+  });
+
   it("seeds /app/portfolio with Home as the zone-label root (1.3 Q1 amendment 2026-04-23)", () => {
     // Per 1.3 Q1 as amended 2026-04-23, "Home" is permitted as a
     // breadcrumb root when it is the Home-zone label per 1.1 Q3.
