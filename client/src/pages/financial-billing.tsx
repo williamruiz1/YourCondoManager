@@ -4,7 +4,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { financeSubPages } from "@/lib/sub-page-nav";
-import { AssessmentRulesBanner } from "@/components/assessment-rules-banner";
 import { FinancialLedgerContent } from "./financial-ledger";
 import { FinancialAssessmentsContent } from "./financial-assessments";
 import { FinancialLateFeesContent } from "./financial-late-fees";
@@ -22,7 +21,6 @@ export default function FinancialBillingPage() {
           breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Billing" }]}
           subPages={financeSubPages}
         />
-        <AssessmentRulesBanner />
         <Tabs defaultValue="ledger" className="space-y-6">
           <TabsList>
             <TabsTrigger value="ledger">Owner Ledger</TabsTrigger>

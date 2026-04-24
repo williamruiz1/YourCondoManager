@@ -14,7 +14,6 @@ import {
   sendDirectAdminEmailNotification,
   sendPlatformAdminEmailNotification,
 } from "./admin-notification-service";
-import { processSpecialAssessmentInstallments } from "./assessment-installments";
 import { compareShadowRuns } from "./assessment-execution-parity";
 import { runOnDemand as runAssessmentOnDemand, type AssessmentRuleType } from "./assessment-execution";
 import {
@@ -1141,24 +1140,6 @@ async function requirePortal(req: PortalRequest, res: Response, next: NextFuncti
   req.portalEffectiveRole = effectiveRole;
   await storage.touchPortalAccessLogin(access.id);
   return next();
-}
-
-/**
- * @deprecated Phase 8b — use `requireBoardAccess` from
- * `./portal-role-collapse` instead. This wrapper is retained for one release
- * cycle so external smoke scripts that grep the server bundle for
- * `requirePortalBoard` keep passing; scheduled for deletion in Phase 5.1.
- */
-function requirePortalBoard(req: PortalRequest, res: Response, next: NextFunction) {
-  return requireBoardAccess(req, res, next);
-}
-
-/**
- * @deprecated Phase 8b — use `requireBoardAccessReadOnly` from
- * `./portal-role-collapse` instead. Scheduled for deletion in Phase 5.1.
- */
-function requirePortalBoardReadOnly(req: PortalRequest, res: Response, next: NextFunction) {
-  return requireBoardAccessReadOnly(req, res, next);
 }
 
 async function getOwnedPortalUnitsForAssociation(input: {
@@ -3429,7 +3410,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createSpecialAssessment(parsed);
       if (result.isActive === 1 && result.autoPostEnabled === 1) {
-        await processSpecialAssessmentInstallments(result.associationId, { assessmentId: result.id });
+        await runAssessmentOnDemand({
+          ruleType: "special-assessment",
+          ruleId: result.id,
+          associationId: result.associationId,
+        });
       }
       res.status(201).json(result);
 
@@ -3464,7 +3449,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.updateSpecialAssessment(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Assessment not found" });
       if (result.isActive === 1 && result.autoPostEnabled === 1) {
-        await processSpecialAssessmentInstallments(result.associationId, { assessmentId: result.id });
+        await runAssessmentOnDemand({
+          ruleType: "special-assessment",
+          ruleId: result.id,
+          associationId: result.associationId,
+        });
       }
       res.json(result);
 
@@ -3481,27 +3470,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           metadata: { assessmentId: result.id, associationId: result.associationId },
         },
       }).catch((error) => console.error("[assessments] Failed to send assessment update notification:", error));
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  /**
-   * @deprecated 4.3 Q8 — Shim. Use `POST /api/financial/rules/:ruleId/run` instead.
-   * Retained for one release cycle; retires in 5.1. The shim still routes through
-   * the legacy `processSpecialAssessmentInstallments` (which Wave 7 left intact)
-   * so ledger semantics are unchanged. The new unified endpoint dispatches
-   * through `server/assessment-execution.ts`'s orchestrator per-rule.
-   */
-  app.post("/api/financial/assessments/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
-    try {
-      const associationId = typeof req.body?.associationId === "string" ? req.body.associationId : "";
-      if (!associationId) return res.status(400).json({ message: "associationId is required" });
-      assertAssociationInputScope(req, associationId);
-      res.setHeader("Deprecation", "true");
-      res.setHeader("Link", "</api/financial/rules/:ruleId/run>; rel=\"successor-version\"");
-      const summary = await processSpecialAssessmentInstallments(associationId);
-      res.json(summary);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -4234,109 +4202,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const updates = insertRecurringChargeScheduleSchema.partial().parse(req.body);
       const [result] = await db.update(recurringChargeSchedules).set({ ...updates, updatedAt: new Date() }).where(eq(recurringChargeSchedules.id, id)).returning();
       res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  // Run due recurring charges — processes all active schedules for an association whose nextRunDate <= now
-  /**
-   * @deprecated 4.3 Q8 — Shim. Use `POST /api/financial/rules/:ruleId/run` instead.
-   * Retained for one release cycle; retires in 5.1. This path still runs the
-   * legacy per-schedule poster for ledger semantics parity. The new unified
-   * endpoint dispatches per-rule through `server/assessment-execution.ts`.
-   */
-  app.post("/api/financial/recurring-charges/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
-    try {
-      const { associationId } = req.body as { associationId: string };
-      if (!associationId) return res.status(400).json({ message: "associationId is required" });
-      assertAssociationInputScope(req, associationId);
-
-      res.setHeader("Deprecation", "true");
-      res.setHeader("Link", "</api/financial/rules/:ruleId/run>; rel=\"successor-version\"");
-
-      const now = new Date();
-      const due = await db.select().from(recurringChargeSchedules).where(
-        and(
-          eq(recurringChargeSchedules.associationId, associationId),
-          eq(recurringChargeSchedules.status, "active"),
-        )
-      );
-      const dueNow = due.filter(s => !s.nextRunDate || new Date(s.nextRunDate) <= now);
-
-      let succeeded = 0;
-      let failed = 0;
-      const runIds: string[] = [];
-
-      for (const schedule of dueNow) {
-        // Determine which units to charge — if unitId set, just that unit; else all units in association
-        let targetUnitIds: string[] = [];
-        if (schedule.unitId) {
-          targetUnitIds = [schedule.unitId];
-        } else {
-          const assocUnits = await db.select({ id: units.id }).from(units).where(eq(units.associationId, associationId));
-          targetUnitIds = assocUnits.map(u => u.id);
-        }
-
-        for (const unitId of targetUnitIds) {
-          // Find the primary person for this unit via ownership
-          const [ownership] = await db.select().from(ownerships).where(eq(ownerships.unitId, unitId)).limit(1);
-
-          // Create a run record
-          const [run] = await db.insert(recurringChargeRuns).values({
-            scheduleId: schedule.id,
-            associationId,
-            unitId,
-            amount: schedule.amount,
-            status: "pending",
-            ranAt: now,
-          }).returning();
-
-          if (!ownership) {
-            // No owner — skip but record
-            await db.update(recurringChargeRuns).set({ status: "skipped", errorMessage: "No active ownership found for unit" }).where(eq(recurringChargeRuns.id, run.id));
-            failed++;
-            runIds.push(run.id);
-            continue;
-          }
-
-          try {
-            // Create ledger entry
-            const [entry] = await db.insert(ownerLedgerEntries).values({
-              associationId,
-              unitId,
-              personId: ownership.personId,
-              entryType: schedule.entryType,
-              amount: schedule.amount,
-              postedAt: now,
-              description: schedule.chargeDescription,
-              referenceType: "recurring_charge_schedule",
-              referenceId: schedule.id,
-            }).returning();
-            await db.update(recurringChargeRuns).set({ status: "success", ledgerEntryId: entry.id }).where(eq(recurringChargeRuns.id, run.id));
-            succeeded++;
-          } catch (err: any) {
-            await db.update(recurringChargeRuns).set({
-              status: "failed",
-              errorMessage: err.message,
-              retryCount: 0,
-              nextRetryAt: new Date(now.getTime() + 24 * 60 * 60 * 1000), // retry in 24h
-            }).where(eq(recurringChargeRuns.id, run.id));
-            failed++;
-          }
-          runIds.push(run.id);
-        }
-
-        // Advance nextRunDate
-        const nextRunDate = new Date(now);
-        if (schedule.frequency === "monthly") nextRunDate.setMonth(nextRunDate.getMonth() + 1);
-        else if (schedule.frequency === "quarterly") nextRunDate.setMonth(nextRunDate.getMonth() + 3);
-        else if (schedule.frequency === "annual") nextRunDate.setFullYear(nextRunDate.getFullYear() + 1);
-        nextRunDate.setDate(schedule.dayOfMonth ?? 1);
-        await db.update(recurringChargeSchedules).set({ nextRunDate, updatedAt: new Date() }).where(eq(recurringChargeSchedules.id, schedule.id));
-      }
-
-      res.json({ succeeded, failed, totalSchedulesDue: dueNow.length, runIds });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }

@@ -28,8 +28,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie,
 } from "recharts";
+import type { AdminRole } from "@shared/schema";
 
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 type AuthSession = { authenticated: boolean; admin?: { role: AdminRole } | null };
 
 type TokenDetail = {

@@ -1,19 +1,18 @@
 /**
- * Wave 7 — Shadow-write parity window unit test (4.3 Q3).
+ * Wave 7 — orchestrator shadow-write semantics (4.3 Q3).
+ *
+ * Wave 12 (Phase 5.1 cleanup) flipped ASSESSMENT_EXECUTION_UNIFIED to default
+ * ON and retired the legacy per-subsystem posters. The `dryRun` mode of the
+ * orchestrator survives as a debugging mechanism; it is exercised here via
+ * `runShadowWriteForSweep` which invokes `runSweep({ dryRun: true })`.
  *
  * What this covers:
- *   - ASSESSMENT_EXECUTION_UNIFIED defaults OFF (asserted in feature-flags test
- *     as well; we re-verify the orchestrator-side consequence here).
- *   - With the flag OFF, runShadowWriteForSweep performs shadow-write only:
+ *   - runShadowWriteForSweep performs shadow-write only (dryRun=true):
  *     NO ownerLedgerEntries inserts, run-log rows are written with
  *     status='deferred'.
- *   - isUnifiedAssessmentExecutionEnabled returns false globally when no env
- *     override is set, and flips per-association when the scoped env var is
- *     set.
- *
- * Spec:
- *   docs/projects/platform-overhaul/decisions/4.3-recurring-assessment-rules-engine.md
- *   — Q3 Acceptance Criteria: shadow-write parity test.
+ *   - isUnifiedAssessmentExecutionEnabled returns true globally when no env
+ *     override is set (Wave 12 default), and can be flipped OFF for a single
+ *     association via the scoped env var.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,27 +76,27 @@ afterEach(() => {
   }
 });
 
-describe("shadow-write parity window — flag gating", () => {
-  it("defaults OFF globally (isUnifiedAssessmentExecutionEnabled returns false)", () => {
-    expect(isUnifiedAssessmentExecutionEnabled("any-assoc")).toBe(false);
+describe("assessment-execution flag gating (Wave 12 default ON)", () => {
+  it("defaults ON globally (isUnifiedAssessmentExecutionEnabled returns true)", () => {
+    expect(isUnifiedAssessmentExecutionEnabled("any-assoc")).toBe(true);
   });
 
-  it("per-association override flips only that association", () => {
+  it("per-association OFF override flips only that association", () => {
     // Uuids are dash-separated; the env-var translation upper-cases and
     // replaces dashes with underscores (see shared/feature-flags.ts).
     const id = "assoc-abc-1";
     const envKey = `FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_${id
       .replace(/-/g, "_")
       .toUpperCase()}`;
-    process.env[envKey] = "true";
-    expect(isUnifiedAssessmentExecutionEnabled(id)).toBe(true);
-    expect(isUnifiedAssessmentExecutionEnabled("other-assoc")).toBe(false);
+    process.env[envKey] = "false";
+    expect(isUnifiedAssessmentExecutionEnabled(id)).toBe(false);
+    expect(isUnifiedAssessmentExecutionEnabled("other-assoc")).toBe(true);
   });
 
-  it("global flag override flips all associations", () => {
-    process.env.FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED = "true";
-    expect(isUnifiedAssessmentExecutionEnabled("a")).toBe(true);
-    expect(isUnifiedAssessmentExecutionEnabled("b")).toBe(true);
+  it("global flag OFF override flips all associations off", () => {
+    process.env.FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED = "false";
+    expect(isUnifiedAssessmentExecutionEnabled("a")).toBe(false);
+    expect(isUnifiedAssessmentExecutionEnabled("b")).toBe(false);
   });
 });
 

@@ -5,7 +5,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import type { AiExtractedRecord, AnnualGovernanceTask, Association, CalendarEvent, GovernanceComplianceTemplate, GovernanceTemplateItem, Person } from "@shared/schema";
+import type { AdminRole, AiExtractedRecord, AnnualGovernanceTask, Association, CalendarEvent, GovernanceComplianceTemplate, GovernanceTemplateItem, Person } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,8 +33,6 @@ function downloadCsv(rows: string[][], filename: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
-
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 type AuthSession = {
   authenticated: boolean;

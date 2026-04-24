@@ -134,7 +134,7 @@ async function verifyCodeCoverage() {
   assertCheck(routes.includes('"/api/portal/financial-dashboard"'), "missing portal financial-dashboard route");
   assertCheck(routes.includes('"/api/portal/elections"'), "missing portal elections route");
   assertCheck(routes.includes('"/api/portal/maintenance-requests"'), "missing portal maintenance-requests route");
-  assertCheck(routes.includes("requirePortalBoard"), "missing board route guard");
+  assertCheck(routes.includes("requireBoardAccess"), "missing board route guard");
   assertCheck(routes.includes("resolvePortalAccessContext"), "missing portal access resolution");
   assertCheck(routes.includes("getOwnedPortalUnitsForAssociation"), "missing owned-unit resolver");
 }

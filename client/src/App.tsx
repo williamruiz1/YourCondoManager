@@ -31,6 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useUserSettings, applyTheme, setAdminIdForSettings, formatSettingsDate } from "@/hooks/use-user-settings";
 import { TrialBanner } from "@/components/trial-banner";
 import { SubscriptionLockScreen } from "@/components/subscription-lock-screen";
+import type { AdminRole } from "@shared/schema";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const SolutionsPage = lazy(() => import("@/pages/solutions"));
@@ -98,8 +99,6 @@ const FinancialsHubPage = lazy(() => import("@/pages/hubs/financials-hub"));
 const OperationsHubPage = lazy(() => import("@/pages/hubs/operations-hub"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const AdminContextualFeedbackWidget = lazy(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })));
-
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 type AuthSession = {
   authenticated: boolean;
