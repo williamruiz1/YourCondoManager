@@ -17,6 +17,7 @@ import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { OwnerPortalLoginContainer } from "@/components/owner-portal-login-container";
+import { PortalAssessmentDetailDialog } from "@/components/portal-assessment-detail-dialog";
 import { formatPhoneNumber, getPhoneDigits } from "@/lib/phone-formatter";
 
 const maintenanceCategories = ["general", "plumbing", "electrical", "hvac", "common-area", "security", "other"];
@@ -163,6 +164,17 @@ type FinancialDashboard = {
   lastPaymentDate?: string;
   totalCharges: number;
   totalPayments: number;
+  // 4.3 Q5 — upcoming special-assessment installments affecting this owner.
+  specialAssessmentUpcomingInstallments?: Array<{
+    assessmentId: string;
+    assessmentName: string;
+    installmentNumber: number;
+    installmentAmount: number;
+    dueDate: string;
+    remainingInstallments: number;
+    allocationMethod: string;
+    allocationReason: string;
+  }>;
 };
 
 function formatStatusLabel(status: string): string {
@@ -204,6 +216,11 @@ export default function OwnerPortalPage() {
       },
     });
   };
+
+  // 4.3 Q5 — selected assessment for the drill-in modal. When set, the
+  // PortalAssessmentDetailDialog fetches /api/portal/assessments/:id/detail
+  // and renders the nine required fields per the 4.3 Q5 AC.
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
 
   const [onboardingDismissed, setOnboardingDismissed] = useState<boolean>(() => {
     const saved = window.localStorage.getItem("portal-onboarding-dismissed");
@@ -2364,6 +2381,58 @@ export default function OwnerPortalPage() {
                   </div>
                 </div>
               )}
+
+              {/* 4.3 Q5 — Upcoming special-assessment installments.
+                  Each entry links to the per-assessment drill-in dialog. */}
+              {(financialDashboard?.specialAssessmentUpcomingInstallments?.length ?? 0) > 0 && (
+                <div
+                  className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10"
+                  data-testid="portal-upcoming-assessments"
+                >
+                  <h3 className="font-headline text-lg mb-4">Upcoming special assessments</h3>
+                  <ul className="space-y-3">
+                    {financialDashboard?.specialAssessmentUpcomingInstallments?.map((item) => (
+                      <li
+                        key={item.assessmentId}
+                        className="p-3 bg-surface rounded-lg border border-outline-variant/10 flex items-center justify-between gap-3"
+                        data-testid={`upcoming-assessment-${item.assessmentId}`}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{item.assessmentName}</p>
+                          <p className="text-xs text-on-surface-variant">
+                            Installment {item.installmentNumber} · Due{" "}
+                            {new Date(item.dueDate).toLocaleDateString()} ·{" "}
+                            {item.remainingInstallments} remaining
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <p className="font-bold tabular-nums">
+                            ${item.installmentAmount.toFixed(2)}
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedAssessmentId(item.assessmentId)}
+                            data-testid={`upcoming-assessment-detail-${item.assessmentId}`}
+                          >
+                            View detail
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* 4.3 Q5 — Assessment detail drill-in dialog. */}
+              <PortalAssessmentDetailDialog
+                open={selectedAssessmentId !== null}
+                onOpenChange={(open) => {
+                  if (!open) setSelectedAssessmentId(null);
+                }}
+                assessmentId={selectedAssessmentId}
+                portalFetch={portalFetch}
+              />
 
               {/* Unit Selector for Multi-Unit Owners */}
               {myUnits.length > 1 && (

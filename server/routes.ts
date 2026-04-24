@@ -16,6 +16,10 @@ import {
 } from "./admin-notification-service";
 import { processSpecialAssessmentInstallments } from "./assessment-installments";
 import { compareShadowRuns } from "./assessment-execution-parity";
+import {
+  buildAssessmentDetailForOwnerUnit,
+  getUpcomingInstallmentsForOwnerUnit,
+} from "./portal-assessment-detail";
 import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
 import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, notInArray, or, sql, sum } from "drizzle-orm";
 import {
@@ -11711,7 +11715,7 @@ This is an automated demo request from the Your Condo Manager website.
         return res.status(403).json({ message: "Not authorized" });
       }
       const ownerUnitId = req.portalUnitId ?? null;
-      const [allEntries, activeSchedules, paymentPlansAll] = await Promise.all([
+      const [allEntries, activeSchedules, paymentPlansAll, specialAssessmentUpcomingInstallments] = await Promise.all([
         storage.getOwnerLedgerEntries(req.portalAssociationId),
         // Recurring charge schedules scoped to this owner's unit (or association-wide schedules)
         db.select().from(recurringChargeSchedules).where(
@@ -11727,6 +11731,13 @@ This is an automated demo request from the Your Condo Manager website.
         db.select().from(paymentPlans).where(
           and(eq(paymentPlans.associationId, req.portalAssociationId), eq(paymentPlans.personId, req.portalPersonId))
         ),
+        // 4.3 Q5 — upcoming special-assessment installments for this owner's unit.
+        // Each entry links to GET /api/portal/assessments/:assessmentId/detail.
+        getUpcomingInstallmentsForOwnerUnit({
+          associationId: req.portalAssociationId,
+          unitId: ownerUnitId,
+          personId: req.portalPersonId,
+        }),
       ]);
       const myEntries = allEntries.filter((e) => e.personId === req.portalPersonId);
       const balance = myEntries.reduce((sum, e) => sum + e.amount, 0);
@@ -11752,7 +11763,40 @@ This is an automated demo request from the Your Condo Manager website.
           status: activePlan.status,
         } : null,
         recentEntries: myEntries.slice(-10),
+        specialAssessmentUpcomingInstallments,
       });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 4.3 Q5 — Owner-portal assessment detail drill-in.
+  // Returns the loan-style detail for a single specialAssessments row as it
+  // applies to the authenticated owner's unit. 404s when the assessment
+  // does not affect the owner's unit (i.e. excluded or different association).
+  app.get("/api/portal/assessments/:assessmentId/detail", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAssociationId || !req.portalPersonId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const ownerUnitId = req.portalUnitId ?? null;
+      if (!ownerUnitId) {
+        return res.status(404).json({ message: "Assessment not found" });
+      }
+      const assessmentId = req.params.assessmentId;
+      if (!assessmentId || typeof assessmentId !== "string") {
+        return res.status(400).json({ message: "assessmentId is required" });
+      }
+      const payload = await buildAssessmentDetailForOwnerUnit({
+        associationId: req.portalAssociationId,
+        unitId: ownerUnitId,
+        personId: req.portalPersonId,
+        assessmentId,
+      });
+      if (!payload) {
+        return res.status(404).json({ message: "Assessment not found" });
+      }
+      res.json(payload);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
