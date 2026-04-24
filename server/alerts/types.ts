@@ -107,3 +107,40 @@ export const FEATURE_DOMAINS = {
 } as const;
 
 export type FeatureDomain = (typeof FEATURE_DOMAINS)[keyof typeof FEATURE_DOMAINS];
+
+/**
+ * 4.1 Wave 3 — rule-type → feature-domain lookup.
+ *
+ * Each Tier 1 resolver emits alerts for a single feature domain, so the
+ * deterministic `alertId` prefix is sufficient to recover the domain
+ * without having to regenerate the full alert set. Used by the
+ * read/dismiss mutation endpoints (Wave 3) to gate writes through
+ * `canAccessAlert` without re-running the aggregation pipeline.
+ */
+export const RULE_TYPE_FEATURE_DOMAIN: Readonly<Record<AlertRuleType, FeatureDomain>> = {
+  "overdue-work-order": FEATURE_DOMAINS.OPERATIONS_WORK_ORDERS,
+  "due-maintenance": FEATURE_DOMAINS.OPERATIONS_MAINTENANCE_REQUESTS,
+  "active-election": FEATURE_DOMAINS.GOVERNANCE_ELECTIONS,
+  "delinquent-ledger-balance": FEATURE_DOMAINS.FINANCIALS_DELINQUENCY,
+  "expiring-governance-document": FEATURE_DOMAINS.GOVERNANCE_DOCUMENTS,
+};
+
+/**
+ * Parse a deterministic `alertId` (`${ruleType}:${recordType}:${recordId}`)
+ * into its parts. Returns `null` if the id is malformed or references an
+ * unknown ruleType — the caller should treat that as a 404.
+ */
+export function parseAlertId(
+  alertId: string,
+): { ruleType: AlertRuleType; recordType: string; recordId: string } | null {
+  const firstColon = alertId.indexOf(":");
+  if (firstColon <= 0) return null;
+  const secondColon = alertId.indexOf(":", firstColon + 1);
+  if (secondColon <= firstColon + 1) return null;
+  const ruleType = alertId.slice(0, firstColon) as AlertRuleType;
+  const recordType = alertId.slice(firstColon + 1, secondColon);
+  const recordId = alertId.slice(secondColon + 1);
+  if (!recordType || !recordId) return null;
+  if (!(ruleType in RULE_TYPE_FEATURE_DOMAIN)) return null;
+  return { ruleType, recordType, recordId };
+}

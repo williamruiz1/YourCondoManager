@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { SetupWizard } from "@/components/setup-wizard";
 import { SignupOnboardingChecklist } from "@/components/signup-onboarding-checklist";
+import { HomeAlertsPanel } from "@/components/home-alerts-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -622,6 +623,15 @@ export default function DashboardPage() {
           route. Self-hides when dismissed or all items complete. Placed
           at the top of Home per 4.4 Q2 design intent. */}
       <SignupOnboardingChecklist />
+
+      {/* [4.1 Wave 3] Cross-association alert engine — Home surface.
+          Spec: docs/projects/platform-overhaul/decisions/4.1-cross-association-alert-engine.md (Q6/Q7/Q8).
+          Consumes GET /api/alerts/cross-association through the
+          `useCrossAssociationAlerts` hook; renders up to 10 unread alerts
+          grouped by zone with per-item mark-read / dismiss mutations and
+          120s polling. Persona-invariant — server applies the
+          `canAccessAlert` feature-domain gate before data leaves the API. */}
+      <HomeAlertsPanel />
 
       {/* [0.1 AC 3] Visible link to /app/portfolio ("Portfolio Health") from Home.
           Per 0.1 decision, aggregate stat cards (associations/units/owners/tenants/
