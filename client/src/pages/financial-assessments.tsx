@@ -80,7 +80,7 @@ function InstallmentPreview({ form }: { form: ReturnType<typeof useForm<any>> })
   );
 }
 
-export function FinancialAssessmentsContent() {
+export function FinancialAssessmentsContent({ readOnly = false }: { readOnly?: boolean } = {}) {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -234,7 +234,8 @@ export function FinancialAssessmentsContent() {
 
   return (
     <div className="space-y-6">
-      <div className={`flex ${isMobile ? "w-full flex-col gap-2" : "items-center gap-2"}`}>
+      {!readOnly && (
+      <div className={`flex ${isMobile ? "w-full flex-col gap-2" : "items-center gap-2"}`} data-testid="assessments-toolbar">
         <Button
           variant="outline"
           disabled={!activeAssociationId || runInstallmentsMutation.isPending}
@@ -245,7 +246,7 @@ export function FinancialAssessmentsContent() {
         </Button>
         <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) form.reset(); }}>
           <DialogTrigger asChild>
-            <Button disabled={!activeAssociationId}>
+            <Button disabled={!activeAssociationId} data-testid="button-new-assessment">
               <Plus className="h-4 w-4 mr-2" />
               New Assessment
             </Button>
@@ -408,6 +409,7 @@ export function FinancialAssessmentsContent() {
           </DialogContent>
         </Dialog>
       </div>
+      )}
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
@@ -455,7 +457,8 @@ export function FinancialAssessmentsContent() {
                         <div className="mt-1 text-sm text-foreground">{Array.isArray(row.excludedUnitIdsJson) ? row.excludedUnitIdsJson.length : 0}</div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-2">
+                    {!readOnly && (
+                    <div className="grid grid-cols-1 gap-2" data-testid="assessment-row-actions-mobile">
                       <Button
                         className="min-h-11 w-full"
                         variant="outline"
@@ -497,6 +500,7 @@ export function FinancialAssessmentsContent() {
                         </Button>
                       )}
                     </div>
+                    )}
                   </div>
                 );
               })}
@@ -528,7 +532,10 @@ export function FinancialAssessmentsContent() {
                     <TableCell>{Array.isArray(row.excludedUnitIdsJson) ? row.excludedUnitIdsJson.length : 0}</TableCell>
                     <TableCell>{row.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                      {readOnly ? (
+                        <span className="text-xs text-muted-foreground">Read only</span>
+                      ) : (
+                      <div className="flex justify-end gap-2" data-testid="assessment-row-actions">
                         <Button
                           variant="outline"
                           size="sm"
@@ -570,6 +577,7 @@ export function FinancialAssessmentsContent() {
                           </Button>
                         )}
                       </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

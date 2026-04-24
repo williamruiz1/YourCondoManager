@@ -116,6 +116,7 @@ const associationModules: NavModule[] = [
     roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"],
     children: [
       { title: "Billing", url: "/app/financial/billing", icon: CircleDollarSign, materialIcon: "receipt_long", activePrefix: "/app/financial/billing", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { title: "Assessment Rules", url: "/app/financial/rules", icon: CircleDollarSign, materialIcon: "rule", activePrefix: "/app/financial/rules", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { title: "Payments", url: "/app/financial/payments", icon: CircleDollarSign, materialIcon: "credit_card", activePrefix: "/app/financial/payments", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { title: "Expenses", url: "/app/financial/expenses", icon: CircleDollarSign, materialIcon: "account_balance", activePrefix: "/app/financial/expenses", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { title: "Reports", url: "/app/financial/reports", icon: CircleDollarSign, materialIcon: "summarize", activePrefix: "/app/financial/reports", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },

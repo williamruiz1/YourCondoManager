@@ -27,6 +27,7 @@ import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AssessmentRulesBanner } from "@/components/assessment-rules-banner";
 import { FinancialRecurringChargesContent } from "./financial-recurring-charges";
 
 const accountSchema = z.object({
@@ -644,6 +645,7 @@ export default function FinancialFoundationPage() {
           breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Chart of Accounts" }]}
           subPages={financeSubPages}
         />
+        <AssessmentRulesBanner />
         <Tabs defaultValue="accounts" className="space-y-6">
           <TabsList>
             <TabsTrigger value="accounts">Accounts</TabsTrigger>

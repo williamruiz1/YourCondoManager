@@ -51,6 +51,15 @@ describe("breadcrumb-paths: getBreadcrumbTrail", () => {
     expect(trail[1].href).toBeUndefined();
   });
 
+  it("seeds /app/financial/rules with Financials > Assessment Rules (4.3 Wave 8)", () => {
+    const trail = getBreadcrumbTrail("/app/financial/rules");
+    expect(trail).toHaveLength(2);
+    expect(trail[0].label).toBe("Financials");
+    expect(trail[0].href).toBe("/app/financial/foundation");
+    expect(trail[1].label).toBe("Assessment Rules");
+    expect(trail[1].href).toBeUndefined();
+  });
+
   it("seeds /app/portfolio with Home as the zone-label root (1.3 Q1 amendment 2026-04-23)", () => {
     // Per 1.3 Q1 as amended 2026-04-23, "Home" is permitted as a
     // breadcrumb root when it is the Home-zone label per 1.1 Q3.

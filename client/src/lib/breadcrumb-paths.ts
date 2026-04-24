@@ -139,6 +139,15 @@ export const BREADCRUMB_PATHS: Readonly<Record<string, BreadcrumbTrail>> = Objec
     { label: "Communications", href: "/app/communications" },
     { label: "Inbox" },
   ],
+
+  // 4.3 Wave 8 — Consolidated Assessment Rules surface. Portfolio-scoped
+  // zone > leaf. Financials is the zone label (per 1.1 Q3 Financials
+  // zone). Leaf is the page title (per 1.4 Q1). See
+  // docs/projects/platform-overhaul/decisions/4.3-recurring-assessment-rules-engine.md#q9.
+  "/app/financial/rules": [
+    { label: "Financials", href: "/app/financial/foundation" },
+    { label: "Assessment Rules" },
+  ],
 });
 
 /**

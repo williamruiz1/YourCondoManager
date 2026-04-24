@@ -48,6 +48,7 @@ const RoadmapPage = lazy(() => import("@/pages/roadmap"));
 const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
 const ExecutivePage = lazy(() => import("@/pages/executive"));
 const FinancialFoundationPage = lazy(() => import("@/pages/financial-foundation"));
+const FinancialRulesPage = lazy(() => import("@/pages/financial-rules"));
 const FinancialPaymentsPage = lazy(() => import("@/pages/financial-payments"));
 const FinancialReportsPage = lazy(() => import("@/pages/financial-reports"));
 const FinancialBillingPage = lazy(() => import("@/pages/financial-billing"));
@@ -138,11 +139,12 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
   },
   {
     id: "finance",
-    matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports"],
+    matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/rules", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports"],
     testId: "tabs-finance-inpage",
     tabs: [
       { label: "Chart of Accounts", href: "/app/financial/foundation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Billing", href: "/app/financial/billing", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Assessment Rules", href: "/app/financial/rules", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { label: "Payments", href: "/app/financial/payments", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Expenses", href: "/app/financial/expenses", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Reports", href: "/app/financial/reports", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
@@ -263,6 +265,7 @@ function WorkspaceRouter({
         <Route path="/app/admin/executive" component={ExecutivePage} />
         {/* Finance — consolidated routes */}
         <Route path="/app/financial/foundation" component={FinancialFoundationPage} />
+        <Route path="/app/financial/rules" component={FinancialRulesPage} />
         <Route path="/app/financial/billing" component={FinancialBillingPage} />
         <Route path="/app/financial/payments" component={FinancialPaymentsPage} />
         <Route path="/app/financial/expenses" component={FinancialExpensesPage} />
@@ -706,6 +709,11 @@ const FINANCE_PARENT_TABS = [
     label: "Billing",
     href: "/app/financial/billing",
     prefixes: ["/app/financial/billing"],
+  },
+  {
+    label: "Assessment Rules",
+    href: "/app/financial/rules",
+    prefixes: ["/app/financial/rules"],
   },
   {
     label: "Payments",

@@ -35,7 +35,7 @@ function statusBadge(status: string) {
   return <Badge variant={m.variant}>{m.label}</Badge>;
 }
 
-export function FinancialRecurringChargesContent() {
+export function FinancialRecurringChargesContent({ readOnly = false }: { readOnly?: boolean } = {}) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -189,19 +189,19 @@ export function FinancialRecurringChargesContent() {
         </div>
       </button>
       <div className="grid grid-cols-1 gap-2">
-        {s.status === "active" && (
+        {!readOnly && s.status === "active" && (
           <Button size="sm" variant="outline" className="w-full min-h-11" onClick={() => toggleSchedule.mutate({ id: s.id, status: "paused" })}>
             <PauseCircle className="h-4 w-4 mr-2" />
             Pause
           </Button>
         )}
-        {s.status === "paused" && (
+        {!readOnly && s.status === "paused" && (
           <Button size="sm" variant="outline" className="w-full min-h-11" onClick={() => toggleSchedule.mutate({ id: s.id, status: "active" })}>
             <Play className="h-4 w-4 mr-2" />
             Resume
           </Button>
         )}
-        {s.status !== "archived" && (
+        {!readOnly && s.status !== "archived" && (
           <Button size="sm" variant="outline" className="w-full min-h-11" onClick={() => toggleSchedule.mutate({ id: s.id, status: "archived" })}>
             Archive
           </Button>
@@ -243,7 +243,7 @@ export function FinancialRecurringChargesContent() {
         {r.errorMessage ?? "No error"}
       </div>
       <div className="flex gap-2">
-        {r.status === "failed" && (
+        {!readOnly && r.status === "failed" && (
           <Button size="sm" variant="outline" className="flex-1 min-h-11" onClick={() => retryRun.mutate(r.id)} disabled={retryRun.isPending}>
             <RotateCcw className="h-4 w-4 mr-2" />
             Retry
@@ -284,7 +284,8 @@ export function FinancialRecurringChargesContent() {
                 <CardTitle className="text-base">Charge Schedules</CardTitle>
                 <CardDescription>Recurring charges applied to units on a defined cadence</CardDescription>
               </div>
-            <div className="grid grid-cols-2 gap-2 sm:flex">
+            {!readOnly && (
+            <div className="grid grid-cols-2 gap-2 sm:flex" data-testid="recurring-toolbar">
               <ConfirmDialog
                 trigger={
                   <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled={runNow.isPending || !activeAssociationId}>
@@ -297,10 +298,11 @@ export function FinancialRecurringChargesContent() {
                 confirmLabel="Run Charges"
                 onConfirm={() => runNow.mutate()}
               />
-              <Button size="sm" className="w-full sm:w-auto" onClick={() => setScheduleDialogOpen(true)} disabled={!activeAssociationId}>
+              <Button size="sm" className="w-full sm:w-auto" onClick={() => setScheduleDialogOpen(true)} disabled={!activeAssociationId} data-testid="button-new-schedule">
                 <Plus className="h-4 w-4 mr-1" /> New Schedule
               </Button>
             </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -351,7 +353,10 @@ export function FinancialRecurringChargesContent() {
                     <TableCell>{statusBadge(s.status)}</TableCell>
                     <TableCell className="text-sm">{s.maxRetries}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+                      {readOnly ? (
+                        <span className="text-xs text-muted-foreground">Read only</span>
+                      ) : (
+                      <div className="flex justify-end gap-1" data-testid="recurring-row-actions">
                         {s.status === "active" && (
                           <Button size="sm" variant="ghost" title="Pause" onClick={() => toggleSchedule.mutate({ id: s.id, status: "paused" })}>
                             <PauseCircle className="h-4 w-4" />
@@ -368,6 +373,7 @@ export function FinancialRecurringChargesContent() {
                           </Button>
                         )}
                       </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <span
@@ -443,7 +449,7 @@ export function FinancialRecurringChargesContent() {
                       {r.nextRetryAt ? new Date(r.nextRetryAt).toLocaleString() : "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {r.status === "failed" && (
+                      {!readOnly && r.status === "failed" && (
                         <Button size="icon" variant="outline" title="Retry" onClick={() => retryRun.mutate(r.id)} disabled={retryRun.isPending}>
                           <RotateCcw className="h-4 w-4" />
                         </Button>
