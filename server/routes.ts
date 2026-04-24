@@ -1531,7 +1531,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // After any write we call `invalidateAlertCache()` so the next GET
   // returns fresh read-state (the 60s aggregation cache would otherwise
   // serve stale unread counts to the UI).
+  //
+  // Security (4.1 audit — `security/alert-mutation-audit`):
+  //   1. `ALERT_ID_FORMAT` rejects path-traversal / length-attack inputs
+  //      before any DB work. The alertId format is locked to
+  //      `^[a-z-]+:[a-z_-]+:[A-Za-z0-9_-]{1,64}$` (see 4.1 Q7).
+  //   2. Cross-tenant leakage is blocked by `assertAlertOwnership` — the
+  //      mutation runs the cross-association aggregator for THIS caller and
+  //      only proceeds if the target alertId appears in the set. This
+  //      layers on top of `canAccessAlert` (role → featureDomain) to also
+  //      verify the underlying record belongs to an association the user
+  //      can access AND the alert is currently "live" (record still matches
+  //      the rule).
+  //   3. `adminUserId` is ALWAYS derived from `req.adminUserId!` — body
+  //      params are never trusted for the identity column.
   // -------------------------------------------------------------------------
+  const ALERT_ID_FORMAT = /^[a-z-]+:[a-z_-]+:[A-Za-z0-9_-]{1,64}$/;
+
   const alertMutationRoleGate = requireAdminRole([
     "platform-admin",
     "board-officer",
@@ -1541,6 +1557,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "viewer",
   ]);
 
+  /**
+   * Verify the caller is permitted to mutate read-state for this alertId.
+   *
+   * Returns `null` on success, or an HTTP response payload to return on
+   * failure. Runs the cross-association aggregator with `readState: "all"`
+   * + `skipCache: true` so that:
+   *   - cross-tenant alertIds (records in associations outside the caller's
+   *     scope) are rejected with 404 (looks identical to an unknown id),
+   *   - already-read / already-dismissed alerts are still mutable
+   *     (read→read toggle, dismiss→restore→re-dismiss),
+   *   - a freshly-cached `getCrossAssociationAlerts` response cannot leak
+   *     stale visibility into the write path.
+   */
+  async function assertAlertOwnership(
+    req: AdminRequest,
+    alertId: string,
+  ): Promise<{ status: number; body: { message: string; code?: string } } | null> {
+    const { getCrossAssociationAlerts, resolvePermittedAssociations } = await import("./alerts");
+    const permittedAssociations = await resolvePermittedAssociations({
+      adminRole: req.adminRole!,
+      adminScopedAssociationIds: req.adminScopedAssociationIds ?? [],
+    });
+    const { alerts } = await getCrossAssociationAlerts({
+      adminUserId: req.adminUserId!,
+      adminRole: req.adminRole!,
+      personaToggles: {},
+      permittedAssociations,
+      readState: "all",
+      limit: 500,
+      skipCache: true,
+    });
+    if (!alerts.some((a) => a.alertId === alertId)) {
+      return {
+        status: 404,
+        body: { message: "Alert not found", code: "ALERT_NOT_FOUND" },
+      };
+    }
+    return null;
+  }
+
   async function handleAlertReadStateMutation(
     req: AdminRequest,
     res: Response,
@@ -1548,8 +1604,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   ) {
     try {
       const { alertId } = req.params;
-      if (!alertId || typeof alertId !== "string") {
-        return res.status(400).json({ message: "alertId is required" });
+      if (!alertId || typeof alertId !== "string" || !ALERT_ID_FORMAT.test(alertId)) {
+        return res.status(404).json({ message: "Alert not found", code: "ALERT_NOT_FOUND" });
       }
 
       const { canAccessAlert } = await import("./alerts/can-access-alert");
@@ -1558,7 +1614,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const parsed = parseAlertId(alertId);
       if (!parsed) {
-        return res.status(404).json({ message: "Alert not found" });
+        return res.status(404).json({ message: "Alert not found", code: "ALERT_NOT_FOUND" });
       }
       const featureDomain = RULE_TYPE_FEATURE_DOMAIN[parsed.ruleType];
       if (!canAccessAlert(req.adminRole!, featureDomain, {})) {
@@ -1566,6 +1622,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           message: "You do not have access to this alert",
           code: "ALERT_FEATURE_DOMAIN_FORBIDDEN",
         });
+      }
+
+      // Cross-tenant ownership gate — must run BEFORE the upsert.
+      const ownershipError = await assertAlertOwnership(req, alertId);
+      if (ownershipError) {
+        return res.status(ownershipError.status).json(ownershipError.body);
       }
 
       const now = new Date();
@@ -1616,8 +1678,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   async function handleAlertRestoreMutation(req: AdminRequest, res: Response) {
     try {
       const { alertId } = req.params;
-      if (!alertId || typeof alertId !== "string") {
-        return res.status(400).json({ message: "alertId is required" });
+      if (!alertId || typeof alertId !== "string" || !ALERT_ID_FORMAT.test(alertId)) {
+        return res.status(404).json({ message: "Alert not found", code: "ALERT_NOT_FOUND" });
       }
 
       const { canAccessAlert } = await import("./alerts/can-access-alert");
@@ -1626,7 +1688,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const parsed = parseAlertId(alertId);
       if (!parsed) {
-        return res.status(404).json({ message: "Alert not found" });
+        return res.status(404).json({ message: "Alert not found", code: "ALERT_NOT_FOUND" });
       }
       const featureDomain = RULE_TYPE_FEATURE_DOMAIN[parsed.ruleType];
       if (!canAccessAlert(req.adminRole!, featureDomain, {})) {
@@ -1634,6 +1696,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           message: "You do not have access to this alert",
           code: "ALERT_FEATURE_DOMAIN_FORBIDDEN",
         });
+      }
+
+      // Cross-tenant ownership gate — must run BEFORE the upsert.
+      const ownershipError = await assertAlertOwnership(req, alertId);
+      if (ownershipError) {
+        return res.status(ownershipError.status).json(ownershipError.body);
       }
 
       // Upsert semantics: if the row doesn't exist, create it with both
