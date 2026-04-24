@@ -31,6 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useUserSettings, applyTheme, setAdminIdForSettings, formatSettingsDate } from "@/hooks/use-user-settings";
 import { TrialBanner } from "@/components/trial-banner";
 import { SubscriptionLockScreen } from "@/components/subscription-lock-screen";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const SolutionsPage = lazy(() => import("@/pages/solutions"));
@@ -1198,10 +1199,18 @@ function BoardMemberPortalShell({ onLogout }: { onLogout: () => Promise<void> })
 }
 
 export default function App() {
+  // 5.2 — wrap the authenticated app tree in an ErrorBoundary so that a
+  // render error in a lazy-loaded route renders <ErrorState> instead of
+  // a blank page. Placed below QueryClientProvider so a failing query
+  // still has the provider available when a user hits Retry. Toaster +
+  // CookieConsentBanner sit outside the boundary so they remain active
+  // even during a render failure.
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AuthAwareApp />
+        <ErrorBoundary>
+          <AuthAwareApp />
+        </ErrorBoundary>
         <Toaster />
         <CookieConsentBanner />
       </TooltipProvider>

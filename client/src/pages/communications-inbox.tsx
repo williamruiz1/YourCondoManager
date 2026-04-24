@@ -346,17 +346,21 @@ export default function CommunicationsInboxPage() {
         onValueChange={(v) => setFilter(v as InboxFilter)}
         data-testid="inbox-filter-tabs"
       >
-        <TabsList>
-          <TabsTrigger value="all" data-testid="inbox-tab-all">
-            All
-          </TabsTrigger>
-          <TabsTrigger value="unread" data-testid="inbox-tab-unread">
-            Unread
-          </TabsTrigger>
-          <TabsTrigger value="archived" data-testid="inbox-tab-archived">
-            Archived
-          </TabsTrigger>
-        </TabsList>
+        {/* 5.3 — inbox tabs scroll horizontally on mobile per
+            mobile-ui-rules (scrollable pill tabs); prevents wrap at 375px. */}
+        <div className="-mx-1 overflow-x-auto px-1">
+          <TabsList className="w-max">
+            <TabsTrigger value="all" data-testid="inbox-tab-all">
+              All
+            </TabsTrigger>
+            <TabsTrigger value="unread" data-testid="inbox-tab-unread">
+              Unread
+            </TabsTrigger>
+            <TabsTrigger value="archived" data-testid="inbox-tab-archived">
+              Archived
+            </TabsTrigger>
+          </TabsList>
+        </div>
       </Tabs>
 
       <Card>

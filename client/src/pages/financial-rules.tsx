@@ -21,7 +21,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Calendar, CheckCircle2, XCircle, Clock, RotateCcw, Filter, AlertCircle } from "lucide-react";
+import { Calendar, CheckCircle2, XCircle, Clock, RotateCcw, Filter, History as HistoryIcon } from "lucide-react";
 
 import { apiRequest } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
@@ -29,6 +29,8 @@ import { useAdminRole } from "@/hooks/useAdminRole";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { RouteGuard } from "@/components/RouteGuard";
+import { EmptyState } from "@/components/empty-state";
+import { ErrorState } from "@/components/error-state";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { usePersonaToggles } from "@shared/persona-access";
 
@@ -262,14 +264,20 @@ function RunHistoryTab() {
               {[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
           ) : isError ? (
-            <div className="text-sm text-destructive py-6 text-center flex items-center justify-center gap-2" data-testid="run-history-error">
-              <AlertCircle className="h-4 w-4" />
-              {(error as Error)?.message ?? "Failed to load run history"}
-            </div>
+            <ErrorState
+              title="Couldn't load run history"
+              description="We hit an error loading the assessment run log. Try again or adjust the filters."
+              retry={() => refetch()}
+              details={(error as Error | undefined)?.message}
+              testId="run-history-error"
+            />
           ) : !data?.rows?.length ? (
-            <div className="text-sm text-muted-foreground py-6 text-center" data-testid="run-history-empty">
-              No run history in this window.
-            </div>
+            <EmptyState
+              icon={HistoryIcon}
+              title="No run history in this window"
+              description="Successful and failed assessment runs will show here once the orchestrator processes a rule."
+              testId="run-history-empty"
+            />
           ) : (
             <Table data-testid="run-history-table">
               <TableHeader>
@@ -349,11 +357,16 @@ function FinancialRulesInner() {
           subPages={financeSubPages}
         />
         <Tabs defaultValue="recurring" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="recurring" data-testid="tab-recurring">Recurring</TabsTrigger>
-            <TabsTrigger value="special-assessments" data-testid="tab-special-assessments">Special Assessments</TabsTrigger>
-            <TabsTrigger value="run-history" data-testid="tab-run-history">Run History</TabsTrigger>
-          </TabsList>
+          {/* 5.3 — tab list scrolls horizontally on mobile to avoid
+              layout break at 375px (mobile-ui-rules: horizontally
+              scrollable pill tabs). */}
+          <div className="-mx-1 overflow-x-auto px-1">
+            <TabsList className="w-max">
+              <TabsTrigger value="recurring" data-testid="tab-recurring">Recurring</TabsTrigger>
+              <TabsTrigger value="special-assessments" data-testid="tab-special-assessments">Special Assessments</TabsTrigger>
+              <TabsTrigger value="run-history" data-testid="tab-run-history">Run History</TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="recurring" className="mt-0" data-testid="tab-panel-recurring">
             <FinancialRecurringChargesContent readOnly={readOnly} />
           </TabsContent>

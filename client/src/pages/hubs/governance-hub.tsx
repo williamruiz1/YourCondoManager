@@ -6,10 +6,10 @@
 // No business logic, no data fetch. See plan §3 Phase 11.
 
 import { Link } from "wouter";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Landmark } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/empty-state";
 
 export default function GovernanceHub() {
   useDocumentTitle("Governance");
@@ -21,21 +21,21 @@ export default function GovernanceHub() {
         summary="Upcoming overview of board activities, elections, meetings, and compliance."
         breadcrumbs={[{ label: "Home", href: "/app" }, { label: "Governance" }]}
       />
-      <Card>
-        <CardContent className="py-12 text-center space-y-4">
-          <p className="text-lg text-muted-foreground">
-            Governance zone hub — upcoming overview of board activities, elections, meetings, and compliance.
-          </p>
-          <p className="text-sm text-muted-foreground">This feature is coming soon.</p>
-          <Link
-            href="/app"
-            className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
-            data-testid="link-governance-hub-return-home"
-          >
-            <ArrowLeft className="h-4 w-4" /> Return to Home
-          </Link>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={Landmark}
+        title="Governance zone hub coming soon"
+        description="This hub will surface an overview of board activities, elections, meetings, and compliance."
+        testId="governance-hub-empty"
+      />
+      <div className="text-center">
+        <Link
+          href="/app"
+          className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+          data-testid="link-governance-hub-return-home"
+        >
+          <ArrowLeft className="h-4 w-4" /> Return to Home
+        </Link>
+      </div>
     </div>
   );
 }
