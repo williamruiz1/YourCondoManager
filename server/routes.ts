@@ -16,6 +16,7 @@ import {
 } from "./admin-notification-service";
 import { processSpecialAssessmentInstallments } from "./assessment-installments";
 import { compareShadowRuns } from "./assessment-execution-parity";
+import { runOnDemand as runAssessmentOnDemand, type AssessmentRuleType } from "./assessment-execution";
 import {
   buildAssessmentDetailForOwnerUnit,
   getUpcomingInstallmentsForOwnerUnit,
@@ -1031,6 +1032,22 @@ function assertAssociationInputScope(req: AdminRequest, associationId: string | 
     throw new Error("associationId is required");
   }
   assertAssociationScope(req, associationId);
+}
+
+/**
+ * 4.3 Q6/Q8 — Resolve the `assessment_rules_write` PM toggle for an
+ * association. Returns true when the toggle is ON for the association
+ * (Assisted Board may then invoke write endpoints like the unified rule-run).
+ *
+ * Phase 0b.2 stub: the tenant_configs PM-toggle surface is not yet wired
+ * server-side (see shared/persona-access.ts). The helper returns false so
+ * Assisted Board is 403 by default. Phase 9 populates this from
+ * `tenant_configs` and this stub is replaced in place.
+ */
+async function readAssessmentRulesWriteToggle(
+  _associationId: string,
+): Promise<boolean> {
+  return false;
 }
 
 async function assertResourceScope(req: AdminRequest, resourceType: string, id: string) {
@@ -3396,17 +3413,158 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  /**
+   * @deprecated 4.3 Q8 — Shim. Use `POST /api/financial/rules/:ruleId/run` instead.
+   * Retained for one release cycle; retires in 5.1. The shim still routes through
+   * the legacy `processSpecialAssessmentInstallments` (which Wave 7 left intact)
+   * so ledger semantics are unchanged. The new unified endpoint dispatches
+   * through `server/assessment-execution.ts`'s orchestrator per-rule.
+   */
   app.post("/api/financial/assessments/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const associationId = typeof req.body?.associationId === "string" ? req.body.associationId : "";
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       assertAssociationInputScope(req, associationId);
+      res.setHeader("Deprecation", "true");
+      res.setHeader("Link", "</api/financial/rules/:ruleId/run>; rel=\"successor-version\"");
       const summary = await processSpecialAssessmentInstallments(associationId);
       res.json(summary);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // 4.3 Q8 — Unified on-demand rule-run endpoint.
+  //
+  // `POST /api/financial/rules/:ruleId/run` dispatches through the same
+  // `server/assessment-execution.ts` orchestrator as the batch sweep. The
+  // handler:
+  //   1. Resolves the rule type by probing `recurringChargeSchedules` then
+  //      `specialAssessments` (first match wins). 404 if neither matches.
+  //   2. Enforces association scope against the caller's admin role.
+  //   3. Dispatches through `runOnDemand(...)`. In `dryRun` mode the
+  //      orchestrator writes `assessmentRunLog` rows with status='deferred'
+  //      and skips `ownerLedgerEntries` inserts.
+  //   4. Returns the newly-inserted run-log rows + (dry-run only) a compact
+  //      `projectedOutcomes` projection.
+  //
+  // Auth matrix (per 4.3 handoff):
+  //   - Manager, Board Officer, PM Assistant, Platform Admin → allowed.
+  //   - Assisted Board → 403 unless `assessment_rules_write` PM toggle ON
+  //     for this association. Phase 9 wires the toggle store; until then the
+  //     resolver returns `false` so Assisted Board is 403 by default.
+  //   - Viewer / Owner → 403 (role gate).
+  // ---------------------------------------------------------------------------
+  app.post(
+    "/api/financial/rules/:ruleId/run",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "pm-assistant", "manager", "assisted-board"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const ruleId = typeof req.params?.ruleId === "string" ? req.params.ruleId : "";
+        if (!ruleId) return res.status(400).json({ message: "ruleId is required" });
+
+        const body = (req.body ?? {}) as { dryRun?: unknown; asOfDate?: unknown };
+        const dryRun = body.dryRun === true;
+
+        let asOfDate: Date = new Date();
+        if (typeof body.asOfDate === "string" && body.asOfDate.length > 0) {
+          const parsed = new Date(body.asOfDate);
+          if (!Number.isFinite(parsed.getTime())) {
+            return res.status(400).json({ message: "invalid asOfDate" });
+          }
+          asOfDate = parsed;
+        }
+
+        // Resolve rule type by probing both tables.
+        const [recurring] = await db
+          .select({ id: recurringChargeSchedules.id, associationId: recurringChargeSchedules.associationId })
+          .from(recurringChargeSchedules)
+          .where(eq(recurringChargeSchedules.id, ruleId))
+          .limit(1);
+        let ruleType: AssessmentRuleType | null = null;
+        let associationId = "";
+        if (recurring) {
+          ruleType = "recurring";
+          associationId = recurring.associationId;
+        } else {
+          const [special] = await db
+            .select({ id: specialAssessments.id, associationId: specialAssessments.associationId })
+            .from(specialAssessments)
+            .where(eq(specialAssessments.id, ruleId))
+            .limit(1);
+          if (special) {
+            ruleType = "special-assessment";
+            associationId = special.associationId;
+          }
+        }
+
+        if (!ruleType) {
+          return res.status(404).json({ message: "Rule not found" });
+        }
+
+        assertAssociationScope(req, associationId);
+
+        // Assisted Board gate: respects `assessment_rules_write` PM toggle.
+        if (req.adminRole === "assisted-board") {
+          const toggleOn = await readAssessmentRulesWriteToggle(associationId);
+          if (!toggleOn) {
+            return res.status(403).json({
+              message: "Insufficient admin role",
+              code: "assisted_board_read_only",
+            });
+          }
+        }
+
+        const summary = await runAssessmentOnDemand({
+          ruleType,
+          ruleId,
+          associationId,
+          dryRun,
+          now: asOfDate,
+        });
+
+        // Hydrate the run-log rows the orchestrator just inserted so callers
+        // see the full audit rows (not just ids).
+        const runLogEntries = summary.runLogRowIds.length
+          ? await db
+              .select()
+              .from(assessmentRunLog)
+              .where(inArray(assessmentRunLog.id, summary.runLogRowIds))
+          : [];
+
+        const response: {
+          runLogEntries: typeof runLogEntries;
+          dryRun: boolean;
+          projectedOutcomes?: Array<{
+            unitId: string | null;
+            amount: number | null;
+            status: string;
+            errorCode: string | null;
+            errorMessage: string | null;
+          }>;
+        } = {
+          runLogEntries,
+          dryRun,
+        };
+
+        if (dryRun) {
+          response.projectedOutcomes = runLogEntries.map((row) => ({
+            unitId: row.unitId,
+            amount: row.amount,
+            status: row.status,
+            errorCode: row.errorCode,
+            errorMessage: row.errorMessage,
+          }));
+        }
+
+        res.json(response);
+      } catch (error: any) {
+        res.status(400).json({ message: error?.message ?? "failed" });
+      }
+    },
+  );
 
   app.get("/api/financial/late-fee-rules", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
@@ -4009,11 +4167,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Run due recurring charges — processes all active schedules for an association whose nextRunDate <= now
+  /**
+   * @deprecated 4.3 Q8 — Shim. Use `POST /api/financial/rules/:ruleId/run` instead.
+   * Retained for one release cycle; retires in 5.1. This path still runs the
+   * legacy per-schedule poster for ledger semantics parity. The new unified
+   * endpoint dispatches per-rule through `server/assessment-execution.ts`.
+   */
   app.post("/api/financial/recurring-charges/run", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
       const { associationId } = req.body as { associationId: string };
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       assertAssociationInputScope(req, associationId);
+
+      res.setHeader("Deprecation", "true");
+      res.setHeader("Link", "</api/financial/rules/:ruleId/run>; rel=\"successor-version\"");
 
       const now = new Date();
       const due = await db.select().from(recurringChargeSchedules).where(
