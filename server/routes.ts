@@ -225,6 +225,7 @@ import {
 } from "@shared/admin-contextual-feedback";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
+import { normalizeHubVisibility } from "@shared/hub-visibility";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import {
@@ -10312,7 +10313,13 @@ This is an automated demo request from the Your Condo Manager website.
     try {
       const parsed = insertCommunityAnnouncementSchema.parse({ ...req.body, createdBy: req.adminUserEmail ?? null });
       assertAssociationInputScope(req, parsed.associationId);
-      const [result] = await db.insert(communityAnnouncements).values(parsed).returning();
+      // 1.5 HV-2: emit new-vocab `visibility_level` on write. NULLs pass through
+      // unchanged (load-bearing for the public-read NULL-equivalence contract).
+      const toInsert = {
+        ...parsed,
+        visibilityLevel: normalizeHubVisibility(parsed.visibilityLevel ?? null),
+      };
+      const [result] = await db.insert(communityAnnouncements).values(toInsert).returning();
       res.status(201).json(result);
 
       sendAssociationAdminEmailNotification({
@@ -10345,7 +10352,13 @@ This is an automated demo request from the Your Condo Manager website.
       if (!existing) return res.status(404).json({ message: "Announcement not found" });
       assertAssociationScope(req, existing.associationId);
       const updates = insertCommunityAnnouncementSchema.partial().parse(req.body);
-      const [result] = await db.update(communityAnnouncements).set({ ...updates, updatedAt: new Date() }).where(eq(communityAnnouncements.id, id)).returning();
+      // 1.5 HV-2: emit new-vocab `visibility_level` on write. Only normalize
+      // when the caller actually supplied the field (partial-update semantics).
+      const toUpdate =
+        "visibilityLevel" in updates
+          ? { ...updates, visibilityLevel: normalizeHubVisibility(updates.visibilityLevel ?? null) }
+          : updates;
+      const [result] = await db.update(communityAnnouncements).set({ ...toUpdate, updatedAt: new Date() }).where(eq(communityAnnouncements.id, id)).returning();
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -15704,6 +15717,10 @@ This is an automated demo request from the Your Condo Manager website.
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
       const updates: Record<string, any> = { ...req.body, updatedAt: new Date() };
+      // 1.5 HV-2: emit new-vocab `visibility_level` on write (partial-update aware).
+      if ("visibilityLevel" in updates) {
+        updates.visibilityLevel = normalizeHubVisibility(updates.visibilityLevel ?? null);
+      }
       if (req.body.status === "under-review" || req.body.status === "approved" || req.body.status === "dismissed") {
         updates.reviewedBy = req.adminUserEmail;
         updates.reviewedAt = new Date();
@@ -15745,8 +15762,13 @@ This is an automated demo request from the Your Condo Manager website.
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
+      // 1.5 HV-2: emit new-vocab `visibility_level` on write.
+      const noticeBody = { ...req.body };
+      if ("visibilityLevel" in noticeBody) {
+        noticeBody.visibilityLevel = normalizeHubVisibility(noticeBody.visibilityLevel ?? null);
+      }
       const [created] = await db.insert(communityAnnouncements).values({
-        ...req.body,
+        ...noticeBody,
         associationId,
         createdBy: req.adminUserEmail,
       }).returning();
@@ -15761,8 +15783,13 @@ This is an automated demo request from the Your Condo Manager website.
     try {
       const associationId = getParam(req.params.id);
       assertAssociationScope(req, associationId);
+      // 1.5 HV-2: emit new-vocab `visibility_level` on write (partial-update aware).
+      const noticeUpdate = { ...req.body };
+      if ("visibilityLevel" in noticeUpdate) {
+        noticeUpdate.visibilityLevel = normalizeHubVisibility(noticeUpdate.visibilityLevel ?? null);
+      }
       const [updated] = await db.update(communityAnnouncements)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set({ ...noticeUpdate, updatedAt: new Date() })
         .where(and(eq(communityAnnouncements.id, getParam(req.params.noticeId)), eq(communityAnnouncements.associationId, associationId)))
         .returning();
       if (!updated) return res.status(404).json({ message: "Notice not found" });
@@ -15882,7 +15909,9 @@ This is an automated demo request from the Your Condo Manager website.
           publishedAt: new Date(),
           targetAudience: "all",
           createdBy: req.adminUserEmail,
-          visibilityLevel: "public",
+          // 1.5 HV-2: normalized through helper for consistency. "public" is
+          // preserved verbatim (public-API safe — see shared/hub-visibility.ts).
+          visibilityLevel: normalizeHubVisibility("public"),
           isDraft: 0,
         });
         results.push("Created welcome notice");
@@ -16130,13 +16159,24 @@ This is an automated demo request from the Your Condo Manager website.
       const [association] = await db.select({ name: associations.name, city: associations.city, state: associations.state })
         .from(associations).where(eq(associations.id, associationId));
 
-      // Visibility hierarchy: public < resident < owner < board < admin
-      // Phase 8a — retired "tenant" / "readonly" roles collapse to "owner";
-      // any authenticated portal user counts as a resident.
-      const visibilityLevels = ["public"];
-      if (["owner", "board-member"].includes(role)) visibilityLevels.push("resident");
-      if (["owner", "board-member"].includes(role)) visibilityLevels.push("owner");
-      if (role === "board-member" || req.portalHasBoardAccess) visibilityLevels.push("board");
+      // Visibility hierarchy: public < resident(s) < owner/unit-owners < board/board-only < admin/operator-only.
+      // 1.5 HV-2 parity window: filter must accept BOTH old and new vocab so rows
+      // written under HV-1 (old) and HV-2+ (new) are equally visible. HV-3
+      // narrows this to new vocab only after old enum values are dropped.
+      //
+      // Phase 8a — retired portal roles "tenant" / "readonly" collapse to
+      // "owner" in the DB; only "owner" and "board-member" remain valid
+      // values on the left side of these role checks.
+      const visibilityLevels: string[] = ["public"];
+      if (["owner", "board-member"].includes(role)) {
+        visibilityLevels.push("resident", "residents");
+      }
+      if (["owner", "board-member"].includes(role)) {
+        visibilityLevels.push("owner", "unit-owners");
+      }
+      if (role === "board-member" || req.portalHasBoardAccess) {
+        visibilityLevels.push("board", "board-only");
+      }
 
       // Get role-filtered notices
       const now = new Date();
@@ -16217,12 +16257,19 @@ This is an automated demo request from the Your Condo Manager website.
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not enabled" });
       }
+      // 1.5 HV-2: emit new-vocab `visibility_level` on write. Any caller-supplied
+      // value is normalized; otherwise default to new-vocab "board-only".
+      const issueBody = { ...req.body };
+      const incomingVisibility =
+        "visibilityLevel" in issueBody ? issueBody.visibilityLevel : undefined;
+      delete issueBody.visibilityLevel;
       const [created] = await db.insert(hubMapIssues).values({
-        ...req.body,
+        ...issueBody,
         associationId,
         reportedByPortalAccessId: req.portalAccessId,
         status: "reported",
-        visibilityLevel: "board",
+        visibilityLevel:
+          normalizeHubVisibility(incomingVisibility ?? "board-only") ?? "board-only",
       }).returning();
       res.json(created);
     } catch (error: any) {
