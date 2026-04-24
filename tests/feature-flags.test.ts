@@ -46,9 +46,9 @@ describe("feature flags — defaults", () => {
     expect(getFeatureFlag("BOARD_SHUNT_ACTIVE")).toBe(true);
   });
 
-  it("HUB_VISIBILITY_RENAME default is false (1.5 HV-1 ships additive only)", () => {
-    expect(__FEATURE_FLAG_DEFAULTS__.HUB_VISIBILITY_RENAME).toBe(false);
-    expect(getFeatureFlag("HUB_VISIBILITY_RENAME")).toBe(false);
+  it("HUB_VISIBILITY_RENAME default is true (1.5 HV-2 code-only cutover — writes emit new vocab)", () => {
+    expect(__FEATURE_FLAG_DEFAULTS__.HUB_VISIBILITY_RENAME).toBe(true);
+    expect(getFeatureFlag("HUB_VISIBILITY_RENAME")).toBe(true);
   });
 
   it("every FeatureFlagKey has an explicit default", () => {
