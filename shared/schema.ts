@@ -3024,3 +3024,37 @@ export const delinquencyNotices = pgTable("delinquency_notices", {
 export type DelinquencyNotice = typeof delinquencyNotices.$inferSelect;
 export type InsertDelinquencyNotice = typeof delinquencyNotices.$inferInsert;
 export const insertDelinquencyNoticeSchema = createInsertSchema(delinquencyNotices);
+
+// ---------------------------------------------------------------------------
+// 4.1 Wave 2 — Cross-association alert engine — read-state table
+// ---------------------------------------------------------------------------
+//
+// Per `docs/projects/platform-overhaul/decisions/4.1-cross-association-alert-engine.md`
+// Q7 "Selected Resolution" — global read-state keyed on a deterministic
+// `alertId` string (format: `${ruleType}:${recordType}:${recordId}`) and the
+// admin user who read / dismissed the alert. Same underlying record yields
+// the same alertId across all three surfaces (Home panel, hub widget,
+// central inbox), so interacting with it in any surface clears it everywhere.
+//
+// `alertId` is a free-form text identifier (NOT a FK) — the alert records
+// themselves are computed on the fly by the server/alerts/ resolvers from the
+// canonical source tables (work_orders / maintenance_schedule_instances /
+// elections / owner_ledger_entries / documents). There is no
+// alert_records table; read-state is the only persisted alert data.
+//
+// Wave 2 scope: table ships; no mutation endpoints yet — Wave 3 adds
+// read / dismiss mutations once the Home panel UI is in place.
+
+export const alertReadStates = pgTable("alert_read_states", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  alertId: text("alert_id").notNull(),
+  adminUserId: varchar("admin_user_id").notNull().references(() => adminUsers.id),
+  readAt: timestamp("read_at"),
+  dismissedAt: timestamp("dismissed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAlertAdmin: uniqueIndex("alert_read_states_alert_admin_uq").on(table.alertId, table.adminUserId),
+}));
+export type AlertReadState = typeof alertReadStates.$inferSelect;
+export type InsertAlertReadState = typeof alertReadStates.$inferInsert;
+export const insertAlertReadStateSchema = createInsertSchema(alertReadStates).omit({ id: true, createdAt: true });

@@ -1462,6 +1462,52 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // -------------------------------------------------------------------------
+  // 4.1 Wave 2 — cross-association alert engine endpoint (Q6).
+  // Single server-side aggregation endpoint feeding Home panel, inbox, and
+  // hub widgets. Server does the fan-out across the persona's permitted
+  // associations; client gets one response with per-association attribution.
+  // -------------------------------------------------------------------------
+  app.get(
+    "/api/alerts/cross-association",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const { getCrossAssociationAlerts, resolvePermittedAssociations } = await import("./alerts");
+        const zoneParam = typeof req.query.zone === "string" ? req.query.zone : undefined;
+        const allowedZones = new Set(["home", "financials", "operations", "governance", "communications", "platform"]);
+        const zone = zoneParam && allowedZones.has(zoneParam)
+          ? (zoneParam as "home" | "financials" | "operations" | "governance" | "communications" | "platform")
+          : undefined;
+        const rawLimit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : NaN;
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
+        const readStateParam = typeof req.query.readState === "string" ? req.query.readState : "unread";
+        const readState = readStateParam === "all" ? "all" : "unread";
+
+        const permittedAssociations = await resolvePermittedAssociations({
+          adminRole: req.adminRole!,
+          adminScopedAssociationIds: req.adminScopedAssociationIds ?? [],
+        });
+
+        const payload = await getCrossAssociationAlerts({
+          adminUserId: req.adminUserId!,
+          adminRole: req.adminRole!,
+          personaToggles: {},
+          permittedAssociations,
+          zone,
+          limit,
+          readState,
+        });
+
+        res.json(payload);
+      } catch (error: any) {
+        console.error("[alerts][cross-association][error]", error);
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
   app.get("/api/portfolio/summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: false });
