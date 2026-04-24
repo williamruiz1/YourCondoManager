@@ -148,6 +148,37 @@ export const BREADCRUMB_PATHS: Readonly<Record<string, BreadcrumbTrail>> = Objec
     { label: "Financials", href: "/app/financial/foundation" },
     { label: "Assessment Rules" },
   ],
+
+  // 3.5 Wave 11 — Owner Portal Restructure. First-person zone labels per
+  // 1.1 Q5 (Home / My Finances / My Requests / My Community); hub URLs
+  // per 1.2 Q4. Runtime resolution happens inside `portal-shell.tsx`
+  // (see `resolvePortalBreadcrumb`) — these entries are mirrored here
+  // so that central tooling (1.3 parity tests, route coverage audits)
+  // can see the portal surface alongside `/app/*`.
+  "/portal": [{ label: "Home" }],
+  "/portal/finances": [{ label: "My Finances" }],
+  "/portal/finances/payment-methods": [
+    { label: "My Finances", href: "/portal/finances" },
+    { label: "Payment methods" },
+  ],
+  "/portal/finances/ledger": [
+    { label: "My Finances", href: "/portal/finances" },
+    { label: "Ledger" },
+  ],
+  "/portal/requests": [{ label: "My Requests" }],
+  "/portal/community": [{ label: "My Community" }],
+  "/portal/amenities": [
+    { label: "My Community", href: "/portal/community" },
+    { label: "Amenities" },
+  ],
+  "/portal/notices": [
+    { label: "My Community", href: "/portal/community" },
+    { label: "Notices" },
+  ],
+  "/portal/documents": [
+    { label: "My Community", href: "/portal/community" },
+    { label: "Documents" },
+  ],
 });
 
 /**
