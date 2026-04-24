@@ -78,6 +78,13 @@
       "when": 1776800000000,
       "tag": "0011_assessment_run_log",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776900000000,
+      "tag": "0012_hub_visibility_rename_additive",
+      "breakpoints": true
     }
   ]
 }

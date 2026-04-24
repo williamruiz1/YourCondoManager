@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, real, timestamp, pgEnum, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { HUB_VISIBILITY_ALL_VALUES } from "./hub-visibility";
 
 export const associations = pgTable("associations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -2043,7 +2044,13 @@ export const insertBoardPackageSchema = createInsertSchema(boardPackages).omit({
   createdAt: true,
   updatedAt: true,
 });
-export const insertCommunityAnnouncementSchema = createInsertSchema(communityAnnouncements).omit({ id: true, createdAt: true, updatedAt: true });
+// `visibility_level` on community_announcements is a plain text column (NOT
+// enum-bound) and nullable — see `hub_visibility_level` dual-vocab parity
+// note above. Accept old ∪ new vocabularies during HV-1 + HV-2. HV-3 narrows
+// this to new vocab only.
+export const insertCommunityAnnouncementSchema = createInsertSchema(communityAnnouncements).omit({ id: true, createdAt: true, updatedAt: true }).extend({
+  visibilityLevel: z.enum(HUB_VISIBILITY_ALL_VALUES).nullable().optional(),
+});
 export const insertResidentFeedbackSchema = createInsertSchema(residentFeedbacks).omit({ id: true, createdAt: true, updatedAt: true, resolvedAt: true });
 export const insertPaymentReminderRuleSchema = createInsertSchema(paymentReminderRules).omit({ id: true, createdAt: true, updatedAt: true, lastRunAt: true });
 export const insertFinancialApprovalSchema = createInsertSchema(financialApprovals).omit({ id: true, createdAt: true, updatedAt: true, resolvedAt: true });
@@ -2746,7 +2753,21 @@ export type PlatformWebhookEvent = typeof platformWebhookEvents.$inferSelect;
 // Community Hub — Association microsite & infrastructure map
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const hubVisibilityLevelEnum = pgEnum("hub_visibility_level", ["public", "resident", "owner", "board", "admin"]);
+// ── Hub visibility levels — dual-vocab parity window (1.5 HV-1) ──────────────
+// Old vocab (role-coupled): public | resident | owner | board | admin.
+// New vocab (role-agnostic, per 2.1 Q11): public | residents | unit-owners |
+//   board-only | operator-only. Both legal during HV-1 (additive) and HV-2
+//   (backfill + dual-read). HV-3 drops the old values via enum recreate.
+// Mapping (see docs/projects/platform-overhaul/decisions/1.5-hub-visibility-rename.md):
+//   public   → public        (preserved verbatim — public-API safe)
+//   resident → residents
+//   owner    → unit-owners
+//   board    → board-only
+//   admin    → operator-only
+// Translation helper: shared/hub-visibility.ts.
+export const hubVisibilityLevelEnum = pgEnum("hub_visibility_level",
+  ["public", "resident", "owner", "board", "admin",
+   "residents", "unit-owners", "board-only", "operator-only"]);
 export const hubInfoBlockCategoryEnum = pgEnum("hub_info_block_category", ["trash", "parking", "emergency", "maintenance", "rules", "amenities", "custom"]);
 export const hubActionRouteTypeEnum = pgEnum("hub_action_route_type", ["internal", "external"]);
 export const hubMapNodeTypeEnum = pgEnum("hub_map_node_type", ["building", "unit", "common-area", "parking", "amenity", "path", "infrastructure"]);
@@ -2871,7 +2892,13 @@ export const hubMapIssues = pgTable("hub_map_issues", {
 });
 export type HubMapIssue = typeof hubMapIssues.$inferSelect;
 export type InsertHubMapIssue = typeof hubMapIssues.$inferInsert;
-export const insertHubMapIssueSchema = createInsertSchema(hubMapIssues);
+// Parity window: the `visibility_level` column on hub_map_issues is enum-bound
+// and now accepts both old and new vocabularies. Callers may POST either
+// during HV-1 + HV-2; HV-3 narrows to new vocab only via the recreate/recast
+// migration. See shared/hub-visibility.ts.
+export const insertHubMapIssueSchema = createInsertSchema(hubMapIssues).extend({
+  visibilityLevel: z.enum(HUB_VISIBILITY_ALL_VALUES).optional(),
+});
 
 // ── Amenity Booking System ────────────────────────────────────────────────────
 
