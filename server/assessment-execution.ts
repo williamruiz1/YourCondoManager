@@ -52,6 +52,7 @@ import {
 import { getFeatureFlagForAssociation } from "@shared/feature-flags";
 
 import { db } from "./db";
+import { invalidateAlertCache } from "./alerts";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -591,6 +592,17 @@ export async function runSweep(opts: SweepOptions = {}): Promise<SweepSummary> {
     }
   }
 
+  // 15a: new ledger rows or run-log changes can resolve/produce
+  // delinquent-ledger-balance alerts; flush the 60s cache so the next GET
+  // reflects the new world. Only flush for real writes (dryRun skips ledger).
+  if (!dryRun && summary.totalDispatched > 0) {
+    try {
+      invalidateAlertCache();
+    } catch {
+      // ignore — cache flush is best-effort
+    }
+  }
+
   return summary;
 }
 
@@ -636,6 +648,16 @@ export async function runOnDemand(
     summary.runLogRowIds.push(runRow.id);
     summary.perStatus[runRow.status] =
       (summary.perStatus[runRow.status] ?? 0) + 1;
+  }
+
+  // 15a: on-demand rule runs that materialize ledger rows can flip
+  // delinquent-balance alerts — flush the 60s cache so the next GET is fresh.
+  if (!dryRun && summary.totalDispatched > 0) {
+    try {
+      invalidateAlertCache();
+    } catch {
+      // ignore — cache flush is best-effort
+    }
   }
 
   return summary;

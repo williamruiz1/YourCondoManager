@@ -8,6 +8,26 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
+import { invalidateAlertCache } from "./alerts";
+
+/**
+ * 4.1 Wave 15a — real-time alert cache invalidation wiring.
+ *
+ * Every server-side write path that mutates a Tier 1 or Tier 2 alert source
+ * record calls this helper before returning. The underlying
+ * `invalidateAlertCache()` is a best-effort synchronous cache clear; we wrap
+ * it so an unexpected throw from the alerts module can never crash a
+ * successful mutation response. Wiring this on every source write lets the
+ * next GET /api/alerts serve fresh state within the 60s TTL window.
+ */
+function safeInvalidateAlertCache(): void {
+  try {
+    invalidateAlertCache();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[alerts][invalidate] cache flush failed (ignored):", err);
+  }
+}
 import { createAuthRestoreToken, getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import {
   sendAssociationAdminEmailNotification,
@@ -2095,6 +2115,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req, associationId);
       const parsed = insertAssociationInsurancePolicySchema.parse({ ...req.body, associationId });
       const [result] = await db.insert(associationInsurancePolicies).values(parsed).returning();
+      safeInvalidateAlertCache(); // 15a: insurance-expiry source write
       res.status(201).json(result);
 
       sendAssociationAdminEmailNotification({
@@ -2128,6 +2149,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .where(eq(associationInsurancePolicies.id, policyId))
         .returning();
       if (!result) return res.status(404).json({ message: "Not found" });
+      safeInvalidateAlertCache(); // 15a: insurance-expiry source write (expiration-date changes)
       res.json(result);
 
       sendAssociationAdminEmailNotification({
@@ -2156,6 +2178,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req, associationId);
       const policyId = getParam(req.params.policyId);
       await db.delete(associationInsurancePolicies).where(eq(associationInsurancePolicies.id, policyId));
+      safeInvalidateAlertCache(); // 15a: insurance-expiry source write (delete)
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -3701,6 +3724,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         referenceId: req.body.referenceId ?? null,
         apply,
       });
+      if (apply) {
+        safeInvalidateAlertCache(); // 15a: unpaid-late-fees source write (new event inserted)
+      }
       res.json(result);
 
       sendAssociationAdminEmailNotification({
@@ -4650,6 +4676,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertBudgetSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createBudget(parsed);
+      safeInvalidateAlertCache(); // 15a: budget-variance source write
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4665,6 +4692,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const result = await storage.updateBudget(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Budget not found" });
+      safeInvalidateAlertCache(); // 15a: budget-variance source write
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4686,6 +4714,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertBudgetVersionSchema.parse(req.body);
       await assertResourceScope(req as AdminRequest, "budget", parsed.budgetId);
       const result = await storage.createBudgetVersion(parsed);
+      safeInvalidateAlertCache(); // 15a: budget-variance source write
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4698,6 +4727,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertBudgetVersionSchema.partial().parse(req.body);
       const result = await storage.updateBudgetVersion(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Budget version not found" });
+      safeInvalidateAlertCache(); // 15a: budget-variance source write
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4719,6 +4749,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertBudgetLineSchema.parse(req.body);
       await assertResourceScope(req as AdminRequest, "budget-version", parsed.budgetVersionId);
       const result = await storage.createBudgetLine(parsed);
+      safeInvalidateAlertCache(); // 15a: budget-variance source write
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4731,6 +4762,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertBudgetLineSchema.partial().parse(req.body);
       const result = await storage.updateBudgetLine(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Budget line not found" });
+      safeInvalidateAlertCache(); // 15a: budget-variance source write
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4805,6 +4837,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertVendorSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createVendor(parsed);
+      safeInvalidateAlertCache(); // 15a: vendor-contract-renewal source write
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4820,6 +4853,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const result = await storage.updateVendor(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Vendor not found" });
+      safeInvalidateAlertCache(); // 15a: vendor-contract-renewal source write (status/insurance-expiry changes)
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -5598,6 +5632,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = insertOwnerLedgerEntrySchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createOwnerLedgerEntry(parsed);
+      safeInvalidateAlertCache(); // 15a: delinquent-ledger-balance source write
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -5947,6 +5982,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } catch (err: any) {
           results.push({ index: i, label, status: "skipped", error: err.message });
         }
+      }
+      if (results.some((r) => r.status === "created")) {
+        safeInvalidateAlertCache(); // 15a: delinquent-ledger-balance source write (bulk import)
       }
       res.json({ results, createdCount: results.filter((r) => r.status === "created").length, skippedCount: results.filter((r) => r.status === "skipped").length });
     } catch (error: any) {
@@ -6482,6 +6520,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "Closing date must be after opening date." });
       }
       const result = await storage.createElection(parsed);
+      safeInvalidateAlertCache(); // 15a: active-elections source write
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -6575,6 +6614,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const result = await storage.updateElection(electionId, parsed);
       if (!result) return res.status(404).json({ message: "Election not found" });
+      safeInvalidateAlertCache(); // 15a: active-elections source write (status/date changes)
 
       // WS6.4: If closesAt was extended on an open election, notify pending voters
       if (!isDraftToOpen && result && result.status === "open" && parsed.closesAt) {
@@ -6680,6 +6720,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/elections/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await storage.deleteElection(getParam(req.params.id));
+      safeInvalidateAlertCache(); // 15a: active-elections source write (deletion)
       res.json({ ok: true });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -7701,6 +7742,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         assertAssociationScope(req, parsed.associationId);
       }
       const result = await storage.createGovernanceComplianceTemplate(parsed);
+      safeInvalidateAlertCache(); // 15a: expiring-governance-document source write (new template w/ nextReviewDueAt)
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -7719,6 +7761,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const result = await storage.updateGovernanceComplianceTemplate(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Governance compliance template not found" });
+      safeInvalidateAlertCache(); // 15a: expiring-governance-document source write (nextReviewDueAt changes)
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -7807,6 +7850,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         })));
       }
 
+      safeInvalidateAlertCache(); // 15a: expiring-governance-document source write (template assignment)
       res.status(201).json({ assigned, alreadyExists: false });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -9689,6 +9733,7 @@ This is an automated demo request from the Your Condo Manager website.
         associationId: getAssociationIdQuery(req) || req.body?.associationId || undefined,
         actorEmail: req.adminUserEmail || "scheduler@system",
       });
+      safeInvalidateAlertCache(); // 15a: maintenance escalation sweep can update work-order/maintenance state
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -9715,6 +9760,7 @@ This is an automated demo request from the Your Condo Manager website.
       const parsed = insertWorkOrderSchema.parse(req.body);
       assertAssociationScope(req, parsed.associationId);
       const result = await storage.createWorkOrder(parsed, req.adminUserEmail);
+      safeInvalidateAlertCache(); // 15a: overdue-work-order source write
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -9732,6 +9778,7 @@ This is an automated demo request from the Your Condo Manager website.
       const [before] = await db.select().from(workOrders).where(eq(workOrders.id, workOrderId));
       const result = await storage.updateWorkOrder(workOrderId, parsed, req.adminUserEmail);
       if (!result) return res.status(404).json({ message: "Work order not found" });
+      safeInvalidateAlertCache(); // 15a: overdue-work-order source write (status/due-date changes resolve overdue alerts)
       res.json(result);
 
       // Fire-and-forget notifications after response is sent
@@ -9839,6 +9886,7 @@ This is an automated demo request from the Your Condo Manager website.
         assertAssociationInputScope(req, parsed.associationId ?? null);
       }
       const result = await storage.convertMaintenanceRequestToWorkOrder(requestId, parsed, req.adminUserEmail);
+      safeInvalidateAlertCache(); // 15a: new work-order created from maintenance request
       res.status(201).json(result);
 
       // Notify resident that request was escalated to a work order
@@ -9972,6 +10020,7 @@ This is an automated demo request from the Your Condo Manager website.
       const parsed = insertMaintenanceScheduleTemplateSchema.parse(req.body);
       assertAssociationScope(req, parsed.associationId);
       const result = await storage.createMaintenanceScheduleTemplate(parsed, req.adminUserEmail);
+      safeInvalidateAlertCache(); // 15a: maintenance-schedule source write
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -9987,6 +10036,7 @@ This is an automated demo request from the Your Condo Manager website.
       }
       const result = await storage.updateMaintenanceScheduleTemplate(getParam(req.params.id), parsed, req.adminUserEmail);
       if (!result) return res.status(404).json({ message: "Maintenance schedule template not found" });
+      safeInvalidateAlertCache(); // 15a: maintenance-schedule source write (due-date/interval changes)
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -10001,6 +10051,7 @@ This is an automated demo request from the Your Condo Manager website.
         throughDate,
         actorEmail: req.adminUserEmail || "system",
       });
+      safeInvalidateAlertCache(); // 15a: maintenance instances generated (new due-maintenance alerts)
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -10018,6 +10069,7 @@ This is an automated demo request from the Your Condo Manager website.
         assertAssociationInputScope(req, parsed.associationId ?? null);
       }
       const result = await storage.convertMaintenanceInstanceToWorkOrder(getParam(req.params.id), parsed, req.adminUserEmail);
+      safeInvalidateAlertCache(); // 15a: new work-order created from maintenance instance
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -13040,6 +13092,7 @@ This is an automated demo request from the Your Condo Manager website.
         referenceId: req.body?.referenceId ?? null,
       });
       const result = await storage.createOwnerLedgerEntry(parsed);
+      safeInvalidateAlertCache(); // 15a: delinquent-ledger-balance source write (board portal)
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
