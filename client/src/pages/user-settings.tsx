@@ -25,6 +25,8 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useAssociationContext } from "@/context/association-context";
+import { AmenitiesFeatureToggleCard } from "@/components/settings/amenities-feature-toggle-card";
 
 type AuthSession = {
   authenticated: boolean;
@@ -220,6 +222,7 @@ export default function UserSettingsPage() {
   const currentSettings = useUserSettings();
   const [activeTab, setActiveTab] = useState("profile");
   const [notificationTab, setNotificationTab] = useState("delivery");
+  const { activeAssociationId } = useAssociationContext();
 
   const { data: authSession } = useQuery<AuthSession | null>({
     queryKey: ["/api/auth/me", "session"],
@@ -441,6 +444,9 @@ export default function UserSettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* 4.2 Q3 addendum (3a): per-association amenities feature toggle. */}
+            <AmenitiesFeatureToggleCard associationId={activeAssociationId || null} />
           </TabsContent>
 
           <TabsContent value="notifications" className="space-y-6">

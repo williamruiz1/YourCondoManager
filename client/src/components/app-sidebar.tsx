@@ -250,7 +250,7 @@ function filterModules(modules: NavModule[], adminRole?: AdminRole | null): NavM
 
 export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
   const [location] = useLocation();
-  const { associations, activeAssociationId, activeAssociationName } = useActiveAssociation();
+  const { associations, activeAssociation, activeAssociationId, activeAssociationName } = useActiveAssociation();
   const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
   // [0.1 AC 6 + AC 8] For single-association board users, hide both the
   // "Associations" peer entry and the "Portfolio Health" child of Home — these
@@ -265,7 +265,15 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
         }))
     : overviewModules;
   const visibleOverview = filterModules(overviewSource, adminRole);
-  const visibleAssociation = filterModules(associationModules, adminRole);
+  // 4.2 Q3 addendum (3a): hide the Amenity Booking entry when the active
+  // association has disabled amenities. When `amenitiesEnabled` is missing
+  // (e.g. no active association yet, or the column has not been hydrated),
+  // default to showing the entry — the server still enforces the gate.
+  const amenitiesDisabled = activeAssociation?.amenitiesEnabled === 0;
+  const associationSource = amenitiesDisabled
+    ? associationModules.filter((m) => m.url !== "/app/amenities")
+    : associationModules;
+  const visibleAssociation = filterModules(associationSource, adminRole);
   const visiblePlatform = filterModules(platformModules, adminRole);
 
   return (

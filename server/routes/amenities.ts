@@ -5,6 +5,7 @@ import {
   amenities,
   amenityBlocks,
   amenityReservations,
+  associations,
   insertAmenitySchema,
   insertAmenityBlockSchema,
   insertAmenityReservationSchema,
@@ -36,6 +37,25 @@ type RoleMiddlewareFactory = (roles: AdminRole[]) => AnyMiddleware;
 function p(value: string | string[] | undefined): string {
   if (!value) return "";
   return Array.isArray(value) ? value[0] : value;
+}
+
+// 4.2 Q3 addendum (3a): per-association amenities toggle. When the
+// association's `amenities_enabled` column is 0, portal amenity routes must
+// return a structured 404 so the owner portal treats the feature as absent.
+async function isAmenitiesEnabledFor(associationId: string): Promise<boolean> {
+  if (!associationId) return false;
+  const [row] = await db.select({ amenitiesEnabled: associations.amenitiesEnabled })
+    .from(associations)
+    .where(eq(associations.id, associationId));
+  if (!row) return false;
+  return row.amenitiesEnabled === 1;
+}
+
+function sendAmenitiesDisabled(res: Response) {
+  return res.status(404).json({
+    message: "Amenities feature is not enabled for this association",
+    code: "AMENITIES_FEATURE_DISABLED",
+  });
 }
 
 export function registerAmenityRoutes(
@@ -179,9 +199,23 @@ export function registerAmenityRoutes(
 
   // ── Portal: amenities ────────────────────────────────────────────────────────
 
+  // 4.2 Q3 addendum (3a): gate every portal amenity route on the per-association
+  // toggle. A disabled association returns a structured 404 (not 403) so the
+  // client can render the standard NotFound surface.
+  app.get("/api/portal/amenities/settings", requirePortal, async (req: PortalRequest, res: Response) => {
+    try {
+      const associationId = req.portalAssociationId!;
+      const enabled = await isAmenitiesEnabledFor(associationId);
+      res.json({ amenitiesEnabled: enabled });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/portal/amenities", requirePortal, async (req: PortalRequest, res: Response) => {
     try {
       const associationId = req.portalAssociationId!;
+      if (!(await isAmenitiesEnabledFor(associationId))) return sendAmenitiesDisabled(res);
       const rows = await db.select().from(amenities)
         .where(and(eq(amenities.associationId, associationId), eq(amenities.isActive, 1)))
         .orderBy(amenities.name);
@@ -194,6 +228,8 @@ export function registerAmenityRoutes(
   // NOTE: this specific path must come before /api/portal/amenities/:id routes
   app.get("/api/portal/amenities/my-reservations", requirePortal, async (req: PortalRequest, res: Response) => {
     try {
+      const associationId = req.portalAssociationId!;
+      if (!(await isAmenitiesEnabledFor(associationId))) return sendAmenitiesDisabled(res);
       const personId = req.portalPersonId!;
       const now = new Date();
       const rows = await db.select().from(amenityReservations)
@@ -210,6 +246,8 @@ export function registerAmenityRoutes(
 
   app.get("/api/portal/amenities/:id/availability", requirePortal, async (req: PortalRequest, res: Response) => {
     try {
+      const associationId = req.portalAssociationId!;
+      if (!(await isAmenitiesEnabledFor(associationId))) return sendAmenitiesDisabled(res);
       const id = p(req.params.id);
       const from = p(req.query.from as string | string[] | undefined);
       const to = p(req.query.to as string | string[] | undefined);
@@ -261,6 +299,7 @@ export function registerAmenityRoutes(
     try {
       const id = p(req.params.id);
       const associationId = req.portalAssociationId!;
+      if (!(await isAmenitiesEnabledFor(associationId))) return sendAmenitiesDisabled(res);
       const personId = req.portalPersonId!;
 
       const [amenity] = await db.select().from(amenities)
@@ -339,6 +378,8 @@ export function registerAmenityRoutes(
 
   app.delete("/api/portal/amenity-reservations/:id", requirePortal, async (req: PortalRequest, res: Response) => {
     try {
+      const associationId = req.portalAssociationId!;
+      if (!(await isAmenitiesEnabledFor(associationId))) return sendAmenitiesDisabled(res);
       const id = p(req.params.id);
       const personId = req.portalPersonId!;
 
