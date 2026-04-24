@@ -24,17 +24,29 @@ export type ZoneLabel =
   | "platform";
 
 /**
- * Rule-type discriminator for the Tier 1 catalog (4.1 Q1 resolution).
+ * Rule-type discriminator for the Tier 1 + Tier 2 catalog (4.1 Q1).
  * The `ruleType` is the first segment of the deterministic `alertId`
  * (`${ruleType}:${recordType}:${recordId}`) so the identifier remains
  * stable across surfaces.
+ *
+ * Tier 2 rule types were added alongside the Wave 2 Tier 1 set. They
+ * follow the same deterministic-ID and feature-domain-gating contract;
+ * each new rule type has a corresponding entry in
+ * `RULE_TYPE_FEATURE_DOMAIN` below and a resolver in
+ * `server/alerts/sources/`.
  */
 export type AlertRuleType =
+  // Tier 1 (Wave 2).
   | "overdue-work-order"
   | "due-maintenance"
   | "active-election"
   | "delinquent-ledger-balance"
-  | "expiring-governance-document";
+  | "expiring-governance-document"
+  // Tier 2 (Wave 3 — Tier 2 alert sources PR).
+  | "vendor-contract-renewal"
+  | "insurance-expiry"
+  | "budget-variance"
+  | "unpaid-late-fee";
 
 /**
  * Which underlying resolver emitted the alert. Mirrors `ruleType` for
@@ -104,6 +116,13 @@ export const FEATURE_DOMAINS = {
   OPERATIONS_WORK_ORDERS: "operations.work-orders",
   GOVERNANCE_DOCUMENTS: "governance.documents",
   GOVERNANCE_ELECTIONS: "governance.elections",
+  // Tier 2 (Wave 3 — Tier 2 alert sources PR). Feature-domain IDs for
+  // the Tier 2 catalog. `vendors` and `governance-compliance` are not
+  // currently rows in the 0.2 PM-Managed Default Access Table; they
+  // default-allow Manager / Platform-Admin only via the role-only
+  // fallback in `canAccessAlert` until the PM toggle-config UI lands.
+  VENDORS: "vendors",
+  GOVERNANCE_COMPLIANCE: "governance-compliance",
 } as const;
 
 export type FeatureDomain = (typeof FEATURE_DOMAINS)[keyof typeof FEATURE_DOMAINS];
@@ -118,11 +137,17 @@ export type FeatureDomain = (typeof FEATURE_DOMAINS)[keyof typeof FEATURE_DOMAIN
  * `canAccessAlert` without re-running the aggregation pipeline.
  */
 export const RULE_TYPE_FEATURE_DOMAIN: Readonly<Record<AlertRuleType, FeatureDomain>> = {
+  // Tier 1 (Wave 2).
   "overdue-work-order": FEATURE_DOMAINS.OPERATIONS_WORK_ORDERS,
   "due-maintenance": FEATURE_DOMAINS.OPERATIONS_MAINTENANCE_REQUESTS,
   "active-election": FEATURE_DOMAINS.GOVERNANCE_ELECTIONS,
   "delinquent-ledger-balance": FEATURE_DOMAINS.FINANCIALS_DELINQUENCY,
   "expiring-governance-document": FEATURE_DOMAINS.GOVERNANCE_DOCUMENTS,
+  // Tier 2 (Wave 3 — Tier 2 alert sources PR).
+  "vendor-contract-renewal": FEATURE_DOMAINS.VENDORS,
+  "insurance-expiry": FEATURE_DOMAINS.GOVERNANCE_COMPLIANCE,
+  "budget-variance": FEATURE_DOMAINS.FINANCIALS_REPORTS,
+  "unpaid-late-fee": FEATURE_DOMAINS.FINANCIALS_DELINQUENCY,
 };
 
 /**

@@ -104,6 +104,30 @@ const DEFAULT_ALERT_ACCESS: Readonly<Record<FeatureDomain, readonly AdminRole[]>
     "pm-assistant",
     "viewer",
   ],
+  // Tier 2 (Wave 3 — Tier 2 alert sources PR).
+  // "Vendors" is PM-operational: approvals, contract lifecycle, renewals.
+  // Not an explicit row in 0.2; treated like work orders — PM + platform
+  // admin + board officers (self-managed need vendor visibility).
+  // Assisted Board is DENIED: the Wave-2 0.2 example specifically put
+  // unit-management & vendor-management alerts outside Assisted-Board
+  // scope.
+  [FEATURE_DOMAINS.VENDORS]: [
+    "platform-admin",
+    "manager",
+    "board-officer",
+    "pm-assistant",
+  ],
+  // "Governance-compliance" covers insurance, compliance filings, etc.
+  // Same access surface as governance.documents — board-level oversight
+  // plus PM operational roles.
+  [FEATURE_DOMAINS.GOVERNANCE_COMPLIANCE]: [
+    "platform-admin",
+    "manager",
+    "board-officer",
+    "assisted-board",
+    "pm-assistant",
+    "viewer",
+  ],
 };
 
 /**

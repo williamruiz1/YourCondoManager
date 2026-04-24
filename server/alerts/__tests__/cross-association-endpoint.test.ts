@@ -25,7 +25,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---- Mocks --------------------------------------------------------------
 
-// Storage mock — covers the calls made by every Tier 1 resolver.
+// Storage mock — covers the calls made by every Tier 1 + Tier 2 resolver.
 vi.mock("../../storage", () => ({
   storage: {
     getWorkOrders: vi.fn().mockResolvedValue([]),
@@ -33,6 +33,12 @@ vi.mock("../../storage", () => ({
     getElections: vi.fn().mockResolvedValue([]),
     getOwnerLedgerSummary: vi.fn().mockResolvedValue([]),
     getOwnerLedgerEntries: vi.fn().mockResolvedValue([]),
+    // Tier 2 resolvers (added by feat/4.1-tier-2-alert-sources).
+    getVendors: vi.fn().mockResolvedValue([]),
+    getLateFeeEvents: vi.fn().mockResolvedValue([]),
+    getBudgets: vi.fn().mockResolvedValue([]),
+    getBudgetVersions: vi.fn().mockResolvedValue([]),
+    getBudgetVariance: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -46,6 +52,7 @@ const dbState: {
   associations: Array<{ id: string; name: string }>;
   governanceTemplates: Array<Record<string, unknown>>;
   delinquencyThresholds: Array<{ minimumDaysOverdue: number; isActive: number }>;
+  insurancePolicies: Array<Record<string, unknown>>;
 } = {
   readStates: [],
   associations: [
@@ -54,6 +61,7 @@ const dbState: {
   ],
   governanceTemplates: [],
   delinquencyThresholds: [],
+  insurancePolicies: [],
 };
 
 vi.mock("../../db", async () => {
@@ -85,6 +93,9 @@ vi.mock("../../db", async () => {
               }
               if (tableName === "associations") {
                 return Promise.resolve(dbState.associations);
+              }
+              if (tableName === "association_insurance_policies") {
+                return Promise.resolve(dbState.insurancePolicies);
               }
               return Promise.resolve([]);
             },
@@ -173,11 +184,17 @@ beforeEach(() => {
   dbState.readStates = [];
   dbState.governanceTemplates = [];
   dbState.delinquencyThresholds = [];
+  dbState.insurancePolicies = [];
   vi.mocked(storage.getWorkOrders).mockReset().mockResolvedValue([]);
   vi.mocked(storage.getMaintenanceScheduleInstances).mockReset().mockResolvedValue([]);
   vi.mocked(storage.getElections).mockReset().mockResolvedValue([]);
   vi.mocked(storage.getOwnerLedgerSummary).mockReset().mockResolvedValue([]);
   vi.mocked(storage.getOwnerLedgerEntries).mockReset().mockResolvedValue([]);
+  vi.mocked(storage.getVendors).mockReset().mockResolvedValue([]);
+  vi.mocked(storage.getLateFeeEvents).mockReset().mockResolvedValue([]);
+  vi.mocked(storage.getBudgets).mockReset().mockResolvedValue([]);
+  vi.mocked(storage.getBudgetVersions).mockReset().mockResolvedValue([]);
+  vi.mocked(storage.getBudgetVariance).mockReset().mockResolvedValue([]);
 });
 
 // ---- Tests --------------------------------------------------------------
