@@ -50,6 +50,13 @@
       "when": 1776400000000,
       "tag": "0006_role_rename_board_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776500000000,
+      "tag": "0008_amenities_enabled",
+      "breakpoints": true
     }
   ]
 }

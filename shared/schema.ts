@@ -15,6 +15,10 @@ export const associations = pgTable("associations", {
   country: text("country").notNull().default("USA"),
   isArchived: integer("is_archived").notNull().default(0),
   archivedAt: timestamp("archived_at"),
+  // 4.2 Q3 addendum (3a): per-association amenities feature toggle. Defaults to
+  // enabled (1). When 0, the owner-portal amenities entry is hidden, the
+  // /portal/amenities route 404s, and amenity-reservation APIs return 404.
+  amenitiesEnabled: integer("amenities_enabled").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

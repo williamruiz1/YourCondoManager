@@ -399,6 +399,21 @@ export default function OwnerPortalPage() {
     },
   });
 
+  // 4.2 Q3 addendum (3a): owner portal hides the Amenity Booking entry when
+  // the association has `amenitiesEnabled = 0`. We default to the safe "not
+  // enabled" state while loading to avoid flashing the card.
+  const { data: amenitiesSettings } = useQuery<{ amenitiesEnabled: boolean }>({
+    queryKey: ["portal/amenities-settings", portalAccessId],
+    enabled: !!portalAccessId,
+    queryFn: async () => {
+      if (!portalAccessId) return { amenitiesEnabled: false };
+      const res = await portalFetch(`/api/portal/amenities/settings`);
+      if (!res.ok) return { amenitiesEnabled: false };
+      return res.json();
+    },
+  });
+  const amenitiesEnabledForPortal = amenitiesSettings?.amenitiesEnabled === true;
+
   const { data: notices } = useQuery<PortalNoticeHistory[]>({
     queryKey: ["portal/notices"],
     enabled: !!portalAccessId,
@@ -1375,17 +1390,19 @@ export default function OwnerPortalPage() {
                     <p className="font-label text-on-surface-variant uppercase tracking-widest text-[10px] mb-1">Open Maintenance</p>
                     <span className="font-headline text-3xl">{openMaintenanceRequests}</span>
                   </div>
-                  <a
-                    href="/portal/amenities"
-                    className="bg-primary/5 hover:bg-primary/10 transition-colors p-6 rounded-xl flex-1 min-w-[280px] border border-primary/20 flex items-center justify-between gap-3"
-                    data-testid="link-portal-amenities"
-                  >
-                    <div>
-                      <p className="font-label text-primary uppercase tracking-widest text-[10px] mb-1">Amenity Booking</p>
-                      <span className="font-headline text-2xl text-on-surface">Reserve a space</span>
-                    </div>
-                    <span className="material-symbols-outlined text-primary" style={{ fontSize: 32 }}>event_available</span>
-                  </a>
+                  {amenitiesEnabledForPortal ? (
+                    <a
+                      href="/portal/amenities"
+                      className="bg-primary/5 hover:bg-primary/10 transition-colors p-6 rounded-xl flex-1 min-w-[280px] border border-primary/20 flex items-center justify-between gap-3"
+                      data-testid="link-portal-amenities"
+                    >
+                      <div>
+                        <p className="font-label text-primary uppercase tracking-widest text-[10px] mb-1">Amenity Booking</p>
+                        <span className="font-headline text-2xl text-on-surface">Reserve a space</span>
+                      </div>
+                      <span className="material-symbols-outlined text-primary" style={{ fontSize: 32 }}>event_available</span>
+                    </a>
+                  ) : null}
                 </div>
               </section>
 

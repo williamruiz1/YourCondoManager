@@ -16,6 +16,7 @@ import { Link } from "wouter";
 import { ChevronLeft, Clock, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import NotFound from "@/pages/not-found";
 
 // One week of 1-hour slots displayed as a simple grid
 function WeekGrid({ busyWindows, weekStart }: { busyWindows: { type: string; startAt: string | Date; endAt: string | Date; reason?: string | null }[]; weekStart: Date }) {
@@ -389,6 +390,35 @@ export default function AmenitiesPage() {
         </div>
       </div>
     );
+  }
+
+  return <AmenitiesGatedContent portalAccessId={portalAccessId} />;
+}
+
+// 4.2 Q3 addendum (3a): once the portal session is valid, resolve the
+// per-association amenities feature toggle. When disabled, render the
+// shared `<NotFound/>` surface so `/portal/amenities` behaves as if the
+// route does not exist for that association.
+function AmenitiesGatedContent({ portalAccessId }: { portalAccessId: string }) {
+  const { data, isLoading } = useQuery<{ amenitiesEnabled: boolean }>({
+    queryKey: ["portal/amenities-settings", portalAccessId],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/amenities/settings`, { headers: { "x-portal-access-id": portalAccessId } });
+      if (!res.ok) return { amenitiesEnabled: false };
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-container-low">
+        <div className="text-sm text-on-surface-variant">Loading…</div>
+      </div>
+    );
+  }
+
+  if (data && data.amenitiesEnabled === false) {
+    return <NotFound />;
   }
 
   return <AmenitiesPortalContent portalAccessId={portalAccessId} />;

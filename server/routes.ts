@@ -207,6 +207,7 @@ import {
   ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_TITLE,
 } from "@shared/admin-contextual-feedback";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
+import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { updatePaymentTransactionStatus } from "./services/payment-service";
@@ -1861,6 +1862,81 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(400).json({ message: error.message });
     }
   });
+
+  // 4.2 Q3 addendum (3a): per-association amenities feature toggle.
+  //
+  // Auth: Manager (any scoped association) OR Board Officer whose scoped
+  // association is self-managed (tenant_configs.management_type = "self-managed").
+  // Platform admin may also toggle. Every other role (owner portal users,
+  // assisted-board, pm-assistant, viewer) receives 403. The pure predicate
+  // lives in `@shared/amenities-toggle-auth` so tests share a single source
+  // of truth.
+  async function assertAmenitiesToggleAuth(req: AdminRequest, associationId: string): Promise<void> {
+    const tenantConfig = req.adminRole === "board-officer"
+      ? await storage.getTenantConfig(associationId)
+      : null;
+    const result = checkAmenitiesToggleAuth({
+      role: req.adminRole,
+      associationId,
+      scopedAssociationIds: req.adminRole === "platform-admin" ? [associationId] : (req.adminScopedAssociationIds ?? []),
+      managementType: tenantConfig?.managementType ?? null,
+    });
+    if (!result.allowed) {
+      const err = new Error(result.reason) as Error & { status?: number };
+      err.status = 403;
+      throw err;
+    }
+  }
+
+  app.get("/api/associations/:id/settings/amenities",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const associationId = getParam(req.params.id);
+        await assertAmenitiesToggleAuth(req, associationId);
+        const [row] = await db.select({ amenitiesEnabled: associations.amenitiesEnabled })
+          .from(associations)
+          .where(eq(associations.id, associationId));
+        if (!row) return res.status(404).json({ message: "Association not found" });
+        res.json({ amenitiesEnabled: row.amenitiesEnabled === 1 });
+      } catch (error: any) {
+        const status = error?.status ?? 403;
+        res.status(status).json({
+          message: error?.message ?? "Forbidden",
+          code: "AMENITIES_TOGGLE_FORBIDDEN",
+        });
+      }
+    },
+  );
+
+  app.patch("/api/associations/:id/settings/amenities",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const associationId = getParam(req.params.id);
+        await assertAmenitiesToggleAuth(req, associationId);
+        const parsed = z.object({ amenitiesEnabled: z.boolean() }).safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ message: "Validation error", errors: parsed.error.flatten() });
+        }
+        const nextValue = parsed.data.amenitiesEnabled ? 1 : 0;
+        const [updated] = await db.update(associations)
+          .set({ amenitiesEnabled: nextValue })
+          .where(eq(associations.id, associationId))
+          .returning({ amenitiesEnabled: associations.amenitiesEnabled });
+        if (!updated) return res.status(404).json({ message: "Association not found" });
+        res.json({ amenitiesEnabled: updated.amenitiesEnabled === 1 });
+      } catch (error: any) {
+        const status = error?.status ?? 403;
+        res.status(status).json({
+          message: error?.message ?? "Forbidden",
+          code: "AMENITIES_TOGGLE_FORBIDDEN",
+        });
+      }
+    },
+  );
 
   app.get("/api/buildings", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
