@@ -1289,6 +1289,38 @@ export const onboardingSubmissions = pgTable("onboarding_submissions", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ---------------------------------------------------------------------------
+// 4.3 Q6 — PM toggle registry (per-association boolean overrides)
+//
+// Each row is a `(associationId, toggleKey)` pair with an enabled flag. The
+// table exists so Managers can flip per-association PM-toggle overrides that
+// extend the default PM-Managed Default Access Table described in ADR 0.2
+// ("PM Toggle Configuration Model"). Default state for any toggle key is
+// OFF — the absence of a row means "not overridden" which we resolve to
+// disabled for every consumer today (Assisted Board write expansion).
+//
+// Valid toggle keys are enumerated in `PM_TOGGLE_KEYS` below; the server
+// rejects PUTs with any other key. This keeps the set tractable and prevents
+// drive-by key pollution.
+// ---------------------------------------------------------------------------
+export const pmToggles = pgTable("pm_toggles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  toggleKey: text("toggle_key").notNull(),
+  enabled: integer("enabled").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedBy: varchar("updated_by").references(() => adminUsers.id),
+}, (table) => ({
+  uniquePmToggleAssociationKey: uniqueIndex("pm_toggles_association_key_uq").on(table.associationId, table.toggleKey),
+}));
+
+export const PM_TOGGLE_KEYS = ["assessment_rules_write"] as const;
+export type PmToggleKey = (typeof PM_TOGGLE_KEYS)[number];
+
+export function isPmToggleKey(value: unknown): value is PmToggleKey {
+  return typeof value === "string" && (PM_TOGGLE_KEYS as readonly string[]).includes(value);
+}
+
 export const tenantConfigs = pgTable("tenant_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
