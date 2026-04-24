@@ -27,6 +27,8 @@ import type { AdminNotificationPreferences } from "@shared/admin-notification-pr
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAssociationContext } from "@/context/association-context";
 import { AmenitiesFeatureToggleCard } from "@/components/settings/amenities-feature-toggle-card";
+import { Link } from "wouter";
+import { CreditCard, ChevronRight } from "lucide-react";
 
 type AuthSession = {
   authenticated: boolean;
@@ -447,6 +449,26 @@ export default function UserSettingsPage() {
 
             {/* 4.2 Q3 addendum (3a): per-association amenities feature toggle. */}
             <AmenitiesFeatureToggleCard associationId={activeAssociationId || null} />
+
+            {/* 4.4 Q6 Wave 13 — Billing entry point. The full /app/settings/billing
+                page handles role-gating; this is a discovery link for Manager /
+                Board Officer / PM Assistant / Platform Admin. Viewer is hidden. */}
+            {role && ["manager", "board-officer", "pm-assistant", "platform-admin"].includes(role) && (
+              <Card data-testid="settings-billing-link-card">
+                <Link href="/app/settings/billing">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 cursor-pointer hover:bg-muted/40 transition-colors">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <CreditCard className="h-5 w-5" />
+                        Billing
+                      </CardTitle>
+                      <CardDescription>Plan, trial status, and payment method.</CardDescription>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </CardHeader>
+                </Link>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="notifications" className="space-y-6">

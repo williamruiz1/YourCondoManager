@@ -189,7 +189,7 @@ export default function PlanSignupSuccessPage() {
           Your workspace is ready!
         </h1>
 
-        <p className="text-base font-body text-on-surface/60 mb-10 leading-relaxed">
+        <p className="text-base font-body text-on-surface/60 mb-4 leading-relaxed">
           {pageState.email ? (
             <>
               We've sent a login link to{" "}
@@ -199,6 +199,16 @@ export default function PlanSignupSuccessPage() {
           ) : (
             "Check your email inbox for a login link to access your workspace."
           )}
+        </p>
+
+        {/* 4.4 Q5 (Wave 13) — trial-model messaging: 14-day trial + 7-day
+            grace before workspace locks. Keeps the original "no credit
+            card required" stance while surfacing the grace window. */}
+        <p className="text-xs font-body text-on-surface/50 mb-10 leading-relaxed" data-testid="signup-success-trial-fine-print">
+          Your 14-day free trial starts today — no credit card required. Add a payment
+          method any time before the trial ends. After the trial, you have a 7-day grace
+          window to complete billing before workspace access is paused. You can manage billing
+          at <span className="font-semibold">Settings → Billing</span> at any time.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
