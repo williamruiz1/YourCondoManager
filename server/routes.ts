@@ -93,6 +93,7 @@ import {
   insertPermissionEnvelopeSchema,
   insertResolutionSchema,
   insertSpecialAssessmentSchema,
+  insertSpecialAssessmentSchemaBase,
   insertUnitSchema,
   insertUtilityPaymentSchema,
   insertPaymentMethodConfigSchema,
@@ -3116,7 +3117,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/financial/assessments/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "special-assessment", getParam(req.params.id));
-      const parsed = insertSpecialAssessmentSchema.partial().parse(req.body);
+      // Use the pre-refine base schema for PATCH so `.partial()` is available.
+      // (The superRefine in insertSpecialAssessmentSchema enforces the
+      // custom-allocation invariant for creates only.)
+      const parsed = insertSpecialAssessmentSchemaBase.partial().parse(req.body);
       if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
         assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
       }

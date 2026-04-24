@@ -279,6 +279,29 @@ export const hoaFeeSchedules = pgTable("hoa_fee_schedules", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// 4.3 Q7 canonical rule model — new enums (added in Wave 6; legacy feeFrequencyEnum /
+// recurringChargeFrequencyEnum retained for this wave. Wave 7 will migrate to
+// assessmentFrequencyEnum. See docs/projects/platform-overhaul/decisions/4.3-recurring-assessment-rules-engine.md.
+export const assessmentAllocationMethodEnum = pgEnum("assessment_allocation_method", [
+  "per-unit-equal",
+  "per-sq-ft",
+  "per-ownership-share",
+  "custom",
+]);
+export const assessmentFrequencyEnum = pgEnum("assessment_frequency", [
+  "monthly",
+  "quarterly",
+  "annually",
+  "semi-annually",
+  "one-time",
+]);
+export const assessmentUnitScopeModeEnum = pgEnum("assessment_unit_scope_mode", [
+  "all-units",
+  "inclusion-list",
+  "exclusion-list",
+  "unit-type-filter",
+]);
+
 export const specialAssessments = pgTable("special_assessments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -291,6 +314,19 @@ export const specialAssessments = pgTable("special_assessments", {
   isActive: integer("is_active").notNull().default(1),
   autoPostEnabled: integer("auto_post_enabled").notNull().default(0),
   excludedUnitIdsJson: jsonb("excluded_unit_ids_json").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  // 4.3 Q5 loan-style detail fields (nullable for backward compatibility).
+  interestRatePercent: real("interest_rate_percent"),
+  termMonths: integer("term_months"),
+  allocationMethod: assessmentAllocationMethodEnum("allocation_method").notNull().default("per-unit-equal"),
+  allocationCustomJson: jsonb("allocation_custom_json").$type<Record<string, number>>(),
+  paymentOptionsJson: jsonb("payment_options_json").$type<{
+    lumpSumAllowed: boolean;
+    lumpSumDiscountPercent: number | null;
+    customInstallmentPlansAllowed: boolean;
+  }>(),
+  // 4.3 Q7 canonical rule model — unit scope mode (the existing
+  // excludedUnitIdsJson maps to the "exclusion-list" mode when populated).
+  unitScopeMode: assessmentUnitScopeModeEnum("unit_scope_mode").notNull().default("all-units"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -594,7 +630,7 @@ export const recurringChargeScheduleStatusEnum = pgEnum("recurring_charge_schedu
 export const recurringChargeSchedules = pgTable("recurring_charge_schedules", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
-  unitId: varchar("unit_id").references(() => units.id), // null = all units
+  unitId: varchar("unit_id").references(() => units.id), // null = all units (legacy; new code should consult unitScopeMode)
   chargeDescription: text("charge_description").notNull(),
   entryType: ownerLedgerEntryTypeEnum("entry_type").notNull().default("charge"),
   amount: real("amount").notNull(),
@@ -603,13 +639,28 @@ export const recurringChargeSchedules = pgTable("recurring_charge_schedules", {
   nextRunDate: timestamp("next_run_date"),
   status: recurringChargeScheduleStatusEnum("status").notNull().default("active"),
   maxRetries: integer("max_retries").notNull().default(3),
+  // 4.3 Q7 canonical rule model — unit scope, grace period, universal end date.
+  unitScopeMode: assessmentUnitScopeModeEnum("unit_scope_mode").notNull().default("all-units"),
+  includedUnitIdsJson: jsonb("included_unit_ids_json").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  unitTypeFilter: text("unit_type_filter"),
+  graceDays: integer("grace_days").notNull().default(0),
+  endDate: timestamp("end_date"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type RecurringChargeSchedule = typeof recurringChargeSchedules.$inferSelect;
 export type InsertRecurringChargeSchedule = typeof recurringChargeSchedules.$inferInsert;
-export const insertRecurringChargeScheduleSchema = createInsertSchema(recurringChargeSchedules);
+export const insertRecurringChargeScheduleSchema = createInsertSchema(recurringChargeSchedules, {
+  // 4.3 Q7 canonical rule model — all optional for backward compatibility.
+  unitScopeMode: z
+    .enum(["all-units", "inclusion-list", "exclusion-list", "unit-type-filter"])
+    .optional(),
+  includedUnitIdsJson: z.array(z.string()).optional(),
+  unitTypeFilter: z.string().nullable().optional(),
+  graceDays: z.number().int().min(0, "graceDays must be >= 0").optional(),
+  endDate: z.coerce.date().nullable().optional(),
+});
 
 // Recurring charge runs — execution history with retry tracking
 export const recurringChargeRunStatusEnum = pgEnum("recurring_charge_run_status", ["pending", "success", "failed", "skipped", "retrying"]);
@@ -1776,9 +1827,48 @@ export const insertHoaFeeScheduleSchema = createInsertSchema(hoaFeeSchedules, {
   startDate: z.coerce.date(),
   endDate: z.coerce.date().nullable().optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertSpecialAssessmentSchema = createInsertSchema(specialAssessments, {
+// 4.3 Q5/Q7 — the base object schema is exported so callers that need
+// `.partial()` (e.g. PATCH routes) can still do so. The runtime-validated
+// schema used by INSERT paths layers a superRefine on top of the base to
+// enforce that allocationMethod='custom' requires allocationCustomJson.
+export const insertSpecialAssessmentSchemaBase = createInsertSchema(specialAssessments, {
   excludedUnitIdsJson: z.array(z.string()).default([]),
+  // 4.3 Q5/Q7 new fields — optional for backward compatibility with
+  // existing callers and historical rows that pre-date Wave 6.
+  interestRatePercent: z.number().min(0, "interestRatePercent must be >= 0").nullable().optional(),
+  termMonths: z.number().int().min(0).nullable().optional(),
+  allocationMethod: z
+    .enum(["per-unit-equal", "per-sq-ft", "per-ownership-share", "custom"])
+    .optional(),
+  allocationCustomJson: z.record(z.string(), z.number()).nullable().optional(),
+  paymentOptionsJson: z
+    .object({
+      lumpSumAllowed: z.boolean(),
+      lumpSumDiscountPercent: z.number().nullable(),
+      customInstallmentPlansAllowed: z.boolean(),
+    })
+    .nullable()
+    .optional(),
+  unitScopeMode: z
+    .enum(["all-units", "inclusion-list", "exclusion-list", "unit-type-filter"])
+    .optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const insertSpecialAssessmentSchema = insertSpecialAssessmentSchemaBase.superRefine(
+  (value, ctx) => {
+    if (value.allocationMethod === "custom") {
+      const custom = value.allocationCustomJson;
+      if (custom === undefined || custom === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["allocationCustomJson"],
+          message:
+            "allocationCustomJson is required when allocationMethod is 'custom'",
+        });
+      }
+    }
+  },
+);
 export const insertLateFeeRuleSchema = createInsertSchema(lateFeeRules).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertLateFeeEventSchema = createInsertSchema(lateFeeEvents).omit({ id: true, createdAt: true });
 export const insertFinancialAccountSchema = createInsertSchema(financialAccounts).omit({ id: true, createdAt: true, updatedAt: true });
