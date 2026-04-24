@@ -3,6 +3,7 @@ import type { SubPage } from "@/components/workspace-page-header";
 export const financeSubPages: SubPage[] = [
   { label: "Chart of Accounts", href: "/app/financial/foundation" },
   { label: "Billing", href: "/app/financial/billing" },
+  { label: "Assessment Rules", href: "/app/financial/rules" },
   { label: "Payments", href: "/app/financial/payments" },
   { label: "Expenses", href: "/app/financial/expenses" },
   { label: "Reports", href: "/app/financial/reports" },

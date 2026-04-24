@@ -155,6 +155,7 @@ import {
   insertRecurringChargeScheduleSchema,
   recurringChargeRuns,
   insertRecurringChargeRunSchema,
+  specialAssessments,
   partialPaymentRules,
   insertPartialPaymentRuleSchema,
   savedPaymentMethods,
@@ -203,6 +204,7 @@ import {
   delinquencyNotices,
   autopayEnrollments,
   alertReadStates,
+  assessmentRunLog,
 } from "@shared/schema";
 import {
   ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE,
@@ -10402,6 +10404,174 @@ This is an automated demo request from the Your Condo Manager website.
       res.status(400).json({ message: error.message });
     }
   });
+
+  // Wave 8 (4.3 Q9) — Consolidated Assessment Rules run-history feed.
+  //
+  // Powers the Run History tab on /app/financial/rules. Reads from
+  // `assessmentRunLog` (Wave 7) which holds rows from both the recurring
+  // and special-assessment handlers (and shadow-write "deferred" rows
+  // while ASSESSMENT_EXECUTION_UNIFIED is still OFF per-association).
+  //
+  // Query params:
+  //   associationId (required)
+  //   ruleType      ("recurring" | "special-assessment"; omit for all)
+  //   status        ("success" | "failed" | "retrying" | "skipped" | "deferred"; omit for all)
+  //   from          optional ISO-8601 lower bound (inclusive)
+  //   to            optional ISO-8601 upper bound (inclusive)
+  //   page          optional 1-based page index (default 1)
+  //   limit         optional page size (default 50, max 500)
+  //
+  // Auth: Assisted Board + Viewer get read-only view per 4.3 Q6 — all six
+  // roles are read-eligible here.
+  app.get(
+    "/api/financial/assessment-run-log",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) {
+          return res.status(400).json({ message: "associationId is required" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const ruleTypeRaw = typeof req.query.ruleType === "string" ? req.query.ruleType : null;
+        const statusRaw = typeof req.query.status === "string" ? req.query.status : null;
+        const fromRaw = typeof req.query.from === "string" ? req.query.from : null;
+        const toRaw = typeof req.query.to === "string" ? req.query.to : null;
+        const pageRaw = typeof req.query.page === "string" ? Number(req.query.page) : 1;
+        const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : 50;
+
+        const allowedRuleTypes = new Set(["recurring", "special-assessment"]);
+        const allowedStatuses = new Set(["success", "failed", "retrying", "skipped", "deferred"]);
+        if (ruleTypeRaw && !allowedRuleTypes.has(ruleTypeRaw)) {
+          return res.status(400).json({ message: "invalid ruleType" });
+        }
+        if (statusRaw && !allowedStatuses.has(statusRaw)) {
+          return res.status(400).json({ message: "invalid status" });
+        }
+
+        let from: Date | null = null;
+        let to: Date | null = null;
+        if (fromRaw) {
+          from = new Date(fromRaw);
+          if (!Number.isFinite(from.getTime())) {
+            return res.status(400).json({ message: "invalid from timestamp" });
+          }
+        }
+        if (toRaw) {
+          to = new Date(toRaw);
+          if (!Number.isFinite(to.getTime())) {
+            return res.status(400).json({ message: "invalid to timestamp" });
+          }
+        }
+        if (from && to && to < from) {
+          return res.status(400).json({ message: "to must be >= from" });
+        }
+
+        const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+        const limit = Math.min(
+          500,
+          Math.max(1, Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 50),
+        );
+        const offset = (page - 1) * limit;
+
+        const whereExprs = [eq(assessmentRunLog.associationId, associationId)];
+        if (ruleTypeRaw) {
+          whereExprs.push(eq(assessmentRunLog.ruleType, ruleTypeRaw as any));
+        }
+        if (statusRaw) {
+          whereExprs.push(eq(assessmentRunLog.status, statusRaw as any));
+        }
+        if (from) {
+          whereExprs.push(gte(assessmentRunLog.runStartedAt, from));
+        }
+        if (to) {
+          whereExprs.push(lte(assessmentRunLog.runStartedAt, to));
+        }
+        const whereClause = whereExprs.length === 1 ? whereExprs[0] : and(...whereExprs);
+
+        const [rowsRaw, totalRows] = await Promise.all([
+          db
+            .select()
+            .from(assessmentRunLog)
+            .where(whereClause)
+            .orderBy(desc(assessmentRunLog.runStartedAt))
+            .limit(limit)
+            .offset(offset),
+          db
+            .select({ total: count() })
+            .from(assessmentRunLog)
+            .where(whereClause),
+        ]);
+
+        // Hydrate ruleName via separate lookups (no join — fewer rows, simpler).
+        const recurringIds = new Set<string>();
+        const specialIds = new Set<string>();
+        const unitIds = new Set<string>();
+        for (const row of rowsRaw) {
+          if (row.ruleType === "recurring") recurringIds.add(row.ruleId);
+          else if (row.ruleType === "special-assessment") specialIds.add(row.ruleId);
+          if (row.unitId) unitIds.add(row.unitId);
+        }
+
+        const [recurringRows, specialRows, unitRows] = await Promise.all([
+          recurringIds.size
+            ? db
+                .select({ id: recurringChargeSchedules.id, name: recurringChargeSchedules.chargeDescription })
+                .from(recurringChargeSchedules)
+                .where(inArray(recurringChargeSchedules.id, Array.from(recurringIds)))
+            : Promise.resolve([] as Array<{ id: string; name: string }>),
+          specialIds.size
+            ? db
+                .select({ id: specialAssessments.id, name: specialAssessments.name })
+                .from(specialAssessments)
+                .where(inArray(specialAssessments.id, Array.from(specialIds)))
+            : Promise.resolve([] as Array<{ id: string; name: string }>),
+          unitIds.size
+            ? db
+                .select({ id: units.id, unitNumber: units.unitNumber })
+                .from(units)
+                .where(inArray(units.id, Array.from(unitIds)))
+            : Promise.resolve([] as Array<{ id: string; unitNumber: string }>),
+        ]);
+
+        const recurringNameById = new Map(recurringRows.map((r) => [r.id, r.name]));
+        const specialNameById = new Map(specialRows.map((r) => [r.id, r.name]));
+        const unitNumberById = new Map(unitRows.map((u) => [u.id, u.unitNumber]));
+
+        const rows = rowsRaw.map((row) => ({
+          id: row.id,
+          associationId: row.associationId,
+          ruleType: row.ruleType,
+          ruleId: row.ruleId,
+          ruleName:
+            row.ruleType === "recurring"
+              ? recurringNameById.get(row.ruleId) ?? null
+              : specialNameById.get(row.ruleId) ?? null,
+          unitId: row.unitId,
+          unitNumber: row.unitId ? unitNumberById.get(row.unitId) ?? null : null,
+          runStartedAt: row.runStartedAt,
+          runCompletedAt: row.runCompletedAt,
+          status: row.status,
+          amount: row.amount,
+          ledgerEntryId: row.ledgerEntryId,
+          errorCode: row.errorCode,
+          errorMessage: row.errorMessage,
+          retryAttempt: row.retryAttempt,
+        }));
+
+        res.json({
+          rows,
+          total: Number(totalRows[0]?.total ?? 0),
+          page,
+          limit,
+        });
+      } catch (error: any) {
+        res.status(400).json({ message: error?.message ?? "assessment-run-log lookup failed" });
+      }
+    },
+  );
 
   // Wave 7 (4.3 Q3) — Shadow-write parity report.
   //
