@@ -210,7 +210,14 @@ import {
   autopayEnrollments,
   alertReadStates,
   assessmentRunLog,
+  PM_TOGGLE_KEYS,
+  isPmToggleKey,
 } from "@shared/schema";
+import {
+  listTogglesForAssociation,
+  setToggle,
+  canAssessmentRulesWrite,
+} from "./pm-toggles";
 import {
   ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE,
   ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_ID,
@@ -1036,18 +1043,17 @@ function assertAssociationInputScope(req: AdminRequest, associationId: string | 
 
 /**
  * 4.3 Q6/Q8 — Resolve the `assessment_rules_write` PM toggle for an
- * association. Returns true when the toggle is ON for the association
- * (Assisted Board may then invoke write endpoints like the unified rule-run).
+ * association via the canonical `server/pm-toggles.ts` resolver.
  *
- * Phase 0b.2 stub: the tenant_configs PM-toggle surface is not yet wired
- * server-side (see shared/persona-access.ts). The helper returns false so
- * Assisted Board is 403 by default. Phase 9 populates this from
- * `tenant_configs` and this stub is replaced in place.
+ * Previously a Phase 0b.2 stub; now backed by the real `pmToggles` table
+ * (migration 0013). Default state is OFF (no row = disabled), preserving
+ * the stub's semantics for associations that haven't flipped the toggle.
  */
 async function readAssessmentRulesWriteToggle(
-  _associationId: string,
+  associationId: string,
 ): Promise<boolean> {
-  return false;
+  // Delegate to the canonical resolver to centralize cache + logging.
+  return canAssessmentRulesWrite("assisted-board", associationId);
 }
 
 async function assertResourceScope(req: AdminRequest, resourceType: string, id: string) {
@@ -2244,6 +2250,72 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         res.status(status).json({
           message: error?.message ?? "Forbidden",
           code: "AMENITIES_TOGGLE_FORBIDDEN",
+        });
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // 4.3 Q6 — PM toggle management (per-association boolean overrides)
+  //
+  // Managers + Platform Admins read/write `pmToggles`. Other roles are 403.
+  // Valid keys are enumerated by `PM_TOGGLE_KEYS` in shared/schema.ts; unknown
+  // keys return 400 on write.
+  // ---------------------------------------------------------------------------
+  app.get(
+    "/api/associations/:id/pm-toggles",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const associationId = getParam(req.params.id);
+        assertAssociationScope(req, associationId);
+        const toggles = await listTogglesForAssociation(associationId);
+        res.json({ toggles });
+      } catch (error: any) {
+        const status = error?.status ?? 403;
+        res.status(status).json({
+          message: error?.message ?? "Forbidden",
+          code: "PM_TOGGLES_READ_FORBIDDEN",
+        });
+      }
+    },
+  );
+
+  app.put(
+    "/api/associations/:id/pm-toggles/:toggleKey",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const associationId = getParam(req.params.id);
+        const toggleKey = getParam(req.params.toggleKey);
+        assertAssociationScope(req, associationId);
+
+        if (!isPmToggleKey(toggleKey)) {
+          return res.status(400).json({
+            message: `Unknown PM toggle key: ${toggleKey}`,
+            code: "PM_TOGGLE_UNKNOWN_KEY",
+            validKeys: PM_TOGGLE_KEYS,
+          });
+        }
+
+        const enabled = req.body?.enabled;
+        if (typeof enabled !== "boolean") {
+          return res.status(400).json({
+            message: "Body must include { enabled: boolean }",
+            code: "PM_TOGGLE_INVALID_BODY",
+          });
+        }
+
+        const adminUserId = req.adminUserId!;
+        await setToggle(associationId, toggleKey, enabled, adminUserId);
+        res.json({ toggleKey, enabled });
+      } catch (error: any) {
+        const status = error?.status ?? 403;
+        res.status(status).json({
+          message: error?.message ?? "Forbidden",
+          code: "PM_TOGGLE_WRITE_FORBIDDEN",
         });
       }
     },
