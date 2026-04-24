@@ -5,7 +5,7 @@
  *
  * Responsibilities:
  *   1. Fan out across the persona's permitted associations.
- *   2. Call the five Tier 1 resolvers for each association in parallel.
+ *   2. Call every Tier 1 + Tier 2 resolver for each association in parallel.
  *   3. Apply the `canAccessAlert` predicate (4.1 Q5) server-side so
  *      clients never see alerts they are not permitted to act on.
  *   4. Join each surviving alert to the caller's row in
@@ -34,6 +34,10 @@ import { resolve as resolveDueMaintenance } from "./sources/due-maintenance";
 import { resolve as resolveActiveElections } from "./sources/active-elections";
 import { resolve as resolveDelinquentLedgerBalances } from "./sources/delinquent-ledger-balances";
 import { resolve as resolveExpiringGovernanceDocuments } from "./sources/expiring-governance-documents";
+import { resolve as resolveVendorContractRenewals } from "./sources/vendor-contract-renewals";
+import { resolve as resolveInsuranceExpiry } from "./sources/insurance-expiry";
+import { resolve as resolveBudgetVarianceFlags } from "./sources/budget-variance-flags";
+import { resolve as resolveUnpaidLateFees } from "./sources/unpaid-late-fees";
 import type { AlertItem, AlertReadStateEntry, ZoneLabel } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -131,14 +135,38 @@ export async function getCrossAssociationAlerts(
   const perAssociationAlerts = await Promise.all(
     input.permittedAssociations.map(async (assoc) => {
       const ctx = resolverContext(assoc.name);
-      const [overdueWo, dueMaint, elections, ledger, docs] = await Promise.all([
+      const [
+        overdueWo,
+        dueMaint,
+        elections,
+        ledger,
+        docs,
+        vendorRenewals,
+        insurance,
+        budgetVariance,
+        unpaidLateFees,
+      ] = await Promise.all([
         resolveOverdueWorkOrders(assoc.id, ctx),
         resolveDueMaintenance(assoc.id, ctx),
         resolveActiveElections(assoc.id, ctx),
         resolveDelinquentLedgerBalances(assoc.id, ctx),
         resolveExpiringGovernanceDocuments(assoc.id, ctx),
+        resolveVendorContractRenewals(assoc.id, ctx),
+        resolveInsuranceExpiry(assoc.id, ctx),
+        resolveBudgetVarianceFlags(assoc.id, ctx),
+        resolveUnpaidLateFees(assoc.id, ctx),
       ]);
-      return [...overdueWo, ...dueMaint, ...elections, ...ledger, ...docs];
+      return [
+        ...overdueWo,
+        ...dueMaint,
+        ...elections,
+        ...ledger,
+        ...docs,
+        ...vendorRenewals,
+        ...insurance,
+        ...budgetVariance,
+        ...unpaidLateFees,
+      ];
     }),
   );
   let alerts = perAssociationAlerts.flat();
