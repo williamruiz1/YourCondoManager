@@ -85,6 +85,8 @@ const CommunityHubPage = lazy(() => import("@/pages/community-hub"));
 const CommunityHubPublicPage = lazy(() => import("@/pages/community-hub-public"));
 const AmenitiesAdminPage = lazy(() => import("@/pages/amenities-admin"));
 const AmenitiesPage = lazy(() => import("@/pages/amenities"));
+const FinancialsHubPage = lazy(() => import("@/pages/hubs/financials-hub"));
+const OperationsHubPage = lazy(() => import("@/pages/hubs/operations-hub"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const AdminContextualFeedbackWidget = lazy(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })));
 
@@ -238,6 +240,12 @@ function WorkspaceRouter({
     <Suspense fallback={<RouteFallback />}>
       <Switch>
         <Route path="/app" component={DashboardPage} />
+        {/* 4.1 Wave 5 — zone hub routes (Financials + Operations). Governance
+            and Communications hubs are the existing /app/governance and
+            /app/communications pages; their hub-alert widgets are mounted
+            inside those real-content pages rather than replacing them. */}
+        <Route path="/app/financials" component={FinancialsHubPage} />
+        <Route path="/app/operations" component={OperationsHubPage} />
         <Route path="/app/operations/dashboard" component={OperationsDashboardPage} />
         <Route path="/app/operations/records">
           <DocumentsPage typeFilter="Operations" />

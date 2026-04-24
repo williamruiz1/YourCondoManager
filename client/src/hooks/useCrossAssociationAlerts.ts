@@ -86,6 +86,13 @@ export interface UseCrossAssociationAlertsOptions {
   readState?: ReadStateFilter;
   /** Enable the query. Defaults to `true`. */
   enabled?: boolean;
+  /**
+   * Polling cadence in milliseconds, or `false` to disable polling.
+   * Default is `CROSS_ASSOCIATION_POLL_INTERVAL_MS` (120s) per Q8.
+   * Wave 5 hub widgets pass `false` — hub widgets ride the cache
+   * (fetch-on-navigate) and do NOT poll. Home + inbox keep the default.
+   */
+  refetchInterval?: number | false;
 }
 
 export interface UseCrossAssociationAlertsResult {
@@ -120,7 +127,13 @@ function buildQueryUrl(opts: {
 export function useCrossAssociationAlerts(
   options: UseCrossAssociationAlertsOptions = {},
 ): UseCrossAssociationAlertsResult {
-  const { zone, limit = 50, readState = "unread", enabled = true } = options;
+  const {
+    zone,
+    limit = 50,
+    readState = "unread",
+    enabled = true,
+    refetchInterval = CROSS_ASSOCIATION_POLL_INTERVAL_MS,
+  } = options;
   const queryClient = useQueryClient();
 
   // Canonical query key — the shape `["alerts", "cross-association", {...}]`
@@ -140,7 +153,7 @@ export function useCrossAssociationAlerts(
       }
       return (await res.json()) as CrossAssociationAlertsPayload;
     },
-    refetchInterval: CROSS_ASSOCIATION_POLL_INTERVAL_MS,
+    refetchInterval,
     refetchIntervalInBackground: false,
     enabled,
   });

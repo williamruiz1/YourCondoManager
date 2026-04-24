@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { HubAlertWidget } from "@/components/hub-alert-widget";
 import { MeetingsContent } from "./meetings";
 import { BoardPackagesContent } from "./board-packages";
 import { ElectionsContent } from "./elections";
@@ -21,6 +22,7 @@ export default function GovernancePage() {
           breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Governance" }]}
           subPages={boardGovernanceSubPages}
         />
+        <HubAlertWidget zone="Governance" />
         <Tabs defaultValue="meetings" className="space-y-6">
           <TabsList>
             <TabsTrigger value="meetings">Meetings</TabsTrigger>
