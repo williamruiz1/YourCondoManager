@@ -1,4 +1,4 @@
-export type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
+import type { AdminRole } from "@shared/schema";
 
 const wipRouteRoleAllowlist: Record<string, AdminRole[]> = {
   "/app/ai/ingestion": ["platform-admin"],

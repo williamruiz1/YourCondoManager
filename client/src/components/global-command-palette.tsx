@@ -15,8 +15,7 @@ import {
 } from "@/components/ui/command";
 import { useAssociationContext } from "@/context/association-context";
 import { canAccessWipRoute } from "@/lib/wip-features";
-
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
+import type { AdminRole } from "@shared/schema";
 
 type CommandLink = {
   label: string;

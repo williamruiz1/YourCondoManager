@@ -107,7 +107,7 @@ describe("feature flags — process.env override", () => {
   });
 });
 
-describe("feature flags — ASSESSMENT_EXECUTION_UNIFIED (Wave 7 / 4.3 Q3)", () => {
+describe("feature flags — ASSESSMENT_EXECUTION_UNIFIED (Wave 7 / 4.3 Q3 — flipped ON in Wave 12)", () => {
   afterEach(() => {
     delete process.env.FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED;
     for (const k of Object.keys(process.env)) {
@@ -117,36 +117,13 @@ describe("feature flags — ASSESSMENT_EXECUTION_UNIFIED (Wave 7 / 4.3 Q3)", () 
     }
   });
 
-  it("defaults to false (Wave 7 ships with shadow-write only)", () => {
-    expect(__FEATURE_FLAG_DEFAULTS__.ASSESSMENT_EXECUTION_UNIFIED).toBe(false);
-    expect(getFeatureFlag("ASSESSMENT_EXECUTION_UNIFIED")).toBe(false);
+  it("defaults to true (Wave 12 flipped ON alongside legacy poster deletion)", () => {
+    expect(__FEATURE_FLAG_DEFAULTS__.ASSESSMENT_EXECUTION_UNIFIED).toBe(true);
+    expect(getFeatureFlag("ASSESSMENT_EXECUTION_UNIFIED")).toBe(true);
   });
 
-  it("per-association override flips only the targeted association", () => {
+  it("per-association override flips only the targeted association (to OFF — debug use)", () => {
     const associationId = "1e2da109-f6f6-431c-8dc0-f61b548a1b83";
-    const envKey = `FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_${associationId
-      .replace(/-/g, "_")
-      .toUpperCase()}`;
-    process.env[envKey] = "true";
-
-    expect(
-      getFeatureFlagForAssociation("ASSESSMENT_EXECUTION_UNIFIED", associationId),
-    ).toBe(true);
-    expect(
-      getFeatureFlagForAssociation("ASSESSMENT_EXECUTION_UNIFIED", "other-assoc"),
-    ).toBe(false);
-  });
-
-  it("global flag override applies to every association when no per-association override exists", () => {
-    process.env.FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED = "true";
-    expect(
-      getFeatureFlagForAssociation("ASSESSMENT_EXECUTION_UNIFIED", "any"),
-    ).toBe(true);
-  });
-
-  it("per-association override takes precedence over the global flag", () => {
-    process.env.FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED = "true";
-    const associationId = "a-b-c";
     const envKey = `FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_${associationId
       .replace(/-/g, "_")
       .toUpperCase()}`;
@@ -156,8 +133,31 @@ describe("feature flags — ASSESSMENT_EXECUTION_UNIFIED (Wave 7 / 4.3 Q3)", () 
       getFeatureFlagForAssociation("ASSESSMENT_EXECUTION_UNIFIED", associationId),
     ).toBe(false);
     expect(
-      getFeatureFlagForAssociation("ASSESSMENT_EXECUTION_UNIFIED", "other"),
+      getFeatureFlagForAssociation("ASSESSMENT_EXECUTION_UNIFIED", "other-assoc"),
     ).toBe(true);
+  });
+
+  it("global flag override applies to every association when no per-association override exists", () => {
+    process.env.FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED = "false";
+    expect(
+      getFeatureFlagForAssociation("ASSESSMENT_EXECUTION_UNIFIED", "any"),
+    ).toBe(false);
+  });
+
+  it("per-association override takes precedence over the global flag", () => {
+    process.env.FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED = "false";
+    const associationId = "a-b-c";
+    const envKey = `FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_${associationId
+      .replace(/-/g, "_")
+      .toUpperCase()}`;
+    process.env[envKey] = "true";
+
+    expect(
+      getFeatureFlagForAssociation("ASSESSMENT_EXECUTION_UNIFIED", associationId),
+    ).toBe(true);
+    expect(
+      getFeatureFlagForAssociation("ASSESSMENT_EXECUTION_UNIFIED", "other"),
+    ).toBe(false);
   });
 });
 

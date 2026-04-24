@@ -24,8 +24,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Vote, Plus, Download, FileText, Users, CheckCircle, Clock, BarChart2, Trash2, Search, AlertCircle } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
+import type { AdminRole } from "@shared/schema";
 
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 type AuthSession = { authenticated: boolean; admin?: { role: AdminRole } | null };
 
 const electionSchema = z.object({
