@@ -987,12 +987,21 @@ function NoticesManager({ associationId, notices }: { associationId: string; not
     normal: "bg-gray-100 text-gray-800",
   };
 
+  // 1.5 HV-2: during the parity window the column may still contain old-vocab
+  // rows (migration dropped in HV-3). Render labels for both vocabularies so
+  // legacy rows continue to display correctly.
   const visibilityLabels: Record<string, string> = {
+    // new vocab (emitted by every write post-HV-2)
     public: "Public",
+    residents: "Residents",
+    "unit-owners": "Unit owners",
+    "board-only": "Board only",
+    "operator-only": "Operator only",
+    // old vocab (still accepted on read for any mid-deploy / legacy row)
     resident: "Residents",
-    owner: "Owners",
-    board: "Board",
-    admin: "Admin Only",
+    owner: "Unit owners",
+    board: "Board only",
+    admin: "Operator only",
   };
 
   return (
@@ -1057,11 +1066,12 @@ function NoticesManager({ associationId, notices }: { associationId: string; not
                     <Select value={visibilityLevel} onValueChange={setVisibilityLevel}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
+                        {/* 1.5 HV-2: emit new-vocab values on write. "public" is preserved verbatim. */}
                         <SelectItem value="public">Public (anyone)</SelectItem>
-                        <SelectItem value="resident">Residents only</SelectItem>
-                        <SelectItem value="owner">Owners only</SelectItem>
-                        <SelectItem value="board">Board only</SelectItem>
-                        <SelectItem value="admin">Admin only</SelectItem>
+                        <SelectItem value="residents">Residents only</SelectItem>
+                        <SelectItem value="unit-owners">Unit owners only</SelectItem>
+                        <SelectItem value="board-only">Board only</SelectItem>
+                        <SelectItem value="operator-only">Operator only</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

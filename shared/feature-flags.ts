@@ -32,15 +32,23 @@
 //                           for that scope and the legacy functions skip that
 //                           association. Supports per-association override via
 //                           FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_<associationId>.
-//   - HUB_VISIBILITY_RENAME: introduced 1.5 HV-1 (default OFF) — gates the
+//   - HUB_VISIBILITY_RENAME: introduced 1.5 HV-1 (default OFF) — gated the
 //                            dual-vocab write cutover for `hub_visibility_level`
 //                            (old `public|resident|owner|board|admin`) and
 //                            `community_announcements.visibility_level` text
 //                            column to the role-agnostic new vocab
 //                            (`public|residents|unit-owners|board-only|operator-only`).
-//                            Flipped per-association in HV-2. Removed in HV-3
-//                            after old values are dropped and all 19 call sites
-//                            migrate to the new vocab exclusively.
+//                            HV-2 (1.5 HV-2): flipped to default ON. Prod-data
+//                            audit at HV-2 start confirmed zero old-vocab rows
+//                            in either column (hub_map_issues: 0 rows;
+//                            community_announcements: 5 rows, all NULL
+//                            visibility_level), so no data migration is
+//                            required. Writes are wired to emit new vocab via
+//                            `normalizeHubVisibility()` regardless of flag
+//                            state; the flag is retained as a belt-and-suspenders
+//                            kill-switch for the rollout window. Removed in
+//                            HV-3 after old enum values are dropped and every
+//                            call site uses the new vocab exclusively.
 //
 // Do NOT wire this helper into existing code yet. Phase 8a is the first consumer.
 
@@ -78,7 +86,9 @@ const DEFAULTS: Record<FeatureFlagKey, boolean> = {
   PORTAL_ROLE_COLLAPSE: false,
   BOARD_SHUNT_ACTIVE: true,
   ASSESSMENT_EXECUTION_UNIFIED: false,
-  HUB_VISIBILITY_RENAME: false,
+  // 1.5 HV-2: flipped ON. Prod-data audit showed zero old-vocab rows, so
+  // every new write safely emits new vocab. See feature-flag lifecycle note.
+  HUB_VISIBILITY_RENAME: true,
 };
 
 /**
