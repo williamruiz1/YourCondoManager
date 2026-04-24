@@ -16147,7 +16147,9 @@ This is an automated demo request from the Your Condo Manager website.
   app.get("/api/hub/portal/home", requirePortal, async (req: PortalRequest, res) => {
     try {
       const associationId = req.portalAssociationId!;
-      const role = req.portalRole || "readonly";
+      // Phase 8a — portal_access_role collapsed to ["owner", "board-member"];
+      // any authenticated portal user is at minimum an "owner" resident.
+      const role = req.portalRole || "owner";
 
       const [config] = await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, associationId));
       if (!config || !config.isEnabled) {
@@ -16161,8 +16163,12 @@ This is an automated demo request from the Your Condo Manager website.
       // 1.5 HV-2 parity window: filter must accept BOTH old and new vocab so rows
       // written under HV-1 (old) and HV-2+ (new) are equally visible. HV-3
       // narrows this to new vocab only after old enum values are dropped.
+      //
+      // Phase 8a — retired portal roles "tenant" / "readonly" collapse to
+      // "owner" in the DB; only "owner" and "board-member" remain valid
+      // values on the left side of these role checks.
       const visibilityLevels: string[] = ["public"];
-      if (["tenant", "owner", "board-member", "readonly"].includes(role)) {
+      if (["owner", "board-member"].includes(role)) {
         visibilityLevels.push("resident", "residents");
       }
       if (["owner", "board-member"].includes(role)) {

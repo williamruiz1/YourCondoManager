@@ -175,10 +175,15 @@ describe("Phase 8b — portalRole normalisation via getEffectivePortalRole", () 
     expect(getEffectivePortalRole("owner", false, flagOn)).toBe("owner");
   });
 
-  it("default env (no override) matches flag OFF behaviour", () => {
-    // Matches the Phase 8a ship state: default OFF.
+  it("default env (no override) matches flag ON behaviour post-Phase-8a", () => {
+    // Phase 8a flipped the DEFAULTS entry for PORTAL_ROLE_COLLAPSE from
+    // false to true alongside migration 0014_portal_role_collapse.sql.
+    // Any call-site that does not override the env var now sees the
+    // collapsed behaviour: every legacy role projects to "owner".
     const flagOn = isPortalRoleCollapseOn();
-    expect(flagOn).toBe(false);
-    expect(getEffectivePortalRole("tenant", true, flagOn)).toBe("tenant");
+    expect(flagOn).toBe(true);
+    expect(getEffectivePortalRole("tenant", true, flagOn)).toBe("owner");
+    expect(getEffectivePortalRole("readonly", false, flagOn)).toBe("owner");
+    expect(getEffectivePortalRole("board-member", true, flagOn)).toBe("owner");
   });
 });

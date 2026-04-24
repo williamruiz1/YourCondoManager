@@ -101,8 +101,11 @@ describe("isPortalRoleCollapseOn — env-driven", () => {
     delete process.env[FLAG_ENV_KEY];
   });
 
-  it("defaults to false (matches DEFAULTS)", () => {
-    expect(isPortalRoleCollapseOn()).toBe(false);
+  it("defaults to true after Phase 8a flip (matches DEFAULTS)", () => {
+    // Phase 8a flipped PORTAL_ROLE_COLLAPSE from OFF to ON in shared/feature-flags.ts
+    // alongside migration 0014_portal_role_collapse.sql. With no env override,
+    // the collapse branch is live everywhere.
+    expect(isPortalRoleCollapseOn()).toBe(true);
   });
 
   it('honours FEATURE_FLAG_PORTAL_ROLE_COLLAPSE="true"', () => {
@@ -110,14 +113,16 @@ describe("isPortalRoleCollapseOn — env-driven", () => {
     expect(isPortalRoleCollapseOn()).toBe(true);
   });
 
-  it('honours FEATURE_FLAG_PORTAL_ROLE_COLLAPSE="false"', () => {
+  it('honours FEATURE_FLAG_PORTAL_ROLE_COLLAPSE="false" (escape hatch)', () => {
+    // Retained as an escape hatch until Phase 8c hardcodes the collapse
+    // branch and removes the flag entirely.
     process.env[FLAG_ENV_KEY] = "false";
     expect(isPortalRoleCollapseOn()).toBe(false);
   });
 
-  it("malformed env value falls through to default (false)", () => {
+  it("malformed env value falls through to default (true post-8a)", () => {
     process.env[FLAG_ENV_KEY] = "yes";
-    expect(isPortalRoleCollapseOn()).toBe(false);
+    expect(isPortalRoleCollapseOn()).toBe(true);
   });
 });
 
