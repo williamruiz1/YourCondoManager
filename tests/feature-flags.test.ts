@@ -2,8 +2,8 @@
  * Feature flag helper tests — Phase 5b of Platform Overhaul.
  *
  * Covers:
- *   - Default values match the documented lifecycle (PORTAL_ROLE_COLLAPSE off,
- *     BOARD_SHUNT_ACTIVE on).
+ *   - Default values match the documented lifecycle (PORTAL_ROLE_COLLAPSE on
+ *     post-Phase-8a, BOARD_SHUNT_ACTIVE on).
  *   - process.env override for "true" / "false".
  *   - Malformed env values fall through to defaults.
  *   - Cross-flag independence (overriding one does not leak to the other).
@@ -36,9 +36,12 @@ describe("feature flags — defaults", () => {
     for (const k of FLAG_KEYS) delete process.env[envKey(k)];
   });
 
-  it("PORTAL_ROLE_COLLAPSE default is false (Phase 8a ships off)", () => {
-    expect(__FEATURE_FLAG_DEFAULTS__.PORTAL_ROLE_COLLAPSE).toBe(false);
-    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(false);
+  it("PORTAL_ROLE_COLLAPSE default is true (Phase 8a flip)", () => {
+    // Phase 8b shipped the flag at default OFF; Phase 8a flipped it to ON
+    // alongside migration 0014_portal_role_collapse.sql. Phase 8c removes
+    // the flag entirely.
+    expect(__FEATURE_FLAG_DEFAULTS__.PORTAL_ROLE_COLLAPSE).toBe(true);
+    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(true);
   });
 
   it("BOARD_SHUNT_ACTIVE default is true (Phase 13 dark-launch)", () => {
@@ -75,7 +78,8 @@ describe("feature flags — process.env override", () => {
 
   it("malformed env value falls through to default", () => {
     process.env.FEATURE_FLAG_PORTAL_ROLE_COLLAPSE = "yes";
-    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(false);
+    // Phase 8a flipped the default to true — malformed values fall through to it.
+    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(true);
 
     process.env.FEATURE_FLAG_BOARD_SHUNT_ACTIVE = "1";
     expect(getFeatureFlag("BOARD_SHUNT_ACTIVE")).toBe(true);
@@ -83,7 +87,7 @@ describe("feature flags — process.env override", () => {
 
   it("empty string env value falls through to default", () => {
     process.env.FEATURE_FLAG_PORTAL_ROLE_COLLAPSE = "";
-    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(false);
+    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(true);
   });
 
   it("overriding one flag does not leak to another", () => {

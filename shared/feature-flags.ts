@@ -14,7 +14,10 @@
 //   - DEFAULTS is the single source of truth for the compile-time default of each flag.
 //
 // Flag lifecycle (per Phase 5b plan):
-//   - PORTAL_ROLE_COLLAPSE: introduced Phase 8a (default OFF), removed Phase 8c.
+//   - PORTAL_ROLE_COLLAPSE: introduced Phase 8b dark-launch (default OFF);
+//                           flipped ON in Phase 8a alongside the enum-collapse
+//                           migration (0014_portal_role_collapse.sql); removed
+//                           entirely in Phase 8c.
 //   - BOARD_SHUNT_ACTIVE:   introduced Phase 13 dark-launch (default ON), flipped
 //                           OFF via follow-up PR after one clean release cycle,
 //                           then removed entirely.
@@ -53,7 +56,8 @@
  *   3. Document its lifecycle (introduced / removed) in the comment above.
  */
 export type FeatureFlagKey =
-  // Phase 8a — default OFF; gates the portal-role enum collapse migration.
+  // Phase 8a — default ON (flipped alongside migration 0014_portal_role_collapse.sql).
+  // Phase 8b introduced the flag at default OFF as a server-side dark-launch.
   // Phase 8c removes the flag from code (hardcoded as the "always true" path).
   | "PORTAL_ROLE_COLLAPSE"
   // Phase 13 dark-launch — default ON; when flipped OFF, board-officer /
@@ -75,7 +79,7 @@ export type FeatureFlagKey =
  * Compile-time defaults. Used when no env override is present.
  */
 const DEFAULTS: Record<FeatureFlagKey, boolean> = {
-  PORTAL_ROLE_COLLAPSE: false,
+  PORTAL_ROLE_COLLAPSE: true,
   BOARD_SHUNT_ACTIVE: true,
   ASSESSMENT_EXECUTION_UNIFIED: false,
   HUB_VISIBILITY_RENAME: false,

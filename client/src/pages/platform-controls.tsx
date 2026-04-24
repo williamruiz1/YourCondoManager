@@ -960,7 +960,8 @@ export default function PlatformControlsPage() {
             <Input value={portalAccessForm.email} onChange={(e) => setPortalAccessForm((p) => ({ ...p, email: e.target.value }))} placeholder="Portal email" />
             <Select value={portalAccessForm.role} onValueChange={(v) => setPortalAccessForm((p) => ({ ...p, role: v }))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="owner">owner</SelectItem><SelectItem value="tenant">tenant</SelectItem><SelectItem value="readonly">readonly</SelectItem><SelectItem value="board-member">board-member</SelectItem></SelectContent>
+              {/* Phase 8a — portal_access_role collapsed to ["owner", "board-member"]. */}
+              <SelectContent><SelectItem value="owner">owner</SelectItem><SelectItem value="board-member">board-member</SelectItem></SelectContent>
             </Select>
             <Button onClick={() => createPortalAccess.mutate()} disabled={createPortalAccess.isPending}>Create Access</Button>
           </div>

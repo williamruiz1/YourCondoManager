@@ -1193,7 +1193,14 @@ export const adminAssociationScopes = pgTable("admin_association_scopes", {
   uniqueAdminAssociationScope: uniqueIndex("admin_association_scopes_unique_uq").on(table.adminUserId, table.associationId),
 }));
 
-export const portalAccessRoleEnum = pgEnum("portal_access_role", ["owner", "tenant", "readonly", "board-member"]);
+// Phase 8a — portal role enum collapsed from ["owner", "tenant", "readonly", "board-member"]
+// to ["owner", "board-member"]. Retired values are backfilled to "owner" by
+// migration 0014_portal_role_collapse.sql. Tenant-vs-owner occupancy is now
+// carried by `persons.residentType` / `portalAccess` provisioning metadata,
+// NOT by the portal role. See:
+//   - docs/projects/platform-overhaul/decisions/2.2-owner-portal-access-boundaries.md Q1
+//   - docs/projects/platform-overhaul/decisions/3.3-role-gating-corrections.md Q1
+export const portalAccessRoleEnum = pgEnum("portal_access_role", ["owner", "board-member"]);
 export const portalAccessStatusEnum = pgEnum("portal_access_status", ["invited", "active", "suspended", "revoked", "expired"]);
 export const portalAccess = pgTable("portal_access", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

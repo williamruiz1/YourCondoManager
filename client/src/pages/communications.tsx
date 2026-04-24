@@ -250,6 +250,9 @@ export function CommunicationsContent() {
   const [workspacePanel, setWorkspacePanel] = useState<"delivery" | "onboarding" | "operations">("delivery");
   const [templateOpen, setTemplateOpen] = useState(false);
   const [recipientPreview, setRecipientPreview] = useState<{
+    // Note: recipient `role` is the audience category (owner / tenant / board-member)
+    // derived from occupancy, NOT the portal_access_role (which Phase 8a collapsed
+    // to ["owner", "board-member"]).
     recipients: Array<{ personId: string; email: string; role: "owner" | "tenant" | "board-member"; unitId: string }>;
     candidateCount: number;
     missingEmailCount: number;
@@ -633,6 +636,8 @@ export function CommunicationsContent() {
       }
       const res = await apiRequest("GET", `/api/communications/recipients/preview?${params.toString()}`);
       return res.json() as Promise<{
+        // Note: recipient `role` is the audience category (owner / tenant / board-member)
+        // derived from occupancy, NOT the portal_access_role.
         recipients: Array<{ personId: string; email: string; role: "owner" | "tenant" | "board-member"; unitId: string }>;
         candidateCount: number;
         missingEmailCount: number;

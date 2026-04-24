@@ -323,6 +323,9 @@ export interface RoadmapResponse {
   refreshedAt: string;
 }
 
+// Phase 8a — portal_access_role collapsed to ["owner", "board-member"].
+// "tenant" recipients are persons with residentType === "tenant" on their
+// association membership; the portal role itself is always "owner" for them.
 type NotificationRecipient = {
   personId: string;
   email: string;
@@ -4133,7 +4136,10 @@ export interface IStorage {
     access: PortalAccess;
     boardRole: BoardRole | null;
     hasBoardAccess: boolean;
-    effectiveRole: "owner" | "tenant" | "readonly" | "board-member" | "owner-board-member";
+    // Phase 8a — portal_access_role collapsed to ["owner", "board-member"].
+    // "tenant" / "readonly" are retained in this union only as a documented
+    // dead end; DB rows can no longer carry those values post-migration.
+    effectiveRole: "owner" | "board-member" | "owner-board-member";
   } | undefined>;
   inviteBoardMemberAccess(input: {
     associationId: string;
@@ -4695,10 +4701,16 @@ export class DatabaseStorage implements IStorage {
     personId: string;
     unitId: string;
     email?: string | null;
+    // Phase 8a — portal_access_role collapsed to ["owner", "board-member"].
+    // Caller may still pass "tenant" to express occupancy intent; it is
+    // silently collapsed to "owner" for the portal row. Tenant-vs-owner
+    // occupancy lives on association_memberships.membershipType.
     role: "owner" | "tenant";
   }) {
     const email = (input.email || "").trim();
     if (!email) return;
+    // Phase 8a collapse — "tenant" portal rows no longer exist.
+    const portalRole: "owner" = input.role === "tenant" ? "owner" : "owner";
     const existingPortalAccess = await this.getPortalAccessByAssociationEmail(input.associationId, email);
     if (!existingPortalAccess) {
       await this.createPortalAccess({
@@ -4706,7 +4718,7 @@ export class DatabaseStorage implements IStorage {
         personId: input.personId,
         unitId: input.unitId,
         email,
-        role: input.role,
+        role: portalRole,
         status: "active",
       }, "system");
       return;
@@ -4715,7 +4727,7 @@ export class DatabaseStorage implements IStorage {
     await this.updatePortalAccess(existingPortalAccess.id, {
       personId: input.personId,
       unitId: input.unitId,
-      role: input.role,
+      role: portalRole,
       status: "active",
     }, "system");
   }
@@ -12645,7 +12657,8 @@ export class DatabaseStorage implements IStorage {
     access: PortalAccess;
     boardRole: BoardRole | null;
     hasBoardAccess: boolean;
-    effectiveRole: "owner" | "tenant" | "readonly" | "board-member" | "owner-board-member";
+    // Phase 8a — portal_access_role collapsed to ["owner", "board-member"].
+    effectiveRole: "owner" | "board-member" | "owner-board-member";
   } | undefined> {
     let access = await this.getPortalAccessById(portalAccessId);
     if (!access || access.status !== "active") return undefined;
@@ -13802,9 +13815,10 @@ export class DatabaseStorage implements IStorage {
       .from(documents)
       .where(and(eq(documents.associationId, access.associationId), eq(documents.isPortalVisible, 1)));
 
-    if (access.role === "tenant") {
-      return base.filter((doc) => doc.portalAudience !== "owner");
-    }
+    // Phase 8a — portal_access_role collapsed to ["owner", "board-member"];
+    // the "tenant" portal role no longer exists. If/when a resident-audience
+    // document split is needed it should key on association_memberships /
+    // occupancies (residentType), not the portal role.
     return base;
   }
 

@@ -16118,7 +16118,9 @@ This is an automated demo request from the Your Condo Manager website.
   app.get("/api/hub/portal/home", requirePortal, async (req: PortalRequest, res) => {
     try {
       const associationId = req.portalAssociationId!;
-      const role = req.portalRole || "readonly";
+      // Phase 8a — portal_access_role collapsed to ["owner", "board-member"];
+      // any authenticated portal user is at minimum an "owner" resident.
+      const role = req.portalRole || "owner";
 
       const [config] = await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, associationId));
       if (!config || !config.isEnabled) {
@@ -16129,8 +16131,10 @@ This is an automated demo request from the Your Condo Manager website.
         .from(associations).where(eq(associations.id, associationId));
 
       // Visibility hierarchy: public < resident < owner < board < admin
+      // Phase 8a — retired "tenant" / "readonly" roles collapse to "owner";
+      // any authenticated portal user counts as a resident.
       const visibilityLevels = ["public"];
-      if (["tenant", "owner", "board-member", "readonly"].includes(role)) visibilityLevels.push("resident");
+      if (["owner", "board-member"].includes(role)) visibilityLevels.push("resident");
       if (["owner", "board-member"].includes(role)) visibilityLevels.push("owner");
       if (role === "board-member" || req.portalHasBoardAccess) visibilityLevels.push("board");
 
