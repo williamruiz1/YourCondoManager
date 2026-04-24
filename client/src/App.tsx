@@ -68,7 +68,16 @@ const AiIngestionPage = lazy(() => import("@/pages/ai-ingestion"));
 const CommunicationsPage = lazy(() => import("@/pages/communications"));
 const CommunicationsInboxPage = lazy(() => import("@/pages/communications-inbox"));
 const PlatformControlsPage = lazy(() => import("@/pages/platform-controls"));
-const OwnerPortalPage = lazy(() => import("@/pages/owner-portal"));
+// 3.5 Owner Portal Restructure — shell + zone files per /portal/*.
+// owner-portal.tsx mega-file and standalone amenities.tsx were deleted in
+// the cutover; their functionality is split across these zone files.
+const PortalHomePage = lazy(() => import("@/pages/portal/portal-home"));
+const PortalFinancesPage = lazy(() => import("@/pages/portal/portal-finances"));
+const PortalRequestsPage = lazy(() => import("@/pages/portal/portal-requests"));
+const PortalCommunityPage = lazy(() => import("@/pages/portal/portal-community"));
+const PortalAmenitiesPage = lazy(() => import("@/pages/portal/portal-amenities"));
+const PortalDocumentsPage = lazy(() => import("@/pages/portal/portal-documents"));
+const PortalNoticesPage = lazy(() => import("@/pages/portal/portal-notices"));
 const VendorPortalPage = lazy(() => import("@/pages/vendor-portal"));
 const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
 const InsurancePage = lazy(() => import("@/pages/insurance"));
@@ -84,7 +93,6 @@ const HelpCenterPage = lazy(() => import("@/pages/help-center"));
 const CommunityHubPage = lazy(() => import("@/pages/community-hub"));
 const CommunityHubPublicPage = lazy(() => import("@/pages/community-hub-public"));
 const AmenitiesAdminPage = lazy(() => import("@/pages/amenities-admin"));
-const AmenitiesPage = lazy(() => import("@/pages/amenities"));
 const FinancialsHubPage = lazy(() => import("@/pages/hubs/financials-hub"));
 const OperationsHubPage = lazy(() => import("@/pages/hubs/operations-hub"));
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -381,8 +389,48 @@ function PublicRouter({
         </Route>
         <Route path="/signup/success" component={PlanSignupSuccessPage} />
         <Route path="/signup" component={PlanSignupPage} />
-        <Route path="/portal" component={OwnerPortalPage} />
-        <Route path="/portal/amenities" component={AmenitiesPage} />
+        {/* 3.5 Owner Portal Restructure — Wave 11.
+            PortalShell owns the session gate, sidebar, header, and
+            breadcrumbs (Q3/Q4). Each zone file renders into the shell.
+            Sub-pages under /portal/finances and /portal/requests mirror
+            the /app/* sub-page pattern per Q1.
+            Legacy-URL compat (Q8) is implemented inside PortalShell:
+            `/portal?tab=<legacy>` → 301-equivalent client redirect. */}
+        <Route path="/portal">
+          <PortalHomePage />
+        </Route>
+        <Route path="/portal/finances">
+          <PortalFinancesPage />
+        </Route>
+        <Route path="/portal/finances/payment-methods">
+          <PortalFinancesPage subPath="payment-methods" />
+        </Route>
+        <Route path="/portal/finances/ledger">
+          <PortalFinancesPage subPath="ledger" />
+        </Route>
+        <Route path="/portal/finances/assessments/:assessmentId">
+          {(params) => (
+            <PortalFinancesPage subPath="assessment" assessmentId={params.assessmentId ?? ""} />
+          )}
+        </Route>
+        <Route path="/portal/requests">
+          <PortalRequestsPage />
+        </Route>
+        <Route path="/portal/requests/:requestId">
+          {(params) => <PortalRequestsPage requestId={params.requestId ?? ""} />}
+        </Route>
+        <Route path="/portal/community">
+          <PortalCommunityPage />
+        </Route>
+        <Route path="/portal/amenities">
+          <PortalAmenitiesPage />
+        </Route>
+        <Route path="/portal/documents">
+          <PortalDocumentsPage />
+        </Route>
+        <Route path="/portal/notices">
+          <PortalNoticesPage />
+        </Route>
         <Route path="/vendor-portal" component={VendorPortalPage} />
         <Route path="/vote/:token">
           {(params) => <ElectionBallotPage token={params.token ?? ""} />}

@@ -19,7 +19,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import AmenitiesPage from "@/pages/amenities";
+// 3.5 Wave 11: /portal/amenities now lives under the PortalShell zone tree.
+import AmenitiesPage from "@/pages/portal/portal-amenities";
 
 type FetchHandler = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -54,13 +55,38 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// Session shape expected by PortalShell + zone files post-Wave 11.
+const SESSION_SHAPE = {
+  id: "portal-1",
+  email: "owner@example.com",
+  associationId: "assoc-1",
+  role: "owner",
+  hasBoardAccess: false,
+  effectiveRole: "owner",
+  boardRoleId: null,
+  unitNumber: "101",
+  building: "A",
+  firstName: "Sam",
+  lastName: "Owner",
+  phone: null,
+  mailingAddress: null,
+  emergencyContactName: null,
+  emergencyContactPhone: null,
+  contactPreference: null,
+  smsOptIn: null,
+};
+
 describe("/portal/amenities — amenities toggle (3a)", () => {
   it("renders <NotFound/> when amenitiesEnabled = false", async () => {
     installFetchMock(async (url) => {
-      if (url.endsWith("/api/portal/me")) return jsonResponse({ ok: true });
-      if (url.endsWith("/api/portal/amenities/settings")) {
+      if (url.includes("/api/portal/me")) return jsonResponse(SESSION_SHAPE);
+      if (url.includes("/api/portal/my-associations"))
+        return jsonResponse([{ associationId: "assoc-1", associationName: "Sunset HOA" }]);
+      if (url.includes("/api/portal/amenities/settings")) {
         return jsonResponse({ amenitiesEnabled: false });
       }
+      if (url.includes("/api/portal/maintenance-requests")) return jsonResponse([]);
+      if (url.includes("/api/portal/notices")) return jsonResponse([]);
       return jsonResponse({}, { status: 404 });
     });
 
@@ -74,12 +100,16 @@ describe("/portal/amenities — amenities toggle (3a)", () => {
 
   it("renders the amenities content when amenitiesEnabled = true", async () => {
     installFetchMock(async (url) => {
-      if (url.endsWith("/api/portal/me")) return jsonResponse({ ok: true });
-      if (url.endsWith("/api/portal/amenities/settings")) {
+      if (url.includes("/api/portal/me")) return jsonResponse(SESSION_SHAPE);
+      if (url.includes("/api/portal/my-associations"))
+        return jsonResponse([{ associationId: "assoc-1", associationName: "Sunset HOA" }]);
+      if (url.includes("/api/portal/amenities/settings")) {
         return jsonResponse({ amenitiesEnabled: true });
       }
       if (url.endsWith("/api/portal/amenities")) return jsonResponse([]);
-      if (url.endsWith("/api/portal/amenities/my-reservations")) return jsonResponse([]);
+      if (url.includes("/api/portal/amenities/my-reservations")) return jsonResponse([]);
+      if (url.includes("/api/portal/maintenance-requests")) return jsonResponse([]);
+      if (url.includes("/api/portal/notices")) return jsonResponse([]);
       return jsonResponse({}, { status: 404 });
     });
 
