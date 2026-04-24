@@ -63,7 +63,14 @@ async function waitForPortToClose(port: number, timeoutMs: number) {
   process.exit(1);
 }
 
-async function killExistingLocalDevServer(port: number) {
+export async function killExistingLocalDevServer(port: number) {
+  if (process.platform !== "linux") {
+    // /proc/* is Linux-only. On macOS / other platforms, skip the
+    // port-kill pre-check and rely on startWatcher's own error
+    // handling if the port is occupied.
+    return;
+  }
+
   const inodes = getListeningInodesForPort(port);
   if (inodes.length === 0) return;
 
