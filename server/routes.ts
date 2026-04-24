@@ -219,6 +219,12 @@ import { normalizeAdminNotificationPreferences } from "@shared/admin-notificatio
 import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
+import {
+  getEffectivePortalRole,
+  isPortalRoleCollapseOn,
+  requireBoardAccess,
+  requireBoardAccessReadOnly,
+} from "./portal-role-collapse";
 import { updatePaymentTransactionStatus } from "./services/payment-service";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
@@ -1098,7 +1104,14 @@ async function requirePortal(req: PortalRequest, res: Response, next: NextFuncti
   req.portalPersonId = access.personId;
   req.portalUnitId = access.unitId ?? null;
   req.portalEmail = access.email;
-  req.portalRole = access.role;
+  // Phase 8b — flag-gated portal role collapse. When
+  // PORTAL_ROLE_COLLAPSE is ON, the request carries the canonical
+  // post-collapse role `"owner"`; board access is a boolean augmentation
+  // via `portalHasBoardAccess`. When OFF (the default), the raw DB role
+  // string flows through unchanged (shadow-compat for the legacy 4-value
+  // enum).
+  const flagOn = isPortalRoleCollapseOn();
+  req.portalRole = getEffectivePortalRole(access.role, hasBoardAccess, flagOn);
   req.portalBoardRoleId = boardRole?.id ?? null;
   req.portalHasBoardAccess = hasBoardAccess;
   req.portalEffectiveRole = effectiveRole;
@@ -1106,15 +1119,22 @@ async function requirePortal(req: PortalRequest, res: Response, next: NextFuncti
   return next();
 }
 
+/**
+ * @deprecated Phase 8b — use `requireBoardAccess` from
+ * `./portal-role-collapse` instead. This wrapper is retained for one release
+ * cycle so external smoke scripts that grep the server bundle for
+ * `requirePortalBoard` keep passing; scheduled for deletion in Phase 5.1.
+ */
 function requirePortalBoard(req: PortalRequest, res: Response, next: NextFunction) {
-  if (!req.portalHasBoardAccess || !req.portalAssociationId) {
-    return res.status(403).json({ message: "Board-member access required" });
-  }
-  return next();
+  return requireBoardAccess(req, res, next);
 }
 
-function requirePortalBoardReadOnly(_req: PortalRequest, res: Response, _next: NextFunction) {
-  return res.status(403).json({ message: "Board workspace is read-only for board members" });
+/**
+ * @deprecated Phase 8b — use `requireBoardAccessReadOnly` from
+ * `./portal-role-collapse` instead. Scheduled for deletion in Phase 5.1.
+ */
+function requirePortalBoardReadOnly(req: PortalRequest, res: Response, next: NextFunction) {
+  return requireBoardAccessReadOnly(req, res, next);
 }
 
 async function getOwnedPortalUnitsForAssociation(input: {
@@ -12174,7 +12194,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/overview", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/overview", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getAssociationOverview(req.portalAssociationId || "");
       res.json(result);
@@ -12183,7 +12203,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/dashboard", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/dashboard", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const classifyBoardActivity = (entityType: string, action: string) => {
         const entity = entityType.toLowerCase();
@@ -12462,7 +12482,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/association", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/association", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const associations = await storage.getAssociations();
       const association = associations.find((row) => row.id === req.portalAssociationId);
@@ -12573,7 +12593,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/board/association", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/association", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const payload = insertAssociationSchema.partial().parse({
         name: req.body?.name,
@@ -12597,7 +12617,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/meetings", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/meetings", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getGovernanceMeetings(req.portalAssociationId);
       res.json(result);
@@ -12606,7 +12626,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/portal/board/meetings", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/meetings", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const parsed = insertGovernanceMeetingSchema.parse({
         associationId: req.portalAssociationId,
@@ -12627,7 +12647,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/board/meetings/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/meetings/:id", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const meeting = (await storage.getGovernanceMeetings(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!meeting) return res.status(404).json({ message: "Meeting not found in association" });
@@ -12650,7 +12670,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/governance-tasks", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/governance-tasks", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getAnnualGovernanceTasks(req.portalAssociationId);
       res.json(result);
@@ -12659,7 +12679,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/portal/board/governance-tasks", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/governance-tasks", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const parsed = insertAnnualGovernanceTaskSchema.parse({
         associationId: req.portalAssociationId,
@@ -12677,7 +12697,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/board/governance-tasks/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/governance-tasks/:id", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const task = (await storage.getAnnualGovernanceTasks(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!task) return res.status(404).json({ message: "Governance task not found in association" });
@@ -12697,7 +12717,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/documents", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/documents", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getDocuments(req.portalAssociationId);
       res.json(result);
@@ -12706,7 +12726,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/portal/board/documents", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, upload.single("file"), async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/documents", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, upload.single("file"), async (req: PortalRequest, res) => {
     try {
       const file = req.file;
       if (!file) return res.status(400).json({ message: "File is required" });
@@ -12730,7 +12750,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/board/documents/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/documents/:id", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const document = (await storage.getDocuments(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!document) return res.status(404).json({ message: "Document not found in association" });
@@ -12748,7 +12768,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/communications/sends", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/communications/sends", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
       const result = await storage.getNoticeSends(req.portalAssociationId, status);
@@ -12758,7 +12778,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/communications/history", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/communications/history", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getCommunicationHistory(req.portalAssociationId);
       res.json(result);
@@ -12767,7 +12787,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/portal/board/communications/send", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/communications/send", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const recipientEmail = typeof req.body?.recipientEmail === "string" ? req.body.recipientEmail.trim() : "";
       const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
@@ -12790,7 +12810,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/board/maintenance-requests/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/maintenance-requests/:id", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const request = (await storage.getMaintenanceRequests({ associationId: req.portalAssociationId })).find((row) => row.id === getParam(req.params.id));
       if (!request) return res.status(404).json({ message: "Maintenance request not found in association" });
@@ -12812,7 +12832,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/vendor-invoices", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/vendor-invoices", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getVendorInvoices(req.portalAssociationId);
       res.json(result);
@@ -12821,7 +12841,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/portal/board/vendor-invoices", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/vendor-invoices", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const parsed = insertVendorInvoiceSchema.parse({
         associationId: req.portalAssociationId,
@@ -12843,7 +12863,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/board/vendor-invoices/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/vendor-invoices/:id", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const invoice = (await storage.getVendorInvoices(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!invoice) return res.status(404).json({ message: "Vendor invoice not found in association" });
@@ -12867,7 +12887,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/owner-ledger/entries", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/owner-ledger/entries", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getOwnerLedgerEntries(req.portalAssociationId);
       res.json(result);
@@ -12876,7 +12896,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/owner-ledger/summary", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/owner-ledger/summary", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getOwnerLedgerSummary(req.portalAssociationId || "");
       res.json(result);
@@ -12885,7 +12905,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/portal/board/owner-ledger/entries", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/owner-ledger/entries", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const unit = (await storage.getUnits(req.portalAssociationId)).find((row) => row.id === req.body?.unitId);
       if (!unit) return res.status(400).json({ message: "Unit not found in association" });
@@ -12909,7 +12929,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/persons", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/persons", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getPersons(req.portalAssociationId);
       res.json(result);
@@ -12918,7 +12938,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/board/persons/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/persons/:id", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const people = await storage.getPersons(req.portalAssociationId);
       const person = people.find((row) => row.id === getParam(req.params.id));
@@ -12932,7 +12952,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/units", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/units", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getUnits(req.portalAssociationId);
       res.json(result);
@@ -12941,7 +12961,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.patch("/api/portal/board/units/:id", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.patch("/api/portal/board/units/:id", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const unit = (await storage.getUnits(req.portalAssociationId)).find((row) => row.id === getParam(req.params.id));
       if (!unit) return res.status(404).json({ message: "Unit not found in association" });
@@ -12959,7 +12979,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.get("/api/portal/board/roles", requirePortal, requirePortalBoard, async (req: PortalRequest, res) => {
+  app.get("/api/portal/board/roles", requirePortal, requireBoardAccess, async (req: PortalRequest, res) => {
     try {
       const result = await storage.getBoardRoles(req.portalAssociationId);
       res.json(result);
@@ -12968,7 +12988,7 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
-  app.post("/api/portal/board/roles", requirePortal, requirePortalBoard, requirePortalBoardReadOnly, async (req: PortalRequest, res) => {
+  app.post("/api/portal/board/roles", requirePortal, requireBoardAccess, requireBoardAccessReadOnly, async (req: PortalRequest, res) => {
     try {
       const payload = insertBoardRoleSchema.parse({
         personId: req.body?.personId,
