@@ -1,15 +1,15 @@
 // @zone: Financials
 // @persona: Manager, Board Officer, Assisted Board, PM Assistant, Viewer
 //
-// 3.2 Q1 Financials zone hub — Phase 11 placeholder.
-// Activates when hub content is designed; route wiring lands in Phase 12.
-// No business logic, no data fetch. See plan §3 Phase 11.
+// 3.2 Q1 Financials zone hub — Phase 11 placeholder + 4.1 Wave 5 alert widget.
+// Widget mounts at the top of the hub content per 4.1 Q9.
 
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { Card, CardContent } from "@/components/ui/card";
+import { HubAlertWidget } from "@/components/hub-alert-widget";
 
 export default function FinancialsHub() {
   useDocumentTitle("Financials");
@@ -21,12 +21,15 @@ export default function FinancialsHub() {
         summary="Upcoming overview of payments, billing, reports, and expenses."
         breadcrumbs={[{ label: "Home", href: "/app" }, { label: "Financials" }]}
       />
+      <HubAlertWidget zone="Financials" />
       <Card>
         <CardContent className="py-12 text-center space-y-4">
           <p className="text-lg text-muted-foreground">
             Financials zone hub — upcoming overview of payments, billing, reports, and expenses.
           </p>
-          <p className="text-sm text-muted-foreground">This feature is coming soon.</p>
+          <p className="text-sm text-muted-foreground">
+            Zone hub content coming in Phase 12-15.
+          </p>
           <Link
             href="/app"
             className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
