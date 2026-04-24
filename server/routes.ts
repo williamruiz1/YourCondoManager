@@ -13725,14 +13725,18 @@ This is an automated demo request from the Your Condo Manager website.
   });
 
   // POST /api/admin/billing/portal-session — Stripe Customer Portal redirect
-  app.post("/api/admin/billing/portal-session", requireAdmin, async (req: AdminRequest, res) => {
+  //
+  // 4.4 Q6 (Wave 13) — return_url updated from /app/platform/controls
+  // (Platform Admin only per 0.2) to /app/settings/billing (Manager +
+  // Board Officer surface locked in 3.2 amendment 2026-04-21).
+  app.post("/api/admin/billing/portal-session", requireAdmin, requireAdminRole(["platform-admin", "manager", "board-officer", "pm-assistant"]), async (req: AdminRequest, res) => {
     try {
       const associationId = req.adminScopedAssociationIds?.[0];
       if (!associationId) return res.status(400).json({ message: "No association context" });
       const sub = await storage.getPlatformSubscription(associationId);
       if (!sub?.stripeCustomerId) return res.status(400).json({ message: "No billing account found" });
       const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.yourcondomanager.org";
-      const params = new URLSearchParams({ customer: sub.stripeCustomerId, return_url: `${baseUrl}/app/platform/controls` });
+      const params = new URLSearchParams({ customer: sub.stripeCustomerId, return_url: `${baseUrl}/app/settings/billing` });
       const session = await stripeRequest("POST", "/billing_portal/sessions", params);
       res.json({ url: session.url });
     } catch (e: any) {

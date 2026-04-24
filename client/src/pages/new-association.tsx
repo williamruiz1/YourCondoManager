@@ -1,7 +1,7 @@
 // zone: Home
 // persona: Manager, Platform Admin
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,6 +24,10 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import {
+  PmUpgradePrompt,
+  hasPmUpgradePromptBeenDismissed,
+} from "@/components/pm-upgrade-prompt";
 
 const formSchema = z.object({
   name: z.string().min(1, "Association name is required"),
@@ -83,12 +87,33 @@ function StepIndicator({ current }: { current: number }) {
 const STEP1_FIELDS: (keyof FormValues)[] = ["name", "associationType"];
 const ASSOCIATION_TYPES = ["HOA", "Condo", "Co-op", "Townhome", "Mixed-Use"];
 
+type SubscriptionSummary = {
+  status?: string;
+  plan?: string;
+};
+
+type Association = { id: string; name: string };
+
 export default function NewAssociationPage() {
   useDocumentTitle("New Association");
   const [, navigate] = useLocation();
   const { setActiveAssociationId } = useAssociationContext();
   const { toast } = useToast();
   const [step, setStep] = useState(0);
+  const [pmUpgradeOpen, setPmUpgradeOpen] = useState(false);
+
+  // 4.4 Q6 Wave 13 — read current subscription plan + existing associations
+  // to gate the second-association PM-upgrade prompt. Self-managed + at
+  // least one existing association + not previously dismissed = show modal.
+  const { data: existingAssociations } = useQuery<Association[]>({
+    queryKey: ["/api/associations"],
+    staleTime: 60 * 1000,
+  });
+
+  const { data: subscription } = useQuery<SubscriptionSummary>({
+    queryKey: ["/api/admin/billing/subscription"],
+    staleTime: 5 * 60 * 1000,
+  });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -116,9 +141,32 @@ export default function NewAssociationPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/associations"] });
       setActiveAssociationId(created.id);
       toast({ title: `${created.name} created successfully` });
+
+      // 4.4 Q6 Wave 13 — second-association → PM upgrade soft-prompt. Gate:
+      //   - At least one association already existed BEFORE this one, AND
+      //   - current plan is self-managed, AND
+      //   - user hasn't previously dismissed the prompt.
+      // The prompt is NOT a hard block — it opens in-place; navigation
+      // continues when the user closes or upgrades.
+      const previousCount = existingAssociations?.length ?? 0;
+      const isSelfManaged = subscription?.plan === "self-managed";
+      if (
+        previousCount >= 1 &&
+        isSelfManaged &&
+        !hasPmUpgradePromptBeenDismissed()
+      ) {
+        setPmUpgradeOpen(true);
+        return; // defer nav until the modal closes
+      }
+
       navigate("/app/association-context");
     },
   });
+
+  function handlePmUpgradeClose() {
+    setPmUpgradeOpen(false);
+    navigate("/app/association-context");
+  }
 
   async function handleNext() {
     const valid = await form.trigger(STEP1_FIELDS);
@@ -319,6 +367,7 @@ export default function NewAssociationPage() {
           </CardContent>
         </Card>
       </div>
+      <PmUpgradePrompt open={pmUpgradeOpen} onClose={handlePmUpgradeClose} />
     </div>
   );
 }

@@ -89,6 +89,7 @@ const PlanSignupSuccessPage = lazy(() => import("@/pages/plan-signup-success"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
 const TermsOfServicePage = lazy(() => import("@/pages/terms-of-service"));
 const UserSettingsPage = lazy(() => import("@/pages/user-settings"));
+const SettingsBillingPage = lazy(() => import("@/pages/settings-billing"));
 const HelpCenterPage = lazy(() => import("@/pages/help-center"));
 const CommunityHubPage = lazy(() => import("@/pages/community-hub"));
 const CommunityHubPublicPage = lazy(() => import("@/pages/community-hub-public"));
@@ -340,6 +341,10 @@ function WorkspaceRouter({
         <Route path="/app/amenities" component={AmenitiesAdminPage} />
         <Route path="/app/announcements" component={AnnouncementsPage} />
         <Route path="/app/help-center" component={HelpCenterPage} />
+        {/* 4.4 Q6 (Wave 13) — Billing management entry point. Must match
+            BEFORE /app/settings so wouter resolves the specific path first
+            in declaration order. */}
+        <Route path="/app/settings/billing" component={SettingsBillingPage} />
         <Route path="/app/settings" component={UserSettingsPage} />
         <Route component={NotFound} />
       </Switch>
