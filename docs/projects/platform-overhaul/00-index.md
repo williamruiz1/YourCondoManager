@@ -2,7 +2,7 @@
 **Initiative:** Spec-First Platform Overhaul
 **Owner:** YCM Command Center
 **Process skill:** [`docs/skills/spec-first-overhaul-process-skill.md`](../../skills/spec-first-overhaul-process-skill.md)
-**Last updated:** 2026-04-23 (5-PR reconciliation complete; 1.3 Q1 amended — "Home" as Home-zone root label permitted; Phase 12 breadcrumb-paths unblocked)
+**Last updated:** 2026-04-24 (Session B locked — 4.2 SPEC LOCKED + 3a amenities-toggle addendum; 4.4 Q4 deferred to billing-migration initiative)
 
 ---
 
@@ -71,9 +71,9 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | ID | Name | Status | Decision Doc |
 |---|---|---|---|
 | 4.1 | Cross-association alert engine | IN SPEC (skeleton) | [`decisions/4.1-cross-association-alert-engine.md`](decisions/4.1-cross-association-alert-engine.md) |
-| 4.2 | Owner portal gaps | IN SPEC (skeleton) | [`decisions/4.2-owner-portal-gaps.md`](decisions/4.2-owner-portal-gaps.md) |
+| 4.2 | Owner portal gaps | **SPEC LOCKED** (Session B 2026-04-24) | [`decisions/4.2-owner-portal-gaps.md`](decisions/4.2-owner-portal-gaps.md) |
 | 4.3 | Recurring assessment rules engine | IN SPEC (skeleton) | [`decisions/4.3-recurring-assessment-rules-engine.md`](decisions/4.3-recurring-assessment-rules-engine.md) |
-| 4.4 | Signup and checkout flow | IN SPEC (skeleton, Q1+Q3 resolved) | [`decisions/4.4-signup-and-checkout-flow.md`](decisions/4.4-signup-and-checkout-flow.md) |
+| 4.4 | Signup and checkout flow | IN SPEC (Q1/Q3/Q4 resolved; Q2/Q5/Q6/Q7 PENDING, Q7 P1 shipped) | [`decisions/4.4-signup-and-checkout-flow.md`](decisions/4.4-signup-and-checkout-flow.md) |
 
 ---
 
@@ -130,3 +130,4 @@ Cross-cutting architectural decisions that span multiple modules are captured as
 | 2026-04-22 | Claude Code + 4 agents | PR 1 of 5-PR reconciliation: cherry-picked Task 0 Vitest ACs (`2d72e1a`) + Phase 1 paper-trail sweep (`ade73f7`) + Layer 4 partial locks (`5d6e619`) + migration journal cleanup for 0002-0007 drift. Resolved 00-index conflicts by taking superset of HEAD + branch histories. Replaces the interim "CPU Execution Status" section (Tasks 1-7) with this 5-PR reconciliation. |
 | 2026-04-22 | Claude Code + 4 agents | Full `feature/vitest-infrastructure` reconciliation complete: PRs #12 (foundation + migration journal), #9 (1.1 + 1.4 + 0.1 zone tags / page titles / Dashboard Resolution), #11 (1.2 + 1.3 + phase-5b hub contract + breadcrumbs + feature flags + waves 16-21), #10 (4.4 T3 + 4.2 Q5 signup auto-auth + onboarding banner + portal amenities), #13 (ADR 0b accepted + Phase 0b.2 RouteGuard + Session E + zone landing pattern) all merged to main. 165/165 tests pass. Source branch deleted. Remaining blockers: Founder Sessions A/B/C/D + 1.3 Home-root breadcrumb label conflict (tracked below). |
 | 2026-04-23 | Founder (William) + Claude Code | **1.3 Q1 amendment** — "Home" is permitted as a breadcrumb root label when it refers to the Home-zone label per 1.1 Q3. Original Q1 prohibition targeted generic placeholder roots; Home became a real zone in 1.1 Q3 so the prohibition needed narrowing. `/app/portfolio` seeded in `client/src/lib/breadcrumb-paths.ts` as `Home > Portfolio Health`. PPM blocker `c8817352` closed. Phase 12 breadcrumb-paths finalization unblocked. Remaining Layer-4 blockers: Sessions A (4.1), B (4.2 + 4.4 Q4), C (4.3), D (hub-visibility). |
+| 2026-04-24 | Founder (William) + Claude Code | **Session B locked — 4.2 SPEC LOCKED, 4.4 Q4 resolved.** 4.2 Q2 DEFERRED (push-notification preferences UI out of overhaul scope; follow-up 4.x spec filed). 4.2 Q3 session-gate status-quo preserved; **3a amenities-toggle addendum** — new `associations.amenitiesEnabled` boolean column, Manager + self-managed Board Officer togglable, defaults to on, hides sidebar tab + 404s `/portal/amenities` when off; filed as single-PR implementation task independent of 3.5. 4.2 Q4 zone-wrapper for `/portal/community` hub — link-out to `/community/:associationId`, no inline integration. 4.2 Q6 bundled with 3.5 (no standalone cosmetic PR over `owner-portal.tsx`). 4.4 Q4 DEFERRED — Phase 0 billing schema migration out of overhaul scope, filed as dedicated billing-migration initiative; `platformSubscriptions` remains the signup-write source; 4.4 Q3 planCatalog-read wiring unaffected and continues. Unblocks T1 3.5 scope finalization. Remaining Layer-4 blockers: Session A (4.1), Session C (4.3), Session D (hub-visibility). |
