@@ -27,12 +27,15 @@
  *     entries (legacy path should skip that association).
  *
  * Scope note:
- *   Wave 7 wires shadow-write only. The legacy functions
+ *   Wave 7 shipped the orchestrator in shadow-write only. Wave 12
+ *   (Phase 5.1 cleanup) retired the legacy functions
  *   (server/index.ts:runDueRecurringCharges and
  *   server/assessment-installments.ts:processSpecialAssessmentInstallments)
- *   continue to own real posting. The handlers here refactor the same logic
- *   into pure form; they do NOT mutate the legacy functions (per the Wave 7
- *   build constraints).
+ *   and this orchestrator is now the sole poster.
+ *   ASSESSMENT_EXECUTION_UNIFIED defaults ON;
+ *   isUnifiedAssessmentExecutionEnabled remains exported only so callers
+ *   can still flip a specific association OFF via env override for
+ *   debugging.
  */
 
 import { and, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";

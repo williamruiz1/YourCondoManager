@@ -30,7 +30,7 @@ import {
   type SpecialAssessment,
 } from "@shared/schema";
 import { db } from "./db";
-import { SPECIAL_ASSESSMENT_REFERENCE_TYPE } from "./assessment-installments";
+import { SPECIAL_ASSESSMENT_REFERENCE_TYPE } from "./assessment-execution";
 import {
   computeOwnerPortion,
   type AssessmentForOwnerPortion,

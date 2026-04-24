@@ -21,20 +21,22 @@
 //   - BOARD_SHUNT_ACTIVE:   introduced Phase 13 dark-launch (default ON), flipped
 //                           OFF via follow-up PR after one clean release cycle,
 //                           then removed entirely.
-//   - ASSESSMENT_EXECUTION_UNIFIED: introduced Wave 7 (default OFF); gates the
-//                           unified assessment-execution orchestrator
-//                           (server/assessment-execution.ts). While OFF the
-//                           orchestrator runs in SHADOW-WRITE dry-run mode only
-//                           (writes assessment_run_log rows with status =
-//                           'deferred'; does NOT write owner_ledger_entries and
-//                           emits no customer-visible side effects). The legacy
-//                           functions (runDueRecurringCharges,
-//                           processSpecialAssessmentInstallments) continue to own
-//                           real posting. When flipped ON (globally or per
-//                           association) the orchestrator takes over real posting
-//                           for that scope and the legacy functions skip that
-//                           association. Supports per-association override via
-//                           FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_<associationId>.
+//   - ASSESSMENT_EXECUTION_UNIFIED: introduced Wave 7 (default OFF) as a
+//                           shadow-write parity window over the legacy per-
+//                           subsystem posters (runDueRecurringCharges,
+//                           processSpecialAssessmentInstallments). Wave 12
+//                           (Phase 5.1 cleanup) flipped the default ON and
+//                           deleted the legacy posters; the orchestrator
+//                           (server/assessment-execution.ts) is now the sole
+//                           path for real ledger posting. Per-association
+//                           override is still supported via
+//                           FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_<associationId>
+//                           so a specific association can be flipped OFF for
+//                           debugging (which forces the orchestrator into dry-
+//                           run mode for that scope, suppressing real ledger
+//                           writes). Scheduled for full removal once every
+//                           environment has run with the flag ON across at
+//                           least one full monthly billing cycle.
 //   - HUB_VISIBILITY_RENAME: introduced 1.5 HV-1 (default OFF) — gated the
 //                            dual-vocab write cutover for `hub_visibility_level`
 //                            (old `public|resident|owner|board|admin`) and
@@ -72,8 +74,9 @@ export type FeatureFlagKey =
   // assisted-board sessions fall through to WorkspaceShell + AppSidebar
   // instead of the shunt at client/src/App.tsx:1051-1057.
   | "BOARD_SHUNT_ACTIVE"
-  // Wave 7 (4.3 Q3) — default OFF; gates the unified assessment-execution
-  // orchestrator. Per-association override supported via
+  // Wave 7 (4.3 Q3) — introduced default OFF as a shadow-write parity window.
+  // Wave 12 (Phase 5.1 cleanup) flipped the default to ON and deleted the
+  // legacy posters. Per-association override still supported via
   // getFeatureFlagForAssociation().
   | "ASSESSMENT_EXECUTION_UNIFIED"
   // 1.5 HV-1 — default OFF; gates the `hub_visibility_level` vocabulary
@@ -89,7 +92,7 @@ export type FeatureFlagKey =
 const DEFAULTS: Record<FeatureFlagKey, boolean> = {
   PORTAL_ROLE_COLLAPSE: true,
   BOARD_SHUNT_ACTIVE: true,
-  ASSESSMENT_EXECUTION_UNIFIED: false,
+  ASSESSMENT_EXECUTION_UNIFIED: true,
   // 1.5 HV-2: flipped ON. Prod-data audit showed zero old-vocab rows, so
   // every new write safely emits new vocab. See feature-flag lifecycle note.
   HUB_VISIBILITY_RENAME: true,

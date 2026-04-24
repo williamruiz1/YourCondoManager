@@ -35,6 +35,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import type { AdminRole } from "@shared/schema";
 
 interface AssociationSummary {
   id: string;
@@ -211,8 +212,6 @@ function ActiveElectionsCard({
     </Card>
   );
 }
-
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 
 function QuickActions({
   activeAssociationId,

@@ -43,7 +43,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calculator, Play, Plus } from "lucide-react";
+import { Calculator, Plus } from "lucide-react";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { financeSubPages } from "@/lib/sub-page-nav";
@@ -205,45 +205,10 @@ export function FinancialAssessmentsContent({ readOnly = false }: { readOnly?: b
     },
   });
 
-  const runInstallmentsMutation = useMutation({
-    mutationFn: async () => {
-      if (!activeAssociationId) throw new Error("Association is required");
-      const res = await apiRequest("POST", "/api/financial/assessments/run", {
-        associationId: activeAssociationId,
-      });
-      return res.json() as Promise<{
-        assessmentsProcessed: number;
-        installmentsDue: number;
-        entriesCreated: number;
-        alreadyPosted: number;
-        skippedUnits: number;
-      }>;
-    },
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/financial/assessments"] });
-      await queryClient.invalidateQueries({ queryKey: ["/api/financial/owner-ledger/entries"] });
-      toast({
-        title: "Assessment run complete",
-        description: `${result.entriesCreated} ledger entries posted across ${result.assessmentsProcessed} assessments. ${result.alreadyPosted} entries were already posted.`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
-  });
-
   return (
     <div className="space-y-6">
       {!readOnly && (
       <div className={`flex ${isMobile ? "w-full flex-col gap-2" : "items-center gap-2"}`} data-testid="assessments-toolbar">
-        <Button
-          variant="outline"
-          disabled={!activeAssociationId || runInstallmentsMutation.isPending}
-          onClick={() => runInstallmentsMutation.mutate()}
-        >
-          <Play className="mr-2 h-4 w-4" />
-          {runInstallmentsMutation.isPending ? "Running..." : "Run Due Installments"}
-        </Button>
         <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) form.reset(); }}>
           <DialogTrigger asChild>
             <Button disabled={!activeAssociationId} data-testid="button-new-assessment">

@@ -47,8 +47,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { canAccessWipRoute } from "@/lib/wip-features";
-
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
+import type { AdminRole } from "@shared/schema";
 
 type NavLink = {
   title: string;

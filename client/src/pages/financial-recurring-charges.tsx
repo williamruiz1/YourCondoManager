@@ -126,23 +126,6 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const runNow = useMutation({
-    mutationFn: async () => {
-      if (!activeAssociationId) throw new Error("No association selected");
-      const res = await apiRequest("POST", "/api/financial/recurring-charges/run", { associationId: activeAssociationId });
-      return res.json() as Promise<{ succeeded: number; failed: number; totalSchedulesDue: number }>;
-    },
-    onSuccess: async (result) => {
-      await refetchSchedules();
-      await refetchRuns();
-      toast({
-        title: "Charge run complete",
-        description: `${result.succeeded} succeeded, ${result.failed} failed out of ${result.totalSchedulesDue} due schedules.`,
-      });
-    },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
   const retryRun = useMutation({
     mutationFn: async (runId: string) => {
       const res = await apiRequest("POST", `/api/financial/recurring-charges/runs/${runId}/retry`, {});
@@ -286,18 +269,6 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
               </div>
             {!readOnly && (
             <div className="grid grid-cols-2 gap-2 sm:flex" data-testid="recurring-toolbar">
-              <ConfirmDialog
-                trigger={
-                  <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled={runNow.isPending || !activeAssociationId}>
-                    <Play className={`h-4 w-4 mr-1 ${runNow.isPending ? "animate-pulse" : ""}`} />
-                    {runNow.isPending ? "Running…" : "Run Now"}
-                  </Button>
-                }
-                title="Run charge schedules now?"
-                description={`This will immediately post charges for all ${activeSchedules} active schedule${activeSchedules !== 1 ? "s" : ""} that are due for ${activeAssociationName || "the selected association"}. Posted charges will appear on owner ledgers right away.`}
-                confirmLabel="Run Charges"
-                onConfirm={() => runNow.mutate()}
-              />
               <Button size="sm" className="w-full sm:w-auto" onClick={() => setScheduleDialogOpen(true)} disabled={!activeAssociationId} data-testid="button-new-schedule">
                 <Plus className="h-4 w-4 mr-1" /> New Schedule
               </Button>
