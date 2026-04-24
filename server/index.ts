@@ -15,6 +15,7 @@ import { recurringChargeSchedules, recurringChargeRuns, ownerships, units, owner
 import { runAutopayCollectionForAssociation } from "./routes/autopay";
 import { runAutopayRetries } from "./services/retry-service";
 import { generateDelinquencyNotices } from "./services/delinquency-notice-service";
+import { runShadowWriteForSweep } from "./assessment-execution";
 import { log } from "./logger";
 import { startElectionScheduler } from "./election-scheduler";
 import { createRateLimiter } from "./rate-limit";
@@ -263,8 +264,25 @@ async function runAutomationSweep() {
     runAutopayRetries(),
     runAllDelinquencyNotices(),
   ]);
+
+  // Wave 7 (4.3 Q3) — Shadow-write parity window.
+  //
+  // ASSESSMENT_EXECUTION_UNIFIED defaults OFF. While OFF, the legacy posters
+  // above continue to own real ledger writes. AFTER they complete, we ALSO
+  // invoke the unified orchestrator in dry-run mode, which writes
+  // assessment_run_log rows with status='deferred' and emits NO
+  // customer-visible side effects (no ledger entries, no notifications, no
+  // emails). The parity helper (server/assessment-execution-parity.ts)
+  // compares these rows against the real ledger for drift detection.
+  //
+  // When the flag is flipped ON (globally or per-association) the
+  // orchestrator takes over REAL posting and the legacy functions skip those
+  // associations — that wiring lives behind runShadowWriteForSweep's
+  // per-association gate (isUnifiedAssessmentExecutionEnabled).
+  const shadowSummary = await runShadowWriteForSweep();
+
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, recurring charges succeeded=${recurringResult.succeeded} failed=${recurringResult.failed} skipped=${recurringResult.skipped}, assessment installments associations=${assessmentResult.associationsProcessed} posted=${assessmentResult.entriesCreated} alreadyPosted=${assessmentResult.alreadyPosted} skipped=${assessmentResult.skippedUnits}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, recurring charges succeeded=${recurringResult.succeeded} failed=${recurringResult.failed} skipped=${recurringResult.skipped}, assessment installments associations=${assessmentResult.associationsProcessed} posted=${assessmentResult.entriesCreated} alreadyPosted=${assessmentResult.alreadyPosted} skipped=${assessmentResult.skippedUnits}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, shadow-write dispatched=${shadowSummary?.totalDispatched ?? 0} deferred=${shadowSummary?.perStatus.deferred ?? 0}`,
     "automation",
   );
 }

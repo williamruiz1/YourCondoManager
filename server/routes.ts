@@ -15,6 +15,7 @@ import {
   sendPlatformAdminEmailNotification,
 } from "./admin-notification-service";
 import { processSpecialAssessmentInstallments } from "./assessment-installments";
+import { compareShadowRuns } from "./assessment-execution-parity";
 import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
 import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, notInArray, or, sql, sum } from "drizzle-orm";
 import {
@@ -10339,6 +10340,51 @@ This is an automated demo request from the Your Condo Manager website.
       res.status(400).json({ message: error.message });
     }
   });
+
+  // Wave 7 (4.3 Q3) — Shadow-write parity report.
+  //
+  // Read-only ops endpoint. Compares real ownerLedgerEntries posted by the
+  // legacy path against shadow-write assessment_run_log rows written by the
+  // unified orchestrator in the same window. Drift here is the signal that
+  // must clear before the ASSESSMENT_EXECUTION_UNIFIED flag flips to ON.
+  //
+  // Query params:
+  //   associationId (required)
+  //   from          (required, ISO 8601)
+  //   to            (required, ISO 8601)
+  app.get(
+    "/api/admin/assessment-execution/parity-report",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) {
+          return res.status(400).json({ message: "associationId is required" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const fromRaw = typeof req.query.from === "string" ? req.query.from : null;
+        const toRaw = typeof req.query.to === "string" ? req.query.to : null;
+        if (!fromRaw || !toRaw) {
+          return res.status(400).json({ message: "from and to query params (ISO 8601) are required" });
+        }
+        const windowStart = new Date(fromRaw);
+        const windowEnd = new Date(toRaw);
+        if (!Number.isFinite(windowStart.getTime()) || !Number.isFinite(windowEnd.getTime())) {
+          return res.status(400).json({ message: "from/to must be valid ISO 8601 timestamps" });
+        }
+        if (windowEnd < windowStart) {
+          return res.status(400).json({ message: "to must be >= from" });
+        }
+
+        const report = await compareShadowRuns(associationId, windowStart, windowEnd);
+        res.json(report);
+      } catch (error: any) {
+        res.status(400).json({ message: error?.message ?? "parity report failed" });
+      }
+    },
+  );
 
   app.get("/api/platform/email-threads", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
