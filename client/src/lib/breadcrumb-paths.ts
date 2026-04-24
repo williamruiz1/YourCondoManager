@@ -130,6 +130,15 @@ export const BREADCRUMB_PATHS: Readonly<Record<string, BreadcrumbTrail>> = Objec
     { label: "Home", href: "/app" },
     { label: "Portfolio Health" },
   ],
+
+  // 4.1 Wave 4 — Central inbox (Communications > Inbox). Lives under the
+  // Communications zone per 4.1 Q4 resolution (2026-04-21) and 1.1 Q3
+  // (Communications zone owns "updates inbox"). Sub-page pattern:
+  // portfolio-scoped leaf with zone-label root and leaf = page title.
+  "/app/communications/inbox": [
+    { label: "Communications", href: "/app/communications" },
+    { label: "Inbox" },
+  ],
 });
 
 /**

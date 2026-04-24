@@ -65,6 +65,7 @@ const ElectionDetailPage = lazy(() => import("@/pages/election-detail"));
 const ElectionBallotPage = lazy(() => import("@/pages/election-ballot"));
 const AiIngestionPage = lazy(() => import("@/pages/ai-ingestion"));
 const CommunicationsPage = lazy(() => import("@/pages/communications"));
+const CommunicationsInboxPage = lazy(() => import("@/pages/communications-inbox"));
 const PlatformControlsPage = lazy(() => import("@/pages/platform-controls"));
 const OwnerPortalPage = lazy(() => import("@/pages/owner-portal"));
 const VendorPortalPage = lazy(() => import("@/pages/vendor-portal"));
@@ -292,6 +293,10 @@ function WorkspaceRouter({
         <Route path="/app/ai/ingestion">
           {canAccessWipRoute("/app/ai/ingestion", adminRole) ? <AiIngestionPage /> : <NotFound />}
         </Route>
+        {/* 4.1 Wave 4 — central inbox must match BEFORE the generic
+            /app/communications hub, since wouter resolves path literals
+            in declaration order. */}
+        <Route path="/app/communications/inbox" component={CommunicationsInboxPage} />
         <Route path="/app/communications" component={CommunicationsPage} />
         <Route path="/app/platform/controls">
           {adminRole === "platform-admin" ? <PlatformControlsPage /> : <NotFound />}

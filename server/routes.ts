@@ -1600,6 +1600,68 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     async (req: AdminRequest, res) => handleAlertReadStateMutation(req, res, "dismiss"),
   );
 
+  // -------------------------------------------------------------------------
+  // 4.1 Wave 4 — restore mutation (central inbox archived → active).
+  // POST /api/alerts/:alertId/restore — clears dismissedAt (back to NULL),
+  // moving the alert from the inbox "Archived" filter back into the active
+  // / unread surface. Same auth + feature-domain gate as /dismiss; calls
+  // `invalidateAlertCache()` so the next GET serves fresh state.
+  // -------------------------------------------------------------------------
+  async function handleAlertRestoreMutation(req: AdminRequest, res: Response) {
+    try {
+      const { alertId } = req.params;
+      if (!alertId || typeof alertId !== "string") {
+        return res.status(400).json({ message: "alertId is required" });
+      }
+
+      const { canAccessAlert } = await import("./alerts/can-access-alert");
+      const { parseAlertId, RULE_TYPE_FEATURE_DOMAIN } = await import("./alerts/types");
+      const { invalidateAlertCache } = await import("./alerts");
+
+      const parsed = parseAlertId(alertId);
+      if (!parsed) {
+        return res.status(404).json({ message: "Alert not found" });
+      }
+      const featureDomain = RULE_TYPE_FEATURE_DOMAIN[parsed.ruleType];
+      if (!canAccessAlert(req.adminRole!, featureDomain, {})) {
+        return res.status(403).json({
+          message: "You do not have access to this alert",
+          code: "ALERT_FEATURE_DOMAIN_FORBIDDEN",
+        });
+      }
+
+      // Upsert semantics: if the row doesn't exist, create it with both
+      // fields NULL (equivalent to a no-op in terms of read-state, but
+      // keeps the endpoint idempotent). If it exists, clear dismissedAt
+      // while leaving readAt untouched.
+      await db
+        .insert(alertReadStates)
+        .values({
+          alertId,
+          adminUserId: req.adminUserId!,
+          readAt: null,
+          dismissedAt: null,
+        })
+        .onConflictDoUpdate({
+          target: [alertReadStates.alertId, alertReadStates.adminUserId],
+          set: { dismissedAt: null },
+        });
+
+      invalidateAlertCache();
+      return res.json({ alertId, dismissedAt: null });
+    } catch (error: any) {
+      console.error(`[alerts][restore][error]`, error);
+      return res.status(500).json({ message: error.message });
+    }
+  }
+
+  app.post(
+    "/api/alerts/:alertId/restore",
+    requireAdmin,
+    alertMutationRoleGate,
+    handleAlertRestoreMutation,
+  );
+
   app.get("/api/portfolio/summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const allAssociations = await storage.getAssociations({ includeArchived: false });

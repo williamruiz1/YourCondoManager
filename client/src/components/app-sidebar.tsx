@@ -130,6 +130,11 @@ const associationModules: NavModule[] = [
     children: [
       { title: "Governance", url: "/app/governance", icon: ClipboardCheck, materialIcon: "gavel", activePrefix: "/app/governance", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { title: "Communications", url: "/app/communications", icon: MessageSquare, materialIcon: "forum", activePrefix: "/app/communications", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      // 4.1 Wave 4 — central inbox. `activePrefix` is the full
+      // `/app/communications/inbox` path (not a prefix of the parent
+      // Communications hub) so the sidebar highlights Inbox without
+      // double-highlighting the Communications entry.
+      { title: "Inbox", url: "/app/communications/inbox", icon: MessageSquare, materialIcon: "inbox", activePrefix: "/app/communications/inbox", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { title: "Announcements", url: "/app/announcements", icon: Megaphone, materialIcon: "campaign", activePrefix: "/app/announcements", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
     ],
   },
