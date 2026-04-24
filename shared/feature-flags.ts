@@ -32,6 +32,15 @@
 //                           for that scope and the legacy functions skip that
 //                           association. Supports per-association override via
 //                           FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_<associationId>.
+//   - HUB_VISIBILITY_RENAME: introduced 1.5 HV-1 (default OFF) — gates the
+//                            dual-vocab write cutover for `hub_visibility_level`
+//                            (old `public|resident|owner|board|admin`) and
+//                            `community_announcements.visibility_level` text
+//                            column to the role-agnostic new vocab
+//                            (`public|residents|unit-owners|board-only|operator-only`).
+//                            Flipped per-association in HV-2. Removed in HV-3
+//                            after old values are dropped and all 19 call sites
+//                            migrate to the new vocab exclusively.
 //
 // Do NOT wire this helper into existing code yet. Phase 8a is the first consumer.
 
@@ -54,7 +63,13 @@ export type FeatureFlagKey =
   // Wave 7 (4.3 Q3) — default OFF; gates the unified assessment-execution
   // orchestrator. Per-association override supported via
   // getFeatureFlagForAssociation().
-  | "ASSESSMENT_EXECUTION_UNIFIED";
+  | "ASSESSMENT_EXECUTION_UNIFIED"
+  // 1.5 HV-1 — default OFF; gates the `hub_visibility_level` vocabulary
+  // cutover. While OFF, writes continue to emit old vocab and reads accept
+  // both via `shared/hub-visibility.ts`. Flipped per-association in HV-2 to
+  // begin emitting new vocab; removed from code in HV-3 after old enum
+  // values are dropped.
+  | "HUB_VISIBILITY_RENAME";
 
 /**
  * Compile-time defaults. Used when no env override is present.
@@ -63,6 +78,7 @@ const DEFAULTS: Record<FeatureFlagKey, boolean> = {
   PORTAL_ROLE_COLLAPSE: false,
   BOARD_SHUNT_ACTIVE: true,
   ASSESSMENT_EXECUTION_UNIFIED: false,
+  HUB_VISIBILITY_RENAME: false,
 };
 
 /**

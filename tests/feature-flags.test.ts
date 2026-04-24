@@ -24,6 +24,7 @@ const FLAG_KEYS: FeatureFlagKey[] = [
   "PORTAL_ROLE_COLLAPSE",
   "BOARD_SHUNT_ACTIVE",
   "ASSESSMENT_EXECUTION_UNIFIED",
+  "HUB_VISIBILITY_RENAME",
 ];
 
 function envKey(key: FeatureFlagKey): string {
@@ -43,6 +44,11 @@ describe("feature flags — defaults", () => {
   it("BOARD_SHUNT_ACTIVE default is true (Phase 13 dark-launch)", () => {
     expect(__FEATURE_FLAG_DEFAULTS__.BOARD_SHUNT_ACTIVE).toBe(true);
     expect(getFeatureFlag("BOARD_SHUNT_ACTIVE")).toBe(true);
+  });
+
+  it("HUB_VISIBILITY_RENAME default is false (1.5 HV-1 ships additive only)", () => {
+    expect(__FEATURE_FLAG_DEFAULTS__.HUB_VISIBILITY_RENAME).toBe(false);
+    expect(getFeatureFlag("HUB_VISIBILITY_RENAME")).toBe(false);
   });
 
   it("every FeatureFlagKey has an explicit default", () => {
