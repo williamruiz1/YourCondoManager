@@ -221,7 +221,8 @@ export function FinancialFoundationContent() {
                 ))}
               </div>
             ) : (
-              <Table>
+              // Wave 23 a11y: aria-label names this accounts table.
+              <Table aria-label="Chart of accounts">
                 <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Code</TableHead><TableHead>Type</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {(accounts ?? []).map((a) => (
@@ -282,7 +283,8 @@ export function FinancialFoundationContent() {
                 ))}
               </div>
             ) : (
-              <Table>
+              // Wave 23 a11y: aria-label names this categories table.
+              <Table aria-label="Account categories">
                 <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Type</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {(categories ?? []).map((c) => (
@@ -403,7 +405,8 @@ export function FinancialFoundationContent() {
               ) : null}
             </div>
           ) : (
-          <Table>
+          // Wave 23 a11y: aria-label names this approvals table.
+          <Table aria-label="Financial change approvals">
             <TableHeader>
               <TableRow>
                 <TableHead>Type</TableHead>
@@ -639,7 +642,8 @@ export function AccountActivityContent() {
                 ))}
               </div>
               <div className="rounded-md border hidden md:block overflow-x-auto">
-                <Table>
+                // Wave 23 a11y: aria-label names this account activity table.
+                <Table aria-label="Account activity (budget vs. invoiced)">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Code</TableHead>
@@ -696,10 +700,13 @@ export function AccountActivityContent() {
 export default function FinancialFoundationPage() {
   useDocumentTitle("Chart of Accounts");
   return (
-    <div className="flex flex-col min-h-0">
+    // Wave 23 a11y: section + aria-labelledby gives the page region an
+    // accessible name resolved from the visible <h1> below.
+    <section className="flex flex-col min-h-0" aria-labelledby="financial-foundation-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Chart of Accounts"
+          headingId="financial-foundation-heading"
           summary="Configure financial accounts, categories, and recurring charge schedules for the active association."
           eyebrow="Finance"
           breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Chart of Accounts" }]}
@@ -722,6 +729,6 @@ export default function FinancialFoundationPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </div>
+    </section>
   );
 }

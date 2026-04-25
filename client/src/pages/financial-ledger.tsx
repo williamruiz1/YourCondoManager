@@ -420,7 +420,8 @@ export function FinancialLedgerContent() {
                 ))}
               </div>
             ) : (
-              <Table>
+              // Wave 23 a11y: aria-label names this owner balances table.
+              <Table aria-label="Owner balances">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Owner</TableHead>
@@ -695,7 +696,8 @@ export function FinancialLedgerContent() {
               unitName={unitName}
             />
           ) : (
-            <Table>
+            // Wave 23 a11y: aria-label names this entries table.
+            <Table aria-label="Owner ledger entries">
               <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Description</TableHead></TableRow></TableHeader>
               <TableBody>
                 {filteredEntries.slice(0, entriesShowLimit).map((e) => (
@@ -776,7 +778,8 @@ export function FinancialLedgerContent() {
                 )}
               </div>
             ) : (
-              <Table>
+              // Wave 23 a11y: aria-label names this audit log table.
+              <Table aria-label="Ledger audit log">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Time</TableHead>
@@ -954,10 +957,12 @@ function VirtualizedOperatorLedger({
 
 export default function FinancialLedgerPage() {
   return (
-    <div className="flex flex-col min-h-0">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="flex flex-col min-h-0" aria-labelledby="financial-ledger-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Owner Ledger"
+          headingId="financial-ledger-heading"
           summary="Post owner-ledger entries, review balances, and monitor collection risk within the active association scope."
           eyebrow="Finance"
           breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Owner Ledger" }]}
@@ -969,6 +974,6 @@ export default function FinancialLedgerPage() {
         />
         <FinancialLedgerContent />
       </div>
-    </div>
+    </section>
   );
 }

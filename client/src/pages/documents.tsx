@@ -369,9 +369,11 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
   }, [page, totalPages]);
 
   return (
-    <div className="p-6 space-y-6">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="p-6 space-y-6" aria-labelledby="documents-heading">
       <WorkspacePageHeader
         title="Documents"
+        headingId="documents-heading"
         summary="Upload, classify, and manage documents for the active association without losing workspace context."
         eyebrow="Records"
         breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Documents" }]}
@@ -578,7 +580,8 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
           <Card>
             <CardContent className="p-0">
               <div className="hidden md:block">
-                <Table>
+                // Wave 23 a11y: aria-label names this documents table.
+                <Table aria-label="Documents">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Title</TableHead>
@@ -643,16 +646,17 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                             variant="outline"
                             size="icon"
                             title="Manage"
+                            aria-label={`Manage document ${d.title}`}
                             onClick={() => {
                               setSelectedDocument(d);
                               setMetaOpen(true);
                             }}
                           >
-                            <Tags className="h-4 w-4" />
+                            <Tags aria-hidden="true" className="h-4 w-4" />
                           </Button>
-                          <Button variant="outline" size="icon" title="Download" asChild data-testid={`button-download-document-${d.id}`}>
+                          <Button variant="outline" size="icon" title="Download" aria-label={`Download document ${d.title}`} asChild data-testid={`button-download-document-${d.id}`}>
                             <a href={d.fileUrl} target="_blank" rel="noopener noreferrer">
-                              <Download className="h-4 w-4" />
+                              <Download aria-hidden="true" className="h-4 w-4" />
                             </a>
                           </Button>
                         </TableCell>
@@ -1018,6 +1022,6 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

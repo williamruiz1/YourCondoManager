@@ -987,7 +987,8 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
           </div>
         </div>
         <div className="hidden md:block">
-          <Table>
+          // Wave 23 a11y: aria-label names this webhook events table.
+          <Table aria-label="Payment gateway webhook events">
             <TableHeader>
               <TableRow>
                 <TableHead>Event ID</TableHead>
@@ -1241,7 +1242,8 @@ function PaymentTransactionsTab({ associationId }: { associationId: string | nul
           </div>
         ) : (
           <div className="overflow-auto">
-            <Table>
+            // Wave 23 a11y: aria-label names this transactions table.
+            <Table aria-label="Payment transactions">
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs">Date</TableHead>
@@ -1508,7 +1510,8 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
         <div className="text-sm text-muted-foreground">No autopay enrollments found.</div>
       ) : (
         <div className="rounded-md border overflow-hidden">
-          <Table>
+          // Wave 23 a11y: aria-label names this autopay enrollments table.
+          <Table aria-label="Autopay enrollments">
             <TableHeader>
               <TableRow>
                 <TableHead>Unit</TableHead>
@@ -1721,10 +1724,12 @@ export default function FinancialPaymentsPage() {
   });
 
   return (
-    <div className="flex flex-col min-h-0">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="flex flex-col min-h-0" aria-labelledby="financial-payments-heading">
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title="Payments"
+        headingId="financial-payments-heading"
         summary="Configure how owners pay their dues — add payment methods, optionally connect an ACH gateway, and generate owner payment links."
         eyebrow="Finance"
         breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Payments" }]}
@@ -1927,6 +1932,6 @@ export default function FinancialPaymentsPage() {
         </CardContent>
       </Card>
       </div>
-    </div>
+    </section>
   );
 }

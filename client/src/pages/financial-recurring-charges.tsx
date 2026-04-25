@@ -294,7 +294,8 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
           ) : isMobile ? (
             <div className="space-y-3">{mobileScheduleCards}</div>
           ) : (
-            <Table>
+            // Wave 23 a11y: aria-label names this schedules table.
+            <Table aria-label="Recurring charge schedules">
               <TableHeader>
                 <TableRow>
                   <TableHead>Description</TableHead>
@@ -401,7 +402,8 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
           ) : isMobile ? (
             <div className="space-y-3">{mobileRunCards}</div>
           ) : (
-            <Table>
+            // Wave 23 a11y: aria-label names this run-history table.
+            <Table aria-label="Recurring charge run history">
               <TableHeader>
                 <TableRow>
                   <TableHead>Run Date</TableHead>
@@ -430,7 +432,7 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
                     </TableCell>
                     <TableCell className="text-right">
                       {!readOnly && r.status === "failed" && (
-                        <Button size="icon" variant="outline" title="Retry" onClick={() => retryRun.mutate(r.id)} disabled={retryRun.isPending}>
+                        <Button size="icon" variant="outline" title="Retry" aria-label="Retry charge run" onClick={() => retryRun.mutate(r.id)} disabled={retryRun.isPending}>
                           <RotateCcw className="h-4 w-4" />
                         </Button>
                       )}
@@ -531,10 +533,12 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
 
 export default function FinancialRecurringChargesPage() {
   return (
-    <div className="flex flex-col min-h-0">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="flex flex-col min-h-0" aria-labelledby="financial-recurring-charges-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Recurring Charges"
+          headingId="financial-recurring-charges-heading"
           summary="Define automatic charge schedules, run them on demand, and manage failed charge retries."
           eyebrow="Finance"
           breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Recurring Charges" }]}
@@ -542,6 +546,6 @@ export default function FinancialRecurringChargesPage() {
         />
         <FinancialRecurringChargesContent />
       </div>
-    </div>
+    </section>
   );
 }

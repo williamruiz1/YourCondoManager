@@ -659,8 +659,12 @@ export default function UnitsPage() {
   }, [buildingGroups, buildings]);
 
   return (
-    <div className="space-y-8 p-4 sm:p-6">
-      <section className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(145deg,hsl(var(--primary))_0%,hsl(217_78%_34%)_48%,hsl(221_45%_18%)_100%)] p-6 text-primary-foreground md:rounded-[24px] md:border md:border-outline-variant/30 md:bg-surface-container-lowest md:text-on-surface">
+    // Wave 23 a11y: outer page wrapper is now <section aria-labelledby> so
+    // assistive tech identifies the page region by its visible heading. The
+    // inner gradient container stays as <section> for visual styling but is
+    // labelled by the same heading.
+    <section className="space-y-8 p-4 sm:p-6" aria-labelledby="units-heading">
+      <section aria-labelledby="units-heading" className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(145deg,hsl(var(--primary))_0%,hsl(217_78%_34%)_48%,hsl(221_45%_18%)_100%)] p-6 text-primary-foreground md:rounded-[24px] md:border md:border-outline-variant/30 md:bg-surface-container-lowest md:text-on-surface">
         <div className="absolute inset-0 md:hidden">
           <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/10 blur-3xl" />
           <div className="absolute -left-12 bottom-0 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
@@ -672,6 +676,7 @@ export default function UnitsPage() {
               Lease Workspace
             </div>
             <h1
+              id="units-heading"
               className="mt-4 font-headline text-4xl font-bold italic leading-tight text-white md:mt-0 md:text-3xl md:not-italic md:text-on-surface"
               data-testid="text-page-title"
             >
@@ -1598,7 +1603,7 @@ export default function UnitsPage() {
         ]}
         onImport={handleUnitsImport}
       />
-    </div>
+    </section>
   );
 }
 

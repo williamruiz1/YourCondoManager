@@ -332,7 +332,12 @@ export function AppSidebar({ adminRole }: { adminRole?: AdminRole | null }) {
           )}
         </div>
       </SidebarHeader>
-      <SidebarContent>
+      {/* Wave 23 a11y: deferred Wave 21 fix. The shadcn Sidebar primitive
+          renders a <div>, so the contained navigation lacks an implicit
+          landmark role. Adding role="navigation" + aria-label here lets
+          assistive tech identify the operator nav as a single navigation
+          region named "Main navigation". */}
+      <SidebarContent role="navigation" aria-label="Main navigation">
         {/* Overview: Home (+ Portfolio Health as subordinate), Associations
             [0.1 AC 6] Portfolio Health renders as a persistent indented child of
             Home so its subordination is visible even when Home is not the active

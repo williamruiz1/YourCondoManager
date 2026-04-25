@@ -126,7 +126,7 @@ function MeetingNoticeDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="outline" title="Send Notice">
+        <Button size="icon" variant="outline" title="Send Notice" aria-label="Send meeting notice">
           <Send className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -194,7 +194,7 @@ function QuorumDialog({ meeting, persons }: { meeting: GovernanceMeeting; person
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="outline" title="Attendance & Quorum">
+        <Button size="icon" variant="outline" title="Attendance & Quorum" aria-label="Attendance and quorum">
           <Users className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -1520,15 +1520,17 @@ export function MeetingsContent() {
 
 export default function MeetingsPage() {
   return (
-    <div className="p-6 space-y-6">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="p-6 space-y-6" aria-labelledby="meetings-heading">
       <WorkspacePageHeader
         title="Meetings"
+        headingId="meetings-heading"
         summary="Schedule meetings, manage agendas, record minutes, and track resolutions."
         eyebrow="Board & Governance"
         breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Meetings" }]}
         subPages={boardGovernanceSubPages}
       />
       <MeetingsContent />
-    </div>
+    </section>
   );
 }

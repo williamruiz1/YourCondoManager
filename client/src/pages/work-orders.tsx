@@ -481,7 +481,8 @@ export function WorkOrdersContent() {
             </div>
           </div>
           <div className="hidden md:block">
-          <Table>
+          // Wave 23 a11y: aria-label names this convertible requests table.
+          <Table aria-label="Convertible resident requests">
             <TableHeader>
               <TableRow>
                 <TableHead>Title</TableHead>
@@ -709,7 +710,8 @@ export function WorkOrdersContent() {
           }
         >
           <div className="hidden md:block">
-          <Table>
+          // Wave 23 a11y: aria-label names this work orders table.
+          <Table aria-label="Work orders">
             <TableHeader>
               <TableRow>
                 <TableHead>Title</TableHead>
@@ -1003,10 +1005,12 @@ export function WorkOrdersContent() {
 export default function WorkOrdersPage() {
   useDocumentTitle("Work Orders");
   return (
-    <div className="flex flex-col min-h-0">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="flex flex-col min-h-0" aria-labelledby="work-orders-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Work Orders"
+          headingId="work-orders-heading"
           summary="Manage work orders and preventive maintenance schedules."
           eyebrow="Operations"
           breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Work Orders" }]}
@@ -1021,6 +1025,6 @@ export default function WorkOrdersPage() {
           <TabsContent value="maintenance" className="mt-0"><MaintenanceSchedulesContent /></TabsContent>
         </Tabs>
       </div>
-    </div>
+    </section>
   );
 }

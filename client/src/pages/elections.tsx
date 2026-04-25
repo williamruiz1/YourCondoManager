@@ -107,7 +107,7 @@ function ElectionTallyPanel({ election, adminRole }: { election: Election; admin
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="outline" title="View Tally">
+        <Button size="icon" variant="outline" title="View Tally" aria-label="View vote tally">
           <BarChart2 className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -218,7 +218,7 @@ function ElectionOptionsPanel({ election, adminRole }: { election: Election; adm
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="outline" title="Ballot Options">
+        <Button size="icon" variant="outline" title="Ballot Options" aria-label="Ballot options">
           <FileText className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -244,8 +244,9 @@ function ElectionOptionsPanel({ election, adminRole }: { election: Election; adm
                       className="h-7 w-7 text-destructive"
                       onClick={() => deleteMutation.mutate(opt.id)}
                       disabled={deleteMutation.isPending}
+                      aria-label={`Delete ballot option ${opt.label}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>
@@ -351,7 +352,7 @@ function ProxyManagementPanel({ election }: { election: Election }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="outline" title="Proxy Management">
+        <Button size="icon" variant="outline" title="Proxy Management" aria-label="Proxy management">
           <Users className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -410,7 +411,8 @@ function ProxyManagementPanel({ election }: { election: Election }) {
             {proxies.length === 0 ? (
               <div className="text-muted-foreground text-xs">No digital proxies designated yet.</div>
             ) : (
-              <Table>
+              // Wave 23 a11y: aria-label names this proxies table.
+              <Table aria-label="Election proxies">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Owner</TableHead>
@@ -1028,13 +1030,13 @@ export function ElectionsContent() {
                     </Button>
                   )}
                   <a href={`/api/elections/${election.id}/result-report`} target="_blank" rel="noreferrer">
-                    <Button size="icon" variant="outline" className="h-8 w-8" title="Download Result Report">
+                    <Button size="icon" variant="outline" className="h-8 w-8" title="Download Result Report" aria-label="Download result report">
                       <Download className="h-3.5 w-3.5" />
                     </Button>
                   </a>
                   {election.status === "certified" && (
                     <a href={`/api/elections/${election.id}/audit-export`} target="_blank" rel="noreferrer">
-                      <Button size="icon" variant="outline" className="h-8 w-8" title="Audit Export">
+                      <Button size="icon" variant="outline" className="h-8 w-8" title="Audit Export" aria-label="Audit export">
                         <CheckCircle className="h-3.5 w-3.5" />
                       </Button>
                     </a>
@@ -1047,7 +1049,8 @@ export function ElectionsContent() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table>
+            // Wave 23 a11y: aria-label names this elections list table.
+            <Table aria-label="Elections and votes">
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
@@ -1119,13 +1122,13 @@ export function ElectionsContent() {
                           </Button>
                         )}
                         <a href={`/api/elections/${election.id}/result-report`} target="_blank" rel="noreferrer">
-                          <Button size="icon" variant="outline" className="h-8 w-8" title="Download Result Report">
+                          <Button size="icon" variant="outline" className="h-8 w-8" title="Download Result Report" aria-label="Download result report">
                             <Download className="h-3.5 w-3.5" />
                           </Button>
                         </a>
                         {election.status === "certified" && (
                           <a href={`/api/elections/${election.id}/audit-export`} target="_blank" rel="noreferrer">
-                            <Button size="icon" variant="outline" className="h-8 w-8" title="Audit Trail Export">
+                            <Button size="icon" variant="outline" className="h-8 w-8" title="Audit Trail Export" aria-label="Audit trail export">
                               <CheckCircle className="h-3.5 w-3.5" />
                             </Button>
                           </a>
@@ -1145,15 +1148,17 @@ export function ElectionsContent() {
 
 export default function ElectionsPage() {
   return (
-    <div className="p-4 md:p-6 space-y-5">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="p-4 md:p-6 space-y-5" aria-labelledby="elections-heading">
       <WorkspacePageHeader
         title="Elections & Votes"
+        headingId="elections-heading"
         summary="Create and manage elections, referendums, and board votes for the association."
         eyebrow="Board & Governance"
         breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Elections & Votes" }]}
         subPages={boardGovernanceSubPages}
       />
       <ElectionsContent />
-    </div>
+    </section>
   );
 }

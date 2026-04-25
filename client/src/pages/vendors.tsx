@@ -547,7 +547,8 @@ export function VendorsContent() {
           }
         >
           <div className="hidden md:block">
-          <Table>
+          // Wave 23 a11y: aria-label names this vendors table.
+          <Table aria-label="Vendors">
             <TableHeader>
               <TableRow>
                 <TableHead>Vendor</TableHead>
@@ -668,7 +669,8 @@ export function VendorsContent() {
             <p className="text-sm text-muted-foreground">Insurance expirations within 30 days are flagged automatically and vendor status is pushed to pending-renewal unless the vendor is inactive.</p>
           </div>
           <div className="hidden md:block">
-          <Table>
+          // Wave 23 a11y: aria-label names this insurance renewals table.
+          <Table aria-label="Vendor insurance renewals">
             <TableHeader>
               <TableRow>
                 <TableHead>Vendor</TableHead>
@@ -787,7 +789,8 @@ export function VendorsContent() {
           </div>
 
           <div className="hidden md:block">
-          <Table>
+          // Wave 23 a11y: aria-label names this vendor documents table.
+          <Table aria-label="Vendor documents">
             <TableHeader>
               <TableRow>
                 <TableHead>Title</TableHead>
@@ -994,10 +997,12 @@ export function VendorsContent() {
 export default function VendorsPage() {
   useDocumentTitle("Vendors");
   return (
-    <div className="flex flex-col min-h-0">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="flex flex-col min-h-0" aria-labelledby="vendors-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Vendors"
+          headingId="vendors-heading"
           summary="Manage vendors, compliance tracking, and inspection records."
           eyebrow="Operations"
           breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Vendors" }]}
@@ -1012,6 +1017,6 @@ export default function VendorsPage() {
           <TabsContent value="inspections" className="mt-0"><InspectionsContent /></TabsContent>
         </Tabs>
       </div>
-    </div>
+    </section>
   );
 }
