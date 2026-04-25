@@ -476,8 +476,16 @@ export interface RealBackendHandle {
   reset: () => Promise<void>;
   /** Seed a manager session and attach the cookie to the browser context. */
   installManagerSession: (context: BrowserContext, options?: ManagerSessionOptions) => Promise<ManagerSessionDescriptor>;
+  /**
+   * Wave 26 — seed an owner portal session. Inserts a real `portal_access`
+   * row and writes the `portalAccessId` localStorage key into the page so
+   * the React PortalShell sends `x-portal-access-id` on every request.
+   * The header is what `requirePortal` middleware reads — there is no
+   * cookie path for owner-side auth in YCM.
+   */
+  installOwnerSession: (page: Page, options?: OwnerSessionOptions) => Promise<OwnerSessionDescriptor>;
   /** Seed an association + admin scope row. */
-  seedAssociation: (id: string, name: string) => Promise<void>;
+  seedAssociation: (id: string, name: string, options?: SeedAssociationOptions) => Promise<void>;
   /**
    * Seed an overdue work order anchored to an association. The dev
    * server's overdue-work-orders alert source runs against
@@ -486,6 +494,27 @@ export interface RealBackendHandle {
    * by default.
    */
   seedOverdueWorkOrder: (input: SeedWorkOrderInput) => Promise<{ id: string }>;
+  /**
+   * Wave 26 — seed a unit + person + ownership row for an association.
+   * Returns the resulting ids so subsequent helpers (e.g. portal_access,
+   * recurring schedules) can reference them.
+   */
+  seedUnitWithOwner: (input: SeedUnitWithOwnerInput) => Promise<SeedUnitWithOwnerResult>;
+  /**
+   * Wave 26 — seed a recurring charge schedule. Returns the row id so
+   * the spec can POST `/api/financial/rules/:id/run`.
+   */
+  seedRecurringChargeSchedule: (input: SeedRecurringChargeScheduleInput) => Promise<{ id: string }>;
+  /**
+   * Wave 26 — seed an active amenity row used by /portal/amenities.
+   */
+  seedAmenity: (input: SeedAmenityInput) => Promise<{ id: string }>;
+  /**
+   * Wave 26 — seed a platform_subscriptions row for an association. Used
+   * by signup-onboarding to verify provisioning side-effects landed in
+   * the real DB.
+   */
+  seedPlatformSubscription: (input: SeedPlatformSubscriptionInput) => Promise<{ id: string }>;
 }
 
 export interface ManagerSessionOptions {
@@ -500,12 +529,75 @@ export interface ManagerSessionDescriptor {
   associationId: string;
 }
 
+export interface SeedAssociationOptions {
+  amenitiesEnabled?: boolean;
+}
+
 export interface SeedWorkOrderInput {
   id?: string;
   title: string;
   associationId: string;
   scheduledFor?: Date;
   status?: "open" | "assigned" | "in-progress" | "pending-review";
+}
+
+export interface OwnerSessionOptions {
+  associationId?: string;
+  unitId?: string;
+  personId?: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+export interface OwnerSessionDescriptor {
+  portalAccessId: string;
+  associationId: string;
+  unitId: string | null;
+  personId: string;
+  email: string;
+}
+
+export interface SeedUnitWithOwnerInput {
+  associationId: string;
+  unitId?: string;
+  unitNumber?: string;
+  building?: string;
+  personId?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+}
+
+export interface SeedUnitWithOwnerResult {
+  unitId: string;
+  personId: string;
+  ownershipId: string;
+}
+
+export interface SeedRecurringChargeScheduleInput {
+  associationId: string;
+  chargeDescription: string;
+  amount: number;
+  frequency?: "monthly" | "quarterly" | "annual";
+  dayOfMonth?: number;
+  unitId?: string | null;
+  createdBy?: string;
+}
+
+export interface SeedAmenityInput {
+  associationId: string;
+  name: string;
+  description?: string;
+}
+
+export interface SeedPlatformSubscriptionInput {
+  associationId: string;
+  plan: string;
+  stripeCustomerId: string;
+  stripeSubscriptionId?: string;
+  adminEmail: string;
+  status?: string;
 }
 
 const TEST_HOST = "localhost";
@@ -529,15 +621,31 @@ export async function createRealBackend(options: RealBackendOptions): Promise<Re
     // built-in only inserts known associations; we leave the
     // user_sessions table truncated so cookies from a prior run don't
     // leak in.
+    //
+    // Wave 26 — extended to cover the additional tables touched by the
+    // four newly-migrated specs (assessment lifecycle, owner portal,
+    // amenities, signup). CASCADE follows fk references so the order
+    // here is purely cosmetic — Postgres figures out the dependency
+    // graph on its own.
     await pool.query(`
       TRUNCATE TABLE
         alert_read_states,
+        assessment_run_log,
+        recurring_charge_runs,
+        recurring_charge_schedules,
+        owner_ledger_entries,
+        ownerships,
+        amenity_reservations,
+        amenities,
+        portal_access,
+        platform_subscriptions,
         work_orders,
         admin_association_scopes,
         admin_users,
         auth_external_accounts,
         auth_users,
         user_sessions,
+        persons,
         units,
         buildings,
         associations
@@ -545,12 +653,17 @@ export async function createRealBackend(options: RealBackendOptions): Promise<Re
     `);
   }
 
-  async function seedAssociation(id: string, name: string): Promise<void> {
+  async function seedAssociation(
+    id: string,
+    name: string,
+    options: SeedAssociationOptions = {},
+  ): Promise<void> {
+    const amenitiesEnabled = options.amenitiesEnabled === false ? 0 : 1;
     await pool.query(
-      `INSERT INTO associations (id, name, address, city, state, country, is_archived)
-       VALUES ($1, $2, $3, $4, $5, $6, 0)
-       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
-      [id, name, "1 Test Street", "Hartford", "CT", "USA"],
+      `INSERT INTO associations (id, name, address, city, state, country, is_archived, amenities_enabled)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, $7)
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, amenities_enabled = EXCLUDED.amenities_enabled`,
+      [id, name, "1 Test Street", "Hartford", "CT", "USA", amenitiesEnabled],
     );
   }
 
@@ -561,6 +674,155 @@ export async function createRealBackend(options: RealBackendOptions): Promise<Re
       `INSERT INTO work_orders (id, association_id, title, description, status, priority, category, scheduled_for)
        VALUES ($1, $2, $3, $4, $5, 'medium', 'general', $6)`,
       [id, input.associationId, input.title, "Seeded by Playwright", input.status ?? "open", scheduledFor],
+    );
+    return { id };
+  }
+
+  async function seedUnitWithOwner(input: SeedUnitWithOwnerInput): Promise<SeedUnitWithOwnerResult> {
+    const unitId = input.unitId ?? randomUUID();
+    const personId = input.personId ?? randomUUID();
+    const ownershipId = randomUUID();
+
+    await pool.query(
+      `INSERT INTO units (id, association_id, unit_number, building)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO NOTHING`,
+      [unitId, input.associationId, input.unitNumber ?? "101", input.building ?? "Building A"],
+    );
+    await pool.query(
+      `INSERT INTO persons (id, association_id, first_name, last_name, email, contact_preference)
+       VALUES ($1, $2, $3, $4, $5, 'email')
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        personId,
+        input.associationId,
+        input.firstName ?? "Pat",
+        input.lastName ?? "Owner",
+        input.email ?? `owner-${Date.now()}@e2e.test`,
+      ],
+    );
+    await pool.query(
+      `INSERT INTO ownerships (id, unit_id, person_id, ownership_percentage, start_date)
+       VALUES ($1, $2, $3, 100, NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [ownershipId, unitId, personId],
+    );
+
+    return { unitId, personId, ownershipId };
+  }
+
+  async function installOwnerSession(
+    page: Page,
+    overrides: OwnerSessionOptions = {},
+  ): Promise<OwnerSessionDescriptor> {
+    const associationId = overrides.associationId ?? "assoc-e2e-1";
+    const email = overrides.email ?? `owner-${Date.now()}@e2e.test`;
+
+    let unitId = overrides.unitId ?? null;
+    let personId = overrides.personId ?? null;
+
+    // If the caller did not pre-seed a unit + person, do it now so
+    // /api/portal/me has rows to project.
+    if (!unitId || !personId) {
+      const seeded = await seedUnitWithOwner({
+        associationId,
+        unitId: unitId ?? undefined,
+        personId: personId ?? undefined,
+        firstName: overrides.firstName,
+        lastName: overrides.lastName,
+        email,
+      });
+      unitId = seeded.unitId;
+      personId = seeded.personId;
+    }
+
+    // Insert the portal_access row that requirePortal will resolve.
+    const portalAccessId = randomUUID();
+    await pool.query(
+      `INSERT INTO portal_access (id, association_id, person_id, unit_id, email, role, status)
+       VALUES ($1, $2, $3, $4, $5, 'owner', 'active')
+       ON CONFLICT (id) DO NOTHING`,
+      [portalAccessId, associationId, personId, unitId, email],
+    );
+
+    // Inject the localStorage key BEFORE React mounts. The PortalShell
+    // reads this on first render to seed its `portalAccessId` state and
+    // includes it as the `x-portal-access-id` request header.
+    await page.addInitScript((id: string) => {
+      window.localStorage.setItem("portalAccessId", id);
+    }, portalAccessId);
+
+    return {
+      portalAccessId,
+      associationId,
+      unitId,
+      personId: personId!,
+      email,
+    };
+  }
+
+  async function seedRecurringChargeSchedule(
+    input: SeedRecurringChargeScheduleInput,
+  ): Promise<{ id: string }> {
+    const id = randomUUID();
+    // Wave 26 — `recurringChargesLister` only picks up schedules whose
+    // `nextRunDate` is NULL or in the past. We set NULL so the lister
+    // takes the IS NULL branch and skips the timestamp comparison
+    // entirely. The recurring_charge_schedules.next_run_date column is
+    // `timestamp without time zone`, and NOW() is timestamp WITH tz —
+    // their comparison goes through the pg session TZ, which on pglite
+    // is unreliable enough that we'd rather avoid the comparison at all.
+    const next: Date | null = null;
+    await pool.query(
+      `INSERT INTO recurring_charge_schedules
+         (id, association_id, unit_id, charge_description, entry_type, amount,
+          frequency, day_of_month, next_run_date, status, max_retries, unit_scope_mode,
+          included_unit_ids_json, grace_days, created_by)
+       VALUES ($1, $2, $3, $4, 'charge', $5,
+               $6, $7, $8, 'active', 3, 'all-units',
+               '[]'::jsonb, 0, $9)`,
+      [
+        id,
+        input.associationId,
+        input.unitId ?? null,
+        input.chargeDescription,
+        input.amount,
+        input.frequency ?? "monthly",
+        input.dayOfMonth ?? 1,
+        next,
+        input.createdBy ?? "playwright@e2e.test",
+      ],
+    );
+    return { id };
+  }
+
+  async function seedAmenity(input: SeedAmenityInput): Promise<{ id: string }> {
+    const id = randomUUID();
+    await pool.query(
+      `INSERT INTO amenities (id, association_id, name, description, is_active)
+       VALUES ($1, $2, $3, $4, 1)`,
+      [id, input.associationId, input.name, input.description ?? "Seeded by Playwright"],
+    );
+    return { id };
+  }
+
+  async function seedPlatformSubscription(
+    input: SeedPlatformSubscriptionInput,
+  ): Promise<{ id: string }> {
+    const id = randomUUID();
+    await pool.query(
+      `INSERT INTO platform_subscriptions
+         (id, association_id, plan, status, stripe_customer_id, stripe_subscription_id, admin_email)
+       VALUES ($1, $2, $3::platform_plan, $4::platform_subscription_status, $5, $6, $7)`,
+      [
+        id,
+        input.associationId,
+        input.plan,
+        input.status ?? "trialing",
+        input.stripeCustomerId,
+        input.stripeSubscriptionId ?? null,
+        input.adminEmail,
+      ],
     );
     return { id };
   }
@@ -677,7 +939,12 @@ export async function createRealBackend(options: RealBackendOptions): Promise<Re
     cleanup,
     reset,
     installManagerSession,
+    installOwnerSession,
     seedAssociation,
     seedOverdueWorkOrder,
+    seedUnitWithOwner,
+    seedRecurringChargeSchedule,
+    seedAmenity,
+    seedPlatformSubscription,
   };
 }

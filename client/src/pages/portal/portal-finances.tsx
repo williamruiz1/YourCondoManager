@@ -95,7 +95,15 @@ function FinancesHubContent() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/ledger");
       if (!res.ok) return [];
-      return res.json();
+      // Wave 26 — `/api/portal/ledger` actually returns
+      // `{ entries, balance }` (server/routes.ts L12187), but legacy
+      // route-mocks returned a bare array. Coerce to the legacy shape
+      // the rest of this component depends on (`.slice` / `.length`).
+      const body = (await res.json()) as
+        | OwnerLedgerEntry[]
+        | { entries?: OwnerLedgerEntry[] };
+      if (Array.isArray(body)) return body;
+      return body.entries ?? [];
     },
   });
 
@@ -458,7 +466,15 @@ function LedgerContent() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/ledger");
       if (!res.ok) return [];
-      return res.json();
+      // Wave 26 — `/api/portal/ledger` actually returns
+      // `{ entries, balance }` (server/routes.ts L12187), but legacy
+      // route-mocks returned a bare array. Coerce to the legacy shape
+      // the rest of this component depends on (`.slice` / `.length`).
+      const body = (await res.json()) as
+        | OwnerLedgerEntry[]
+        | { entries?: OwnerLedgerEntry[] };
+      if (Array.isArray(body)) return body;
+      return body.entries ?? [];
     },
   });
 
