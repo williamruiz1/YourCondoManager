@@ -34,7 +34,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Plus, ScanSearch, Loader2, ChevronDown, ChevronRight, Pencil, Trash2, RefreshCw, Download } from "lucide-react";
+import { AlertCircle, Plus, ScanSearch, Loader2, ChevronDown, ChevronRight, Pencil, Trash2, RefreshCw, Download, ShieldAlert } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { ExportCsvButton } from "@/components/export-csv-button";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -484,15 +485,16 @@ export function FinancialDelinquencyContent() {
               {escalationsLoading ? (
                 <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
               ) : filteredEscalations.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                  <h3 className="text-lg font-medium">No escalations found</h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {thresholds.filter((t) => t.isActive).length === 0
+                <EmptyState
+                  icon={AlertCircle}
+                  title="No escalations found"
+                  description={
+                    thresholds.filter((t) => t.isActive).length === 0
                       ? "Configure thresholds first, then run a scan to identify delinquent accounts."
-                      : "Run a delinquency scan to check for accounts exceeding configured thresholds."}
-                  </p>
-                </div>
+                      : "Run a delinquency scan to check for accounts exceeding configured thresholds."
+                  }
+                  testId="empty-delinquency-escalations"
+                />
               ) : isMobile ? (
                 <div className="space-y-3 p-4">
                   {filteredEscalations.map((esc) => (
@@ -671,11 +673,12 @@ export function FinancialDelinquencyContent() {
               {thresholdsLoading ? (
                 <div className="p-6 space-y-3">{[1, 2].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
               ) : thresholds.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                  <h3 className="text-lg font-medium">No thresholds configured</h3>
-                  <p className="text-sm text-muted-foreground mt-1">Add escalation stages to enable the delinquency scan.</p>
-                </div>
+                <EmptyState
+                  icon={ShieldAlert}
+                  title="No thresholds configured"
+                  description="Add escalation stages to enable the delinquency scan."
+                  testId="empty-delinquency-thresholds"
+                />
               ) : isMobile ? (
                 <div className="space-y-3 p-4">
                   {thresholds.map((t) => (

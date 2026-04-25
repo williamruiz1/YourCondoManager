@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ErrorState } from "@/components/error-state";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -562,7 +563,7 @@ function VendorWorkOrderList({
 }) {
   const [statusFilter, setStatusFilter] = useState<string>("active");
 
-  const { data: workOrders = [], isLoading, isError } = useQuery<WorkOrderDetail[]>({
+  const { data: workOrders = [], isLoading, isError, error: workOrdersError, refetch: refetchWorkOrders } = useQuery<WorkOrderDetail[]>({
     queryKey: ["/api/vendor-portal/work-orders"],
     queryFn: async () => {
       const res = await vendorApiRequest("GET", "/api/vendor-portal/work-orders", session);
@@ -637,10 +638,13 @@ function VendorWorkOrderList({
         )}
 
         {!isLoading && isError && (
-          <div className="py-16 text-center text-slate-400">
-            <span className="material-symbols-outlined text-4xl mb-2 block">error_outline</span>
-            <p className="text-sm">Failed to load work orders. Please try again.</p>
-          </div>
+          <ErrorState
+            title="Couldn't load work orders"
+            description="We hit an error loading your assigned work orders. Try again, or sign out and back in if the problem persists."
+            retry={() => refetchWorkOrders()}
+            details={(workOrdersError as Error | undefined)?.message}
+            testId="vendor-portal-work-orders-error"
+          />
         )}
 
         {!isLoading && !isError && filtered.length === 0 && (

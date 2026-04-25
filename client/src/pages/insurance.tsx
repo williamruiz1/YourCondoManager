@@ -48,6 +48,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { AlertTriangle, Plus, Shield, Trash2 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const POLICY_TYPES = [
@@ -315,8 +316,13 @@ export default function InsurancePage() {
           ) : policiesQuery.isLoading ? (
             <div className="px-6 py-10 text-center text-sm text-muted-foreground">Loading…</div>
           ) : (policiesQuery.data ?? []).length === 0 ? (
-            <div className="px-6 py-10 text-center text-sm text-muted-foreground">
-              No insurance policies recorded yet. Add your first policy above.
+            <div className="px-6 pb-6">
+              <EmptyState
+                icon={Shield}
+                title="No insurance policies"
+                description="Track liability, property, and umbrella policies here. Add your first policy above to start expiry-monitoring."
+                testId="empty-insurance-policies"
+              />
             </div>
           ) : (
             <Table>

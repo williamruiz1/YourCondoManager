@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorState } from "@/components/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -705,24 +706,17 @@ export default function RoadmapPage() {
 
           {isLoading ? <Card><CardContent className="p-6">Loading roadmap...</CardContent></Card> : null}
           {isError ? (
-            <Card>
-              <CardContent className="p-6 space-y-3">
-                <div className="font-medium">Unable to load roadmap</div>
-                <div className="text-sm text-muted-foreground">{(error as Error)?.message || "Unknown error"}</div>
-                {(error as Error)?.message?.includes("403") ? (
-                  <div className="text-xs text-muted-foreground">
-                    If this is an auth error, set credentials from the header using <span className="font-medium">Set Admin Auth</span>.
-                  </div>
-                ) : null}
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => refetch()}>Retry</Button>
-                  <Button size="sm" onClick={refreshRoadmap}>Refresh</Button>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  If this continues, check server logs for `/api/admin/roadmap` and confirm the backend is running the latest code.
-                </div>
-              </CardContent>
-            </Card>
+            <ErrorState
+              title="Couldn't load roadmap"
+              description={
+                (error as Error)?.message?.includes("403")
+                  ? "Permission denied. Set credentials from the header using Set Admin Auth, then retry."
+                  : "We hit an error loading the project roadmap. Try again, or check server logs for /api/admin/roadmap if it persists."
+              }
+              retry={() => refetch()}
+              details={(error as Error | undefined)?.message}
+              testId="roadmap-error"
+            />
           ) : null}
           {!isLoading && !isError && projects.length === 0 ? (
             <Card>
@@ -1043,22 +1037,13 @@ export default function RoadmapPage() {
           ) : null}
 
           {featureTreeQuery.isError ? (
-            <Card>
-              <CardContent className="p-6 space-y-3">
-                <div className="font-medium">Unable to load feature tree</div>
-                <div className="text-sm text-muted-foreground">
-                  {(featureTreeQuery.error as Error)?.message || "Unknown error"}
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => featureTreeQuery.refetch()}>
-                    Retry
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={resetFeatureTreeFilters}>
-                    Reset Filters
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <ErrorState
+              title="Couldn't load feature tree"
+              description="We hit an error loading the documentation-parsed feature tree. Try again, or reset the filters and reload."
+              retry={() => featureTreeQuery.refetch()}
+              details={(featureTreeQuery.error as Error | undefined)?.message}
+              testId="feature-tree-error"
+            />
           ) : null}
 
           {!featureTreeQuery.isLoading && !featureTreeQuery.isError && featureTreeModules.length === 0 ? (

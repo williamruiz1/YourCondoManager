@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { ExternalLink, CreditCard, AlertCircle } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAdminRole } from "@/hooks/useAdminRole";
+import { EmptyState } from "@/components/empty-state";
 
 // 4.4 Q6 Wave 13 — role gate. Mirrors the requireAdminRole on
 // POST /api/admin/billing/portal-session at server/routes.ts:13390.
@@ -129,18 +130,12 @@ export default function SettingsBillingPage() {
             </CardContent>
           </Card>
         ) : !hasBilling ? (
-          <Card data-testid="billing-empty-state">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-muted-foreground" />
-                <CardTitle>No billing account</CardTitle>
-              </div>
-              <CardDescription>
-                This association is not linked to a paid subscription. Contact support if you
-                believe this is incorrect.
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <EmptyState
+            icon={AlertCircle}
+            title="No billing account"
+            description="This association is not linked to a paid subscription. Contact support if you believe this is incorrect."
+            testId="billing-empty-state"
+          />
         ) : (
           <>
             <Card data-testid="billing-plan-card">

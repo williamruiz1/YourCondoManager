@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Users, Mail, Phone, Search, MapPin, Home, FileUp, Pencil, Shield, X } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -655,17 +656,19 @@ export default function PersonsPage() {
           {isLoading ? (
             <div className="p-6 space-y-3">{[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : !persons?.length ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium" data-testid="text-empty-state">No people yet</h3>
-              <p className="text-sm text-muted-foreground mt-1 max-w-sm">People are the owners, tenants, and board members in your community. Click "Add Person" to create the first profile — then link them to units via the Ownership section.</p>
-            </div>
+            <EmptyState
+              icon={Users}
+              title="No people yet"
+              description={'People are the owners, tenants, and board members in your community. Click "Add Person" to create the first profile — then link them to units via the Ownership section.'}
+              testId="empty-persons"
+            />
           ) : filteredPersons.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Search className="h-10 w-10 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium">No matches</h3>
-              <p className="text-sm text-muted-foreground mt-1">Try adjusting your search or filter.</p>
-            </div>
+            <EmptyState
+              icon={Search}
+              title="No matches"
+              description="Try adjusting your search or filter."
+              testId="empty-persons-filter"
+            />
           ) : (
             <Table>
               <TableHeader>

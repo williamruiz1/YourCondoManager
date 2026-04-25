@@ -18,7 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Send, Users, FileText, CheckSquare, Square, ChevronDown, ChevronRight, Settings2, Vote, Gavel, ExternalLink } from "lucide-react";
+import { Send, Users, FileText, CheckSquare, Square, ChevronDown, ChevronRight, Settings2, Vote, Gavel, ExternalLink, CalendarDays } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import type { GovernanceReminderRule } from "@shared/schema";
@@ -1322,12 +1323,12 @@ export function MeetingsContent() {
           </CardContent>
         </Card>
       ) : (meetings ?? []).length === 0 ? (
-        <Card>
-          <CardContent className="p-10 text-center space-y-1">
-            <p className="text-muted-foreground font-medium">No meetings scheduled yet.</p>
-            <p className="text-sm text-muted-foreground">Click "Schedule Meeting" to create the first one.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={CalendarDays}
+          title="No meetings scheduled yet"
+          description="Schedule a board, annual, or special meeting to start tracking agendas, attendance, and resolutions."
+          testId="empty-meetings"
+        />
       ) : (
         <div className="space-y-6">
           {renderMeetingGroup("Upcoming & In Progress", activeMeetings)}

@@ -45,6 +45,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest } from "@/lib/queryClient";
+import { ErrorState } from "@/components/error-state";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -256,6 +257,7 @@ export default function CommunicationsInboxPage() {
     readStateBy,
     isLoading,
     error,
+    refetch,
     markAsRead,
     dismiss,
   } = activeQuery;
@@ -385,12 +387,13 @@ export default function CommunicationsInboxPage() {
               <Skeleton className="h-20 w-full" />
             </div>
           ) : error ? (
-            <div
-              className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-              data-testid="inbox-error"
-            >
-              Unable to load inbox: {error.message}
-            </div>
+            <ErrorState
+              title="Couldn't load inbox"
+              description="We hit an error loading your alert inbox. Try again, or refresh the page if the problem persists."
+              retry={() => refetch()}
+              details={error.message}
+              testId="inbox-error"
+            />
           ) : visibleAlerts.length === 0 ? (
             <div
               className="flex flex-col items-center gap-2 py-10 text-center"

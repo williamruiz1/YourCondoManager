@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Presentation } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { platformSubPages } from "@/lib/sub-page-nav";
@@ -256,9 +257,12 @@ export default function ExecutivePage() {
               <CardContent className="py-10 text-sm text-muted-foreground">Loading executive slides...</CardContent>
             </Card>
           ) : !activeSlide ? (
-            <Card>
-              <CardContent className="py-10 text-sm text-muted-foreground">No project slides available yet.</CardContent>
-            </Card>
+            <EmptyState
+              icon={Presentation}
+              title="No project slides available yet"
+              description="Executive slides will appear here once the platform admin publishes the next quarterly review."
+              testId="empty-executive-slides"
+            />
           ) : (
             <Card className="w-full lg:w-[85%] lg:mx-auto" data-testid={`slide-executive-${activeSlide.id}`}>
               <CardHeader className="space-y-3">

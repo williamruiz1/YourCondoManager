@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Shield } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
@@ -200,11 +201,12 @@ export default function AdminUsersPage() {
           {isLoading ? (
             <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : !sortedUsers.length ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Shield className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium">No admin users</h3>
-              <p className="text-sm text-muted-foreground mt-1">Create at least one admin user.</p>
-            </div>
+            <EmptyState
+              icon={Shield}
+              title="No admin users"
+              description="Create at least one admin user. Admin users manage associations, billing, and platform-level settings."
+              testId="empty-admin-users"
+            />
           ) : (
             <>
               <div className="hidden md:block">
