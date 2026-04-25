@@ -4,38 +4,39 @@
 // under `tests/e2e/*.test.ts`. Playwright lives in `tests/e2e/playwright/`
 // so the two harnesses do not collide.
 //
-// The dev server boots via `npm run dev` (port 5000 — see script/dev.ts).
-// Playwright will reuse an already-running dev server when present;
-// otherwise it spawns one and tears it down at the end of the run.
+// Wave 17 added a real-backend mode: when `PLAYWRIGHT_REAL_BACKEND=1`
+// is set, we swap the `webServer.command` to a wrapper that boots an
+// ephemeral pglite (in-process Postgres in WASM) behind a pg-gateway
+// TCP listener and then starts the dev server with DATABASE_URL
+// pointed at it. The wrapper writes the connection string to
+// `.playwright-real-backend.json` so individual specs can attach a
+// `pg.Pool` for direct row seeding.
 //
-// CI plan: see implementation-artifacts/e2e-test-suite.md (Wave 16a
-// section). This file does not register any GitHub Actions / workflow
-// configuration — the user wires CI separately.
+// Server selection:
+//   - PLAYWRIGHT_REAL_BACKEND=1                → wrapper script (real backend)
+//   - else PLAYWRIGHT_STATIC=1 / Darwin (macOS) → static-server fallback
+//   - Linux + DATABASE_URL set                  → `npm run dev` against caller-provided DB
 
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = Number(process.env.PLAYWRIGHT_PORT ?? 5000);
 const BASE_URL = `http://localhost:${PORT}`;
 
-// Server selection:
-//   - CI / Linux with Postgres available  → `npm run dev` (real backend)
-//   - macOS / no Postgres / PLAYWRIGHT_STATIC=1 → static-server fallback
-//     (frontend only; tests route-mock the API surface, so this is
-//     functionally equivalent for the assertions in this slice).
-//
-// `npm run dev` on macOS hits two compat issues today:
-//   1. `reusePort: true` in server/index.ts → ENOTSUP on Darwin
-//   2. seed step requires a live Postgres (no Docker assumption)
-//
-// The static-server path side-steps both while still serving the real
-// production-built React bundle through Chromium. CI should drop the
-// PLAYWRIGHT_STATIC flag once it provisions Postgres.
+const useRealBackend = process.env.PLAYWRIGHT_REAL_BACKEND === "1";
+// Only fall back to the static server when we are NOT in real-backend
+// mode. The Wave 17 macOS reusePort fix in server/index.ts means the
+// real backend now boots cleanly on Darwin too — but we keep the
+// static-server path as the default so existing CI flows that don't
+// opt in stay unchanged.
 const useStaticServer =
-  process.env.PLAYWRIGHT_STATIC === "1" || process.platform === "darwin";
+  !useRealBackend &&
+  (process.env.PLAYWRIGHT_STATIC === "1" || process.platform === "darwin");
 
-const webServerCommand = useStaticServer
-  ? "npm run build && tsx script/playwright-static-server.ts"
-  : "npm run dev";
+const webServerCommand = useRealBackend
+  ? "tsx script/playwright-real-backend.ts"
+  : useStaticServer
+    ? "npm run build && tsx script/playwright-static-server.ts"
+    : "npm run dev";
 
 export default defineConfig({
   testDir: "tests/e2e/playwright",
@@ -56,8 +57,9 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
-    // The dev server uses cookie name `sid`; allow Playwright to round-
-    // trip cookies for the few specs that exercise real session paths.
+    // The dev server uses cookie name `sid` in production and `sid_dev`
+    // in development; the Wave-17 seed helper attaches whichever the
+    // running dev server expects.
     storageState: undefined,
   },
   projects: [

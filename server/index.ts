@@ -309,16 +309,19 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-      startAutomationJobs();
-      startElectionScheduler();
-    },
-  );
+  // `reusePort` is a Linux-only socket option (SO_REUSEPORT). On Darwin
+  // it returns ENOTSUP at bind time, which kills the dev server on
+  // macOS. Mirroring the platform gate already in script/dev.ts.
+  const listenOptions: { port: number; host: string; reusePort?: boolean } = {
+    port,
+    host: "0.0.0.0",
+  };
+  if (process.platform === "linux") {
+    listenOptions.reusePort = true;
+  }
+  httpServer.listen(listenOptions, () => {
+    log(`serving on port ${port}`);
+    startAutomationJobs();
+    startElectionScheduler();
+  });
 })();
