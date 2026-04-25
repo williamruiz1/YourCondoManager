@@ -12,10 +12,13 @@ import { FinancialDelinquencyContent } from "./financial-delinquency";
 export default function FinancialBillingPage() {
   useDocumentTitle("Billing");
   return (
-    <div className="flex flex-col min-h-0">
+    // Wave 23 a11y: section + aria-labelledby ties the page region to its
+    // visible heading rendered by WorkspacePageHeader (id propagated below).
+    <section className="flex flex-col min-h-0" aria-labelledby="financial-billing-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Billing"
+          headingId="financial-billing-heading"
           summary="Manage owner ledger entries, special assessments, late fee rules, and delinquency escalations."
           eyebrow="Finance"
           breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Billing" }]}
@@ -42,6 +45,6 @@ export default function FinancialBillingPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </div>
+    </section>
   );
 }

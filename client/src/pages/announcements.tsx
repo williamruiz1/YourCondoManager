@@ -324,7 +324,8 @@ export function AnnouncementsContent() {
               )}
             </div>
           ) : (
-            <Table>
+            // Wave 23 a11y: aria-label names this announcements table.
+            <Table aria-label="Announcements">
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
@@ -384,15 +385,17 @@ export function AnnouncementsContent() {
 export default function AnnouncementsPage() {
   useDocumentTitle("Announcements");
   return (
-    <div className="p-6 space-y-6">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="p-6 space-y-6" aria-labelledby="announcements-heading">
       <WorkspacePageHeader
         title="Community Announcements"
+        headingId="announcements-heading"
         summary="Post announcements and bulletins visible to residents in the owner portal."
         eyebrow="Board & Governance"
         breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Announcements" }]}
         subPages={boardGovernanceSubPages}
       />
       <AnnouncementsContent />
-    </div>
+    </section>
   );
 }

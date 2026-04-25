@@ -534,7 +534,10 @@ export function FinancialDelinquencyContent() {
                   ))}
                 </div>
               ) : (
-                <Table>
+                // Wave 23 a11y: aria-label gives the table an accessible
+                // name when there is no <caption>. Screen readers entering
+                // table-mode hear this name.
+                <Table aria-label="Delinquency escalations">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-8"></TableHead>
@@ -709,7 +712,8 @@ export function FinancialDelinquencyContent() {
                   ))}
                 </div>
               ) : (
-                <Table>
+                // Wave 23 a11y: aria-label names this thresholds table.
+                <Table aria-label="Delinquency thresholds">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Stage</TableHead>
@@ -884,7 +888,8 @@ function AgingDashboard({ associationId }: { associationId: string | null }) {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table>
+            // Wave 23 a11y: aria-label names this aging-bucket table.
+            <Table aria-label="Delinquent accounts by aging bucket">
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs">Unit</TableHead>
@@ -982,7 +987,8 @@ function NoticesTab({ associationId }: { associationId: string | null }) {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table>
+            // Wave 23 a11y: aria-label names this notices history table.
+            <Table aria-label="Delinquency notices history">
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs">Date</TableHead>

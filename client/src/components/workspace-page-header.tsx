@@ -36,6 +36,7 @@ export function WorkspacePageHeader({
   shortcuts,
   actions,
   subPages,
+  headingId,
 }: {
   title: string;
   summary: string;
@@ -44,6 +45,10 @@ export function WorkspacePageHeader({
   shortcuts?: Shortcut[];
   actions?: ReactNode;
   subPages?: SubPage[];
+  // Wave 23 a11y: optional id propagated to the <h1>. When the page wrapper
+  // is a <section aria-labelledby={headingId}>, this lets assistive tech
+  // resolve the section's accessible name from the visible heading.
+  headingId?: string;
 }) {
   const crumbs = breadcrumbs ?? [{ label: title }];
   const [location] = useLocation();
@@ -76,7 +81,7 @@ export function WorkspacePageHeader({
             </div>
           ) : null}
           <div>
-            <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface sm:text-[1.85rem]">{title}</h1>
+            <h1 id={headingId} className="font-headline text-3xl font-bold tracking-tight text-on-surface sm:text-[1.85rem]">{title}</h1>
             <p className="text-sm text-on-surface/60 max-w-3xl mt-1 leading-relaxed">{summary}</p>
           </div>
           {shortcuts?.length ? (
@@ -99,21 +104,27 @@ export function WorkspacePageHeader({
       </div>
 
       {subPages?.length ? (
-        <nav className="flex gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap">
+        // Wave 23 a11y: aria-label scopes this nav so it's distinguishable
+        // from the operator sidebar nav and the breadcrumb nav. Each Link
+        // gets a focus-visible ring (Tailwind reset removes the default
+        // outline). Material icons inside the link are decorative — the
+        // text label is the accessible name — so they receive aria-hidden.
+        <nav aria-label="Section navigation" className="flex gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap">
           {subPages.map((page) => {
             const active = location === page.href;
             return (
               <Link
                 key={page.href}
                 href={page.href}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-body font-medium transition-all ${
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-body font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
                   active
                     ? "bg-primary text-on-primary shadow-sm"
                     : "text-on-surface/60 hover:bg-surface-variant/50 hover:text-on-surface"
                 }`}
               >
                 {page.icon ? (
-                  <span className="material-symbols-outlined text-[14px]">{page.icon}</span>
+                  <span aria-hidden="true" className="material-symbols-outlined text-[14px]">{page.icon}</span>
                 ) : null}
                 {page.label}
               </Link>

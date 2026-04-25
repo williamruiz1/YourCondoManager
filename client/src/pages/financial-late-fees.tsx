@@ -568,7 +568,8 @@ export function FinancialLateFeesContent() {
               ))}
             </div>
           ) : (
-            <Table>
+            // Wave 23 a11y: aria-label names this rules table.
+            <Table aria-label="Late fee rules">
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
@@ -767,13 +768,15 @@ export function FinancialLateFeesContent() {
               </div>
             ) : (
               <div className="rounded-md border overflow-hidden">
-                <Table>
+                // Wave 23 a11y: aria-label names this preview table.
+                <Table aria-label="Late fee batch preview">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-8">
                         <Checkbox
                           checked={previewRows.every((r) => r.selected)}
                           onCheckedChange={(checked) => setPreviewRows((prev) => prev.map((r) => ({ ...r, selected: Boolean(checked) })))}
+                          aria-label="Select all rows"
                         />
                       </TableHead>
                       <TableHead>Unit</TableHead>
@@ -847,7 +850,8 @@ export function FinancialLateFeesContent() {
               ))}
             </div>
           ) : (
-          <Table>
+          // Wave 23 a11y: aria-label names this events table.
+          <Table aria-label="Recently applied late fees">
             <TableHeader>
               <TableRow>
                 <TableHead>Rule</TableHead>
@@ -992,7 +996,8 @@ export function FinancialLateFeesContent() {
                   ))}
                 </div>
               ) : (
-                <Table>
+                // Wave 23 a11y: aria-label names this collections handoff table.
+                <Table aria-label="Collections handoff queue">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Unit ID</TableHead>
@@ -1158,7 +1163,8 @@ export function FinancialLateFeesContent() {
               )}
             </div>
           ) : (
-            <Table>
+            // Wave 23 a11y: aria-label names this payment plans table.
+            <Table aria-label="Payment plans">
               <TableHeader>
                 <TableRow>
                   <TableHead>Unit</TableHead>
@@ -1372,10 +1378,12 @@ export function FinancialLateFeesContent() {
 
 export default function FinancialLateFeesPage() {
   return (
-    <div className="flex flex-col min-h-0">
+    // Wave 23 a11y: section + aria-labelledby (heading id below).
+    <section className="flex flex-col min-h-0" aria-labelledby="financial-late-fees-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Late Fees"
+          headingId="financial-late-fees-heading"
           eyebrow="Finance"
           summary="Manage late fee rules, review applied fees, and recover delinquent balances through payment plans and collections handoffs."
           breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Late Fees" }]}
@@ -1383,6 +1391,6 @@ export default function FinancialLateFeesPage() {
         />
         <FinancialLateFeesContent />
       </div>
-    </div>
+    </section>
   );
 }

@@ -134,6 +134,57 @@ describe("a11y smoke — hub placeholders (5.5 AC 5)", () => {
   });
 });
 
+describe("a11y smoke — Wave 23 round 2 fixes", () => {
+  it("operator sidebar declares aria-label on its navigation region", async () => {
+    const source = await fs.readFile(
+      path.join(REPO_ROOT, "client/src/components/app-sidebar.tsx"),
+      "utf-8",
+    );
+    // SidebarContent role + aria-label name the sidebar's nav region as
+    // 'Main navigation' so screen readers can identify it. This was a
+    // Wave 21 deferred fix that landed in Wave 23.
+    expect(source).toMatch(/role="navigation"/);
+    expect(source).toMatch(/aria-label="Main navigation"/);
+  });
+
+  it("WorkspacePageHeader supports headingId for aria-labelledby wiring", async () => {
+    const source = await fs.readFile(
+      path.join(REPO_ROOT, "client/src/components/workspace-page-header.tsx"),
+      "utf-8",
+    );
+    expect(source).toMatch(/headingId\?:\s*string/);
+    // The h1 wires id={headingId} so a parent <section aria-labelledby> can
+    // resolve the accessible name from the visible heading.
+    expect(source).toMatch(/id=\{headingId\}/);
+  });
+
+  it("Wave 23 surfaces use <section aria-labelledby> instead of <main>", async () => {
+    const SURFACES = [
+      "client/src/pages/financial-foundation.tsx",
+      "client/src/pages/financial-billing.tsx",
+      "client/src/pages/financial-recurring-charges.tsx",
+      "client/src/pages/financial-late-fees.tsx",
+      "client/src/pages/financial-payments.tsx",
+      "client/src/pages/financial-ledger.tsx",
+      "client/src/pages/work-orders.tsx",
+      "client/src/pages/vendors.tsx",
+      "client/src/pages/meetings.tsx",
+      "client/src/pages/elections.tsx",
+      "client/src/pages/announcements.tsx",
+      "client/src/pages/documents.tsx",
+      "client/src/pages/persons.tsx",
+      "client/src/pages/units.tsx",
+    ];
+    for (const rel of SURFACES) {
+      const source = await fs.readFile(path.join(REPO_ROOT, rel), "utf-8");
+      // Each surface declares an aria-labelledby tying its <section> region
+      // to the visible <h1> id. We don't grep for `<main>` because the
+      // shell renders that — surfaces should not.
+      expect(source, `${rel} missing aria-labelledby`).toMatch(/aria-labelledby="/);
+    }
+  });
+});
+
 describe("a11y smoke — registry-driven copy (5.5 AC 1)", () => {
   it("Financials hub heading uses the i18n registry value", () => {
     const { getAllByText } = renderWithClient(<FinancialsHub />);

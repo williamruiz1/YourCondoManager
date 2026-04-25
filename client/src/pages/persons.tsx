@@ -399,11 +399,13 @@ export default function PersonsPage() {
     return data;
   }
 
+  // Wave 23 a11y: page wrapper is a <section aria-labelledby="persons-heading">
+  // so assistive tech identifies the page region by its visible heading below.
   return (
-    <div className="p-6 space-y-6">
+    <section className="p-6 space-y-6" aria-labelledby="persons-heading">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">People</h1>
+          <h1 id="persons-heading" className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">People</h1>
           <p className="text-sm text-on-surface/60 mt-1">Owners, tenants, and board members across your associations.</p>
         </div>
         <div className="flex gap-2">
@@ -670,7 +672,8 @@ export default function PersonsPage() {
               testId="empty-persons-filter"
             />
           ) : (
-            <Table>
+            // Wave 23 a11y: aria-label names this people table.
+            <Table aria-label="People">
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
@@ -791,7 +794,7 @@ export default function PersonsPage() {
                                   data-testid={`button-edit-person-${p.id}`}
                                   aria-label={`Edit ${p.firstName} ${p.lastName}`}
                                 >
-                                  <Pencil className="h-4 w-4" />
+                                  <Pencil aria-hidden="true" className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>Edit person</TooltipContent>
@@ -805,7 +808,7 @@ export default function PersonsPage() {
                                   onClick={() => openBoardRoleAssignment(p)}
                                   aria-label={`Assign board role for ${p.firstName} ${p.lastName}`}
                                 >
-                                  <Shield className="h-4 w-4" />
+                                  <Shield aria-hidden="true" className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>Assign board role</TooltipContent>
@@ -840,7 +843,7 @@ export default function PersonsPage() {
         ]}
         onImport={handlePersonsImport}
       />
-    </div>
+    </section>
   );
 }
 
