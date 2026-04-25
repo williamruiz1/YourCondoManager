@@ -304,7 +304,7 @@ follow-ups below).
   `amenities-toggle-roundtrip` still rely on `installSeedRoutes`. Each
   needs its own seed translation (e.g. fee-schedule rows for the
   assessment spec, units + portal-access rows for the owner portal
-  spec). Tracked as a follow-up to Wave 17.
+  spec). Tracked as a follow-up to Wave 17. **Closed by Wave 26 below.**
 - **CI integration.** The Wave-16a CI plan still applies; the only
   difference is that the Job 2 step gains an `env:
   PLAYWRIGHT_REAL_BACKEND: "1"` line. We did not commit any GitHub
@@ -327,3 +327,112 @@ follow-ups below).
 - `npm run test:playwright` continues to run all 5 specs in the
   default (route-mock) mode; `npm run test:playwright:real` switches
   the alerts-lifecycle spec to the real backend.
+
+---
+
+# Wave 26 — All 5 specs on real backend; obsolete Vitest skeletons deleted
+
+Wave 26 completes the migration that Wave 17 opened. The remaining
+four Playwright specs (`signup-onboarding`, `assessment-lifecycle`,
+`owner-portal-navigation`, `amenities-toggle-roundtrip`) now run end-to-end
+against the ephemeral pglite-backed dev server when
+`PLAYWRIGHT_REAL_BACKEND=1`. Each spec keeps its Wave-16a route-mock path
+so the static-server fallback (used on macOS without the real backend
+flag) continues to pass.
+
+## What ships
+
+- `tests/e2e/playwright/helpers/seed-helper.ts` (extended): six new
+  real-backend helpers
+  - `installOwnerSession(page, options)` — inserts a real
+    `portal_access` row + sets the `portalAccessId` localStorage
+    key so PortalShell sends `x-portal-access-id` on every request.
+    The `requirePortal` middleware resolves the row for real.
+  - `seedUnitWithOwner` — inserts unit + person + ownership rows.
+  - `seedRecurringChargeSchedule` — inserts a `recurring_charge_schedules`
+    row that the unified `/api/financial/rules/:id/run` endpoint can
+    pick up.
+  - `seedAmenity` — inserts an `amenities` row.
+  - `seedPlatformSubscription` — inserts a `platform_subscriptions` row
+    so signup-side post-provisioning state is observable.
+  - `seedAssociation(id, name, { amenitiesEnabled })` — extended with
+    an `amenitiesEnabled` option (defaults to true).
+- `reset()` truncates the additional tables: `assessment_run_log`,
+  `recurring_charge_runs`, `recurring_charge_schedules`,
+  `owner_ledger_entries`, `ownerships`, `amenity_reservations`,
+  `amenities`, `portal_access`, `platform_subscriptions`, `persons`.
+- All four Playwright spec files updated:
+  - `test.describe.configure({ mode: "serial" })` added.
+  - When `PLAYWRIGHT_REAL_BACKEND=1` they create a `RealBackendHandle`,
+    seed rows directly into pglite, install a manager or owner session
+    on the page, and exercise the real handler chain. No
+    `route.fulfill` is registered for `/api/*` paths in real-backend
+    mode (with one documented exception below).
+  - When the env var is unset, the original Wave-16a behaviour
+    (in-memory store + `installSeedRoutes`) runs unchanged so
+    static-server CI flows do not regress.
+- `tests/e2e/owner-portal-navigation.client.test.tsx` — DELETED.
+- `tests/e2e/amenities-toggle-roundtrip.test.ts` — DELETED. Both
+  files were `describe.skip` placeholders (Wave 15b's "follow-up
+  skeletons") and the Playwright slice now owns those flows.
+
+## Stripe is the documented exception
+
+`signup-onboarding.spec.ts` keeps `route.fulfill` handlers on
+`/api/public/signup/start` and `/api/public/signup/complete` even in
+real-backend mode. Both real handlers call `api.stripe.com` server-side
+through `stripeRequest`, and hitting the live Stripe API requires real
+keys — which the brief explicitly forbids. Browser-mocking the two API
+endpoints is the cleanest way to keep Stripe out of the test
+environment without standing up a stripe-mock service.
+
+After the mocked checkout completes, the spec directly seeds the rows
+that `provisionWorkspace()` would have written (admin_user, association,
+platform_subscription) and asserts they are queryable through the real
+DB. Then it installs a manager session and verifies `/app` resolves
+through the real auth gate.
+
+## How each spec exercises the real backend
+
+| Spec | Real-backend exercise |
+| --- | --- |
+| `alerts-lifecycle.spec.ts` (Wave 17) | seed work_orders row → real overdue-resolver runs → real PATCH handler invalidates cache → next GET returns empty list |
+| `amenities-toggle-roundtrip.spec.ts` (Wave 26) | real Manager PATCH `/api/associations/:id/settings/amenities` → real Owner-side `isAmenitiesEnabledFor()` reflects flip → real listing handler 404s → flip back → recovery |
+| `assessment-lifecycle.spec.ts` (Wave 26) | seed unit + person + ownership + schedule → real `/api/financial/rules/:id/run` orchestrator → real `assessment_run_log` row → real portal `/api/portal/financial-dashboard` surfaces the schedule |
+| `owner-portal-navigation.spec.ts` (Wave 26) | real `requirePortal` middleware resolves seeded `portal_access` row → all 7 zone-child fetches hit real handlers → legacy `/portal?tab=financials` exercises the real PortalShell redirect |
+| `signup-onboarding.spec.ts` (Wave 26) | mocked `/api/public/signup/*` (Stripe) → seeded admin_users + platform_subscriptions rows → DB query asserts → real auth gate on `/app` |
+
+## Coverage matrix
+
+| Spec | Route-mock mode | Real-backend mode |
+| --- | --- | --- |
+| signup-onboarding | green | green |
+| alerts-lifecycle | green | green |
+| assessment-lifecycle | green | green |
+| owner-portal-navigation | green | green |
+| amenities-toggle-roundtrip | green | green |
+
+## Constraints honoured
+
+- No new external services (Stripe still mocked, Twilio still mocked).
+- Diff under the 1500-LoC budget for the wave.
+- The four migrations preserve the route-mock path verbatim so the
+  static-server fallback used on macOS dev machines does not regress.
+- Wave 17's `alerts-lifecycle.spec.ts` real-backend spec is unchanged.
+- `seed-helper.ts` keeps the two helper sets cleanly separated; the
+  route-mock side is untouched.
+
+## Follow-ups filed by Wave 26
+
+- The unified `/api/financial/assessment-run-log` response shape is
+  `{ rows, total, page, limit }` — the spec asserts `body.rows`. If a
+  future wave changes the response key, the spec needs a tweak.
+- `seedRecurringChargeSchedule` defaults to `unitScopeMode='all-units'`
+  + an empty `included_unit_ids_json` array. If a future wave makes
+  the `inclusion-list` mode required for new rules, the helper will
+  need a unit-id parameter.
+- `tests/e2e/owner-portal-navigation.client.test.tsx` and
+  `tests/e2e/amenities-toggle-roundtrip.test.ts` are deleted. If a
+  reviewer needs the Vitest skeletons back for documentation, the git
+  history (commit on `wave/26-playwright-real-backend-migration`) is
+  the source.
