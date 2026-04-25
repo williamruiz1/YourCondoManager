@@ -6,7 +6,8 @@ import { registerRoutes } from "./routes";
 import { initializeAuth } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { seedDatabase } from "./seed";
+// Wave 33 (5.4 Part B): seedDatabase is lazy-loaded in the boot block —
+// see the import-time note further down and the dynamic `await import("./seed")`.
 import { storage } from "./storage";
 import { pool, db } from "./db";
 import { eq } from "drizzle-orm";
@@ -16,9 +17,17 @@ import { runAutopayRetries } from "./services/retry-service";
 import { generateDelinquencyNotices } from "./services/delinquency-notice-service";
 import { runSweep as runUnifiedAssessmentSweep } from "./assessment-execution";
 import { fanOutCriticalAlerts } from "./alerts/notifications";
+import { recoverInFlightJobs } from "./job-queue";
 import { log } from "./logger";
 import { startElectionScheduler } from "./election-scheduler";
 import { createRateLimiter } from "./rate-limit";
+
+// Wave 33 (5.4 Part B): seed.ts is ~120 KB of static demo-data tables. It
+// only runs once at boot, after the HTTP server has already started
+// listening, so eager-bundling it bloats `dist/index.cjs` for no
+// cold-start benefit. Lazy-load below in the boot block.
+//
+// The original eager import was: `import { seedDatabase } from "./seed"`
 
 dotenv.config();
 dotenv.config({ path: ".env.local", override: true });
@@ -285,9 +294,17 @@ app.use((req, res, next) => {
     log(`db state check failed: ${err.message}`, "startup");
   });
 
-  seedDatabase().catch((err) => {
-    console.error("Seed failed:", err);
-  });
+  // Wave 33 (5.4 Part B): seedDatabase ships ~120 KB of static demo data
+  // and runs once at boot. Lazy-import keeps it out of the cold-start
+  // bundle and out of dist/index.cjs's main chunk.
+  void (async () => {
+    try {
+      const { seedDatabase } = await import("./seed");
+      await seedDatabase();
+    } catch (err) {
+      console.error("Seed failed:", err);
+    }
+  })();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -340,5 +357,11 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
     startAutomationJobs();
     startElectionScheduler();
+    // Wave 33 (5.4-F3): re-enqueue any background_jobs rows still in
+    // queued/running state from a prior process. Best-effort; failures are
+    // logged but never crash the server.
+    recoverInFlightJobs().catch((err) => {
+      console.error("[job-queue] recoverInFlightJobs failed:", err);
+    });
   });
 })();

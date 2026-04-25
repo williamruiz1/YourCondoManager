@@ -36,11 +36,18 @@ import {
 } from "./admin-notification-service";
 import { compareShadowRuns } from "./assessment-execution-parity";
 import { runOnDemand as runAssessmentOnDemand, type AssessmentRuleType } from "./assessment-execution";
+import { enqueueAssessmentRuleRun, getJobStatus as getBackgroundJobStatus } from "./job-queue";
 import {
   buildAssessmentDetailForOwnerUnit,
   getUpcomingInstallmentsForOwnerUnit,
 } from "./portal-assessment-detail";
-import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
+// Wave 33 (5.4 Part B): `./ftph-feature-tree` and `@shared/ftph-feature-tree`
+// together account for ~50 KB of feature-metadata wiring that is only
+// needed by the rarely-hit `GET /api/admin/roadmap/feature-tree` endpoint.
+// Lazy-import inside the handler to keep it out of the cold-start path.
+//
+// The original eager import was:
+//   import { buildFtphDocumentationFeatureTree } from "./ftph-feature-tree";
 import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, notInArray, or, sql, sum } from "drizzle-orm";
 import {
   getEmailLog,
@@ -3514,6 +3521,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   //   4. Returns the newly-inserted run-log rows + (dry-run only) a compact
   //      `projectedOutcomes` projection.
   //
+  // Wave 33 (5.4-F3) — background path for >500-unit associations:
+  //   When the association has more than `BACKGROUND_RUN_UNIT_THRESHOLD`
+  //   units, the handler returns `202 Accepted` with a `jobId` instead of
+  //   running the orchestrator inline. The job is processed by the
+  //   in-process queue in `server/job-queue.ts` (concurrency = 1 per
+  //   association). Clients poll `GET /api/financial/jobs/:jobId` to read
+  //   the final status + run-log row ids. Sync semantics for ≤500 units are
+  //   unchanged.
+  //
   // Auth matrix (per 4.3 handoff):
   //   - Manager, Board Officer, PM Assistant, Platform Admin → allowed.
   //   - Assisted Board → 403 unless `assessment_rules_write` PM toggle ON
@@ -3521,6 +3537,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   //     resolver returns `false` so Assisted Board is 403 by default.
   //   - Viewer / Owner → 403 (role gate).
   // ---------------------------------------------------------------------------
+  const BACKGROUND_RUN_UNIT_THRESHOLD = 500;
   app.post(
     "/api/financial/rules/:ruleId/run",
     requireAdmin,
@@ -3582,6 +3599,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }
 
+        // Wave 33 (5.4-F3): off-load to the background queue when this
+        // association has more units than the orchestrator can comfortably
+        // process inside a single request. The threshold is enforced
+        // server-side; clients do not need to know about it. The sync path
+        // is preserved unchanged when units ≤ threshold.
+        const [{ unitCount = 0 } = { unitCount: 0 }] = await db
+          .select({ unitCount: count() })
+          .from(units)
+          .where(eq(units.associationId, associationId));
+
+        if (unitCount > BACKGROUND_RUN_UNIT_THRESHOLD) {
+          const enqueued = await enqueueAssessmentRuleRun({
+            ruleType,
+            ruleId,
+            associationId,
+            asOfDate,
+            dryRun,
+          });
+          return res.status(202).json({
+            jobId: enqueued.jobId,
+            reused: enqueued.reused,
+            unitCount,
+            threshold: BACKGROUND_RUN_UNIT_THRESHOLD,
+            message: enqueued.reused
+              ? "An identical run is already in progress; returning the existing jobId."
+              : "Run enqueued — poll GET /api/financial/jobs/:jobId for status.",
+          });
+        }
+
         const summary = await runAssessmentOnDemand({
           ruleType,
           ruleId,
@@ -3625,6 +3671,71 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
 
         res.json(response);
+      } catch (error: any) {
+        res.status(400).json({ message: error?.message ?? "failed" });
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Wave 33 (5.4-F3) — Background job status endpoint.
+  //
+  // Polled by the rule-run UI while a >500-unit run is in flight. Returns
+  // the persisted `background_jobs` row plus, for completed jobs, the
+  // hydrated assessment_run_log rows the orchestrator wrote (so the UI does
+  // not need to make a second call to render the result table).
+  //
+  // Auth matrix matches the run endpoint — only roles allowed to dispatch a
+  // run can read the job's outcome. Association scope is enforced from the
+  // payload's associationId.
+  // ---------------------------------------------------------------------------
+  app.get(
+    "/api/financial/jobs/:jobId",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "pm-assistant", "manager", "assisted-board"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const jobId = typeof req.params?.jobId === "string" ? req.params.jobId : "";
+        if (!jobId) return res.status(400).json({ message: "jobId is required" });
+
+        const row = await getBackgroundJobStatus(jobId);
+        if (!row) return res.status(404).json({ message: "Job not found" });
+
+        const payload = row.payload as { associationId?: string } | null;
+        if (!payload?.associationId) {
+          return res.status(500).json({ message: "Job payload is missing associationId" });
+        }
+        assertAssociationScope(req, payload.associationId);
+
+        // For 'done' jobs, hydrate the run-log rows the orchestrator wrote.
+        let runLogEntries: Array<typeof assessmentRunLog.$inferSelect> = [];
+        const result = (row.resultJson ?? null) as
+          | { runLogRowIds?: string[]; dryRun?: boolean; totalDispatched?: number; perStatus?: Record<string, number> }
+          | null;
+        if (row.state === "done" && Array.isArray(result?.runLogRowIds) && result.runLogRowIds.length > 0) {
+          runLogEntries = await db
+            .select()
+            .from(assessmentRunLog)
+            .where(inArray(assessmentRunLog.id, result.runLogRowIds));
+        }
+
+        res.json({
+          jobId: row.id,
+          state: row.state,
+          jobType: row.jobType,
+          enqueuedAt: row.enqueuedAt,
+          startedAt: row.startedAt,
+          completedAt: row.completedAt,
+          error: row.error,
+          summary: result
+            ? {
+                dryRun: result.dryRun ?? false,
+                totalDispatched: result.totalDispatched ?? 0,
+                perStatus: result.perStatus ?? {},
+              }
+            : null,
+          runLogEntries,
+        });
       } catch (error: any) {
         res.status(400).json({ message: error?.message ?? "failed" });
       }
@@ -14175,6 +14286,10 @@ This is an automated demo request from the Your Condo Manager website.
 
   app.get("/api/admin/roadmap/feature-tree", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (_req, res) => {
     try {
+      // Wave 33 (5.4 Part B): lazy-load. Keeps ~50 KB of feature-metadata
+      // out of the boot-path bundle. This endpoint is hit only on the
+      // admin roadmap surface.
+      const { buildFtphDocumentationFeatureTree } = await import("./ftph-feature-tree");
       const result = await buildFtphDocumentationFeatureTree();
       res.json(result);
     } catch (error: any) {

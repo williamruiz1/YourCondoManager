@@ -732,6 +732,40 @@ export const assessmentRunLog = pgTable("assessment_run_log", {
 export type AssessmentRunLogRow = typeof assessmentRunLog.$inferSelect;
 export type InsertAssessmentRunLogRow = typeof assessmentRunLog.$inferInsert;
 
+// 5.4 Wave 33 — In-process background job queue (perf 5.4-F3).
+// Persists job state for the rule-run background path so the status endpoint
+// can survive across restarts and report progress to a polling client. The
+// row contains NO PII — `payload` references existing entities (associations,
+// rules) by id only.
+//
+// Valid `state` values (enforced by CHECK constraint in migration 0016):
+//   'queued'  — enqueued, awaiting worker pick-up.
+//   'running' — worker has dequeued and is iterating units.
+//   'done'    — worker finished without throwing. `result_json` populated.
+//   'failed'  — worker threw. `error` populated.
+//
+// The `idempotency_key` column is a partial-unique index (only enforced for
+// non-null values where state is queued/running). The dispatch endpoint
+// derives the key from `(jobType, ruleId, asOfDate)` so a duplicate enqueue
+// returns the existing jobId instead of spawning a second run.
+export const backgroundJobs = pgTable("background_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobType: text("job_type").notNull(),
+  payload: jsonb("payload").notNull(),
+  state: text("state").notNull().default("queued"),
+  idempotencyKey: text("idempotency_key"),
+  enqueuedAt: timestamp("enqueued_at").defaultNow().notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  error: text("error"),
+  resultJson: jsonb("result_json"),
+}, (table) => ({
+  backgroundJobsStateEnqueuedAtIdx: index("background_jobs_state_enqueued_at_idx")
+    .on(table.state, table.enqueuedAt),
+}));
+export type BackgroundJob = typeof backgroundJobs.$inferSelect;
+export type InsertBackgroundJob = typeof backgroundJobs.$inferInsert;
+
 export const meetingStatusEnum = pgEnum("meeting_status", ["scheduled", "in-progress", "completed", "cancelled"]);
 export const meetingSummaryStatusEnum = pgEnum("meeting_summary_status", ["draft", "published"]);
 export const governanceMeetings = pgTable("governance_meetings", {
