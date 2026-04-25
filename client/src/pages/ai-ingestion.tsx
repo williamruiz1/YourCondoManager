@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAssociationContext } from "@/context/association-context";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 type ImportSummaryView = {
   imported: boolean;
@@ -485,7 +486,7 @@ function getDestinationPlan(payloadJson: unknown): {
 
 
 export default function AiIngestionPage() {
-  useDocumentTitle("AI Ingestion");
+  useDocumentTitle(t("aiIngestion.title"));
   const { toast } = useToast();
   const [sourceText, setSourceText] = useState("");
   const [contextNotes, setContextNotes] = useState("");
@@ -1203,10 +1204,11 @@ export default function AiIngestionPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    // Wave 27 a11y: section + aria-labelledby (heading id below).
+    <section className="p-6 space-y-6" aria-labelledby="ai-ingestion-heading">
       <div>
-        <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface">AI Ingestion</h1>
-        <p className="text-sm text-on-surface/60 mt-1">Upload raw files or paste text, then review extracted records before approval.</p>
+        <h1 id="ai-ingestion-heading" className="font-headline text-3xl font-bold tracking-tight text-on-surface">{t("aiIngestion.title")}</h1>
+        <p className="text-sm text-on-surface/60 mt-1">{t("aiIngestion.summary")}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           <Badge variant={runtimeStatus?.aiConfigured ? "default" : "outline"}>
             {runtimeStatus?.aiConfigured ? `AI enabled: ${runtimeStatus.model}` : "Fallback extraction mode"}
@@ -1436,7 +1438,8 @@ export default function AiIngestionPage() {
 
       <Card>
         <CardContent className="p-0">
-          <Table>
+          {/* Wave 27 a11y: aria-label names this ingestion jobs table. */}
+          <Table aria-label={t("aiIngestion.tableLabel")}>
             <TableHeader><TableRow><TableHead>Job</TableHead><TableHead>Source</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
             <TableBody>
               {(jobs ?? []).map((job) => (
@@ -1486,7 +1489,8 @@ export default function AiIngestionPage() {
 
       <Card>
         <CardContent className="p-0">
-          <Table>
+          {/* Wave 27 a11y: aria-label names this extracted records table. */}
+          <Table aria-label={t("aiIngestion.recordsTableLabel")}>
             <TableHeader><TableRow><TableHead>Record</TableHead><TableHead>Confidence</TableHead><TableHead>Review</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
             <TableBody>
               {(records ?? []).map((record) => (
@@ -2186,6 +2190,6 @@ export default function AiIngestionPage() {
           </Table>
         </CardContent>
       </Card>
-    </div>
+    </section>
   );
 }

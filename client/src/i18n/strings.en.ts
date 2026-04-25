@@ -41,6 +41,16 @@
 //  24. `persons.*`                  — `client/src/pages/persons.tsx`
 //  25. `units.*`                    — `client/src/pages/units.tsx`
 //
+// Surfaces extended (8 — Wave 27, round 3):
+//  26. `insurance.*`                — `client/src/pages/insurance.tsx`
+//  27. `maintenanceSchedules.*`     — `client/src/pages/maintenance-schedules.tsx`
+//  28. `inspections.*`              — `client/src/pages/inspections.tsx`
+//  29. `residentFeedback.*`         — `client/src/pages/resident-feedback.tsx`
+//  30. `executive.*`                — `client/src/pages/executive.tsx`
+//  31. `adminUsers.*`               — `client/src/pages/admin-users.tsx`
+//  32. `operationsDashboard.*`      — `client/src/pages/operations-dashboard.tsx`
+//  33. `aiIngestion.*`              — `client/src/pages/ai-ingestion.tsx`
+//
 // Common keys live under `common.*`. Surface-specific copy stays
 // scoped under its surface prefix.
 
@@ -627,6 +637,236 @@ export const strings = {
   "units.dialog.buildingDetails": "Building Details",
   "units.snapshot.label": "Current Snapshot",
   "units.toast.buildingAdded": "Building added. You can now add units.",
+
+  // ---------------------------------------------------------------------
+  // 26. Insurance (`/app/insurance`)
+  // ---------------------------------------------------------------------
+  "insurance.title": "Insurance Policies",
+  "insurance.summary":
+    "Track association-level D&O, fidelity bond, master policy, and other insurance coverage with expiration alerts.",
+  "insurance.eyebrow": "Compliance",
+  "insurance.crumb": "Insurance Policies",
+  "insurance.action.addPolicy": "Add Policy",
+  "insurance.dialog.newTitle": "New Insurance Policy",
+  "insurance.dialog.editTitle": "Edit Policy",
+  "insurance.tableLabel": "Insurance policies",
+  "insurance.empty.title": "No insurance policies",
+  "insurance.empty.description":
+    "Track liability, property, and umbrella policies here. Add your first policy above to start expiry-monitoring.",
+  "insurance.empty.selectAssociation": "Select an association to view insurance policies.",
+  "insurance.scope.active": "Showing insurance policies for the active association.",
+  "insurance.scope.inactive": "Select an association to view or manage its insurance policies.",
+  "insurance.col.type": "Type",
+  "insurance.col.carrier": "Carrier",
+  "insurance.col.policyNumber": "Policy #",
+  "insurance.col.coverage": "Coverage",
+  "insurance.col.expiration": "Expiration",
+  "insurance.col.actions": "Actions",
+  "insurance.section.policies": "Policies",
+
+  // ---------------------------------------------------------------------
+  // 27. Maintenance Schedules (`/app/maintenance-schedules`)
+  // ---------------------------------------------------------------------
+  "maintenanceSchedules.title": "Maintenance Schedules",
+  "maintenanceSchedules.summary":
+    "Manage recurring preventive maintenance templates, generate due instances, and convert them into work orders.",
+  "maintenanceSchedules.eyebrow": "Operations",
+  "maintenanceSchedules.crumb": "Maintenance Schedules",
+  "maintenanceSchedules.action.newSchedule": "New Schedule",
+  "maintenanceSchedules.action.registerAsset": "Register Asset",
+  "maintenanceSchedules.dialog.newTitle": "Create Maintenance Schedule",
+  "maintenanceSchedules.dialog.editTitle": "Edit Maintenance Schedule",
+  "maintenanceSchedules.dialog.assetNewTitle": "Register Asset",
+  "maintenanceSchedules.dialog.assetEditTitle": "Edit Asset",
+  "maintenanceSchedules.stats.templates": "Templates",
+  "maintenanceSchedules.stats.due": "Due instances",
+  "maintenanceSchedules.stats.converted": "Converted",
+  "maintenanceSchedules.templates.tableLabel": "Maintenance schedule templates",
+  "maintenanceSchedules.instances.tableLabel": "Generated maintenance instances",
+  "maintenanceSchedules.assets.tableLabel": "Asset registry",
+  "maintenanceSchedules.assets.title": "Asset Registry",
+  "maintenanceSchedules.assets.summary":
+    "Track physical assets, service history, and replacement planning.",
+  "maintenanceSchedules.empty.templates": "No maintenance schedules yet.",
+  "maintenanceSchedules.empty.instances": "No generated schedule instances yet.",
+  "maintenanceSchedules.empty.assets": "No assets registered yet.",
+  "maintenanceSchedules.col.title": "Title",
+  "maintenanceSchedules.col.component": "Component",
+  "maintenanceSchedules.col.frequency": "Frequency",
+  "maintenanceSchedules.col.nextDue": "Next Due",
+  "maintenanceSchedules.col.status": "Status",
+  "maintenanceSchedules.col.actions": "Actions",
+  "maintenanceSchedules.col.scheduledWork": "Scheduled Work",
+  "maintenanceSchedules.col.due": "Due",
+  "maintenanceSchedules.col.workOrder": "Work Order",
+  "maintenanceSchedules.col.asset": "Asset",
+  "maintenanceSchedules.col.location": "Location",
+  "maintenanceSchedules.col.condition": "Condition",
+  "maintenanceSchedules.col.lastServiced": "Last Serviced",
+
+  // ---------------------------------------------------------------------
+  // 28. Inspections (`/app/inspections`)
+  // ---------------------------------------------------------------------
+  "inspections.title": "Inspection Records",
+  "inspections.summary":
+    "Record unit and common-area inspections, document findings, and turn follow-up items into work orders.",
+  "inspections.eyebrow": "Operations",
+  "inspections.crumb": "Inspection Records",
+  "inspections.action.newInspection": "New Inspection",
+  "inspections.dialog.newTitle": "Create Inspection",
+  "inspections.dialog.editTitle": "Edit Inspection",
+  "inspections.tableLabel": "Inspection records",
+  "inspections.empty.records": "No inspection records yet.",
+  "inspections.empty.findings": "No findings",
+  "inspections.stats.records": "Inspection records",
+  "inspections.stats.openFindings": "Open findings",
+  "inspections.stats.linkedFindings": "Linked to work orders",
+  "inspections.col.location": "Location",
+  "inspections.col.type": "Type",
+  "inspections.col.inspector": "Inspector",
+  "inspections.col.condition": "Condition",
+  "inspections.col.findings": "Findings",
+  "inspections.col.inspected": "Inspected",
+  "inspections.col.actions": "Actions",
+  "inspections.action.addFinding": "Add Finding",
+  "inspections.action.viewWorkOrder": "View Work Order",
+  "inspections.action.createWorkOrder": "Create Work Order",
+
+  // ---------------------------------------------------------------------
+  // 29. Resident Feedback (`/app/resident-feedback`)
+  // ---------------------------------------------------------------------
+  "residentFeedback.title": "Resident Feedback",
+  "residentFeedback.summary":
+    "Monitor satisfaction scores, track feedback themes, and follow up with residents.",
+  "residentFeedback.eyebrow": "Operations",
+  "residentFeedback.crumb": "Resident Feedback",
+  "residentFeedback.empty.selectAssociation":
+    "Select an association to view feedback analytics.",
+  "residentFeedback.empty.noResults": "No feedback found for the selected filters.",
+  "residentFeedback.empty.byCategory": "No feedback yet.",
+  "residentFeedback.stats.total": "Total Feedback",
+  "residentFeedback.stats.avg": "Avg Satisfaction",
+  "residentFeedback.stats.open": "Open Items",
+  "residentFeedback.stats.resolved": "Resolved",
+  "residentFeedback.section.scoreDistribution": "Score Distribution",
+  "residentFeedback.section.byCategory": "Feedback by Category",
+  "residentFeedback.tableLabel": "Resident feedback",
+  "residentFeedback.col.subject": "Subject",
+  "residentFeedback.col.category": "Category",
+  "residentFeedback.col.score": "Score",
+  "residentFeedback.col.submitter": "Submitter",
+  "residentFeedback.col.status": "Status",
+  "residentFeedback.col.date": "Date",
+  "residentFeedback.col.actions": "Actions",
+  "residentFeedback.dialog.noteTitle": "Add Admin Note",
+  "residentFeedback.action.review": "Review",
+  "residentFeedback.action.resolve": "Resolve",
+  "residentFeedback.action.note": "Note",
+  "residentFeedback.action.saveNote": "Save Note",
+  "residentFeedback.filter.all": "All",
+  "residentFeedback.filter.allCategories": "All categories",
+
+  // ---------------------------------------------------------------------
+  // 30. Executive Delivery Deck (`/app/admin/executive`)
+  // ---------------------------------------------------------------------
+  "executive.title": "Executive Delivery Deck",
+  "executive.summary":
+    "Slide format: one project per slide with a problem-solution-features table.",
+  "executive.eyebrow": "Platform",
+  "executive.crumb": "Executive Delivery Deck",
+  "executive.action.createTemplate": "Create Slide Template",
+  "executive.action.creating": "Creating...",
+  "executive.action.sync": "Sync from Roadmap",
+  "executive.action.syncing": "Syncing...",
+  "executive.tabs.highlights": "Highlights Deck",
+  "executive.tabs.defend": "Defend",
+  "executive.empty.noSlides.title": "No project slides available yet",
+  "executive.empty.noSlides.description":
+    "Executive slides will appear here once the platform admin publishes the next quarterly review.",
+  "executive.loading": "Loading executive slides...",
+  "executive.col.problem": "Problem",
+  "executive.col.solution": "Solution",
+  "executive.col.features": "Features Delivered",
+  "executive.empty.noFeatures": "No features listed.",
+  "executive.deck.tableLabel": "Project problem, solution, and features",
+  "executive.defend.title": "Defend Log",
+  "executive.defend.description": "Attach proof points to the selected slide.",
+  "executive.defend.entriesTitle": "Evidence Entries",
+  "executive.defend.empty": "No evidence logged yet.",
+  "executive.defend.action.add": "Add Evidence",
+  "executive.defend.action.saving": "Saving...",
+  "executive.defend.placeholder.label": "Label",
+  "executive.defend.placeholder.value": "Value / URL / Metric",
+  "executive.defend.placeholder.slide": "Select project slide",
+  "executive.defend.option.selectSlide": "Select slide",
+  "executive.action.prevSlide": "Previous slide",
+  "executive.action.nextSlide": "Next slide",
+
+  // ---------------------------------------------------------------------
+  // 31. Admin Users (`/app/admin/users`)
+  // ---------------------------------------------------------------------
+  "adminUsers.title": "Admin Users",
+  "adminUsers.summary":
+    "Manage operator access, role changes, and activation state in a mobile-safe admin workflow.",
+  "adminUsers.eyebrow": "Admin",
+  "adminUsers.crumb": "Admin Users",
+  "adminUsers.action.add": "Add Admin User",
+  "adminUsers.dialog.title": "Create Admin User",
+  "adminUsers.tableLabel": "Admin users and roles",
+  "adminUsers.empty.title": "No admin users",
+  "adminUsers.empty.description":
+    "Create at least one admin user. Admin users manage associations, billing, and platform-level settings.",
+  "adminUsers.col.email": "Email",
+  "adminUsers.col.currentRole": "Current Role",
+  "adminUsers.col.status": "Status",
+  "adminUsers.col.updateRole": "Update Role",
+  "adminUsers.col.reason": "Reason",
+  "adminUsers.col.action": "Action",
+  "adminUsers.label.email": "Email",
+  "adminUsers.label.role": "Role",
+  "adminUsers.label.active": "Active",
+  "adminUsers.action.apply": "Apply",
+  "adminUsers.action.applyChange": "Apply role change",
+
+  // ---------------------------------------------------------------------
+  // 32. Operations Dashboard (`/app/operations/dashboard`)
+  // ---------------------------------------------------------------------
+  "operationsDashboard.title": "Operations Overview",
+  "operationsDashboard.summary":
+    "Monitor active work, preventive maintenance pressure, vendor risk, and inspection follow-up from one operations view.",
+  "operationsDashboard.eyebrow": "Operations",
+  "operationsDashboard.crumb": "Operations Overview",
+  "operationsDashboard.action.exportVendors": "Export Vendor Report",
+  "operationsDashboard.action.exportWorkOrders": "Export Work Orders",
+  "operationsDashboard.action.exportMaintenance": "Export Maintenance",
+  "operationsDashboard.section.workOrderAging": "Work Order Aging",
+  "operationsDashboard.section.vendorStatus": "Vendor Status",
+  "operationsDashboard.section.recentInspections": "Recent Inspections",
+  "operationsDashboard.section.recentWorkOrders": "Recent Work Orders",
+  "operationsDashboard.section.dueInstances": "Due Maintenance Instances",
+  "operationsDashboard.section.audit": "Operations Audit Trail",
+  "operationsDashboard.section.nextActions": "Operations Next Actions",
+  "operationsDashboard.empty.inspections": "No inspections yet.",
+  "operationsDashboard.empty.workOrders": "No work orders yet.",
+  "operationsDashboard.empty.dueInstances": "No due maintenance instances.",
+  "operationsDashboard.empty.audit": "No operations audit entries yet.",
+  "operationsDashboard.stat.openWorkOrders": "Open Work Orders",
+  "operationsDashboard.stat.dueMaintenance": "Due Maintenance",
+  "operationsDashboard.stat.openFindings": "Open Findings",
+  "operationsDashboard.stat.activeVendors": "Active Vendors",
+  "operationsDashboard.stat.renewalRisk": "Renewal Risk",
+  "operationsDashboard.stat.overdueInstances": "Overdue Instances",
+
+  // ---------------------------------------------------------------------
+  // 33. AI Ingestion (`/app/ai-ingestion`)
+  // ---------------------------------------------------------------------
+  "aiIngestion.title": "AI Ingestion",
+  "aiIngestion.summary":
+    "Submit document ingestion jobs, review extracted records, and approve them into the canonical store.",
+  "aiIngestion.eyebrow": "Platform",
+  "aiIngestion.crumb": "AI Ingestion",
+  "aiIngestion.tableLabel": "Ingestion jobs",
+  "aiIngestion.recordsTableLabel": "Extracted records",
 } as const;
 
 export type StringKey = keyof typeof strings;

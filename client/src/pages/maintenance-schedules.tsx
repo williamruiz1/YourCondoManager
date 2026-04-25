@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { operationsSubPages } from "@/lib/sub-page-nav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 type FrequencyUnit = "month" | "quarter" | "year";
 type TemplateStatus = "active" | "paused" | "archived";
@@ -224,10 +225,10 @@ export function MaintenanceSchedulesContent() {
         <div />
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button disabled={!activeAssociationId} onClick={openCreate}>New Schedule</Button>
+            <Button disabled={!activeAssociationId} onClick={openCreate}>{t("maintenanceSchedules.action.newSchedule")}</Button>
           </DialogTrigger>
           <DialogContent className="max-w-3xl">
-            <DialogHeader><DialogTitle>{editing ? "Edit Maintenance Schedule" : "Create Maintenance Schedule"}</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{editing ? t("maintenanceSchedules.dialog.editTitle") : t("maintenanceSchedules.dialog.newTitle")}</DialogTitle></DialogHeader>
             <div className="space-y-4">
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                 Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
@@ -291,22 +292,23 @@ export function MaintenanceSchedulesContent() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">Templates</div><div className="text-2xl font-semibold">{counts.templates}</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">Due instances</div><div className="text-2xl font-semibold">{counts.due}</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">Converted</div><div className="text-2xl font-semibold">{counts.converted}</div></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{t("maintenanceSchedules.stats.templates")}</div><div className="text-2xl font-semibold">{counts.templates}</div></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{t("maintenanceSchedules.stats.due")}</div><div className="text-2xl font-semibold">{counts.due}</div></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{t("maintenanceSchedules.stats.converted")}</div><div className="text-2xl font-semibold">{counts.converted}</div></CardContent></Card>
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <Table>
+          {/* Wave 27 a11y: aria-label names this maintenance templates table. */}
+          <Table aria-label={t("maintenanceSchedules.templates.tableLabel")}>
             <TableHeader>
               <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Component</TableHead>
-                <TableHead>Frequency</TableHead>
-                <TableHead>Next Due</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("maintenanceSchedules.col.title")}</TableHead>
+                <TableHead>{t("maintenanceSchedules.col.component")}</TableHead>
+                <TableHead>{t("maintenanceSchedules.col.frequency")}</TableHead>
+                <TableHead>{t("maintenanceSchedules.col.nextDue")}</TableHead>
+                <TableHead>{t("maintenanceSchedules.col.status")}</TableHead>
+                <TableHead className="text-right">{t("maintenanceSchedules.col.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -322,14 +324,14 @@ export function MaintenanceSchedulesContent() {
                   <TableCell><Badge variant="outline">{template.status}</Badge></TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => generateInstances.mutate(template.id)}>Generate</Button>
-                      <Button size="sm" variant="outline" onClick={() => openEdit(template)}>Edit</Button>
+                      <Button size="sm" variant="outline" onClick={() => generateInstances.mutate(template.id)} aria-label={`Generate instances for ${template.title}`}>Generate</Button>
+                      <Button size="sm" variant="outline" onClick={() => openEdit(template)} aria-label={`${t("common.action.edit")} ${template.title}`}>{t("common.action.edit")}</Button>
                     </div>
                   </TableCell>
                 </TableRow>
               ))}
               {templates.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">No maintenance schedules yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground" role="status">{t("maintenanceSchedules.empty.templates")}</TableCell></TableRow>
               ) : null}
             </TableBody>
           </Table>
@@ -338,14 +340,15 @@ export function MaintenanceSchedulesContent() {
 
       <Card>
         <CardContent className="pt-6">
-          <Table>
+          {/* Wave 27 a11y: aria-label names this generated instances table. */}
+          <Table aria-label={t("maintenanceSchedules.instances.tableLabel")}>
             <TableHeader>
               <TableRow>
-                <TableHead>Scheduled Work</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Work Order</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("maintenanceSchedules.col.scheduledWork")}</TableHead>
+                <TableHead>{t("maintenanceSchedules.col.due")}</TableHead>
+                <TableHead>{t("maintenanceSchedules.col.status")}</TableHead>
+                <TableHead>{t("maintenanceSchedules.col.workOrder")}</TableHead>
+                <TableHead className="text-right">{t("maintenanceSchedules.col.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -362,7 +365,7 @@ export function MaintenanceSchedulesContent() {
                     {instance.workOrderId ? (
                       <Badge variant="secondary">converted</Badge>
                     ) : (
-                      <Button size="sm" variant="outline" onClick={() => convertInstance.mutate(instance.id)}>
+                      <Button size="sm" variant="outline" onClick={() => convertInstance.mutate(instance.id)} aria-label={`Convert ${instance.title} to work order`}>
                         Convert
                       </Button>
                     )}
@@ -370,7 +373,7 @@ export function MaintenanceSchedulesContent() {
                 </TableRow>
               ))}
               {instances.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">No generated schedule instances yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground" role="status">{t("maintenanceSchedules.empty.instances")}</TableCell></TableRow>
               ) : null}
             </TableBody>
           </Table>
@@ -383,22 +386,23 @@ export function MaintenanceSchedulesContent() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
               <div>
-                <h2 className="text-sm font-semibold">Asset Registry</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Track physical assets, service history, and replacement planning.</p>
+                <h2 className="text-sm font-semibold">{t("maintenanceSchedules.assets.title")}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{t("maintenanceSchedules.assets.summary")}</p>
               </div>
               <DialogTrigger asChild>
-                <Button size="sm" disabled={!activeAssociationId} onClick={() => { setEditingAsset(null); setAssetForm(emptyAssetForm); }}>Register Asset</Button>
+                <Button size="sm" disabled={!activeAssociationId} onClick={() => { setEditingAsset(null); setAssetForm(emptyAssetForm); }}>{t("maintenanceSchedules.action.registerAsset")}</Button>
               </DialogTrigger>
             </div>
-            <Table>
+            {/* Wave 27 a11y: aria-label names this asset registry table. */}
+            <Table aria-label={t("maintenanceSchedules.assets.tableLabel")}>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Asset</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Condition</TableHead>
-                  <TableHead>Last Serviced</TableHead>
-                  <TableHead>Next Due</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("maintenanceSchedules.col.asset")}</TableHead>
+                  <TableHead>{t("maintenanceSchedules.col.location")}</TableHead>
+                  <TableHead>{t("maintenanceSchedules.col.condition")}</TableHead>
+                  <TableHead>{t("maintenanceSchedules.col.lastServiced")}</TableHead>
+                  <TableHead>{t("maintenanceSchedules.col.nextDue")}</TableHead>
+                  <TableHead className="text-right">{t("maintenanceSchedules.col.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -441,14 +445,14 @@ export function MaintenanceSchedulesContent() {
                             unitId: asset.unitId || "",
                           });
                           setAssetOpen(true);
-                        }}>Edit</Button>
-                        <Button size="sm" variant="outline" onClick={() => deleteAsset.mutate(asset.id)} disabled={deleteAsset.isPending}>Remove</Button>
+                        }} aria-label={`${t("common.action.edit")} ${asset.name}`}>{t("common.action.edit")}</Button>
+                        <Button size="sm" variant="outline" onClick={() => deleteAsset.mutate(asset.id)} disabled={deleteAsset.isPending} aria-label={`Remove ${asset.name}`}>Remove</Button>
                       </div>
                     </TableCell>
                   </TableRow>
                 ))}
                 {assets.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">No assets registered yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground" role="status">{t("maintenanceSchedules.empty.assets")}</TableCell></TableRow>
                 ) : null}
               </TableBody>
             </Table>
@@ -456,7 +460,7 @@ export function MaintenanceSchedulesContent() {
         </Card>
 
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>{editingAsset ? "Edit Asset" : "Register Asset"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingAsset ? t("maintenanceSchedules.dialog.assetEditTitle") : t("maintenanceSchedules.dialog.assetNewTitle")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2">
               <Input placeholder="Asset name *" value={assetForm.name} onChange={(e) => setAssetForm((f) => ({ ...f, name: e.target.value }))} />
@@ -512,17 +516,19 @@ export function MaintenanceSchedulesContent() {
 }
 
 export default function MaintenanceSchedulesPage() {
-  useDocumentTitle("Maintenance Schedules");
+  useDocumentTitle(t("maintenanceSchedules.title"));
   return (
-    <div className="p-6 space-y-6">
+    // Wave 27 a11y: section + aria-labelledby (heading id below).
+    <section className="p-6 space-y-6" aria-labelledby="maintenance-schedules-heading">
       <WorkspacePageHeader
-        title="Maintenance Schedules"
-        summary="Manage recurring preventive maintenance templates, generate due instances, and convert them into work orders."
-        eyebrow="Operations"
-        breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Maintenance Schedules" }]}
+        title={t("maintenanceSchedules.title")}
+        headingId="maintenance-schedules-heading"
+        summary={t("maintenanceSchedules.summary")}
+        eyebrow={t("common.eyebrow.operations")}
+        breadcrumbs={[{ label: t("common.crumb.operations"), href: "/app/operations/dashboard" }, { label: t("maintenanceSchedules.crumb") }]}
         subPages={operationsSubPages}
       />
       <MaintenanceSchedulesContent />
-    </div>
+    </section>
   );
 }

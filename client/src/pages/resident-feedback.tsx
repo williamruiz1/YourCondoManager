@@ -18,6 +18,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { operationsSubPages } from "@/lib/sub-page-nav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 type FeedbackAnalytics = {
   total: number;
@@ -31,7 +32,7 @@ const SCORE_LABELS: Record<number, string> = { 1: "Very Poor", 2: "Poor", 3: "Ne
 const CATEGORIES = ["maintenance", "management", "amenities", "communication", "neighbor", "financial", "general"] as const;
 
 export default function ResidentFeedbackPage() {
-  useDocumentTitle("Resident Feedback");
+  useDocumentTitle(t("residentFeedback.title"));
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId } = useActiveAssociation();
@@ -91,17 +92,19 @@ export default function ResidentFeedbackPage() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    // Wave 27 a11y: section + aria-labelledby (heading id below).
+    <section className="p-6 space-y-6" aria-labelledby="resident-feedback-heading">
       <WorkspacePageHeader
-        title="Resident Feedback"
-        summary="Monitor satisfaction scores, track feedback themes, and follow up with residents."
-        eyebrow="Operations"
-        breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Resident Feedback" }]}
+        title={t("residentFeedback.title")}
+        headingId="resident-feedback-heading"
+        summary={t("residentFeedback.summary")}
+        eyebrow={t("common.eyebrow.operations")}
+        breadcrumbs={[{ label: t("common.crumb.operations"), href: "/app/operations/dashboard" }, { label: t("residentFeedback.crumb") }]}
         subPages={operationsSubPages}
       />
 
       {!activeAssociationId ? (
-        <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground text-center">Select an association to view feedback analytics.</div>
+        <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground text-center" role="status">{t("residentFeedback.empty.selectAssociation")}</div>
       ) : (
         <>
           {/* Analytics summary */}
@@ -109,13 +112,13 @@ export default function ResidentFeedbackPage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardContent className="pt-6">
-                  <div className="text-sm text-muted-foreground">Total Feedback</div>
+                  <div className="text-sm text-muted-foreground">{t("residentFeedback.stats.total")}</div>
                   <div className="text-2xl font-semibold">{analytics.total}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
-                  <div className="text-sm text-muted-foreground">Avg Satisfaction</div>
+                  <div className="text-sm text-muted-foreground">{t("residentFeedback.stats.avg")}</div>
                   <div className={`text-2xl font-semibold ${analytics.avgScore !== null ? (analytics.avgScore >= 4 ? "text-green-600" : analytics.avgScore >= 3 ? "text-yellow-600" : "text-destructive") : ""}`}>
                     {analytics.avgScore !== null ? analytics.avgScore.toFixed(1) : "N/A"} <span className="text-sm font-normal text-muted-foreground">/ 5</span>
                   </div>
@@ -123,13 +126,13 @@ export default function ResidentFeedbackPage() {
               </Card>
               <Card>
                 <CardContent className="pt-6">
-                  <div className="text-sm text-muted-foreground">Open Items</div>
+                  <div className="text-sm text-muted-foreground">{t("residentFeedback.stats.open")}</div>
                   <div className="text-2xl font-semibold">{analytics.byStatus["open"] ?? 0}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
-                  <div className="text-sm text-muted-foreground">Resolved</div>
+                  <div className="text-sm text-muted-foreground">{t("residentFeedback.stats.resolved")}</div>
                   <div className="text-2xl font-semibold">{analytics.byStatus["resolved"] ?? 0}</div>
                 </CardContent>
               </Card>
@@ -141,7 +144,7 @@ export default function ResidentFeedbackPage() {
             {analytics && (
               <Card>
                 <CardContent className="pt-6 space-y-2">
-                  <h3 className="text-sm font-medium mb-3">Score Distribution</h3>
+                  <h3 className="text-sm font-medium mb-3">{t("residentFeedback.section.scoreDistribution")}</h3>
                   {[5, 4, 3, 2, 1].map((s) => {
                     const item = analytics.scoreDistribution.find((d) => d.score === s);
                     const count = item?.count ?? 0;
@@ -161,7 +164,7 @@ export default function ResidentFeedbackPage() {
             {analytics && (
               <Card>
                 <CardContent className="pt-6">
-                  <h3 className="text-sm font-medium mb-3">Feedback by Category</h3>
+                  <h3 className="text-sm font-medium mb-3">{t("residentFeedback.section.byCategory")}</h3>
                   <div className="space-y-2">
                     {Object.entries(analytics.byCategory).sort((a, b) => b[1].count - a[1].count).map(([cat, data]) => (
                       <div key={cat} className="flex items-center justify-between text-sm">
@@ -169,7 +172,7 @@ export default function ResidentFeedbackPage() {
                         <Badge variant="outline">{data.count}</Badge>
                       </div>
                     ))}
-                    {Object.keys(analytics.byCategory).length === 0 && <div className="text-sm text-muted-foreground">No feedback yet.</div>}
+                    {Object.keys(analytics.byCategory).length === 0 && <div className="text-sm text-muted-foreground" role="status">{t("residentFeedback.empty.byCategory")}</div>}
                   </div>
                 </CardContent>
               </Card>
@@ -179,30 +182,38 @@ export default function ResidentFeedbackPage() {
           {/* Filters + table */}
           <Card>
             <CardContent className="pt-6 space-y-4">
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap" role="group" aria-label="Status filter">
                 {(["all", "open", "in-review", "resolved"] as const).map((s) => (
-                  <Button key={s} size="sm" variant={statusFilter === s ? "default" : "outline"} className="h-7 text-xs" onClick={() => setStatusFilter(s)}>
-                    {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)} {s !== "all" ? `(${feedbacks.filter(f => f.status === s).length})` : `(${feedbacks.length})`}
+                  <Button
+                    key={s}
+                    size="sm"
+                    variant={statusFilter === s ? "default" : "outline"}
+                    className="h-7 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    onClick={() => setStatusFilter(s)}
+                    aria-pressed={statusFilter === s}
+                  >
+                    {s === "all" ? t("residentFeedback.filter.all") : s.charAt(0).toUpperCase() + s.slice(1)} {s !== "all" ? `(${feedbacks.filter(f => f.status === s).length})` : `(${feedbacks.length})`}
                   </Button>
                 ))}
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="h-7 text-xs w-36"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-7 text-xs w-36" aria-label={t("residentFeedback.col.category")}><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All categories</SelectItem>
+                    <SelectItem value="all">{t("residentFeedback.filter.allCategories")}</SelectItem>
                     {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <Table>
+              {/* Wave 27 a11y: aria-label names this resident feedback table. */}
+              <Table aria-label={t("residentFeedback.tableLabel")}>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Score</TableHead>
-                    <TableHead>Submitter</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("residentFeedback.col.subject")}</TableHead>
+                    <TableHead>{t("residentFeedback.col.category")}</TableHead>
+                    <TableHead>{t("residentFeedback.col.score")}</TableHead>
+                    <TableHead>{t("residentFeedback.col.submitter")}</TableHead>
+                    <TableHead>{t("residentFeedback.col.status")}</TableHead>
+                    <TableHead>{t("residentFeedback.col.date")}</TableHead>
+                    <TableHead className="text-right">{t("residentFeedback.col.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -226,24 +237,24 @@ export default function ResidentFeedbackPage() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           {fb.status === "open" && (
-                            <Button size="sm" variant="outline" onClick={() => updateFeedback.mutate({ id: fb.id, status: "in-review" })}>Review</Button>
+                            <Button size="sm" variant="outline" onClick={() => updateFeedback.mutate({ id: fb.id, status: "in-review" })} aria-label={`${t("residentFeedback.action.review")}: ${fb.subject || fb.category}`}>{t("residentFeedback.action.review")}</Button>
                           )}
                           {fb.status !== "resolved" && (
-                            <Button size="sm" variant="outline" onClick={() => updateFeedback.mutate({ id: fb.id, status: "resolved" })}>Resolve</Button>
+                            <Button size="sm" variant="outline" onClick={() => updateFeedback.mutate({ id: fb.id, status: "resolved" })} aria-label={`${t("residentFeedback.action.resolve")}: ${fb.subject || fb.category}`}>{t("residentFeedback.action.resolve")}</Button>
                           )}
                           <Dialog open={noteDialogFeedback?.id === fb.id} onOpenChange={(open) => { if (!open) setNoteDialogFeedback(null); }}>
                             <DialogTrigger asChild>
-                              <Button size="sm" variant="outline" onClick={() => { setNoteDialogFeedback(fb); setAdminNoteText(fb.adminNotes || ""); }}>Note</Button>
+                              <Button size="sm" variant="outline" onClick={() => { setNoteDialogFeedback(fb); setAdminNoteText(fb.adminNotes || ""); }} aria-label={`${t("residentFeedback.action.note")}: ${fb.subject || fb.category}`}>{t("residentFeedback.action.note")}</Button>
                             </DialogTrigger>
                             <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
-                              <DialogHeader><DialogTitle>Add Admin Note</DialogTitle></DialogHeader>
+                              <DialogHeader><DialogTitle>{t("residentFeedback.dialog.noteTitle")}</DialogTitle></DialogHeader>
                               <div className="space-y-3">
                                 <div className="text-sm">{fb.subject || "(no subject)"}</div>
                                 {fb.feedbackText && <div className="text-sm text-muted-foreground bg-muted/30 rounded p-2">{fb.feedbackText}</div>}
-                                <Textarea placeholder="Internal notes about this feedback..." value={adminNoteText} onChange={(e) => setAdminNoteText(e.target.value)} rows={3} />
+                                <Textarea placeholder="Internal notes about this feedback..." value={adminNoteText} onChange={(e) => setAdminNoteText(e.target.value)} rows={3} aria-label={t("residentFeedback.dialog.noteTitle")} />
                                 <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                                  <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setNoteDialogFeedback(null)}>Cancel</Button>
-                                  <Button className={isMobile ? "w-full" : undefined} onClick={() => updateFeedback.mutate({ id: fb.id, adminNotes: adminNoteText })}>Save Note</Button>
+                                  <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setNoteDialogFeedback(null)}>{t("common.action.cancel")}</Button>
+                                  <Button className={isMobile ? "w-full" : undefined} onClick={() => updateFeedback.mutate({ id: fb.id, adminNotes: adminNoteText })}>{t("residentFeedback.action.saveNote")}</Button>
                                 </div>
                               </div>
                             </DialogContent>
@@ -253,7 +264,7 @@ export default function ResidentFeedbackPage() {
                     </TableRow>
                   ))}
                   {filtered.length === 0 && (
-                    <TableRow><TableCell colSpan={7} className="h-16 text-center text-muted-foreground">No feedback found for the selected filters.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="h-16 text-center text-muted-foreground" role="status">{t("residentFeedback.empty.noResults")}</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -261,6 +272,6 @@ export default function ResidentFeedbackPage() {
           </Card>
         </>
       )}
-    </div>
+    </section>
   );
 }
