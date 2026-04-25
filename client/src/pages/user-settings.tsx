@@ -27,6 +27,7 @@ import type { AdminNotificationPreferences } from "@shared/admin-notification-pr
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAssociationContext } from "@/context/association-context";
 import { AmenitiesFeatureToggleCard } from "@/components/settings/amenities-feature-toggle-card";
+import { CriticalAlertDeliveryCard } from "@/components/settings/critical-alert-delivery-card";
 import { Link } from "wouter";
 import { CreditCard, ChevronRight } from "lucide-react";
 
@@ -558,6 +559,8 @@ export default function UserSettingsPage() {
                     </div>
                   </CardContent>
                 </Card>
+
+                <CriticalAlertDeliveryCard />
               </TabsContent>
 
               <TabsContent value="attention" className="space-y-6">

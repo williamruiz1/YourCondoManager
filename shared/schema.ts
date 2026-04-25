@@ -201,6 +201,14 @@ export const adminUserPreferences = pgTable("admin_user_preferences", {
   quietHoursStart: text("quiet_hours_start").notNull().default("22:00"),
   quietHoursEnd: text("quiet_hours_end").notNull().default("07:00"),
   notificationCategoryPreferencesJson: jsonb("notification_category_preferences_json").notNull().default(sql`'{}'::jsonb`),
+  // 4.1 Tier 3 (Wave 32) — per-user opt-in for OUT-OF-BAND delivery of
+  // severity:'critical' alerts. Distinct from the broad
+  // emailNotifications/pushNotifications toggles above (which gate
+  // category-level fan-out across YCM); these two columns gate the
+  // critical-alert push/email channels specifically.
+  // Email default ON; push default OFF (requires subscription enrollment).
+  notifyAlertsEmail: integer("notify_alerts_email").notNull().default(1),
+  notifyAlertsPush: integer("notify_alerts_push").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
@@ -3255,3 +3263,68 @@ export const alertReadStates = pgTable("alert_read_states", {
 export type AlertReadState = typeof alertReadStates.$inferSelect;
 export type InsertAlertReadState = typeof alertReadStates.$inferInsert;
 export const insertAlertReadStateSchema = createInsertSchema(alertReadStates).omit({ id: true, createdAt: true });
+
+// 4.1 Tier 3 (Wave 32) — alert push + email notifications.
+//
+// Spec: docs/projects/platform-overhaul/decisions/4.1-tier-3-notifications.md
+//
+// `alert_notifications` deduplicates out-of-band fan-out per
+// (alertId, adminUserId, channel). One row per delivery attempt. Because
+// `alertId` is deterministic (Wave 2 Q7), re-running the fan-out is
+// idempotent.
+//
+// `delivery_status` discriminates the lifecycle:
+//   - 'pending'                  : insert-then-send window (rare, transient)
+//   - 'sent'                     : provider accepted
+//   - 'failed'                   : provider rejected / threw — error_message
+//                                  carries the reason
+//   - 'suppressed-pre-existing'  : seeded on first-ever fan-out cycle for
+//                                  alerts that existed before Wave 32 shipped,
+//                                  so we don't retroactively notify users
+//                                  about pre-Wave-32 critical alerts
+//
+// Channel mirrors `delivery_status` for the suppression case so the
+// composite uniqueness key stays consistent.
+//
+// Index on (admin_user_id, sent_at) supports the 60-minute rolling
+// rate-limit count (5/user/hour).
+export const alertNotifications = pgTable("alert_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  alertId: text("alert_id").notNull(),
+  adminUserId: varchar("admin_user_id").notNull().references(() => adminUsers.id),
+  channel: text("channel").notNull(),
+  deliveryStatus: text("delivery_status").notNull(),
+  errorMessage: text("error_message"),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAlertAdminChannel: uniqueIndex("alert_notifications_alert_admin_channel_uq").on(
+    table.alertId,
+    table.adminUserId,
+    table.channel,
+  ),
+  adminSentAtIdx: index("alert_notifications_admin_sent_at_idx").on(table.adminUserId, table.sentAt),
+}));
+export type AlertNotification = typeof alertNotifications.$inferSelect;
+export type InsertAlertNotification = typeof alertNotifications.$inferInsert;
+
+// 4.1 Tier 3 (Wave 32) — operator-side push subscriptions (parallel to the
+// portal-side `push_subscriptions` table which is keyed on portal_access_id).
+// Operators (managers, board officers, platform admins) can enroll any
+// number of devices/browsers. is_active is the soft-delete signal — set to
+// 0 when the user disables push or when send fails with a 410 Gone.
+export const adminPushSubscriptions = pgTable("admin_push_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  adminUserId: varchar("admin_user_id").notNull().references(() => adminUsers.id),
+  endpoint: text("endpoint").notNull(),
+  p256dhKey: text("p256dh_key").notNull(),
+  authKey: text("auth_key").notNull(),
+  userAgent: text("user_agent"),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAdminPushEndpoint: uniqueIndex("admin_push_subscriptions_endpoint_uq").on(table.endpoint),
+}));
+export type AdminPushSubscription = typeof adminPushSubscriptions.$inferSelect;
+export type InsertAdminPushSubscription = typeof adminPushSubscriptions.$inferInsert;
