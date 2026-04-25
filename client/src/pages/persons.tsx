@@ -422,11 +422,11 @@ export default function PersonsPage() {
           <DialogTrigger asChild>
             <Button data-testid="button-add-person"><Plus className="h-4 w-4 mr-2" />{t("persons.action.addPerson")}</Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-2xl">
             <DialogHeader><DialogTitle>{editingId ? t("persons.dialog.editTitle") : t("persons.dialog.newTitle")}</DialogTitle></DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField control={form.control} name="firstName" render={({ field }) => (
                     <FormItem>
                       <FormLabel>First Name</FormLabel>
@@ -457,7 +457,7 @@ export default function PersonsPage() {
                   </FormItem>
                 )} />
                 {!editingId ? (
-                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                     <FormField control={form.control} name="residentRole" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Role</FormLabel>
@@ -579,7 +579,7 @@ export default function PersonsPage() {
           </DialogContent>
         </Dialog>
         <Dialog open={boardRoleOpen} onOpenChange={setBoardRoleOpen}>
-          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
             <DialogHeader><DialogTitle>{t("persons.dialog.assignBoardRoleTitle")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <Select value={boardRolePersonId || "none"} onValueChange={(value) => setBoardRolePersonId(value === "none" ? "" : value)}>
@@ -610,11 +610,11 @@ export default function PersonsPage() {
                   <SelectItem value="Board Member">Board Member</SelectItem>
                 </SelectContent>
               </Select>
-              <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                 <Input type="date" value={boardRoleStartDate} onChange={(event) => setBoardRoleStartDate(event.target.value)} />
                 <Input type="date" value={boardRoleEndDate} onChange={(event) => setBoardRoleEndDate(event.target.value)} />
               </div>
-              <Button className={isMobile ? "w-full" : undefined} onClick={() => createBoardRoleMutation.mutate()} disabled={createBoardRoleMutation.isPending}>
+              <Button className="w-full sm:w-auto" onClick={() => createBoardRoleMutation.mutate()} disabled={createBoardRoleMutation.isPending}>
                 {createBoardRoleMutation.isPending ? "Saving..." : "Assign Role"}
               </Button>
             </div>

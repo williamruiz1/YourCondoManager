@@ -330,13 +330,13 @@ export function WorkOrdersContent() {
             <DialogTrigger asChild>
               <Button disabled={!activeAssociationId} onClick={openCreate}>New Work Order</Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
+            <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-2xl">
               <DialogHeader><DialogTitle>{editing ? "Edit Work Order" : "Create Work Order"}</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                   Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="work-order-title">Title</Label>
                     <Input id="work-order-title" className={isMobile ? "min-h-11" : undefined} placeholder="Roof leak above stairwell" value={form.title} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} />

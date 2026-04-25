@@ -151,7 +151,7 @@ export default function AdminUsersPage() {
               {t("adminUsers.action.add")}
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>{t("adminUsers.dialog.title")}</DialogTitle>
             </DialogHeader>

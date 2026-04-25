@@ -482,7 +482,7 @@ export function FinancialLateFeesContent() {
               New Rule
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-xl">
             <DialogHeader><DialogTitle>Create Late Fee Rule</DialogTitle></DialogHeader>
             <Form {...ruleForm}>
               <form className="space-y-4" onSubmit={ruleForm.handleSubmit((values) => createRuleMutation.mutate(values))}>
@@ -492,7 +492,7 @@ export function FinancialLateFeesContent() {
                 <FormField control={ruleForm.control} name="name" render={({ field }) => (
                   <FormItem><FormLabel>Name</FormLabel><FormControl><Input placeholder="Standard late fee rule" {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField control={ruleForm.control} name="feeType" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Type</FormLabel>
@@ -510,7 +510,7 @@ export function FinancialLateFeesContent() {
                     <FormItem><FormLabel>Fee Amount</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField control={ruleForm.control} name="graceDays" render={({ field }) => (
                     <FormItem><FormLabel>Grace Days</FormLabel><FormControl><Input type="number" min="0" max="365" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
@@ -903,10 +903,10 @@ export function FinancialLateFeesContent() {
                 <DialogTrigger asChild>
                   <Button size="sm" disabled={!activeAssociationId}>Add Threshold</Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-md">
                   <DialogHeader><DialogTitle>New Delinquency Threshold</DialogTitle></DialogHeader>
                   <div className="space-y-3">
-                    <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Stage #</label>
                         <Input type="number" min={1} value={thresholdForm.stage} onChange={(e) => setThresholdForm((f) => ({ ...f, stage: parseInt(e.target.value) || 1 }))} />
@@ -922,7 +922,7 @@ export function FinancialLateFeesContent() {
                       </div>
                     </div>
                     <Input placeholder="Stage name" value={thresholdForm.stageName} onChange={(e) => setThresholdForm((f) => ({ ...f, stageName: e.target.value }))} />
-                    <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Min Balance ($)</label>
                         <Input type="number" min={0} step="0.01" value={thresholdForm.minimumBalance} onChange={(e) => setThresholdForm((f) => ({ ...f, minimumBalance: parseFloat(e.target.value) || 0 }))} />
@@ -932,9 +932,9 @@ export function FinancialLateFeesContent() {
                         <Input type="number" min={0} value={thresholdForm.minimumDaysOverdue} onChange={(e) => setThresholdForm((f) => ({ ...f, minimumDaysOverdue: parseInt(e.target.value) || 0 }))} />
                       </div>
                     </div>
-                    <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                      <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setThresholdDialogOpen(false)}>Cancel</Button>
-                      <Button className={isMobile ? "w-full" : undefined} onClick={() => createThreshold.mutate()} disabled={!thresholdForm.stageName || createThreshold.isPending}>Add</Button>
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <Button className="w-full sm:w-auto" variant="outline" onClick={() => setThresholdDialogOpen(false)}>Cancel</Button>
+                      <Button className="w-full sm:w-auto" onClick={() => createThreshold.mutate()} disabled={!thresholdForm.stageName || createThreshold.isPending}>Add</Button>
                     </div>
                   </div>
                 </DialogContent>
@@ -1059,10 +1059,10 @@ export function FinancialLateFeesContent() {
                 <DialogTrigger asChild>
                   <Button size="sm" className={isMobile ? "min-h-11 w-full" : undefined} disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-1" />New Plan</Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-2xl">
                   <DialogHeader><DialogTitle>Create Payment Plan</DialogTitle></DialogHeader>
                   <div className="space-y-3">
-                    <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "md:grid-cols-2"}`}>
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Unit ID</label>
                         <Input placeholder="Unit ID" value={planForm.unitId} onChange={(e) => setPlanForm((f) => ({ ...f, unitId: e.target.value }))} />
@@ -1097,10 +1097,10 @@ export function FinancialLateFeesContent() {
                       </div>
                     </div>
                     <Textarea placeholder="Notes (optional)" value={planForm.notes} onChange={(e) => setPlanForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
-                    <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                      <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setPlanDialogOpen(false)}>Cancel</Button>
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <Button className="w-full sm:w-auto" variant="outline" onClick={() => setPlanDialogOpen(false)}>Cancel</Button>
                       <Button
-                        className={isMobile ? "w-full" : undefined}
+                        className="w-full sm:w-auto"
                         onClick={() => createPlan.mutate()}
                         disabled={!planForm.unitId || !planForm.personId || !planForm.totalAmount || !planForm.installmentAmount || createPlan.isPending}
                       >
@@ -1232,7 +1232,7 @@ export function FinancialLateFeesContent() {
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-1" />Refer Account</Button>
               </DialogTrigger>
-              <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
+              <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-md">
                 <DialogHeader><DialogTitle>Refer Account to Collections</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <Input placeholder="Unit ID" value={handoffForm.unitId} onChange={(e) => setHandoffForm((f) => ({ ...f, unitId: e.target.value }))} />
@@ -1241,9 +1241,9 @@ export function FinancialLateFeesContent() {
                   <Input placeholder="Agency Name (optional)" value={handoffForm.agencyName} onChange={(e) => setHandoffForm((f) => ({ ...f, agencyName: e.target.value }))} />
                   <Input placeholder="Agency Case Number (optional)" value={handoffForm.agencyCaseNumber} onChange={(e) => setHandoffForm((f) => ({ ...f, agencyCaseNumber: e.target.value }))} />
                   <Textarea placeholder="Notes (optional)" value={handoffForm.notes} onChange={(e) => setHandoffForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
-                  <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                    <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setHandoffDialogOpen(false)}>Cancel</Button>
-                    <Button className={isMobile ? "w-full" : undefined} onClick={() => createHandoff.mutate()} disabled={!handoffForm.unitId || !handoffForm.personId || !handoffForm.referralAmount || createHandoff.isPending}>Refer</Button>
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <Button className="w-full sm:w-auto" variant="outline" onClick={() => setHandoffDialogOpen(false)}>Cancel</Button>
+                    <Button className="w-full sm:w-auto" onClick={() => createHandoff.mutate()} disabled={!handoffForm.unitId || !handoffForm.personId || !handoffForm.referralAmount || createHandoff.isPending}>Refer</Button>
                   </div>
                 </div>
               </DialogContent>
