@@ -200,6 +200,7 @@ import {
   portalAccess,
   smsDeliveryLogs,
   pushSubscriptions,
+  adminPushSubscriptions,
   auditLogs,
   adminUserPreferences,
   platformSubscriptions,
@@ -13376,6 +13377,147 @@ This is an automated demo request from the Your Condo Manager website.
         quietHoursEnd: created.quietHoursEnd,
         notificationCategoryPreferences: (created.notificationCategoryPreferencesJson ?? {}) as Record<string, boolean>,
       }));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── 4.1 Tier 3 (Wave 32) — alert push + email notification preferences ──
+  // Narrow per-channel toggles for severity:'critical' alert fan-out. Sits
+  // alongside the broader /api/admin/me/preferences surface; carrying only
+  // the two booleans keeps the contract small and dedicated.
+  // Spec: docs/projects/platform-overhaul/decisions/4.1-tier-3-notifications.md
+
+  async function loadOrCreatePrefsRow(adminUserId: string) {
+    const [existing] = await db
+      .select()
+      .from(adminUserPreferences)
+      .where(eq(adminUserPreferences.adminUserId, adminUserId))
+      .limit(1);
+    if (existing) return existing;
+    const [created] = await db
+      .insert(adminUserPreferences)
+      .values({ adminUserId })
+      .returning();
+    return created;
+  }
+
+  app.get("/api/admin/notification-preferences", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const adminUserId = req.adminUserId;
+      if (!adminUserId) return res.status(401).json({ message: "Not authenticated" });
+      const [prefs] = await db
+        .select()
+        .from(adminUserPreferences)
+        .where(eq(adminUserPreferences.adminUserId, adminUserId))
+        .limit(1);
+      // Defaults: email ON, push OFF (matches the schema defaults).
+      const email = prefs?.notifyAlertsEmail ?? 1;
+      const push = prefs?.notifyAlertsPush ?? 0;
+      res.json({ email: email !== 0, push: push !== 0 });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/admin/notification-preferences", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const adminUserId = req.adminUserId;
+      if (!adminUserId) return res.status(401).json({ message: "Not authenticated" });
+      const { email, push } = (req.body ?? {}) as { email?: unknown; push?: unknown };
+      const patch: { notifyAlertsEmail?: number; notifyAlertsPush?: number; updatedAt: Date } = { updatedAt: new Date() };
+      if (typeof email === "boolean") patch.notifyAlertsEmail = email ? 1 : 0;
+      if (typeof push === "boolean") patch.notifyAlertsPush = push ? 1 : 0;
+      if (patch.notifyAlertsEmail === undefined && patch.notifyAlertsPush === undefined) {
+        return res.status(400).json({ message: "At least one of email/push must be provided as a boolean" });
+      }
+      const row = await loadOrCreatePrefsRow(adminUserId);
+      const [updated] = await db
+        .update(adminUserPreferences)
+        .set(patch)
+        .where(eq(adminUserPreferences.id, row.id))
+        .returning();
+      res.json({
+        email: (updated.notifyAlertsEmail ?? 1) !== 0,
+        push: (updated.notifyAlertsPush ?? 0) !== 0,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // VAPID public key — operator-side. Reuses the same VAPID key as the
+  // portal-side endpoint (single-key infra). If the keys ever need to
+  // diverge we'd add VAPID_PUBLIC_KEY_ADMIN env var fallback here.
+  app.get("/api/admin/push/vapid-public-key", requireAdmin, async (_req: AdminRequest, res) => {
+    const key = await getVapidPublicKey();
+    if (!key) return res.json({ configured: false, publicKey: null });
+    res.json({ configured: true, publicKey: key });
+  });
+
+  app.post("/api/admin/push/subscribe", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const adminUserId = req.adminUserId;
+      if (!adminUserId) return res.status(401).json({ message: "Not authenticated" });
+      const { endpoint, keys } = (req.body ?? {}) as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        return res.status(400).json({ message: "endpoint, keys.p256dh, and keys.auth are required" });
+      }
+      const userAgent = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"].slice(0, 300) : null;
+      // Idempotent: same endpoint upserts (re-activate + update keys).
+      const [existing] = await db
+        .select()
+        .from(adminPushSubscriptions)
+        .where(eq(adminPushSubscriptions.endpoint, endpoint))
+        .limit(1);
+      if (existing) {
+        const [updated] = await db
+          .update(adminPushSubscriptions)
+          .set({
+            adminUserId,
+            p256dhKey: keys.p256dh,
+            authKey: keys.auth,
+            userAgent,
+            isActive: 1,
+            updatedAt: new Date(),
+          })
+          .where(eq(adminPushSubscriptions.id, existing.id))
+          .returning();
+        return res.json({ id: updated.id, ok: true });
+      }
+      const [created] = await db
+        .insert(adminPushSubscriptions)
+        .values({
+          adminUserId,
+          endpoint,
+          p256dhKey: keys.p256dh,
+          authKey: keys.auth,
+          userAgent,
+          isActive: 1,
+        })
+        .returning();
+      res.status(201).json({ id: created.id, ok: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/push/subscribe", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const adminUserId = req.adminUserId;
+      if (!adminUserId) return res.status(401).json({ message: "Not authenticated" });
+      const { endpoint } = (req.body ?? {}) as { endpoint?: string };
+      if (!endpoint) return res.status(400).json({ message: "endpoint is required" });
+      await db
+        .update(adminPushSubscriptions)
+        .set({ isActive: 0, updatedAt: new Date() })
+        .where(
+          and(
+            eq(adminPushSubscriptions.adminUserId, adminUserId),
+            eq(adminPushSubscriptions.endpoint, endpoint),
+          ),
+        );
+      res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

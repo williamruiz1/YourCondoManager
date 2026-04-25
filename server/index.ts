@@ -15,6 +15,7 @@ import { runAutopayCollectionForAssociation } from "./routes/autopay";
 import { runAutopayRetries } from "./services/retry-service";
 import { generateDelinquencyNotices } from "./services/delinquency-notice-service";
 import { runSweep as runUnifiedAssessmentSweep } from "./assessment-execution";
+import { fanOutCriticalAlerts } from "./alerts/notifications";
 import { log } from "./logger";
 import { startElectionScheduler } from "./election-scheduler";
 import { createRateLimiter } from "./rate-limit";
@@ -160,7 +161,7 @@ async function runAutomationSweep() {
   // per-subsystem functions (runDueRecurringCharges,
   // runAutomaticSpecialAssessmentInstallments) were retired alongside the
   // Q8 run-endpoint shims and no longer exist in the bundle.
-  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
     storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
@@ -168,10 +169,26 @@ async function runAutomationSweep() {
     runDueAutopayCharges(),
     runAutopayRetries(),
     runAllDelinquencyNotices(),
+    // 4.1 Tier 3 (Wave 32) — fan out critical alerts via push + email.
+    // Wrapped to never throw out of the sweep — a misbehaving notification
+    // path must not jam the rest of automation. Errors are logged and
+    // counted as zero-result.
+    fanOutCriticalAlerts().catch((error: unknown) => {
+      console.error("[alert-notifications] fanOutCriticalAlerts failed:", error);
+      return {
+        scanned: 0,
+        sentEmail: 0,
+        sentPush: 0,
+        failed: 0,
+        rateLimited: 0,
+        alreadyDelivered: 0,
+        suppressedPreExisting: 0,
+      };
+    }),
   ]);
 
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}`,
     "automation",
   );
 }
