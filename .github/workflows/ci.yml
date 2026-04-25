@@ -1,0 +1,108 @@
+# Wave 30 — CI pipeline scaffold (Layer 5 module 5.9).
+#
+# Runs on every pull request targeting `main` and on every push to
+# `main`. Four jobs, all gating merge:
+#   - check     : tsc + eslint
+#   - test      : vitest
+#   - build     : production bundle (sanity)
+#   - playwright: route-mock + real-backend + axe + visual regression
+#
+# The Playwright job runs the three Playwright modes sequentially in
+# the same job because they share the npm + browser install. Failure
+# uploads traces and the HTML report so the failure can be debugged
+# without re-running the suite locally.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: tsc + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run check
+      - run: npm run lint
+
+  test:
+    name: vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npx vitest run
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+
+  playwright:
+    name: Playwright (route-mock + real-backend + axe + visual)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Playwright (route-mock — excludes @visual)
+        run: npx playwright test --grep-invert @visual
+        env:
+          PLAYWRIGHT_STATIC: "1"
+      - name: Playwright (real-backend — excludes @visual)
+        run: npx playwright test --grep-invert @visual
+        env:
+          PLAYWRIGHT_REAL_BACKEND: "1"
+      - name: Playwright (visual regression)
+        # Visual baselines are committed as macOS-rendered PNGs (Wave 25).
+        # CI runs Linux which has different font rendering / antialiasing,
+        # so visual snapshots will not match without per-platform baselines.
+        # Run the job non-blocking until baselines are regenerated on Linux
+        # (planned follow-up). Static-server mode used here so we don't
+        # require DATABASE_URL (the visual specs don't exercise the DB).
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_STATIC: "1"
+        run: npm run test:playwright:visual
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
