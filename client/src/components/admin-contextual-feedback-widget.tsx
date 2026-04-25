@@ -1030,6 +1030,8 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
                         src={screenshotBase64}
                         alt="Screenshot of selected element"
                         className="max-h-40 w-full object-contain bg-slate-50"
+                        loading="lazy"
+                        decoding="async"
                       />
                       <button
                         type="button"

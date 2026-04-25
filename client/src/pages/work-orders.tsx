@@ -867,7 +867,7 @@ export function WorkOrdersContent() {
                     const generalPhotos = photos.filter((p) => p.type !== "before" && p.type !== "after");
                     const renderThumb = (photo: WorkOrderPhoto, fallbackAlt: string) => (
                       <div key={photo.url} className="relative rounded overflow-hidden border bg-muted group">
-                        <img src={photo.url} alt={photo.label || fallbackAlt} className="w-full h-28 object-cover" />
+                        <img src={photo.url} alt={photo.label || fallbackAlt} className="w-full h-28 object-cover" loading="lazy" decoding="async" />
                         <button
                           type="button"
                           onClick={() => deletePhoto.mutate(photo.url)}

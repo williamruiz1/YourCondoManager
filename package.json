@@ -33,7 +33,9 @@
     "verify:vendors": "tsx script/verify-vendors.ts",
     "verify:work-orders": "tsx script/verify-work-orders.ts",
     "verify:seed-integrity": "tsx script/verify-seed-integrity.ts",
-    "verify:financial": "tsx script/verify-financial.ts"
+    "verify:financial": "tsx script/verify-financial.ts",
+    "optimize:images": "tsx script/optimize-images.ts",
+    "load-test": "tsx script/load-test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
