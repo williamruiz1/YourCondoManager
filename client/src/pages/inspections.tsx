@@ -19,6 +19,7 @@ import { operationsSubPages } from "@/lib/sub-page-nav";
 import { Link } from "wouter";
 import { Wrench, ExternalLink } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 type FindingSeverity = "low" | "medium" | "high" | "critical";
 type FindingStatus = "open" | "monitoring" | "resolved";
@@ -211,11 +212,11 @@ export function InspectionsContent() {
         <div />
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button disabled={!activeAssociationId} onClick={openCreate}>New Inspection</Button>
+            <Button disabled={!activeAssociationId} onClick={openCreate}>{t("inspections.action.newInspection")}</Button>
           </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editing ? "Edit Inspection" : "Create Inspection"}</DialogTitle>
+              <DialogTitle>{editing ? t("inspections.dialog.editTitle") : t("inspections.dialog.newTitle")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -257,7 +258,7 @@ export function InspectionsContent() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="font-medium">Findings</div>
-                  <Button type="button" variant="outline" size="sm" onClick={addFinding}>Add Finding</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={addFinding}>{t("inspections.action.addFinding")}</Button>
                 </div>
                 {form.findings.map((finding, index) => (
                   <Card key={`${index}-${finding.linkedWorkOrderId || "new"}`}>
@@ -314,23 +315,24 @@ export function InspectionsContent() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">Inspection records</div><div className="text-2xl font-semibold">{totals.records}</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">Open findings</div><div className="text-2xl font-semibold">{totals.openFindings}</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">Linked to work orders</div><div className="text-2xl font-semibold">{totals.linkedFindings}</div></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{t("inspections.stats.records")}</div><div className="text-2xl font-semibold">{totals.records}</div></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{t("inspections.stats.openFindings")}</div><div className="text-2xl font-semibold">{totals.openFindings}</div></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{t("inspections.stats.linkedFindings")}</div><div className="text-2xl font-semibold">{totals.linkedFindings}</div></CardContent></Card>
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <Table>
+          {/* Wave 27 a11y: aria-label names this inspection records table. */}
+          <Table aria-label={t("inspections.tableLabel")}>
             <TableHeader>
               <TableRow>
-                <TableHead>Location</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Inspector</TableHead>
-                <TableHead>Condition</TableHead>
-                <TableHead>Findings</TableHead>
-                <TableHead>Inspected</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("inspections.col.location")}</TableHead>
+                <TableHead>{t("inspections.col.type")}</TableHead>
+                <TableHead>{t("inspections.col.inspector")}</TableHead>
+                <TableHead>{t("inspections.col.condition")}</TableHead>
+                <TableHead>{t("inspections.col.findings")}</TableHead>
+                <TableHead>{t("inspections.col.inspected")}</TableHead>
+                <TableHead className="text-right">{t("inspections.col.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -347,7 +349,7 @@ export function InspectionsContent() {
                     <TableCell><Badge variant="outline">{record.overallCondition}</Badge></TableCell>
                     <TableCell>
                       <div className="space-y-2">
-                        {findings.length === 0 ? <div className="text-xs text-muted-foreground">No findings</div> : null}
+                        {findings.length === 0 ? <div className="text-xs text-muted-foreground">{t("inspections.empty.findings")}</div> : null}
                         {findings.map((finding, index) => (
                           <div key={`${record.id}-${index}`} className="rounded border px-2 py-2 text-xs space-y-1">
                             <div className="flex items-center justify-between gap-2">
@@ -359,19 +361,19 @@ export function InspectionsContent() {
                               <span className="text-muted-foreground">{finding.status}</span>
                               {finding.linkedWorkOrderId ? (
                                 <Link href="/app/work-orders">
-                                  <Button size="icon" variant="secondary" title="View Work Order">
-                                    <ExternalLink className="h-4 w-4" />
+                                  <Button size="icon" variant="secondary" aria-label={`${t("inspections.action.viewWorkOrder")}: ${finding.title}`}>
+                                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
                                   </Button>
                                 </Link>
                               ) : (
                                 <Button
                                   size="icon"
                                   variant="outline"
-                                  title="Create Work Order"
+                                  aria-label={`${t("inspections.action.createWorkOrder")}: ${finding.title}`}
                                   disabled={convertFinding.isPending}
                                   onClick={() => convertFinding.mutate({ inspectionId: record.id, findingIndex: index })}
                                 >
-                                  <Wrench className="h-4 w-4" />
+                                  <Wrench className="h-4 w-4" aria-hidden="true" />
                                 </Button>
                               )}
                             </div>
@@ -381,15 +383,15 @@ export function InspectionsContent() {
                     </TableCell>
                     <TableCell>{new Date(record.inspectedAt).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant="outline" onClick={() => openEdit(record)}>Edit</Button>
+                      <Button size="sm" variant="outline" onClick={() => openEdit(record)} aria-label={`${t("common.action.edit")} inspection at ${record.locationText}`}>{t("common.action.edit")}</Button>
                     </TableCell>
                   </TableRow>
                 );
               })}
               {inspections.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    No inspection records yet.
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground" role="status">
+                    {t("inspections.empty.records")}
                   </TableCell>
                 </TableRow>
               ) : null}
@@ -402,17 +404,19 @@ export function InspectionsContent() {
 }
 
 export default function InspectionsPage() {
-  useDocumentTitle("Inspections");
+  useDocumentTitle(t("inspections.title"));
   return (
-    <div className="p-6 space-y-6">
+    // Wave 27 a11y: section + aria-labelledby (heading id below).
+    <section className="p-6 space-y-6" aria-labelledby="inspections-heading">
       <WorkspacePageHeader
-        title="Inspection Records"
-        summary="Record unit and common-area inspections, document findings, and turn follow-up items into work orders."
-        eyebrow="Operations"
-        breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Inspection Records" }]}
+        title={t("inspections.title")}
+        headingId="inspections-heading"
+        summary={t("inspections.summary")}
+        eyebrow={t("common.eyebrow.operations")}
+        breadcrumbs={[{ label: t("common.crumb.operations"), href: "/app/operations/dashboard" }, { label: t("inspections.crumb") }]}
         subPages={operationsSubPages}
       />
       <InspectionsContent />
-    </div>
+    </section>
   );
 }

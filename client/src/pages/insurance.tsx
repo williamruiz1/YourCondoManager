@@ -50,6 +50,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { AlertTriangle, Plus, Shield, Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 const POLICY_TYPES = [
   { value: "master", label: "Master Policy" },
@@ -85,7 +86,7 @@ function slaStatus(policy: AssociationInsurancePolicy) {
 }
 
 export default function InsurancePage() {
-  useDocumentTitle("Insurance");
+  useDocumentTitle(t("insurance.title"));
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
@@ -180,23 +181,25 @@ export default function InsurancePage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    // Wave 27 a11y: section + aria-labelledby (heading id below).
+    <section className="p-6 space-y-6" aria-labelledby="insurance-heading">
       <WorkspacePageHeader
-        title="Insurance Policies"
-        summary="Track association-level D&O, fidelity bond, master policy, and other insurance coverage with expiration alerts."
-        eyebrow="Compliance"
-        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Insurance Policies" }]}
+        title={t("insurance.title")}
+        headingId="insurance-heading"
+        summary={t("insurance.summary")}
+        eyebrow={t("insurance.eyebrow")}
+        breadcrumbs={[{ label: t("common.crumb.dashboard"), href: "/app" }, { label: t("insurance.crumb") }]}
         actions={
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); form.reset(); } }}>
             <DialogTrigger asChild>
               <Button disabled={!activeAssociationId}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Policy
+                <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+                {t("insurance.action.addPolicy")}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
               <DialogHeader>
-                <DialogTitle>{editingId ? "Edit Policy" : "New Insurance Policy"}</DialogTitle>
+                <DialogTitle>{editingId ? t("insurance.dialog.editTitle") : t("insurance.dialog.newTitle")}</DialogTitle>
               </DialogHeader>
               <Form {...form}>
                 <form className="space-y-4" onSubmit={form.handleSubmit((v) => createMutation.mutate(v))}>
@@ -282,15 +285,15 @@ export default function InsurancePage() {
         activeAssociationName={activeAssociationName}
         explanation={
           activeAssociationId
-            ? "Showing insurance policies for the active association."
-            : "Select an association to view or manage its insurance policies."
+            ? t("insurance.scope.active")
+            : t("insurance.scope.inactive")
         }
       />
 
       {expiringSoon.length > 0 && (
-        <Card className="border-orange-300 bg-orange-50/50">
+        <Card className="border-orange-300 bg-orange-50/50" role="status">
           <CardContent className="p-4 flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-orange-500 mt-0.5 shrink-0" />
+            <AlertTriangle className="h-5 w-5 text-orange-500 mt-0.5 shrink-0" aria-hidden="true" />
             <div>
               <div className="font-medium text-sm">
                 {expiringSoon.length} polic{expiringSoon.length === 1 ? "y" : "ies"} expiring within 90 days
@@ -305,35 +308,36 @@ export default function InsurancePage() {
 
       <Card>
         <div className="flex items-center gap-2 px-6 pt-5 pb-3">
-          <Shield className="h-5 w-5 text-muted-foreground" />
-          <h2 className="text-base font-semibold">Policies</h2>
+          <Shield className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+          <h2 className="text-base font-semibold">{t("insurance.section.policies")}</h2>
         </div>
         <CardContent className="p-0">
           {!activeAssociationId ? (
-            <div className="px-6 py-10 text-center text-sm text-muted-foreground">
-              Select an association to view insurance policies.
+            <div className="px-6 py-10 text-center text-sm text-muted-foreground" role="status">
+              {t("insurance.empty.selectAssociation")}
             </div>
           ) : policiesQuery.isLoading ? (
-            <div className="px-6 py-10 text-center text-sm text-muted-foreground">Loading…</div>
+            <div className="px-6 py-10 text-center text-sm text-muted-foreground" role="status">{t("common.loading")}</div>
           ) : (policiesQuery.data ?? []).length === 0 ? (
             <div className="px-6 pb-6">
               <EmptyState
                 icon={Shield}
-                title="No insurance policies"
-                description="Track liability, property, and umbrella policies here. Add your first policy above to start expiry-monitoring."
+                title={t("insurance.empty.title")}
+                description={t("insurance.empty.description")}
                 testId="empty-insurance-policies"
               />
             </div>
           ) : (
-            <Table>
+            // Wave 27 a11y: aria-label names this insurance table for screen readers.
+            <Table aria-label={t("insurance.tableLabel")}>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Carrier</TableHead>
-                  <TableHead>Policy #</TableHead>
-                  <TableHead>Coverage</TableHead>
-                  <TableHead>Expiration</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("insurance.col.type")}</TableHead>
+                  <TableHead>{t("insurance.col.carrier")}</TableHead>
+                  <TableHead>{t("insurance.col.policyNumber")}</TableHead>
+                  <TableHead>{t("insurance.col.coverage")}</TableHead>
+                  <TableHead>{t("insurance.col.expiration")}</TableHead>
+                  <TableHead className="text-right">{t("insurance.col.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -359,16 +363,22 @@ export default function InsurancePage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                          <Button size="sm" variant="outline" onClick={() => openEdit(policy)}>
-                            Edit
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openEdit(policy)}
+                            aria-label={`${t("common.action.edit")} ${typeLabel} ${policy.carrier}`}
+                          >
+                            {t("common.action.edit")}
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => deleteMutation.mutate(policy.id)}
                             disabled={deleteMutation.isPending}
+                            aria-label={`${t("common.action.delete")} ${typeLabel} ${policy.carrier}`}
                           >
-                            <Trash2 className="h-3 w-3" />
+                            <Trash2 className="h-3 w-3" aria-hidden="true" />
                           </Button>
                         </div>
                       </TableCell>
@@ -380,6 +390,6 @@ export default function InsurancePage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </section>
   );
 }

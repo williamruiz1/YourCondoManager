@@ -13,6 +13,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 type OperationsDashboardData = {
   totals: {
@@ -32,7 +33,7 @@ type OperationsDashboardData = {
 };
 
 export default function OperationsDashboardPage() {
-  useDocumentTitle("Operations Overview");
+  useDocumentTitle(t("operationsDashboard.title"));
   const isMobile = useIsMobile();
   const { data, isLoading } = useQuery<OperationsDashboardData>({
     queryKey: ["/api/operations/dashboard"],
@@ -88,25 +89,27 @@ export default function OperationsDashboardPage() {
   ];
 
   const statCards = [
-    ["Open Work Orders", totals?.openWorkOrders],
-    ["Due Maintenance", totals?.dueMaintenance],
-    ["Open Findings", totals?.openFindings],
-    ["Active Vendors", totals?.activeVendors],
-    ["Renewal Risk", totals?.pendingRenewalVendors],
-    ["Overdue Instances", totals?.overdueInstances],
+    [t("operationsDashboard.stat.openWorkOrders"), totals?.openWorkOrders],
+    [t("operationsDashboard.stat.dueMaintenance"), totals?.dueMaintenance],
+    [t("operationsDashboard.stat.openFindings"), totals?.openFindings],
+    [t("operationsDashboard.stat.activeVendors"), totals?.activeVendors],
+    [t("operationsDashboard.stat.renewalRisk"), totals?.pendingRenewalVendors],
+    [t("operationsDashboard.stat.overdueInstances"), totals?.overdueInstances],
   ] as const;
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
+    // Wave 27 a11y: section + aria-labelledby (heading id below).
+    <section className="space-y-6 p-4 sm:p-6" aria-labelledby="operations-dashboard-heading">
       {/* [0.1 AC 7] Title and breadcrumb read "Operations Overview" — the word
           "Dashboard" is intentionally absent from this surface per the 0.1
           decision. The root breadcrumb reads "Home" to match the renamed /app
           landing page. */}
       <WorkspacePageHeader
-        title="Operations Overview"
-        summary="Monitor active work, preventive maintenance pressure, vendor risk, and inspection follow-up from one operations view."
-        eyebrow="Operations"
-        breadcrumbs={[{ label: "Home", href: "/app" }, { label: "Operations Overview" }]}
+        title={t("operationsDashboard.title")}
+        headingId="operations-dashboard-heading"
+        summary={t("operationsDashboard.summary")}
+        eyebrow={t("operationsDashboard.eyebrow")}
+        breadcrumbs={[{ label: "Home", href: "/app" }, { label: t("operationsDashboard.crumb") }]}
         shortcuts={[
           { label: "Open Work Orders", href: "/app/work-orders" },
           { label: "Open Vendors", href: "/app/vendors" },
@@ -114,9 +117,9 @@ export default function OperationsDashboardPage() {
         subPages={operationsSubPages}
       />
       <div className="grid gap-2 sm:flex sm:flex-wrap">
-        <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("vendors")}>Export Vendor Report</Button>
-        <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("work-orders")}>Export Work Orders</Button>
-        <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("maintenance")}>Export Maintenance</Button>
+        <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("vendors")}>{t("operationsDashboard.action.exportVendors")}</Button>
+        <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("work-orders")}>{t("operationsDashboard.action.exportWorkOrders")}</Button>
+        <Button className="min-h-11 justify-center sm:min-h-10" variant="outline" onClick={() => downloadReport("maintenance")}>{t("operationsDashboard.action.exportMaintenance")}</Button>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
@@ -141,7 +144,7 @@ export default function OperationsDashboardPage() {
         </Card>
       ) : (
         <RecommendedActionsPanel
-          title="Operations Next Actions"
+          title={t("operationsDashboard.section.nextActions")}
           description="These recommendations translate the dashboard counts into the next operational moves."
           actions={recommendedActions}
         />
@@ -198,7 +201,7 @@ export default function OperationsDashboardPage() {
         ) : (
           <>
             <Card>
-              <CardHeader><CardTitle className="text-base">Work Order Aging</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">{t("operationsDashboard.section.workOrderAging")}</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
                   Use this breakdown to decide whether the team should dispatch, follow up, or close work.
@@ -222,7 +225,7 @@ export default function OperationsDashboardPage() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle className="text-base">Vendor Status</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">{t("operationsDashboard.section.vendorStatus")}</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
                   Vendor status shows whether current compliance is strong enough to keep assigning operational work safely.
@@ -245,7 +248,7 @@ export default function OperationsDashboardPage() {
           </>
         )}
         <Card>
-          <CardHeader><CardTitle className="text-base">Recent Inspections</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">{t("operationsDashboard.section.recentInspections")}</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
             {isMobile ? (
               <div className="text-xs text-muted-foreground">
@@ -268,7 +271,7 @@ export default function OperationsDashboardPage() {
                 <div className="text-muted-foreground">{record.inspectionType} · {record.inspectorName}</div>
               </div>
             ))}
-            {!isLoading && (data?.recentInspections ?? []).length === 0 ? <div className="text-muted-foreground">No inspections yet.</div> : null}
+            {!isLoading && (data?.recentInspections ?? []).length === 0 ? <div className="text-muted-foreground" role="status">{t("operationsDashboard.empty.inspections")}</div> : null}
           </CardContent>
         </Card>
       </div>
@@ -301,7 +304,7 @@ export default function OperationsDashboardPage() {
           </MobileSectionShell>
         ) : (
           <Card>
-            <CardHeader><CardTitle className="text-base">Recent Work Orders</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">{t("operationsDashboard.section.recentWorkOrders")}</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               {isLoading ? (
                 <>
@@ -320,7 +323,7 @@ export default function OperationsDashboardPage() {
                   </div>
                 </div>
               ))}
-              {!isLoading && (data?.recentWorkOrders ?? []).length === 0 ? <div className="text-muted-foreground">No work orders yet.</div> : null}
+              {!isLoading && (data?.recentWorkOrders ?? []).length === 0 ? <div className="text-muted-foreground" role="status">{t("operationsDashboard.empty.workOrders")}</div> : null}
             </CardContent>
           </Card>
         )}
@@ -352,7 +355,7 @@ export default function OperationsDashboardPage() {
           </MobileSectionShell>
         ) : (
           <Card>
-            <CardHeader><CardTitle className="text-base">Due Maintenance Instances</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">{t("operationsDashboard.section.dueInstances")}</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               {isLoading ? (
                 <>
@@ -371,7 +374,7 @@ export default function OperationsDashboardPage() {
                   </div>
                 </div>
               ))}
-              {!isLoading && (data?.dueInstances ?? []).length === 0 ? <div className="text-muted-foreground">No due maintenance instances.</div> : null}
+              {!isLoading && (data?.dueInstances ?? []).length === 0 ? <div className="text-muted-foreground" role="status">{t("operationsDashboard.empty.dueInstances")}</div> : null}
             </CardContent>
           </Card>
         )}
@@ -406,7 +409,7 @@ export default function OperationsDashboardPage() {
         </MobileSectionShell>
       ) : (
         <Card>
-          <CardHeader><CardTitle className="text-base">Operations Audit Trail</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">{t("operationsDashboard.section.audit")}</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
             {isLoading ? (
               <>
@@ -425,10 +428,10 @@ export default function OperationsDashboardPage() {
                 </div>
               </div>
             ))}
-            {!isLoading && (data?.recentAudit ?? []).length === 0 ? <div className="text-muted-foreground">No operations audit entries yet.</div> : null}
+            {!isLoading && (data?.recentAudit ?? []).length === 0 ? <div className="text-muted-foreground" role="status">{t("operationsDashboard.empty.audit")}</div> : null}
           </CardContent>
         </Card>
       )}
-    </div>
+    </section>
   );
 }

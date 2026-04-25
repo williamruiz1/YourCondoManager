@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import type { ExecutiveEvidence, ExecutiveUpdate } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 type EvidenceForm = {
   evidenceType: "release-note" | "metric" | "screenshot" | "link" | "note";
@@ -57,7 +58,7 @@ function renderBoldLabelText(text: string) {
 }
 
 export default function ExecutivePage() {
-  useDocumentTitle("Executive");
+  useDocumentTitle(t("executive.title"));
   const { toast } = useToast();
   const { data: updates = [], isLoading } = useQuery<ExecutiveUpdate[]>({ queryKey: ["/api/admin/executive/updates"] });
 
@@ -226,20 +227,22 @@ export default function ExecutivePage() {
   });
 
   return (
-    <div className="p-4 md:p-6 space-y-4" data-testid="page-executive">
+    // Wave 27 a11y: section + aria-labelledby (heading id below).
+    <section className="p-4 md:p-6 space-y-4" data-testid="page-executive" aria-labelledby="executive-heading">
       <WorkspacePageHeader
-        title="Executive Delivery Deck"
-        summary="Slide format: one project per slide with a problem-solution-features table."
-        eyebrow="Platform"
-        breadcrumbs={[{ label: "Platform", href: "/app/platform/controls" }, { label: "Executive Delivery Deck" }]}
+        title={t("executive.title")}
+        headingId="executive-heading"
+        summary={t("executive.summary")}
+        eyebrow={t("executive.eyebrow")}
+        breadcrumbs={[{ label: t("executive.eyebrow"), href: "/app/platform/controls" }, { label: t("executive.crumb") }]}
         subPages={platformSubPages}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => createTemplateMutation.mutate()} disabled={createTemplateMutation.isPending} data-testid="button-create-slide-template">
-              {createTemplateMutation.isPending ? "Creating..." : "Create Slide Template"}
+              {createTemplateMutation.isPending ? t("executive.action.creating") : t("executive.action.createTemplate")}
             </Button>
             <Button onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending} data-testid="button-sync-executive-from-roadmap">
-              {syncMutation.isPending ? "Syncing..." : "Sync from Roadmap"}
+              {syncMutation.isPending ? t("executive.action.syncing") : t("executive.action.sync")}
             </Button>
           </div>
         }
@@ -247,20 +250,20 @@ export default function ExecutivePage() {
 
       <Tabs defaultValue="highlights" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="highlights">Highlights Deck</TabsTrigger>
-          <TabsTrigger value="defend">Defend</TabsTrigger>
+          <TabsTrigger value="highlights">{t("executive.tabs.highlights")}</TabsTrigger>
+          <TabsTrigger value="defend">{t("executive.tabs.defend")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="highlights" className="space-y-4">
           {isLoading ? (
             <Card>
-              <CardContent className="py-10 text-sm text-muted-foreground">Loading executive slides...</CardContent>
+              <CardContent className="py-10 text-sm text-muted-foreground" role="status">{t("executive.loading")}</CardContent>
             </Card>
           ) : !activeSlide ? (
             <EmptyState
               icon={Presentation}
-              title="No project slides available yet"
-              description="Executive slides will appear here once the platform admin publishes the next quarterly review."
+              title={t("executive.empty.noSlides.title")}
+              description={t("executive.empty.noSlides.description")}
               testId="empty-executive-slides"
             />
           ) : (
@@ -278,8 +281,9 @@ export default function ExecutivePage() {
                       disabled={slideIndex <= 0}
                       onClick={() => setSlideIndex((prev) => Math.max(0, prev - 1))}
                       data-testid="button-slide-prev"
+                      aria-label={t("executive.action.prevSlide")}
                     >
-                      <ChevronLeft className="h-4 w-4" />
+                      <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="outline"
@@ -287,8 +291,9 @@ export default function ExecutivePage() {
                       disabled={slideIndex >= projectSlides.length - 1}
                       onClick={() => setSlideIndex((prev) => Math.min(projectSlides.length - 1, prev + 1))}
                       data-testid="button-slide-next"
+                      aria-label={t("executive.action.nextSlide")}
                     >
-                      <ChevronRight className="h-4 w-4" />
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
@@ -298,12 +303,13 @@ export default function ExecutivePage() {
               <CardContent>
                 <div className="rounded-lg border p-4">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    {/* Wave 27 a11y: aria-label names this deck slide table. */}
+                    <table className="w-full text-sm" aria-label={t("executive.deck.tableLabel")}>
                       <thead>
                         <tr className="border-b bg-muted/40">
-                          <th className="text-left p-2 font-medium">Problem</th>
-                          <th className="text-left p-2 font-medium">Solution</th>
-                          <th className="text-left p-2 font-medium">Features Delivered</th>
+                          <th className="text-left p-2 font-medium">{t("executive.col.problem")}</th>
+                          <th className="text-left p-2 font-medium">{t("executive.col.solution")}</th>
+                          <th className="text-left p-2 font-medium">{t("executive.col.features")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -313,7 +319,7 @@ export default function ExecutivePage() {
                             <td className="p-2">{renderBoldLabelText(row.solution)}</td>
                             <td className="p-2">
                               {row.features.length === 0 ? (
-                                <span className="text-muted-foreground">No features listed.</span>
+                                <span className="text-muted-foreground">{t("executive.empty.noFeatures")}</span>
                               ) : (
                                 <ul className="list-disc pl-5 space-y-1">
                                   {row.features.map((feature) => (
@@ -336,8 +342,8 @@ export default function ExecutivePage() {
         <TabsContent value="defend" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Defend Log</CardTitle>
-              <CardDescription>Attach proof points to the selected slide.</CardDescription>
+              <CardTitle>{t("executive.defend.title")}</CardTitle>
+              <CardDescription>{t("executive.defend.description")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Select
@@ -349,11 +355,11 @@ export default function ExecutivePage() {
                   if (idx >= 0) setSlideIndex(idx);
                 }}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select project slide" />
+                <SelectTrigger aria-label={t("executive.defend.placeholder.slide")}>
+                  <SelectValue placeholder={t("executive.defend.placeholder.slide")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Select slide</SelectItem>
+                  <SelectItem value="none">{t("executive.defend.option.selectSlide")}</SelectItem>
                   {projectSlides.map((slide) => (
                     <SelectItem key={slide.id} value={slide.id}>
                       {slide.headline}
@@ -367,7 +373,7 @@ export default function ExecutivePage() {
                 onSubmit={evidenceForm.handleSubmit((values) => createEvidenceMutation.mutate(values))}
               >
                 <Select value={evidenceForm.watch("evidenceType")} onValueChange={(v) => evidenceForm.setValue("evidenceType", v as EvidenceForm["evidenceType"])}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Evidence type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -378,11 +384,11 @@ export default function ExecutivePage() {
                     <SelectItem value="screenshot">Screenshot</SelectItem>
                   </SelectContent>
                 </Select>
-                <Input placeholder="Label" {...evidenceForm.register("label", { required: true })} />
-                <Input placeholder="Value / URL / Metric" {...evidenceForm.register("value", { required: true })} />
+                <Input placeholder={t("executive.defend.placeholder.label")} aria-label={t("executive.defend.placeholder.label")} {...evidenceForm.register("label", { required: true })} />
+                <Input placeholder={t("executive.defend.placeholder.value")} aria-label={t("executive.defend.placeholder.value")} {...evidenceForm.register("value", { required: true })} />
                 <div className="md:col-span-3">
                   <Button type="submit" disabled={createEvidenceMutation.isPending || !selectedUpdateId}>
-                    {createEvidenceMutation.isPending ? "Saving..." : "Add Evidence"}
+                    {createEvidenceMutation.isPending ? t("executive.defend.action.saving") : t("executive.defend.action.add")}
                   </Button>
                 </div>
               </form>
@@ -391,14 +397,14 @@ export default function ExecutivePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Evidence Entries</CardTitle>
+              <CardTitle>{t("executive.defend.entriesTitle")}</CardTitle>
               <CardDescription>
                 {activeSlide ? `Evidence for: ${activeSlide.headline}` : "Select a slide to view evidence."}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               {evidence.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No evidence logged yet.</p>
+                <p className="text-sm text-muted-foreground" role="status">{t("executive.defend.empty")}</p>
               ) : (
                 evidence.map((entry) => (
                   <div key={entry.id} className="rounded-md border p-3">
@@ -415,6 +421,6 @@ export default function ExecutivePage() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </section>
   );
 }

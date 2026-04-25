@@ -1,5 +1,5 @@
 /**
- * 5.6 — i18n registry tests (Wave 21 + Wave 24).
+ * 5.6 — i18n registry tests (Wave 21 + Wave 24 + Wave 27).
  *
  * Spec: docs/projects/platform-overhaul/decisions/5.6-i18n-scaffolding.md
  *
@@ -15,6 +15,10 @@
  * Wave 24 expanded the registry to cover 15 additional surfaces; the
  * baseline expectation is raised below and surface-specific spot checks
  * are added to keep the registry as the single source of truth.
+ *
+ * Wave 27 (round 3) extends the registry to 8 more operator surfaces
+ * (insurance, maintenance schedules, inspections, resident feedback,
+ * executive deck, admin users, operations dashboard, AI ingestion).
  */
 
 import { describe, it, expect } from "vitest";
@@ -33,6 +37,13 @@ describe("i18n strings.en", () => {
     // keys across 15 more surfaces. The combined registry should comfortably
     // clear 250 — if it drops below, an extension was reverted.
     expect(Object.keys(strings).length).toBeGreaterThanOrEqual(250);
+  });
+
+  it("exports at least 350 keys after Wave 27 round-3 extension", () => {
+    // Wave 27 added ~120 more keys across 8 operator surfaces. Combined
+    // total should clear 350 — if it drops below, the round-3 extension
+    // was reverted.
+    expect(Object.keys(strings).length).toBeGreaterThanOrEqual(350);
   });
 
   it("every value is a non-empty string", () => {
@@ -96,6 +107,28 @@ describe("i18n strings.en", () => {
     expect(strings).toHaveProperty("units.title");
     expect(strings).toHaveProperty("units.action.addBuilding");
   });
+
+  it("includes the Wave 27 round-3 surface anchor keys", () => {
+    // Spot-checks for each of the 8 Wave 27 surfaces — at minimum the
+    // page title and at least one secondary key must be present so a
+    // partial revert is detected.
+    expect(strings).toHaveProperty("insurance.title");
+    expect(strings).toHaveProperty("insurance.action.addPolicy");
+    expect(strings).toHaveProperty("maintenanceSchedules.title");
+    expect(strings).toHaveProperty("maintenanceSchedules.stats.due");
+    expect(strings).toHaveProperty("inspections.title");
+    expect(strings).toHaveProperty("inspections.stats.openFindings");
+    expect(strings).toHaveProperty("residentFeedback.title");
+    expect(strings).toHaveProperty("residentFeedback.section.scoreDistribution");
+    expect(strings).toHaveProperty("executive.title");
+    expect(strings).toHaveProperty("executive.tabs.highlights");
+    expect(strings).toHaveProperty("adminUsers.title");
+    expect(strings).toHaveProperty("adminUsers.col.email");
+    expect(strings).toHaveProperty("operationsDashboard.title");
+    expect(strings).toHaveProperty("operationsDashboard.action.exportVendors");
+    expect(strings).toHaveProperty("aiIngestion.title");
+    expect(strings).toHaveProperty("aiIngestion.tableLabel");
+  });
 });
 
 describe("t()", () => {
@@ -109,6 +142,16 @@ describe("t()", () => {
     // Two spot checks confirming new Wave 24 keys render correctly via t().
     expect(t("workOrders.title")).toBe("Work Orders");
     expect(t("financialBilling.tabs.ledger")).toBe("Owner Ledger");
+  });
+
+  it("returns the registered value for Wave 27 keys", () => {
+    // Spot checks confirming new Wave 27 keys render correctly via t().
+    expect(t("insurance.title")).toBe("Insurance Policies");
+    expect(t("maintenanceSchedules.title")).toBe("Maintenance Schedules");
+    expect(t("inspections.action.newInspection")).toBe("New Inspection");
+    expect(t("executive.tabs.highlights")).toBe("Highlights Deck");
+    expect(t("adminUsers.dialog.title")).toBe("Create Admin User");
+    expect(t("operationsDashboard.title")).toBe("Operations Overview");
   });
 
   it("returns the key itself for unknown keys (safe fallback)", () => {

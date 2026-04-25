@@ -39,6 +39,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { platformSubPages } from "@/lib/sub-page-nav";
 import { MobileSectionShell } from "@/components/mobile-section-shell";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 const roleOptions = ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] as const;
 
@@ -52,7 +53,7 @@ const roleLabels: Record<string, string> = {
 };
 
 export default function AdminUsersPage() {
-  useDocumentTitle("Admin Users");
+  useDocumentTitle(t("adminUsers.title"));
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -121,12 +122,14 @@ export default function AdminUsersPage() {
   };
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
+    // Wave 27 a11y: section + aria-labelledby (heading id below).
+    <section className="space-y-6 p-4 sm:p-6" aria-labelledby="admin-users-heading">
       <WorkspacePageHeader
-        title="Admin Users"
-        summary="Manage operator access, role changes, and activation state in a mobile-safe admin workflow."
-        eyebrow="Admin"
-        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Admin Users" }]}
+        title={t("adminUsers.title")}
+        headingId="admin-users-heading"
+        summary={t("adminUsers.summary")}
+        eyebrow={t("adminUsers.eyebrow")}
+        breadcrumbs={[{ label: t("common.crumb.dashboard"), href: "/app" }, { label: t("adminUsers.crumb") }]}
         subPages={platformSubPages}
         shortcuts={[
           { label: "Admin Roadmap", href: "/app/admin/roadmap" },
@@ -144,27 +147,28 @@ export default function AdminUsersPage() {
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button className="min-h-11 w-full sm:w-auto">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Admin User
+              <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+              {t("adminUsers.action.add")}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Create Admin User</DialogTitle>
+              <DialogTitle>{t("adminUsers.dialog.title")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <p className="mb-2 text-sm font-medium">Email</p>
+                <p className="mb-2 text-sm font-medium">{t("adminUsers.label.email")}</p>
                 <Input
                   placeholder="admin@example.com"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
+                  aria-label={t("adminUsers.label.email")}
                 />
               </div>
               <div>
-                <p className="mb-2 text-sm font-medium">Role</p>
+                <p className="mb-2 text-sm font-medium">{t("adminUsers.label.role")}</p>
                 <Select value={newRole} onValueChange={(v) => setNewRole(v as (typeof roleOptions)[number])}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label={t("adminUsers.label.role")}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -177,9 +181,9 @@ export default function AdminUsersPage() {
                 </Select>
               </div>
               <div>
-                <p className="mb-2 text-sm font-medium">Active</p>
+                <p className="mb-2 text-sm font-medium">{t("adminUsers.label.active")}</p>
                 <Select value={newActive} onValueChange={setNewActive}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label={t("adminUsers.label.active")}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -189,7 +193,7 @@ export default function AdminUsersPage() {
                 </Select>
               </div>
               <Button className="w-full" onClick={() => createUserMutation.mutate()} disabled={createUserMutation.isPending}>
-                {createUserMutation.isPending ? "Saving..." : "Save"}
+                {createUserMutation.isPending ? t("common.action.saving") : t("common.action.save")}
               </Button>
             </div>
           </DialogContent>
@@ -199,26 +203,27 @@ export default function AdminUsersPage() {
       <Card className="overflow-hidden">
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+            <div className="p-6 space-y-3" role="status" aria-label={t("common.loading")}>{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : !sortedUsers.length ? (
             <EmptyState
               icon={Shield}
-              title="No admin users"
-              description="Create at least one admin user. Admin users manage associations, billing, and platform-level settings."
+              title={t("adminUsers.empty.title")}
+              description={t("adminUsers.empty.description")}
               testId="empty-admin-users"
             />
           ) : (
             <>
               <div className="hidden md:block">
-                <Table>
+                {/* Wave 27 a11y: aria-label names this admin users table. */}
+                <Table aria-label={t("adminUsers.tableLabel")}>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Current Role</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Update Role</TableHead>
-                      <TableHead>Reason</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
+                      <TableHead>{t("adminUsers.col.email")}</TableHead>
+                      <TableHead>{t("adminUsers.col.currentRole")}</TableHead>
+                      <TableHead>{t("adminUsers.col.status")}</TableHead>
+                      <TableHead>{t("adminUsers.col.updateRole")}</TableHead>
+                      <TableHead>{t("adminUsers.col.reason")}</TableHead>
+                      <TableHead className="text-right">{t("adminUsers.col.action")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -243,7 +248,7 @@ export default function AdminUsersPage() {
                                 }));
                               }}
                             >
-                              <SelectTrigger className="w-[170px]">
+                              <SelectTrigger className="w-[170px]" aria-label={`Update role for ${user.email}`}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -265,6 +270,7 @@ export default function AdminUsersPage() {
                                   [user.id]: { ...update, reason: e.target.value },
                                 }));
                               }}
+                              aria-label={`Reason for role change to ${user.email}`}
                             />
                           </TableCell>
                           <TableCell className="text-right">
@@ -272,8 +278,9 @@ export default function AdminUsersPage() {
                               size="sm"
                               onClick={() => handleApplyRole(user)}
                               disabled={updateRoleMutation.isPending}
+                              aria-label={`${t("adminUsers.action.apply")} role change for ${user.email}`}
                             >
-                              Apply
+                              {t("adminUsers.action.apply")}
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -341,8 +348,9 @@ export default function AdminUsersPage() {
                           size="sm"
                           onClick={() => handleApplyRole(user)}
                           disabled={updateRoleMutation.isPending}
+                          aria-label={`${t("adminUsers.action.applyChange")} for ${user.email}`}
                         >
-                          Apply role change
+                          {t("adminUsers.action.applyChange")}
                         </Button>
                       </div>
                     </MobileSectionShell>
@@ -353,6 +361,6 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </section>
   );
 }
