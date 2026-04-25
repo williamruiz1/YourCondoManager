@@ -26,6 +26,7 @@
     "test:e2e": "vitest run tests/e2e",
     "test:playwright": "playwright test",
     "test:playwright:install": "playwright install chromium",
+    "test:playwright:real": "PLAYWRIGHT_REAL_BACKEND=1 playwright test",
     "test:payments": "tsx tests/payment-acceptance.ts",
     "verify:mobile": "tsx script/verify-mobile-journeys.ts",
     "verify:owner-portal-multi-unit": "tsx script/verify-owner-portal-multi-unit.ts",
@@ -110,6 +111,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.4.4",
     "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.48.2",
     "@replit/vite-plugin-cartographer": "^0.4.4",
@@ -138,6 +140,7 @@
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^5.2.0",
     "jsdom": "^29.0.2",
+    "pg-gateway": "^0.3.0-beta.4",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.5",

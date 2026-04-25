@@ -17,6 +17,8 @@ coverage/
 test-results/
 playwright-report/
 playwright/.cache/
+# Wave 17 — real-backend handoff (connection string for ephemeral pglite)
+.playwright-real-backend.json
 
 .pocketpm/
 # PPM:START v1

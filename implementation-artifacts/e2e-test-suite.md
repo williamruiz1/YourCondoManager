@@ -212,3 +212,118 @@ CI separately per the Wave-16a constraints.
 - Real Google OAuth + portal OTP login helpers (would graduate the
   auth helper from `route.fulfill` to a deterministic real-server
   flow).
+
+---
+
+# Wave 17 — Real-backend E2E slice + macOS dev-server fix
+
+Wave 17 lands two changes that unblock running Playwright against the
+real backend on a developer Mac:
+
+1. **`server/index.ts` `reusePort` is now Linux-only.** The previous
+   call to `httpServer.listen({ reusePort: true })` returned `ENOTSUP`
+   on Darwin, killing the dev server before the first request landed.
+   The fix mirrors the platform gate already in `script/dev.ts`: only
+   set `reusePort: true` when `process.platform === "linux"`.
+   Production behavior is unchanged.
+
+2. **Ephemeral Postgres for Playwright** — `tests/e2e/playwright/
+   helpers/test-db.ts` boots PGlite (in-process Postgres in WASM) and
+   fronts it with `pg-gateway` (a Node TCP server that speaks the
+   Postgres wire protocol). The dev server's `pg.Pool` connects to the
+   gateway as if it were a normal local Postgres. No code changes were
+   needed in `server/db.ts`.
+
+## Why pglite + pg-gateway over the alternatives
+
+| Option | Verdict | Reason |
+| --- | --- | --- |
+| `@electric-sql/pglite` + `pg-gateway` | **chosen** | Zero system deps. ~25 MB devDep total. Works on any dev Mac after `npm ci`. |
+| `pg-mem` | rejected | JS Postgres emulator; missing features (notably full enum semantics) and no wire-protocol server. |
+| `testcontainers` / `docker-compose` | rejected | Requires Docker daemon — listed as a hard "no" in the Wave 17 brief. Still tracked as a CI option. |
+| `embedded-postgres` | rejected | Downloads native Postgres binaries on first install. Heavy and slow on cold caches. |
+
+## Schema materialisation strategy
+
+`startTestDb()` shells out to `npx drizzle-kit push --force` with
+`DATABASE_URL` pointed at the gateway. This generates DDL from
+`shared/schema.ts` and applies it to the empty pglite instance in one
+shot.
+
+We tried replaying `migrations/*.sql` first; that path tripped a pglite
+bug where the parser cache for an enum's value list does not refresh
+across connections after `ALTER TYPE ... ADD VALUE`. Migrations 0006
+(`board-admin` role rename) and 0014 (portal_access role collapse) both
+rely on this pattern, and reproducibly failed with
+`column "role" is of type X but expression is of type text` even when
+each statement ran on a fresh `pg.Client` connection. The
+`drizzle-kit push` path side-steps this entirely because it produces
+the FINAL schema (already-collapsed enums, no `ADD VALUE` history)
+from one introspect-and-diff cycle. Production parity is preserved
+because both paths converge on the same final schema; we just skip the
+historical DDL replay.
+
+## How the migrated spec runs end-to-end
+
+The first migration target is `tests/e2e/playwright/alerts-lifecycle.spec.ts`.
+With `PLAYWRIGHT_REAL_BACKEND=1`:
+
+1. Playwright `globalSetup` (`tests/e2e/playwright/global-setup.ts`)
+   creates a `PGlite` instance, starts a `pg-gateway` TCP server on a
+   random local port, and runs `drizzle-kit push --force` against it.
+   It writes `DATABASE_URL`, `SESSION_SECRET`, and
+   `AUTOMATION_SWEEPS_ENABLED=0` into `process.env`.
+2. Playwright spawns `npm run dev` (the real Express + Vite stack).
+   Because `webServer.env` merges with `process.env`, the dev server
+   inherits the gateway URL and the deterministic test secret.
+3. The spec uses `createRealBackend()` (in `helpers/seed-helper.ts`)
+   to:
+   * truncate test-mutable tables between cases,
+   * insert an `admin_users` (manager) + `auth_users` + scope row,
+   * insert a `user_sessions` row whose `sess` payload mirrors what
+     `passport.serializeUser` would write,
+   * sign the sid with `SESSION_SECRET` (HMAC-SHA256, the algorithm
+     used by `cookie-signature`) and attach the cookie to the
+     Playwright `BrowserContext` so every navigation includes it,
+   * insert one work order with `scheduled_for` 7 days in the past.
+4. The spec navigates to `/app`, fetches
+   `/api/alerts/cross-association` from inside the page (real
+   `requireAdmin` middleware runs, real overdue-work-orders resolver
+   runs against the seeded row), asserts the alert is present.
+5. The spec PATCHes the work order to `closed`, which calls
+   `safeInvalidateAlertCache()`. The next GET returns the empty list.
+
+No `route.fulfill` is involved. The route-mock helpers are still
+exported because the four sibling specs continue to use them (see
+follow-ups below).
+
+## Follow-ups filed
+
+- **Other 4 specs still on static server.** `signup-onboarding`,
+  `assessment-lifecycle`, `owner-portal-navigation`,
+  `amenities-toggle-roundtrip` still rely on `installSeedRoutes`. Each
+  needs its own seed translation (e.g. fee-schedule rows for the
+  assessment spec, units + portal-access rows for the owner portal
+  spec). Tracked as a follow-up to Wave 17.
+- **CI integration.** The Wave-16a CI plan still applies; the only
+  difference is that the Job 2 step gains an `env:
+  PLAYWRIGHT_REAL_BACKEND: "1"` line. We did not commit any GitHub
+  Actions YAML in this wave.
+- **Migration replay path.** If we ever ship a custom Drizzle dialect
+  built on pglite (which would invalidate the planner cache properly),
+  `test-db.ts` can switch back to `migrations/*.sql` replay so we
+  exercise the historical DDL.
+
+## Constraints honoured
+
+- `reusePort: true` is set only on Linux.
+- `@electric-sql/pglite` and `pg-gateway` are devDependencies, not
+  runtime deps.
+- `tests/e2e/playwright/helpers/test-db.ts` is the only new file in
+  the helpers directory (alongside the additive
+  `createRealBackend` helpers in `seed-helper.ts`).
+- Existing Vitest E2E suite from Wave 15b and the four other
+  Playwright static-server specs from Wave 16a are untouched.
+- `npm run test:playwright` continues to run all 5 specs in the
+  default (route-mock) mode; `npm run test:playwright:real` switches
+  the alerts-lifecycle spec to the real backend.

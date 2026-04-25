@@ -6,12 +6,18 @@
 // (e.g., toggle `amenitiesEnabled`, mark a work order complete) and
 // observe the React frontend reacting to the change.
 //
-// Why not seed a real Postgres? The Wave-15b artifact doc deferred that
-// to a later wave (ephemeral DB + drizzle-kit push); Wave 16a stays
-// inside Playwright by mocking. This trades realism (no DB constraint
-// validation) for determinism (no network egress, no flaky teardown).
+// Wave 17 added a parallel "real backend" path (see `seedRealBackend` /
+// `installRealManagerSession` lower in this file). When the spec opts
+// into real-backend mode, it never registers the route mocks below;
+// the dev server, ephemeral pglite, and a directly-injected session
+// row do the work that route mocks did before.
+//
+// The route-mock path stays for the four specs that have not yet been
+// graduated to real-backend mode (Wave 17 follow-up).
 
-import type { Page, Route } from "@playwright/test";
+import { createHmac, randomUUID } from "node:crypto";
+import pg from "pg";
+import type { BrowserContext, Page, Route } from "@playwright/test";
 
 export type AssessmentRule = {
   id: string;
@@ -436,4 +442,242 @@ export function seedAlertForWorkOrder(store: SeedStore, workOrder: WorkOrder): A
   };
   store.alerts.set(id, alert);
   return alert;
+}
+
+// ---------------------------------------------------------------------------
+// Wave 17 — Real-backend seed helpers.
+//
+// These run alongside the route-mock helpers above. A spec opting into
+// real-backend mode constructs a `RealBackend` handle (via
+// `createRealBackend`) and calls the seed methods on it. Each method
+// inserts rows directly into the ephemeral pglite DB. The dev server
+// and its session middleware then see real rows, so the alert engine,
+// auth gate, and PATCH handler all run for real — no `route.fulfill`
+// involved.
+// ---------------------------------------------------------------------------
+
+export interface RealBackendOptions {
+  connectionString: string;
+  sessionSecret: string;
+  /**
+   * Cookie name used by the express-session middleware. Production uses
+   * `sid`; dev uses `sid_dev` (server/index.ts line 85). We default to
+   * the prod name; the dev server sets `NODE_ENV=test` for these specs
+   * so we honor that — see `playwright.config.ts`.
+   */
+  cookieName?: string;
+}
+
+export interface RealBackendHandle {
+  pool: pg.Pool;
+  /** Drop test data and close the pool. */
+  cleanup: () => Promise<void>;
+  /** Truncate every test-mutable table without re-running migrations. */
+  reset: () => Promise<void>;
+  /** Seed a manager session and attach the cookie to the browser context. */
+  installManagerSession: (context: BrowserContext, options?: ManagerSessionOptions) => Promise<ManagerSessionDescriptor>;
+  /** Seed an association + admin scope row. */
+  seedAssociation: (id: string, name: string) => Promise<void>;
+  /**
+   * Seed an overdue work order anchored to an association. The dev
+   * server's overdue-work-orders alert source runs against
+   * `status IN ('open', 'assigned', 'in-progress', 'pending-review')`
+   * AND `scheduled_for < NOW()`, so we set `scheduled_for` to the past
+   * by default.
+   */
+  seedOverdueWorkOrder: (input: SeedWorkOrderInput) => Promise<{ id: string }>;
+}
+
+export interface ManagerSessionOptions {
+  email?: string;
+  associationId?: string;
+}
+
+export interface ManagerSessionDescriptor {
+  adminUserId: string;
+  authUserId: string;
+  email: string;
+  associationId: string;
+}
+
+export interface SeedWorkOrderInput {
+  id?: string;
+  title: string;
+  associationId: string;
+  scheduledFor?: Date;
+  status?: "open" | "assigned" | "in-progress" | "pending-review";
+}
+
+const TEST_HOST = "localhost";
+
+/**
+ * Sign a session id the same way express-session does (`s:<sid>.<sig>`,
+ * URL-encoded). We re-implement the trivial helper inline so we don't
+ * need an additional `@types/cookie-signature` devDep.
+ */
+function signSessionId(sid: string, secret: string): string {
+  const sig = createHmac("sha256", secret).update(sid).digest("base64").replace(/=+$/, "");
+  return `s:${sid}.${sig}`;
+}
+
+export async function createRealBackend(options: RealBackendOptions): Promise<RealBackendHandle> {
+  const pool = new pg.Pool({ connectionString: options.connectionString });
+  const cookieName = options.cookieName ?? "sid";
+
+  async function reset(): Promise<void> {
+    // Truncate tables that any spec may write to. The seedDatabase
+    // built-in only inserts known associations; we leave the
+    // user_sessions table truncated so cookies from a prior run don't
+    // leak in.
+    await pool.query(`
+      TRUNCATE TABLE
+        alert_read_states,
+        work_orders,
+        admin_association_scopes,
+        admin_users,
+        auth_external_accounts,
+        auth_users,
+        user_sessions,
+        units,
+        buildings,
+        associations
+      RESTART IDENTITY CASCADE
+    `);
+  }
+
+  async function seedAssociation(id: string, name: string): Promise<void> {
+    await pool.query(
+      `INSERT INTO associations (id, name, address, city, state, country, is_archived)
+       VALUES ($1, $2, $3, $4, $5, $6, 0)
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+      [id, name, "1 Test Street", "Hartford", "CT", "USA"],
+    );
+  }
+
+  async function seedOverdueWorkOrder(input: SeedWorkOrderInput): Promise<{ id: string }> {
+    const id = input.id ?? randomUUID();
+    const scheduledFor = input.scheduledFor ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    await pool.query(
+      `INSERT INTO work_orders (id, association_id, title, description, status, priority, category, scheduled_for)
+       VALUES ($1, $2, $3, $4, $5, 'medium', 'general', $6)`,
+      [id, input.associationId, input.title, "Seeded by Playwright", input.status ?? "open", scheduledFor],
+    );
+    return { id };
+  }
+
+  async function installManagerSession(
+    context: BrowserContext,
+    overrides: ManagerSessionOptions = {},
+  ): Promise<ManagerSessionDescriptor> {
+    const email = overrides.email ?? `manager-${Date.now()}@e2e.test`;
+    const associationId = overrides.associationId ?? "assoc-e2e-1";
+
+    // Insert admin_user row (manager role).
+    const adminUserId = randomUUID();
+    await pool.query(
+      `INSERT INTO admin_users (id, email, role, is_active)
+       VALUES ($1, $2, 'manager', 1)
+       ON CONFLICT (email) DO UPDATE SET role = 'manager', is_active = 1
+       RETURNING id`,
+      [adminUserId, email],
+    );
+
+    // Resolve the admin id (may have been overridden by an existing row).
+    const { rows: adminRows } = await pool.query<{ id: string }>(
+      `SELECT id FROM admin_users WHERE email = $1`,
+      [email],
+    );
+    const resolvedAdminId = adminRows[0]?.id;
+    if (!resolvedAdminId) throw new Error("Failed to upsert admin_user");
+
+    // Scope the manager to the seeded association.
+    await pool.query(
+      `INSERT INTO admin_association_scopes (id, admin_user_id, association_id)
+       VALUES (gen_random_uuid(), $1, $2)
+       ON CONFLICT (admin_user_id, association_id) DO NOTHING`,
+      [resolvedAdminId, associationId],
+    );
+
+    // Insert auth_user that links to the admin row.
+    const authUserId = randomUUID();
+    await pool.query(
+      `INSERT INTO auth_users (id, admin_user_id, email, first_name, last_name, is_active)
+       VALUES ($1, $2, $3, 'E2E', 'Manager', 1)
+       ON CONFLICT (email) DO UPDATE SET admin_user_id = EXCLUDED.admin_user_id, is_active = 1
+       RETURNING id`,
+      [authUserId, resolvedAdminId, email],
+    );
+    const { rows: authRows } = await pool.query<{ id: string }>(
+      `SELECT id FROM auth_users WHERE email = $1`,
+      [email],
+    );
+    const resolvedAuthUserId = authRows[0]?.id;
+    if (!resolvedAuthUserId) throw new Error("Failed to upsert auth_user");
+
+    // Build a session row mirroring what passport+express-session would
+    // write after a successful login. The cookie field shape mirrors
+    // `session.cookie` defaults so connect-pg-simple treats it as a
+    // legitimate live session.
+    const sid = randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const sess = {
+      cookie: {
+        originalMaxAge: 7 * 24 * 60 * 60 * 1000,
+        expires: expiresAt.toISOString(),
+        httpOnly: true,
+        path: "/",
+        sameSite: "lax",
+        secure: false,
+      },
+      passport: { user: resolvedAuthUserId },
+    };
+
+    await pool.query(
+      `INSERT INTO user_sessions (sid, sess, expire) VALUES ($1, $2, $3)
+       ON CONFLICT (sid) DO UPDATE SET sess = EXCLUDED.sess, expire = EXCLUDED.expire`,
+      [sid, sess, expiresAt],
+    );
+
+    // Attach the signed cookie to the Playwright browser context so any
+    // subsequent navigation includes it. The cookie value is the sid
+    // signed with SESSION_SECRET — connect-pg-simple looks the sid up
+    // in `user_sessions`, sees the session row above, and the rest of
+    // the auth pipeline runs as if a real OAuth login happened.
+    const signed = signSessionId(sid, options.sessionSecret);
+    // Playwright sets the cookie value verbatim. express-session reads
+    // cookies via `cookie.parse()` which URI-decodes — so we attach
+    // the raw signed value, not the URI-encoded form.
+    await context.addCookies([
+      {
+        name: cookieName,
+        value: signed,
+        domain: TEST_HOST,
+        path: "/",
+        httpOnly: true,
+        secure: false,
+        sameSite: "Lax",
+        expires: Math.floor(expiresAt.getTime() / 1000),
+      },
+    ]);
+
+    return {
+      adminUserId: resolvedAdminId,
+      authUserId: resolvedAuthUserId,
+      email,
+      associationId,
+    };
+  }
+
+  async function cleanup(): Promise<void> {
+    await pool.end();
+  }
+
+  return {
+    pool,
+    cleanup,
+    reset,
+    installManagerSession,
+    seedAssociation,
+    seedOverdueWorkOrder,
+  };
 }
