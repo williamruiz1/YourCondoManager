@@ -483,12 +483,28 @@ export function PortalShell({ children }: PortalShellProps) {
 
   return (
     <PortalContext.Provider value={contextValue}>
+      {/* 5.5 (Wave 21) — Skip-link for keyboard users. Visible on focus
+          only; jumps past the sidebar + header straight to the main
+          content. Target id `portal-main-content` is set on the <main>
+          element below. */}
+      <a
+        href="#portal-main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-primary focus:shadow-lg"
+        data-testid="skip-to-content-portal"
+      >
+        Skip to content
+      </a>
       <div className="flex min-h-screen bg-surface-container-low" data-testid="portal-shell">
         <ShellSidebar items={navItems} pathname={location} associationId={associationId} />
         <div className="flex min-h-screen flex-1 flex-col">
           <ShellHeader session={session} associationName={associationName} onLogout={handleLogout} />
           <ShellBreadcrumb trail={breadcrumbTrail} />
-          <main className="flex-1 px-4 py-6 md:px-8" data-testid="portal-main">
+          <main
+            id="portal-main-content"
+            className="flex-1 px-4 py-6 md:px-8"
+            tabIndex={-1}
+            data-testid="portal-main"
+          >
             {children}
           </main>
         </div>

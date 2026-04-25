@@ -35,6 +35,7 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 import type { AdminRole } from "@shared/schema";
 
 interface AssociationSummary {
@@ -101,7 +102,7 @@ function AlertRow({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
         <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${iconClass}`}>
-          <Icon className="h-4 w-4" />
+          <Icon className="h-4 w-4" aria-hidden="true" />
         </div>
         <div className="min-w-0">
           <div className="text-sm font-medium">{label}</div>
@@ -111,7 +112,9 @@ function AlertRow({
         <div className="flex items-center justify-between gap-2 sm:justify-end">
           <Badge variant="destructive">{count}</Badge>
           <Button asChild size="sm" variant="outline">
-            <Link href={href}>Review</Link>
+            <Link href={href} aria-label={`${t("common.review")} ${label}`}>
+              {t("common.review")}
+            </Link>
           </Button>
         </div>
       </div>
@@ -157,25 +160,33 @@ function ActiveElectionsCard({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <Vote className="h-4 w-4" />
-          Active Elections
+          <Vote className="h-4 w-4" aria-hidden="true" />
+          {t("home.activeElections.title")}
         </CardTitle>
       </CardHeader>
       <CardContent>
         {loading ? (
-          <div className="space-y-3">
+          <div className="space-y-3" role="status" aria-label={t("common.loading")}>
             <Skeleton className="h-16 w-full" />
             <Skeleton className="h-16 w-full" />
           </div>
         ) : openElections.length === 0 ? (
-          <div className="text-center py-4">
-            <Vote className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-            <p className="text-sm text-muted-foreground">No active elections</p>
+          <div className="text-center py-4" role="status">
+            <Vote className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" aria-hidden="true" />
+            <p className="text-sm text-muted-foreground">{t("home.activeElections.empty")}</p>
           </div>
         ) : (
           <div className="space-y-3">
             {openElections.map((election) => (
-              <Link key={election.id} href={`/app/governance/elections/${election.id}`}>
+              <Link
+                key={election.id}
+                href={`/app/governance/elections/${election.id}`}
+                aria-label={`${election.title} — ${
+                  election.quorumMet
+                    ? t("home.activeElections.quorumMet")
+                    : t("home.activeElections.noQuorum")
+                }`}
+              >
                 <div className="rounded-lg border bg-background p-3 transition-colors hover:bg-muted/50">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium truncate">{election.title}</span>
@@ -183,7 +194,9 @@ function ActiveElectionsCard({
                       variant={election.quorumMet ? "default" : "outline"}
                       className="shrink-0 ml-2 text-xs"
                     >
-                      {election.quorumMet ? "Quorum met" : "No quorum"}
+                      {election.quorumMet
+                        ? t("home.activeElections.quorumMet")
+                        : t("home.activeElections.noQuorum")}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-3 mb-2">
@@ -198,7 +211,7 @@ function ActiveElectionsCard({
                     </span>
                     {election.closesAt && (
                       <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
+                        <Clock className="h-3 w-3" aria-hidden="true" />
                         {formatTimeRemaining(election.closesAt)}
                       </span>
                     )}
@@ -225,21 +238,21 @@ function QuickActions({
   const isViewer = adminRole === "viewer";
   const actions = [
     {
-      label: "New Work Order",
+      label: t("home.quickActions.newWorkOrder"),
       icon: Wrench,
       href: "/app/work-orders",
       disabled: !activeAssociationId || isViewer,
       title: isViewer ? "Read-only access" : (activeAssociationId ? undefined : "Select an association first"),
     },
     {
-      label: "Schedule Meeting",
+      label: t("home.quickActions.scheduleMeeting"),
       icon: CalendarPlus,
       href: "/app/governance/meetings",
       disabled: !activeAssociationId || isViewer,
       title: isViewer ? "Read-only access" : (activeAssociationId ? undefined : "Select an association first"),
     },
     {
-      label: "Invite Board Member",
+      label: t("home.quickActions.inviteBoardMember"),
       icon: UserPlus,
       href: "/app/board",
       disabled: !activeAssociationId || isViewer,
@@ -248,7 +261,7 @@ function QuickActions({
     {
       // [0.1 AC 10] Billing quick-action points directly at /app/financial/billing,
       // not the legacy /app/financial/ledger redirect.
-      label: "Billing",
+      label: t("home.quickActions.billing"),
       icon: CircleDollarSign,
       href: "/app/financial/billing",
       disabled: !activeAssociationId || isViewer,
@@ -260,8 +273,8 @@ function QuickActions({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <Plus className="h-4 w-4" />
-          Quick Actions
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          {t("home.quickActions.title")}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -274,15 +287,16 @@ function QuickActions({
               className="h-auto min-h-12 flex-col gap-1.5 py-3 text-xs"
               disabled={action.disabled}
               title={action.title}
+              aria-label={action.label}
             >
               {action.disabled ? (
                 <span>
-                  <action.icon className="h-4 w-4" />
+                  <action.icon className="h-4 w-4" aria-hidden="true" />
                   {action.label}
                 </span>
               ) : (
                 <Link href={action.href}>
-                  <action.icon className="h-4 w-4" />
+                  <action.icon className="h-4 w-4" aria-hidden="true" />
                   {action.label}
                 </Link>
               )}
@@ -292,14 +306,15 @@ function QuickActions({
             variant="outline"
             className="h-auto min-h-12 flex-col gap-1.5 py-3 text-xs"
             onClick={onNewAssociation}
+            aria-label={t("home.quickActions.newAssociation")}
           >
-            <Building2 className="h-4 w-4" />
-            New Association
+            <Building2 className="h-4 w-4" aria-hidden="true" />
+            {t("home.quickActions.newAssociation")}
           </Button>
         </div>
         {!activeAssociationId && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Select an association above to enable quick actions.
+            {t("home.quickActions.selectAssociationHint")}
           </p>
         )}
       </CardContent>
@@ -343,14 +358,19 @@ function AlertsPanel({
     electionsAwaitingCertification.length;
 
   return (
-    <div className="rounded-xl border bg-muted/10 p-4 space-y-4">
+    <section
+      className="rounded-xl border bg-muted/10 p-4 space-y-4"
+      aria-labelledby="home-alerts-heading"
+    >
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold">Attention Required</div>
+          <div id="home-alerts-heading" className="text-sm font-semibold">
+            {t("home.alerts.title")}
+          </div>
           <div className="text-xs text-muted-foreground">
             {activeAssociationId
-              ? "Live alerts scoped to the selected association, plus cross-association operational signals."
-              : "Portfolio-wide alerts across all associations."}
+              ? t("home.alerts.subtitleScoped")
+              : t("home.alerts.subtitlePortfolio")}
           </div>
         </div>
         {!loading && totalAlerts > 0 && (
@@ -361,15 +381,17 @@ function AlertsPanel({
       </div>
 
       {loading ? (
-        <div className="space-y-2">
+        <div className="space-y-2" role="status" aria-label={t("common.loading")}>
           <Skeleton className="h-14 w-full" />
           <Skeleton className="h-14 w-full" />
         </div>
       ) : totalAlerts === 0 ? (
-        <div className="rounded-lg border bg-background p-4 text-center">
-          <div className="text-sm font-medium text-green-700 dark:text-green-400">All clear</div>
+        <div className="rounded-lg border bg-background p-4 text-center" role="status">
+          <div className="text-sm font-medium text-green-700 dark:text-green-400">
+            {t("home.alerts.allClear")}
+          </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            No overdue work orders, due maintenance, urgent items, or insurance alerts.
+            {t("home.alerts.allClearBody")}
           </div>
         </div>
       ) : (
@@ -380,9 +402,9 @@ function AlertsPanel({
           <AlertRow
             icon={AlertTriangle}
             iconClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-            label="Overdue work orders"
+            label={t("home.alert.overdueWorkOrders.label")}
             count={alerts?.overdueWorkOrders?.count ?? 0}
-            sublabel="Work orders past their scheduled date across all associations — need resolution"
+            sublabel={t("home.alert.overdueWorkOrders.sub")}
             href="/app/work-orders"
           />
           {/* [0.1 AC 4 — Signal 2] Cross-association maintenance schedule instances due
@@ -390,66 +412,66 @@ function AlertsPanel({
           <AlertRow
             icon={CalendarClock}
             iconClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
-            label="Maintenance due within 7 days"
+            label={t("home.alert.dueMaintenance.label")}
             count={alerts?.dueMaintenanceInstances?.count ?? 0}
-            sublabel="Scheduled preventive maintenance across all associations — convert to work orders"
+            sublabel={t("home.alert.dueMaintenance.sub")}
             href="/app/maintenance-schedules"
           />
           <AlertRow
             icon={AlertTriangle}
             iconClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-            label="Urgent work orders"
+            label={t("home.alert.urgentWorkOrders.label")}
             count={alerts?.workOrders.urgent ?? 0}
-            sublabel="Open work orders marked urgent — need immediate attention"
+            sublabel={t("home.alert.urgentWorkOrders.sub")}
             href="/app/work-orders"
           />
           <AlertRow
             icon={Clock}
             iconClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
-            label="Stalled open work orders"
+            label={t("home.alert.stalledWorkOrders.label")}
             count={alerts?.workOrders.stalledOpen ?? 0}
-            sublabel="Work orders open for more than 7 days with no status update"
+            sublabel={t("home.alert.stalledWorkOrders.sub")}
             href="/app/work-orders"
           />
           <AlertRow
             icon={AlertTriangle}
             iconClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-            label="Overdue compliance tasks"
+            label={t("home.alert.complianceOverdue.label")}
             count={alerts?.complianceTasks.overdue ?? 0}
-            sublabel="Governance tasks past their due date"
+            sublabel={t("home.alert.complianceOverdue.sub")}
             href="/app/governance/compliance"
           />
           <AlertRow
             icon={Clock}
             iconClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400"
-            label="Compliance tasks due in 14 days"
+            label={t("home.alert.complianceDueSoon.label")}
             count={alerts?.complianceTasks.dueSoon ?? 0}
-            sublabel="Upcoming governance deadlines requiring action"
+            sublabel={t("home.alert.complianceDueSoon.sub")}
             href="/app/governance/compliance"
           />
           <AlertRow
             icon={ShieldAlert}
             iconClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-            label="Vendors with expired insurance"
+            label={t("home.alert.insuranceExpired.label")}
             count={alerts?.vendorInsurance.expired ?? 0}
-            sublabel="Do not assign work orders until coverage is renewed"
+            sublabel={t("home.alert.insuranceExpired.sub")}
             href="/app/vendors"
           />
           <AlertRow
             icon={ShieldAlert}
             iconClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
-            label="Vendor insurance expiring soon"
+            label={t("home.alert.insuranceDueSoon.label")}
             count={alerts?.vendorInsurance.dueSoon ?? 0}
-            sublabel="Insurance expiring within 30 days — request renewal certificates"
+            sublabel={t("home.alert.insuranceDueSoon.sub")}
             href="/app/vendors"
           />
           {activeAssociationId && (
             <AlertRow
               icon={BadgeDollarSign}
               iconClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400"
-              label="Delinquent accounts"
+              label={t("home.alert.delinquent.label")}
               count={alerts?.delinquentAccounts.count ?? 0}
-              sublabel="Owner accounts with outstanding balances"
+              sublabel={t("home.alert.delinquent.sub")}
               href="/app/financial/ledger"
             />
           )}
@@ -458,7 +480,7 @@ function AlertsPanel({
               key={warning.type}
               icon={AlertTriangle}
               iconClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
-              label="Data integrity warning"
+              label={t("home.alert.dataIntegrity.label")}
               count={warning.count}
               sublabel={warning.message}
               href="/app/persons"
@@ -469,7 +491,7 @@ function AlertsPanel({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
-                    <Timer className="h-4 w-4" />
+                    <Timer className="h-4 w-4" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-medium">Election closing soon: {election.title}</div>
@@ -481,7 +503,12 @@ function AlertsPanel({
                 <div className="flex items-center justify-between gap-2 sm:justify-end">
                   <Badge variant="destructive">1</Badge>
                   <Button asChild size="sm" variant="outline">
-                    <Link href={`/app/governance/elections/${election.id}`}>Review</Link>
+                    <Link
+                      href={`/app/governance/elections/${election.id}`}
+                      aria-label={`${t("common.review")} ${election.title}`}
+                    >
+                      {t("common.review")}
+                    </Link>
                   </Button>
                 </div>
               </div>
@@ -492,7 +519,7 @@ function AlertsPanel({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400">
-                    <ClipboardCheck className="h-4 w-4" />
+                    <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-medium">Election awaiting certification: {election.title}</div>
@@ -504,7 +531,12 @@ function AlertsPanel({
                 <div className="flex items-center justify-between gap-2 sm:justify-end">
                   <Badge variant="destructive">1</Badge>
                   <Button asChild size="sm" variant="outline">
-                    <Link href={`/app/governance/elections/${election.id}`}>Certify</Link>
+                    <Link
+                      href={`/app/governance/elections/${election.id}`}
+                      aria-label={`Certify ${election.title}`}
+                    >
+                      Certify
+                    </Link>
                   </Button>
                 </div>
               </div>
@@ -512,14 +544,14 @@ function AlertsPanel({
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
 type AuthSession = { authenticated: boolean; admin?: { role: AdminRole } | null };
 
 export default function DashboardPage() {
-  useDocumentTitle("Home");
+  useDocumentTitle(t("home.title"));
   const [wizardOpen, setWizardOpen] = useState(false);
   const { activeAssociationId, setActiveAssociationId } = useAssociationContext();
   const { data: authSession } = useQuery<AuthSession>({ queryKey: ["/api/auth/session"] });
@@ -573,13 +605,13 @@ export default function DashboardPage() {
       {/* [0.1 AC 1] Page title, breadcrumb, and nav label all read "Home" — the word
           "Dashboard" is intentionally absent from this surface per the 0.1 decision. */}
       <WorkspacePageHeader
-        title="Home"
-        summary="Today's action surface — alerts, quick actions, and elections. Drill into Portfolio Health for aggregate counts across all associations."
-        eyebrow="Workspace"
-        breadcrumbs={[{ label: "Home" }]}
+        title={t("home.title")}
+        summary={t("home.summary")}
+        eyebrow={t("home.eyebrow")}
+        breadcrumbs={[{ label: t("home.title") }]}
         shortcuts={[
-          { label: "Open Association Context", href: "/app/association-context" },
-          { label: "Review Documents", href: "/app/documents" },
+          { label: t("home.shortcut.openAssociationContext"), href: "/app/association-context" },
+          { label: t("home.shortcut.reviewDocuments"), href: "/app/documents" },
         ]}
       />
 
@@ -587,25 +619,25 @@ export default function DashboardPage() {
         <div className="rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 p-6">
           <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <Sparkles className="h-6 w-6 text-primary" />
+              <Sparkles className="h-6 w-6 text-primary" aria-hidden="true" />
             </div>
             <div className="flex-1">
-              <p className="font-semibold">Welcome — let's get your first association set up</p>
+              <p className="font-semibold">{t("home.welcome.title")}</p>
               <p className="text-sm text-muted-foreground mt-0.5">
-                The setup wizard walks you through creating your association, adding units, configuring your HOA fee, and adding a board member — all in about 5 minutes.
+                {t("home.welcome.body")}
               </p>
             </div>
             <Button onClick={() => setWizardOpen(true)} className="shrink-0">
-              <Sparkles className="mr-2 h-4 w-4" />
-              Start Setup
+              <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t("home.welcome.cta")}
             </Button>
           </div>
         </div>
       )}
 
       {adminRole === "viewer" && (
-        <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You have <span className="font-medium text-foreground">viewer</span> access — create and edit actions are disabled. Contact your administrator to request elevated permissions.
+        <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground" role="status">
+          {t("home.viewerBanner")}
         </div>
       )}
 
@@ -641,18 +673,18 @@ export default function DashboardPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <Layers className="h-4 w-4" />
-            Portfolio Health
+            <Layers className="h-4 w-4" aria-hidden="true" />
+            {t("home.portfolioHealth.title")}
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            Aggregate counts and comparative health across all associations — associations, units, owners, tenants, board members, and documents.
+            {t("home.portfolioHealth.body")}
           </p>
           <Button asChild variant="outline" size="sm" className="shrink-0" data-testid="link-home-to-portfolio-health">
-            <Link href="/app/portfolio">
-              Open Portfolio Health
-              <ArrowRight className="ml-1 h-3.5 w-3.5" />
+            <Link href="/app/portfolio" aria-label={t("home.portfolioHealth.cta")}>
+              {t("home.portfolioHealth.cta")}
+              <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           </Button>
         </CardContent>
@@ -672,14 +704,16 @@ export default function DashboardPage() {
       <AsyncStateBoundary
         isLoading={associationsLoading}
         isEmpty={!associationsLoading && associations.length === 0}
-        emptyTitle="No associations yet"
-        emptyMessage="Create an association before using the portfolio workspace."
+        emptyTitle={t("home.associations.empty.title")}
+        emptyMessage={t("home.associations.empty.body")}
       >
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Associations</CardTitle>
+            <CardTitle className="text-base">{t("home.associations.title")}</CardTitle>
             <Button asChild size="sm" variant="outline">
-              <Link href="/app/associations">Manage Associations</Link>
+              <Link href="/app/associations" aria-label={t("home.associations.manage")}>
+                {t("home.associations.manage")}
+              </Link>
             </Button>
           </CardHeader>
           <CardContent>
@@ -699,8 +733,15 @@ export default function DashboardPage() {
                     onClick={() => setActiveAssociationId(association.id)}
                     data-testid={`button-set-dashboard-context-${association.id}`}
                     className="self-start sm:self-auto"
+                    aria-label={`${
+                      association.id === activeAssociationId
+                        ? t("home.associations.inContext")
+                        : t("home.associations.useContext")
+                    } ${association.name}`}
                   >
-                    {association.id === activeAssociationId ? "In Context" : "Use Context"}
+                    {association.id === activeAssociationId
+                      ? t("home.associations.inContext")
+                      : t("home.associations.useContext")}
                   </Button>
                   </div>
                 </div>
@@ -713,14 +754,15 @@ export default function DashboardPage() {
       {activeAssociationId ? (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Current Association Context</CardTitle>
+            <CardTitle className="text-base">{t("home.currentContext.title")}</CardTitle>
             <Button asChild size="sm" variant="outline">
-              <Link href="/app/association-context">Open In-Context View</Link>
+              <Link href="/app/association-context" aria-label={t("home.currentContext.cta")}>
+                {t("home.currentContext.cta")}
+              </Link>
             </Button>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Portfolio stays here on the dashboard. Use the in-context view for the selected association's overview,
-            documents, buildings, units, ownership, and occupancy workflow.
+            {t("home.currentContext.body")}
           </CardContent>
         </Card>
       ) : null}

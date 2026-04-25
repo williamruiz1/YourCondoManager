@@ -905,7 +905,22 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
 
   return (
     <>
-      <main ref={mainRef} className="flex-1 overflow-auto">
+      {/* 5.5 (Wave 21) — Skip-link for keyboard users. Visible on focus only;
+          jumps over the sticky header and sidebar to the main content. The
+          target id `main-content` is set on the <main> element below. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-foreground focus:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        data-testid="skip-to-content-workspace"
+      >
+        Skip to content
+      </a>
+      <main
+        ref={mainRef}
+        id="main-content"
+        className="flex-1 overflow-auto"
+        tabIndex={-1}
+      >
         <div className="pb-[max(env(safe-area-inset-bottom),1rem)]">
           <WorkspaceRouter
             adminRole={adminRole}

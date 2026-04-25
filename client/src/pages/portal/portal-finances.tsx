@@ -25,6 +25,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PortalAssessmentDetailDialog } from "@/components/portal-assessment-detail-dialog";
 import { VirtualizedLedgerTable } from "@/components/virtualized-ledger-table";
 import { PortalShell, usePortalContext } from "./portal-shell";
+import { t } from "@/i18n/use-strings";
 
 // 5.4-F7 (Wave 16b) — when a ledger has more than this many rows, use
 // `@tanstack/react-virtual` to keep only the visible window in the DOM.
@@ -67,10 +68,10 @@ type AutopayEnrollment = {
 };
 
 function getTitleForPath(path: string): string {
-  if (path === "/portal/finances/payment-methods") return "Payment methods";
+  if (path === "/portal/finances/payment-methods") return t("portal.finances.paymentMethods.title");
   if (path === "/portal/finances/ledger") return "Ledger";
-  if (path.startsWith("/portal/finances/assessments/")) return "Assessment detail";
-  return "My Finances";
+  if (path.startsWith("/portal/finances/assessments/")) return t("portal.finances.assessment.title");
+  return t("portal.finances.title");
 }
 
 // ---------- Hub surface (/portal/finances) ----------
@@ -121,17 +122,17 @@ function FinancesHubContent() {
     <div className="mx-auto flex max-w-5xl flex-col gap-6" data-testid="portal-finances">
       <div>
         <h1 className="font-headline text-3xl md:text-4xl" data-testid="portal-finances-heading">
-          My Finances
+          {t("portal.finances.title")}
         </h1>
         <p className="mt-1 text-sm text-on-surface-variant">
-          Pay dues, manage payment methods, and review your ledger history.
+          {t("portal.finances.subtitle")}
         </p>
       </div>
 
       <section className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Balance due</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.balanceDue")}</p>
             <p className={`mt-1 font-headline text-3xl ${balance > 0 ? "text-destructive" : "text-secondary"}`} data-testid="portal-finances-balance">
               ${Math.abs(balance).toFixed(2)}
             </p>
@@ -144,13 +145,13 @@ function FinancesHubContent() {
         </Card>
         <Card>
           <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Total paid (YTD)</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalPaidYtd")}</p>
             <p className="mt-1 font-headline text-3xl">${(dashboard?.totalPayments ?? 0).toFixed(2)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Total charges (YTD)</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalChargesYtd")}</p>
             <p className="mt-1 font-headline text-3xl">${(dashboard?.totalCharges ?? 0).toFixed(2)}</p>
           </CardContent>
         </Card>
@@ -159,16 +160,18 @@ function FinancesHubContent() {
       <section className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardContent className="space-y-3 py-5">
-            <h2 className="font-headline text-lg">Make a payment</h2>
+            <h2 className="font-headline text-lg" id="portal-finances-make-payment-heading">{t("portal.finances.makePayment.title")}</h2>
             <div className="flex gap-2">
               <Input
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder="Amount"
+                placeholder={t("portal.finances.makePayment.amountPlaceholder")}
                 value={paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value)}
                 data-testid="portal-finances-amount-input"
+                aria-labelledby="portal-finances-make-payment-heading"
+                aria-label={t("portal.finances.makePayment.amountPlaceholder")}
               />
               <Button
                 onClick={() => {
@@ -178,33 +181,33 @@ function FinancesHubContent() {
                 disabled={startCheckout.isPending || !paymentAmount}
                 data-testid="portal-finances-pay-now"
               >
-                {startCheckout.isPending ? "Redirecting…" : "Pay now"}
+                {startCheckout.isPending ? t("portal.finances.makePayment.redirecting") : t("portal.finances.makePayment.cta")}
               </Button>
             </div>
             <p className="text-xs text-on-surface-variant">
-              Secure checkout via Stripe. You'll be redirected to complete the payment.
+              {t("portal.finances.makePayment.body")}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="space-y-3 py-5">
-            <h2 className="font-headline text-lg">Quick links</h2>
+            <h2 className="font-headline text-lg">{t("portal.finances.quickLinks.title")}</h2>
             <div className="grid grid-cols-1 gap-2">
               <Link
                 href="/portal/finances/payment-methods"
-                className="flex items-center justify-between rounded-lg border border-outline-variant/10 px-4 py-3 text-sm font-semibold hover:bg-surface-container"
+                className="flex items-center justify-between rounded-lg border border-outline-variant/10 px-4 py-3 text-sm font-semibold hover:bg-surface-container focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 data-testid="portal-finances-link-payment-methods"
               >
-                Payment methods & autopay
-                <span className="material-symbols-outlined text-base">arrow_forward</span>
+                {t("portal.finances.quickLinks.paymentMethods")}
+                <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
               </Link>
               <Link
                 href="/portal/finances/ledger"
-                className="flex items-center justify-between rounded-lg border border-outline-variant/10 px-4 py-3 text-sm font-semibold hover:bg-surface-container"
+                className="flex items-center justify-between rounded-lg border border-outline-variant/10 px-4 py-3 text-sm font-semibold hover:bg-surface-container focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 data-testid="portal-finances-link-ledger"
               >
-                Full ledger history
-                <span className="material-symbols-outlined text-base">arrow_forward</span>
+                {t("portal.finances.quickLinks.fullLedger")}
+                <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
               </Link>
             </div>
           </CardContent>
@@ -212,15 +215,16 @@ function FinancesHubContent() {
       </section>
 
       {upcoming.length > 0 ? (
-        <section data-testid="portal-finances-upcoming-assessments">
-          <h2 className="mb-3 font-headline text-lg">Upcoming special assessments</h2>
+        <section data-testid="portal-finances-upcoming-assessments" aria-labelledby="portal-finances-upcoming-heading">
+          <h2 id="portal-finances-upcoming-heading" className="mb-3 font-headline text-lg">{t("portal.finances.upcoming.title")}</h2>
           <div className="grid gap-3">
             {upcoming.map((item) => (
               <Link
                 key={`${item.assessmentId}-${item.installmentNumber}`}
                 href={`/portal/finances/assessments/${item.assessmentId}`}
-                className="flex items-center justify-between rounded-xl border border-outline-variant/10 bg-surface p-4 hover:border-primary/30"
+                className="flex items-center justify-between rounded-xl border border-outline-variant/10 bg-surface p-4 hover:border-primary/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 data-testid={`portal-finances-assessment-${item.assessmentId}`}
+                aria-label={`${item.assessmentName} — installment ${item.installmentNumber}`}
               >
                 <div>
                   <p className="font-semibold">{item.assessmentName}</p>
@@ -239,27 +243,31 @@ function FinancesHubContent() {
         </section>
       ) : null}
 
-      <section data-testid="portal-finances-recent-ledger">
+      <section data-testid="portal-finances-recent-ledger" aria-labelledby="portal-finances-recent-heading">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-headline text-lg">Recent ledger</h2>
-          <Link href="/portal/finances/ledger" className="text-xs font-semibold text-primary hover:underline">
-            View full ledger
+          <h2 id="portal-finances-recent-heading" className="font-headline text-lg">{t("portal.finances.recentLedger.title")}</h2>
+          <Link
+            href="/portal/finances/ledger"
+            className="rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {t("portal.finances.recentLedger.viewFull")}
           </Link>
         </div>
         {ledger.length === 0 ? (
           <Card>
-            <CardContent className="py-6 text-sm text-on-surface-variant">No ledger entries yet.</CardContent>
+            <CardContent className="py-6 text-sm text-on-surface-variant" role="status">{t("portal.finances.recentLedger.empty")}</CardContent>
           </Card>
         ) : (
           <Card>
             <CardContent className="p-0">
-              <Table>
+              <Table aria-labelledby="portal-finances-recent-heading">
+                <caption className="sr-only">{t("portal.finances.recentLedger.title")}</caption>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>{t("portal.finances.col.date")}</TableHead>
+                    <TableHead>{t("portal.finances.col.type")}</TableHead>
+                    <TableHead>{t("portal.finances.col.description")}</TableHead>
+                    <TableHead className="text-right">{t("portal.finances.col.amount")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -350,23 +358,23 @@ function PaymentMethodsContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-headline text-3xl" data-testid="portal-finances-payment-methods-heading">
-            Payment methods
+            {t("portal.finances.paymentMethods.title")}
           </h1>
           <p className="mt-1 text-sm text-on-surface-variant">
-            Bank accounts linked to your portal and autopay enrollments.
+            {t("portal.finances.paymentMethods.subtitle")}
           </p>
         </div>
         <Button onClick={() => setupMethod.mutate()} disabled={setupMethod.isPending} data-testid="portal-finances-add-method">
-          {setupMethod.isPending ? "Opening…" : "Add method"}
+          {setupMethod.isPending ? t("portal.finances.paymentMethods.opening") : t("portal.finances.paymentMethods.add")}
         </Button>
       </div>
 
-      <section>
-        <h2 className="mb-3 font-headline text-lg">Saved methods</h2>
+      <section aria-labelledby="payment-methods-saved-heading">
+        <h2 id="payment-methods-saved-heading" className="mb-3 font-headline text-lg">{t("portal.finances.paymentMethods.savedTitle")}</h2>
         {methods.length === 0 ? (
           <Card>
-            <CardContent className="py-6 text-sm text-on-surface-variant">
-              No saved payment methods yet. Add a bank account to enable faster checkout and autopay.
+            <CardContent className="py-6 text-sm text-on-surface-variant" role="status">
+              {t("portal.finances.paymentMethods.savedEmpty")}
             </CardContent>
           </Card>
         ) : (
@@ -376,7 +384,7 @@ function PaymentMethodsContent() {
                 <CardContent className="flex items-center justify-between py-4">
                   <div>
                     <p className="text-sm font-semibold">
-                      {m.bankName ?? "Bank account"} ··· {m.last4}
+                      {m.bankName ?? t("portal.finances.paymentMethods.bankAccount")} ··· {m.last4}
                     </p>
                     {m.accountHolderName ? (
                       <p className="text-xs text-on-surface-variant">{m.accountHolderName}</p>
@@ -384,14 +392,24 @@ function PaymentMethodsContent() {
                   </div>
                   <div className="flex items-center gap-2">
                     {m.isDefault ? (
-                      <Badge variant="secondary">Default</Badge>
+                      <Badge variant="secondary">{t("portal.finances.paymentMethods.default")}</Badge>
                     ) : (
-                      <Button size="sm" variant="outline" onClick={() => setDefault.mutate(m.id)}>
-                        Set default
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setDefault.mutate(m.id)}
+                        aria-label={`${t("portal.finances.paymentMethods.setDefault")} — ${m.bankName ?? t("portal.finances.paymentMethods.bankAccount")} ${m.last4}`}
+                      >
+                        {t("portal.finances.paymentMethods.setDefault")}
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" onClick={() => removeMethod.mutate(m.id)}>
-                      Remove
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeMethod.mutate(m.id)}
+                      aria-label={`${t("portal.finances.paymentMethods.remove")} — ${m.bankName ?? t("portal.finances.paymentMethods.bankAccount")} ${m.last4}`}
+                    >
+                      {t("portal.finances.paymentMethods.remove")}
                     </Button>
                   </div>
                 </CardContent>
@@ -401,12 +419,12 @@ function PaymentMethodsContent() {
         )}
       </section>
 
-      <section>
-        <h2 className="mb-3 font-headline text-lg">Autopay enrollments</h2>
+      <section aria-labelledby="autopay-heading">
+        <h2 id="autopay-heading" className="mb-3 font-headline text-lg">{t("portal.finances.autopay.title")}</h2>
         {enrollments.length === 0 ? (
           <Card>
-            <CardContent className="py-6 text-sm text-on-surface-variant">
-              You are not currently enrolled in autopay. Enroll from the finances hub to automate monthly dues.
+            <CardContent className="py-6 text-sm text-on-surface-variant" role="status">
+              {t("portal.finances.autopay.empty")}
             </CardContent>
           </Card>
         ) : (
@@ -416,7 +434,7 @@ function PaymentMethodsContent() {
                 <CardContent className="flex items-center justify-between py-4">
                   <div>
                     <p className="text-sm font-semibold capitalize">{e.frequency.replace(/-/g, " ")}</p>
-                    <p className="text-xs text-on-surface-variant">Status: {e.status}</p>
+                    <p className="text-xs text-on-surface-variant">{t("portal.finances.autopay.statusLabel")} {e.status}</p>
                   </div>
                   <Badge variant={e.status === "active" ? "default" : "outline"}>{e.status}</Badge>
                 </CardContent>
@@ -455,19 +473,24 @@ function LedgerContent() {
     <div className="mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-finances-ledger">
       <div>
         <h1 className="font-headline text-3xl" data-testid="portal-finances-ledger-heading">
-          Ledger history
+          {t("portal.finances.ledger.title")}
         </h1>
         <p className="mt-1 text-sm text-on-surface-variant">
-          All charges, assessments, payments, late fees, and adjustments.
+          {t("portal.finances.ledger.subtitle")}
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label={t("portal.finances.col.type")}
+      >
         {typeOptions.map((opt) => (
           <button
             key={opt}
             type="button"
             onClick={() => setTypeFilter(opt)}
-            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${
+            aria-pressed={typeFilter === opt}
+            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
               typeFilter === opt ? "bg-primary text-on-primary" : "bg-surface-container text-on-surface-variant"
             }`}
             data-testid={`portal-finances-ledger-filter-${opt}`}
@@ -479,8 +502,8 @@ function LedgerContent() {
       {ledger.length === 0 ? (
         <EmptyState
           icon={Receipt}
-          title="No transactions yet"
-          description="Charges, assessments, payments, and adjustments will appear here once your account has activity."
+          title={t("portal.finances.ledger.empty.title")}
+          description={t("portal.finances.ledger.empty.body")}
           testId="portal-finances-ledger-empty"
         />
       ) : (
@@ -495,20 +518,21 @@ function LedgerContent() {
             {filtered.length > LEDGER_VIRTUALIZE_THRESHOLD ? (
               <VirtualizedPortalLedger entries={filtered} />
             ) : (
-              <Table>
+              <Table aria-label={t("portal.finances.ledger.title")}>
+                <caption className="sr-only">{t("portal.finances.ledger.title")}</caption>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>{t("portal.finances.col.date")}</TableHead>
+                    <TableHead>{t("portal.finances.col.type")}</TableHead>
+                    <TableHead>{t("portal.finances.col.description")}</TableHead>
+                    <TableHead className="text-right">{t("portal.finances.col.amount")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={4} className="py-6 text-center text-sm text-on-surface-variant">
-                        No ledger entries match this filter.
+                        {t("portal.finances.ledger.empty.filterMatch")}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -545,16 +569,16 @@ function LedgerContent() {
 function VirtualizedPortalLedger({ entries }: { entries: OwnerLedgerEntry[] }) {
   const gridTemplate = "minmax(90px, 110px) minmax(90px, 130px) minmax(150px, 1fr) minmax(80px, 110px)";
   return (
-    <div data-testid="portal-finances-ledger-virtualized">
+    <div data-testid="portal-finances-ledger-virtualized" role="table" aria-label={t("portal.finances.ledger.title")}>
       <div
         className="grid border-b text-xs font-medium uppercase tracking-wide text-on-surface-variant"
         style={{ gridTemplateColumns: gridTemplate }}
         role="row"
       >
-        <div className="px-4 py-3">Date</div>
-        <div className="px-4 py-3">Type</div>
-        <div className="px-4 py-3">Description</div>
-        <div className="px-4 py-3 text-right">Amount</div>
+        <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.date")}</div>
+        <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.type")}</div>
+        <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.description")}</div>
+        <div className="px-4 py-3 text-right" role="columnheader">{t("portal.finances.col.amount")}</div>
       </div>
       <VirtualizedLedgerTable<OwnerLedgerEntry>
         rows={entries}
@@ -595,15 +619,18 @@ function AssessmentDetailContent({ assessmentId }: { assessmentId: string }) {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4" data-testid="portal-finances-assessment-detail">
       <div>
-        <Link href="/portal/finances" className="text-xs font-semibold text-primary hover:underline">
-          ← Back to My Finances
+        <Link
+          href="/portal/finances"
+          className="rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          {t("portal.finances.assessment.backLink")}
         </Link>
       </div>
       <h1 className="font-headline text-3xl" data-testid="portal-finances-assessment-detail-heading">
-        Assessment detail
+        {t("portal.finances.assessment.title")}
       </h1>
       <p className="text-sm text-on-surface-variant">
-        Leveraging the 4.3 Q5 drill-in surface for the selected special assessment.
+        {t("portal.finances.assessment.body")}
       </p>
       <PortalAssessmentDetailDialog
         portalFetch={portalFetch}
