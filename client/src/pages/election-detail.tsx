@@ -1,6 +1,6 @@
 // zone: Governance
 // persona: Manager, Board Officer, Assisted Board, PM Assistant
-import { lazy, Suspense, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,7 +14,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,18 +24,13 @@ import {
   Users, FileText, Download, Search, AlertTriangle, Mail, RefreshCw, Printer,
   ThumbsUp, ThumbsDown,
 } from "lucide-react";
-// 5.4-F6 (Wave 16b) — recharts (~108 KB gzip) is dynamically imported via
-// the lazy chart-component module so the `vendor-recharts` chunk is no
-// longer pulled onto this page's critical path. Secret-ballot elections
-// (which never render a chart) now load with zero recharts cost.
-const OptionTallyBarChart = lazy(() =>
-  import("@/components/election-results-charts").then((m) => ({ default: m.OptionTallyBarChart })),
-);
-const ParticipationDonutChart = lazy(() =>
-  import("@/components/election-results-charts").then((m) => ({
-    default: m.ParticipationDonutChart,
-  })),
-);
+// Wave 22 — `recharts` was replaced with hand-rolled SVG charts (~5 KB gzip
+// combined) so the prior `React.lazy` + `Suspense` boundary is no longer
+// needed. The chart components are now imported synchronously.
+import {
+  OptionTallyBarChart,
+  ParticipationDonutChart,
+} from "@/components/election-results-charts";
 import type { AdminRole } from "@shared/schema";
 
 type AuthSession = { authenticated: boolean; admin?: { role: AdminRole } | null };
@@ -914,29 +908,18 @@ export default function ElectionDetailPage({ id }: { id: string }) {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Horizontal bar chart (lazy — recharts chunk loads on demand) */}
+              {/* Horizontal bar chart (Wave 22 — hand-rolled SVG, no vendor chunk) */}
               <div className="md:col-span-2">
-                <Suspense
-                  fallback={
-                    <Skeleton
-                      className="w-full"
-                      style={{ height: Math.max(200, tally.optionTallies.length * 50) }}
-                    />
-                  }
-                >
-                  <OptionTallyBarChart data={tally.optionTallies} colors={CHART_COLORS} />
-                </Suspense>
+                <OptionTallyBarChart data={tally.optionTallies} colors={CHART_COLORS} />
               </div>
 
-              {/* Participation donut chart (lazy) */}
+              {/* Participation donut chart */}
               <div className="flex flex-col items-center justify-center">
                 <div className="text-xs font-medium text-muted-foreground mb-2">Participation Rate</div>
-                <Suspense fallback={<Skeleton className="h-[160px] w-[160px] rounded-full" />}>
-                  <ParticipationDonutChart
-                    castCount={tally.castCount}
-                    eligibleCount={tally.eligibleCount}
-                  />
-                </Suspense>
+                <ParticipationDonutChart
+                  castCount={tally.castCount}
+                  eligibleCount={tally.eligibleCount}
+                />
                 <div className="text-lg font-bold">{tally.participationPercent}%</div>
                 <div className="text-xs text-muted-foreground">{tally.castCount} of {tally.eligibleCount} voters</div>
               </div>

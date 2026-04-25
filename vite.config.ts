@@ -49,7 +49,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           "vendor-react": ["react", "react-dom"],
-          "vendor-recharts": ["recharts"],
           "vendor-radix": [
             "@radix-ui/react-accordion",
             "@radix-ui/react-alert-dialog",
