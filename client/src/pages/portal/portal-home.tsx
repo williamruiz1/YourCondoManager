@@ -12,6 +12,7 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PortalShell, usePortalContext, type PortalAssociationChoice } from "./portal-shell";
+import { t } from "@/i18n/use-strings";
 
 type PortalNoticeHistory = {
   id: string;
@@ -100,7 +101,9 @@ function PortalHomeContent() {
 
   const openRequests = requests.filter((r) => !["resolved", "closed", "rejected"].includes(r.status));
   const balance = financialDashboard?.balance ?? 0;
-  const greeting = session.firstName ? `Welcome, ${session.firstName}` : "Welcome to your portal";
+  const greeting = session.firstName
+    ? `Welcome, ${session.firstName}`
+    : t("portal.home.greetingFallback");
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8" data-testid="portal-home">
@@ -114,28 +117,29 @@ function PortalHomeContent() {
       </section>
 
       {activeElections.length > 0 ? (
-        <section className="space-y-3" data-testid="portal-home-active-elections">
+        <section className="space-y-3" data-testid="portal-home-active-elections" aria-label={t("home.activeElections.title")}>
           {activeElections.map(({ election, token }) => (
             <div
               key={election.id}
               className="flex items-center gap-4 rounded-2xl border-2 border-primary/30 bg-primary/5 p-4"
             >
               <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                <span className="material-symbols-outlined text-primary">how_to_vote</span>
+                <span className="material-symbols-outlined text-primary" aria-hidden="true">how_to_vote</span>
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-on-surface">{election.title}</p>
                 <p className="text-xs text-on-surface-variant">
                   {election.closesAt
                     ? `Voting closes ${new Date(election.closesAt).toLocaleDateString()}`
-                    : "Open for voting"}
+                    : t("portal.home.elections.openForVoting")}
                 </p>
               </div>
               <a
                 href={`/vote/${token}`}
-                className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-bold uppercase tracking-wider text-on-primary hover:bg-primary/90"
+                className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-bold uppercase tracking-wider text-on-primary hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                aria-label={`${t("portal.home.elections.voteNow")} — ${election.title}`}
               >
-                Vote now
+                {t("portal.home.elections.voteNow")}
               </a>
             </div>
           ))}
@@ -146,7 +150,7 @@ function PortalHomeContent() {
         <Card>
           <CardContent className="py-5">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-              Your units
+              {t("portal.home.cards.yourUnits")}
             </p>
             <p className="mt-1 font-headline text-3xl" data-testid="portal-home-units-count">
               {myUnits.length}
@@ -163,7 +167,7 @@ function PortalHomeContent() {
         <Card>
           <CardContent className="py-5">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-              Account balance
+              {t("portal.home.cards.balance")}
             </p>
             <p
               className={`mt-1 font-headline text-3xl ${balance > 0 ? "text-destructive" : "text-secondary"}`}
@@ -173,27 +177,27 @@ function PortalHomeContent() {
             </p>
             <Link
               href="/portal/finances"
-              className="mt-2 inline-flex text-xs font-semibold text-primary hover:underline"
+              className="mt-2 inline-flex rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               data-testid="portal-home-balance-link"
             >
-              View finances →
+              {t("portal.home.cards.viewFinances")}
             </Link>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-5">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-              Open requests
+              {t("portal.home.cards.openRequests")}
             </p>
             <p className="mt-1 font-headline text-3xl" data-testid="portal-home-open-requests">
               {openRequests.length}
             </p>
             <Link
               href="/portal/requests"
-              className="mt-2 inline-flex text-xs font-semibold text-primary hover:underline"
+              className="mt-2 inline-flex rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               data-testid="portal-home-requests-link"
             >
-              Submit or track →
+              {t("portal.home.cards.submitOrTrack")}
             </Link>
           </CardContent>
         </Card>
@@ -203,17 +207,17 @@ function PortalHomeContent() {
         <Card>
           <CardContent className="space-y-3 py-5">
             <div className="flex items-center justify-between">
-              <h2 className="font-headline text-lg">Recent notices</h2>
+              <h2 className="font-headline text-lg">{t("portal.home.notices.title")}</h2>
               <Link
                 href="/portal/notices"
-                className="text-xs font-semibold text-primary hover:underline"
+                className="rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 data-testid="portal-home-notices-link"
               >
-                View all
+                {t("common.viewAll")}
               </Link>
             </div>
             {notices.length === 0 ? (
-              <p className="text-sm text-on-surface-variant">You're all caught up. No notices right now.</p>
+              <p className="text-sm text-on-surface-variant" role="status">{t("portal.home.notices.empty")}</p>
             ) : (
               <ul className="space-y-2">
                 {notices.slice(0, 3).map((notice) => (
@@ -235,17 +239,17 @@ function PortalHomeContent() {
         <Card>
           <CardContent className="space-y-3 py-5">
             <div className="flex items-center justify-between">
-              <h2 className="font-headline text-lg">Request activity</h2>
+              <h2 className="font-headline text-lg">{t("portal.home.activity.title")}</h2>
               <Link
                 href="/portal/requests"
-                className="text-xs font-semibold text-primary hover:underline"
+                className="rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 data-testid="portal-home-activity-link"
               >
-                See all
+                {t("common.seeAll")}
               </Link>
             </div>
             {requests.length === 0 ? (
-              <p className="text-sm text-on-surface-variant">No maintenance requests yet.</p>
+              <p className="text-sm text-on-surface-variant" role="status">{t("portal.home.activity.empty")}</p>
             ) : (
               <ul className="space-y-2">
                 {requests.slice(0, 3).map((req) => (
@@ -265,49 +269,49 @@ function PortalHomeContent() {
         </Card>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3" data-testid="portal-home-shortcuts">
+      <section className="grid gap-4 md:grid-cols-3" data-testid="portal-home-shortcuts" aria-label="Portal shortcuts">
         <Link
           href="/portal/community"
-          className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5"
+          className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           data-testid="portal-home-shortcut-community"
         >
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">My Community</p>
-          <p className="mt-2 font-headline text-lg">Community hub</p>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">{t("portal.home.shortcuts.communityEyebrow")}</p>
+          <p className="mt-2 font-headline text-lg">{t("portal.home.shortcuts.communityTitle")}</p>
           <p className="mt-1 text-xs text-on-surface-variant">
-            Notices, events, announcements, and the public community hub.
+            {t("portal.home.shortcuts.communityBody")}
           </p>
         </Link>
         {amenitiesSettings?.amenitiesEnabled ? (
           <Link
             href="/portal/amenities"
-            className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5"
+            className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             data-testid="portal-home-shortcut-amenities"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Amenities</p>
-            <p className="mt-2 font-headline text-lg">Reserve a space</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">{t("portal.home.shortcuts.amenitiesEyebrow")}</p>
+            <p className="mt-2 font-headline text-lg">{t("portal.home.shortcuts.amenitiesTitle")}</p>
             <p className="mt-1 text-xs text-on-surface-variant">
-              Book amenities and track your upcoming reservations.
+              {t("portal.home.shortcuts.amenitiesBody")}
             </p>
           </Link>
         ) : (
           <Link
             href="/portal/documents"
-            className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5"
+            className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             data-testid="portal-home-shortcut-documents"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Documents</p>
-            <p className="mt-2 font-headline text-lg">Association documents</p>
-            <p className="mt-1 text-xs text-on-surface-variant">Read governing documents, meeting minutes, and policies.</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">{t("portal.home.shortcuts.documentsEyebrow")}</p>
+            <p className="mt-2 font-headline text-lg">{t("portal.home.shortcuts.documentsTitle")}</p>
+            <p className="mt-1 text-xs text-on-surface-variant">{t("portal.home.shortcuts.documentsBody")}</p>
           </Link>
         )}
         <Link
           href="/portal/finances/payment-methods"
-          className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5"
+          className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           data-testid="portal-home-shortcut-payment-methods"
         >
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Payments</p>
-          <p className="mt-2 font-headline text-lg">Payment methods</p>
-          <p className="mt-1 text-xs text-on-surface-variant">Manage bank accounts and autopay.</p>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">{t("portal.home.shortcuts.paymentsEyebrow")}</p>
+          <p className="mt-2 font-headline text-lg">{t("portal.home.shortcuts.paymentsTitle")}</p>
+          <p className="mt-1 text-xs text-on-surface-variant">{t("portal.home.shortcuts.paymentsBody")}</p>
         </Link>
       </section>
     </div>
@@ -315,7 +319,7 @@ function PortalHomeContent() {
 }
 
 export default function PortalHomePage() {
-  useDocumentTitle("Home");
+  useDocumentTitle(t("home.title"));
   return (
     <PortalShell>
       <PortalHomeContent />

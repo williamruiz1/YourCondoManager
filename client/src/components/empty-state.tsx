@@ -45,7 +45,7 @@ export function EmptyState({
   testId = "empty-state",
 }: EmptyStateProps) {
   return (
-    <Card data-testid={testId}>
+    <Card data-testid={testId} role="status">
       <CardContent className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <Icon
           className="h-10 w-10 text-muted-foreground"

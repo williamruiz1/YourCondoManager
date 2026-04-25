@@ -36,7 +36,7 @@ export function ErrorState({
   testId = "error-state",
 }: ErrorStateProps) {
   return (
-    <Card data-testid={testId}>
+    <Card data-testid={testId} role="alert">
       <CardContent className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <AlertTriangle
           className="h-10 w-10 text-destructive"

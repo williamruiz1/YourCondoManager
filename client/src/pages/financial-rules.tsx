@@ -33,6 +33,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { usePersonaToggles } from "@shared/persona-access";
+import { t } from "@/i18n/use-strings";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -126,11 +127,11 @@ function presetToRange(preset: DateRangePreset): { from: string; to: string } | 
 }
 
 function statusBadge(status: RunHistoryRow["status"]) {
-  if (status === "success") return <Badge variant="default" data-testid={`status-badge-${status}`}><CheckCircle2 className="h-3 w-3 mr-1" />Success</Badge>;
-  if (status === "failed") return <Badge variant="destructive" data-testid={`status-badge-${status}`}><XCircle className="h-3 w-3 mr-1" />Failed</Badge>;
-  if (status === "retrying") return <Badge variant="secondary" data-testid={`status-badge-${status}`}><RotateCcw className="h-3 w-3 mr-1" />Retrying</Badge>;
-  if (status === "skipped") return <Badge variant="outline" data-testid={`status-badge-${status}`}>Skipped</Badge>;
-  if (status === "deferred") return <Badge variant="outline" data-testid={`status-badge-${status}`}><Clock className="h-3 w-3 mr-1" />Deferred</Badge>;
+  if (status === "success") return <Badge variant="default" data-testid={`status-badge-${status}`}><CheckCircle2 className="h-3 w-3 mr-1" aria-hidden="true" />{t("financialRules.filters.success")}</Badge>;
+  if (status === "failed") return <Badge variant="destructive" data-testid={`status-badge-${status}`}><XCircle className="h-3 w-3 mr-1" aria-hidden="true" />{t("financialRules.filters.failed")}</Badge>;
+  if (status === "retrying") return <Badge variant="secondary" data-testid={`status-badge-${status}`}><RotateCcw className="h-3 w-3 mr-1" aria-hidden="true" />{t("financialRules.filters.retrying")}</Badge>;
+  if (status === "skipped") return <Badge variant="outline" data-testid={`status-badge-${status}`}>{t("financialRules.filters.skipped")}</Badge>;
+  if (status === "deferred") return <Badge variant="outline" data-testid={`status-badge-${status}`}><Clock className="h-3 w-3 mr-1" aria-hidden="true" />{t("financialRules.filters.deferred")}</Badge>;
   return <Badge variant="outline">{status}</Badge>;
 }
 
@@ -182,57 +183,81 @@ function RunHistoryTab() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground" /> Filters
+                <Filter className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t("financialRules.filters.title")}
               </CardTitle>
-              <CardDescription>Rule type, status, and date window.</CardDescription>
+              <CardDescription>{t("financialRules.filters.body")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="run-history-filters">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Rule type</label>
+              <label htmlFor="run-history-rule-type" className="text-xs font-medium text-muted-foreground">
+                {t("financialRules.filters.ruleType")}
+              </label>
               <Select value={ruleType} onValueChange={(v) => setRuleType(v as RuleTypeFilter)}>
-                <SelectTrigger data-testid="select-rule-type"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="run-history-rule-type" data-testid="select-rule-type" aria-label={t("financialRules.filters.ruleType")}>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="recurring">Recurring</SelectItem>
-                  <SelectItem value="special-assessment">Special Assessment</SelectItem>
+                  <SelectItem value="all">{t("financialRules.filters.all")}</SelectItem>
+                  <SelectItem value="recurring">{t("financialRules.filters.recurring")}</SelectItem>
+                  <SelectItem value="special-assessment">{t("financialRules.filters.specialAssessment")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Status</label>
+              <label htmlFor="run-history-status" className="text-xs font-medium text-muted-foreground">
+                {t("financialRules.filters.status")}
+              </label>
               <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-                <SelectTrigger data-testid="select-status"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="run-history-status" data-testid="select-status" aria-label={t("financialRules.filters.status")}>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="success">Success</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="retrying">Retrying</SelectItem>
-                  <SelectItem value="skipped">Skipped</SelectItem>
-                  <SelectItem value="deferred">Deferred</SelectItem>
+                  <SelectItem value="all">{t("financialRules.filters.all")}</SelectItem>
+                  <SelectItem value="success">{t("financialRules.filters.success")}</SelectItem>
+                  <SelectItem value="failed">{t("financialRules.filters.failed")}</SelectItem>
+                  <SelectItem value="retrying">{t("financialRules.filters.retrying")}</SelectItem>
+                  <SelectItem value="skipped">{t("financialRules.filters.skipped")}</SelectItem>
+                  <SelectItem value="deferred">{t("financialRules.filters.deferred")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Date range</label>
+              <label htmlFor="run-history-date-range" className="text-xs font-medium text-muted-foreground">
+                {t("financialRules.filters.dateRange")}
+              </label>
               <Select value={preset} onValueChange={(v) => setPreset(v as DateRangePreset)}>
-                <SelectTrigger data-testid="select-date-range"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="run-history-date-range" data-testid="select-date-range" aria-label={t("financialRules.filters.dateRange")}>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="7d">Last 7 days</SelectItem>
-                  <SelectItem value="30d">Last 30 days</SelectItem>
-                  <SelectItem value="90d">Last 90 days</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
+                  <SelectItem value="7d">{t("financialRules.filters.last7")}</SelectItem>
+                  <SelectItem value="30d">{t("financialRules.filters.last30")}</SelectItem>
+                  <SelectItem value="90d">{t("financialRules.filters.last90")}</SelectItem>
+                  <SelectItem value="custom">{t("financialRules.filters.custom")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {preset === "custom" && (
               <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Custom window</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("financialRules.filters.customWindow")}</label>
                 <div className="flex gap-2">
-                  <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} data-testid="input-custom-from" />
-                  <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} data-testid="input-custom-to" />
+                  <Input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    data-testid="input-custom-from"
+                    aria-label={`${t("financialRules.filters.customWindow")} — from`}
+                  />
+                  <Input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    data-testid="input-custom-to"
+                    aria-label={`${t("financialRules.filters.customWindow")} — to`}
+                  />
                 </div>
               </div>
             )}
@@ -245,28 +270,30 @@ function RunHistoryTab() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-blue-500" /> Run History
+                <Calendar className="h-4 w-4 text-blue-500" aria-hidden="true" /> {t("financialRules.runHistory.title")}
               </CardTitle>
               <CardDescription>
-                Unified execution log (recurring + special assessments). Populated by the assessment orchestrator (Wave 7).
+                {t("financialRules.runHistory.body")}
               </CardDescription>
             </div>
-            <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isLoading} data-testid="button-refresh-history">
-              Refresh
+            <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isLoading} data-testid="button-refresh-history" aria-label={t("common.refresh")}>
+              {t("common.refresh")}
             </Button>
           </div>
         </CardHeader>
         <CardContent>
           {!activeAssociationId ? (
-            <div className="text-sm text-muted-foreground py-6 text-center">Select an association to view run history.</div>
+            <div className="text-sm text-muted-foreground py-6 text-center" role="status">
+              {t("financialRules.runHistory.selectAssociation")}
+            </div>
           ) : isLoading ? (
-            <div className="space-y-3 py-2">
+            <div className="space-y-3 py-2" role="status" aria-label={t("common.loading")}>
               {[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
           ) : isError ? (
             <ErrorState
-              title="Couldn't load run history"
-              description="We hit an error loading the assessment run log. Try again or adjust the filters."
+              title={t("financialRules.runHistory.error.title")}
+              description={t("financialRules.runHistory.error.body")}
               retry={() => refetch()}
               details={(error as Error | undefined)?.message}
               testId="run-history-error"
@@ -274,22 +301,23 @@ function RunHistoryTab() {
           ) : !data?.rows?.length ? (
             <EmptyState
               icon={HistoryIcon}
-              title="No run history in this window"
-              description="Successful and failed assessment runs will show here once the orchestrator processes a rule."
+              title={t("financialRules.runHistory.empty.title")}
+              description={t("financialRules.runHistory.empty.body")}
               testId="run-history-empty"
             />
           ) : (
-            <Table data-testid="run-history-table">
+            <Table data-testid="run-history-table" aria-label={t("financialRules.runHistory.title")}>
+              <caption className="sr-only">{t("financialRules.runHistory.title")}</caption>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Run Started</TableHead>
-                  <TableHead>Rule Type</TableHead>
-                  <TableHead>Rule</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Ledger</TableHead>
-                  <TableHead>Error</TableHead>
+                  <TableHead>{t("financialRules.runHistory.col.runStarted")}</TableHead>
+                  <TableHead>{t("financialRules.runHistory.col.ruleType")}</TableHead>
+                  <TableHead>{t("financialRules.runHistory.col.rule")}</TableHead>
+                  <TableHead>{t("financialRules.runHistory.col.unit")}</TableHead>
+                  <TableHead>{t("financialRules.runHistory.col.status")}</TableHead>
+                  <TableHead className="text-right">{t("financialRules.runHistory.col.amount")}</TableHead>
+                  <TableHead>{t("financialRules.runHistory.col.ledger")}</TableHead>
+                  <TableHead>{t("financialRules.runHistory.col.error")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -347,12 +375,12 @@ function FinancialRulesInner() {
     <div className="flex flex-col min-h-0">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
-          title="Assessment Rules"
-          summary="Consolidated surface for recurring charges, special assessments, and unified run history."
-          eyebrow="Finance"
+          title={t("financialRules.title")}
+          summary={t("financialRules.summary")}
+          eyebrow={t("financialRules.eyebrow")}
           breadcrumbs={[
-            { label: "Financials", href: "/app/financial/foundation" },
-            { label: "Assessment Rules" },
+            { label: t("financialRules.crumb.financials"), href: "/app/financial/foundation" },
+            { label: t("financialRules.crumb.assessmentRules") },
           ]}
           subPages={financeSubPages}
         />
@@ -362,9 +390,9 @@ function FinancialRulesInner() {
               scrollable pill tabs). */}
           <div className="-mx-1 overflow-x-auto px-1">
             <TabsList className="w-max">
-              <TabsTrigger value="recurring" data-testid="tab-recurring">Recurring</TabsTrigger>
-              <TabsTrigger value="special-assessments" data-testid="tab-special-assessments">Special Assessments</TabsTrigger>
-              <TabsTrigger value="run-history" data-testid="tab-run-history">Run History</TabsTrigger>
+              <TabsTrigger value="recurring" data-testid="tab-recurring">{t("financialRules.tab.recurring")}</TabsTrigger>
+              <TabsTrigger value="special-assessments" data-testid="tab-special-assessments">{t("financialRules.tab.specialAssessments")}</TabsTrigger>
+              <TabsTrigger value="run-history" data-testid="tab-run-history">{t("financialRules.tab.runHistory")}</TabsTrigger>
             </TabsList>
           </div>
           <TabsContent value="recurring" className="mt-0" data-testid="tab-panel-recurring">
@@ -383,7 +411,7 @@ function FinancialRulesInner() {
 }
 
 export default function FinancialRulesPage() {
-  useDocumentTitle("Assessment Rules — Financials");
+  useDocumentTitle(`${t("financialRules.title")} — ${t("hub.financials.title")}`);
   // RouteGuard is plumbed per ADR 0b / Phase 0b.2 contract. Because
   // ROUTE_MANIFEST is empty by design in Phase 0b.2, the guard would
   // otherwise deny-all. We pass the page content as the `fallback` so the

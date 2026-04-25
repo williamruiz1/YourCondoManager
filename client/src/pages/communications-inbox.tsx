@@ -48,6 +48,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { ErrorState } from "@/components/error-state";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
+import { t } from "@/i18n/use-strings";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useCrossAssociationAlerts,
@@ -176,9 +177,9 @@ function InboxRow({
             variant="outline"
             data-testid={`inbox-alert-view-${alert.alertId}`}
           >
-            <Link href={alert.resolutionHref}>
-              View
-              <ArrowRight className="ml-1 h-3.5 w-3.5" />
+            <Link href={alert.resolutionHref} aria-label={`${t("inbox.action.view")} ${alert.title}`}>
+              {t("inbox.action.view")}
+              <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           </Button>
           {dismissed ? (
@@ -188,9 +189,10 @@ function InboxRow({
               onClick={() => onRestore(alert.alertId)}
               disabled={pending === "restore"}
               data-testid={`inbox-alert-restore-${alert.alertId}`}
+              aria-label={`${t("inbox.action.restore")} ${alert.title}`}
             >
-              <RotateCcw className="mr-1 h-3.5 w-3.5" />
-              Restore
+              <RotateCcw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              {t("inbox.action.restore")}
             </Button>
           ) : (
             <Button
@@ -199,9 +201,10 @@ function InboxRow({
               onClick={() => onDismiss(alert.alertId)}
               disabled={pending === "dismiss"}
               data-testid={`inbox-alert-dismiss-${alert.alertId}`}
+              aria-label={`${t("inbox.action.dismiss")} ${alert.title}`}
             >
-              <XIcon className="mr-1 h-3.5 w-3.5" />
-              Dismiss
+              <XIcon className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              {t("inbox.action.dismiss")}
             </Button>
           )}
           {unread && !dismissed && (
@@ -211,8 +214,9 @@ function InboxRow({
               onClick={() => onMarkAsRead(alert.alertId)}
               disabled={pending === "read"}
               data-testid={`inbox-alert-mark-read-${alert.alertId}`}
+              aria-label={`${t("inbox.action.markAsRead")}: ${alert.title}`}
             >
-              Mark as read
+              {t("inbox.action.markAsRead")}
             </Button>
           )}
         </div>
@@ -222,7 +226,7 @@ function InboxRow({
 }
 
 export default function CommunicationsInboxPage() {
-  useDocumentTitle("Inbox — Communications");
+  useDocumentTitle(`${t("inbox.title")} — ${t("hub.communications.title")}`);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -273,8 +277,8 @@ export default function CommunicationsInboxPage() {
     },
     onError: (err: unknown) => {
       toast({
-        title: "Could not restore alert",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("inbox.action.couldNotRestoreTitle"),
+        description: err instanceof Error ? err.message : t("inbox.action.unknownError"),
         variant: "destructive",
       });
     },
@@ -323,23 +327,26 @@ export default function CommunicationsInboxPage() {
   }, [rawAlerts, readStateBy, filter]);
 
   const emptyCopy: Record<InboxFilter, string> = {
-    all: "Inbox is empty",
-    unread: "No unread alerts — all caught up",
-    archived: "No archived alerts",
+    all: t("inbox.empty.all"),
+    unread: t("inbox.empty.unread"),
+    archived: t("inbox.empty.archived"),
   };
 
   return (
-    <div className="container mx-auto max-w-5xl space-y-4 p-4" data-testid="communications-inbox-page">
+    <section
+      className="container mx-auto max-w-5xl space-y-4 p-4"
+      data-testid="communications-inbox-page"
+      aria-labelledby="inbox-page-heading"
+    >
       <BreadcrumbNav route="/app/communications/inbox" />
 
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
+        <h1 id="inbox-page-heading" className="text-2xl font-bold flex items-center gap-2">
           <InboxIcon className="h-6 w-6" aria-hidden="true" />
-          Inbox
+          {t("inbox.title")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          One place for cross-association alerts across every zone you can access.
-          Dismissing an alert archives it here and clears it from the Home panel.
+          {t("inbox.subtitle")}
         </p>
       </header>
 
@@ -353,13 +360,13 @@ export default function CommunicationsInboxPage() {
         <div className="-mx-1 overflow-x-auto px-1">
           <TabsList className="w-max">
             <TabsTrigger value="all" data-testid="inbox-tab-all">
-              All
+              {t("inbox.tab.all")}
             </TabsTrigger>
             <TabsTrigger value="unread" data-testid="inbox-tab-unread">
-              Unread
+              {t("inbox.tab.unread")}
             </TabsTrigger>
             <TabsTrigger value="archived" data-testid="inbox-tab-archived">
-              Archived
+              {t("inbox.tab.archived")}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -368,12 +375,12 @@ export default function CommunicationsInboxPage() {
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
+            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
             {filter === "unread"
-              ? "Unread alerts"
+              ? t("inbox.heading.unread")
               : filter === "archived"
-                ? "Archived alerts"
-                : "All alerts"}
+                ? t("inbox.heading.archived")
+                : t("inbox.heading.all")}
           </CardTitle>
           <span className="text-xs text-muted-foreground" data-testid="inbox-count">
             {visibleAlerts.length}
@@ -381,15 +388,15 @@ export default function CommunicationsInboxPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="space-y-3" data-testid="inbox-loading">
+            <div className="space-y-3" data-testid="inbox-loading" role="status" aria-label={t("common.loading")}>
               <Skeleton className="h-20 w-full" />
               <Skeleton className="h-20 w-full" />
               <Skeleton className="h-20 w-full" />
             </div>
           ) : error ? (
             <ErrorState
-              title="Couldn't load inbox"
-              description="We hit an error loading your alert inbox. Try again, or refresh the page if the problem persists."
+              title={t("inbox.error.title")}
+              description={t("inbox.error.body")}
               retry={() => refetch()}
               details={error.message}
               testId="inbox-error"
@@ -398,8 +405,9 @@ export default function CommunicationsInboxPage() {
             <div
               className="flex flex-col items-center gap-2 py-10 text-center"
               data-testid={`inbox-empty-${filter}`}
+              role="status"
             >
-              <ShieldCheck className="h-8 w-8 text-muted-foreground/40" />
+              <ShieldCheck className="h-8 w-8 text-muted-foreground/40" aria-hidden="true" />
               <p className="text-sm text-muted-foreground">{emptyCopy[filter]}</p>
             </div>
           ) : (
@@ -427,6 +435,6 @@ export default function CommunicationsInboxPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </section>
   );
 }

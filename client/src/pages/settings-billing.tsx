@@ -29,6 +29,7 @@ import { ExternalLink, CreditCard, AlertCircle } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAdminRole } from "@/hooks/useAdminRole";
 import { EmptyState } from "@/components/empty-state";
+import { t } from "@/i18n/use-strings";
 
 // 4.4 Q6 Wave 13 — role gate. Mirrors the requireAdminRole on
 // POST /api/admin/billing/portal-session at server/routes.ts:13390.
@@ -46,20 +47,22 @@ type BillingResponse = PlatformSubscription | { status: "none" };
 
 // PRICING STALE — "enterprise" display label will be updated when PM tier
 // naming is finalized. See docs/strategy/pricing-and-positioning.md.
-const PLAN_LABELS: Record<string, string> = {
-  "self-managed": "Self-Managed",
-  "property-manager": "Property Manager",
-  "enterprise": "Enterprise",
-};
+function planLabel(plan: string): string {
+  if (plan === "self-managed") return t("settings.billing.plan.selfManaged");
+  if (plan === "property-manager") return t("settings.billing.plan.propertyManager");
+  if (plan === "enterprise") return t("settings.billing.plan.enterprise");
+  return plan;
+}
 
-const STATUS_LABELS: Record<string, string> = {
-  trialing: "Trial",
-  active: "Active",
-  past_due: "Past due",
-  canceled: "Canceled",
-  unpaid: "Unpaid",
-  incomplete: "Incomplete",
-};
+function statusLabel(status: string): string {
+  if (status === "trialing") return t("settings.billing.status.trialing");
+  if (status === "active") return t("settings.billing.status.active");
+  if (status === "past_due") return t("settings.billing.status.pastDue");
+  if (status === "canceled") return t("settings.billing.status.canceled");
+  if (status === "unpaid") return t("settings.billing.status.unpaid");
+  if (status === "incomplete") return t("settings.billing.status.incomplete");
+  return status;
+}
 
 function statusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (status === "active") return "default";
@@ -69,7 +72,7 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
 }
 
 export default function SettingsBillingPage() {
-  useDocumentTitle("Billing · Settings");
+  useDocumentTitle(`${t("settings.billing.title")} · Settings`);
   const { role, authResolved } = useAdminRole();
   const [, navigate] = useLocation();
 
@@ -117,23 +120,23 @@ export default function SettingsBillingPage() {
     <div className="min-h-full bg-surface-container-low">
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
         <div>
-          <h1 className="font-headline text-3xl font-bold text-on-surface">Billing</h1>
+          <h1 className="font-headline text-3xl font-bold text-on-surface">{t("settings.billing.title")}</h1>
           <p className="text-sm text-on-surface-variant mt-1">
-            Manage your plan, payment method, and billing history.
+            {t("settings.billing.subtitle")}
           </p>
         </div>
 
         {isLoading ? (
           <Card>
-            <CardContent className="py-12 text-center text-sm text-muted-foreground">
-              Loading subscription…
+            <CardContent className="py-12 text-center text-sm text-muted-foreground" role="status">
+              {t("settings.billing.loading")}
             </CardContent>
           </Card>
         ) : !hasBilling ? (
           <EmptyState
             icon={AlertCircle}
-            title="No billing account"
-            description="This association is not linked to a paid subscription. Contact support if you believe this is incorrect."
+            title={t("settings.billing.empty.title")}
+            description={t("settings.billing.empty.body")}
             testId="billing-empty-state"
           />
         ) : (
@@ -143,35 +146,35 @@ export default function SettingsBillingPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <CardTitle className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5" />
-                      {PLAN_LABELS[subscription!.plan] ?? subscription!.plan}
+                      <CreditCard className="h-5 w-5" aria-hidden="true" />
+                      {planLabel(subscription!.plan)}
                     </CardTitle>
-                    <CardDescription>Current plan</CardDescription>
+                    <CardDescription>{t("settings.billing.plan.currentLabel")}</CardDescription>
                   </div>
                   <Badge
                     variant={statusBadgeVariant(subscription!.status)}
                     data-testid="billing-status-badge"
                   >
-                    {STATUS_LABELS[subscription!.status] ?? subscription!.status}
+                    {statusLabel(subscription!.status)}
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {subscription!.status === "trialing" && subscription!.trialEndsAt && (
                   <div className="text-sm" data-testid="billing-trial-info">
-                    <span className="text-muted-foreground">Trial ends:</span>{" "}
+                    <span className="text-muted-foreground">{t("settings.billing.trial.endsLabel")}</span>{" "}
                     <strong>{format(new Date(subscription!.trialEndsAt), "MMM d, yyyy")}</strong>
                     <p className="text-xs text-muted-foreground mt-1">
-                      14-day free trial · 7-day grace window after trial ends before workspace
-                      is locked. Add a payment method in the Stripe Customer Portal to continue
-                      uninterrupted.
+                      {t("settings.billing.trial.note")}
                     </p>
                   </div>
                 )}
                 {subscription!.currentPeriodEnd && subscription!.status !== "trialing" && (
                   <div className="text-sm" data-testid="billing-period-info">
                     <span className="text-muted-foreground">
-                      {subscription!.cancelAtPeriodEnd ? "Cancels on:" : "Next invoice:"}
+                      {subscription!.cancelAtPeriodEnd
+                        ? t("settings.billing.period.cancels")
+                        : t("settings.billing.period.next")}
                     </span>{" "}
                     <strong>{format(new Date(subscription!.currentPeriodEnd), "MMM d, yyyy")}</strong>
                   </div>
@@ -181,10 +184,9 @@ export default function SettingsBillingPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Manage billing</CardTitle>
+                <CardTitle>{t("settings.billing.manage.title")}</CardTitle>
                 <CardDescription>
-                  Open the Stripe Customer Portal to update your payment method, change plan,
-                  view invoices, or cancel.
+                  {t("settings.billing.manage.body")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -192,13 +194,13 @@ export default function SettingsBillingPage() {
                   onClick={openPortal}
                   data-testid="billing-manage-cta"
                   className="gap-2"
+                  aria-label={t("settings.billing.manage.cta")}
                 >
-                  Manage Billing
-                  <ExternalLink className="h-4 w-4" />
+                  {t("settings.billing.manage.cta")}
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
                 </Button>
                 <p className="text-xs text-muted-foreground mt-3">
-                  Opens the Stripe-hosted portal in a new tab. You'll return here after
-                  completing any changes.
+                  {t("settings.billing.manage.note")}
                 </p>
               </CardContent>
             </Card>

@@ -86,6 +86,8 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 5.2 | Error states | **SPEC LOCKED · IN BUILD** (Wave 14, MVP slice) | [`decisions/5.2-error-states.md`](decisions/5.2-error-states.md) |
 | 5.3 | Mobile audit | **SPEC LOCKED · IN BUILD** (Wave 14, MVP slice — full retrofit deferred) | [`decisions/5.3-mobile-audit.md`](decisions/5.3-mobile-audit.md) |
 | 5.4 | Performance audit | **SPEC LOCKED · IN BUILD** (Wave 14, baseline — refactors filed as follow-ups) | [`decisions/5.4-performance-audit.md`](decisions/5.4-performance-audit.md) |
+| 5.5 | Accessibility audit | **SPEC LOCKED · IN BUILD** (Wave 21, top 10 surfaces — full retrofit deferred) | [`decisions/5.5-accessibility-audit.md`](decisions/5.5-accessibility-audit.md) |
+| 5.6 | i18n scaffolding | **SPEC LOCKED · IN BUILD** (Wave 21, top 10 surfaces — registry pattern established) | [`decisions/5.6-i18n-scaffolding.md`](decisions/5.6-i18n-scaffolding.md) |
 
 ---
 
