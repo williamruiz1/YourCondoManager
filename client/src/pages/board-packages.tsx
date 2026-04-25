@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
+import { t } from "@/i18n/use-strings";
 
 type ReviewAnnotation = {
   id: string;
@@ -372,7 +373,8 @@ export function BoardPackagesContent() {
             <DialogTrigger asChild>
               <Button className={isMobile ? "w-full min-h-11" : undefined} disabled={!activeAssociationId} onClick={openCreate}>New Template</Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto sm:max-h-[85vh]">
+            {/* Wave 31 mobile: viewport clamp keeps dialog within 360-px screens. */}
+            <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-3xl">
             <DialogHeader>
               <DialogTitle>{editing ? "Edit Board Package Template" : "Create Board Package Template"}</DialogTitle>
             </DialogHeader>
@@ -964,16 +966,18 @@ export function BoardPackagesContent() {
 }
 
 export default function BoardPackagesPage() {
+  // Wave 31 a11y: section landmark + aria-labelledby for screen-reader nav.
   return (
-    <div className="p-6 space-y-6">
+    <section className="p-6 space-y-6" aria-labelledby="board-packages-heading">
       <WorkspacePageHeader
-        title="Board Packages"
-        summary="Configure recurring board packet templates, generate draft packages by period, and schedule auto-generation relative to upcoming meetings."
-        eyebrow="Board & Governance"
-        breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Board Packages" }]}
+        title={t("boardPackages.title")}
+        headingId="board-packages-heading"
+        summary={t("boardPackages.summary")}
+        eyebrow={t("boardPackages.eyebrow")}
+        breadcrumbs={[{ label: t("common.crumb.board"), href: "/app/board" }, { label: t("boardPackages.crumb") }]}
         subPages={boardGovernanceSubPages}
       />
       <BoardPackagesContent />
-    </div>
+    </section>
   );
 }

@@ -199,7 +199,7 @@ export default function SolutionsPage({
         )}
       </header>
 
-      <main id="main-content" className="pt-16 pb-24">
+      <main id="main-content" tabIndex={-1} className="pt-16 pb-24">
         {/* Hero Section */}
         <header className="max-w-screen-2xl mx-auto px-8 mb-32">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end">

@@ -246,7 +246,7 @@ export default function ResidentFeedbackPage() {
                             <DialogTrigger asChild>
                               <Button size="sm" variant="outline" onClick={() => { setNoteDialogFeedback(fb); setAdminNoteText(fb.adminNotes || ""); }} aria-label={`${t("residentFeedback.action.note")}: ${fb.subject || fb.category}`}>{t("residentFeedback.action.note")}</Button>
                             </DialogTrigger>
-                            <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+                            <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
                               <DialogHeader><DialogTitle>{t("residentFeedback.dialog.noteTitle")}</DialogTitle></DialogHeader>
                               <div className="space-y-3">
                                 <div className="text-sm">{fb.subject || "(no subject)"}</div>

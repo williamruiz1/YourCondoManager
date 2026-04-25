@@ -197,7 +197,7 @@ export default function InsurancePage() {
                 {t("insurance.action.addPolicy")}
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
+            <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-xl">
               <DialogHeader>
                 <DialogTitle>{editingId ? t("insurance.dialog.editTitle") : t("insurance.dialog.newTitle")}</DialogTitle>
               </DialogHeader>

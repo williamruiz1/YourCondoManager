@@ -969,7 +969,7 @@ export function CommunicationsContent() {
     <>
       {/* Per-recipient delivery receipt dialog */}
       <Dialog open={Boolean(deliveryDetailRelatedId)} onOpenChange={(open) => { if (!open) setDeliveryDetailRelatedId(null); }}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-h-[80vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>Delivery Details — Per Recipient</DialogTitle></DialogHeader>
           {deliveryDetailRecords.length === 0 ? (
             <p className="text-sm text-muted-foreground">No per-recipient records found for this campaign.</p>
@@ -1772,7 +1772,7 @@ export function CommunicationsContent() {
                 Send Push Notification
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>Confirm Push Broadcast</DialogTitle>
               </DialogHeader>

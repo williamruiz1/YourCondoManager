@@ -214,7 +214,8 @@ export function InspectionsContent() {
           <DialogTrigger asChild>
             <Button disabled={!activeAssociationId} onClick={openCreate}>{t("inspections.action.newInspection")}</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          {/* Wave 31 mobile: viewport clamp keeps dialog within 360-px screens. */}
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-4xl">
             <DialogHeader>
               <DialogTitle>{editing ? t("inspections.dialog.editTitle") : t("inspections.dialog.newTitle")}</DialogTitle>
             </DialogHeader>

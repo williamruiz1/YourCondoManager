@@ -726,7 +726,7 @@ export default function UnitsPage() {
           </div>
         </div>
         <Dialog open={open} onOpenChange={handleOpenChange}>
-          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>
                 {editingId ? t("units.dialog.editUnit") : dialogMode === "building" ? t("units.dialog.newBuilding") : t("units.dialog.newUnit")}

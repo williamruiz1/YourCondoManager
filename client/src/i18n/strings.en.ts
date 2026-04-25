@@ -51,6 +51,16 @@
 //  32. `operationsDashboard.*`      — `client/src/pages/operations-dashboard.tsx`
 //  33. `aiIngestion.*`              — `client/src/pages/ai-ingestion.tsx`
 //
+// Surfaces extended (5 — Wave 31, round 4):
+//  34. `board.*`                    — `client/src/pages/board.tsx`
+//  35. `boardPackages.*`            — `client/src/pages/board-packages.tsx`
+//  36. `governance.*`               — `client/src/pages/governance.tsx`
+//  37. `communityHubPublic.*`       — `client/src/pages/community-hub-public.tsx`
+//
+// Public marketing surfaces (landing.tsx, pricing.tsx, solutions.tsx)
+// receive a11y fixes only — i18n is deferred until a non-English market
+// launches; brochure copy is translated separately at that time.
+//
 // Common keys live under `common.*`. Surface-specific copy stays
 // scoped under its surface prefix.
 
@@ -67,6 +77,7 @@ export const strings = {
   "common.retry": "Retry",
   "common.signOut": "Sign out",
   "common.loading": "Loading…",
+  "common.saving": "Saving…",
 
   // ---------------------------------------------------------------------
   // 1. Home (`/app`)
@@ -867,6 +878,70 @@ export const strings = {
   "aiIngestion.crumb": "AI Ingestion",
   "aiIngestion.tableLabel": "Ingestion jobs",
   "aiIngestion.recordsTableLabel": "Extracted records",
+
+  // ---------------------------------------------------------------------
+  // 34. Board Members (`/app/board`)
+  // ---------------------------------------------------------------------
+  "board.title": "Board Members",
+  "board.summary": "Manage board positions for the current association context.",
+  "board.eyebrow": "Board & Governance",
+  "board.crumb": "Board",
+  "board.tableLabel": "Board members",
+  "board.action.assignRole": "Assign Role",
+  "board.dialog.title": "Assign Board Role",
+  "board.dialog.contextLabel": "Association Context:",
+  "board.dialog.contextNone": "None selected",
+  "board.field.person": "Person",
+  "board.field.personPlaceholder": "Select person",
+  "board.field.role": "Role",
+  "board.field.rolePlaceholder": "Select role",
+  "board.field.startDate": "Start Date",
+  "board.field.endDate": "End Date",
+  "board.field.inviteToWorkspace": "Invite to board workspace",
+  "board.field.inviteToWorkspaceHint":
+    "Creates or updates association-scoped portal access for this board member.",
+  "board.field.inviteEmail": "Invite Email",
+  "board.field.inviteEmailPlaceholder": "Uses person's email if blank",
+  "board.empty.title": "No board members yet",
+  "board.empty.body":
+    "Board members govern the association. Click \"Assign Role\" to designate a person as President, Treasurer, Secretary, or Member. You'll need people created first — go to People > Add Person.",
+  "board.col.member": "Member",
+  "board.col.association": "Association",
+  "board.col.role": "Role",
+  "board.col.termStart": "Term Start",
+  "board.col.termEnd": "Term End",
+  "board.col.status": "Status",
+
+  // ---------------------------------------------------------------------
+  // 35. Board Packages (`/app/board/packages`)
+  // ---------------------------------------------------------------------
+  "boardPackages.title": "Board Packages",
+  "boardPackages.summary":
+    "Configure recurring board packet templates, generate draft packages by period, and schedule auto-generation relative to upcoming meetings.",
+  "boardPackages.eyebrow": "Board & Governance",
+  "boardPackages.crumb": "Board Packages",
+
+  // ---------------------------------------------------------------------
+  // 36. Governance Overview (`/app/governance`)
+  // ---------------------------------------------------------------------
+  "governance.title": "Governance",
+  "governance.summary":
+    "Manage meetings, board packages, elections, and compliance in one place.",
+  "governance.eyebrow": "Board & Governance",
+  "governance.crumb": "Governance",
+  "governance.tabs.meetings": "Meetings",
+  "governance.tabs.packages": "Board Packages",
+  "governance.tabs.elections": "Elections",
+  "governance.tabs.compliance": "Compliance",
+
+  // ---------------------------------------------------------------------
+  // 37. Community Hub (Public) (`/community/:identifier`)
+  // ---------------------------------------------------------------------
+  "communityHubPublic.title": "Community Hub",
+  "communityHubPublic.loading": "Loading community hub...",
+  "communityHubPublic.error.title": "Community Hub Not Found",
+  "communityHubPublic.error.body":
+    "This community hub doesn't exist or hasn't been enabled yet.",
 } as const;
 
 export type StringKey = keyof typeof strings;

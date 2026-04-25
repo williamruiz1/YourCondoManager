@@ -175,7 +175,7 @@ export function AnnouncementsContent() {
     <>
       {/* Notify via Push/SMS dialog */}
       <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-md">
           <DialogHeader><DialogTitle>Send Push / SMS Notification</DialogTitle></DialogHeader>
           {notifyAnnouncement && (
             <div className="space-y-4">
@@ -213,7 +213,7 @@ export function AnnouncementsContent() {
           <DialogTrigger asChild>
             <Button disabled={!activeAssociationId} onClick={() => { setEditing(null); setForm(emptyForm); }}>New Announcement</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-2xl">
             <DialogHeader><DialogTitle>{editing ? "Edit Announcement" : "Create Announcement"}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <Input placeholder="Title *" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />

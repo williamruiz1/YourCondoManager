@@ -260,7 +260,7 @@ export function FinancialBudgetsContent() {
                 <Plus className="h-4 w-4 mr-1" /> New Budget
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+            <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
               <DialogHeader><DialogTitle>Create Budget</DialogTitle></DialogHeader>
               <div className="space-y-3">
                 <div className="space-y-1">
@@ -330,7 +330,7 @@ export function FinancialBudgetsContent() {
                   <Plus className="h-4 w-4 mr-1" /> New Version
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+              <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
                 <DialogHeader><DialogTitle>Create Budget Version</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div className="space-y-1">
@@ -412,7 +412,7 @@ export function FinancialBudgetsContent() {
                     <Plus className="h-4 w-4 mr-1" /> Add Line
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
                   <DialogHeader><DialogTitle>Add Budget Line</DialogTitle></DialogHeader>
                   <div className="space-y-3">
                     <div className="space-y-1">

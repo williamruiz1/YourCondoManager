@@ -158,7 +158,7 @@ export function FinancialUtilitiesContent() {
         <div />
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button className={isMobile ? "min-h-11 w-full" : undefined} disabled={!activeAssociationId}>Add Utility Payment</Button></DialogTrigger>
-          <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-xl">
             <DialogHeader><DialogTitle>Create Utility Payment</DialogTitle></DialogHeader>
             <Form {...form}>
               <form className="space-y-4" onSubmit={form.handleSubmit((v) => createUtility.mutate(v))}>

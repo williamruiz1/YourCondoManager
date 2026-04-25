@@ -325,10 +325,12 @@ export default function CommunityHubPage() {
     saveConfigMutation.mutate({ enabledSections: enabled });
   }
 
+  // Wave 31 a11y: section landmark + aria-labelledby (heading id below).
   return (
-    <div className="space-y-6 p-4 sm:p-6">
+    <section className="space-y-6 p-4 sm:p-6" aria-labelledby="community-hub-heading">
       <WorkspacePageHeader
         title="Community Hub"
+        headingId="community-hub-heading"
         summary="Configure the public-facing community hub for this association."
         eyebrow={activeAssociation?.name || "Hub"}
         breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Community Hub" }]}
@@ -744,7 +746,7 @@ export default function CommunityHubPage() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </section>
   );
 }
 
@@ -1026,7 +1028,8 @@ function NoticesManager({ associationId, notices }: { associationId: string; not
             <DialogTrigger asChild>
               <Button size="sm"><Plus className="h-4 w-4 mr-1.5" />New Notice</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            {/* Wave 31 mobile: viewport clamp keeps dialog within 360-px screens. */}
+            <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>{editingNotice ? "Edit Notice" : "Create Notice"}</DialogTitle>
               </DialogHeader>

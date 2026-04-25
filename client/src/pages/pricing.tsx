@@ -75,6 +75,13 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Wave 31 a11y: skip-link for keyboard users on the marketing brochure. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-on-primary focus:rounded focus:font-semibold"
+      >
+        Skip to main content
+      </a>
 
       {/* ── NAVIGATION ── */}
       <header className="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm dark:shadow-none">
@@ -85,7 +92,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           </Link>
 
           {/* Nav links — desktop */}
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden md:flex items-center gap-6" aria-label="Main navigation">
             <Link
               href="/"
               className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
@@ -175,7 +182,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         )}
       </header>
 
-      <main className="pt-16 pb-24">
+      <main id="main-content" tabIndex={-1} className="pt-16 pb-24">
 
         {/* ── HERO ── */}
         <header className="max-w-4xl mx-auto text-center px-6 pt-20 pb-20">
