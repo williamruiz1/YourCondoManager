@@ -334,7 +334,7 @@ export function VendorsContent() {
             <DialogTrigger asChild>
               <Button disabled={!activeAssociationId}>Add Vendor</Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
+            <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>{editingVendor ? "Edit Vendor" : "Create Vendor"}</DialogTitle>
               </DialogHeader>
@@ -343,7 +343,7 @@ export function VendorsContent() {
                   <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                     Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="name"

@@ -389,7 +389,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
           <DialogTrigger asChild>
             <Button data-testid="button-add-document" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />{t("documents.action.upload")}</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-3xl">
             <DialogHeader><DialogTitle>{t("documents.dialog.uploadTitle")}</DialogTitle></DialogHeader>
             <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
               <Form {...form}>
@@ -750,7 +750,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
           }
         }}
       >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>{selectedDocument ? `Manage: ${selectedDocument.title}` : "Manage Document"}</DialogTitle>
           </DialogHeader>
@@ -994,7 +994,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
 
       {/* Rollback confirmation dialog */}
       <Dialog open={Boolean(rollbackTarget)} onOpenChange={(o) => { if (!o) { setRollbackTarget(null); setRollbackReason(""); } }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Confirm Version Rollback</DialogTitle>
           </DialogHeader>

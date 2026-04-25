@@ -112,7 +112,7 @@ function ElectionTallyPanel({ election, adminRole }: { election: Election; admin
           <BarChart2 className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Live Tally — {election.title}</DialogTitle>
         </DialogHeader>
@@ -223,7 +223,7 @@ function ElectionOptionsPanel({ election, adminRole }: { election: Election; adm
           <FileText className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Ballot Options — {election.title}</DialogTitle>
         </DialogHeader>
@@ -357,7 +357,7 @@ function ProxyManagementPanel({ election }: { election: Election }) {
           <Users className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-h-[80vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Proxies — {election.title}</DialogTitle>
         </DialogHeader>
@@ -365,7 +365,7 @@ function ProxyManagementPanel({ election }: { election: Election }) {
           {/* Create Proxy Form */}
           <div className="rounded border p-3 space-y-3">
             <div className="font-medium text-xs">Designate New Proxy</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Owner (delegator)</label>
                 <Select value={ownerPersonId} onValueChange={setOwnerPersonId}>
@@ -534,7 +534,7 @@ function CreateElectionDialog({ associationId, onCreated, defaultMeetingId }: { 
           Create Election or Vote
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Create Election or Vote</DialogTitle>
         </DialogHeader>
@@ -562,7 +562,7 @@ function CreateElectionDialog({ associationId, onCreated, defaultMeetingId }: { 
                 </FormItem>
               )}
             />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="voteType"
@@ -601,7 +601,7 @@ function CreateElectionDialog({ associationId, onCreated, defaultMeetingId }: { 
                 )}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="opensAt"
@@ -625,7 +625,7 @@ function CreateElectionDialog({ associationId, onCreated, defaultMeetingId }: { 
                 )}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="quorumPercent"
@@ -739,9 +739,9 @@ function CreateElectionDialog({ associationId, onCreated, defaultMeetingId }: { 
                 </FormItem>
               )}
             />
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" type="button" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createMutation.isPending}>
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button className="w-full sm:w-auto" variant="outline" type="button" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button className="w-full sm:w-auto" type="submit" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Creating…" : "Create Election"}
               </Button>
             </div>

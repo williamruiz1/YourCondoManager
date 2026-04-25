@@ -148,7 +148,7 @@ export default function AdminUsersPage() {
               Add Admin User
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Create Admin User</DialogTitle>
             </DialogHeader>

@@ -217,7 +217,7 @@ export function FinancialAssessmentsContent({ readOnly = false }: { readOnly?: b
               New Assessment
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-xl">
             <DialogHeader>
               <DialogTitle>Create Special Assessment</DialogTitle>
             </DialogHeader>
@@ -239,7 +239,7 @@ export function FinancialAssessmentsContent({ readOnly = false }: { readOnly?: b
                   )}
                 />
 
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="totalAmount"
@@ -329,7 +329,7 @@ export function FinancialAssessmentsContent({ readOnly = false }: { readOnly?: b
                   )}
                 />
 
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="startDate"
