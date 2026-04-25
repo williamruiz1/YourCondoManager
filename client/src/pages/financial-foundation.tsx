@@ -6,7 +6,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Link } from "wouter";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Wallet, Tags, Activity } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { ErrorState } from "@/components/error-state";
 import type { FinancialAccount, FinancialCategory, FinancialApproval } from "@shared/schema";
 import { Textarea } from "@/components/ui/textarea";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -202,9 +204,12 @@ export function FinancialFoundationContent() {
                 ))}
               </div>
             ) : (accounts ?? []).length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-                <p className="text-sm">No accounts yet. Add your first account to begin.</p>
-              </div>
+              <EmptyState
+                icon={Wallet}
+                title="No accounts yet"
+                description="Add your first chart-of-accounts entry to start tracking ledger activity."
+                testId="empty-accounts"
+              />
             ) : isMobile ? (
               <div className="space-y-3">
                 {(accounts ?? []).map((a) => (
@@ -261,9 +266,12 @@ export function FinancialFoundationContent() {
                 ))}
               </div>
             ) : (categories ?? []).length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-                <p className="text-sm">No categories yet. Add your first category to begin.</p>
-              </div>
+              <EmptyState
+                icon={Tags}
+                title="No categories yet"
+                description="Categories tag transactions for budgeting and reporting."
+                testId="empty-categories"
+              />
             ) : isMobile ? (
               <div className="space-y-3">
                 {(categories ?? []).map((c) => (
@@ -504,7 +512,7 @@ function utilizationVariant(pct: number | null): "default" | "secondary" | "dest
 export function AccountActivityContent() {
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
 
-  const { data, isLoading, isError, error } = useQuery<AccountActivityResponse>({
+  const { data, isLoading, isError, error, refetch } = useQuery<AccountActivityResponse>({
     queryKey: ["/api/financial/accounts/activity", activeAssociationId],
     queryFn: async () => {
       if (!activeAssociationId) throw new Error("No active association");
@@ -543,14 +551,21 @@ export function AccountActivityContent() {
             </div>
           )}
           {isError && (
-            <p className="text-sm text-destructive" data-testid="text-account-activity-error">
-              Failed to load account activity: {(error as Error)?.message ?? "Unknown error"}
-            </p>
+            <ErrorState
+              title="Couldn't load account activity"
+              description="We hit an error loading budget-vs-committed activity. Try again, or refresh the page if the problem persists."
+              retry={() => refetch()}
+              details={(error as Error | undefined)?.message}
+              testId="account-activity-error"
+            />
           )}
           {!isLoading && !isError && data && data.accounts.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-account-activity-empty">
-              No accounts configured. Add accounts on the Accounts tab to see activity here.
-            </p>
+            <EmptyState
+              icon={Activity}
+              title="No accounts configured"
+              description="Add accounts on the Accounts tab to see budget-vs-committed activity here."
+              testId="account-activity-empty"
+            />
           )}
           {!isLoading && !isError && data && data.accounts.length > 0 && (
             <>
@@ -577,7 +592,53 @@ export function AccountActivityContent() {
                 </div>
               </div>
 
-              <div className="rounded-md border">
+              {/* 5.3-F1 (Wave 18) — wide 8-column table. On <md viewports
+                  switch to a stacked-card list per `mobile-ui-rules.md`. */}
+              <div className="space-y-3 md:hidden">
+                {data.accounts.map((row) => (
+                  <div
+                    key={`mobile-${row.accountId}`}
+                    className="rounded-lg border p-4 space-y-2"
+                    data-testid={`card-account-activity-${row.accountId}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold leading-5">
+                          {row.accountName}
+                          {!row.isActive && (
+                            <Badge variant="secondary" className="ml-2 text-[10px]">inactive</Badge>
+                          )}
+                        </div>
+                        <div className="mt-1 font-mono text-xs text-muted-foreground">
+                          {row.accountCode || "—"} · {row.accountType}
+                        </div>
+                      </div>
+                      {row.utilizationPct !== null ? (
+                        <Badge variant={utilizationVariant(row.utilizationPct)} className="tabular-nums">
+                          {row.utilizationPct.toFixed(1)}%
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <div className="uppercase tracking-wide text-muted-foreground">Budget</div>
+                        <div className="mt-0.5 tabular-nums">{formatCurrency(row.budgetedAmount)}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-wide text-muted-foreground">Invoiced</div>
+                        <div className="mt-0.5 tabular-nums">{formatCurrency(row.invoicedAmount)}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-wide text-muted-foreground">Variance</div>
+                        <div className={`mt-0.5 tabular-nums ${row.variance < 0 ? "text-destructive font-medium" : ""}`}>
+                          {formatCurrency(row.variance)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-md border hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>

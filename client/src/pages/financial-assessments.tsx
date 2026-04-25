@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calculator, Plus } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { financeSubPages } from "@/lib/sub-page-nav";
@@ -380,11 +381,12 @@ export function FinancialAssessmentsContent({ readOnly = false }: { readOnly?: b
           {isLoading ? (
             <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : !rows?.length ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Calculator className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium">No assessments</h3>
-              <p className="text-sm text-muted-foreground mt-1">Create the first special assessment.</p>
-            </div>
+            <EmptyState
+              icon={Calculator}
+              title="No special assessments"
+              description="Create the first special assessment to charge owners for capital improvements or one-time fees."
+              testId="empty-special-assessments"
+            />
           ) : isMobile ? (
             <div className="space-y-3 p-4">
               {rows.map((row) => {

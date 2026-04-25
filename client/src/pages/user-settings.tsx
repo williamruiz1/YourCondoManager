@@ -360,7 +360,9 @@ export default function UserSettingsPage() {
 
   return (
     <div className="min-h-full bg-surface-container-low">
-      <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
+      {/* 5.3-F4 (Wave 18) — 320px floor: tighten outer padding on
+          smallest screens so card content does not overflow at 320px. */}
+      <div className="max-w-5xl mx-auto px-3 py-6 space-y-6 sm:px-6 sm:py-10">
         <div>
           <h1 className="font-headline text-3xl font-bold text-on-surface">Settings</h1>
           <p className="text-sm text-on-surface-variant mt-1">Manage your account preferences, workspace behavior, and notification coverage.</p>

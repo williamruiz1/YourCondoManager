@@ -36,6 +36,7 @@ import {
   ChevronUp,
   ChevronRight,
 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Switch } from "@/components/ui/switch";
 import { Link } from "wouter";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -1120,7 +1121,12 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
           {isLoading ? (
             <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
           ) : entries.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-4 text-center">No payments recorded yet — configure payment methods above, then record the first owner payment to start tracking collections.</div>
+            <EmptyState
+              icon={CreditCard}
+              title="No payments recorded yet"
+              description="Configure payment methods above, then record the first owner payment to start tracking collections."
+              testId="empty-payment-entries"
+            />
           ) : (
             <>
               <div className="hidden md:block overflow-auto">

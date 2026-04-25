@@ -45,7 +45,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Plus, Play, Loader2, HandCoins } from "lucide-react";
+import { AlertCircle, Plus, Play, Loader2, HandCoins, Receipt } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { Checkbox } from "@/components/ui/checkbox";
 import { HelpTooltip } from "@/components/help-tooltip";
@@ -528,11 +529,12 @@ export function FinancialLateFeesContent() {
           {isLoading ? (
             <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : !rules?.length ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium">No late fee rules</h3>
-              <p className="text-sm text-muted-foreground mt-1">Create a rule to begin calculating late fees.</p>
-            </div>
+            <EmptyState
+              icon={AlertCircle}
+              title="No late fee rules"
+              description="Create a rule to begin calculating late fees on overdue assessments."
+              testId="empty-late-fee-rules"
+            />
           ) : isMobile ? (
             <div className="space-y-3 p-4">
               {rules.map((row) => (
@@ -811,11 +813,12 @@ export function FinancialLateFeesContent() {
       <Card>
         <CardContent className="p-0">
           {(events ?? []).length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium">No fee events yet</h3>
-              <p className="text-sm text-muted-foreground mt-1">Use the Rules &amp; Calculator tab to apply late fees.</p>
-            </div>
+            <EmptyState
+              icon={Receipt}
+              title="No fee events yet"
+              description="Use the Rules & Calculator tab to apply late fees and start logging events here."
+              testId="empty-late-fee-events"
+            />
           ) : isMobile ? (
             <div className="space-y-3 p-4">
               {(events ?? []).slice(0, 50).map((event) => (

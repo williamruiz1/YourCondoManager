@@ -2012,7 +2012,7 @@ export default function AiIngestionPage() {
                   <SelectItem value="rejected">rejected</SelectItem>
                 </SelectContent>
               </Select>
-              <Input value={clauseSearch} onChange={(e) => setClauseSearch(e.target.value)} placeholder="Search title or clause text" className="w-[260px]" />
+              <Input value={clauseSearch} onChange={(e) => setClauseSearch(e.target.value)} placeholder="Search title or clause text" className="w-full sm:w-[260px]" />
             </div>
           </div>
 

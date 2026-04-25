@@ -16,7 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertCircle, CheckCircle2, ChevronDown, Play, Plus, RefreshCw, RotateCcw, PauseCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, Play, Plus, RefreshCw, RotateCcw, PauseCircle, Repeat, History } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import type { RecurringChargeSchedule, RecurringChargeRun } from "@shared/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
@@ -284,9 +285,12 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
               <Skeleton className="h-14 w-full" />
             </div>
           ) : schedules.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-6 text-center">
-              No recurring charge schedules defined. Create one to start automating charges.
-            </div>
+            <EmptyState
+              icon={Repeat}
+              title="No recurring charges yet"
+              description="Define a recurring charge to automate monthly dues, parking, storage, and other periodic billing."
+              testId="empty-recurring-charges"
+            />
           ) : isMobile ? (
             <div className="space-y-3">{mobileScheduleCards}</div>
           ) : (
@@ -388,7 +392,12 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
               <Skeleton className="h-14 w-full" />
             </div>
           ) : runs.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-4 text-center">No run history yet. Click "Run Now" to process due charges.</div>
+            <EmptyState
+              icon={History}
+              title="No run history yet"
+              description={'Click "Run Now" to process due charges and start logging runs here.'}
+              testId="empty-recurring-runs"
+            />
           ) : isMobile ? (
             <div className="space-y-3">{mobileRunCards}</div>
           ) : (

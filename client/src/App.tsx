@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut } from "lucide-react";
 import { Link, Route, Switch, useLocation } from "wouter";
@@ -228,6 +228,22 @@ function RouteFallback() {
   );
 }
 
+// 5.2 (Wave 18) — per-zone ErrorBoundary wrapper. A render error in a single
+// zone (Financials, Operations, Governance, Communications, Platform, Portal)
+// renders <ErrorState> for that zone subtree only — the surrounding shell
+// (sidebar, header, association switcher, trial banner) stays interactive.
+// The root <ErrorBoundary> in App() still catches errors above the zone level.
+function ZoneBoundary({ zone, children }: { zone: string; children: ReactNode }) {
+  return (
+    <ErrorBoundary
+      title={`${zone} hit an error`}
+      description={`We couldn't render the ${zone} surface. Try again, or navigate to another section while we recover.`}
+    >
+      {children}
+    </ErrorBoundary>
+  );
+}
+
 function RouteRedirect({ to }: { to: string }) {
   const [, navigate] = useLocation();
 
@@ -280,13 +296,13 @@ function WorkspaceRouter({
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
-        {/* Finance — consolidated routes */}
-        <Route path="/app/financial/foundation" component={FinancialFoundationPage} />
-        <Route path="/app/financial/rules" component={FinancialRulesPage} />
-        <Route path="/app/financial/billing" component={FinancialBillingPage} />
-        <Route path="/app/financial/payments" component={FinancialPaymentsPage} />
-        <Route path="/app/financial/expenses" component={FinancialExpensesPage} />
-        <Route path="/app/financial/reports" component={FinancialReportsPage} />
+        {/* Finance — consolidated routes (Wave 18: each wrapped in zone-scoped ErrorBoundary) */}
+        <Route path="/app/financial/foundation"><ZoneBoundary zone="Financials"><FinancialFoundationPage /></ZoneBoundary></Route>
+        <Route path="/app/financial/rules"><ZoneBoundary zone="Financials"><FinancialRulesPage /></ZoneBoundary></Route>
+        <Route path="/app/financial/billing"><ZoneBoundary zone="Financials"><FinancialBillingPage /></ZoneBoundary></Route>
+        <Route path="/app/financial/payments"><ZoneBoundary zone="Financials"><FinancialPaymentsPage /></ZoneBoundary></Route>
+        <Route path="/app/financial/expenses"><ZoneBoundary zone="Financials"><FinancialExpensesPage /></ZoneBoundary></Route>
+        <Route path="/app/financial/reports"><ZoneBoundary zone="Financials"><FinancialReportsPage /></ZoneBoundary></Route>
         {/* Finance — legacy redirects */}
         <Route path="/app/financial/fees"><RouteRedirect to="/app/financial/foundation" /></Route>
         <Route path="/app/financial/recurring-charges"><RouteRedirect to="/app/financial/foundation" /></Route>
@@ -297,15 +313,15 @@ function WorkspaceRouter({
         <Route path="/app/financial/utilities"><RouteRedirect to="/app/financial/expenses" /></Route>
         <Route path="/app/financial/budgets"><RouteRedirect to="/app/financial/expenses" /></Route>
         <Route path="/app/financial/reconciliation"><RouteRedirect to="/app/financial/reports" /></Route>
-        {/* Operations — consolidated routes */}
-        <Route path="/app/vendors" component={VendorsPage} />
-        <Route path="/app/work-orders" component={WorkOrdersPage} />
-        <Route path="/app/resident-feedback" component={ResidentFeedbackPage} />
-        <Route path="/app/maintenance-schedules" component={MaintenanceSchedulesPage} />
-        <Route path="/app/inspections" component={InspectionsPage} />
-        {/* Board & Governance — consolidated routes */}
-        <Route path="/app/governance" component={GovernancePage} />
-        <Route path="/app/governance/elections/:id">{(params) => <ElectionDetailPage id={params.id ?? ""} />}</Route>
+        {/* Operations — consolidated routes (Wave 18: zone-scoped ErrorBoundary) */}
+        <Route path="/app/vendors"><ZoneBoundary zone="Operations"><VendorsPage /></ZoneBoundary></Route>
+        <Route path="/app/work-orders"><ZoneBoundary zone="Operations"><WorkOrdersPage /></ZoneBoundary></Route>
+        <Route path="/app/resident-feedback"><ZoneBoundary zone="Operations"><ResidentFeedbackPage /></ZoneBoundary></Route>
+        <Route path="/app/maintenance-schedules"><ZoneBoundary zone="Operations"><MaintenanceSchedulesPage /></ZoneBoundary></Route>
+        <Route path="/app/inspections"><ZoneBoundary zone="Operations"><InspectionsPage /></ZoneBoundary></Route>
+        {/* Board & Governance — consolidated routes (Wave 18: zone-scoped ErrorBoundary) */}
+        <Route path="/app/governance"><ZoneBoundary zone="Governance"><GovernancePage /></ZoneBoundary></Route>
+        <Route path="/app/governance/elections/:id">{(params) => <ZoneBoundary zone="Governance"><ElectionDetailPage id={params.id ?? ""} /></ZoneBoundary>}</Route>
         <Route path="/app/governance/board-packages"><RouteRedirect to="/app/governance" /></Route>
         <Route path="/app/governance/meetings"><RouteRedirect to="/app/governance" /></Route>
         <Route path="/app/governance/compliance"><RouteRedirect to="/app/governance" /></Route>
@@ -315,11 +331,11 @@ function WorkspaceRouter({
         </Route>
         {/* 4.1 Wave 4 — central inbox must match BEFORE the generic
             /app/communications hub, since wouter resolves path literals
-            in declaration order. */}
-        <Route path="/app/communications/inbox" component={CommunicationsInboxPage} />
-        <Route path="/app/communications" component={CommunicationsPage} />
+            in declaration order. (Wave 18: zone-scoped ErrorBoundary) */}
+        <Route path="/app/communications/inbox"><ZoneBoundary zone="Communications"><CommunicationsInboxPage /></ZoneBoundary></Route>
+        <Route path="/app/communications"><ZoneBoundary zone="Communications"><CommunicationsPage /></ZoneBoundary></Route>
         <Route path="/app/platform/controls">
-          {adminRole === "platform-admin" ? <PlatformControlsPage /> : <NotFound />}
+          {adminRole === "platform-admin" ? <ZoneBoundary zone="Platform"><PlatformControlsPage /></ZoneBoundary> : <NotFound />}
         </Route>
         <Route path="/app/insurance" component={InsurancePage} />
         {/*
@@ -401,40 +417,43 @@ function PublicRouter({
             the /app/* sub-page pattern per Q1.
             Legacy-URL compat (Q8) is implemented inside PortalShell:
             `/portal?tab=<legacy>` → 301-equivalent client redirect. */}
+        {/* (Wave 18: portal subtree wrapped in zone-scoped ErrorBoundary) */}
         <Route path="/portal">
-          <PortalHomePage />
+          <ZoneBoundary zone="Portal"><PortalHomePage /></ZoneBoundary>
         </Route>
         <Route path="/portal/finances">
-          <PortalFinancesPage />
+          <ZoneBoundary zone="Portal"><PortalFinancesPage /></ZoneBoundary>
         </Route>
         <Route path="/portal/finances/payment-methods">
-          <PortalFinancesPage subPath="payment-methods" />
+          <ZoneBoundary zone="Portal"><PortalFinancesPage subPath="payment-methods" /></ZoneBoundary>
         </Route>
         <Route path="/portal/finances/ledger">
-          <PortalFinancesPage subPath="ledger" />
+          <ZoneBoundary zone="Portal"><PortalFinancesPage subPath="ledger" /></ZoneBoundary>
         </Route>
         <Route path="/portal/finances/assessments/:assessmentId">
           {(params) => (
-            <PortalFinancesPage subPath="assessment" assessmentId={params.assessmentId ?? ""} />
+            <ZoneBoundary zone="Portal">
+              <PortalFinancesPage subPath="assessment" assessmentId={params.assessmentId ?? ""} />
+            </ZoneBoundary>
           )}
         </Route>
         <Route path="/portal/requests">
-          <PortalRequestsPage />
+          <ZoneBoundary zone="Portal"><PortalRequestsPage /></ZoneBoundary>
         </Route>
         <Route path="/portal/requests/:requestId">
-          {(params) => <PortalRequestsPage requestId={params.requestId ?? ""} />}
+          {(params) => <ZoneBoundary zone="Portal"><PortalRequestsPage requestId={params.requestId ?? ""} /></ZoneBoundary>}
         </Route>
         <Route path="/portal/community">
-          <PortalCommunityPage />
+          <ZoneBoundary zone="Portal"><PortalCommunityPage /></ZoneBoundary>
         </Route>
         <Route path="/portal/amenities">
-          <PortalAmenitiesPage />
+          <ZoneBoundary zone="Portal"><PortalAmenitiesPage /></ZoneBoundary>
         </Route>
         <Route path="/portal/documents">
-          <PortalDocumentsPage />
+          <ZoneBoundary zone="Portal"><PortalDocumentsPage /></ZoneBoundary>
         </Route>
         <Route path="/portal/notices">
-          <PortalNoticesPage />
+          <ZoneBoundary zone="Portal"><PortalNoticesPage /></ZoneBoundary>
         </Route>
         <Route path="/vendor-portal" component={VendorPortalPage} />
         <Route path="/vote/:token">
@@ -952,7 +971,10 @@ function WorkspaceShell({
         <div className="flex h-screen w-full">
           <AppSidebar adminRole={adminRole} />
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="sticky top-0 z-40 flex h-16 min-h-14 flex-wrap items-center gap-2 border-b border-slate-200/50 dark:border-slate-800/50 glass-nav px-3 py-2 shadow-sm">
+            {/* 5.3-F2 (Wave 18) — header compression on <640px:
+                shorter row (h-12), tighter padding, no gap so the
+                association switcher / account menu / palette fit. */}
+            <header className="sticky top-0 z-40 flex h-12 min-h-12 flex-wrap items-center gap-1.5 border-b border-slate-200/50 dark:border-slate-800/50 glass-nav px-2 py-1.5 shadow-sm sm:h-16 sm:min-h-14 sm:gap-2 sm:px-3 sm:py-2">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
               <HeaderActions
                 authSession={authSession}

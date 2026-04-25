@@ -561,7 +561,9 @@ export default function DashboardPage() {
   const noAssociations = !associationsLoading && associations.length === 0;
 
   return (
-    <div className="p-6 space-y-6">
+    // 5.3-F4 (Wave 18) — 320px floor: tighter outer padding on
+    // smallest screens so Home cards stop horizontal overflow at 320px.
+    <div className="p-3 sm:p-6 space-y-6">
       <SetupWizard
         open={wizardOpen}
         onOpenChange={setWizardOpen}

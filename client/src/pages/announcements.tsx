@@ -18,6 +18,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { Megaphone } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 const emptyForm = {
   title: "",
@@ -313,9 +315,12 @@ export function AnnouncementsContent() {
                 </div>
               ))}
               {announcements.length === 0 && (
-                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                  No announcements yet. Publish one to show it in the owner portal.
-                </div>
+                <EmptyState
+                  icon={Megaphone}
+                  title="No announcements yet"
+                  description="Publish one to show it on the owner portal home and notices feed."
+                  testId="empty-announcements-mobile"
+                />
               )}
             </div>
           ) : (

@@ -19,8 +19,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   Plus, Trash2, ExternalLink, Globe, Settings, FileText, MapPin, Link2,
-  Bell, GripVertical, ChevronUp, ChevronDown, Eye, EyeOff, Calendar, Pin, Building2, Home
+  Bell, GripVertical, ChevronUp, ChevronDown, Eye, EyeOff, Calendar, Pin, Building2, Home,
+  Layers, MessageSquare,
 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type HubConfig = {
@@ -607,7 +609,12 @@ export default function CommunityHubPage() {
             </CardHeader>
             <CardContent>
               {actionLinks.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">No quick actions configured yet.</p>
+                <EmptyState
+                  icon={Link2}
+                  title="No quick actions configured"
+                  description="Add quick action links to surface frequently-used resources on the community hub."
+                  testId="empty-hub-quick-actions"
+                />
               ) : (
                 <div className="space-y-2">
                   {actionLinks.map((link) => (
@@ -1126,7 +1133,12 @@ function NoticesManager({ associationId, notices }: { associationId: string; not
             </div>
           )}
           {notices.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">No notices yet. Create one to keep your community informed.</p>
+            <EmptyState
+              icon={Bell}
+              title="No notices yet"
+              description="Create a notice to keep your community informed about events, maintenance windows, or board updates."
+              testId="empty-hub-notices"
+            />
           ) : (
             <div className="space-y-2">
               {notices.length > 1 && (

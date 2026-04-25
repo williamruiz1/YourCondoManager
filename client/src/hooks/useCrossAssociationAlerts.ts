@@ -100,6 +100,8 @@ export interface UseCrossAssociationAlertsResult {
   readStateBy: Record<string, AlertReadStateEntry>;
   isLoading: boolean;
   error: Error | null;
+  /** TanStack `refetch` — used by 5.2 ErrorState retry buttons (Wave 18). */
+  refetch: () => Promise<unknown>;
   markAsRead: (alertId: string) => Promise<void>;
   dismiss: (alertId: string) => Promise<void>;
 }
@@ -197,6 +199,7 @@ export function useCrossAssociationAlerts(
     readStateBy: query.data?.readStateBy ?? {},
     isLoading: query.isLoading,
     error: (query.error as Error | null) ?? null,
+    refetch: query.refetch,
     markAsRead,
     dismiss,
   };
