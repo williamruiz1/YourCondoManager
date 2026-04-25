@@ -296,7 +296,7 @@ export default function AssociationsPage() {
               Add Association
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>{editingId ? "Edit Association" : "New Association"}</DialogTitle>
             </DialogHeader>
@@ -382,7 +382,7 @@ export default function AssociationsPage() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField control={form.control} name="city" render={({ field }) => (
                     <FormItem>
                       <FormLabel>City</FormLabel>
@@ -639,7 +639,7 @@ export default function AssociationsPage() {
         </CardContent>
       </Card>
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(isOpen) => { if (!isOpen) setDeleteTarget(null); }}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Delete Association</DialogTitle>
             <DialogDescription>

@@ -226,13 +226,13 @@ export function MaintenanceSchedulesContent() {
           <DialogTrigger asChild>
             <Button disabled={!activeAssociationId} onClick={openCreate}>New Schedule</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-3xl">
             <DialogHeader><DialogTitle>{editing ? "Edit Maintenance Schedule" : "Create Maintenance Schedule"}</DialogTitle></DialogHeader>
             <div className="space-y-4">
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                 Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <Input placeholder="Title" value={form.title} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} />
                 <Input placeholder="Component" value={form.component} onChange={(e) => setForm((current) => ({ ...current, component: e.target.value }))} />
                 <Input placeholder="Location" value={form.locationText} onChange={(e) => setForm((current) => ({ ...current, locationText: e.target.value }))} />
@@ -279,9 +279,9 @@ export function MaintenanceSchedulesContent() {
                 />
                 Auto-create work order when due
               </label>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={() => saveTemplate.mutate()} disabled={!form.title.trim() || !form.component.trim() || !form.locationText.trim()}>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button className="w-full sm:w-auto" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button className="w-full sm:w-auto" onClick={() => saveTemplate.mutate()} disabled={!form.title.trim() || !form.component.trim() || !form.locationText.trim()}>
                   {editing ? "Save Changes" : "Create Schedule"}
                 </Button>
               </div>
@@ -455,10 +455,10 @@ export function MaintenanceSchedulesContent() {
           </CardContent>
         </Card>
 
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-2xl">
           <DialogHeader><DialogTitle>{editingAsset ? "Edit Asset" : "Register Asset"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <Input placeholder="Asset name *" value={assetForm.name} onChange={(e) => setAssetForm((f) => ({ ...f, name: e.target.value }))} />
               <Input placeholder="Asset type (HVAC, elevator, roof...)" value={assetForm.assetType} onChange={(e) => setAssetForm((f) => ({ ...f, assetType: e.target.value }))} />
               <Input placeholder="Manufacturer" value={assetForm.manufacturer} onChange={(e) => setAssetForm((f) => ({ ...f, manufacturer: e.target.value }))} />
@@ -498,9 +498,9 @@ export function MaintenanceSchedulesContent() {
               <Input type="number" placeholder="Replacement cost estimate ($)" value={assetForm.replacementCostEstimate} onChange={(e) => setAssetForm((f) => ({ ...f, replacementCostEstimate: e.target.value }))} />
             </div>
             <Textarea placeholder="Notes" value={assetForm.notes} onChange={(e) => setAssetForm((f) => ({ ...f, notes: e.target.value }))} />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAssetOpen(false)}>Cancel</Button>
-              <Button onClick={() => saveAsset.mutate()} disabled={!assetForm.name.trim() || !assetForm.assetType.trim() || saveAsset.isPending}>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button className="w-full sm:w-auto" variant="outline" onClick={() => setAssetOpen(false)}>Cancel</Button>
+              <Button className="w-full sm:w-auto" onClick={() => saveAsset.mutate()} disabled={!assetForm.name.trim() || !assetForm.assetType.trim() || saveAsset.isPending}>
                 {editingAsset ? "Save Changes" : "Register Asset"}
               </Button>
             </div>

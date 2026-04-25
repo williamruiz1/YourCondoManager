@@ -450,7 +450,7 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
 
       {/* New Schedule Dialog */}
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Create Recurring Charge Schedule</DialogTitle>
           </DialogHeader>
