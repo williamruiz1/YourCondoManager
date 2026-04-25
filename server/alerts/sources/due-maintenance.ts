@@ -14,23 +14,47 @@
  * The deterministic `alertId` is therefore
  *   `due-maintenance:maintenance_schedule_instances:<id>`
  * per 4.1 Q7.
+ *
+ * Wave 16b (5.4-F1): `resolveMany` collapses the per-association storage
+ * fan-out into a single call. `resolve()` is preserved as a thin wrapper.
  */
 
 import { storage } from "../../storage";
-import type { AlertItem } from "../types";
+import type { AlertItem, AlertSeverity } from "../types";
 import { FEATURE_DOMAINS } from "../types";
 
 const DUE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-export async function resolve(
-  associationId: string,
-  context: { associationName: string; now?: Date },
+export interface AssociationContext {
+  id: string;
+  name: string;
+}
+
+export interface ResolveContext {
+  associationName: string;
+  now?: Date;
+}
+
+export interface ResolveManyContext {
+  now?: Date;
+}
+
+export async function resolveMany(
+  associations: AssociationContext[],
+  context: ResolveManyContext = {},
 ): Promise<AlertItem[]> {
+  if (associations.length === 0) return [];
   const now = context.now ?? new Date();
   const dueCutoff = new Date(now.getTime() + DUE_WINDOW_MS);
-  const instances = await storage.getMaintenanceScheduleInstances({ associationId });
+  const nameById = new Map(associations.map((a) => [a.id, a.name]));
 
-  return instances
+  const allInstances =
+    associations.length === 1
+      ? await storage.getMaintenanceScheduleInstances({ associationId: associations[0].id })
+      : await storage.getMaintenanceScheduleInstances();
+
+  return allInstances
+    .filter((msi) => nameById.has(msi.associationId))
     .filter((msi) => {
       if (msi.status === "completed") return false;
       return new Date(msi.dueAt) < dueCutoff;
@@ -38,11 +62,11 @@ export async function resolve(
     .map((msi): AlertItem => {
       const dueAt = new Date(msi.dueAt);
       const overdue = dueAt < now;
-      const severity = overdue ? "high" : "medium";
+      const severity: AlertSeverity = overdue ? "high" : "medium";
       return {
         alertId: `due-maintenance:maintenance_schedule_instances:${msi.id}`,
         associationId: msi.associationId,
-        associationName: context.associationName,
+        associationName: nameById.get(msi.associationId) ?? "",
         zone: "operations",
         featureDomain: FEATURE_DOMAINS.OPERATIONS_MAINTENANCE_REQUESTS,
         ruleType: "due-maintenance",
@@ -56,4 +80,11 @@ export async function resolve(
         sourceRecord: msi,
       };
     });
+}
+
+export async function resolve(
+  associationId: string,
+  context: ResolveContext,
+): Promise<AlertItem[]> {
+  return resolveMany([{ id: associationId, name: context.associationName }], { now: context.now });
 }

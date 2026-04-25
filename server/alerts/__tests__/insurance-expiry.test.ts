@@ -16,7 +16,7 @@ vi.mock("../../db", () => ({
   },
 }));
 
-import { resolve } from "../sources/insurance-expiry";
+import { resolve, resolveMany } from "../sources/insurance-expiry";
 
 const now = new Date("2026-04-22T12:00:00Z");
 
@@ -103,5 +103,31 @@ describe("resolver: insurance-expiry", () => {
     const b = await resolve("assoc-1", { associationName: "X", now });
     expect(a[0].alertId).toBe(b[0].alertId);
     expect(a[0].alertId).toBe("insurance-expiry:association_insurance_policies:stable");
+  });
+
+  // -------------------------------------------------------------------------
+  // 5.4-F1 Wave 16b — resolveMany batched fan-out.
+  // -------------------------------------------------------------------------
+
+  it("resolveMany: emits alerts for 3 associations from a single IN-query", async () => {
+    state.rows = [
+      makePolicy({ id: "p-a1", associationId: "assoc-1" }),
+      makePolicy({ id: "p-a2", associationId: "assoc-2" }),
+      makePolicy({ id: "p-a3", associationId: "assoc-3" }),
+    ];
+    const items = await resolveMany(
+      [
+        { id: "assoc-1", name: "A" },
+        { id: "assoc-2", name: "B" },
+        { id: "assoc-3", name: "C" },
+      ],
+      { now },
+    );
+    expect(items).toHaveLength(3);
+    expect(items.map((i) => i.associationId).sort()).toEqual([
+      "assoc-1",
+      "assoc-2",
+      "assoc-3",
+    ]);
   });
 });

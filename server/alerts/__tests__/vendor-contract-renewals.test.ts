@@ -11,7 +11,7 @@ vi.mock("../../storage", () => ({
 }));
 
 import { storage } from "../../storage";
-import { resolve } from "../sources/vendor-contract-renewals";
+import { resolve, resolveMany } from "../sources/vendor-contract-renewals";
 
 const now = new Date("2026-04-22T12:00:00Z");
 
@@ -106,5 +106,33 @@ describe("resolver: vendor-contract-renewals", () => {
     const b = await resolve("assoc-1", { associationName: "X", now });
     expect(a[0].alertId).toBe(b[0].alertId);
     expect(a[0].alertId).toBe("vendor-contract-renewal:vendors:stable");
+  });
+
+  // -------------------------------------------------------------------------
+  // 5.4-F1 Wave 16b — resolveMany batched fan-out.
+  // -------------------------------------------------------------------------
+
+  it("resolveMany: emits alerts for 3 associations from a single storage call", async () => {
+    vi.mocked(storage.getVendors).mockResolvedValueOnce([
+      makeVendor({ id: "v-1", associationId: "assoc-1" }),
+      makeVendor({ id: "v-2", associationId: "assoc-2" }),
+      makeVendor({ id: "v-3", associationId: "assoc-3" }),
+    ] as any);
+    const items = await resolveMany(
+      [
+        { id: "assoc-1", name: "A" },
+        { id: "assoc-2", name: "B" },
+        { id: "assoc-3", name: "C" },
+      ],
+      { now },
+    );
+    expect(items).toHaveLength(3);
+    expect(items.map((i) => i.associationId).sort()).toEqual([
+      "assoc-1",
+      "assoc-2",
+      "assoc-3",
+    ]);
+    expect(vi.mocked(storage.getVendors).mock.calls).toHaveLength(1);
+    expect(vi.mocked(storage.getVendors).mock.calls[0][0]).toBeUndefined();
   });
 });

@@ -13,7 +13,7 @@ vi.mock("../../storage", () => ({
 }));
 
 import { storage } from "../../storage";
-import { resolve } from "../sources/budget-variance-flags";
+import { resolve, resolveMany } from "../sources/budget-variance-flags";
 
 const now = new Date("2026-04-22T12:00:00Z");
 
@@ -191,5 +191,54 @@ describe("resolver: budget-variance-flags", () => {
     const b = await resolve("assoc-1", { associationName: "X", now });
     expect(a[0].alertId).toBe(b[0].alertId);
     expect(a[0].alertId).toBe("budget-variance:budget_lines:stable");
+  });
+
+  // -------------------------------------------------------------------------
+  // 5.4-F1 Wave 16b — resolveMany batched fan-out.
+  // -------------------------------------------------------------------------
+
+  it("resolveMany: emits alerts for 3 associations using a single budgets call", async () => {
+    vi.mocked(storage.getBudgets).mockResolvedValueOnce([
+      makeBudget({ id: "b-a1", associationId: "assoc-1" }),
+      makeBudget({ id: "b-a2", associationId: "assoc-2" }),
+      makeBudget({ id: "b-a3", associationId: "assoc-3" }),
+    ] as any);
+    // Each budget gets its own version + variance lookup; we mock once
+    // per call. Since `getBudgetVersions` is invoked per-budget we use
+    // mockImplementation to return the same ratified version structure
+    // for any budgetId.
+    vi.mocked(storage.getBudgetVersions).mockImplementation(async (budgetId: string) =>
+      [
+        makeVersion({ id: `${budgetId}-v1`, budgetId }),
+      ] as any,
+    );
+    vi.mocked(storage.getBudgetVariance).mockImplementation(async () => [
+      {
+        budgetLineId: "line-overspent",
+        lineItemName: "Repairs",
+        plannedAmount: 1000,
+        actualAmount: 1300,
+        varianceAmount: -300,
+        accountId: null,
+        categoryId: null,
+      },
+    ]);
+
+    const items = await resolveMany(
+      [
+        { id: "assoc-1", name: "A" },
+        { id: "assoc-2", name: "B" },
+        { id: "assoc-3", name: "C" },
+      ],
+      { now },
+    );
+    expect(items).toHaveLength(3);
+    expect(items.map((i) => i.associationId).sort()).toEqual([
+      "assoc-1",
+      "assoc-2",
+      "assoc-3",
+    ]);
+    expect(vi.mocked(storage.getBudgets).mock.calls).toHaveLength(1);
+    expect(vi.mocked(storage.getBudgets).mock.calls[0][0]).toBeUndefined();
   });
 });

@@ -20,9 +20,13 @@
  *   critical — expiring within 30 days (or already lapsed)
  *   high     — expiring within 45 days
  *   medium   — expiring within 60 days
+ *
+ * Wave 16b (5.4-F1): `resolveMany` issues a single `WHERE associationId IN
+ * (...)` query covering all permitted associations. `resolve()` is a
+ * thin wrapper preserved for backward compatibility.
  */
 
-import { and, eq, isNotNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import { db } from "../../db";
 import { associationInsurancePolicies } from "@shared/schema";
 import type { AlertItem, AlertSeverity } from "../types";
@@ -33,27 +37,53 @@ const CRITICAL_DAYS = 30;
 const HIGH_DAYS = 45;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export async function resolve(
-  associationId: string,
-  context: { associationName: string; now?: Date; leadTimeDays?: number },
+export interface AssociationContext {
+  id: string;
+  name: string;
+}
+
+export interface ResolveContext {
+  associationName: string;
+  now?: Date;
+  leadTimeDays?: number;
+}
+
+export interface ResolveManyContext {
+  now?: Date;
+  leadTimeDays?: number;
+}
+
+export async function resolveMany(
+  associations: AssociationContext[],
+  context: ResolveManyContext = {},
 ): Promise<AlertItem[]> {
+  if (associations.length === 0) return [];
   const now = context.now ?? new Date();
   const leadTimeDays = context.leadTimeDays ?? DEFAULT_LEAD_TIME_DAYS;
   const cutoff = new Date(now.getTime() + leadTimeDays * MS_PER_DAY);
+  const associationIds = associations.map((a) => a.id);
+  const nameById = new Map(associations.map((a) => [a.id, a.name]));
 
   const rows = await db
     .select()
     .from(associationInsurancePolicies)
     .where(
-      and(
-        eq(associationInsurancePolicies.associationId, associationId),
-        isNotNull(associationInsurancePolicies.expirationDate),
-        lte(associationInsurancePolicies.expirationDate, cutoff),
-      ),
+      associations.length === 1
+        ? and(
+            eq(associationInsurancePolicies.associationId, associations[0].id),
+            isNotNull(associationInsurancePolicies.expirationDate),
+            lte(associationInsurancePolicies.expirationDate, cutoff),
+          )
+        : and(
+            inArray(associationInsurancePolicies.associationId, associationIds),
+            isNotNull(associationInsurancePolicies.expirationDate),
+            lte(associationInsurancePolicies.expirationDate, cutoff),
+          ),
     );
 
   return rows
     .filter((policy) => policy.expirationDate !== null)
+    .filter((policy) => nameById.has(policy.associationId))
     .map((policy): AlertItem => {
       const expiresAt = new Date(policy.expirationDate as Date);
       const daysUntilExpiry = Math.floor((expiresAt.getTime() - now.getTime()) / MS_PER_DAY);
@@ -73,8 +103,8 @@ export async function resolve(
 
       return {
         alertId: `insurance-expiry:association_insurance_policies:${policy.id}`,
-        associationId,
-        associationName: context.associationName,
+        associationId: policy.associationId,
+        associationName: nameById.get(policy.associationId) ?? "",
         zone: "governance",
         featureDomain: FEATURE_DOMAINS.GOVERNANCE_COMPLIANCE,
         ruleType: "insurance-expiry",
@@ -90,4 +120,14 @@ export async function resolve(
         sourceRecord: policy,
       };
     });
+}
+
+export async function resolve(
+  associationId: string,
+  context: ResolveContext,
+): Promise<AlertItem[]> {
+  return resolveMany([{ id: associationId, name: context.associationName }], {
+    now: context.now,
+    leadTimeDays: context.leadTimeDays,
+  });
 }
