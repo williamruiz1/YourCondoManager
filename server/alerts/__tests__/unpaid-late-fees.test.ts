@@ -12,7 +12,7 @@ vi.mock("../../storage", () => ({
 }));
 
 import { storage } from "../../storage";
-import { resolve } from "../sources/unpaid-late-fees";
+import { resolve, resolveMany } from "../sources/unpaid-late-fees";
 
 const now = new Date("2026-04-22T12:00:00Z");
 
@@ -161,5 +161,36 @@ describe("resolver: unpaid-late-fees", () => {
     const b = await resolve("assoc-1", { associationName: "X", now });
     expect(a[0].alertId).toBe(b[0].alertId);
     expect(a[0].alertId).toBe("unpaid-late-fee:late_fee_events:stable");
+  });
+
+  // -------------------------------------------------------------------------
+  // 5.4-F1 Wave 16b — resolveMany batched fan-out.
+  // -------------------------------------------------------------------------
+
+  it("resolveMany: emits alerts for 3 associations from a single events call", async () => {
+    vi.mocked(storage.getLateFeeEvents).mockResolvedValueOnce([
+      makeEvent({ id: "lf-a1", associationId: "assoc-1" }),
+      makeEvent({ id: "lf-a2", associationId: "assoc-2" }),
+      makeEvent({ id: "lf-a3", associationId: "assoc-3" }),
+    ] as any);
+    vi.mocked(storage.getOwnerLedgerEntries).mockResolvedValueOnce([]);
+    const items = await resolveMany(
+      [
+        { id: "assoc-1", name: "A" },
+        { id: "assoc-2", name: "B" },
+        { id: "assoc-3", name: "C" },
+      ],
+      { now },
+    );
+    expect(items).toHaveLength(3);
+    expect(items.map((i) => i.associationId).sort()).toEqual([
+      "assoc-1",
+      "assoc-2",
+      "assoc-3",
+    ]);
+    expect(vi.mocked(storage.getLateFeeEvents).mock.calls).toHaveLength(1);
+    expect(vi.mocked(storage.getLateFeeEvents).mock.calls[0][0]).toBeUndefined();
+    expect(vi.mocked(storage.getOwnerLedgerEntries).mock.calls).toHaveLength(1);
+    expect(vi.mocked(storage.getOwnerLedgerEntries).mock.calls[0][0]).toBeUndefined();
   });
 });

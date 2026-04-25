@@ -28,6 +28,12 @@ import { ExportCsvButton } from "@/components/export-csv-button";
 import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { DateRangePresets, type DateRange } from "@/components/date-range-presets";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { VirtualizedLedgerTable } from "@/components/virtualized-ledger-table";
+
+// 5.4-F7 (Wave 16b) — when a ledger has more than this many rows visible,
+// switch the desktop table to a virtualized div-grid. Smaller tables keep
+// the standard `<Table>` markup unchanged.
+const LEDGER_VIRTUALIZE_THRESHOLD = 50;
 
 function formatAuditDetails(json: unknown): string {
   if (!json || typeof json !== "object") return String(json ?? "—");
@@ -681,6 +687,13 @@ export function FinancialLedgerContent() {
                 </div>
               )}
             </div>
+          ) : filteredEntries.slice(0, entriesShowLimit).length > LEDGER_VIRTUALIZE_THRESHOLD ? (
+            // 5.4-F7 (Wave 16b) — virtualized desktop ledger.
+            <VirtualizedOperatorLedger
+              entries={filteredEntries.slice(0, entriesShowLimit)}
+              personName={personName}
+              unitName={unitName}
+            />
           ) : (
             <Table>
               <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Owner</TableHead><TableHead>Unit</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Description</TableHead></TableRow></TableHeader>
@@ -870,6 +883,70 @@ export function FinancialLedgerContent() {
           ["bob@example.com", "102", "payment", "-350.00", "2024-01-15", "Payment received"],
         ]}
         onImport={handleLedgerImport}
+      />
+    </div>
+  );
+}
+
+// ---------- 5.4-F7: Virtualized operator ledger -------------------------
+//
+// Mirror of the legacy `<Table>` columns: Date / Owner / Unit / Type /
+// Amount / Description. Each row carries the same `${e.id}`-keyed
+// identity so any future click handlers / row-actions can attach by
+// row id without churn.
+
+function VirtualizedOperatorLedger({
+  entries,
+  personName,
+  unitName,
+}: {
+  entries: OwnerLedgerEntry[];
+  personName: Map<string, string>;
+  unitName: Map<string, string>;
+}) {
+  const gridTemplate =
+    "minmax(110px, 130px) minmax(140px, 1fr) minmax(80px, 110px) minmax(110px, 140px) minmax(90px, 110px) minmax(180px, 1.5fr)";
+  return (
+    <div data-testid="financial-ledger-virtualized">
+      <div
+        className="grid border-b text-xs font-medium uppercase tracking-wide text-muted-foreground"
+        style={{ gridTemplateColumns: gridTemplate }}
+        role="row"
+      >
+        <div className="px-4 py-3">Date</div>
+        <div className="px-4 py-3">Owner</div>
+        <div className="px-4 py-3">Unit</div>
+        <div className="px-4 py-3">Type</div>
+        <div className="px-4 py-3">Amount</div>
+        <div className="px-4 py-3">Description</div>
+      </div>
+      <VirtualizedLedgerTable<OwnerLedgerEntry>
+        rows={entries}
+        threshold={LEDGER_VIRTUALIZE_THRESHOLD}
+        estimateRowHeight={48}
+        containerHeight={600}
+        getRowKey={(entry) => entry.id}
+        renderRow={(e) => (
+          <div
+            className="grid border-b text-sm transition-colors hover:bg-muted/40"
+            style={{ gridTemplateColumns: gridTemplate }}
+            role="row"
+          >
+            <div className="px-4 py-3">{new Date(e.postedAt).toLocaleDateString()}</div>
+            <div className="px-4 py-3">{personName.get(e.personId) || e.personId}</div>
+            <div className="px-4 py-3">{unitName.get(e.unitId) || e.unitId}</div>
+            <div className="px-4 py-3">
+              <Badge variant="secondary">{e.entryType}</Badge>
+            </div>
+            <div className="px-4 py-3">${e.amount.toFixed(2)}</div>
+            <div
+              className="truncate px-4 py-3 text-muted-foreground"
+              title={e.description || ""}
+            >
+              {e.description || "—"}
+            </div>
+          </div>
+        )}
       />
     </div>
   );

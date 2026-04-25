@@ -14,7 +14,7 @@ vi.mock("../../storage", () => ({
 }));
 
 import { storage } from "../../storage";
-import { resolve } from "../sources/overdue-work-orders";
+import { resolve, resolveMany } from "../sources/overdue-work-orders";
 
 const now = new Date("2026-04-22T12:00:00Z");
 
@@ -104,5 +104,43 @@ describe("resolver: overdue-work-orders", () => {
     const b = await resolve("assoc-1", { associationName: "X", now });
     expect(a[0].alertId).toBe(b[0].alertId);
     expect(a[0].alertId).toBe("overdue-work-order:work_orders:stable");
+  });
+
+  // -------------------------------------------------------------------------
+  // 5.4-F1 Wave 16b — resolveMany batched fan-out.
+  // -------------------------------------------------------------------------
+
+  it("resolveMany: emits alerts for 3 associations in a single storage call", async () => {
+    vi.mocked(storage.getWorkOrders).mockResolvedValueOnce([
+      makeWorkOrder({ id: "wo-1", associationId: "assoc-1" }),
+      makeWorkOrder({ id: "wo-2", associationId: "assoc-2" }),
+      makeWorkOrder({ id: "wo-3", associationId: "assoc-3" }),
+    ] as any);
+
+    const items = await resolveMany(
+      [
+        { id: "assoc-1", name: "A" },
+        { id: "assoc-2", name: "B" },
+        { id: "assoc-3", name: "C" },
+      ],
+      { now },
+    );
+
+    expect(items).toHaveLength(3);
+    expect(items.map((i) => i.associationId).sort()).toEqual(["assoc-1", "assoc-2", "assoc-3"]);
+    // Multi-assoc path: storage was called exactly once, no associationId filter.
+    expect(vi.mocked(storage.getWorkOrders).mock.calls).toHaveLength(1);
+    expect(vi.mocked(storage.getWorkOrders).mock.calls[0][0]).toBeUndefined();
+  });
+
+  it("resolveMany: drops rows whose associationId is not in the permitted set", async () => {
+    vi.mocked(storage.getWorkOrders).mockResolvedValueOnce([
+      makeWorkOrder({ id: "wo-permitted", associationId: "assoc-1" }),
+      makeWorkOrder({ id: "wo-other", associationId: "assoc-99" }),
+    ] as any);
+    const items = await resolveMany([{ id: "assoc-1", name: "A" }, { id: "assoc-2", name: "B" }], {
+      now,
+    });
+    expect(items.map((i) => i.recordId)).toEqual(["wo-permitted"]);
   });
 });

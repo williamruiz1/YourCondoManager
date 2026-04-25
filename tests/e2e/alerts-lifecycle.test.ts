@@ -33,32 +33,46 @@ import { AddressInfo } from "net";
 
 const overdueMock = vi.fn();
 
+// Wave 16b (5.4-F1): the orchestrator now calls `resolveMany` on every
+// source. The legacy `resolve` is preserved for backward compatibility
+// but is no longer the path the orchestrator takes. Each mock therefore
+// exports BOTH `resolve` (for any direct caller) and `resolveMany`
+// (for the orchestrator).
 vi.mock("../../server/alerts/sources/overdue-work-orders", () => ({
   resolve: (...args: unknown[]) => overdueMock(...args),
+  resolveMany: vi.fn(async () => overdueMock()),
 }));
 vi.mock("../../server/alerts/sources/due-maintenance", () => ({
   resolve: vi.fn(async () => []),
+  resolveMany: vi.fn(async () => []),
 }));
 vi.mock("../../server/alerts/sources/active-elections", () => ({
   resolve: vi.fn(async () => []),
+  resolveMany: vi.fn(async () => []),
 }));
 vi.mock("../../server/alerts/sources/delinquent-ledger-balances", () => ({
   resolve: vi.fn(async () => []),
+  resolveMany: vi.fn(async () => []),
 }));
 vi.mock("../../server/alerts/sources/expiring-governance-documents", () => ({
   resolve: vi.fn(async () => []),
+  resolveMany: vi.fn(async () => []),
 }));
 vi.mock("../../server/alerts/sources/vendor-contract-renewals", () => ({
   resolve: vi.fn(async () => []),
+  resolveMany: vi.fn(async () => []),
 }));
 vi.mock("../../server/alerts/sources/insurance-expiry", () => ({
   resolve: vi.fn(async () => []),
+  resolveMany: vi.fn(async () => []),
 }));
 vi.mock("../../server/alerts/sources/budget-variance-flags", () => ({
   resolve: vi.fn(async () => []),
+  resolveMany: vi.fn(async () => []),
 }));
 vi.mock("../../server/alerts/sources/unpaid-late-fees", () => ({
   resolve: vi.fn(async () => []),
+  resolveMany: vi.fn(async () => []),
 }));
 
 // Stub the DB module so module-level init (pg.Pool + DATABASE_URL check)

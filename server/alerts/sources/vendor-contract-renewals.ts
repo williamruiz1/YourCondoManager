@@ -26,6 +26,9 @@
  *   critical — not used for this rule type
  *   high     — expiring within 14 days
  *   medium   — everything else inside the 30-day window (incl. pending-renewal)
+ *
+ * Wave 16b (5.4-F1): `resolveMany` calls `storage.getVendors()` once,
+ * groups by associationId. `resolve()` preserved as a thin wrapper.
  */
 
 import { storage } from "../../storage";
@@ -36,32 +39,48 @@ const DEFAULT_LEAD_TIME_DAYS = 30;
 const HIGH_SEVERITY_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export async function resolve(
-  associationId: string,
-  context: { associationName: string; now?: Date; leadTimeDays?: number },
+export interface AssociationContext {
+  id: string;
+  name: string;
+}
+
+export interface ResolveContext {
+  associationName: string;
+  now?: Date;
+  leadTimeDays?: number;
+}
+
+export interface ResolveManyContext {
+  now?: Date;
+  leadTimeDays?: number;
+}
+
+export async function resolveMany(
+  associations: AssociationContext[],
+  context: ResolveManyContext = {},
 ): Promise<AlertItem[]> {
+  if (associations.length === 0) return [];
   const now = context.now ?? new Date();
   const leadTimeDays = context.leadTimeDays ?? DEFAULT_LEAD_TIME_DAYS;
   const cutoff = new Date(now.getTime() + leadTimeDays * MS_PER_DAY);
+  const nameById = new Map(associations.map((a) => [a.id, a.name]));
 
-  const vendors = await storage.getVendors(associationId);
+  const allVendors =
+    associations.length === 1
+      ? await storage.getVendors(associations[0].id)
+      : await storage.getVendors();
 
   const alerts: AlertItem[] = [];
-  for (const vendor of vendors) {
+  for (const vendor of allVendors) {
+    if (!nameById.has(vendor.associationId)) continue;
     if (vendor.status === "inactive") continue;
 
     const expiresAt = vendor.insuranceExpiresAt ? new Date(vendor.insuranceExpiresAt) : null;
     const pendingRenewal = vendor.status === "pending-renewal";
     const withinWindow = expiresAt !== null && expiresAt <= cutoff;
 
-    // Surface the alert if either the explicit status flag is set OR the
-    // insurance-expiry proxy is within the lead-time window.
     if (!pendingRenewal && !withinWindow) continue;
 
-    // Guard: if the vendor is flagged pending-renewal but has no date, we
-    // still surface the alert (with the vendor's row createdAt as the
-    // `createdAt` and an undated description). A missing date must not
-    // crash the resolver.
     const daysUntilExpiry =
       expiresAt !== null
         ? Math.floor((expiresAt.getTime() - now.getTime()) / MS_PER_DAY)
@@ -87,8 +106,8 @@ export async function resolve(
 
     alerts.push({
       alertId: `vendor-contract-renewal:vendors:${vendor.id}`,
-      associationId,
-      associationName: context.associationName,
+      associationId: vendor.associationId,
+      associationName: nameById.get(vendor.associationId) ?? "",
       zone: "operations",
       featureDomain: FEATURE_DOMAINS.VENDORS,
       ruleType: "vendor-contract-renewal",
@@ -104,4 +123,14 @@ export async function resolve(
   }
 
   return alerts;
+}
+
+export async function resolve(
+  associationId: string,
+  context: ResolveContext,
+): Promise<AlertItem[]> {
+  return resolveMany([{ id: associationId, name: context.associationName }], {
+    now: context.now,
+    leadTimeDays: context.leadTimeDays,
+  });
 }

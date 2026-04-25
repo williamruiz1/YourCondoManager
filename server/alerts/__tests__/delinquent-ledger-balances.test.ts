@@ -25,7 +25,7 @@ vi.mock("../../db", () => ({
 }));
 
 import { storage } from "../../storage";
-import { resolve } from "../sources/delinquent-ledger-balances";
+import { resolve, resolveMany } from "../sources/delinquent-ledger-balances";
 
 const now = new Date("2026-04-22T12:00:00Z");
 
@@ -136,5 +136,76 @@ describe("resolver: delinquent-ledger-balances", () => {
     const a = await resolve("assoc-1", { associationName: "X", now });
     const b = await resolve("assoc-1", { associationName: "X", now });
     expect(a[0].alertId).toBe(b[0].alertId);
+  });
+
+  // -------------------------------------------------------------------------
+  // 5.4-F1 Wave 16b — resolveMany batched fan-out.
+  // -------------------------------------------------------------------------
+
+  it("resolveMany: emits alerts for 3 associations using a single ledger-entries call", async () => {
+    // No per-assoc summary lookup is made on the multi-assoc path — the
+    // resolver rebuilds the rollup in JS from the entries.
+    vi.mocked(storage.getOwnerLedgerEntries).mockResolvedValueOnce([
+      {
+        id: "e1",
+        associationId: "assoc-1",
+        unitId: "u1",
+        personId: "p1",
+        entryType: "charge",
+        amount: 500,
+        postedAt: new Date("2026-03-01T00:00:00Z"), // ~52 days ago
+        description: null,
+        referenceType: null,
+        referenceId: null,
+        createdAt: new Date("2026-03-01T00:00:00Z"),
+      },
+      {
+        id: "e2",
+        associationId: "assoc-2",
+        unitId: "u2",
+        personId: "p2",
+        entryType: "charge",
+        amount: 800,
+        postedAt: new Date("2026-02-01T00:00:00Z"), // ~80 days ago
+        description: null,
+        referenceType: null,
+        referenceId: null,
+        createdAt: new Date("2026-02-01T00:00:00Z"),
+      },
+      {
+        id: "e3",
+        associationId: "assoc-3",
+        unitId: "u3",
+        personId: "p3",
+        entryType: "charge",
+        amount: 1500,
+        postedAt: new Date("2026-01-01T00:00:00Z"), // ~112 days ago
+        description: null,
+        referenceType: null,
+        referenceId: null,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+      },
+    ] as any);
+
+    const items = await resolveMany(
+      [
+        { id: "assoc-1", name: "A" },
+        { id: "assoc-2", name: "B" },
+        { id: "assoc-3", name: "C" },
+      ],
+      { now },
+    );
+
+    expect(items).toHaveLength(3);
+    expect(items.map((i) => i.associationId).sort()).toEqual([
+      "assoc-1",
+      "assoc-2",
+      "assoc-3",
+    ]);
+    // Multi-assoc path: only `getOwnerLedgerEntries()` (no arg) is called;
+    // `getOwnerLedgerSummary` is not invoked.
+    expect(vi.mocked(storage.getOwnerLedgerEntries).mock.calls).toHaveLength(1);
+    expect(vi.mocked(storage.getOwnerLedgerEntries).mock.calls[0][0]).toBeUndefined();
+    expect(vi.mocked(storage.getOwnerLedgerSummary).mock.calls).toHaveLength(0);
   });
 });

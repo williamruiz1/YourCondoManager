@@ -201,10 +201,17 @@ beforeEach(() => {
 
 describe("getCrossAssociationAlerts — orchestrator behavior", () => {
   it("aggregates alerts from every permitted association", async () => {
+    // Wave 16b (5.4-F1): the orchestrator now calls `resolveMany` per
+    // source — one storage fetch covers all permitted associations. The
+    // mock returns rows for every assoc; the resolver groups by
+    // `associationId` itself.
     vi.mocked(storage.getWorkOrders).mockImplementation(async (filters: any) => {
-      if (filters?.associationId === "assoc-1") return [makeWorkOrder("wo-a1", "assoc-1")] as any;
-      if (filters?.associationId === "assoc-2") return [makeWorkOrder("wo-a2", "assoc-2")] as any;
-      return [];
+      const all = [
+        makeWorkOrder("wo-a1", "assoc-1"),
+        makeWorkOrder("wo-a2", "assoc-2"),
+      ] as any;
+      if (!filters?.associationId) return all;
+      return all.filter((w: any) => w.associationId === filters.associationId);
     });
 
     const { alerts } = await getCrossAssociationAlerts({
@@ -336,10 +343,19 @@ describe("getCrossAssociationAlerts — orchestrator behavior", () => {
   it("scopes to the permitted associations list — no leakage", async () => {
     // An Assisted Board caller whose scope is only assoc-1 should not see
     // assoc-2 alerts, even if they exist in the DB.
+    //
+    // Wave 16b (5.4-F1): the resolver now passes a permitted-association
+    // map and filters DB rows by membership, so even if storage returns
+    // both rows, the out-of-scope assoc-2 row is dropped before the alert
+    // is emitted. We assert that behaviour AND that storage was queried
+    // with a single-association filter (the single-assoc fast path).
     vi.mocked(storage.getWorkOrders).mockImplementation(async (filters: any) => {
-      if (filters?.associationId === "assoc-1") return [makeWorkOrder("wo-in-scope", "assoc-1")] as any;
-      if (filters?.associationId === "assoc-2") return [makeWorkOrder("wo-out-of-scope", "assoc-2")] as any;
-      return [];
+      const all = [
+        makeWorkOrder("wo-in-scope", "assoc-1"),
+        makeWorkOrder("wo-out-of-scope", "assoc-2"),
+      ] as any;
+      if (!filters?.associationId) return all;
+      return all.filter((w: any) => w.associationId === filters.associationId);
     });
 
     // Note — Assisted Board is DENIED `operations.work-orders` per
@@ -355,7 +371,8 @@ describe("getCrossAssociationAlerts — orchestrator behavior", () => {
 
     expect(alerts).toHaveLength(1);
     expect(alerts[0].associationId).toBe("assoc-1");
-    // The out-of-scope association should not be queried.
+    // Single-assoc fast path: storage was called with the explicit
+    // associationId filter, and assoc-2 was never directly queried by id.
     const calls = vi.mocked(storage.getWorkOrders).mock.calls.map((c) => (c[0] as any)?.associationId);
     expect(calls).toContain("assoc-1");
     expect(calls).not.toContain("assoc-2");

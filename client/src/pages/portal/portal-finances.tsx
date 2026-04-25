@@ -23,7 +23,14 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/empty-state";
 import { PortalAssessmentDetailDialog } from "@/components/portal-assessment-detail-dialog";
+import { VirtualizedLedgerTable } from "@/components/virtualized-ledger-table";
 import { PortalShell, usePortalContext } from "./portal-shell";
+
+// 5.4-F7 (Wave 16b) — when a ledger has more than this many rows, use
+// `@tanstack/react-virtual` to keep only the visible window in the DOM.
+// Below the threshold we keep the standard `<Table>` markup to avoid
+// virtualization overhead on tiny tables.
+const LEDGER_VIRTUALIZE_THRESHOLD = 50;
 
 type FinancialDashboard = {
   balance: number;
@@ -479,43 +486,102 @@ function LedgerContent() {
       ) : (
         <Card>
           {/* 5.3 — table scrolls horizontally on narrow screens rather
-              than bursting the container at 375px. */}
+              than bursting the container at 375px.
+              5.4-F7 (Wave 16b) — when there are more than 50 filtered
+              rows we switch to a virtualized div-grid layout so only
+              the visible window is in the DOM. ≤50 rows continues to
+              use the standard `<Table>` markup unchanged. */}
           <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.length === 0 ? (
+            {filtered.length > LEDGER_VIRTUALIZE_THRESHOLD ? (
+              <VirtualizedPortalLedger entries={filtered} />
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={4} className="py-6 text-center text-sm text-on-surface-variant">
-                      No ledger entries match this filter.
-                    </TableCell>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
                   </TableRow>
-                ) : (
-                  filtered.map((entry) => (
-                    <TableRow key={entry.id} data-testid={`ledger-row-${entry.id}`}>
-                      <TableCell className="text-xs">
-                        {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
+                </TableHeader>
+                <TableBody>
+                  {filtered.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-6 text-center text-sm text-on-surface-variant">
+                        No ledger entries match this filter.
                       </TableCell>
-                      <TableCell className="text-xs">
-                        <Badge variant="outline">{entry.entryType.replace(/-/g, " ")}</Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
-                      <TableCell className="text-right text-xs">${Number(entry.amount).toFixed(2)}</TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ) : (
+                    filtered.map((entry) => (
+                      <TableRow key={entry.id} data-testid={`ledger-row-${entry.id}`}>
+                        <TableCell className="text-xs">
+                          {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <Badge variant="outline">{entry.entryType.replace(/-/g, " ")}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
+                        <TableCell className="text-right text-xs">${Number(entry.amount).toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+// ---------- 5.4-F7: Virtualized portal ledger ---------------------------
+//
+// When `filtered.length > LEDGER_VIRTUALIZE_THRESHOLD`, the LedgerContent
+// component swaps to this div-grid layout so only the rows in view are
+// kept in the DOM. The visual columns mirror the legacy `<Table>` exactly:
+// Date / Type / Description / right-aligned Amount.
+
+function VirtualizedPortalLedger({ entries }: { entries: OwnerLedgerEntry[] }) {
+  const gridTemplate = "minmax(90px, 110px) minmax(90px, 130px) minmax(150px, 1fr) minmax(80px, 110px)";
+  return (
+    <div data-testid="portal-finances-ledger-virtualized">
+      <div
+        className="grid border-b text-xs font-medium uppercase tracking-wide text-on-surface-variant"
+        style={{ gridTemplateColumns: gridTemplate }}
+        role="row"
+      >
+        <div className="px-4 py-3">Date</div>
+        <div className="px-4 py-3">Type</div>
+        <div className="px-4 py-3">Description</div>
+        <div className="px-4 py-3 text-right">Amount</div>
+      </div>
+      <VirtualizedLedgerTable<OwnerLedgerEntry>
+        rows={entries}
+        threshold={LEDGER_VIRTUALIZE_THRESHOLD}
+        estimateRowHeight={44}
+        containerHeight={520}
+        getRowKey={(entry) => entry.id}
+        renderRow={(entry) => (
+          <div
+            className="grid border-b text-xs transition-colors hover:bg-muted/40"
+            style={{ gridTemplateColumns: gridTemplate }}
+            data-testid={`ledger-row-${entry.id}`}
+            role="row"
+          >
+            <div className="px-4 py-3">
+              {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
+            </div>
+            <div className="px-4 py-3">
+              <Badge variant="outline">{entry.entryType.replace(/-/g, " ")}</Badge>
+            </div>
+            <div className="truncate px-4 py-3" title={entry.description ?? undefined}>
+              {entry.description ?? "—"}
+            </div>
+            <div className="px-4 py-3 text-right">${Number(entry.amount).toFixed(2)}</div>
+          </div>
+        )}
+      />
     </div>
   );
 }

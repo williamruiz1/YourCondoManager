@@ -29,15 +29,15 @@ import { alertReadStates, associations as associationsTable } from "@shared/sche
 import type { AdminRole } from "@shared/schema";
 import type { PersonaToggleState } from "@shared/persona-access";
 import { canAccessAlert } from "./can-access-alert";
-import { resolve as resolveOverdueWorkOrders } from "./sources/overdue-work-orders";
-import { resolve as resolveDueMaintenance } from "./sources/due-maintenance";
-import { resolve as resolveActiveElections } from "./sources/active-elections";
-import { resolve as resolveDelinquentLedgerBalances } from "./sources/delinquent-ledger-balances";
-import { resolve as resolveExpiringGovernanceDocuments } from "./sources/expiring-governance-documents";
-import { resolve as resolveVendorContractRenewals } from "./sources/vendor-contract-renewals";
-import { resolve as resolveInsuranceExpiry } from "./sources/insurance-expiry";
-import { resolve as resolveBudgetVarianceFlags } from "./sources/budget-variance-flags";
-import { resolve as resolveUnpaidLateFees } from "./sources/unpaid-late-fees";
+import { resolveMany as resolveManyOverdueWorkOrders } from "./sources/overdue-work-orders";
+import { resolveMany as resolveManyDueMaintenance } from "./sources/due-maintenance";
+import { resolveMany as resolveManyActiveElections } from "./sources/active-elections";
+import { resolveMany as resolveManyDelinquentLedgerBalances } from "./sources/delinquent-ledger-balances";
+import { resolveMany as resolveManyExpiringGovernanceDocuments } from "./sources/expiring-governance-documents";
+import { resolveMany as resolveManyVendorContractRenewals } from "./sources/vendor-contract-renewals";
+import { resolveMany as resolveManyInsuranceExpiry } from "./sources/insurance-expiry";
+import { resolveMany as resolveManyBudgetVarianceFlags } from "./sources/budget-variance-flags";
+import { resolveMany as resolveManyUnpaidLateFees } from "./sources/unpaid-late-fees";
 import type { AlertItem, AlertReadStateEntry, ZoneLabel } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -126,50 +126,48 @@ export async function getCrossAssociationAlerts(
 
   resolveInvocationCount += 1;
 
-  // --- Fan out across permitted associations ---------------------------------
-  const resolverContext = (associationName: string) => ({
-    associationName,
-    now: input.now,
-  });
+  // --- Batched fan-out across permitted associations (Wave 16b 5.4-F1) -------
+  //
+  // Pre-Wave-16b: each of 9 resolvers ran once per association, so a 50-
+  // association cold hit issued 9 × 50 = 450 storage round-trips. Wave 16b
+  // switches to `resolveMany([...all permitted assocs], ctx)` per source —
+  // one storage call (or one IN-query) covers the entire permitted set.
+  // The 50-association cold hit collapses to ~9 storage calls (one per
+  // source) plus a small number of per-budget secondary lookups.
+  const resolverCtx = { now: input.now };
 
-  const perAssociationAlerts = await Promise.all(
-    input.permittedAssociations.map(async (assoc) => {
-      const ctx = resolverContext(assoc.name);
-      const [
-        overdueWo,
-        dueMaint,
-        elections,
-        ledger,
-        docs,
-        vendorRenewals,
-        insurance,
-        budgetVariance,
-        unpaidLateFees,
-      ] = await Promise.all([
-        resolveOverdueWorkOrders(assoc.id, ctx),
-        resolveDueMaintenance(assoc.id, ctx),
-        resolveActiveElections(assoc.id, ctx),
-        resolveDelinquentLedgerBalances(assoc.id, ctx),
-        resolveExpiringGovernanceDocuments(assoc.id, ctx),
-        resolveVendorContractRenewals(assoc.id, ctx),
-        resolveInsuranceExpiry(assoc.id, ctx),
-        resolveBudgetVarianceFlags(assoc.id, ctx),
-        resolveUnpaidLateFees(assoc.id, ctx),
-      ]);
-      return [
-        ...overdueWo,
-        ...dueMaint,
-        ...elections,
-        ...ledger,
-        ...docs,
-        ...vendorRenewals,
-        ...insurance,
-        ...budgetVariance,
-        ...unpaidLateFees,
-      ];
-    }),
-  );
-  let alerts = perAssociationAlerts.flat();
+  const [
+    overdueWo,
+    dueMaint,
+    elections,
+    ledger,
+    docs,
+    vendorRenewals,
+    insurance,
+    budgetVariance,
+    unpaidLateFees,
+  ] = await Promise.all([
+    resolveManyOverdueWorkOrders(input.permittedAssociations, resolverCtx),
+    resolveManyDueMaintenance(input.permittedAssociations, resolverCtx),
+    resolveManyActiveElections(input.permittedAssociations, resolverCtx),
+    resolveManyDelinquentLedgerBalances(input.permittedAssociations, resolverCtx),
+    resolveManyExpiringGovernanceDocuments(input.permittedAssociations, resolverCtx),
+    resolveManyVendorContractRenewals(input.permittedAssociations, resolverCtx),
+    resolveManyInsuranceExpiry(input.permittedAssociations, resolverCtx),
+    resolveManyBudgetVarianceFlags(input.permittedAssociations, resolverCtx),
+    resolveManyUnpaidLateFees(input.permittedAssociations, resolverCtx),
+  ]);
+  let alerts: AlertItem[] = [
+    ...overdueWo,
+    ...dueMaint,
+    ...elections,
+    ...ledger,
+    ...docs,
+    ...vendorRenewals,
+    ...insurance,
+    ...budgetVariance,
+    ...unpaidLateFees,
+  ];
 
   // --- Server-side feature-domain gate (4.1 Q5) ------------------------------
   alerts = alerts.filter((a) => canAccessAlert(input.adminRole, a.featureDomain, input.personaToggles));
