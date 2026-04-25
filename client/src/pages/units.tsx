@@ -35,6 +35,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
+import { getScrollBehavior } from "@/lib/prefers-reduced-motion";
 
 const unitFormSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -1188,7 +1189,7 @@ export default function UnitsPage() {
 
           <button
             type="button"
-            onClick={() => document.getElementById("units-directory")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            onClick={() => document.getElementById("units-directory")?.scrollIntoView({ behavior: getScrollBehavior(), block: "start" })}
             className="group flex min-h-[132px] flex-col justify-between rounded-[22px] border border-outline-variant/20 bg-surface-container-lowest p-5 text-left editorial-shadow transition-all active:scale-[0.98]"
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-active:scale-95">

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Election } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { getScrollBehavior } from "@/lib/prefers-reduced-motion";
 
 type BoardDashboard = any;
 type AssociationOverview = any;
@@ -210,7 +211,7 @@ export function BoardPortal({ portalAccessId, associationId, associationName, me
 
   function scrollTo(section: Section) {
     const el = document.getElementById(`section-${section}`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (el) el.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
     setActiveSection(section);
     setMobileDrawerOpen(false);
   }

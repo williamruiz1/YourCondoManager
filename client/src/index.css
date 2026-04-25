@@ -197,6 +197,45 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
+  /*
+   * 5.8 — prefers-reduced-motion (Wave 29).
+   *
+   * Smooth in-page scrolling is opt-in only when the OS does NOT request
+   * reduced motion. We avoid declaring `html { scroll-behavior: smooth }`
+   * unconditionally so users with reduce-motion enabled get instant jumps.
+   *
+   * Component-level animations are suppressed at-source via `motion-reduce:`
+   * Tailwind variants (Dialog/Sheet/Popover/Tooltip/etc). The blanket rule
+   * below is a safety net for any escaped CSS-driven keyframes/transitions
+   * outside our component tree (e.g. third-party libraries) — it shortens
+   * them to ~1ms instead of removing them entirely so functional animations
+   * like loading spinners still communicate state, just without motion.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+
+    /* Loading spinners communicate "in progress" — keep them visible.
+     * We restore a finite (but slowed) duration so the spinner still rotates
+     * as a state indicator without producing a fast/distracting motion. */
+    .animate-spin {
+      animation-duration: 1.5s !important;
+      animation-iteration-count: infinite !important;
+    }
+  }
+
   h1, h2, h3, h4, h5, h6 {
     letter-spacing: -0.02em;
   }

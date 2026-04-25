@@ -117,7 +117,7 @@ export default function CommunityHubPublicPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-pulse text-muted-foreground">Loading community hub...</div>
+        <div className="animate-pulse text-muted-foreground motion-reduce:animate-none">Loading community hub...</div>
       </div>
     );
   }
