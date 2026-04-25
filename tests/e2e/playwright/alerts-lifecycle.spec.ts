@@ -24,6 +24,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 import { loginAsManager } from "./helpers/auth-helper";
+import { runAxeAuditSoft } from "./helpers/a11y-check";
 import {
   createRealBackend,
   createSeedStore,
@@ -109,6 +110,12 @@ test.describe("Wave 16a/17 — alerts lifecycle", () => {
       });
       expect((afterBody as { totalCount: number; alerts: unknown[] }).totalCount).toBe(0);
       expect((afterBody as { alerts: unknown[] }).alerts).toHaveLength(0);
+
+      // Wave 25 — axe-core audit on the workspace shell after the
+      // alerts flow settles. Soft-fail so a non-trivial violation in a
+      // surface outside Wave-21's locked 10 surfaces does not block the
+      // run; treat the report as a follow-up signal.
+      await runAxeAuditSoft(page, "alerts-lifecycle:route-mock");
     });
     return;
   }
@@ -196,5 +203,9 @@ test.describe("Wave 16a/17 — alerts lifecycle", () => {
     // Sanity: log the session we used so a failure trace shows the
     // admin we authenticated as.
     expect(session.email).toBe("manager@e2e.test");
+
+    // Wave 25 — axe-core audit on the workspace shell after the
+    // alerts flow settles.
+    await runAxeAuditSoft(page, "alerts-lifecycle:real-backend");
   });
 });

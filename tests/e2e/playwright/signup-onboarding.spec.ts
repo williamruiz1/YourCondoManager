@@ -30,6 +30,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+import { runAxeAuditSoft } from "./helpers/a11y-check";
 import {
   createRealBackend,
   type RealBackendHandle,
@@ -150,6 +151,9 @@ test.describe("Wave 16a/26 — signup → onboarding", () => {
       authState = "authed";
       await page.goto("/app");
       await expect(page).toHaveURL(/\/app/);
+
+      // Wave 25 — axe-core audit on the post-signup workspace shell.
+      await runAxeAuditSoft(page, "signup-onboarding:route-mock");
     });
     return;
   }
@@ -275,5 +279,8 @@ test.describe("Wave 16a/26 — signup → onboarding", () => {
 
     // Sanity check the descriptor for failure traces.
     expect(session.email).toBe(TEST_EMAIL);
+
+    // Wave 25 — axe-core audit on the post-signup workspace shell.
+    await runAxeAuditSoft(page, "signup-onboarding:real-backend");
   });
 });
