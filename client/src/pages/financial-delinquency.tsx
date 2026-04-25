@@ -276,7 +276,7 @@ export function FinancialDelinquencyContent() {
 
   // --- Threshold dialog form ---
   const thresholdDialogContent = (
-    <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
+    <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-md">
       <DialogHeader>
         <DialogTitle>{editingThreshold ? "Edit Threshold" : "New Delinquency Threshold"}</DialogTitle>
       </DialogHeader>

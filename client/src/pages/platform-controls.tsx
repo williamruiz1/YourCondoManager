@@ -699,10 +699,12 @@ export default function PlatformControlsPage() {
     return map;
   }, [persons]);
 
+  // Wave 31 a11y: section landmark + aria-labelledby (heading id below).
   return (
-    <div className="p-6 space-y-6">
+    <section className="p-6 space-y-6" aria-labelledby="platform-controls-heading">
       <WorkspacePageHeader
         title="Platform Controls"
+        headingId="platform-controls-heading"
         summary="Self-service permission envelopes and multi-association isolation scopes."
         eyebrow="Platform"
         breadcrumbs={[{ label: "Platform", href: "/app/platform/controls" }, { label: "Platform Controls" }]}
@@ -1120,6 +1122,6 @@ export default function PlatformControlsPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </section>
   );
 }

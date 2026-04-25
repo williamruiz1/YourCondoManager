@@ -636,10 +636,12 @@ export default function RoadmapPage() {
   const featureTreeUnitCounts = useMemo(() => getFunctionalUnitCounts(featureTreeModules), [featureTreeModules]);
   const visibleFeatureTreeUnitCounts = useMemo(() => getFunctionalUnitCounts(visibleFeatureTreeModules), [visibleFeatureTreeModules]);
 
+  // Wave 31 a11y: section landmark + aria-labelledby (heading id below).
   return (
-    <div className="p-6 space-y-6">
+    <section className="p-6 space-y-6" aria-labelledby="admin-roadmap-heading">
       <WorkspacePageHeader
         title="Unified Roadmap"
+        headingId="admin-roadmap-heading"
         summary="Cross-project planning, execution, dependencies, and timeline audit."
         eyebrow="Platform"
         breadcrumbs={[{ label: "Platform", href: "/app/platform/controls" }, { label: "Unified Roadmap" }]}
@@ -1257,7 +1259,8 @@ export default function RoadmapPage() {
       </Tabs>
 
       <Dialog open={projectModalOpen} onOpenChange={setProjectModalOpen}>
-        <DialogContent className="max-w-lg">
+        {/* Wave 31 mobile: viewport clamp keeps dialog within 360-px screens. */}
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Create Project</DialogTitle>
           </DialogHeader>
@@ -1289,7 +1292,8 @@ export default function RoadmapPage() {
       </Dialog>
 
       <Dialog open={workstreamModalOpen} onOpenChange={setWorkstreamModalOpen}>
-        <DialogContent className="max-w-lg">
+        {/* Wave 31 mobile: viewport clamp keeps dialog within 360-px screens. */}
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Create Workstream</DialogTitle>
           </DialogHeader>
@@ -1331,7 +1335,8 @@ export default function RoadmapPage() {
       </Dialog>
 
       <Dialog open={taskModalOpen} onOpenChange={setTaskModalOpen}>
-        <DialogContent className="max-w-xl">
+        {/* Wave 31 mobile: viewport clamp keeps dialog within 360-px screens. */}
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{taskForm.id ? "Edit Task" : "Create Task"}</DialogTitle>
           </DialogHeader>
@@ -1433,6 +1438,6 @@ export default function RoadmapPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

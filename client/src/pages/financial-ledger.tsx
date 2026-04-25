@@ -120,7 +120,7 @@ function SendNoticeDialog({
           Send Notice
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+      <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Send Payment Notice</DialogTitle>
           <DialogDescription>
@@ -337,7 +337,7 @@ export function FinancialLedgerContent() {
         <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!activeAssociationId}><FileUp className="h-4 w-4 mr-2" />Import CSV</Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Ledger Entry</Button></DialogTrigger>
-          <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-h-[85vh]">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-xl">
             <DialogHeader><DialogTitle>Create Ledger Entry</DialogTitle></DialogHeader>
             <Form {...form}>
               <form className="space-y-4" onSubmit={form.handleSubmit((v) => createEntry.mutate(v))}>

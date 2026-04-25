@@ -653,7 +653,7 @@ export function FinancialReconciliationContent() {
 
       {/* New Period Dialog */}
       <Dialog open={periodDialogOpen} onOpenChange={setPeriodDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Create Reconciliation Period</DialogTitle>
           </DialogHeader>
@@ -680,7 +680,7 @@ export function FinancialReconciliationContent() {
 
       {/* Manual Match Dialog */}
       <Dialog open={Boolean(manualMatchTx)} onOpenChange={(o) => { if (!o) setManualMatchTx(null); }}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-h-[85vh]">
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Manual Match Transaction</DialogTitle>
           </DialogHeader>
@@ -709,7 +709,7 @@ export function FinancialReconciliationContent() {
 
       {/* Import Dialog */}
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Import Bank Statement</DialogTitle>
           </DialogHeader>

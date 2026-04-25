@@ -289,7 +289,7 @@ export function FinancialInvoicesContent() {
     <div className="space-y-6">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild><Button disabled={!activeAssociationId}>Add Invoice</Button></DialogTrigger>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
+        <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-2xl">
           <DialogHeader><DialogTitle>Create Vendor Invoice</DialogTitle></DialogHeader>
           <Form {...form}>
             <form className="space-y-4" onSubmit={form.handleSubmit((v) => createInvoice.mutate(v))}>

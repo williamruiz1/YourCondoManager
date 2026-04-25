@@ -362,8 +362,10 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         )}
       </header>
 
+      {/* Wave 31 a11y: skip-link target promoted to main landmark for marketing brochure. */}
+      <main id="main-content" tabIndex={-1}>
       {/* ── HERO ── */}
-      <section id="main-content" className="relative px-8 py-12 md:py-20 max-w-7xl mx-auto overflow-hidden pt-24 md:pt-28">
+      <section className="relative px-8 py-12 md:py-20 max-w-7xl mx-auto overflow-hidden pt-24 md:pt-28">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div className="z-10">
             <span className="inline-block px-3 py-1 bg-secondary-container text-on-secondary-container rounded-full text-xs font-bold tracking-widest uppercase mb-4">Architecture of Trust</span>
@@ -636,6 +638,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           </div>
         </section>
       </div>
+      </main>
 
       <SiteFooter />
 

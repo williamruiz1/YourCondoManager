@@ -1,5 +1,5 @@
 /**
- * 5.6 — i18n registry tests (Wave 21 + Wave 24 + Wave 27).
+ * 5.6 — i18n registry tests (Wave 21 + Wave 24 + Wave 27 + Wave 31).
  *
  * Spec: docs/projects/platform-overhaul/decisions/5.6-i18n-scaffolding.md
  *
@@ -19,6 +19,12 @@
  * Wave 27 (round 3) extends the registry to 8 more operator surfaces
  * (insurance, maintenance schedules, inspections, resident feedback,
  * executive deck, admin users, operations dashboard, AI ingestion).
+ *
+ * Wave 31 (round 4) extends the registry to 4 more operator surfaces
+ * (board members, board packages, governance overview, community hub
+ * public). Public marketing pages (landing/pricing/solutions) intentionally
+ * stay un-extracted — brochure copy is translated separately at non-English
+ * market launch.
  */
 
 import { describe, it, expect } from "vitest";
@@ -44,6 +50,14 @@ describe("i18n strings.en", () => {
     // total should clear 350 — if it drops below, the round-3 extension
     // was reverted.
     expect(Object.keys(strings).length).toBeGreaterThanOrEqual(350);
+  });
+
+  it("exports at least 400 keys after Wave 31 round-4 extension", () => {
+    // Wave 31 added ~50 more keys across 4 operator surfaces (board,
+    // boardPackages, governance, communityHubPublic). Combined total
+    // should clear 400 — if it drops below, the round-4 extension was
+    // reverted.
+    expect(Object.keys(strings).length).toBeGreaterThanOrEqual(400);
   });
 
   it("every value is a non-empty string", () => {
@@ -129,6 +143,22 @@ describe("i18n strings.en", () => {
     expect(strings).toHaveProperty("aiIngestion.title");
     expect(strings).toHaveProperty("aiIngestion.tableLabel");
   });
+
+  it("includes the Wave 31 round-4 surface anchor keys", () => {
+    // Spot-checks for each of the 4 Wave 31 surfaces — at minimum the
+    // page title and at least one secondary key must be present so a
+    // partial revert is detected.
+    expect(strings).toHaveProperty("board.title");
+    expect(strings).toHaveProperty("board.action.assignRole");
+    expect(strings).toHaveProperty("board.tableLabel");
+    expect(strings).toHaveProperty("boardPackages.title");
+    expect(strings).toHaveProperty("boardPackages.crumb");
+    expect(strings).toHaveProperty("governance.title");
+    expect(strings).toHaveProperty("governance.tabs.compliance");
+    expect(strings).toHaveProperty("communityHubPublic.title");
+    expect(strings).toHaveProperty("communityHubPublic.error.title");
+    expect(strings).toHaveProperty("common.saving");
+  });
 });
 
 describe("t()", () => {
@@ -152,6 +182,16 @@ describe("t()", () => {
     expect(t("executive.tabs.highlights")).toBe("Highlights Deck");
     expect(t("adminUsers.dialog.title")).toBe("Create Admin User");
     expect(t("operationsDashboard.title")).toBe("Operations Overview");
+  });
+
+  it("returns the registered value for Wave 31 keys", () => {
+    // Spot checks confirming new Wave 31 keys render correctly via t().
+    expect(t("board.title")).toBe("Board Members");
+    expect(t("board.action.assignRole")).toBe("Assign Role");
+    expect(t("boardPackages.title")).toBe("Board Packages");
+    expect(t("governance.tabs.elections")).toBe("Elections");
+    expect(t("communityHubPublic.title")).toBe("Community Hub");
+    expect(t("common.saving")).toBe("Saving…");
   });
 
   it("returns the key itself for unknown keys (safe fallback)", () => {

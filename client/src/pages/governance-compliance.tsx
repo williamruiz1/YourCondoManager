@@ -1525,16 +1525,18 @@ export function GovernanceComplianceContent() {
 }
 
 export default function GovernanceCompliancePage() {
+  // Wave 31 a11y: section landmark + aria-labelledby (heading id below).
   return (
-    <div className="p-6 space-y-6">
+    <section className="p-6 space-y-6" aria-labelledby="governance-compliance-heading">
       <WorkspacePageHeader
         title="Governance & Compliance"
+        headingId="governance-compliance-heading"
         summary="Manage source-backed regulatory records, association overlays, and annual governance tasks."
         eyebrow="Board & Governance"
         breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Compliance" }]}
         subPages={boardGovernanceSubPages}
       />
       <GovernanceComplianceContent />
-    </div>
+    </section>
   );
 }

@@ -131,7 +131,7 @@ function MeetingNoticeDialog({
           <Send className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Send Meeting Notice</DialogTitle>
           <DialogDescription>Send a formal meeting notice to residents. Edit before sending.</DialogDescription>
@@ -199,7 +199,7 @@ function QuorumDialog({ meeting, persons }: { meeting: GovernanceMeeting; person
           <Users className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Attendance &amp; Quorum</DialogTitle>
           <DialogDescription>{meeting.title}</DialogDescription>
@@ -344,7 +344,7 @@ function InMeetingVoteDialog({
           In-Meeting Vote
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Record In-Meeting Vote</DialogTitle>
           <DialogDescription>
@@ -1253,7 +1253,7 @@ export function MeetingsContent() {
               Schedule Meeting
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Schedule a Meeting</DialogTitle>
               <DialogDescription>
@@ -1370,7 +1370,7 @@ export function MeetingsContent() {
                 <DialogTrigger asChild>
                   <Button size="sm" disabled={!activeAssociationId}>Add Rule</Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>New Reminder Rule</DialogTitle>
                     <DialogDescription>

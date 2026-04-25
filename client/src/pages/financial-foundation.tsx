@@ -176,7 +176,7 @@ export function FinancialFoundationContent() {
               <h2 className="text-lg font-semibold">{t("financialFoundation.accounts.heading")}</h2>
               <Dialog open={openAccount} onOpenChange={setOpenAccount}>
                 <DialogTrigger asChild><Button size="sm">{t("financialFoundation.accounts.add")}</Button></DialogTrigger>
-                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
                   <DialogHeader><DialogTitle>{t("financialFoundation.accounts.dialogTitle")}</DialogTitle></DialogHeader>
                   <Form {...accountForm}>
                     <form className="space-y-4" onSubmit={accountForm.handleSubmit((v) => createAccount.mutate(v))}>
@@ -241,7 +241,7 @@ export function FinancialFoundationContent() {
               <h2 className="text-lg font-semibold">{t("financialFoundation.categories.heading")}</h2>
               <Dialog open={openCategory} onOpenChange={setOpenCategory}>
                 <DialogTrigger asChild><Button size="sm">{t("financialFoundation.categories.add")}</Button></DialogTrigger>
-                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
                   <DialogHeader><DialogTitle>{t("financialFoundation.categories.dialogTitle")}</DialogTitle></DialogHeader>
                   <Form {...categoryForm}>
                     <form className="space-y-4" onSubmit={categoryForm.handleSubmit((v) => createCategory.mutate(v))}>
@@ -324,7 +324,7 @@ export function FinancialFoundationContent() {
                 <DialogTrigger asChild>
                   <Button size="sm" className={isMobile ? "min-h-11 w-full" : undefined} disabled={!activeAssociationId}>Request Approval</Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
                   <DialogHeader><DialogTitle>Submit Financial Change for Approval</DialogTitle></DialogHeader>
                   <div className="space-y-3">
                     <div className="space-y-1">

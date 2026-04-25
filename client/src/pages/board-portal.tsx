@@ -309,6 +309,13 @@ export function BoardPortal({ portalAccessId, associationId, associationName, me
 
   return (
     <div className="bg-surface-container-low min-h-screen flex flex-col">
+      {/* Wave 31 a11y: skip-link target lets keyboard users reach the board-portal main content. */}
+      <a
+        href="#board-portal-main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-white focus:text-primary focus:px-4 focus:py-2 focus:rounded focus:shadow-md focus:font-bold"
+      >
+        Skip to main content
+      </a>
       {/* Fixed Header */}
       <header className="fixed top-0 right-0 left-0 md:left-64 z-50 bg-white/80 backdrop-blur-xl shadow-sm">
         <div className="flex justify-between items-center px-4 md:px-8 py-4">
@@ -374,7 +381,7 @@ export function BoardPortal({ portalAccessId, associationId, associationName, me
       </aside>
 
       {/* Mobile Bottom Tab Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-outline-variant/20 flex items-center justify-around px-1 py-1.5">
+      <nav aria-label="Board portal sections" className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-outline-variant/20 flex items-center justify-around px-1 py-1.5">
         {mobileTabItems.map(({ id, icon, label }) => (
           <button
             key={id}
@@ -390,7 +397,7 @@ export function BoardPortal({ portalAccessId, associationId, associationName, me
       </nav>
 
       {/* Main Content */}
-      <main ref={mainRef} className="md:ml-64 pt-20 pb-24 md:pb-8 px-4 md:px-8 flex-1">
+      <main id="board-portal-main-content" tabIndex={-1} ref={mainRef} className="md:ml-64 pt-20 pb-24 md:pb-8 px-4 md:px-8 flex-1">
         <div className="max-w-6xl mx-auto">
           {boardError || overviewError ? (
             <div className="flex items-center justify-center py-24">

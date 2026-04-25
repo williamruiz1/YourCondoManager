@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute } from "wouter";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -89,7 +90,7 @@ const CATEGORY_ICONS: Record<string, typeof Info> = {
 };
 
 export default function CommunityHubPublicPage() {
-  useDocumentTitle("Community Hub");
+  useDocumentTitle(t("communityHubPublic.title"));
   const [, params] = useRoute("/community/:identifier");
   const identifier = params?.identifier || "";
   const [noticeCategory, setNoticeCategory] = useState<string>("all");
@@ -116,23 +117,23 @@ export default function CommunityHubPublicPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-pulse text-muted-foreground motion-reduce:animate-none">Loading community hub...</div>
+      <div role="status" aria-label={t("common.loading")} className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-pulse text-muted-foreground motion-reduce:animate-none">{t("communityHubPublic.loading")}</div>
       </div>
     );
   }
 
   if (error || !hub) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <main id="main-content" tabIndex={-1} className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6 text-center">
-            <Building2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h1 className="text-xl font-semibold mb-2">Community Hub Not Found</h1>
-            <p className="text-muted-foreground">This community hub doesn't exist or hasn't been enabled yet.</p>
+            <Building2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
+            <h1 className="text-xl font-semibold mb-2">{t("communityHubPublic.error.title")}</h1>
+            <p className="text-muted-foreground">{t("communityHubPublic.error.body")}</p>
           </CardContent>
         </Card>
-      </div>
+      </main>
     );
   }
 
@@ -237,7 +238,7 @@ export default function CommunityHubPublicPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
+      <main id="main-content" tabIndex={-1} className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
         {/* Welcome Mode */}
         {config.welcomeModeEnabled === 1 && config.welcomeHeadline && (
           <Card className="border-2" style={{ borderColor: `${themeColor}40` }}>

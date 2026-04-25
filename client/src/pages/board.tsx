@@ -32,6 +32,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 const boardRoleOptions = ["President", "Vice President", "Treasurer", "Secretary", "Board Member"];
 
@@ -46,7 +47,7 @@ const formSchema = z.object({
 });
 
 export default function BoardPage() {
-  useDocumentTitle("Board Members");
+  useDocumentTitle(t("board.title"));
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
@@ -121,44 +122,47 @@ export default function BoardPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    // Wave 31 a11y: section landmark + aria-labelledby (heading id below).
+    <section className="p-6 space-y-6" aria-labelledby="board-heading">
       {expiredRoles.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+        <div role="status" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
           <span><strong>{expiredRoles.length} board role{expiredRoles.length !== 1 ? "s" : ""}</strong> have expired and may indicate a vacancy: {expiredRoles.map((br) => getPersonName(br.personId)).join(", ")}</span>
         </div>
       )}
       {expiringRoles.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+        <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
           <span><strong>{expiringRoles.length} board term{expiringRoles.length !== 1 ? "s" : ""}</strong> expiring within 90 days: {expiringRoles.map((br) => `${getPersonName(br.personId)} (${new Date(br.endDate!).toLocaleDateString()})`).join(", ")}</span>
         </div>
       )}
       <WorkspacePageHeader
-        title="Board Members"
-        summary="Manage board positions for the current association context."
-        eyebrow="Board & Governance"
-        breadcrumbs={[{ label: "Board" }]}
+        title={t("board.title")}
+        headingId="board-heading"
+        summary={t("board.summary")}
+        eyebrow={t("board.eyebrow")}
+        breadcrumbs={[{ label: t("board.crumb") }]}
         subPages={boardGovernanceSubPages}
       />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div />
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) form.reset(); }}>
           <DialogTrigger asChild>
-            <Button className={isMobile ? "w-full min-h-11" : undefined} data-testid="button-add-board-role" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />Assign Role</Button>
+            <Button className={isMobile ? "w-full min-h-11" : undefined} data-testid="button-add-board-role" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" aria-hidden="true" />{t("board.action.assignRole")}</Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
-            <DialogHeader><DialogTitle>Assign Board Role</DialogTitle></DialogHeader>
+          {/* Wave 31 mobile: viewport clamp keeps dialog within 360-px screens. */}
+          <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
+            <DialogHeader><DialogTitle>{t("board.dialog.title")}</DialogTitle></DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                  Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
+                  {t("board.dialog.contextLabel")} <span className="font-medium">{activeAssociationName || t("board.dialog.contextNone")}</span>
                 </div>
                 <FormField control={form.control} name="personId" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Person</FormLabel>
+                    <FormLabel>{t("board.field.person")}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-board-person"><SelectValue placeholder="Select person" /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger data-testid="select-board-person" aria-label={t("board.field.person")}><SelectValue placeholder={t("board.field.personPlaceholder")} /></SelectTrigger></FormControl>
                       <SelectContent>
                         {persons?.map((p) => <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>)}
                       </SelectContent>
@@ -168,9 +172,9 @@ export default function BoardPage() {
                 )} />
                 <FormField control={form.control} name="role" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Role</FormLabel>
+                    <FormLabel>{t("board.field.role")}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-board-role"><SelectValue placeholder="Select role" /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger data-testid="select-board-role" aria-label={t("board.field.role")}><SelectValue placeholder={t("board.field.rolePlaceholder")} /></SelectTrigger></FormControl>
                       <SelectContent>
                         {boardRoleOptions.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
                       </SelectContent>
@@ -178,17 +182,18 @@ export default function BoardPage() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                {/* Wave 31 mobile: responsive grid (single column on mobile, 2 on sm+). */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <FormField control={form.control} name="startDate" render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Start Date</FormLabel>
+                      <FormLabel>{t("board.field.startDate")}</FormLabel>
                       <FormControl><Input data-testid="input-board-start" type="date" {...field} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="endDate" render={({ field }) => (
                     <FormItem>
-                      <FormLabel>End Date</FormLabel>
+                      <FormLabel>{t("board.field.endDate")}</FormLabel>
                       <FormControl><Input data-testid="input-board-end" type="date" {...field} /></FormControl>
                       <FormMessage />
                     </FormItem>
@@ -197,8 +202,8 @@ export default function BoardPage() {
                 <FormField control={form.control} name="inviteToWorkspace" render={({ field }) => (
                   <FormItem className="flex flex-row items-center justify-between rounded-md border p-3">
                     <div className="space-y-1">
-                      <FormLabel>Invite to board workspace</FormLabel>
-                      <div className="text-xs text-muted-foreground">Creates or updates association-scoped portal access for this board member.</div>
+                      <FormLabel>{t("board.field.inviteToWorkspace")}</FormLabel>
+                      <div className="text-xs text-muted-foreground">{t("board.field.inviteToWorkspaceHint")}</div>
                     </div>
                     <FormControl><Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(Boolean(checked))} /></FormControl>
                   </FormItem>
@@ -206,15 +211,18 @@ export default function BoardPage() {
                 {form.watch("inviteToWorkspace") ? (
                   <FormField control={form.control} name="inviteEmail" render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Invite Email</FormLabel>
-                      <FormControl><Input data-testid="input-board-invite-email" type="email" placeholder="Uses person's email if blank" {...field} /></FormControl>
+                      <FormLabel>{t("board.field.inviteEmail")}</FormLabel>
+                      <FormControl><Input data-testid="input-board-invite-email" type="email" placeholder={t("board.field.inviteEmailPlaceholder")} {...field} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                 ) : null}
-                <Button type="submit" className="w-full" disabled={createMutation.isPending} data-testid="button-submit-board-role">
-                  {createMutation.isPending ? "Saving..." : "Assign Role"}
-                </Button>
+                {/* Wave 31 mobile: responsive button row (stacked on mobile, end-aligned on sm+). */}
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button type="submit" className="w-full sm:w-auto" disabled={createMutation.isPending} data-testid="button-submit-board-role">
+                    {createMutation.isPending ? t("common.saving") : t("board.action.assignRole")}
+                  </Button>
+                </div>
               </form>
             </Form>
           </DialogContent>
@@ -224,25 +232,26 @@ export default function BoardPage() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+            <div className="p-6 space-y-3" role="status" aria-label={t("common.loading")}>{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : !boardRoles?.length ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <UserCheck className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium" data-testid="text-empty-state">No board members yet</h3>
-              <p className="text-sm text-muted-foreground mt-1 max-w-sm">Board members govern the association. Click "Assign Role" to designate a person as President, Treasurer, Secretary, or Member. You'll need people created first — go to People &gt; Add Person.</p>
+            <div role="status" className="flex flex-col items-center justify-center py-16 text-center">
+              <UserCheck className="h-12 w-12 text-muted-foreground/50 mb-4" aria-hidden="true" />
+              <h3 className="text-lg font-medium" data-testid="text-empty-state">{t("board.empty.title")}</h3>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm">{t("board.empty.body")}</p>
             </div>
           ) : (
             <>
               <div className="hidden md:block">
-                <Table>
+                {/* Wave 31 a11y: aria-label names this board roles table for screen-reader table mode. */}
+                <Table aria-label={t("board.tableLabel")}>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Member</TableHead>
-                      <TableHead>Association</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Term Start</TableHead>
-                      <TableHead>Term End</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>{t("board.col.member")}</TableHead>
+                      <TableHead>{t("board.col.association")}</TableHead>
+                      <TableHead>{t("board.col.role")}</TableHead>
+                      <TableHead>{t("board.col.termStart")}</TableHead>
+                      <TableHead>{t("board.col.termEnd")}</TableHead>
+                      <TableHead>{t("board.col.status")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -318,6 +327,6 @@ export default function BoardPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </section>
   );
 }
