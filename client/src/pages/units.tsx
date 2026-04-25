@@ -34,6 +34,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 const unitFormSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -660,38 +661,12 @@ export default function UnitsPage() {
 
   return (
     <div className="space-y-8 p-4 sm:p-6">
-      <section className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(145deg,hsl(217_84%_26%)_0%,hsl(219_64%_20%)_55%,hsl(221_48%_12%)_100%)] p-6 text-primary-foreground md:rounded-[24px] md:border md:border-outline-variant/30 md:bg-surface-container-lowest md:text-on-surface">
-        <div className="absolute inset-0 md:hidden">
-          <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/10 blur-3xl" />
-          <div className="absolute -left-12 bottom-0 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
-        </div>
-        <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white md:hidden">
-              <DoorOpen className="h-3.5 w-3.5" />
-              Lease Workspace
-            </div>
-            <h1
-              className="mt-4 font-headline text-4xl font-bold italic leading-tight text-white md:mt-0 md:text-3xl md:not-italic md:text-on-surface"
-              data-testid="text-page-title"
-            >
-              Buildings &amp; Units
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/95 md:text-on-surface/60">
-              Manage buildings, unit records, owners, and live occupancy for {activeAssociationName || "the current association"} without leaving the workspace.
-            </p>
-
-            <div className="mt-5 rounded-[22px] border border-white/25 bg-white/15 p-4 backdrop-blur-sm md:hidden">
-              <div className="label-caps text-white/90">Current Snapshot</div>
-              <p className="mt-2 text-sm leading-relaxed text-white">
-                {summaryCounts.units > 0
-                  ? `${summaryCounts.units} units across ${summaryCounts.buildings} buildings, with ${summaryCounts.tenants} active tenant records and ${summaryCounts.ownerOccupiedPct}% owner occupancy.`
-                  : "Start by creating a building shell, then add units and assign owners or tenants as leases change."}
-              </p>
-            </div>
-          </div>
-
-          <div className="hidden gap-2 md:flex">
+      <WorkspacePageHeader
+        title="Buildings & Units"
+        summary={`Manage buildings, unit records, owners, and live occupancy for ${activeAssociationName || "the current association"} without leaving the workspace.`}
+        eyebrow="Lease Workspace"
+        actions={
+          <>
             <Button type="button" onClick={openBuildingDialog} data-testid="button-add-building" disabled={!activeAssociationId}>
               <Building2 className="mr-2 h-4 w-4" />
               Add Building
@@ -702,6 +677,7 @@ export default function UnitsPage() {
               onClick={() => openUnitDialog()}
               data-testid="button-add-unit"
               disabled={!activeAssociationId || !buildings.length}
+              className="bg-white/10 text-white hover:bg-white/20"
             >
               <Plus className="mr-2 h-4 w-4" />
               Add Unit
@@ -712,12 +688,22 @@ export default function UnitsPage() {
               onClick={() => setImportOpen(true)}
               data-testid="button-import-units"
               disabled={!activeAssociationId}
+              className="bg-white/10 text-white hover:bg-white/20"
             >
               <FileUp className="mr-2 h-4 w-4" />
               Import CSV
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
+      <div className="md:hidden rounded-2xl border bg-card p-4">
+        <div className="label-caps text-on-surface/60">Current Snapshot</div>
+        <p className="mt-2 text-sm leading-relaxed text-on-surface">
+          {summaryCounts.units > 0
+            ? `${summaryCounts.units} units across ${summaryCounts.buildings} buildings, with ${summaryCounts.tenants} active tenant records and ${summaryCounts.ownerOccupiedPct}% owner occupancy.`
+            : "Start by creating a building shell, then add units and assign owners or tenants as leases change."}
+        </p>
+      </div>
         <Dialog open={open} onOpenChange={handleOpenChange}>
           <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader>
@@ -1127,7 +1113,6 @@ export default function UnitsPage() {
             ) : null}
           </DialogContent>
         </Dialog>
-      </section>
 
       <section className="space-y-4 md:hidden">
         <div className="flex items-baseline gap-4">

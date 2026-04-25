@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 const CATEGORIES = ["general", "pool", "gym", "community-room", "bbq", "tennis-court", "clubhouse", "other"];
 
@@ -193,7 +194,10 @@ export default function AmenitiesAdminPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-xl font-semibold">Amenity Booking</h1>
+      <WorkspacePageHeader
+        title="Amenity Booking"
+        summary="Manage amenities, reservations, and blackout windows for this association."
+      />
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="amenities">Amenities</TabsTrigger>

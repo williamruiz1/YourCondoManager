@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAssociationContext } from "@/context/association-context";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 type ImportSummaryView = {
   imported: boolean;
@@ -1204,17 +1205,17 @@ export default function AiIngestionPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface">AI Ingestion</h1>
-        <p className="text-sm text-on-surface/60 mt-1">Upload raw files or paste text, then review extracted records before approval.</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-          <Badge variant={runtimeStatus?.aiConfigured ? "default" : "outline"}>
-            {runtimeStatus?.aiConfigured ? `AI enabled: ${runtimeStatus.model}` : "Fallback extraction mode"}
-          </Badge>
-          <span className="text-muted-foreground">
-            Owner roster approvals apply rows into owners data for the selected association.
-          </span>
-        </div>
+      <WorkspacePageHeader
+        title="AI Ingestion"
+        summary="Upload raw files or paste text, then review extracted records before approval."
+      />
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <Badge variant={runtimeStatus?.aiConfigured ? "default" : "outline"}>
+          {runtimeStatus?.aiConfigured ? `AI enabled: ${runtimeStatus.model}` : "Fallback extraction mode"}
+        </Badge>
+        <span className="text-muted-foreground">
+          Owner roster approvals apply rows into owners data for the selected association.
+        </span>
       </div>
 
       <Card>

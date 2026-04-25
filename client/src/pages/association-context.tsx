@@ -68,6 +68,7 @@ import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { RecommendedActionsPanel } from "@/components/recommended-actions-panel";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 type AssociationOverview = {
   associationId: string;
@@ -643,18 +644,16 @@ export default function AssociationContextPage() {
   if (!activeAssociationId) {
     return (
       <div className="min-h-full bg-surface-container-low dark:bg-slate-800/50">
-        {/* No-association hero */}
-        <section className="px-10 py-12 bg-surface-container-lowest dark:bg-slate-900 border-b border-outline-variant/20 dark:border-slate-700/30">
-          <nav className="flex gap-2 text-[10px] font-label uppercase tracking-widest text-on-surface-variant dark:text-slate-400 mb-4">
-            <Link href="/app/associations"><span className="hover:text-primary cursor-pointer transition-colors">Associations</span></Link>
-            <span>/</span>
-            <span className="text-primary font-bold">Workspace</span>
-          </nav>
-          <h1 className="font-headline text-5xl font-bold text-on-surface dark:text-slate-100">Association Workspace</h1>
-          <p className="font-body text-on-surface-variant dark:text-slate-400 mt-2 text-lg">
-            Select an active association to unlock this workspace.
-          </p>
-        </section>
+        <div className="px-10 pt-8">
+          <WorkspacePageHeader
+            title="Association Workspace"
+            summary="Select an active association to unlock this workspace."
+            breadcrumbs={[
+              { label: "Associations", href: "/app/associations" },
+              { label: "Workspace" },
+            ]}
+          />
+        </div>
         <div className="px-10 py-8">
           <AssociationScopeBanner
             activeAssociationId=""
@@ -671,50 +670,38 @@ export default function AssociationContextPage() {
       <div className="bg-surface-container-low dark:bg-slate-800/50 min-h-full w-full max-w-full">
 
         {/* ── Task 1: Editorial Hero Header ───────────────────────────── */}
-        <section className="px-10 py-12 bg-surface-container-lowest dark:bg-slate-900 border-b border-outline-variant/20 dark:border-slate-700/30">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
-            {/* Left: breadcrumb + name + subtitle */}
-            <div className="min-w-0 flex-1">
-              <nav className="flex gap-2 text-[10px] font-label uppercase tracking-widest text-on-surface-variant dark:text-slate-400 mb-3">
-                <Link href="/app/associations">
-                  <span className="hover:text-primary cursor-pointer transition-colors">Associations</span>
-                </Link>
-                <span>/</span>
-                <span className="text-primary font-bold">Workspace</span>
-              </nav>
-              <h1 className="font-headline text-5xl font-bold text-on-surface dark:text-slate-100 leading-tight">
-                {activeAssociationName || "Association Workspace"}
-              </h1>
-              <p className="font-body text-on-surface-variant dark:text-slate-400 mt-3 text-lg">
-                {cityState || "Property workspace"}
-                {overview ? ` \u00B7 ${overview.units} units` : ""}
-                {managedSinceYear ? ` \u00B7 Managed since ${managedSinceYear}` : ""}
-              </p>
-            </div>
-
-            {/* Right: action buttons */}
-            <div className="flex flex-wrap gap-3 lg:flex-nowrap lg:items-start lg:pt-1 shrink-0">
-              <a
-                href={mapsUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-2.5 rounded-lg border border-outline-variant font-bold text-sm text-on-surface hover:bg-surface-container transition-colors inline-flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-              >
-                <span className="material-symbols-outlined text-[16px]">map</span>
-                Property Map
-              </a>
-              <button
-                onClick={() => {
-                  setActiveTab("overview");
-                  setIsEditingProfile(true);
-                }}
-                className="px-4 py-2.5 rounded-lg bg-primary text-on-primary font-bold text-sm flex items-center gap-2 shadow-md shadow-primary/20 hover:bg-primary/90 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-              >
-                Manage Settings
-                <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-              </button>
-            </div>
-          </div>
+        <section className="px-10 pt-8 pb-6 space-y-8">
+          <WorkspacePageHeader
+            title={activeAssociationName || "Association Workspace"}
+            summary={`${cityState || "Property workspace"}${overview ? ` · ${overview.units} units` : ""}${managedSinceYear ? ` · Managed since ${managedSinceYear}` : ""}`}
+            breadcrumbs={[
+              { label: "Associations", href: "/app/associations" },
+              { label: "Workspace" },
+            ]}
+            actions={
+              <>
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 py-2.5 rounded-lg border border-white/40 bg-white/10 font-bold text-sm text-white hover:bg-white/20 transition-colors inline-flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                >
+                  <span className="material-symbols-outlined text-[16px]">map</span>
+                  Property Map
+                </a>
+                <button
+                  onClick={() => {
+                    setActiveTab("overview");
+                    setIsEditingProfile(true);
+                  }}
+                  className="px-4 py-2.5 rounded-lg bg-primary text-on-primary font-bold text-sm flex items-center gap-2 shadow-md shadow-primary/20 hover:bg-primary/90 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                >
+                  Manage Settings
+                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                </button>
+              </>
+            }
+          />
 
           {/* ── Task 2: Quick Actions Bento Grid ─────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-10">

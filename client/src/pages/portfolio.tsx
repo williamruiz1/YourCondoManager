@@ -14,6 +14,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 type PortfolioActivityEvent = {
   type: "work_order" | "financial" | "document";
@@ -280,21 +281,14 @@ export default function PortfolioPage() {
   return (
     <div className="bg-surface-container-low dark:bg-slate-800/50 min-h-full">
       {/* ── Hero Header ─────────────────────────────────────────────────── */}
-      <section className="px-8 pt-10 pb-6 bg-surface-container-lowest dark:bg-slate-900 border-b border-outline-variant/20 dark:border-slate-700/30">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 max-w-screen-2xl">
-          <div>
-            <p className="text-xs font-label uppercase tracking-widest text-on-surface-variant dark:text-slate-400 mb-2">Overview</p>
-            {/* [0.1 AC 5] Page header reads "Portfolio Health" per the 0.1 decision. */}
-            <h1 className="font-headline text-4xl font-bold tracking-tight text-on-surface dark:text-slate-100 leading-tight">
-              Portfolio Health
-            </h1>
-            <p className="text-on-surface-variant dark:text-slate-400 font-body mt-1.5 text-sm">
-              Global performance overview across{" "}
-              <span className="font-semibold text-on-surface dark:text-slate-100">{summaries.length}</span> managed associations.
-            </p>
-          </div>
-          {summaries.length > 0 && (
-            <div className="flex gap-2 shrink-0">
+      <section className="px-8 pt-8 pb-6 space-y-6">
+        {/* [0.1 AC 5] Page header reads "Portfolio Health" per the 0.1 decision. */}
+        <WorkspacePageHeader
+          title="Portfolio Health"
+          eyebrow="Overview"
+          summary={`Global performance overview across ${summaries.length} managed associations.`}
+          actions={summaries.length > 0 ? (
+            <>
               <button
                 className="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold font-body hover:bg-primary/90 transition-colors flex items-center gap-1.5 shadow-sm"
               >
@@ -304,14 +298,14 @@ export default function PortfolioPage() {
               </button>
               <button
                 onClick={exportCsv}
-                className="px-4 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium font-body hover:bg-surface-container-high transition-colors flex items-center gap-1.5 border border-outline-variant/40"
+                className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium font-body hover:bg-white/20 transition-colors flex items-center gap-1.5 border border-white/40"
               >
                 <Download className="h-3.5 w-3.5" />
                 Export Report
               </button>
-            </div>
-          )}
-        </div>
+            </>
+          ) : undefined}
+        />
 
         {/* [0.1 AC 5] Header summary row — the six aggregate stat cards transplanted
             from the old Home (dashboard.tsx): associations, units, owners, tenants,

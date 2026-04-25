@@ -10,6 +10,7 @@ import type { Election, ElectionOption } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -732,43 +733,39 @@ export default function ElectionDetailPage({ id }: { id: string }) {
 
   return (
     <div className="p-4 md:p-6 space-y-5">
-      {/* Back nav */}
-      <Button variant="ghost" size="sm" className="gap-1.5 -ml-2" onClick={() => navigate("/app/governance/elections")}>
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Elections & Votes
-      </Button>
+      <WorkspacePageHeader
+        title={election.title}
+        summary={`${voteTypeLabel(election.voteType)} · ${votingRuleLabel(election.votingRule)}${election.isSecretBallot ? " · Secret ballot" : ""}`}
+        eyebrow="Governance"
+        breadcrumbs={[
+          { label: "Governance", href: "/app/governance" },
+          { label: "Elections & Votes", href: "/app/governance/elections" },
+          { label: election.title },
+        ]}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            {canEdit && <EditElectionDialog election={election} onUpdated={invalidateAll} />}
+            {canCancel && <CancelElectionDialog election={election} onCancelled={invalidateAll} />}
+            {canDelete && (
+              <DeleteElectionDialog
+                election={election}
+                onDeleted={() => navigate("/app/governance/elections")}
+              />
+            )}
+          </div>
+        }
+      />
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Vote className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-semibold">{election.title}</h1>
-            {statusBadge(election.status)}
-          </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-            <span>{voteTypeLabel(election.voteType)}</span>
-            <span>{votingRuleLabel(election.votingRule)}</span>
-            {election.isSecretBallot ? <span className="text-amber-600">Secret ballot</span> : null}
-          </div>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-            {election.opensAt && <span>Opens: {new Date(election.opensAt).toLocaleString()}</span>}
-            {election.closesAt && <span>Closes: {new Date(election.closesAt).toLocaleString()}</span>}
-            <span>Quorum: {election.quorumPercent}%</span>
-            <span>Visibility: {election.resultVisibility}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {canEdit && <EditElectionDialog election={election} onUpdated={invalidateAll} />}
-          {canCancel && <CancelElectionDialog election={election} onCancelled={invalidateAll} />}
-          {canDelete && (
-            <DeleteElectionDialog
-              election={election}
-              onDeleted={() => navigate("/app/governance/elections")}
-            />
-          )}
-        </div>
-      </div>
+      <Card>
+        <CardContent className="py-3 px-4 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+          <Vote className="h-4 w-4 text-primary" />
+          {statusBadge(election.status)}
+          {election.opensAt && <span>Opens: {new Date(election.opensAt).toLocaleString()}</span>}
+          {election.closesAt && <span>Closes: {new Date(election.closesAt).toLocaleString()}</span>}
+          <span>Quorum: {election.quorumPercent}%</span>
+          <span>Visibility: {election.resultVisibility}</span>
+        </CardContent>
+      </Card>
 
       {/* Description */}
       {election.description && (

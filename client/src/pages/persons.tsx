@@ -37,6 +37,7 @@ import type { ResidentialDatasetPersonDirectoryItem } from "@shared/schema";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -400,24 +401,24 @@ export default function PersonsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">People</h1>
-          <p className="text-sm text-on-surface/60 mt-1">Owners, tenants, and board members across your associations.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setImportOpen(true)}
-            data-testid="button-import-persons"
-          >
-            <FileUp className="h-4 w-4 mr-2" />
-            Import CSV
-          </Button>
-        <Dialog open={open} onOpenChange={handleOpenChange}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-person"><Plus className="h-4 w-4 mr-2" />Add Person</Button>
-          </DialogTrigger>
+      <WorkspacePageHeader
+        title="People"
+        summary="Owners, tenants, and board members across your associations."
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setImportOpen(true)}
+              data-testid="button-import-persons"
+              className="bg-white/10 text-white hover:bg-white/20"
+            >
+              <FileUp className="h-4 w-4 mr-2" />
+              Import CSV
+            </Button>
+            <Dialog open={open} onOpenChange={handleOpenChange}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-add-person"><Plus className="h-4 w-4 mr-2" />Add Person</Button>
+              </DialogTrigger>
           <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>{editingId ? "Edit Person" : "New Person"}</DialogTitle></DialogHeader>
             <Form {...form}>
@@ -574,6 +575,9 @@ export default function PersonsPage() {
             </Form>
           </DialogContent>
         </Dialog>
+          </>
+        }
+      />
         <Dialog open={boardRoleOpen} onOpenChange={setBoardRoleOpen}>
           <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader><DialogTitle>Assign Board Role</DialogTitle></DialogHeader>
@@ -616,8 +620,6 @@ export default function PersonsPage() {
             </div>
           </DialogContent>
         </Dialog>
-        </div>
-      </div>
 
       {/* Search and role filter */}
       <div className="flex flex-col sm:flex-row gap-3">

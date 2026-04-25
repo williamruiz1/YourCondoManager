@@ -42,6 +42,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAssociationContext } from "@/context/association-context";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -284,18 +285,17 @@ export default function AssociationsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">Associations</h1>
-          <p className="text-sm text-on-surface/60 mt-1">Manage condo associations and complexes.</p>
-        </div>
-        <Dialog open={open} onOpenChange={handleOpenChange}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-association">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Association
-            </Button>
-          </DialogTrigger>
+      <WorkspacePageHeader
+        title="Associations"
+        summary="Manage condo associations and complexes."
+        actions={
+          <Dialog open={open} onOpenChange={handleOpenChange}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-association">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Association
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>{editingId ? "Edit Association" : "New Association"}</DialogTitle>
@@ -412,7 +412,8 @@ export default function AssociationsPage() {
             </Form>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       {selectedOverview ? (
         <Card>

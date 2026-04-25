@@ -25,6 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 type AuthSession = {
   authenticated: boolean;
@@ -356,10 +357,10 @@ export default function UserSettingsPage() {
   return (
     <div className="min-h-full bg-surface-container-low">
       <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-        <div>
-          <h1 className="font-headline text-3xl font-bold text-on-surface">Settings</h1>
-          <p className="text-sm text-on-surface-variant mt-1">Manage your account preferences, workspace behavior, and notification coverage.</p>
-        </div>
+        <WorkspacePageHeader
+          title="Settings"
+          summary="Manage your account preferences, workspace behavior, and notification coverage."
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="overflow-x-auto">
