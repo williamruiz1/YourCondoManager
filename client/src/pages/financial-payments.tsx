@@ -150,9 +150,9 @@ function PaymentMethodsTab({
           <div className="space-y-2">
             {Array.from({ length: 2 }).map((_, index) => (
               <div key={index} className="rounded-lg border p-3">
-                <div className="h-4 w-24 animate-pulse rounded bg-muted" />
-                <div className="mt-2 h-4 w-full animate-pulse rounded bg-muted" />
-                <div className="mt-2 h-4 w-32 animate-pulse rounded bg-muted" />
+                <div className="h-4 w-24 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+                <div className="mt-2 h-4 w-full animate-pulse rounded bg-muted motion-reduce:animate-none" />
+                <div className="mt-2 h-4 w-32 animate-pulse rounded bg-muted motion-reduce:animate-none" />
               </div>
             ))}
           </div>
@@ -347,8 +347,8 @@ function GatewayTab({
           <div className="space-y-2">
             {Array.from({ length: 2 }).map((_, index) => (
               <div key={index} className="rounded-lg border p-3">
-                <div className="h-4 w-28 animate-pulse rounded bg-muted" />
-                <div className="mt-2 h-4 w-40 animate-pulse rounded bg-muted" />
+                <div className="h-4 w-28 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+                <div className="mt-2 h-4 w-40 animate-pulse rounded bg-muted motion-reduce:animate-none" />
               </div>
             ))}
           </div>
@@ -1121,7 +1121,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
         <CardHeader><CardTitle className="text-base">Payment & Credit Entries</CardTitle><CardDescription>{entries.length} entries (payments, credits, adjustments)</CardDescription></CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+            <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse motion-reduce:animate-none" />)}</div>
           ) : entries.length === 0 ? (
             <EmptyState
               icon={CreditCard}
@@ -1236,7 +1236,7 @@ function PaymentTransactionsTab({ associationId }: { associationId: string | nul
         {!associationId ? (
           <div className="text-sm text-muted-foreground">Select an association to view transactions.</div>
         ) : isLoading ? (
-          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse motion-reduce:animate-none" />)}</div>
         ) : transactions.length === 0 ? (
           <div className="flex items-center gap-2 rounded-lg border border-muted px-3 py-4 text-sm text-muted-foreground">
             No payment transactions found.
@@ -1306,7 +1306,7 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse motion-reduce:animate-none" />)}</div>
         ) : exceptions.length === 0 ? (
           <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-4 text-sm text-green-600">
             <CheckCircle2 className="h-4 w-4" /> No exceptions found. All payment activity looks clean.

@@ -414,9 +414,9 @@ export default function SolutionsPage({
                       </p>
                     </div>
                     <div className="hidden lg:flex gap-4">
-                      <div className="w-16 h-16 rounded-lg bg-surface-container-highest dark:bg-slate-800 animate-pulse"></div>
-                      <div className="w-16 h-16 rounded-lg bg-surface-container-highest dark:bg-slate-800 animate-pulse delay-75"></div>
-                      <div className="w-16 h-16 rounded-lg bg-surface-container-highest dark:bg-slate-800 animate-pulse delay-150"></div>
+                      <div className="w-16 h-16 rounded-lg bg-surface-container-highest dark:bg-slate-800 animate-pulse motion-reduce:animate-none"></div>
+                      <div className="w-16 h-16 rounded-lg bg-surface-container-highest dark:bg-slate-800 animate-pulse delay-75 motion-reduce:animate-none"></div>
+                      <div className="w-16 h-16 rounded-lg bg-surface-container-highest dark:bg-slate-800 animate-pulse delay-150 motion-reduce:animate-none"></div>
                     </div>
                   </div>
                 </div>
