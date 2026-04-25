@@ -606,7 +606,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         {/* ── DARK CTA CANVAS ── */}
         <section className="relative rounded-3xl overflow-hidden py-20 px-8 text-center bg-slate-900 max-w-7xl mx-auto mb-32">
           <div className="absolute inset-0 opacity-20">
-            <img className="w-full h-full object-cover" alt="" aria-hidden="true" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGylkVvJ6DR43ZSa3V5HhWYa4Tm_rV6NrxTJw7NwAHUssjyQI9IHIa5AtnSzWE4jalnOoKDh2PG82f2JXxDelDB9MraXOmdzj6Z3kAjShgD8G4Es537T5X_SqzvnFFjqgxLddQCR-aIR_-rTSWLC6Y3zAUVcdNFriTJRpEGXHl7xP0TnLB24YApCP8hIhS8U343a-5Q7cuVa-poEXGGv13F2V9xRt-XbskyOJKdcVLCJ7MbSGzlViwO5Y20scclZcr2JFpv6FYuvA" />
+            <img className="w-full h-full object-cover" alt="" aria-hidden="true" loading="lazy" decoding="async" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGylkVvJ6DR43ZSa3V5HhWYa4Tm_rV6NrxTJw7NwAHUssjyQI9IHIa5AtnSzWE4jalnOoKDh2PG82f2JXxDelDB9MraXOmdzj6Z3kAjShgD8G4Es537T5X_SqzvnFFjqgxLddQCR-aIR_-rTSWLC6Y3zAUVcdNFriTJRpEGXHl7xP0TnLB24YApCP8hIhS8U343a-5Q7cuVa-poEXGGv13F2V9xRt-XbskyOJKdcVLCJ7MbSGzlViwO5Y20scclZcr2JFpv6FYuvA" />
           </div>
           <div className="relative z-10 max-w-2xl mx-auto">
             <h2 className="font-headline text-4xl md:text-5xl text-white font-bold mb-6">Ready to elevate your association?</h2>
