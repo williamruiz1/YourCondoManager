@@ -84,3 +84,131 @@ When we're ready to add to CI:
 - **Not** a refactor of existing tests.
 - **Not** a push to Playwright today.
 - **Not** a live-Stripe or live-email integration.
+
+---
+
+# Wave 16a — Playwright Harness Addendum
+
+Wave 16a adds a Playwright real-browser harness alongside the Vitest
+integration-style slice above. The two coexist; Wave 15b tests are not
+removed or moved.
+
+## What ships
+
+- `playwright.config.ts` at repo root.
+  - `testDir: "tests/e2e/playwright"`
+  - `webServer: { command: "npm run dev", url: "http://localhost:5000" }`
+  - `chromium` only — Firefox / WebKit deferred until CI exists.
+- `@playwright/test` added as devDependency.
+- 5 spec files under `tests/e2e/playwright/`:
+  - `signup-onboarding.spec.ts`
+  - `alerts-lifecycle.spec.ts`
+  - `assessment-lifecycle.spec.ts`
+  - `owner-portal-navigation.spec.ts` (converts Wave-15b Flow D skeleton)
+  - `amenities-toggle-roundtrip.spec.ts` (converts Wave-15b Flow E skeleton)
+- Helpers under `tests/e2e/playwright/helpers/`:
+  - `auth-helper.ts` — `loginAsManager` / `loginAsOwner` / `loginAsGuest`
+    install `page.route` handlers for `/api/auth/me` and `/api/portal/me`.
+  - `seed-helper.ts` — in-memory store + `installSeedRoutes` wires every
+    endpoint each spec needs (alerts, work orders, assessment rules,
+    run history, ledger, amenities settings, portal counts).
+- Two new npm scripts:
+  - `test:playwright` → `playwright test`
+  - `test:playwright:install` → `playwright install chromium`
+
+## Why route-mocked instead of ephemeral Postgres
+
+The original Wave-16 plan called for an ephemeral Postgres + drizzle-kit
+push so Playwright could run against real handlers. We deferred that
+half: the YCM auth flow is OAuth-only (Manager) and OTP-email-code
+(Owner). Standing up a way for a headless browser to "log in" without a
+real Google account or a real SMTP listener is a 4–8h problem on its
+own. Wave 16a chooses route-mocking instead, which:
+
+- ships dual-coverage of the five flows in <1k LoC of tests
+- exercises the real frontend bundle (Vite-served, React-mounted, real
+  router) — only the API-layer responses are stubbed
+- keeps tests deterministic (no DB drift, no flaky teardown)
+
+The ephemeral-DB path is still on the roadmap as a separate workitem.
+Once it lands, callers can swap `installSeedRoutes` for a `seedDB`
+helper and the test bodies stay identical.
+
+## Run instructions
+
+```bash
+npm install
+npm run test:playwright:install   # one-time — installs Chromium
+npm run test:playwright           # boots web server + runs specs
+```
+
+The harness picks one of two web servers based on platform:
+
+- **Linux / CI / Postgres available** → `npm run dev` (the real backend
+  on port 5000; route-mocks layered on top via `page.route`).
+- **macOS / no Postgres / `PLAYWRIGHT_STATIC=1`** → a tiny
+  `script/playwright-static-server.ts` that serves the production React
+  bundle (`dist/public`) on port 5000, with a generic `/api/*` 200
+  fallback. Every test still installs its own `page.route` handlers, so
+  the static-server path produces identical assertions.
+
+The static-server fallback exists because the macOS dev server today
+hits two unrelated compat issues:
+  1. `httpServer.listen({ reusePort: true })` in `server/index.ts`
+     returns ENOTSUP on Darwin.
+  2. The seed step requires a live Postgres on `127.0.0.1:5432`.
+
+A separate workitem tracks fixing those two issues so the macOS path
+can run the real backend without route-mocks. Until then, Linux/CI
+remains the canonical environment for the "real backend behind real
+browser" experience.
+
+If you already have `npm run dev` running on port 5000, Playwright's
+`reuseExistingServer` setting will use it (locally only — CI always
+spawns fresh).
+
+## CI integration plan (DOCUMENT ONLY — NOT WIRED)
+
+When ready to add to CI:
+
+1. **Job 1 — Vitest E2E** (already documented in Wave 15b): run
+   `npm run test:e2e` in the existing test job. Required for merge.
+2. **Job 2 — Playwright E2E** (Wave 16a addition): in a new job named
+   e.g. `playwright-e2e`:
+   ```yaml
+   - run: npm ci
+   - run: npx playwright install --with-deps chromium
+   - run: npm run test:playwright
+     env:
+       CI: "true"
+   ```
+   Initially advisory (allow merge on failure) until 1–2 weeks of
+   stability. After that, require for merge alongside Vitest.
+3. Cache the Playwright browser binaries between runs:
+   `~/.cache/ms-playwright`.
+4. Upload `playwright-report/` as an artifact on failure for
+   trace + video review.
+
+No GitHub Actions workflow is committed in this wave — the user wires
+CI separately per the Wave-16a constraints.
+
+## Constraints honoured
+
+- Did not modify any Wave-15b Vitest E2E file.
+- Did not commit any CI configuration.
+- Did not require external services (Stripe, SMTP, Google OAuth all
+  mocked through `route.fulfill`).
+- Diff stayed under the 3000-LoC budget.
+
+## Follow-up workitems filed
+
+- Ephemeral Postgres + drizzle-kit-push slice (the half-deferred
+  Wave-16 scope) — graduate Playwright tests off route-mocks once a
+  real-server harness exists.
+- Per-zone deep-content assertions for owner portal navigation
+  (`owner-portal-navigation.spec.ts` currently asserts URL + visible
+  `<main>` — a real "render heading + breadcrumb for each zone"
+  requires stubbing every zone-child fetch).
+- Real Google OAuth + portal OTP login helpers (would graduate the
+  auth helper from `route.fulfill` to a deterministic real-server
+  flow).
