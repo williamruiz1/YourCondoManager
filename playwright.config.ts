@@ -52,6 +52,12 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   timeout: 30_000,
   expect: { timeout: 10_000 },
+  // Wave 25 — Visual regression baselines live under a single
+  // `__screenshots__/` directory rather than the per-spec
+  // `<spec>-snapshots/` Playwright default. Co-locating them keeps the
+  // git story simple (one folder to grep, one folder to update).
+  snapshotPathTemplate:
+    "{testDir}/__screenshots__/{testFilePath}/{arg}{-projectName}{-platform}{ext}",
   use: {
     baseURL: BASE_URL,
     trace: "retain-on-failure",

@@ -25,6 +25,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 import { loginAsManager, loginAsOwner } from "./helpers/auth-helper";
+import { runAxeAuditSoft } from "./helpers/a11y-check";
 import {
   createRealBackend,
   createSeedStore,
@@ -125,6 +126,9 @@ test.describe("Wave 16a/26 — assessment lifecycle", () => {
 
       await page.goto("/portal/finances/ledger");
       await expect(page).toHaveURL(/\/portal\/finances\/ledger/);
+
+      // Wave 25 — axe-core audit on the portal finances ledger surface.
+      await runAxeAuditSoft(page, "assessment-lifecycle:route-mock");
     });
     return;
   }
@@ -246,5 +250,8 @@ test.describe("Wave 16a/26 — assessment lifecycle", () => {
     // 4. Visit /portal/finances/ledger — the route should resolve.
     await page.goto("/portal/finances/ledger");
     await expect(page).toHaveURL(/\/portal\/finances\/ledger/);
+
+    // Wave 25 — axe-core audit on the portal finances ledger surface.
+    await runAxeAuditSoft(page, "assessment-lifecycle:real-backend");
   });
 });

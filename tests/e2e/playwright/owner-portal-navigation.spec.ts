@@ -25,6 +25,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 import { loginAsOwner } from "./helpers/auth-helper";
+import { runAxeAuditSoft } from "./helpers/a11y-check";
 import {
   createRealBackend,
   createSeedStore,
@@ -97,6 +98,9 @@ test.describe("Wave 16a/26 — owner portal navigation", () => {
       }
 
       expect(pageErrors, `unexpected page errors: ${JSON.stringify(pageErrors)}`).toEqual([]);
+
+      // Wave 25 — axe-core audit on the final zone visited.
+      await runAxeAuditSoft(page, "portal-nav:route-mock");
     });
 
     test("legacy /portal?tab=financials redirects to /portal/finances (route-mock)", async ({ page }) => {
@@ -157,6 +161,9 @@ test.describe("Wave 16a/26 — owner portal navigation", () => {
     }
 
     expect(pageErrors, `unexpected page errors: ${JSON.stringify(pageErrors)}`).toEqual([]);
+
+    // Wave 25 — axe-core audit on the final zone visited.
+    await runAxeAuditSoft(page, "portal-nav:real-backend");
   });
 
   test("legacy /portal?tab=financials redirects to /portal/finances (real backend)", async ({ page }) => {

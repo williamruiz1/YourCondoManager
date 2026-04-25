@@ -206,7 +206,11 @@ function ShellSidebar({ items, pathname, associationId }: ShellSidebarProps) {
       data-testid="portal-sidebar"
     >
       <div className="mb-10 px-2">
-        <p className="text-[10px] uppercase tracking-widest text-on-surface-variant/60">YCM</p>
+        {/* Wave 25 — `/60` opacity dropped contrast below WCAG AA on the
+            light surface (axe color-contrast). Use full token opacity
+            and rely on the small uppercase tracking for visual de-
+            emphasis instead of opacity. */}
+        <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">YCM</p>
         <p className="mt-1 font-serif text-lg italic text-primary">Owner Portal</p>
       </div>
       <nav className="flex-1 space-y-1" aria-label="Portal navigation">
@@ -243,7 +247,11 @@ function ShellSidebar({ items, pathname, associationId }: ShellSidebarProps) {
           >
             <span className="material-symbols-outlined text-base">public</span>
             <span className="flex-1 truncate">Public community hub</span>
-            <span className="material-symbols-outlined text-xs opacity-60">open_in_new</span>
+            {/* Wave 25 — `opacity-60` dropped contrast below WCAG AA (axe).
+                The icon is decorative beside the visible link label, so
+                drop the opacity AND mark it `aria-hidden` so screen
+                readers do not double-announce it. */}
+            <span aria-hidden="true" className="material-symbols-outlined text-xs">open_in_new</span>
           </a>
         ) : null}
       </nav>

@@ -141,7 +141,11 @@ function FinancesHubContent() {
         <Card>
           <CardContent className="py-5">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.balanceDue")}</p>
-            <p className={`mt-1 font-headline text-3xl ${balance > 0 ? "text-destructive" : "text-secondary"}`} data-testid="portal-finances-balance">
+            {/* Wave 25 — `text-secondary` resolves to a near-white tone in
+                light mode and fails WCAG AA color contrast (axe). Use the
+                standard on-surface foreground when there is no balance
+                due; the destructive tone stays for non-zero balance. */}
+            <p className={`mt-1 font-headline text-3xl ${balance > 0 ? "text-destructive" : "text-on-surface"}`} data-testid="portal-finances-balance">
               ${Math.abs(balance).toFixed(2)}
             </p>
             {dashboard?.nextDueDate ? (

@@ -170,7 +170,11 @@ function PortalHomeContent() {
               {t("portal.home.cards.balance")}
             </p>
             <p
-              className={`mt-1 font-headline text-3xl ${balance > 0 ? "text-destructive" : "text-secondary"}`}
+              // Wave 25 — `text-secondary` resolves to a near-white tone in
+              // light mode and fails WCAG AA color contrast (axe). Use the
+              // standard on-surface foreground when there is no balance
+              // due; the destructive tone stays for non-zero balance.
+              className={`mt-1 font-headline text-3xl ${balance > 0 ? "text-destructive" : "text-on-surface"}`}
               data-testid="portal-home-balance"
             >
               ${Math.abs(balance).toFixed(2)}

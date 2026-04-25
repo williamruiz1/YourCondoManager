@@ -27,6 +27,8 @@
     "test:playwright": "playwright test",
     "test:playwright:install": "playwright install chromium",
     "test:playwright:real": "PLAYWRIGHT_REAL_BACKEND=1 playwright test",
+    "test:playwright:visual": "playwright test --grep @visual",
+    "test:playwright:visual:update": "playwright test --grep @visual --update-snapshots",
     "test:payments": "tsx tests/payment-acceptance.ts",
     "verify:mobile": "tsx script/verify-mobile-journeys.ts",
     "verify:owner-portal-multi-unit": "tsx script/verify-owner-portal-multi-unit.ts",
@@ -110,6 +112,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.2",
     "@electric-sql/pglite": "^0.4.4",
     "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.48.2",
