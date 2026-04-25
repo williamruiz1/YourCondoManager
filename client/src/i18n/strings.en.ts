@@ -1,19 +1,18 @@
 // zone: shared (i18n registry)
 //
-// 5.6 — i18n scaffolding (Wave 21).
+// 5.6 — i18n scaffolding (Wave 21 + Wave 24 round-2 extension).
 //
 // Spec: docs/projects/platform-overhaul/decisions/5.6-i18n-scaffolding.md
 //
-// This module is the canonical English string registry for the top-10
-// surfaces extracted in Wave 21. Translation modules (`strings.es.ts`,
-// `strings.fr.ts`, …) are introduced in a later wave when the product
-// commits to a localized release. For Wave 21 we extract only — no
+// This module is the canonical English string registry. Translation modules
+// (`strings.es.ts`, `strings.fr.ts`, …) are introduced in a later wave when
+// the product commits to a localized release. We extract only — no
 // translation, no i18next dependency, no plural / interpolation engine.
 //
 // Keys are flat dotted strings using the convention `<surface>.<context>.<element>`
 // e.g. `home.alerts.title`, `inbox.tab.unread`, `portal.home.greeting`.
 //
-// Surfaces in scope (10):
+// Surfaces in scope (10 — Wave 21):
 //   1. `home.*`                     — `client/src/pages/dashboard.tsx`
 //   2. `inbox.*`                    — `client/src/pages/communications-inbox.tsx`
 //   3. `hub.financials.*`           — `client/src/pages/hubs/financials-hub.tsx`
@@ -24,6 +23,23 @@
 //   8. `portal.home.*`              — `client/src/pages/portal/portal-home.tsx`
 //   9. `portal.finances.*`          — `client/src/pages/portal/portal-finances.tsx`
 //  10. `settings.billing.*`         — `client/src/pages/settings-billing.tsx`
+//
+// Surfaces extended (15 — Wave 24, round 2):
+//  11. `financialFoundation.*`      — `client/src/pages/financial-foundation.tsx`
+//  12. `financialBilling.*`         — `client/src/pages/financial-billing.tsx`
+//  13. `financialRecurring.*`       — `client/src/pages/financial-recurring-charges.tsx`
+//  14. `financialLateFees.*`        — `client/src/pages/financial-late-fees.tsx`
+//  15. `financialDelinquency.*`     — `client/src/pages/financial-delinquency.tsx`
+//  16. `financialPayments.*`        — `client/src/pages/financial-payments.tsx`
+//  17. `financialLedger.*`          — `client/src/pages/financial-ledger.tsx`
+//  18. `workOrders.*`               — `client/src/pages/work-orders.tsx`
+//  19. `vendors.*`                  — `client/src/pages/vendors.tsx`
+//  20. `meetings.*`                 — `client/src/pages/meetings.tsx`
+//  21. `elections.*`                — `client/src/pages/elections.tsx`
+//  22. `announcements.*`            — `client/src/pages/announcements.tsx`
+//  23. `documents.*`                — `client/src/pages/documents.tsx`
+//  24. `persons.*`                  — `client/src/pages/persons.tsx`
+//  25. `units.*`                    — `client/src/pages/units.tsx`
 //
 // Common keys live under `common.*`. Surface-specific copy stays
 // scoped under its surface prefix.
@@ -384,6 +400,233 @@ export const strings = {
   "settings.billing.status.canceled": "Canceled",
   "settings.billing.status.unpaid": "Unpaid",
   "settings.billing.status.incomplete": "Incomplete",
+
+  // ---------------------------------------------------------------------
+  // Wave 24 — Round 2 extension (15 surfaces)
+  // ---------------------------------------------------------------------
+
+  // Common (shared additions for Wave 24)
+  "common.eyebrow.finance": "Finance",
+  "common.eyebrow.operations": "Operations",
+  "common.eyebrow.governance": "Board & Governance",
+  "common.eyebrow.records": "Records",
+  "common.crumb.finance": "Finance",
+  "common.crumb.operations": "Operations",
+  "common.crumb.board": "Board",
+  "common.crumb.dashboard": "Dashboard",
+  "common.action.save": "Save",
+  "common.action.saving": "Saving…",
+  "common.action.cancel": "Cancel",
+  "common.action.create": "Create",
+  "common.action.update": "Update",
+  "common.action.delete": "Delete",
+  "common.action.edit": "Edit",
+  "common.action.add": "Add",
+  "common.action.importCsv": "Import CSV",
+  "common.toast.error": "Error",
+
+  // ---------------------------------------------------------------------
+  // 11. Financial Foundation (`/app/financial/foundation`)
+  // ---------------------------------------------------------------------
+  "financialFoundation.title": "Chart of Accounts",
+  "financialFoundation.summary":
+    "Configure financial accounts, categories, and recurring charge schedules for the active association.",
+  "financialFoundation.crumb": "Chart of Accounts",
+  "financialFoundation.tabs.accounts": "Accounts",
+  "financialFoundation.tabs.accountActivity": "Account Activity",
+  "financialFoundation.tabs.recurringCharges": "Recurring Charges",
+  "financialFoundation.scope.explanation":
+    "Accounts and categories are scoped to the active association. Select one to manage its chart of accounts.",
+  "financialFoundation.accounts.heading": "Accounts",
+  "financialFoundation.accounts.add": "Add Account",
+  "financialFoundation.accounts.dialogTitle": "Create Account",
+  "financialFoundation.accounts.toast.created": "Account created",
+  "financialFoundation.categories.heading": "Categories",
+  "financialFoundation.categories.add": "Add Category",
+  "financialFoundation.categories.dialogTitle": "Create Category",
+  "financialFoundation.categories.toast.created": "Category created",
+  "financialFoundation.activity.tableLabel": "Account activity (budget vs. invoiced)",
+  "financialFoundation.activity.col.code": "Code",
+  "financialFoundation.activity.col.name": "Name",
+  "financialFoundation.activity.col.type": "Type",
+  "financialFoundation.activity.col.budgeted": "Budgeted",
+  "financialFoundation.activity.col.invoiced": "Invoiced",
+  "financialFoundation.activity.col.variance": "Variance",
+  "financialFoundation.activity.col.utilization": "Utilization",
+  "financialFoundation.activity.col.invoices": "Invoices",
+  "financialFoundation.approvals.toast.submitted": "Approval request submitted",
+  "financialFoundation.approvals.toast.updated": "Approval updated",
+
+  // ---------------------------------------------------------------------
+  // 12. Financial Billing (`/app/financial/billing`)
+  // ---------------------------------------------------------------------
+  "financialBilling.title": "Billing",
+  "financialBilling.summary":
+    "Manage owner ledger entries, special assessments, late fee rules, and delinquency escalations.",
+  "financialBilling.crumb": "Billing",
+  "financialBilling.tabs.ledger": "Owner Ledger",
+  "financialBilling.tabs.assessments": "Assessments",
+  "financialBilling.tabs.lateFees": "Late Fees",
+  "financialBilling.tabs.delinquency": "Delinquency",
+
+  // ---------------------------------------------------------------------
+  // 13. Recurring Charges (`/app/financial/recurring-charges`)
+  // ---------------------------------------------------------------------
+  "financialRecurring.title": "Recurring Charges",
+  "financialRecurring.summary":
+    "Define automatic charge schedules, run them on demand, and manage failed charge retries.",
+  "financialRecurring.crumb": "Recurring Charges",
+
+  // ---------------------------------------------------------------------
+  // 14. Late Fees (`/app/financial/late-fees`)
+  // ---------------------------------------------------------------------
+  "financialLateFees.title": "Late Fees",
+  "financialLateFees.summary":
+    "Manage late fee rules, review applied fees, and recover delinquent balances through payment plans and collections handoffs.",
+  "financialLateFees.crumb": "Late Fees",
+  "financialLateFees.empty.noRules.title": "No late fee rules",
+  "financialLateFees.empty.noEvents.title": "No fee events yet",
+  "financialLateFees.confirm.applyTitle": "Apply late fees?",
+  "financialLateFees.confirm.runEscalationTitle": "Run escalation scan?",
+
+  // ---------------------------------------------------------------------
+  // 15. Delinquency (`/app/financial/delinquency`)
+  // ---------------------------------------------------------------------
+  "financialDelinquency.tabs.escalations": "Active Escalations",
+  "financialDelinquency.tabs.thresholds": "Threshold Config",
+  "financialDelinquency.tabs.aging": "Aging",
+  "financialDelinquency.tabs.notices": "Notices",
+  "financialDelinquency.tabs.settings": "Settings",
+  "financialDelinquency.confirm.scanTitle": "Run delinquency scan?",
+  "financialDelinquency.confirm.runScan": "Run Scan",
+  "financialDelinquency.action.runScan": "Run Delinquency Scan",
+  "financialDelinquency.action.scanning": "Scanning...",
+  "financialDelinquency.empty.noEscalations": "No escalations found",
+  "financialDelinquency.empty.noThresholds": "No thresholds configured",
+  "financialDelinquency.confirm.deleteThreshold": "Delete threshold?",
+  "financialDelinquency.filter.allStatuses": "All statuses",
+  "financialDelinquency.filter.active": "Active",
+  "financialDelinquency.filter.onPaymentPlan": "On Plan",
+  "financialDelinquency.filter.referred": "Referred",
+  "financialDelinquency.filter.resolved": "Resolved",
+  "financialDelinquency.summary.onPaymentPlan": "On Payment Plan",
+  "financialDelinquency.summary.referred": "Referred",
+
+  // ---------------------------------------------------------------------
+  // 16. Payments (`/app/financial/payments`)
+  // ---------------------------------------------------------------------
+  "financialPayments.title": "Payments",
+  "financialPayments.summary":
+    "Configure how owners pay their dues — add payment methods, optionally connect an ACH gateway, and generate owner payment links.",
+  "financialPayments.crumb": "Payments",
+  "financialPayments.tab.methods": "Methods",
+  "financialPayments.tab.gateway": "Gateway",
+  "financialPayments.tab.gatewayOn": "Gateway On",
+  "financialPayments.tab.links": "Links",
+  "financialPayments.tab.autopay": "Autopay",
+
+  // ---------------------------------------------------------------------
+  // 17. Owner Ledger (`/app/financial/ledger`)
+  // ---------------------------------------------------------------------
+  "financialLedger.title": "Owner Ledger",
+  "financialLedger.summary":
+    "Post owner-ledger entries, review balances, and monitor collection risk within the active association scope.",
+  "financialLedger.crumb": "Owner Ledger",
+  "financialLedger.shortcut.openInvoices": "Open Invoices",
+  "financialLedger.shortcut.openBudgets": "Open Budgets",
+
+  // ---------------------------------------------------------------------
+  // 18. Work Orders (`/app/operations/work-orders`)
+  // ---------------------------------------------------------------------
+  "workOrders.title": "Work Orders",
+  "workOrders.summary": "Manage work orders and preventive maintenance schedules.",
+  "workOrders.crumb": "Work Orders",
+  "workOrders.tabs.workOrders": "Work Orders",
+  "workOrders.tabs.maintenance": "Maintenance",
+
+  // ---------------------------------------------------------------------
+  // 19. Vendors (`/app/operations/vendors`)
+  // ---------------------------------------------------------------------
+  "vendors.title": "Vendors",
+  "vendors.summary": "Manage vendors, compliance tracking, and inspection records.",
+  "vendors.crumb": "Vendors",
+  "vendors.tabs.vendors": "Vendors",
+  "vendors.tabs.inspections": "Inspections",
+
+  // ---------------------------------------------------------------------
+  // 20. Meetings (`/app/board/meetings`)
+  // ---------------------------------------------------------------------
+  "meetings.title": "Meetings",
+  "meetings.summary":
+    "Schedule meetings, manage agendas, record minutes, and track resolutions.",
+  "meetings.crumb": "Meetings",
+
+  // ---------------------------------------------------------------------
+  // 21. Elections (`/app/board/elections`)
+  // ---------------------------------------------------------------------
+  "elections.title": "Elections & Votes",
+  "elections.summary":
+    "Create and manage elections, referendums, and board votes for the association.",
+  "elections.crumb": "Elections & Votes",
+
+  // ---------------------------------------------------------------------
+  // 22. Announcements (`/app/board/announcements`)
+  // ---------------------------------------------------------------------
+  "announcements.title": "Community Announcements",
+  "announcements.summary":
+    "Post announcements and bulletins visible to residents in the owner portal.",
+  "announcements.crumb": "Announcements",
+
+  // ---------------------------------------------------------------------
+  // 23. Documents (`/app/documents`)
+  // ---------------------------------------------------------------------
+  "documents.title": "Documents",
+  "documents.summary":
+    "Upload, classify, and manage documents for the active association without losing workspace context.",
+  "documents.crumb": "Documents",
+  "documents.docTitle.documents": "Documents",
+  "documents.docTitle.operations": "Operations Records",
+  "documents.shortcut.openAssociationContext": "Open Association Context",
+  "documents.shortcut.openCommunications": "Open Communications",
+  "documents.action.upload": "Upload Document",
+  "documents.dialog.uploadTitle": "Upload Document",
+
+  // ---------------------------------------------------------------------
+  // 24. People (`/app/persons`)
+  // ---------------------------------------------------------------------
+  "persons.title": "People",
+  "persons.subtitle": "Owners, tenants, and board members across your associations.",
+  "persons.action.addPerson": "Add Person",
+  "persons.action.importCsv": "Import CSV",
+  "persons.action.assignBoardRole": "Assign Board Role",
+  "persons.dialog.importTitle": "Import People from CSV",
+  "persons.dialog.newTitle": "New Person",
+  "persons.dialog.editTitle": "Edit Person",
+  "persons.dialog.assignBoardRoleTitle": "Assign Board Role",
+  "persons.empty.noPeople.title": "No people yet",
+  "persons.empty.noPeople.description":
+    "People are the owners, tenants, and board members in your community. Click \"Add Person\" to create the first profile — then link them to units via the Ownership section.",
+  "persons.empty.noMatches.title": "No matches",
+  "persons.search.placeholder": "Search by name, email, or phone…",
+  "persons.toast.createSuccess": "Person created successfully",
+  "persons.toast.updateSuccess": "Person updated successfully",
+  "persons.tableLabel": "People",
+
+  // ---------------------------------------------------------------------
+  // 25. Buildings & Units (`/app/units`)
+  // ---------------------------------------------------------------------
+  "units.title": "Buildings & Units",
+  "units.docTitle": "Buildings & Units",
+  "units.eyebrow": "Lease Workspace",
+  "units.action.addBuilding": "Add Building",
+  "units.action.addUnit": "Add Unit",
+  "units.action.importCsv": "Import CSV",
+  "units.dialog.newBuilding": "New Building",
+  "units.dialog.newUnit": "New Unit",
+  "units.dialog.editUnit": "Edit Unit",
+  "units.dialog.buildingDetails": "Building Details",
+  "units.snapshot.label": "Current Snapshot",
+  "units.toast.buildingAdded": "Building added. You can now add units.",
 } as const;
 
 export type StringKey = keyof typeof strings;

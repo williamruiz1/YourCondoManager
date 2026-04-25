@@ -34,6 +34,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 const unitFormSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -62,7 +63,7 @@ const buildingFormSchema = z.object({
 });
 
 export default function UnitsPage() {
-  useDocumentTitle("Buildings & Units");
+  useDocumentTitle(t("units.docTitle"));
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -177,7 +178,7 @@ export default function UnitsPage() {
       await queryClient.invalidateQueries({ queryKey: ["/api/buildings"] });
       buildingForm.reset({ associationId: activeAssociationId, name: "", address: "", totalUnits: undefined, notes: "" });
       setDialogMode("unit");
-      toast({ title: "Building added. You can now add units." });
+      toast({ title: t("units.toast.buildingAdded") });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
   });
@@ -673,21 +674,21 @@ export default function UnitsPage() {
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75 md:hidden">
               <DoorOpen className="h-3.5 w-3.5" />
-              Lease Workspace
+              {t("units.eyebrow")}
             </div>
             <h1
               id="units-heading"
               className="mt-4 font-headline text-4xl font-bold italic leading-tight text-white md:mt-0 md:text-3xl md:not-italic md:text-on-surface"
               data-testid="text-page-title"
             >
-              Buildings &amp; Units
+              {t("units.title")}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/80 md:text-on-surface/60">
               Manage buildings, unit records, owners, and live occupancy for {activeAssociationName || "the current association"} without leaving the workspace.
             </p>
 
             <div className="mt-5 rounded-[22px] border border-white/15 bg-white/10 p-4 backdrop-blur-sm md:hidden">
-              <div className="label-caps text-white/70">Current Snapshot</div>
+              <div className="label-caps text-white/70">{t("units.snapshot.label")}</div>
               <p className="mt-2 text-sm leading-relaxed text-white/90">
                 {summaryCounts.units > 0
                   ? `${summaryCounts.units} units across ${summaryCounts.buildings} buildings, with ${summaryCounts.tenants} active tenant records and ${summaryCounts.ownerOccupiedPct}% owner occupancy.`
@@ -699,7 +700,7 @@ export default function UnitsPage() {
           <div className="hidden gap-2 md:flex">
             <Button type="button" onClick={openBuildingDialog} data-testid="button-add-building" disabled={!activeAssociationId}>
               <Building2 className="mr-2 h-4 w-4" />
-              Add Building
+              {t("units.action.addBuilding")}
             </Button>
             <Button
               type="button"
@@ -709,7 +710,7 @@ export default function UnitsPage() {
               disabled={!activeAssociationId || !buildings.length}
             >
               <Plus className="mr-2 h-4 w-4" />
-              Add Unit
+              {t("units.action.addUnit")}
             </Button>
             <Button
               type="button"
@@ -719,7 +720,7 @@ export default function UnitsPage() {
               disabled={!activeAssociationId}
             >
               <FileUp className="mr-2 h-4 w-4" />
-              Import CSV
+              {t("units.action.importCsv")}
             </Button>
           </div>
         </div>
@@ -727,7 +728,7 @@ export default function UnitsPage() {
           <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
             <DialogHeader>
               <DialogTitle>
-                {editingId ? "Edit Unit" : dialogMode === "building" ? "New Building" : "New Unit"}
+                {editingId ? t("units.dialog.editUnit") : dialogMode === "building" ? t("units.dialog.newBuilding") : t("units.dialog.newUnit")}
               </DialogTitle>
             </DialogHeader>
 
@@ -735,7 +736,7 @@ export default function UnitsPage() {
               <div className="rounded-lg border p-4 space-y-4" data-testid="building-first-step-card">
                 <div className="flex items-center gap-2 font-medium">
                   <Building2 className="h-4 w-4" />
-                  Building Details
+                  {t("units.dialog.buildingDetails")}
                 </div>
                 <Form {...buildingForm}>
                   <form onSubmit={buildingForm.handleSubmit(onSubmitBuilding)} className="space-y-4">

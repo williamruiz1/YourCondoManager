@@ -27,6 +27,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MaintenanceSchedulesContent } from "./maintenance-schedules";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 type WorkOrderStatus = "open" | "assigned" | "in-progress" | "pending-review" | "closed" | "cancelled";
 type WorkOrderPriority = "low" | "medium" | "high" | "urgent";
@@ -1003,23 +1004,26 @@ export function WorkOrdersContent() {
 }
 
 export default function WorkOrdersPage() {
-  useDocumentTitle("Work Orders");
+  useDocumentTitle(t("workOrders.title"));
   return (
     // Wave 23 a11y: section + aria-labelledby (heading id below).
     <section className="flex flex-col min-h-0" aria-labelledby="work-orders-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
-          title="Work Orders"
+          title={t("workOrders.title")}
           headingId="work-orders-heading"
-          summary="Manage work orders and preventive maintenance schedules."
-          eyebrow="Operations"
-          breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Work Orders" }]}
+          summary={t("workOrders.summary")}
+          eyebrow={t("common.eyebrow.operations")}
+          breadcrumbs={[
+            { label: t("common.crumb.operations"), href: "/app/operations/dashboard" },
+            { label: t("workOrders.crumb") },
+          ]}
           subPages={operationsSubPages}
         />
         <Tabs defaultValue="work-orders" className="space-y-6">
           <TabsList>
-            <TabsTrigger value="work-orders">Work Orders</TabsTrigger>
-            <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
+            <TabsTrigger value="work-orders">{t("workOrders.tabs.workOrders")}</TabsTrigger>
+            <TabsTrigger value="maintenance">{t("workOrders.tabs.maintenance")}</TabsTrigger>
           </TabsList>
           <TabsContent value="work-orders" className="mt-0"><WorkOrdersContent /></TabsContent>
           <TabsContent value="maintenance" className="mt-0"><MaintenanceSchedulesContent /></TabsContent>

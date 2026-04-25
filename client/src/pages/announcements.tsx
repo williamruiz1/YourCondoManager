@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 import { Megaphone } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 
@@ -383,16 +384,19 @@ export function AnnouncementsContent() {
 }
 
 export default function AnnouncementsPage() {
-  useDocumentTitle("Announcements");
+  useDocumentTitle(t("announcements.crumb"));
   return (
     // Wave 23 a11y: section + aria-labelledby (heading id below).
     <section className="p-6 space-y-6" aria-labelledby="announcements-heading">
       <WorkspacePageHeader
-        title="Community Announcements"
+        title={t("announcements.title")}
         headingId="announcements-heading"
-        summary="Post announcements and bulletins visible to residents in the owner portal."
-        eyebrow="Board & Governance"
-        breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Announcements" }]}
+        summary={t("announcements.summary")}
+        eyebrow={t("common.eyebrow.governance")}
+        breadcrumbs={[
+          { label: t("common.crumb.board"), href: "/app/board" },
+          { label: t("announcements.crumb") },
+        ]}
         subPages={boardGovernanceSubPages}
       />
       <AnnouncementsContent />

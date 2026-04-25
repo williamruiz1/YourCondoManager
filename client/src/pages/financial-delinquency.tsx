@@ -41,6 +41,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
+import { t } from "@/i18n/use-strings";
 
 function formatCurrency(amount: number) {
   return `$${Math.abs(amount).toFixed(2)}`;
@@ -425,9 +426,9 @@ export function FinancialDelinquencyContent() {
             items={[
               { id: "escalations", label: "Escalations" },
               { id: "thresholds", label: "Thresholds" },
-              { id: "aging", label: "Aging" },
-              { id: "notices", label: "Notices" },
-              { id: "settings", label: "Settings" },
+              { id: "aging", label: t("financialDelinquency.tabs.aging") },
+              { id: "notices", label: t("financialDelinquency.tabs.notices") },
+              { id: "settings", label: t("financialDelinquency.tabs.settings") },
             ]}
             value={activeTab}
             onChange={setActiveTab}
@@ -435,11 +436,11 @@ export function FinancialDelinquencyContent() {
           />
         ) : (
           <TabsList>
-            <TabsTrigger value="escalations">Active Escalations</TabsTrigger>
-            <TabsTrigger value="thresholds">Threshold Config</TabsTrigger>
-            <TabsTrigger value="aging">Aging</TabsTrigger>
-            <TabsTrigger value="notices">Notices</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="escalations">{t("financialDelinquency.tabs.escalations")}</TabsTrigger>
+            <TabsTrigger value="thresholds">{t("financialDelinquency.tabs.thresholds")}</TabsTrigger>
+            <TabsTrigger value="aging">{t("financialDelinquency.tabs.aging")}</TabsTrigger>
+            <TabsTrigger value="notices">{t("financialDelinquency.tabs.notices")}</TabsTrigger>
+            <TabsTrigger value="settings">{t("financialDelinquency.tabs.settings")}</TabsTrigger>
           </TabsList>
         )}
 
@@ -452,29 +453,29 @@ export function FinancialDelinquencyContent() {
                   <SelectValue placeholder="Filter status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="on_payment_plan">On Plan</SelectItem>
-                  <SelectItem value="referred">Referred</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
+                  <SelectItem value="all">{t("financialDelinquency.filter.allStatuses")}</SelectItem>
+                  <SelectItem value="active">{t("financialDelinquency.filter.active")}</SelectItem>
+                  <SelectItem value="on_payment_plan">{t("financialDelinquency.filter.onPaymentPlan")}</SelectItem>
+                  <SelectItem value="referred">{t("financialDelinquency.filter.referred")}</SelectItem>
+                  <SelectItem value="resolved">{t("financialDelinquency.filter.resolved")}</SelectItem>
                 </SelectContent>
               </Select>
               <span className="text-sm text-muted-foreground">{filteredEscalations.length} record{filteredEscalations.length !== 1 ? "s" : ""}</span>
             </div>
             <ConfirmDialog
               trigger={
-                <Button disabled={!activeAssociationId || runScan.isPending || thresholds.filter((t) => t.isActive).length === 0}>
+                <Button disabled={!activeAssociationId || runScan.isPending || thresholds.filter((th) => th.isActive).length === 0}>
                   {runScan.isPending ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <ScanSearch className="h-4 w-4 mr-2" />
                   )}
-                  {runScan.isPending ? "Scanning..." : "Run Delinquency Scan"}
+                  {runScan.isPending ? t("financialDelinquency.action.scanning") : t("financialDelinquency.action.runScan")}
                 </Button>
               }
-              title="Run delinquency scan?"
-              description={`This will evaluate all owner ledger balances against your ${thresholds.filter((t) => t.isActive).length} active threshold stage${thresholds.filter((t) => t.isActive).length !== 1 ? "s" : ""} and create or advance escalation records.`}
-              confirmLabel="Run Scan"
+              title={t("financialDelinquency.confirm.scanTitle")}
+              description={`This will evaluate all owner ledger balances against your ${thresholds.filter((th) => th.isActive).length} active threshold stage${thresholds.filter((th) => th.isActive).length !== 1 ? "s" : ""} and create or advance escalation records.`}
+              confirmLabel={t("financialDelinquency.confirm.runScan")}
               onConfirm={() => runScan.mutate()}
               disabled={!activeAssociationId || runScan.isPending}
             />
@@ -487,9 +488,9 @@ export function FinancialDelinquencyContent() {
               ) : filteredEscalations.length === 0 ? (
                 <EmptyState
                   icon={AlertCircle}
-                  title="No escalations found"
+                  title={t("financialDelinquency.empty.noEscalations")}
                   description={
-                    thresholds.filter((t) => t.isActive).length === 0
+                    thresholds.filter((th) => th.isActive).length === 0
                       ? "Configure thresholds first, then run a scan to identify delinquent accounts."
                       : "Run a delinquency scan to check for accounts exceeding configured thresholds."
                   }
@@ -678,34 +679,34 @@ export function FinancialDelinquencyContent() {
               ) : thresholds.length === 0 ? (
                 <EmptyState
                   icon={ShieldAlert}
-                  title="No thresholds configured"
+                  title={t("financialDelinquency.empty.noThresholds")}
                   description="Add escalation stages to enable the delinquency scan."
                   testId="empty-delinquency-thresholds"
                 />
               ) : isMobile ? (
                 <div className="space-y-3 p-4">
-                  {thresholds.map((t) => (
-                    <div key={t.id} className="rounded-lg border p-4 space-y-2">
+                  {thresholds.map((th) => (
+                    <div key={th.id} className="rounded-lg border p-4 space-y-2">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="text-sm font-semibold">Stage {t.stage}: {t.stageName}</div>
+                          <div className="text-sm font-semibold">Stage {th.stage}: {th.stageName}</div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            Min ${t.minimumBalance} &bull; {t.minimumDaysOverdue}d overdue
+                            Min ${th.minimumBalance} &bull; {th.minimumDaysOverdue}d overdue
                           </div>
                         </div>
-                        {t.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                        {th.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
                       </div>
                       <div className="flex gap-2">
-                        <Badge variant="secondary">{t.actionType}</Badge>
+                        <Badge variant="secondary">{th.actionType}</Badge>
                       </div>
                       <div className="flex gap-2 pt-1">
-                        <Button size="sm" variant="outline" onClick={() => openEditThreshold(t)}><Pencil className="h-3 w-3 mr-1" />Edit</Button>
+                        <Button size="sm" variant="outline" onClick={() => openEditThreshold(th)}><Pencil className="h-3 w-3 mr-1" />Edit</Button>
                         <ConfirmDialog
                           trigger={<Button size="sm" variant="outline"><Trash2 className="h-3 w-3 mr-1" />Delete</Button>}
-                          title="Delete threshold?"
-                          description={`Remove Stage ${t.stage}: ${t.stageName}? This will not remove existing escalation records.`}
+                          title={t("financialDelinquency.confirm.deleteThreshold")}
+                          description={`Remove Stage ${th.stage}: ${th.stageName}? This will not remove existing escalation records.`}
                           confirmLabel="Delete"
-                          onConfirm={() => deleteThreshold.mutate(t.id)}
+                          onConfirm={() => deleteThreshold.mutate(th.id)}
                         />
                       </div>
                     </div>
@@ -727,22 +728,22 @@ export function FinancialDelinquencyContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {thresholds.map((t) => (
-                      <TableRow key={t.id}>
-                        <TableCell className="font-medium">{t.stage}</TableCell>
-                        <TableCell>{t.stageName}</TableCell>
-                        <TableCell><Badge variant="secondary">{t.actionType}</Badge></TableCell>
-                        <TableCell>${t.minimumBalance.toFixed(2)}</TableCell>
-                        <TableCell>{t.minimumDaysOverdue}d</TableCell>
+                    {thresholds.map((th) => (
+                      <TableRow key={th.id}>
+                        <TableCell className="font-medium">{th.stage}</TableCell>
+                        <TableCell>{th.stageName}</TableCell>
+                        <TableCell><Badge variant="secondary">{th.actionType}</Badge></TableCell>
+                        <TableCell>${th.minimumBalance.toFixed(2)}</TableCell>
+                        <TableCell>{th.minimumDaysOverdue}d</TableCell>
                         <TableCell className="text-muted-foreground text-sm">
-                          {t.lateFeePct != null ? `${t.lateFeePct}%` : t.lateFeeFlat != null ? `$${t.lateFeeFlat.toFixed(2)}` : "—"}
+                          {th.lateFeePct != null ? `${th.lateFeePct}%` : th.lateFeeFlat != null ? `$${th.lateFeeFlat.toFixed(2)}` : "—"}
                         </TableCell>
-                        <TableCell>{t.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}</TableCell>
+                        <TableCell>{th.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Dialog open={thresholdDialogOpen && editingThreshold?.id === t.id} onOpenChange={(open) => { if (!open) { setThresholdDialogOpen(false); setEditingThreshold(null); resetThresholdForm(); } }}>
+                            <Dialog open={thresholdDialogOpen && editingThreshold?.id === th.id} onOpenChange={(open) => { if (!open) { setThresholdDialogOpen(false); setEditingThreshold(null); resetThresholdForm(); } }}>
                               <DialogTrigger asChild>
-                                <Button size="sm" variant="outline" onClick={() => openEditThreshold(t)}>
+                                <Button size="sm" variant="outline" onClick={() => openEditThreshold(th)}>
                                   <Pencil className="h-3 w-3 mr-1" />Edit
                                 </Button>
                               </DialogTrigger>
@@ -754,10 +755,10 @@ export function FinancialDelinquencyContent() {
                                   <Trash2 className="h-3 w-3 mr-1" />Delete
                                 </Button>
                               }
-                              title="Delete threshold?"
-                              description={`Remove Stage ${t.stage}: "${t.stageName}"? Existing escalation records will not be affected.`}
+                              title={t("financialDelinquency.confirm.deleteThreshold")}
+                              description={`Remove Stage ${th.stage}: "${th.stageName}"? Existing escalation records will not be affected.`}
                               confirmLabel="Delete"
-                              onConfirm={() => deleteThreshold.mutate(t.id)}
+                              onConfirm={() => deleteThreshold.mutate(th.id)}
                             />
                           </div>
                         </TableCell>

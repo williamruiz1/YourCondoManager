@@ -3,6 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { FinancialLedgerContent } from "./financial-ledger";
 import { FinancialAssessmentsContent } from "./financial-assessments";
@@ -10,26 +11,29 @@ import { FinancialLateFeesContent } from "./financial-late-fees";
 import { FinancialDelinquencyContent } from "./financial-delinquency";
 
 export default function FinancialBillingPage() {
-  useDocumentTitle("Billing");
+  useDocumentTitle(t("financialBilling.title"));
   return (
     // Wave 23 a11y: section + aria-labelledby ties the page region to its
     // visible heading rendered by WorkspacePageHeader (id propagated below).
     <section className="flex flex-col min-h-0" aria-labelledby="financial-billing-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
-          title="Billing"
+          title={t("financialBilling.title")}
           headingId="financial-billing-heading"
-          summary="Manage owner ledger entries, special assessments, late fee rules, and delinquency escalations."
-          eyebrow="Finance"
-          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Billing" }]}
+          summary={t("financialBilling.summary")}
+          eyebrow={t("common.eyebrow.finance")}
+          breadcrumbs={[
+            { label: t("common.crumb.finance"), href: "/app/financial/foundation" },
+            { label: t("financialBilling.crumb") },
+          ]}
           subPages={financeSubPages}
         />
         <Tabs defaultValue="ledger" className="space-y-6">
           <TabsList>
-            <TabsTrigger value="ledger">Owner Ledger</TabsTrigger>
-            <TabsTrigger value="assessments">Assessments</TabsTrigger>
-            <TabsTrigger value="late-fees">Late Fees</TabsTrigger>
-            <TabsTrigger value="delinquency">Delinquency</TabsTrigger>
+            <TabsTrigger value="ledger">{t("financialBilling.tabs.ledger")}</TabsTrigger>
+            <TabsTrigger value="assessments">{t("financialBilling.tabs.assessments")}</TabsTrigger>
+            <TabsTrigger value="late-fees">{t("financialBilling.tabs.lateFees")}</TabsTrigger>
+            <TabsTrigger value="delinquency">{t("financialBilling.tabs.delinquency")}</TabsTrigger>
           </TabsList>
           <TabsContent value="ledger" className="mt-0">
             <FinancialLedgerContent />

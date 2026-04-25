@@ -31,6 +31,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { InspectionsContent } from "./inspections";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 const vendorDocumentTypes = ["Insurance", "Contract", "W-9", "License", "Compliance", "Other"];
 
@@ -995,23 +996,26 @@ export function VendorsContent() {
 }
 
 export default function VendorsPage() {
-  useDocumentTitle("Vendors");
+  useDocumentTitle(t("vendors.title"));
   return (
     // Wave 23 a11y: section + aria-labelledby (heading id below).
     <section className="flex flex-col min-h-0" aria-labelledby="vendors-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
-          title="Vendors"
+          title={t("vendors.title")}
           headingId="vendors-heading"
-          summary="Manage vendors, compliance tracking, and inspection records."
-          eyebrow="Operations"
-          breadcrumbs={[{ label: "Operations", href: "/app/operations/dashboard" }, { label: "Vendors" }]}
+          summary={t("vendors.summary")}
+          eyebrow={t("common.eyebrow.operations")}
+          breadcrumbs={[
+            { label: t("common.crumb.operations"), href: "/app/operations/dashboard" },
+            { label: t("vendors.crumb") },
+          ]}
           subPages={operationsSubPages}
         />
         <Tabs defaultValue="vendors" className="space-y-6">
           <TabsList>
-            <TabsTrigger value="vendors">Vendors</TabsTrigger>
-            <TabsTrigger value="inspections">Inspections</TabsTrigger>
+            <TabsTrigger value="vendors">{t("vendors.tabs.vendors")}</TabsTrigger>
+            <TabsTrigger value="inspections">{t("vendors.tabs.inspections")}</TabsTrigger>
           </TabsList>
           <TabsContent value="vendors" className="mt-0"><VendorsContent /></TabsContent>
           <TabsContent value="inspections" className="mt-0"><InspectionsContent /></TabsContent>

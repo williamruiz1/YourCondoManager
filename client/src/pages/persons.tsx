@@ -38,6 +38,7 @@ import type { ResidentialDatasetPersonDirectoryItem } from "@shared/schema";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -65,7 +66,7 @@ function getStreetAddressLine(address: string | null | undefined) {
 }
 
 export default function PersonsPage() {
-  useDocumentTitle("People");
+  useDocumentTitle(t("persons.title"));
   const isMobile = useIsMobile();
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
@@ -132,7 +133,7 @@ export default function PersonsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/ownerships"] });
       queryClient.invalidateQueries({ queryKey: ["/api/occupancies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
-      toast({ title: "Person created successfully" });
+      toast({ title: t("persons.toast.createSuccess") });
       setOpen(false);
       form.reset();
       setAddressQuery("");
@@ -156,7 +157,7 @@ export default function PersonsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
       queryClient.invalidateQueries({ queryKey: ["/api/residential/dataset"] });
-      toast({ title: "Person updated successfully" });
+      toast({ title: t("persons.toast.updateSuccess") });
       setOpen(false);
       setEditingId(null);
       form.reset();
@@ -405,8 +406,8 @@ export default function PersonsPage() {
     <section className="p-6 space-y-6" aria-labelledby="persons-heading">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 id="persons-heading" className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">People</h1>
-          <p className="text-sm text-on-surface/60 mt-1">Owners, tenants, and board members across your associations.</p>
+          <h1 id="persons-heading" className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">{t("persons.title")}</h1>
+          <p className="text-sm text-on-surface/60 mt-1">{t("persons.subtitle")}</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -415,14 +416,14 @@ export default function PersonsPage() {
             data-testid="button-import-persons"
           >
             <FileUp className="h-4 w-4 mr-2" />
-            Import CSV
+            {t("persons.action.importCsv")}
           </Button>
         <Dialog open={open} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-person"><Plus className="h-4 w-4 mr-2" />Add Person</Button>
+            <Button data-testid="button-add-person"><Plus className="h-4 w-4 mr-2" />{t("persons.action.addPerson")}</Button>
           </DialogTrigger>
           <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto sm:max-h-[85vh]">
-            <DialogHeader><DialogTitle>{editingId ? "Edit Person" : "New Person"}</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{editingId ? t("persons.dialog.editTitle") : t("persons.dialog.newTitle")}</DialogTitle></DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
@@ -579,7 +580,7 @@ export default function PersonsPage() {
         </Dialog>
         <Dialog open={boardRoleOpen} onOpenChange={setBoardRoleOpen}>
           <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
-            <DialogHeader><DialogTitle>Assign Board Role</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{t("persons.dialog.assignBoardRoleTitle")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <Select value={boardRolePersonId || "none"} onValueChange={(value) => setBoardRolePersonId(value === "none" ? "" : value)}>
                 <SelectTrigger><SelectValue placeholder="Select person" /></SelectTrigger>
@@ -628,7 +629,7 @@ export default function PersonsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             className="pl-9"
-            placeholder="Search by name, email, or phone…"
+            placeholder={t("persons.search.placeholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -660,20 +661,20 @@ export default function PersonsPage() {
           ) : !persons?.length ? (
             <EmptyState
               icon={Users}
-              title="No people yet"
-              description={'People are the owners, tenants, and board members in your community. Click "Add Person" to create the first profile — then link them to units via the Ownership section.'}
+              title={t("persons.empty.noPeople.title")}
+              description={t("persons.empty.noPeople.description")}
               testId="empty-persons"
             />
           ) : filteredPersons.length === 0 ? (
             <EmptyState
               icon={Search}
-              title="No matches"
+              title={t("persons.empty.noMatches.title")}
               description="Try adjusting your search or filter."
               testId="empty-persons-filter"
             />
           ) : (
             // Wave 23 a11y: aria-label names this people table.
-            <Table aria-label="People">
+            <Table aria-label={t("persons.tableLabel")}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
@@ -828,7 +829,7 @@ export default function PersonsPage() {
       <CsvImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
-        title="Import People from CSV"
+        title={t("persons.dialog.importTitle")}
         description="Upload a CSV file to bulk-create people. Each row creates a new person record. Existing people are not deduplicated automatically — review before importing."
         columns={[
           { key: "firstName", label: "First Name", required: true },
