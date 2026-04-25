@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { t } from "@/i18n/use-strings";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -537,11 +538,14 @@ export default function FinancialRecurringChargesPage() {
     <section className="flex flex-col min-h-0" aria-labelledby="financial-recurring-charges-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
-          title="Recurring Charges"
+          title={t("financialRecurring.title")}
           headingId="financial-recurring-charges-heading"
-          summary="Define automatic charge schedules, run them on demand, and manage failed charge retries."
-          eyebrow="Finance"
-          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Recurring Charges" }]}
+          summary={t("financialRecurring.summary")}
+          eyebrow={t("common.eyebrow.finance")}
+          breadcrumbs={[
+            { label: t("common.crumb.finance"), href: "/app/financial/foundation" },
+            { label: t("financialRecurring.crumb") },
+          ]}
           subPages={financeSubPages}
         />
         <FinancialRecurringChargesContent />

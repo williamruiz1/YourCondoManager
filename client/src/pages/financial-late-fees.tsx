@@ -52,6 +52,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { HelpTooltip } from "@/components/help-tooltip";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { t } from "@/i18n/use-strings";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
@@ -531,7 +532,7 @@ export function FinancialLateFeesContent() {
           ) : !rules?.length ? (
             <EmptyState
               icon={AlertCircle}
-              title="No late fee rules"
+              title={t("financialLateFees.empty.noRules.title")}
               description="Create a rule to begin calculating late fees on overdue assessments."
               testId="empty-late-fee-rules"
             />
@@ -719,7 +720,7 @@ export function FinancialLateFeesContent() {
                       {applying ? "Applying…" : `Apply to ${selectedCount} Account${selectedCount !== 1 ? "s" : ""}`}
                     </Button>
                   }
-                  title="Apply late fees?"
+                  title={t("financialLateFees.confirm.applyTitle")}
                   description={`This will post late fee events for ${selectedCount} account${selectedCount !== 1 ? "s" : ""}, totaling $${totalFee.toFixed(2)}. These events will be recorded in the ledger.`}
                   confirmLabel="Apply Late Fees"
                   onConfirm={runBulkApply}
@@ -818,7 +819,7 @@ export function FinancialLateFeesContent() {
           {(events ?? []).length === 0 ? (
             <EmptyState
               icon={Receipt}
-              title="No fee events yet"
+              title={t("financialLateFees.empty.noEvents.title")}
               description="Use the Rules & Calculator tab to apply late fees and start logging events here."
               testId="empty-late-fee-events"
             />
@@ -892,7 +893,7 @@ export function FinancialLateFeesContent() {
                     {runEscalationScan.isPending ? "Scanning..." : "Run Scan"}
                   </Button>
                 }
-                title="Run escalation scan?"
+                title={t("financialLateFees.confirm.runEscalationTitle")}
                 description={`This will evaluate all delinquent accounts against your ${thresholds.length} configured threshold stage${thresholds.length !== 1 ? "s" : ""} and create or update escalation records accordingly.`}
                 confirmLabel="Run Scan"
                 onConfirm={() => runEscalationScan.mutate()}
@@ -1382,11 +1383,14 @@ export default function FinancialLateFeesPage() {
     <section className="flex flex-col min-h-0" aria-labelledby="financial-late-fees-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
-          title="Late Fees"
+          title={t("financialLateFees.title")}
           headingId="financial-late-fees-heading"
-          eyebrow="Finance"
-          summary="Manage late fee rules, review applied fees, and recover delinquent balances through payment plans and collections handoffs."
-          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Late Fees" }]}
+          eyebrow={t("common.eyebrow.finance")}
+          summary={t("financialLateFees.summary")}
+          breadcrumbs={[
+            { label: t("common.crumb.finance"), href: "/app/financial/foundation" },
+            { label: t("financialLateFees.crumb") },
+          ]}
           subPages={financeSubPages}
         />
         <FinancialLateFeesContent />

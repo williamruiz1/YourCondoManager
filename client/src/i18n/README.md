@@ -1,13 +1,13 @@
 # i18n — string registry & migration path
 
 > Spec: `docs/projects/platform-overhaul/decisions/5.6-i18n-scaffolding.md`
-> Status: SPEC LOCKED 2026-04-25 (Wave 21).
+> Status: SPEC LOCKED 2026-04-25 (Wave 21) · EXTENDED 2026-04-25 (Wave 24, round 2 — +15 surfaces).
 
 ## What this is
 
-A minimal, dependency-free string registry for the YCM client. There is no `i18next`, no plural engine, no interpolation engine. Wave 21 establishes the registry and the `t()` helper across the **top 10 user-facing surfaces**; full translation lands in a follow-up wave.
+A minimal, dependency-free string registry for the YCM client. There is no `i18next`, no plural engine, no interpolation engine. Wave 21 established the registry and the `t()` helper across the **top 10 user-facing surfaces**; Wave 24 extended it to 15 more operator surfaces (financial zone, operations, governance, and records). Full translation still lands in a follow-up wave when product commits to a non-English locale.
 
-The point of this module is _extraction discipline_: every visible English literal on those 10 surfaces lives in `strings.en.ts`, and pages call `t("some.key")`. Once that pattern is in place, swapping in a real translation engine is a mechanical refactor against the registry rather than an audit of every JSX file.
+The point of this module is _extraction discipline_: every visible English literal on the in-scope surfaces lives in `strings.en.ts`, and pages call `t("some.key")`. Once that pattern is in place, swapping in a real translation engine is a mechanical refactor against the registry rather than an audit of every JSX file.
 
 ## Files
 
@@ -60,18 +60,18 @@ Together these cover both shells (operator + owner portal), both personas (admin
 
 ## Backlog of remaining surfaces
 
-Out of scope for Wave 21; tracked here for the follow-up wave when a real translation engine is introduced.
+Out of scope for Waves 21 + 24; tracked here for the follow-up wave when a real translation engine is introduced. Surfaces struck through have been migrated.
 
 | Tier | Surfaces | Notes |
 |---|---|---|
-| Tier 1 — high traffic | `portfolio.tsx`, `associations.tsx`, `association-context.tsx`, `documents.tsx`, `persons.tsx`, `board.tsx` | Operator core list views. |
+| Tier 1 — high traffic | `portfolio.tsx`, `associations.tsx`, `association-context.tsx`, ~~`documents.tsx`~~ (Wave 24), ~~`persons.tsx`~~ (Wave 24), `board.tsx` | Operator core list views. |
 | Tier 1 — owner portal | `portal/portal-requests.tsx`, `portal/portal-community.tsx`, `portal/portal-amenities.tsx`, `portal/portal-documents.tsx`, `portal/portal-notices.tsx` | Remaining six portal zone files. |
-| Tier 2 — financial surfaces | `financial-billing.tsx`, `financial-payments.tsx`, `financial-ledger.tsx`, `financial-budgets.tsx`, `financial-delinquency.tsx`, `financial-reports.tsx`, `financial-recurring-charges.tsx`, `financial-assessments.tsx`, `financial-late-fees.tsx`, `financial-utilities.tsx`, `financial-foundation.tsx`, `financial-invoices.tsx`, `financial-reconciliation.tsx`, `financial-expenses.tsx` | Long tail; many are sub-pages already nested under `financial-rules.tsx`. |
-| Tier 2 — governance + ops | `meetings.tsx`, `elections.tsx`, `election-detail.tsx`, `election-ballot.tsx`, `governance.tsx`, `governance-compliance.tsx`, `inspections.tsx`, `insurance.tsx`, `maintenance-schedules.tsx`, `amenities-admin.tsx`, `board-portal.tsx`, `board-packages.tsx`, `announcements.tsx`, `community-hub.tsx`, `community-hub-public.tsx`, `ai-ingestion.tsx` | One per surface; mechanical extraction. |
+| Tier 2 — financial surfaces | ~~`financial-billing.tsx`~~ (Wave 24), ~~`financial-payments.tsx`~~ (Wave 24), ~~`financial-ledger.tsx`~~ (Wave 24), `financial-budgets.tsx`, ~~`financial-delinquency.tsx`~~ (Wave 24), `financial-reports.tsx`, ~~`financial-recurring-charges.tsx`~~ (Wave 24), `financial-assessments.tsx`, ~~`financial-late-fees.tsx`~~ (Wave 24), `financial-utilities.tsx`, ~~`financial-foundation.tsx`~~ (Wave 24), `financial-invoices.tsx`, `financial-reconciliation.tsx`, `financial-expenses.tsx` | Long tail; many are sub-pages already nested under `financial-rules.tsx`. |
+| Tier 2 — governance + ops | ~~`meetings.tsx`~~ (Wave 24), ~~`elections.tsx`~~ (Wave 24), `election-detail.tsx`, `election-ballot.tsx`, `governance.tsx`, `governance-compliance.tsx`, `inspections.tsx`, `insurance.tsx`, `maintenance-schedules.tsx`, `amenities-admin.tsx`, `board-portal.tsx`, `board-packages.tsx`, ~~`announcements.tsx`~~ (Wave 24), `community-hub.tsx`, `community-hub-public.tsx`, `ai-ingestion.tsx`, ~~`work-orders.tsx`~~ (Wave 24), ~~`vendors.tsx`~~ (Wave 24), ~~`units.tsx`~~ (Wave 24) | One per surface; mechanical extraction. |
 | Tier 3 — settings & admin | `admin-users.tsx`, `new-association.tsx`, `executive.tsx`, `help-center.tsx`, `not-found.tsx`, `landing.tsx`, `onboarding-invite.tsx`, `plan-signup-success.tsx` | Lower-traffic; safe to defer until the locale switcher ships. |
 | Components | `home-alerts-panel.tsx`, `hub-alert-widget.tsx`, `setup-wizard.tsx`, `signup-onboarding-checklist.tsx`, `breadcrumb-nav.tsx`, `workspace-page-header.tsx`, `association-scope-banner.tsx` | Shared — extract once, used everywhere. |
 
-When opening the follow-up wave, do not extract everything in one PR. Take Tier 1 first (≈11 surfaces), ship, validate, then move to Tier 2.
+When opening the follow-up wave, do not extract everything in one PR. Take Tier 1 first, ship, validate, then move to the rest. Wave 24 covered the bulk of the financial sub-pages and the highest-traffic operator list views; the next round should pick up the remaining portal surfaces and the `_detail` / `_ballot` sub-pages.
 
 ## Conventions
 

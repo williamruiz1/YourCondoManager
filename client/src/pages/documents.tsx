@@ -53,6 +53,7 @@ import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { DataTableShell } from "@/components/data-table-shell";
 import { TaskFlowChecklist } from "@/components/task-flow-checklist";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { t } from "@/i18n/use-strings";
 
 const documentTypes = ["Meeting Minutes", "Bylaws", "Financial Report", "Insurance", "Legal", "Maintenance", "Operations", "Other"];
 
@@ -85,7 +86,7 @@ const addVersionSchema = z.object({
 export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = {}) {
   // Row 24 (⚠️) /app/operations/records reuses this component with typeFilter="Operations";
   // row 42 /app/documents uses no filter. See docs/projects/platform-overhaul/implementation-artifacts/1.4-route-title-table.md.
-  useDocumentTitle(typeFilter === "Operations" ? "Operations Records" : "Documents");
+  useDocumentTitle(typeFilter === "Operations" ? t("documents.docTitle.operations") : t("documents.docTitle.documents"));
   const [open, setOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
@@ -372,21 +373,24 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
     // Wave 23 a11y: section + aria-labelledby (heading id below).
     <section className="p-6 space-y-6" aria-labelledby="documents-heading">
       <WorkspacePageHeader
-        title="Documents"
+        title={t("documents.title")}
         headingId="documents-heading"
-        summary="Upload, classify, and manage documents for the active association without losing workspace context."
-        eyebrow="Records"
-        breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Documents" }]}
+        summary={t("documents.summary")}
+        eyebrow={t("common.eyebrow.records")}
+        breadcrumbs={[
+          { label: t("common.crumb.dashboard"), href: "/app" },
+          { label: t("documents.crumb") },
+        ]}
         shortcuts={[
-          { label: "Open Association Context", href: "/app/association-context" },
-          { label: "Open Communications", href: "/app/communications" },
+          { label: t("documents.shortcut.openAssociationContext"), href: "/app/association-context" },
+          { label: t("documents.shortcut.openCommunications"), href: "/app/communications" },
         ]}
         actions={<Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { form.reset({ associationId: activeAssociationId, title: "", documentType: "", uploadedBy: "", isPortalVisible: false, portalAudience: "owner", isNewVersion: false, parentDocumentId: "", effectiveDate: "", amendmentNotes: "" }); setSelectedFile(null); setUploadStage("select"); } }}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-document" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />Upload Document</Button>
+            <Button data-testid="button-add-document" disabled={!activeAssociationId}><Plus className="h-4 w-4 mr-2" />{t("documents.action.upload")}</Button>
           </DialogTrigger>
           <DialogContent className="max-w-3xl">
-            <DialogHeader><DialogTitle>Upload Document</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{t("documents.dialog.uploadTitle")}</DialogTitle></DialogHeader>
             <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

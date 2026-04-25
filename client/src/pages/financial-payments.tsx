@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { t } from "@/i18n/use-strings";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { useAssociationContext } from "@/context/association-context";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
@@ -1651,7 +1652,7 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
 }
 
 export default function FinancialPaymentsPage() {
-  useDocumentTitle("Payments");
+  useDocumentTitle(t("financialPayments.title"));
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { setActiveAssociationId } = useAssociationContext();
   const { toast } = useToast();
@@ -1728,11 +1729,14 @@ export default function FinancialPaymentsPage() {
     <section className="flex flex-col min-h-0" aria-labelledby="financial-payments-heading">
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
-        title="Payments"
+        title={t("financialPayments.title")}
         headingId="financial-payments-heading"
-        summary="Configure how owners pay their dues — add payment methods, optionally connect an ACH gateway, and generate owner payment links."
-        eyebrow="Finance"
-        breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Payments" }]}
+        summary={t("financialPayments.summary")}
+        eyebrow={t("common.eyebrow.finance")}
+        breadcrumbs={[
+          { label: t("common.crumb.finance"), href: "/app/financial/foundation" },
+          { label: t("financialPayments.crumb") },
+        ]}
         subPages={financeSubPages}
       />
 

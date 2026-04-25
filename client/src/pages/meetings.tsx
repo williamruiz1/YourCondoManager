@@ -21,6 +21,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Send, Users, FileText, CheckSquare, Square, ChevronDown, ChevronRight, Settings2, Vote, Gavel, ExternalLink, CalendarDays } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { t } from "@/i18n/use-strings";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import type { GovernanceReminderRule } from "@shared/schema";
 
@@ -1523,11 +1524,14 @@ export default function MeetingsPage() {
     // Wave 23 a11y: section + aria-labelledby (heading id below).
     <section className="p-6 space-y-6" aria-labelledby="meetings-heading">
       <WorkspacePageHeader
-        title="Meetings"
+        title={t("meetings.title")}
         headingId="meetings-heading"
-        summary="Schedule meetings, manage agendas, record minutes, and track resolutions."
-        eyebrow="Board & Governance"
-        breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Meetings" }]}
+        summary={t("meetings.summary")}
+        eyebrow={t("common.eyebrow.governance")}
+        breadcrumbs={[
+          { label: t("common.crumb.board"), href: "/app/board" },
+          { label: t("meetings.crumb") },
+        ]}
         subPages={boardGovernanceSubPages}
       />
       <MeetingsContent />

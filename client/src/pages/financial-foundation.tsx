@@ -24,6 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { t } from "@/i18n/use-strings";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -108,9 +109,9 @@ export function FinancialFoundationContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/financial/accounts"] });
       setOpenAccount(false);
       accountForm.reset({ associationId: activeAssociationId, name: "", accountCode: "", accountType: "expense" });
-      toast({ title: "Account created" });
+      toast({ title: t("financialFoundation.accounts.toast.created") });
     },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: t("common.toast.error"), description: err.message, variant: "destructive" }),
   });
 
   const createCategory = useMutation({
@@ -122,9 +123,9 @@ export function FinancialFoundationContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/financial/categories"] });
       setOpenCategory(false);
       categoryForm.reset({ associationId: activeAssociationId, name: "", categoryType: "expense" });
-      toast({ title: "Category created" });
+      toast({ title: t("financialFoundation.categories.toast.created") });
     },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: t("common.toast.error"), description: err.message, variant: "destructive" }),
   });
 
   const createApproval = useMutation({
@@ -143,9 +144,9 @@ export function FinancialFoundationContent() {
       await refetchApprovals();
       setApprovalDialogOpen(false);
       setApprovalForm({ changeType: "budget-amendment", changeDescription: "", changeAmount: "", notes: "" });
-      toast({ title: "Approval request submitted" });
+      toast({ title: t("financialFoundation.approvals.toast.submitted") });
     },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: t("common.toast.error"), description: err.message, variant: "destructive" }),
   });
 
   const resolveApproval = useMutation({
@@ -155,9 +156,9 @@ export function FinancialFoundationContent() {
     },
     onSuccess: async () => {
       await refetchApprovals();
-      toast({ title: "Approval updated" });
+      toast({ title: t("financialFoundation.approvals.toast.updated") });
     },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: t("common.toast.error"), description: err.message, variant: "destructive" }),
   });
 
   return (
@@ -165,18 +166,18 @@ export function FinancialFoundationContent() {
       <AssociationScopeBanner
         activeAssociationId={activeAssociationId}
         activeAssociationName={activeAssociationName}
-        explanation="Accounts and categories are scoped to the active association. Select one to manage its chart of accounts."
+        explanation={t("financialFoundation.scope.explanation")}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Accounts</h2>
+              <h2 className="text-lg font-semibold">{t("financialFoundation.accounts.heading")}</h2>
               <Dialog open={openAccount} onOpenChange={setOpenAccount}>
-                <DialogTrigger asChild><Button size="sm">Add Account</Button></DialogTrigger>
+                <DialogTrigger asChild><Button size="sm">{t("financialFoundation.accounts.add")}</Button></DialogTrigger>
                 <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
-                  <DialogHeader><DialogTitle>Create Account</DialogTitle></DialogHeader>
+                  <DialogHeader><DialogTitle>{t("financialFoundation.accounts.dialogTitle")}</DialogTitle></DialogHeader>
                   <Form {...accountForm}>
                     <form className="space-y-4" onSubmit={accountForm.handleSubmit((v) => createAccount.mutate(v))}>
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -237,11 +238,11 @@ export function FinancialFoundationContent() {
         <Card>
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Categories</h2>
+              <h2 className="text-lg font-semibold">{t("financialFoundation.categories.heading")}</h2>
               <Dialog open={openCategory} onOpenChange={setOpenCategory}>
-                <DialogTrigger asChild><Button size="sm">Add Category</Button></DialogTrigger>
+                <DialogTrigger asChild><Button size="sm">{t("financialFoundation.categories.add")}</Button></DialogTrigger>
                 <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
-                  <DialogHeader><DialogTitle>Create Category</DialogTitle></DialogHeader>
+                  <DialogHeader><DialogTitle>{t("financialFoundation.categories.dialogTitle")}</DialogTitle></DialogHeader>
                   <Form {...categoryForm}>
                     <form className="space-y-4" onSubmit={categoryForm.handleSubmit((v) => createCategory.mutate(v))}>
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -643,17 +644,17 @@ export function AccountActivityContent() {
               </div>
               <div className="rounded-md border hidden md:block overflow-x-auto">
                 // Wave 23 a11y: aria-label names this account activity table.
-                <Table aria-label="Account activity (budget vs. invoiced)">
+                <Table aria-label={t("financialFoundation.activity.tableLabel")}>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="text-right">Budgeted</TableHead>
-                      <TableHead className="text-right">Invoiced</TableHead>
-                      <TableHead className="text-right">Variance</TableHead>
-                      <TableHead className="text-right">Utilization</TableHead>
-                      <TableHead className="text-right">Invoices</TableHead>
+                      <TableHead>{t("financialFoundation.activity.col.code")}</TableHead>
+                      <TableHead>{t("financialFoundation.activity.col.name")}</TableHead>
+                      <TableHead>{t("financialFoundation.activity.col.type")}</TableHead>
+                      <TableHead className="text-right">{t("financialFoundation.activity.col.budgeted")}</TableHead>
+                      <TableHead className="text-right">{t("financialFoundation.activity.col.invoiced")}</TableHead>
+                      <TableHead className="text-right">{t("financialFoundation.activity.col.variance")}</TableHead>
+                      <TableHead className="text-right">{t("financialFoundation.activity.col.utilization")}</TableHead>
+                      <TableHead className="text-right">{t("financialFoundation.activity.col.invoices")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -698,25 +699,28 @@ export function AccountActivityContent() {
 }
 
 export default function FinancialFoundationPage() {
-  useDocumentTitle("Chart of Accounts");
+  useDocumentTitle(t("financialFoundation.title"));
   return (
     // Wave 23 a11y: section + aria-labelledby gives the page region an
     // accessible name resolved from the visible <h1> below.
     <section className="flex flex-col min-h-0" aria-labelledby="financial-foundation-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
-          title="Chart of Accounts"
+          title={t("financialFoundation.title")}
           headingId="financial-foundation-heading"
-          summary="Configure financial accounts, categories, and recurring charge schedules for the active association."
-          eyebrow="Finance"
-          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Chart of Accounts" }]}
+          summary={t("financialFoundation.summary")}
+          eyebrow={t("common.eyebrow.finance")}
+          breadcrumbs={[
+            { label: t("common.crumb.finance"), href: "/app/financial/foundation" },
+            { label: t("financialFoundation.crumb") },
+          ]}
           subPages={financeSubPages}
         />
         <Tabs defaultValue="accounts" className="space-y-6">
           <TabsList>
-            <TabsTrigger value="accounts">Accounts</TabsTrigger>
-            <TabsTrigger value="account-activity">Account Activity</TabsTrigger>
-            <TabsTrigger value="recurring-charges">Recurring Charges</TabsTrigger>
+            <TabsTrigger value="accounts">{t("financialFoundation.tabs.accounts")}</TabsTrigger>
+            <TabsTrigger value="account-activity">{t("financialFoundation.tabs.accountActivity")}</TabsTrigger>
+            <TabsTrigger value="recurring-charges">{t("financialFoundation.tabs.recurringCharges")}</TabsTrigger>
           </TabsList>
           <TabsContent value="accounts" className="mt-0">
             <FinancialFoundationContent />

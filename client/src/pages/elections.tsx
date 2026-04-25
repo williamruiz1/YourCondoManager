@@ -23,6 +23,7 @@ import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Vote, Plus, Download, FileText, Users, CheckCircle, Clock, BarChart2, Trash2, Search, AlertCircle } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { t } from "@/i18n/use-strings";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import type { AdminRole } from "@shared/schema";
 
@@ -1151,11 +1152,14 @@ export default function ElectionsPage() {
     // Wave 23 a11y: section + aria-labelledby (heading id below).
     <section className="p-4 md:p-6 space-y-5" aria-labelledby="elections-heading">
       <WorkspacePageHeader
-        title="Elections & Votes"
+        title={t("elections.title")}
         headingId="elections-heading"
-        summary="Create and manage elections, referendums, and board votes for the association."
-        eyebrow="Board & Governance"
-        breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Elections & Votes" }]}
+        summary={t("elections.summary")}
+        eyebrow={t("common.eyebrow.governance")}
+        breadcrumbs={[
+          { label: t("common.crumb.board"), href: "/app/board" },
+          { label: t("elections.crumb") },
+        ]}
         subPages={boardGovernanceSubPages}
       />
       <ElectionsContent />

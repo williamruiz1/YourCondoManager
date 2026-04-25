@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { t } from "@/i18n/use-strings";
 import { financeSubPages } from "@/lib/sub-page-nav";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -961,14 +962,17 @@ export default function FinancialLedgerPage() {
     <section className="flex flex-col min-h-0" aria-labelledby="financial-ledger-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
-          title="Owner Ledger"
+          title={t("financialLedger.title")}
           headingId="financial-ledger-heading"
-          summary="Post owner-ledger entries, review balances, and monitor collection risk within the active association scope."
-          eyebrow="Finance"
-          breadcrumbs={[{ label: "Dashboard", href: "/app" }, { label: "Owner Ledger" }]}
+          summary={t("financialLedger.summary")}
+          eyebrow={t("common.eyebrow.finance")}
+          breadcrumbs={[
+            { label: t("common.crumb.dashboard"), href: "/app" },
+            { label: t("financialLedger.crumb") },
+          ]}
           shortcuts={[
-            { label: "Open Invoices", href: "/app/financial/invoices" },
-            { label: "Open Budgets", href: "/app/financial/budgets" },
+            { label: t("financialLedger.shortcut.openInvoices"), href: "/app/financial/invoices" },
+            { label: t("financialLedger.shortcut.openBudgets"), href: "/app/financial/budgets" },
           ]}
           subPages={financeSubPages}
         />
