@@ -24,6 +24,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "vitest run tests/e2e",
+    "test:playwright": "playwright test",
+    "test:playwright:install": "playwright install chromium",
     "test:payments": "tsx tests/payment-acceptance.ts",
     "verify:mobile": "tsx script/verify-mobile-journeys.ts",
     "verify:owner-portal-multi-unit": "tsx script/verify-owner-portal-multi-unit.ts",
@@ -107,6 +109,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.48.2",
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
