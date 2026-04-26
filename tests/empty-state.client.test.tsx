@@ -121,21 +121,10 @@ describe("EmptyState — call-site adoption", () => {
     expect(source).toMatch(/<EmptyState/);
   });
 
-  it("financials-hub.tsx imports and uses EmptyState", async () => {
-    const source = await fs.readFile(
-      path.join(REPO_ROOT, "client/src/pages/hubs/financials-hub.tsx"),
-      "utf8",
-    );
-    expect(source).toMatch(/from "@\/components\/empty-state"/);
-    expect(source).toMatch(/<EmptyState/);
-  });
-
-  it("operations-hub.tsx imports and uses EmptyState", async () => {
-    const source = await fs.readFile(
-      path.join(REPO_ROOT, "client/src/pages/hubs/operations-hub.tsx"),
-      "utf8",
-    );
-    expect(source).toMatch(/from "@\/components\/empty-state"/);
-    expect(source).toMatch(/<EmptyState/);
-  });
+  // Phase 11 (3.2 Q1/Q2): the Financials and Operations hubs are now
+  // navigation surfaces (zone title + sub-page link list per 1.2 Q2),
+  // not EmptyState placeholders. EmptyState was the Wave-14 MVP slice
+  // for hub placeholders; it's retired now that the hubs ship real nav
+  // content. Adoption tests for these surfaces moved to the hub-pages
+  // navigation grid assertion in `tests/hub-pages.client.test.tsx`.
 });

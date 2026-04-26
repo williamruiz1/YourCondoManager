@@ -97,6 +97,8 @@ const CommunityHubPublicPage = lazy(() => import("@/pages/community-hub-public")
 const AmenitiesAdminPage = lazy(() => import("@/pages/amenities-admin"));
 const FinancialsHubPage = lazy(() => import("@/pages/hubs/financials-hub"));
 const OperationsHubPage = lazy(() => import("@/pages/hubs/operations-hub"));
+const GovernanceHubPage = lazy(() => import("@/pages/hubs/governance-hub"));
+const CommunicationsHubPage = lazy(() => import("@/pages/hubs/communications-hub"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const AdminContextualFeedbackWidget = lazy(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })));
 
@@ -264,11 +266,25 @@ function WorkspaceRouter({
     <Suspense fallback={<RouteFallback />}>
       <Switch>
         <Route path="/app" component={DashboardPage} />
-        {/* 4.1 Wave 5 — zone hub routes (Financials + Operations). Governance
-            and Communications hubs are the existing /app/governance and
-            /app/communications pages; their hub-alert widgets are mounted
-            inside those real-content pages rather than replacing them. */}
+
+        {/* ---------------------------------------------------------------
+         * Phase 11 (3.2 — 61-route canonical table)
+         * Hub URLs at the zone root per 1.2 Q4. Each hub is a navigation
+         * surface (zone title, brief description, sub-page link list).
+         * Per 3.2 Q5 there are NO /portal/* changes in this PR. Per the
+         * scope boundary, NO <RouteGuard> wrappers ship in Phase 11 — they
+         * land per-zone in Phases 12–16.
+         * --------------------------------------------------------------- */}
         <Route path="/app/financials" component={FinancialsHubPage} />
+        {/* 3.2 Q1 — plural-to-singular legacy redirects. These catch
+            accidental plural deep-links without renaming the singular
+            /app/financial/* subtree. */}
+        <Route path="/app/financials/foundation"><RouteRedirect to="/app/financial/foundation" /></Route>
+        <Route path="/app/financials/billing"><RouteRedirect to="/app/financial/billing" /></Route>
+        <Route path="/app/financials/payments"><RouteRedirect to="/app/financial/payments" /></Route>
+        <Route path="/app/financials/expenses"><RouteRedirect to="/app/financial/expenses" /></Route>
+        <Route path="/app/financials/reports"><RouteRedirect to="/app/financial/reports" /></Route>
+
         <Route path="/app/operations" component={OperationsHubPage} />
         <Route path="/app/operations/dashboard" component={OperationsDashboardPage} />
         <Route path="/app/operations/records">
@@ -291,7 +307,10 @@ function WorkspaceRouter({
         <Route path="/app/documents">
           <DocumentsPage />
         </Route>
-        <Route path="/app/admin" component={RoadmapPage} />
+        {/* 3.2 Q6 — `/app/admin` alias retired. Hard 404 via the catch-all
+            below. The previous `<Route path="/app/admin" component={RoadmapPage} />`
+            declaration is intentionally removed; legitimate access to the
+            roadmap goes through `/app/admin/roadmap`. */}
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
@@ -302,7 +321,7 @@ function WorkspaceRouter({
         <Route path="/app/financial/payments"><ZoneBoundary zone="Financials"><FinancialPaymentsPage /></ZoneBoundary></Route>
         <Route path="/app/financial/expenses"><ZoneBoundary zone="Financials"><FinancialExpensesPage /></ZoneBoundary></Route>
         <Route path="/app/financial/reports"><ZoneBoundary zone="Financials"><FinancialReportsPage /></ZoneBoundary></Route>
-        {/* Finance — legacy redirects */}
+        {/* Finance — legacy redirects (3.2 Q4 archive — preserved verbatim) */}
         <Route path="/app/financial/fees"><RouteRedirect to="/app/financial/foundation" /></Route>
         <Route path="/app/financial/recurring-charges"><RouteRedirect to="/app/financial/foundation" /></Route>
         <Route path="/app/financial/ledger"><RouteRedirect to="/app/financial/billing" /></Route>
@@ -318,21 +337,28 @@ function WorkspaceRouter({
         <Route path="/app/resident-feedback"><ZoneBoundary zone="Operations"><ResidentFeedbackPage /></ZoneBoundary></Route>
         <Route path="/app/maintenance-schedules"><ZoneBoundary zone="Operations"><MaintenanceSchedulesPage /></ZoneBoundary></Route>
         <Route path="/app/inspections"><ZoneBoundary zone="Operations"><InspectionsPage /></ZoneBoundary></Route>
-        {/* Board & Governance — consolidated routes (Wave 18: zone-scoped ErrorBoundary) */}
-        <Route path="/app/governance"><ZoneBoundary zone="Governance"><GovernancePage /></ZoneBoundary></Route>
+        {/* 3.2 Q3 — Governance hub at zone root; legacy `GovernancePage`
+            content relocated to `/app/governance/overview`. The existing
+            governance legacy redirects continue to land at the new hub
+            (which is the correct navigational entry point). */}
+        <Route path="/app/governance/overview"><ZoneBoundary zone="Governance"><GovernancePage /></ZoneBoundary></Route>
         <Route path="/app/governance/elections/:id">{(params) => <ZoneBoundary zone="Governance"><ElectionDetailPage id={params.id ?? ""} /></ZoneBoundary>}</Route>
         <Route path="/app/governance/board-packages"><RouteRedirect to="/app/governance" /></Route>
         <Route path="/app/governance/meetings"><RouteRedirect to="/app/governance" /></Route>
         <Route path="/app/governance/compliance"><RouteRedirect to="/app/governance" /></Route>
         <Route path="/app/governance/elections"><RouteRedirect to="/app/governance" /></Route>
+        <Route path="/app/governance"><ZoneBoundary zone="Governance"><GovernanceHubPage /></ZoneBoundary></Route>
         <Route path="/app/ai/ingestion">
           {canAccessWipRoute("/app/ai/ingestion", adminRole) ? <AiIngestionPage /> : <NotFound />}
         </Route>
         {/* 4.1 Wave 4 — central inbox must match BEFORE the generic
             /app/communications hub, since wouter resolves path literals
-            in declaration order. (Wave 18: zone-scoped ErrorBoundary) */}
+            in declaration order. (Wave 18: zone-scoped ErrorBoundary)
+            Phase 11 (3.2 Q3) — Communications hub at zone root; legacy
+            content relocated to `/app/communications/overview`. */}
         <Route path="/app/communications/inbox"><ZoneBoundary zone="Communications"><CommunicationsInboxPage /></ZoneBoundary></Route>
-        <Route path="/app/communications"><ZoneBoundary zone="Communications"><CommunicationsPage /></ZoneBoundary></Route>
+        <Route path="/app/communications/overview"><ZoneBoundary zone="Communications"><CommunicationsPage /></ZoneBoundary></Route>
+        <Route path="/app/communications"><ZoneBoundary zone="Communications"><CommunicationsHubPage /></ZoneBoundary></Route>
         <Route path="/app/platform/controls">
           {adminRole === "platform-admin" ? <ZoneBoundary zone="Platform"><PlatformControlsPage /></ZoneBoundary> : <NotFound />}
         </Route>
