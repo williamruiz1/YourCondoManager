@@ -142,11 +142,20 @@ test.describe("Wave 16a/26 — signup → onboarding", () => {
       await page.goto("/signup");
       await expect(page).toHaveURL(/\/signup/);
 
-      await page.goto(`/signup/success?session_id=${sessionId}`);
-
-      await page.waitForResponse((res) =>
-        res.url().includes("/api/public/signup/complete") && res.status() === 200,
-      );
+      // Arm `waitForResponse` BEFORE the navigation that triggers the
+      // signup-complete fetch. The success page fires the request from a
+      // `useEffect` immediately after mount, which races with `page.goto`'s
+      // resolution: Chromium happens to register the listener in time, but
+      // Firefox + WebKit complete the request before `waitForResponse` is
+      // armed and the wait then sees no further matching response.
+      // Using Promise.all guarantees the listener is in place when the
+      // navigation begins.
+      await Promise.all([
+        page.waitForResponse((res) =>
+          res.url().includes("/api/public/signup/complete") && res.status() === 200,
+        ),
+        page.goto(`/signup/success?session_id=${sessionId}`),
+      ]);
 
       authState = "authed";
       await page.goto("/app");
@@ -229,10 +238,16 @@ test.describe("Wave 16a/26 — signup → onboarding", () => {
     await page.goto("/signup");
     await expect(page).toHaveURL(/\/signup/);
 
-    await page.goto(`/signup/success?session_id=${STRIPE_SESSION_ID}`);
-    await page.waitForResponse((res) =>
-      res.url().includes("/api/public/signup/complete") && res.status() === 200,
-    );
+    // Arm `waitForResponse` BEFORE the navigation that triggers the
+    // signup-complete fetch. See the route-mock block above for the
+    // engine-race rationale (Firefox + WebKit complete the request
+    // before a post-goto `waitForResponse` can register).
+    await Promise.all([
+      page.waitForResponse((res) =>
+        res.url().includes("/api/public/signup/complete") && res.status() === 200,
+      ),
+      page.goto(`/signup/success?session_id=${STRIPE_SESSION_ID}`),
+    ]);
 
     // 3. Seed the rows that `provisionWorkspace()` would have written
     //    during a real Stripe checkout completion. Asserting these rows
