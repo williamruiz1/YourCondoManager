@@ -1,10 +1,14 @@
 // zone: Governance
 // persona: Manager, Board Officer, Assisted Board, PM Assistant
+//
+// Phase 11 (3.2 Q3): this file is now mounted at `/app/governance/overview`.
+// `/app/governance` renders the new `GovernanceHubPage` (zone hub) which
+// owns the HubAlertWidget per 4.1 Q9. Widget removed here to avoid the
+// double-mount when users navigate from hub → overview.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { HubAlertWidget } from "@/components/hub-alert-widget";
 import { MeetingsContent } from "./meetings";
 import { BoardPackagesContent } from "./board-packages";
 import { ElectionsContent } from "./elections";
@@ -25,7 +29,6 @@ export default function GovernancePage() {
           breadcrumbs={[{ label: t("common.crumb.board"), href: "/app/board" }, { label: t("governance.crumb") }]}
           subPages={boardGovernanceSubPages}
         />
-        <HubAlertWidget zone="Governance" />
         <Tabs defaultValue="meetings" className="space-y-6">
           <TabsList>
             <TabsTrigger value="meetings">{t("governance.tabs.meetings")}</TabsTrigger>

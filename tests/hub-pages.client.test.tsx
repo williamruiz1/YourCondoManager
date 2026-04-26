@@ -7,27 +7,28 @@
  * TanStack query, so the assertion is that the widget renders and its
  * test-id carries the expected zone slug.
  *
- * Note: the Governance and Communications hubs in this wave reuse the
- * existing `/app/governance` and `/app/communications` real-content
- * pages (not the `client/src/pages/hubs/*` placeholders) — the widget
- * is mounted at the top of those existing pages. Financials and
- * Operations use the placeholder hub pages wired at `/app/financials`
- * and `/app/operations`.
+ * Phase 11 (3.2 Q3): the Governance and Communications hubs now live in
+ * dedicated files under `client/src/pages/hubs/` (matching Financials and
+ * Operations). The legacy `/app/governance` and `/app/communications`
+ * page content has relocated to `/app/governance/overview` and
+ * `/app/communications/overview` respectively. The HubAlertWidget mounts
+ * on the new hub pages — not the relocated overview pages — so this test
+ * targets the four hub files in `client/src/pages/hubs/`.
  *
  * @vitest-environment jsdom
  */
 
-import path from "node:path";
-import { promises as fs } from "node:fs";
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Router } from "wouter";
+import { memoryLocation } from "wouter/memory-location";
 
 import FinancialsHub from "../client/src/pages/hubs/financials-hub";
 import OperationsHub from "../client/src/pages/hubs/operations-hub";
-
-const REPO_ROOT = path.resolve(__dirname, "..");
+import GovernanceHub from "../client/src/pages/hubs/governance-hub";
+import CommunicationsHub from "../client/src/pages/hubs/communications-hub";
 
 function renderWithClient(node: React.ReactElement) {
   const client = new QueryClient({
@@ -35,8 +36,11 @@ function renderWithClient(node: React.ReactElement) {
       queries: { retry: false, staleTime: Infinity, refetchInterval: false },
     },
   });
+  const { hook } = memoryLocation({ path: "/app" });
   return render(
-    <QueryClientProvider client={client}>{node}</QueryClientProvider>,
+    <QueryClientProvider client={client}>
+      <Router hook={hook}>{node}</Router>
+    </QueryClientProvider>,
   );
 }
 
@@ -68,28 +72,43 @@ describe("Zone hub pages — HubAlertWidget mount", () => {
     expect(widget).toHaveAttribute("data-hub-zone", "Operations");
   });
 
-  it("Governance hub page (real-content /app/governance) mounts the widget", async () => {
-    // The real Governance page imports many child components (meetings,
-    // elections, compliance, board-packages) and makes network requests.
-    // Rather than render the full page, we assert on the source file by
-    // checking it contains the widget mount with the correct zone prop —
-    // a cheap smoke test that the integration is wired. A full render is
-    // covered by the HubAlertWidget unit test + the existing governance
-    // page test suite.
-    const source = await fs.readFile(
-      path.join(REPO_ROOT, "client/src/pages/governance.tsx"),
-      "utf8",
-    );
-    expect(source).toMatch(/HubAlertWidget/);
-    expect(source).toMatch(/zone="Governance"/);
+  it("Governance hub mounts HubAlertWidget with zone='Governance'", () => {
+    renderWithClient(<GovernanceHub />);
+    const widget = screen.getByTestId("hub-alert-widget-governance");
+    expect(widget).toBeInTheDocument();
+    expect(widget).toHaveAttribute("data-hub-zone", "Governance");
   });
 
-  it("Communications hub page (real-content /app/communications) mounts the widget", async () => {
-    const source = await fs.readFile(
-      path.join(REPO_ROOT, "client/src/pages/communications.tsx"),
-      "utf8",
-    );
-    expect(source).toMatch(/HubAlertWidget/);
-    expect(source).toMatch(/zone="Communications"/);
+  it("Communications hub mounts HubAlertWidget with zone='Communications'", () => {
+    renderWithClient(<CommunicationsHub />);
+    const widget = screen.getByTestId("hub-alert-widget-communications");
+    expect(widget).toBeInTheDocument();
+    expect(widget).toHaveAttribute("data-hub-zone", "Communications");
+  });
+});
+
+describe("Zone hub pages — sub-page navigation grid (Phase 11 — 3.2 Q1-Q3)", () => {
+  it("Financials hub renders a sub-page links grid", () => {
+    renderWithClient(<FinancialsHub />);
+    expect(screen.getByTestId("financials-hub-links")).toBeInTheDocument();
+  });
+
+  it("Operations hub renders a sub-page links grid", () => {
+    renderWithClient(<OperationsHub />);
+    expect(screen.getByTestId("operations-hub-links")).toBeInTheDocument();
+  });
+
+  it("Governance hub renders a sub-page links grid (overview link present)", () => {
+    renderWithClient(<GovernanceHub />);
+    expect(screen.getByTestId("governance-hub-links")).toBeInTheDocument();
+    // 3.2 Q3 — the relocated /app/governance/overview link must appear.
+    expect(screen.getByTestId("link-governance-hub-overview")).toBeInTheDocument();
+  });
+
+  it("Communications hub renders a sub-page links grid (overview + inbox links)", () => {
+    renderWithClient(<CommunicationsHub />);
+    expect(screen.getByTestId("communications-hub-links")).toBeInTheDocument();
+    expect(screen.getByTestId("link-communications-hub-overview")).toBeInTheDocument();
+    expect(screen.getByTestId("link-communications-hub-inbox")).toBeInTheDocument();
   });
 });

@@ -29,7 +29,9 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { HubAlertWidget } from "@/components/hub-alert-widget";
+// Phase 11 (3.2 Q3): this file is now mounted at `/app/communications/overview`.
+// `/app/communications` renders the new `CommunicationsHubPage` (zone hub)
+// which owns the HubAlertWidget per 4.1 Q9.
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
@@ -2345,7 +2347,6 @@ export default function CommunicationsPage() {
         breadcrumbs={[{ label: "Board", href: "/app/board" }, { label: "Communications" }]}
         subPages={boardGovernanceSubPages}
       />
-      <HubAlertWidget zone="Communications" />
       <Tabs defaultValue="communications" className="space-y-6">
         <TabsList>
           <TabsTrigger value="communications">Notices</TabsTrigger>

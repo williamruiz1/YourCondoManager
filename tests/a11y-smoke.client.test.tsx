@@ -126,11 +126,14 @@ describe("a11y smoke — hub placeholders (5.5 AC 5)", () => {
     expect(container.querySelector("main")).toBeNull();
   });
 
-  it("Financials hub renders the EmptyState with role=status (5.5 AC 7-8)", () => {
+  it("Financials hub renders the sub-page navigation grid (Phase 11 — 3.2 Q1)", () => {
+    // Phase 11 (3.2 Q1): the Financials hub became a navigation surface
+    // (zone title + sub-page link list) per 1.2 Q2 — replacing the prior
+    // EmptyState placeholder. The 5.5 AC 7-8 EmptyState/role=status
+    // assertion was tied to the placeholder era and is retired here.
     const { container } = renderWithClient(<FinancialsHub />);
-    const empty = container.querySelector('[data-testid="financials-hub-empty"]');
-    expect(empty).not.toBeNull();
-    expect(empty?.getAttribute("role")).toBe("status");
+    const grid = container.querySelector('[data-testid="financials-hub-links"]');
+    expect(grid).not.toBeNull();
   });
 });
 
