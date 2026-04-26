@@ -1,7 +1,7 @@
 # YCM API Reference — 2026-04-25
 **Generated as part of Wave 20 docs backfill.**
 **Source:** `server/routes.ts` (16,215 LoC monolith) plus `server/routes/{amenities,autopay,payment-portal}.ts`.
-**Total endpoints:** 588 (across 9 functional zones).
+**Total endpoints:** 594 (across 9 functional zones). _Bumped from 588 → 594 in Wave 35b docs catch-up: +5 admin notification / push endpoints (Wave 32), +1 financial-jobs status endpoint (Wave 33)._
 **Format:** hand-curated markdown. OpenAPI/Swagger generation deferred — see "Future work" at bottom.
 
 ---
@@ -18,7 +18,7 @@
 
 ## Endpoint Inventory by Zone
 
-**Total:** 588 endpoints across 9 zones.
+**Total:** 594 endpoints across 9 zones (post Wave-35b catch-up).
 
 ### Portal (96 endpoints)
 
@@ -135,7 +135,7 @@ _Anonymous endpoints — payment-link landing pages, auto-populated community pa
 | GET | `/api/public/signup/complete` | Public | List/read `public/signup/complete` |
 | POST | `/api/public/signup/start` | Public | Create or action `public/signup/start` |
 
-### Financials (105 endpoints)
+### Financials (106 endpoints)
 
 _Recurring + special assessments, ledgers, payment runs, autopay, late fees, checks, delinquency. Operator-side only (Manager/Board Officer/Assisted Board/PM Assistant/Platform Admin)._
 
@@ -197,6 +197,7 @@ _Recurring + special assessments, ledgers, payment runs, autopay, late fees, che
 | GET | `/api/financial/invoices` | Admin | List/read `financial/invoices` |
 | POST | `/api/financial/invoices` | Admin | Create or action `financial/invoices` |
 | PATCH | `/api/financial/invoices/:id` | Admin | Update `financial/invoices/{id}` |
+| GET | `/api/financial/jobs/:jobId` | Admin (role-gated) | _Wave 33 (5.4-F3)._ Read background-job status by jobId. Returns the persisted `background_jobs` row plus, for `done` jobs, hydrated `assessment_run_log` entries. Used by the rule-run UI to poll long-running runs (>500 units). Allowed roles: `platform-admin`, `board-officer`, `pm-assistant`, `manager`, `assisted-board`. Association scope enforced from the job payload's `associationId`. |
 | GET | `/api/financial/late-fee-events` | Admin | List/read `financial/late-fee-events` |
 | GET | `/api/financial/late-fee-rules` | Admin | List/read `financial/late-fee-rules` |
 | POST | `/api/financial/late-fee-rules` | Admin | Create or action `financial/late-fee-rules` |
@@ -523,7 +524,7 @@ _Cross-association alert engine (4.1) — single aggregation endpoint for the Ho
 | POST | `/api/alerts/:alertId/restore` | Admin | Create or action `alerts/{id}/restore` |
 | GET | `/api/alerts/cross-association` | Admin | List/read `alerts/cross-association` |
 
-### Platform (141 endpoints)
+### Platform (146 endpoints)
 
 _Platform Admin surfaces (`/api/platform/*`), authentication (`/api/auth/*`), Stripe webhooks, AI ingestion, system bootstrap, observability, billing, dashboard summaries._
 
@@ -553,6 +554,8 @@ _Platform Admin surfaces (`/api/platform/*`), authentication (`/api/auth/*`), St
 | POST | `/api/admin/executive/updates/:id/evidence` | Admin | Create or action `admin/executive/updates/{id}/evidence` |
 | GET | `/api/admin/me/preferences` | Admin | List/read `admin/me/preferences` |
 | PUT | `/api/admin/me/preferences` | Admin | Replace `admin/me/preferences` |
+| GET | `/api/admin/notification-preferences` | Admin | _Wave 32 (4.1 Tier 3)._ Read the operator's per-severity opt-in matrix for push + email alert delivery. |
+| PATCH | `/api/admin/notification-preferences` | Admin | _Wave 32 (4.1 Tier 3)._ Update the operator's per-severity opt-in matrix for push + email alert delivery. |
 | GET | `/api/admin/payment-events` | Admin | List/read `admin/payment-events` |
 | PATCH | `/api/admin/payment-events/:id/status` | Admin | Update `admin/payment-events/{id}/status` |
 | GET | `/api/admin/payment-events/:id/transitions` | Admin | Read `admin/payment-events/{id}/transitions` |
@@ -565,6 +568,9 @@ _Platform Admin surfaces (`/api/platform/*`), authentication (`/api/auth/*`), St
 | DELETE | `/api/admin/projects/:projectId` | Admin | Delete `admin/projects/{id}` |
 | GET | `/api/admin/projects/:projectId` | Admin | Read `admin/projects/{id}` |
 | PATCH | `/api/admin/projects/:projectId` | Admin | Update `admin/projects/{id}` |
+| GET | `/api/admin/push/vapid-public-key` | Admin | _Wave 32 (4.1 Tier 3)._ Return the VAPID public key the service worker needs to subscribe to Web Push. Same key as `/api/portal/push/vapid-public-key` but admin-gated for operator surfaces. |
+| POST | `/api/admin/push/subscribe` | Admin | _Wave 32 (4.1 Tier 3)._ Persist a Web Push subscription for the operator (browser + endpoint + keys). Idempotent — duplicate subscriptions for the same endpoint are upserted. |
+| DELETE | `/api/admin/push/subscribe` | Admin | _Wave 32 (4.1 Tier 3)._ Remove the operator's Web Push subscription by endpoint. |
 | GET | `/api/admin/qa-seed/preview` | Admin | List/read `admin/qa-seed/preview` |
 | POST | `/api/admin/qa-seed/purge` | Admin | Create or action `admin/qa-seed/purge` |
 | GET | `/api/admin/roadmap` | Admin | List/read `admin/roadmap` |
