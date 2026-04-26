@@ -211,6 +211,7 @@ import {
   auditLogs,
   adminUserPreferences,
   platformSubscriptions,
+  adminAssociationScopes,
   platformWebhookEvents,
   roadmapProjects,
   roadmapWorkstreams,
@@ -14089,6 +14090,231 @@ This is an automated demo request from the Your Condo Manager website.
       res.status(500).json({ message: e.message });
     }
   });
+
+  // POST /api/admin/associations/start-checkout
+  //
+  // Wave 39 follow-up — authenticated 2nd-HOA self-managed checkout.
+  //
+  // Self-managed billing is per-HOA (one platform_subscriptions row per
+  // associationId, enforced by `platform_subscriptions_association_uq`).
+  // The public `/api/public/signup/start` endpoint short-circuits to 409
+  // when the email matches an existing adminUsers row, so a logged-in
+  // self-managed Manager / Board-Officer cannot reuse it to add a 2nd HOA.
+  //
+  // This endpoint provides the authenticated path:
+  //   1. validates body (associationName + optional address / unitCount)
+  //   2. asserts caller is on a self-managed-tier role + has at least one
+  //      self-managed plan today (otherwise the per-HOA flow doesn't apply)
+  //   3. idempotency — recent (1 hour) `incomplete` subscription created
+  //      by this caller for the same associationName returns the existing
+  //      pending checkout's URL instead of creating duplicate stub rows
+  //   4. creates a stub `associations` row + `admin_association_scopes`
+  //      binding (caller's existing role) + a Stripe Checkout Session
+  //      (21-day trial + payment_method_collection=if_required, matching
+  //      Wave 39 founder ratifications) + a pending `platform_subscriptions`
+  //      row keyed by the new associationId
+  //   5. returns `{ checkoutUrl, associationId }`
+  //
+  // The endpoint does NOT create a new adminUsers row, does NOT issue a
+  // new auth session, and does NOT bump the user from self-managed →
+  // PM-tier (that's the upgrade path on `/api/admin/billing/portal-session`).
+  const startCheckoutSchema = z.object({
+    associationName: z.string().trim().min(1).max(200),
+    associationAddress: z.string().trim().max(500).optional(),
+    unitCount: z.number().int().positive().max(100000).optional(),
+    plan: z.literal("self-managed"),
+    successUrl: z.string().url().optional(),
+    cancelUrl: z.string().url().optional(),
+  });
+  app.post(
+    "/api/admin/associations/start-checkout",
+    requireAdmin,
+    requireAdminRole(["manager", "board-officer"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const parsed = startCheckoutSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({
+            message: "Invalid request",
+            code: "INVALID_REQUEST",
+            issues: parsed.error.flatten(),
+          });
+        }
+        const adminUserId = req.adminUserId;
+        const adminEmail = req.adminUserEmail;
+        const adminRole = req.adminRole;
+        if (!adminUserId || !adminEmail || !adminRole) {
+          return res.status(403).json({ message: "Admin context unresolved" });
+        }
+
+        // Caller must already be on a self-managed plan today. If they have
+        // zero rows this endpoint is not applicable (they should sign up via
+        // the public flow). If every row is PM-tier, this endpoint is also
+        // not applicable (consolidated billing already covers extra HOAs).
+        const scopedAssociationIds = req.adminScopedAssociationIds ?? [];
+        const callerSubs = scopedAssociationIds.length
+          ? (
+            await db
+              .select()
+              .from(platformSubscriptions)
+              .where(inArray(platformSubscriptions.associationId, scopedAssociationIds))
+          )
+          : [];
+        const hasSelfManaged = callerSubs.some((s) => s.plan === "self-managed");
+        if (!hasSelfManaged) {
+          return res.status(400).json({
+            message:
+              "This endpoint is for adding a self-managed HOA from an existing self-managed account. No self-managed subscription was found for the current user.",
+            code: "NOT_SELF_MANAGED",
+          });
+        }
+
+        // Idempotency — return the latest pending checkout for the same
+        // (caller, associationName) within the last hour rather than
+        // creating another stub. This guards against double-clicks,
+        // browser-back navigation, and accidental retries.
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const pendingMatch = await db
+          .select({
+            sub: platformSubscriptions,
+            assoc: associations,
+          })
+          .from(platformSubscriptions)
+          .innerJoin(associations, eq(associations.id, platformSubscriptions.associationId))
+          .innerJoin(
+            adminAssociationScopes,
+            eq(adminAssociationScopes.associationId, associations.id),
+          )
+          .where(
+            and(
+              eq(adminAssociationScopes.adminUserId, adminUserId),
+              eq(platformSubscriptions.status, "incomplete"),
+              eq(associations.name, parsed.data.associationName),
+              gte(platformSubscriptions.createdAt, oneHourAgo),
+            ),
+          )
+          .orderBy(desc(platformSubscriptions.createdAt))
+          .limit(1);
+
+        if (pendingMatch.length > 0) {
+          const existing = pendingMatch[0];
+          const stripeSubId = existing.sub.stripeSubscriptionId;
+          if (stripeSubId) {
+            try {
+              const sub = await stripeRequest("GET", `/subscriptions/${stripeSubId}?expand[]=latest_invoice`);
+              const latestInvoice = (sub as any).latest_invoice as Record<string, unknown> | null;
+              const hostedUrl = latestInvoice && typeof latestInvoice.hosted_invoice_url === "string"
+                ? latestInvoice.hosted_invoice_url
+                : null;
+              if (hostedUrl) {
+                return res.json({ checkoutUrl: hostedUrl, associationId: existing.assoc.id, idempotent: true });
+              }
+            } catch {
+              /* fall through to create a fresh checkout below */
+            }
+          }
+        }
+
+        // Resolve Stripe price + secret. `stripeRequest` re-reads the secret
+        // internally; the explicit guard here surfaces a clean 503 instead of
+        // a generic 500 when the platform isn't configured.
+        const platformSecretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+        if (!platformSecretKey) return res.status(503).json({ message: "Billing not configured" });
+        const priceIdsRaw = await getSecret("STRIPE_PLAN_PRICE_IDS", "stripe_plan_price_ids");
+        const priceIds = priceIdsRaw ? (JSON.parse(priceIdsRaw) as Record<string, string>) : {};
+        const units = parsed.data.unitCount ?? 0;
+        const tierKey = units >= 30 ? "self-managed-large" : "self-managed-small";
+        const priceId = priceIds[tierKey] ?? priceIds["self-managed"];
+        if (!priceId) return res.status(503).json({ message: "Plan pricing not configured" });
+
+        // Create Stripe customer (per-HOA — matches public signup pattern).
+        const customerParams = new URLSearchParams({ email: adminEmail, name: adminEmail });
+        customerParams.set("metadata[organizationName]", parsed.data.associationName);
+        customerParams.set("metadata[plan]", "self-managed");
+        customerParams.set("metadata[adminUserId]", adminUserId);
+        customerParams.set("metadata[source]", "add-hoa-authenticated");
+        const customer = await stripeRequest("POST", "/customers", customerParams);
+        const customerId = customer.id as string;
+
+        // Create stub association + scope binding. NO new adminUsers row —
+        // the caller is already authenticated.
+        const [assoc] = await db
+          .insert(associations)
+          .values({
+            name: parsed.data.associationName,
+            associationType: "HOA",
+            address: parsed.data.associationAddress ?? "TBD",
+            city: "TBD",
+            state: "TBD",
+            country: "USA",
+          })
+          .returning();
+        await storage.upsertAdminAssociationScope({
+          adminUserId,
+          associationId: assoc.id,
+          scope: "read-write",
+        });
+
+        // Stripe Checkout Session. 21-day trial + if_required collection
+        // mirror Wave 39 founder ratifications (Q5/Q6/Q7).
+        const baseUrl =
+          (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.yourcondomanager.org";
+        const successUrl = parsed.data.successUrl ?? `${baseUrl}/signup/success?session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl = parsed.data.cancelUrl ?? `${baseUrl}/app/settings/billing`;
+        const sessionParams = new URLSearchParams({
+          mode: "subscription",
+          payment_method_collection: "if_required",
+          customer: customerId,
+          "line_items[0][price]": priceId,
+          "line_items[0][quantity]": "1",
+          "subscription_data[trial_period_days]": "21",
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          client_reference_id: assoc.id,
+        });
+        sessionParams.set("subscription_data[metadata][associationId]", assoc.id);
+        sessionParams.set("subscription_data[metadata][adminUserId]", adminUserId);
+        sessionParams.set("subscription_data[metadata][plan]", "self-managed");
+        sessionParams.set("metadata[associationId]", assoc.id);
+        sessionParams.set("metadata[adminUserId]", adminUserId);
+        sessionParams.set("metadata[plan]", "self-managed");
+        sessionParams.set("metadata[source]", "add-hoa-authenticated");
+        const checkoutSession = await stripeRequest("POST", "/checkout/sessions", sessionParams);
+
+        // Pending platform_subscriptions row keyed by the new associationId.
+        // The unique-index on (associationId) is exercised here — if the
+        // association somehow already has a non-cancelled subscription row
+        // we surface it as 409 rather than 500.
+        try {
+          await storage.createPlatformSubscription({
+            associationId: assoc.id,
+            plan: "self-managed",
+            status: "incomplete",
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: null,
+            adminEmail,
+          });
+        } catch (insertError: any) {
+          const msg = String(insertError?.message ?? "");
+          if (/platform_subscriptions_association_uq|duplicate key|unique constraint/i.test(msg)) {
+            return res.status(409).json({
+              message: "Association already has a subscription",
+              code: "SUBSCRIPTION_EXISTS",
+            });
+          }
+          throw insertError;
+        }
+
+        return res.json({
+          checkoutUrl: checkoutSession.url,
+          associationId: assoc.id,
+        });
+      } catch (e: any) {
+        console.error("[admin][associations][start-checkout] error", e);
+        return res.status(500).json({ message: e?.message ?? "internal-error" });
+      }
+    },
+  );
 
   // POST /api/webhooks/platform/stripe — Stripe lifecycle events
   app.post("/api/webhooks/platform/stripe", async (req, res) => {
