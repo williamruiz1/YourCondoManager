@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Menu, X, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Menu, X } from "lucide-react";
 import DemoRequestModal from "@/components/demo-request-modal";
 import { SiteFooter } from "@/components/site-footer";
+import { useStrings } from "@/i18n/use-strings";
 
 type SolutionsPageProps = {
   hasWorkspaceAccess: boolean;
@@ -12,12 +13,6 @@ type SolutionsPageProps = {
 };
 
 type Persona = "manager" | "board" | "resident";
-
-const personaLabels: Record<Persona, string> = {
-  manager: "Property Managers",
-  board: "Board Members",
-  resident: "Residents",
-};
 
 // Analytics tracking utility
 const trackEvent = (eventName: string, eventData: Record<string, any> = {}) => {
@@ -47,6 +42,13 @@ export default function SolutionsPage({
   const [persona, setPersona] = useState<Persona>("board");
   const [animating, setAnimating] = useState(false);
   const [demoModalOpen, setDemoModalOpen] = useState(false);
+  const { t } = useStrings();
+
+  const personaLabels: Record<Persona, string> = {
+    manager: t("marketing.persona.manager"),
+    board: t("marketing.persona.board"),
+    resident: t("marketing.persona.resident"),
+  };
 
   function switchPersona(next: Persona) {
     if (next === persona) return;
@@ -95,7 +97,7 @@ export default function SolutionsPage({
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-on-primary focus:rounded focus:font-semibold"
       >
-        Skip to main content
+        {t("marketing.skipToContent")}
       </a>
 
       {/* ── NAVIGATION ── */}
@@ -103,29 +105,29 @@ export default function SolutionsPage({
         <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 h-16 flex items-center justify-between gap-6">
           {/* Logo */}
           <Link href="/" className="shrink-0">
-            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">Your Condo Manager</span>
+            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">{t("marketing.brand")}</span>
           </Link>
 
           {/* Nav links — desktop */}
-          <nav className="hidden md:flex items-center gap-6" aria-label="Main navigation">
+          <nav className="hidden md:flex items-center gap-6" aria-label={t("marketing.nav.label")}>
             <Link
               href="/"
               className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
             >
-              Platform
+              {t("marketing.nav.platform")}
             </Link>
             <Link
               href="/solutions"
               className="text-blue-700 dark:text-blue-400 font-bold border-b-2 border-blue-700 dark:border-blue-400 pb-1"
               aria-current="page"
             >
-              Solutions
+              {t("marketing.nav.solutions")}
             </Link>
             <Link
               href="/pricing"
               className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
             >
-              Pricing
+              {t("marketing.nav.pricing")}
             </Link>
           </nav>
 
@@ -134,16 +136,16 @@ export default function SolutionsPage({
             {hasWorkspaceAccess ? (
               <Button asChild>
                 <Link href="/app">
-                  Open Workspace <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  {t("marketing.cta.openWorkspace")} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Link>
               </Button>
             ) : (
               <>
                 <button className="text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>
-                  Sign In
+                  {t("marketing.cta.signIn")}
                 </button>
                 <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-5 py-2 rounded font-semibold scale-95 active:opacity-80 transition-all" onClick={onStartGoogleSignIn}>
-                  Open Workspace
+                  {t("marketing.cta.openWorkspace")}
                 </button>
               </>
             )}
@@ -153,7 +155,7 @@ export default function SolutionsPage({
           <button
             className="md:hidden p-2 -mr-1 rounded-lg hover:bg-accent transition-colors"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle menu"
+            aria-label={t("marketing.nav.toggleMenu")}
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -166,32 +168,32 @@ export default function SolutionsPage({
               href="/"
               className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Platform
+              {t("marketing.nav.platform")}
             </Link>
             <Link
               href="/solutions"
               className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               aria-current="page"
             >
-              Solutions
+              {t("marketing.nav.solutions")}
             </Link>
             <Link
               href="/pricing"
               className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Pricing
+              {t("marketing.nav.pricing")}
             </Link>
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
               {hasWorkspaceAccess ? (
                 <Button asChild>
                   <Link href="/app">
-                    Open Workspace <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                    {t("marketing.cta.openWorkspace")} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                   </Link>
                 </Button>
               ) : (
                 <>
-                  <button className="px-4 py-2 text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>Sign In</button>
-                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all" onClick={onStartGoogleSignIn}>Open Workspace</button>
+                  <button className="px-4 py-2 text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>{t("marketing.cta.signIn")}</button>
+                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all" onClick={onStartGoogleSignIn}>{t("marketing.cta.openWorkspace")}</button>
                 </>
               )}
             </div>
@@ -205,21 +207,20 @@ export default function SolutionsPage({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end">
             <div className="lg:col-span-7">
               <span className="text-xs uppercase tracking-[0.3em] font-bold text-primary mb-6 block">
-                Our Solutions
+                {t("solutions.hero.eyebrow")}
               </span>
               <h1 className="font-headline text-6xl md:text-8xl leading-[1.1] text-on-surface dark:text-slate-100 mb-8">
-                The Infrastructure of <br />
-                <i className="font-light">Modern Excellence.</i>
+                {t("solutions.hero.headlineLead")} <br />
+                <i className="font-light">{t("solutions.hero.headlineEmphasis")}</i>
               </h1>
               <p className="text-xl text-on-surface-variant dark:text-slate-400 max-w-xl leading-relaxed">
-                Your Condo Manager provides the architectural framework for high-performance property
-                ecosystems—from independent boards to global management firms.
+                {t("solutions.hero.subhead")}
               </p>
             </div>
             <div className="lg:col-span-5 hidden lg:block text-right pb-4">
               <div className="inline-flex items-center gap-4 text-sm font-medium text-outline">
                 <span className="w-12 h-[1px] bg-outline-variant"></span>
-                SCROLL TO EXPLORE
+                {t("solutions.hero.scrollHint")}
               </div>
             </div>
           </div>
@@ -229,7 +230,7 @@ export default function SolutionsPage({
         {/* ── PERSONA TOGGLE ── */}
         <section className="bg-surface-container py-8 border-y border-outline-variant/10 mb-20">
           <div className="max-w-screen-2xl mx-auto px-8 flex flex-col md:flex-row items-center justify-center gap-6">
-            <span id="persona-toggle-label" className="font-label text-sm font-bold text-on-surface-variant uppercase tracking-widest">Choose your solution:</span>
+            <span id="persona-toggle-label" className="font-label text-sm font-bold text-on-surface-variant uppercase tracking-widest">{t("solutions.persona.toggleLabel")}</span>
             <div className="flex p-1 bg-surface-container-high rounded-lg border border-outline-variant/20" role="group" aria-labelledby="persona-toggle-label">
               {(["board", "manager", "resident"] as Persona[]).map((p) => (
                 <button
@@ -263,30 +264,29 @@ export default function SolutionsPage({
                     account_balance
                   </span>
                   <h2 className="font-headline text-5xl text-on-surface dark:text-slate-100 mb-6">
-                    Self-Managed <br />
-                    Associations
+                    {t("solutions.board.headline.line1")} <br />
+                    {t("solutions.board.headline.line2")}
                   </h2>
                   <p className="text-on-surface-variant dark:text-slate-400 text-lg leading-relaxed mb-8">
-                    Empower your board with professional-grade tools designed for simplicity and
-                    total transparency. We remove the friction of community governance.
+                    {t("solutions.board.body")}
                   </p>
                 </div>
                 <div className="space-y-8" role="list">
                   {[
                     {
                       icon: "payments",
-                      title: "Dues Collection",
-                      description: "Automated, secure digital payments with real-time delinquency tracking.",
+                      title: t("solutions.board.feature.dues.title"),
+                      description: t("solutions.board.feature.dues.body"),
                     },
                     {
                       icon: "handyman",
-                      title: "Maintenance Hubs",
-                      description: "Centralized ticketing for common areas and private unit requests.",
+                      title: t("solutions.board.feature.maintenance.title"),
+                      description: t("solutions.board.feature.maintenance.body"),
                     },
                     {
                       icon: "how_to_reg",
-                      title: "Digital Voting",
-                      description: "Legally-compliant proxy voting and secure community polls.",
+                      title: t("solutions.board.feature.voting.title"),
+                      description: t("solutions.board.feature.voting.body"),
                     },
                   ].map((item, idx) => (
                     <div key={idx} className="flex gap-6 group" role="listitem">
@@ -310,7 +310,7 @@ export default function SolutionsPage({
               </div>
               <div className="relative min-h-[400px] bg-surface-container-highest dark:bg-slate-800">
                 <img
-                  alt="Modern architectural detail"
+                  alt={t("solutions.board.image.alt")}
                   className="absolute inset-0 w-full h-full object-cover mix-blend-multiply opacity-80"
                   data-alt="Modern geometric glass building facade with sharp lines and blue sky reflections in a minimalist architectural style"
                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuAg_Ua7IHKfaOBKwwQBLrhg9wu9mU7Juj1BeOI914zs1sYKgzNAqLx3HNatRpL6pvRcIlM6AZjScO0q_nBfczN4N3zQxghCxr78LUpyq8NmfhVg7j7NFIhHvkfuOGwdiRV9K8Yb2xNGNx0KnOJ3dEfyume-RV0KCSQ7WtkEsi72L-34Lv8FASaDw_SFR-qeXJdGZpk5IIHFJB7-d9lAAbzntLfLqow07Kg4mC_IMt_EbGInu1_HIBDqLmp6bphB9WVCObB6T1TUZiU"
@@ -330,15 +330,14 @@ export default function SolutionsPage({
               <div className="max-w-screen-2xl mx-auto px-8">
                 <div className="text-center mb-20">
                   <span className="text-xs uppercase tracking-[0.3em] font-bold text-primary mb-4 block">
-                    Enterprise Scale
+                    {t("solutions.manager.eyebrow")}
                   </span>
                   <h2 className="font-headline text-5xl md:text-6xl text-on-surface dark:text-slate-100 mb-6">
-                    Property Management <br />
-                    Companies
+                    {t("solutions.manager.headline.line1")} <br />
+                    {t("solutions.manager.headline.line2")}
                   </h2>
                   <p className="text-on-surface-variant dark:text-slate-400 max-w-2xl mx-auto text-lg leading-relaxed">
-                    Sophisticated multi-entity management for firms that demand precision, scalability,
-                    and institutional-grade reporting.
+                    {t("solutions.manager.subhead")}
                   </p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 h-auto md:h-[600px]">
@@ -349,15 +348,14 @@ export default function SolutionsPage({
                         analytics
                       </span>
                       <h3 className="font-headline text-4xl text-on-surface dark:text-slate-100 mb-4">
-                        Centralized Reporting
+                        {t("solutions.manager.reporting.title")}
                       </h3>
                       <p className="text-on-surface-variant dark:text-slate-400 text-lg max-w-md">
-                        Aggregate financial data across your entire portfolio. Generate board-ready
-                        reports in seconds with customizable KPIs.
+                        {t("solutions.manager.reporting.body")}
                       </p>
                     </div>
                     <img
-                      alt="Data visualization"
+                      alt={t("solutions.manager.reporting.image.alt")}
                       className="absolute bottom-[-10%] right-[-10%] w-3/4 opacity-10 group-hover:scale-105 transition-transform duration-700"
                       data-alt="Clean minimalist dashboard interface showing financial charts and data visualizations with a soft blue tint"
                       src="https://lh3.googleusercontent.com/aida-public/AB6AXuDNNHUlctDcSELeyZdUfa2OERCX7Yk7koVYVOShkknAjFez-_Zdq3mqi_lbpwA9bybAszAcpUVBT7SOTPpwGIseEVrEM4_vCUA3fS9OgAHCDavOwlIb4rVzaytszz7hX2ZDod0rAzD4s-uu8KpYW-7IRa4cMNxCU4PBban0sQO9Uln2RzggAFLS1ee624iHpEXXBALW0BnYZ5zNsLiQrR9olI053pIQo8FBldFPj85RW5bBfc3ipaLs6-TS1xMay0mxPDicYsiEmQQ"
@@ -372,19 +370,18 @@ export default function SolutionsPage({
                     <div>
                       <span className="material-symbols-outlined text-4xl mb-6" data-icon="account_tree" aria-hidden="true">account_tree</span>
                       <h3 className="font-headline text-3xl mb-4">
-                        Multi-Entity <br />
-                        Accounting
+                        {t("solutions.manager.accounting.title.line1")} <br />
+                        {t("solutions.manager.accounting.title.line2")}
                       </h3>
                       <p className="text-on-primary/80 dark:text-blue-100">
-                        Robust GL, automated bank recs, and segmented financial tracking for every
-                        association under management.
+                        {t("solutions.manager.accounting.body")}
                       </p>
                     </div>
                     <button
                       onClick={() => handleCTAClick("learn_security", "enterprise_section")}
                       className="mt-8 flex items-center gap-2 font-bold group hover:gap-3 transition-all focus:outline-none focus:ring-2 focus:ring-white rounded px-2"
                     >
-                      Learn about Security
+                      {t("solutions.manager.accounting.cta")}
                       <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform" data-icon="arrow_forward" aria-hidden="true">
                         arrow_forward
                       </span>
@@ -394,11 +391,10 @@ export default function SolutionsPage({
                   {/* Vendor Management */}
                   <div className="md:col-span-4 bg-surface-container dark:bg-slate-900 rounded-xl p-12 flex flex-col justify-center border-t-4 border-primary">
                     <h4 className="font-bold text-xl text-on-surface dark:text-slate-100 mb-3">
-                      Vendor Management
+                      {t("solutions.manager.vendor.title")}
                     </h4>
                     <p className="text-on-surface-variant dark:text-slate-400">
-                      Streamline procurement and work orders with integrated compliance tracking and
-                      automated COI monitoring.
+                      {t("solutions.manager.vendor.body")}
                     </p>
                   </div>
 
@@ -406,11 +402,10 @@ export default function SolutionsPage({
                   <div className="md:col-span-8 bg-surface-container dark:bg-slate-900 rounded-xl p-12 flex items-center gap-12 overflow-hidden">
                     <div className="flex-1">
                       <h4 className="font-bold text-xl text-on-surface dark:text-slate-100 mb-3">
-                        Automated Communications
+                        {t("solutions.manager.comms.title")}
                       </h4>
                       <p className="text-on-surface-variant dark:text-slate-400">
-                        Broadcast notifications via SMS, email, and app push across all properties
-                        simultaneously.
+                        {t("solutions.manager.comms.body")}
                       </p>
                     </div>
                     <div className="hidden lg:flex gap-4">
@@ -432,7 +427,7 @@ export default function SolutionsPage({
                   <div className="relative">
                     <div className="aspect-[4/5] bg-surface-container-high dark:bg-slate-900 rounded-xl overflow-hidden shadow-2xl">
                       <img
-                        alt="Resident using mobile app"
+                        alt={t("solutions.resident.image.alt")}
                         className="w-full h-full object-cover"
                         data-alt="Minimalist modern apartment interior with large windows and soft natural light focusing on a hand holding a sleek smartphone"
                         src="https://lh3.googleusercontent.com/aida-public/AB6AXuCCk3cKps5qEBGKu9r1aVJV6MGLFKMYtjoQocB6288CtUu8BNf_dhdCKSmyl1Bl6sOliwT4C_JV8ppTRdyBid7GMbmAmuCTHNM0XkdAiKvhdhElPS317OfXLBiz-sY3OnDSa3-KCLSg9fE8WjPUxNp5nWpu-gqzLe2KVSlYmpQod4v9x4DyWeuM5Ul9bVWBxGgTtVVVbYqdqJ9bQVYG7NjkmdwAXAeI7c8RDJG4V9-_Nj8QFcP_JEi4eR6ikhkA6CXHCzXu9o_fwgA"
@@ -447,47 +442,42 @@ export default function SolutionsPage({
                           <span className="material-symbols-outlined text-sm" data-icon="calendar_today" aria-hidden="true">calendar_today</span>
                         </div>
                         <span className="text-sm font-bold uppercase tracking-wider text-on-surface dark:text-slate-100">
-                          Upcoming Booking
+                          {t("solutions.resident.booking.label")}
                         </span>
                       </div>
                       <p className="text-sm font-medium text-on-surface dark:text-slate-100 mb-1">
-                        Rooftop Lounge
+                        {t("solutions.resident.booking.title")}
                       </p>
-                      <p className="text-xs text-on-surface-variant dark:text-slate-400">Today at 7:00 PM</p>
+                      <p className="text-xs text-on-surface-variant dark:text-slate-400">{t("solutions.resident.booking.time")}</p>
                     </div>
                   </div>
                 </div>
                 <div className="lg:w-1/2 order-1 lg:order-2">
                   <span className="text-xs uppercase tracking-[0.3em] font-bold text-primary mb-6 block">
-                    Resident Experience
+                    {t("solutions.resident.eyebrow")}
                   </span>
                   <h2 className="font-headline text-5xl text-on-surface dark:text-slate-100 mb-8">
-                    The Modern Resident Journey
+                    {t("solutions.resident.headline")}
                   </h2>
                   <p className="text-lg text-on-surface-variant dark:text-slate-400 leading-relaxed mb-12">
-                    Property management is no longer just about maintenance; it's about hospitality.
-                    Provide your residents with a high-touch digital experience that enhances their
-                    lifestyle.
+                    {t("solutions.resident.body")}
                   </p>
                   <div className="space-y-12">
                     {[
                       {
                         num: "01",
-                        title: "Amenity Booking",
-                        description:
-                          "Real-time scheduling for pools, gyms, and party rooms with integrated guest management.",
+                        title: t("solutions.resident.feature.amenity.title"),
+                        description: t("solutions.resident.feature.amenity.body"),
                       },
                       {
                         num: "02",
-                        title: "One-Touch Payments",
-                        description:
-                          "A seamless mobile-first wallet for recurring dues, guest parking, and on-demand services.",
+                        title: t("solutions.resident.feature.payments.title"),
+                        description: t("solutions.resident.feature.payments.body"),
                       },
                       {
                         num: "03",
-                        title: "Community Bulletin",
-                        description:
-                          "A curated digital space for local announcements, community classifieds, and verified social groups.",
+                        title: t("solutions.resident.feature.bulletin.title"),
+                        description: t("solutions.resident.feature.bulletin.body"),
                       },
                     ].map((item, idx) => (
                       <div key={idx} className="flex gap-8">
@@ -525,10 +515,10 @@ export default function SolutionsPage({
             </div>
             <div className="relative z-10">
               <h2 className="font-headline text-5xl md:text-7xl mb-8 italic">
-                Ready to elevate your estate?
+                {t("solutions.finalCta.title")}
               </h2>
               <p className="text-xl text-on-primary/70 dark:text-blue-100 mb-12 max-w-xl mx-auto">
-                Join the leading properties that have standardized their operations on Your Condo Manager.
+                {t("solutions.finalCta.body")}
               </p>
               <div className="flex flex-col sm:flex-row justify-center gap-6">
                 <button
@@ -537,16 +527,16 @@ export default function SolutionsPage({
                     setDemoModalOpen(true);
                   }}
                   className="bg-white dark:bg-slate-100 text-primary dark:text-blue-900 px-10 py-4 rounded font-bold text-lg hover:bg-slate-50 dark:hover:bg-slate-200 transition-all shadow-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary dark:focus:ring-offset-blue-900"
-                  aria-label="Request a demo of Your Condo Manager solutions"
+                  aria-label={t("solutions.finalCta.requestDemoAria")}
                 >
-                  Request a Demo
+                  {t("solutions.finalCta.requestDemo")}
                 </button>
                 <Link href="/pricing" onClick={() => handleCTAClick("view_pricing", "cta_footer")}>
                   <button
                     className="border border-white/30 dark:border-blue-400/30 text-white dark:text-blue-100 px-10 py-4 rounded font-bold text-lg hover:bg-white/10 dark:hover:bg-white/5 transition-all focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary dark:focus:ring-offset-blue-900"
-                    aria-label="View Your Condo Manager pricing"
+                    aria-label={t("solutions.finalCta.viewPricingAria")}
                   >
-                    View Pricing
+                    {t("solutions.finalCta.viewPricing")}
                   </button>
                 </Link>
               </div>

@@ -20,58 +20,64 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { SiteFooter } from "@/components/site-footer";
+import { useStrings } from "@/i18n/use-strings";
 
 type PricingPageProps = {
   hasWorkspaceAccess: boolean;
   onStartGoogleSignIn: () => void;
 };
 
-// Track 1 primary — self-managed board features
-const selfManagedFeatures = [
-  "Owner Portal with payment history",
-  "Automated dues & assessment collection",
-  "Maintenance request tracking",
-  "Document management & board packages",
-  "Governance meeting & compliance tools",
-];
-
-const propertyManagerFeatures = [
-  "Manage 5–10 Associations",
-  "Multi-Portfolio Dashboard",
-  "Vendor Marketplace Access",
-  "Advanced Asset Management",
-  "Bulk Reporting & Exports",
-];
-
-const enterpriseFeatures = [
-  "10+ Associations",
-  "Dedicated Success Manager",
-  "White-label Resident App",
-  "API & Custom Integrations",
-];
-
 type ComparisonCell = string | boolean;
-
-const comparisonRows: { capability: string; values: [ComparisonCell, ComparisonCell, ComparisonCell] }[] = [
-  { capability: "Associations",         values: ["1",                      "5–10",                    "11+"] },
-  // PRICING STALE — see docs/strategy/pricing-and-positioning.md
-  { capability: "Unit Pricing",         values: ["$30 / $50 per month",    "Standardized",            "Customized"] },
-  { capability: "Multi-Portfolio View", values: [false,                    true,                      true] },
-  { capability: "Resident App",         values: ["Standard",               "Standard",                "White-label available"] },
-  { capability: "API Access",           values: [false,                    false,                     true] },
-  { capability: "Support",              values: ["Help Center",            "Priority Email / Chat",   "Dedicated Account Manager"] },
-];
 
 export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }: PricingPageProps) {
   const [, setLocation] = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { t } = useStrings();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 24);
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  // Track 1 primary — self-managed board features
+  const selfManagedFeatures = [
+    t("pricing.cards.selfManaged.feature.portal"),
+    t("pricing.cards.selfManaged.feature.dues"),
+    t("pricing.cards.selfManaged.feature.maintenance"),
+    t("pricing.cards.selfManaged.feature.documents"),
+    t("pricing.cards.selfManaged.feature.governance"),
+  ];
+
+  const propertyManagerFeatures = [
+    t("pricing.cards.propertyManager.feature.scope"),
+    t("pricing.cards.propertyManager.feature.dashboard"),
+    t("pricing.cards.propertyManager.feature.vendor"),
+    t("pricing.cards.propertyManager.feature.assets"),
+    t("pricing.cards.propertyManager.feature.reporting"),
+  ];
+
+  const enterpriseFeatures = [
+    t("pricing.cards.enterprise.feature.scope"),
+    t("pricing.cards.enterprise.feature.success"),
+    t("pricing.cards.enterprise.feature.app"),
+    t("pricing.cards.enterprise.feature.api"),
+  ];
+
+  // Comparison-table rows. The "Associations" cell tier values ("1", "5–10",
+  // "11+") and the unit-pricing cell ("$30 / $50 per month") are dynamic
+  // pricing data — they stay inline per the Wave 42 scope rule (no dynamic
+  // tier figures in the registry).
+  const comparisonRows: { capability: string; values: [ComparisonCell, ComparisonCell, ComparisonCell] }[] = [
+    { capability: t("pricing.compare.row.associations"),  values: ["1",                                   "5–10",                                       "11+"] },
+    // PRICING STALE — see docs/strategy/pricing-and-positioning.md
+    { capability: t("pricing.compare.row.unitPricing"),   values: ["$30 / $50 per month",                 t("pricing.compare.value.standardized"),      t("pricing.compare.value.customized")] },
+    { capability: t("pricing.compare.row.multiPortfolio"), values: [false,                                true,                                         true] },
+    { capability: t("pricing.compare.row.residentApp"),   values: [t("pricing.compare.value.standardApp"), t("pricing.compare.value.standardApp"),       t("pricing.compare.value.whitelabelApp")] },
+    { capability: t("pricing.compare.row.api"),           values: [false,                                false,                                        true] },
+    { capability: t("pricing.compare.row.support"),       values: [t("pricing.compare.value.helpCenter"), t("pricing.compare.value.priorityChat"),      t("pricing.compare.value.dedicated")] },
+  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -80,7 +86,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-on-primary focus:rounded focus:font-semibold"
       >
-        Skip to main content
+        {t("marketing.skipToContent")}
       </a>
 
       {/* ── NAVIGATION ── */}
@@ -88,28 +94,28 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 h-16 flex items-center justify-between gap-6">
           {/* Logo */}
           <Link href="/" className="shrink-0">
-            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">Your Condo Manager</span>
+            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">{t("marketing.brand")}</span>
           </Link>
 
           {/* Nav links — desktop */}
-          <nav className="hidden md:flex items-center gap-6" aria-label="Main navigation">
+          <nav className="hidden md:flex items-center gap-6" aria-label={t("marketing.nav.label")}>
             <Link
               href="/"
               className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
             >
-              Platform
+              {t("marketing.nav.platform")}
             </Link>
             <Link
               href="/solutions"
               className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
             >
-              Solutions
+              {t("marketing.nav.solutions")}
             </Link>
             <Link
               href="/pricing"
               className="text-blue-700 dark:text-blue-400 font-bold border-b-2 border-blue-700 dark:border-blue-400 pb-1"
             >
-              Pricing
+              {t("marketing.nav.pricing")}
             </Link>
           </nav>
 
@@ -118,16 +124,16 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             {hasWorkspaceAccess ? (
               <Button asChild>
                 <Link href="/app">
-                  Open Workspace <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  {t("marketing.cta.openWorkspace")} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Link>
               </Button>
             ) : (
               <>
                 <button className="text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>
-                  Sign In
+                  {t("marketing.cta.signIn")}
                 </button>
                 <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-5 py-2 rounded font-semibold scale-95 active:opacity-80 transition-all" onClick={() => setLocation("/signup?plan=self-managed")}>
-                  Start Free Trial
+                  {t("marketing.cta.startFreeTrial")}
                 </button>
               </>
             )}
@@ -137,7 +143,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           <button
             className="md:hidden p-2 -mr-1 rounded-lg hover:bg-accent transition-colors"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle menu"
+            aria-label={t("marketing.nav.toggleMenu")}
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -150,31 +156,31 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               href="/"
               className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Platform
+              {t("marketing.nav.platform")}
             </Link>
             <Link
               href="/solutions"
               className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Solutions
+              {t("marketing.nav.solutions")}
             </Link>
             <Link
               href="/pricing"
               className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Pricing
+              {t("marketing.nav.pricing")}
             </Link>
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
               {hasWorkspaceAccess ? (
                 <Button asChild>
                   <Link href="/app">
-                    Open Workspace <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                    {t("marketing.cta.openWorkspace")} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                   </Link>
                 </Button>
               ) : (
                 <>
-                  <button className="px-4 py-2 text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>Sign In</button>
-                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all" onClick={() => setLocation("/signup?plan=self-managed")}>Start Free Trial</button>
+                  <button className="px-4 py-2 text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>{t("marketing.cta.signIn")}</button>
+                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all" onClick={() => setLocation("/signup?plan=self-managed")}>{t("marketing.cta.startFreeTrial")}</button>
                 </>
               )}
             </div>
@@ -190,16 +196,15 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             variant="secondary"
             className="rounded-full text-xs font-bold tracking-widest uppercase mb-6"
           >
-            Simple, Transparent Pricing
+            {t("pricing.hero.eyebrow")}
           </Badge>
           <h1 className="font-serif text-5xl md:text-[4.25rem] leading-[1.06] tracking-tight text-foreground mb-6">
-            Run your association{" "}
+            {t("pricing.hero.headlineLead")}{" "}
             <br />
-            <em className="not-italic text-primary">without a property manager.</em>
+            <em className="not-italic text-primary">{t("pricing.hero.headlineEmphasis")}</em>
           </h1>
           <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-            Flat monthly pricing per association. No per-unit fees, no contracts, no surprises.
-            Built for self-managed boards who want a real system — not another spreadsheet.
+            {t("pricing.hero.subhead")}
           </p>
         </header>
 
@@ -211,30 +216,30 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             <div className="relative bg-card border-2 border-primary/40 rounded-2xl p-10 flex flex-col shadow-xl scale-[1.03] z-10">
               <div className="absolute -top-4 left-1/2 -translate-x-1/2">
                 <Badge className="rounded-full text-[10px] font-bold tracking-[0.18em] uppercase px-4 py-1.5">
-                  Most Popular
+                  {t("pricing.cards.popular")}
                 </Badge>
               </div>
               <div className="mb-8 pt-2">
-                <h3 className="font-serif text-2xl text-foreground mb-1.5">Self-Managed</h3>
-                <p className="text-muted-foreground text-sm">For self-managed Boards &amp; Condo Associations.</p>
+                <h3 className="font-serif text-2xl text-foreground mb-1.5">{t("pricing.cards.selfManaged.name")}</h3>
+                <p className="text-muted-foreground text-sm">{t("pricing.cards.selfManaged.tagline")}</p>
               </div>
               <div className="mb-3">
                 <div className="flex items-baseline gap-1">
                   {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
                   <span className="font-serif text-5xl font-bold text-primary">$30</span>
-                  <span className="text-muted-foreground">/month</span>
+                  <span className="text-muted-foreground">{t("pricing.cards.perMonth")}</span>
                 </div>
               </div>
               <div className="mb-7 space-y-0.5">
                 <p className="text-xs text-muted-foreground">
                   {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
-                  Under 30 units: <span className="font-semibold text-foreground">$30/mo</span>
+                  {t("pricing.cards.selfManaged.tierLowLabel")} <span className="font-semibold text-foreground">$30/mo</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
-                  30 units or more: <span className="font-semibold text-foreground">$50/mo</span>
+                  {t("pricing.cards.selfManaged.tierHighLabel")} <span className="font-semibold text-foreground">$50/mo</span>
                 </p>
-                <p className="text-xs text-muted-foreground pt-1">Per association. No per-unit fees.</p>
+                <p className="text-xs text-muted-foreground pt-1">{t("pricing.cards.selfManaged.feeNote")}</p>
               </div>
               <ul className="space-y-3.5 mb-10 flex-grow">
                 {selfManagedFeatures.map((f) => (
@@ -245,21 +250,21 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 ))}
               </ul>
               <Button className="w-full py-6 gap-2" onClick={() => setLocation("/signup?plan=self-managed")}>
-                Start 14-Day Free Trial <ArrowRight className="h-4 w-4" />
+                {t("pricing.cards.startTrial14")} <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
 
             {/* Property Manager */}
             <div className="bg-card border border-border/70 rounded-2xl p-10 flex flex-col shadow-sm hover:-translate-y-1 transition-transform duration-300">
               <div className="mb-8">
-                <h3 className="font-serif text-2xl text-foreground mb-1.5">Property Manager</h3>
-                <p className="text-muted-foreground text-sm">For growing management firms.</p>
+                <h3 className="font-serif text-2xl text-foreground mb-1.5">{t("pricing.cards.propertyManager.name")}</h3>
+                <p className="text-muted-foreground text-sm">{t("pricing.cards.propertyManager.tagline")}</p>
               </div>
               <div className="mb-7">
                 <div className="flex items-baseline gap-1">
                   {/* PRICING STALE — see docs/strategy/pricing-and-positioning.md */}
                   <span className="font-serif text-5xl font-bold text-primary">$450</span>
-                  <span className="text-muted-foreground">/month</span>
+                  <span className="text-muted-foreground">{t("pricing.cards.perMonth")}</span>
                 </div>
               </div>
               <ul className="space-y-3.5 mb-10 flex-grow">
@@ -271,18 +276,18 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 ))}
               </ul>
               <Button variant="outline" className="w-full py-6" onClick={() => setLocation("/signup?plan=property-manager")}>
-                Start Free Trial
+                {t("pricing.cards.startTrial")}
               </Button>
             </div>
 
             {/* PRICING STALE — "Enterprise" tier name superseded. See docs/strategy/pricing-and-positioning.md */}
             <div className="bg-card border border-border/70 rounded-2xl p-10 flex flex-col shadow-sm hover:-translate-y-1 transition-transform duration-300">
               <div className="mb-8">
-                <h3 className="font-serif text-2xl text-foreground mb-1.5">Enterprise</h3>
-                <p className="text-muted-foreground text-sm">Bespoke solutions for large portfolios.</p>
+                <h3 className="font-serif text-2xl text-foreground mb-1.5">{t("pricing.cards.enterprise.name")}</h3>
+                <p className="text-muted-foreground text-sm">{t("pricing.cards.enterprise.tagline")}</p>
               </div>
               <div className="mb-7">
-                <span className="font-serif text-5xl font-bold text-primary">Custom</span>
+                <span className="font-serif text-5xl font-bold text-primary">{t("pricing.cards.enterprise.priceCustom")}</span>
               </div>
               <ul className="space-y-3.5 mb-10 flex-grow">
                 {enterpriseFeatures.map((f) => (
@@ -293,7 +298,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 ))}
               </ul>
               <Button variant="outline" className="w-full py-6" asChild>
-                <a href="mailto:sales@yourcondomanager.org">Contact Sales</a>
+                <a href="mailto:sales@yourcondomanager.org">{t("pricing.cards.contactSales")}</a>
               </Button>
             </div>
           </div>
@@ -302,21 +307,21 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         {/* ── COMPARISON TABLE ── */}
         <section className="max-w-6xl mx-auto px-6 mb-28">
           <h2 className="font-serif text-4xl text-center mb-14 tracking-tight text-foreground">
-            Plan Comparison
+            {t("pricing.compare.heading")}
           </h2>
           <div className="overflow-x-auto rounded-2xl border border-border/60 shadow-sm">
             <table className="w-full text-left border-collapse min-w-[580px]">
               <thead>
                 <tr className="bg-muted/60 border-b border-border/60">
-                  <th className="p-6 font-serif text-xl text-foreground">Capability</th>
+                  <th className="p-6 font-serif text-xl text-foreground">{t("pricing.compare.col.capability")}</th>
                   <th className="p-6 text-xs font-bold tracking-widest text-primary uppercase">
-                    Self-Managed
+                    {t("pricing.compare.col.selfManaged")}
                   </th>
                   <th className="p-6 text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                    Property Manager
+                    {t("pricing.compare.col.propertyManager")}
                   </th>
                   <th className="p-6 text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                    Enterprise
+                    {t("pricing.compare.col.enterprise")}
                   </th>
                 </tr>
               </thead>
@@ -354,17 +359,16 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <div className="absolute top-16 right-16 w-36 h-36 rounded-full border border-primary/8" />
               <div className="absolute -bottom-8 -left-8 w-40 h-40 rounded-full border border-primary/10" />
               <div className="relative z-10">
-                <h3 className="font-serif text-4xl text-foreground mb-4">Unrivaled Security.</h3>
+                <h3 className="font-serif text-4xl text-foreground mb-4">{t("pricing.trust.security.title")}</h3>
                 <p className="text-muted-foreground leading-relaxed mb-8">
-                  Your association data is protected by bank-grade encryption and regional compliance
-                  standards. We take the burden of trust off your shoulders.
+                  {t("pricing.trust.security.body")}
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <span className="py-1 px-4 bg-muted/80 backdrop-blur-sm rounded-full text-xs font-bold tracking-widest uppercase text-foreground">
-                    GDPR Ready
+                    {t("pricing.trust.security.gdpr")}
                   </span>
                   <span className="py-1 px-4 bg-muted/80 backdrop-blur-sm rounded-full text-xs font-bold tracking-widest uppercase text-foreground">
-                    SOC 2 Type II
+                    {t("pricing.trust.security.soc2")}
                   </span>
                 </div>
               </div>
@@ -376,10 +380,9 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 <ShieldCheck className="h-8 w-8" />
               </div>
               <div>
-                <h4 className="font-serif text-3xl mb-1.5">99.9% Uptime</h4>
+                <h4 className="font-serif text-3xl mb-1.5">{t("pricing.trust.uptime.title")}</h4>
                 <p className="text-primary-foreground/80 leading-relaxed">
-                  Our infrastructure is built on distributed cloud systems, ensuring your portal is
-                  always live for residents.
+                  {t("pricing.trust.uptime.body")}
                 </p>
               </div>
             </div>
@@ -387,7 +390,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             {/* Setup */}
             <div className="rounded-2xl bg-muted/60 border border-border/60 p-8 flex flex-col justify-between shadow-sm">
               <h4 className="font-serif text-2xl text-foreground leading-snug">
-                Setup in <br />Minutes
+                {t("pricing.trust.setup.title.line1")} <br />{t("pricing.trust.setup.title.line2")}
               </h4>
               <Zap className="h-10 w-10 text-primary" />
             </div>
@@ -395,7 +398,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             {/* Integrate */}
             <div className="rounded-2xl bg-muted/60 border border-border/60 p-8 flex flex-col justify-between shadow-sm">
               <h4 className="font-serif text-2xl text-foreground leading-snug">
-                Integrate <br />Anywhere
+                {t("pricing.trust.integrate.title.line1")} <br />{t("pricing.trust.integrate.title.line2")}
               </h4>
               <Network className="h-10 w-10 text-primary" />
             </div>
@@ -409,28 +412,26 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             <div className="relative z-10 space-y-8">
               <div className="space-y-4">
                 <h2 className="font-serif text-4xl tracking-tight text-foreground">
-                  Ready to stop managing on spreadsheets?
+                  {t("pricing.finalCta.title")}
                 </h2>
                 <p className="text-muted-foreground max-w-2xl mx-auto">
-                  Your Condo Manager gives self-managed boards a real system of record — dues collection,
-                  owner portal, maintenance tracking, and governance tools in one place.
-                  No property manager required.
+                  {t("pricing.finalCta.body")}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 {hasWorkspaceAccess ? (
                   <Button size="lg" asChild>
                     <Link href="/app">
-                      Open Workspace <ArrowRight className="ml-2 h-4 w-4" />
+                      {t("marketing.cta.openWorkspace")} <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
                 ) : (
                   <>
                     <Button size="lg" onClick={() => setLocation("/signup?plan=self-managed")}>
-                      Start 14-Day Free Trial
+                      {t("pricing.finalCta.startTrial")}
                     </Button>
                     <Button size="lg" variant="outline" asChild>
-                      <a href="mailto:sales@yourcondomanager.org">Schedule a Demo</a>
+                      <a href="mailto:sales@yourcondomanager.org">{t("pricing.finalCta.scheduleDemo")}</a>
                     </Button>
                   </>
                 )}

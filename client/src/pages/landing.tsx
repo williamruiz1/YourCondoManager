@@ -1,19 +1,14 @@
 import {
   ArrowRight,
   BarChart3,
-  Building2,
-  Calendar,
   CheckCircle2,
   ClipboardCheck,
   DollarSign,
   FileArchive,
   FileText,
-  Lock,
   Menu,
   MessageSquare,
-  Shield,
   Users,
-  Vote,
   Wrench,
   X,
 } from "lucide-react";
@@ -24,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { SiteFooter } from "@/components/site-footer";
 import DemoRequestModal from "@/components/demo-request-modal";
+import { useStrings } from "@/i18n/use-strings";
 
 type LandingPageProps = {
   hasWorkspaceAccess: boolean;
@@ -31,196 +27,6 @@ type LandingPageProps = {
 };
 
 type Persona = "manager" | "board" | "resident";
-
-const personaContent = {
-  manager: {
-    badge: "For property management companies",
-    headline: "Run your entire portfolio from one command center.",
-    subhead:
-      "Your Condo Manager gives property managers a single platform for every association — billing, owners, maintenance, governance, and reporting — without the spreadsheets.",
-    features: [
-      {
-        icon: BarChart3,
-        title: "Portfolio-wide visibility",
-        description:
-          "See every association's financial health, open work orders, and compliance status at a glance. Drill into any property in one click.",
-      },
-      {
-        icon: DollarSign,
-        title: "Automated billing & ledger",
-        description:
-          "Run assessments, late fees, utility billing, and recurring charges across all properties. Keep every ledger clean and audit-ready.",
-      },
-      {
-        icon: FileText,
-        title: "Board-ready reporting",
-        description:
-          "Generate financial reports, board packages, and meeting minutes without exporting to a third tool.",
-      },
-      {
-        icon: Users,
-        title: "Role-based team access",
-        description:
-          "Invite your whole team with scoped permissions per association — no shared passwords, no access sprawl.",
-      },
-    ],
-    ctaPrimary: "Get started — it's free",
-    ctaSecondary: "Schedule a demo",
-    proof: [
-      "Manage dozens of associations from one login",
-      "Role-based access for your whole team",
-      "No per-association setup headaches",
-      "Consistent workflow across every property",
-    ],
-  },
-  board: {
-    badge: "For self-managed condo boards",
-    headline: "Give your board the tools to govern with confidence.",
-    subhead:
-      "Your Condo Manager gives volunteer boards everything needed to handle finances, governance, residents, and maintenance — without expensive management fees or complicated software.",
-    features: [
-      {
-        icon: DollarSign,
-        title: "Clear, simple finances",
-        description:
-          "Collect assessments, track expenses, manage budgets, and produce statements your board and owners can actually understand.",
-      },
-      {
-        icon: ClipboardCheck,
-        title: "Governance made easy",
-        description:
-          "Store governing documents, track board decisions, manage meeting minutes, and stay compliant — all in one place.",
-      },
-      {
-        icon: Users,
-        title: "Owner & resident portal",
-        description:
-          "Give owners a portal to view their account, pay dues, and access documents without calling a board member.",
-      },
-      {
-        icon: Wrench,
-        title: "Maintenance tracking",
-        description:
-          "Log work orders, track vendor activity, and build maintenance schedules so nothing falls through the cracks.",
-      },
-    ],
-    ctaPrimary: "Start managing your association",
-    ctaSecondary: "See what's included",
-    proof: [
-      "No property management experience required",
-      "Designed for board volunteers, not accountants",
-      "Residents stay informed automatically",
-      "All your records in one secure place",
-    ],
-  },
-  resident: {
-    badge: "For residents & homeowners",
-    headline: "Stay connected and in control of your home.",
-    subhead:
-      "Access your account, pay dues online, track maintenance requests, and stay informed about your community — all without making a phone call.",
-    features: [
-      {
-        icon: DollarSign,
-        title: "Pay dues online",
-        description:
-          "View your account balance, pay assessments, and download statements from any device, any time.",
-      },
-      {
-        icon: Wrench,
-        title: "Submit & track requests",
-        description:
-          "Create maintenance requests and follow their status in real time — no chasing the board down.",
-      },
-      {
-        icon: FileArchive,
-        title: "Community documents",
-        description:
-          "Access bylaws, meeting minutes, rules, and notices whenever you need them, all in one place.",
-      },
-      {
-        icon: MessageSquare,
-        title: "Stay informed",
-        description:
-          "Receive announcements, board updates, and community news delivered straight to you.",
-      },
-    ],
-    ctaPrimary: "Access your portal",
-    ctaSecondary: "Learn more",
-    proof: [
-      "Pay dues anytime, from any device",
-      "No more chasing the board for information",
-      "Your full account history always accessible",
-      "Stay in the loop on community updates",
-    ],
-  },
-};
-
-const bentoFeatures = [
-  {
-    icon: DollarSign,
-    title: "Automated Dues",
-    description:
-      "Run assessments, collect payments, and track balances automatically. No manual reconciliation required.",
-    featured: false,
-  },
-  {
-    icon: Wrench,
-    title: "Maintenance Hub",
-    description:
-      "Work orders, vendor management, and maintenance schedules unified in one place.",
-    featured: false,
-  },
-  {
-    icon: FileArchive,
-    title: "Smart Archives",
-    description:
-      "Store and retrieve every document — from governing docs to meeting minutes — instantly.",
-    featured: false,
-  },
-  {
-    icon: MessageSquare,
-    title: "Mass Communications",
-    description:
-      "Send announcements, notices, and updates to all residents or targeted groups.",
-    featured: false,
-  },
-  {
-    icon: BarChart3,
-    title: "Real-time Financial Reporting",
-    description:
-      "Live dashboards, income statements, balance sheets, and budget vs. actual reports. Always audit-ready, always current.",
-    featured: true,
-  },
-  {
-    icon: Vote,
-    title: "Board Vote Tracking",
-    description:
-      "Record resolutions, track votes, and monitor quorum status during board meetings with a full audit trail.",
-    featured: false,
-  },
-  {
-    icon: Calendar,
-    title: "Inspections & Schedules",
-    description:
-      "Schedule recurring property inspections, track findings, and build maintenance schedules so nothing falls through the cracks.",
-    featured: false,
-  },
-];
-
-const auditLogEntries = [
-  { time: "09:41", action: "Document accessed: 2024 Annual Budget.pdf", user: "M. Chen" },
-  { time: "09:38", action: "Payment received: Unit 14B — $450.00", user: "System" },
-  { time: "09:31", action: "Board vote recorded: Emergency repairs — 5/5", user: "R. Patel" },
-  { time: "09:20", action: "New work order #447: Lobby HVAC inspection", user: "J. Torres" },
-  { time: "09:12", action: "Owner portal login: Unit 7A", user: "System" },
-  { time: "08:55", action: "Assessment run: Q1 dues — 48 units", user: "Admin" },
-];
-
-const personaLabels: Record<Persona, string> = {
-  manager: "Property Managers",
-  board: "Board Members",
-  resident: "Residents",
-};
 
 export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }: LandingPageProps) {
   // Default to "board" — Track 1 outreach targets self-managed volunteer boards.
@@ -230,6 +36,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [demoModalOpen, setDemoModalOpen] = useState(false);
+  const { t } = useStrings();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 24);
@@ -246,9 +53,122 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
     }, 160);
   }
 
+  // Persona content — copy lives in the i18n registry; icons stay co-located.
+  const personaContent = {
+    manager: {
+      badge: t("landing.persona.manager.badge"),
+      headline: t("landing.persona.manager.headline"),
+      subhead: t("landing.persona.manager.subhead"),
+      features: [
+        {
+          icon: BarChart3,
+          title: t("landing.persona.manager.feature.visibility.title"),
+          description: t("landing.persona.manager.feature.visibility.body"),
+        },
+        {
+          icon: DollarSign,
+          title: t("landing.persona.manager.feature.billing.title"),
+          description: t("landing.persona.manager.feature.billing.body"),
+        },
+        {
+          icon: FileText,
+          title: t("landing.persona.manager.feature.reporting.title"),
+          description: t("landing.persona.manager.feature.reporting.body"),
+        },
+        {
+          icon: Users,
+          title: t("landing.persona.manager.feature.team.title"),
+          description: t("landing.persona.manager.feature.team.body"),
+        },
+      ],
+      ctaPrimary: t("landing.persona.manager.ctaPrimary"),
+      ctaSecondary: t("landing.persona.manager.ctaSecondary"),
+      proof: [
+        t("landing.persona.manager.proof.1"),
+        t("landing.persona.manager.proof.2"),
+        t("landing.persona.manager.proof.3"),
+        t("landing.persona.manager.proof.4"),
+      ],
+    },
+    board: {
+      badge: t("landing.persona.board.badge"),
+      headline: t("landing.persona.board.headline"),
+      subhead: t("landing.persona.board.subhead"),
+      features: [
+        {
+          icon: DollarSign,
+          title: t("landing.persona.board.feature.finances.title"),
+          description: t("landing.persona.board.feature.finances.body"),
+        },
+        {
+          icon: ClipboardCheck,
+          title: t("landing.persona.board.feature.governance.title"),
+          description: t("landing.persona.board.feature.governance.body"),
+        },
+        {
+          icon: Users,
+          title: t("landing.persona.board.feature.portal.title"),
+          description: t("landing.persona.board.feature.portal.body"),
+        },
+        {
+          icon: Wrench,
+          title: t("landing.persona.board.feature.maintenance.title"),
+          description: t("landing.persona.board.feature.maintenance.body"),
+        },
+      ],
+      ctaPrimary: t("landing.persona.board.ctaPrimary"),
+      ctaSecondary: t("landing.persona.board.ctaSecondary"),
+      proof: [
+        t("landing.persona.board.proof.1"),
+        t("landing.persona.board.proof.2"),
+        t("landing.persona.board.proof.3"),
+        t("landing.persona.board.proof.4"),
+      ],
+    },
+    resident: {
+      badge: t("landing.persona.resident.badge"),
+      headline: t("landing.persona.resident.headline"),
+      subhead: t("landing.persona.resident.subhead"),
+      features: [
+        {
+          icon: DollarSign,
+          title: t("landing.persona.resident.feature.pay.title"),
+          description: t("landing.persona.resident.feature.pay.body"),
+        },
+        {
+          icon: Wrench,
+          title: t("landing.persona.resident.feature.requests.title"),
+          description: t("landing.persona.resident.feature.requests.body"),
+        },
+        {
+          icon: FileArchive,
+          title: t("landing.persona.resident.feature.documents.title"),
+          description: t("landing.persona.resident.feature.documents.body"),
+        },
+        {
+          icon: MessageSquare,
+          title: t("landing.persona.resident.feature.informed.title"),
+          description: t("landing.persona.resident.feature.informed.body"),
+        },
+      ],
+      ctaPrimary: t("landing.persona.resident.ctaPrimary"),
+      ctaSecondary: t("landing.persona.resident.ctaSecondary"),
+      proof: [
+        t("landing.persona.resident.proof.1"),
+        t("landing.persona.resident.proof.2"),
+        t("landing.persona.resident.proof.3"),
+        t("landing.persona.resident.proof.4"),
+      ],
+    },
+  } as const;
+
+  const personaLabels: Record<Persona, string> = {
+    manager: t("marketing.persona.manager"),
+    board: t("marketing.persona.board"),
+    resident: t("marketing.persona.resident"),
+  };
+
   const content = personaContent[persona];
-  const featuredCard = bentoFeatures.find((f) => f.featured)!;
-  const regularCards = bentoFeatures.filter((f) => !f.featured);
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950">
@@ -258,7 +178,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-white focus:text-primary focus:px-4 focus:py-2 focus:rounded focus:shadow-md focus:font-bold"
       >
-        Skip to main content
+        {t("marketing.skipToContent")}
       </a>
 
       {/* ── NAVIGATION ── */}
@@ -266,29 +186,29 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 h-16 flex items-center justify-between gap-6">
           {/* Logo */}
           <Link href="/" className="shrink-0">
-            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">Your Condo Manager</span>
+            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">{t("marketing.brand")}</span>
           </Link>
 
           {/* Nav links — desktop */}
-          <nav className="hidden md:flex items-center gap-6" aria-label="Main navigation">
+          <nav className="hidden md:flex items-center gap-6" aria-label={t("marketing.nav.label")}>
             <Link
               href="/"
               aria-current="page"
               className="text-blue-700 dark:text-blue-400 font-bold border-b-2 border-blue-700 dark:border-blue-400 pb-1"
             >
-              Platform
+              {t("marketing.nav.platform")}
             </Link>
             <Link
               href="/solutions"
               className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
             >
-              Solutions
+              {t("marketing.nav.solutions")}
             </Link>
             <Link
               href="/pricing"
               className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
             >
-              Pricing
+              {t("marketing.nav.pricing")}
             </Link>
           </nav>
 
@@ -297,16 +217,16 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             {hasWorkspaceAccess ? (
               <Button asChild>
                 <Link href="/app">
-                  Open Workspace <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  {t("marketing.cta.openWorkspace")} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Link>
               </Button>
             ) : (
               <>
                 <button className="text-slate-600 font-medium hover:text-primary transition-colors" onClick={onStartGoogleSignIn}>
-                  Sign In
+                  {t("marketing.cta.signIn")}
                 </button>
                 <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-5 py-2 rounded font-semibold scale-95 active:opacity-80 transition-all" onClick={onStartGoogleSignIn}>
-                  Open Workspace
+                  {t("marketing.cta.openWorkspace")}
                 </button>
               </>
             )}
@@ -316,7 +236,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           <button
             className="md:hidden p-2 -mr-1 rounded-lg hover:bg-accent transition-colors"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle menu"
+            aria-label={t("marketing.nav.toggleMenu")}
             aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -330,31 +250,31 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               href="/"
               className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Platform
+              {t("marketing.nav.platform")}
             </Link>
             <Link
               href="/solutions"
               className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Solutions
+              {t("marketing.nav.solutions")}
             </Link>
             <Link
               href="/pricing"
               className="block px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Pricing
+              {t("marketing.nav.pricing")}
             </Link>
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
               {hasWorkspaceAccess ? (
                 <Button asChild>
                   <Link href="/app">
-                    Open Workspace <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                    {t("marketing.cta.openWorkspace")} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                   </Link>
                 </Button>
               ) : (
                 <>
-                  <button className="px-4 py-2 text-slate-600 font-medium hover:text-primary transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded" onClick={onStartGoogleSignIn}>Sign In</button>
-                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={onStartGoogleSignIn}>Open Workspace</button>
+                  <button className="px-4 py-2 text-slate-600 font-medium hover:text-primary transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded" onClick={onStartGoogleSignIn}>{t("marketing.cta.signIn")}</button>
+                  <button className="bg-gradient-to-r from-primary to-primary/90 text-white px-4 py-2 rounded font-semibold active:opacity-80 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={onStartGoogleSignIn}>{t("marketing.cta.openWorkspace")}</button>
                 </>
               )}
             </div>
@@ -368,28 +288,28 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
       <section className="relative px-8 py-12 md:py-20 max-w-7xl mx-auto overflow-hidden pt-24 md:pt-28">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div className="z-10">
-            <span className="inline-block px-3 py-1 bg-secondary-container text-on-secondary-container rounded-full text-xs font-bold tracking-widest uppercase mb-4">Architecture of Trust</span>
+            <span className="inline-block px-3 py-1 bg-secondary-container text-on-secondary-container rounded-full text-xs font-bold tracking-widest uppercase mb-4">{t("landing.hero.eyebrow")}</span>
             <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-bold leading-tight text-on-surface mb-6">
-              Everything your association needs. <span className="text-primary italic">Nothing it doesn't.</span>
+              {t("landing.hero.headlineLead")} <span className="text-primary italic">{t("landing.hero.headlineEmphasis")}</span>
             </h1>
             <p className="text-on-surface-variant text-lg md:text-xl max-w-xl mb-8 leading-relaxed">
-              The definitive platform for modern property governance. Streamline operations, empower boards, and engage residents with structural clarity.
+              {t("landing.hero.subhead")}
             </p>
             <div className="flex flex-wrap gap-4">
               {hasWorkspaceAccess ? (
                 <Button size="lg" asChild>
                   <Link href="/app">
-                    Open Workspace <ArrowRight className="ml-2 h-4 w-4" />
+                    {t("marketing.cta.openWorkspace")} <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
               ) : (
                 <>
                   <button className="bg-gradient-to-r from-primary to-primary-container text-white px-8 py-4 rounded-lg font-bold flex items-center gap-2 hover:opacity-90 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={onStartGoogleSignIn} data-testid="button-landing-google-signin">
-                    Get Started Free
+                    {t("landing.hero.cta.primary")}
                     <span className="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
                   </button>
                   <button className="px-8 py-4 text-primary font-bold hover:bg-surface-container transition-colors rounded-lg" onClick={() => setDemoModalOpen(true)}>
-                    Schedule Demo
+                    {t("landing.hero.cta.secondary")}
                   </button>
                 </>
               )}
@@ -398,7 +318,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           <div className="relative lg:block hidden">
             <div className="absolute -inset-4 bg-primary-container/5 rounded-xl blur-3xl"></div>
             <div className="relative bg-surface-container-lowest rounded-xl overflow-hidden shadow-lg border border-outline-variant/20">
-              <img className="w-full h-[400px] object-cover opacity-90" alt="Modern architectural glass facade reflecting a clear blue sky with sophisticated structural lines and high-end professional aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDORRxFHQEQQgLB-LIhVTxXwSjX3PFwaeqJK47VYkPcV7-8kExURnYNhcett0B3XsY4Furz0oLDNIL-hv5Gb-CtAJH4O1AQTQEiZegVanQLHzPcE9R5gOcmtSizhcBoPPEw0nyDF5-NDpn_MBo8VnLFFGCe_W0Hr6ohoNeQqB_gs0bschoj3OyC0Ky9FESgTtEANJ0OMhmC_OsDwF8NH4wwFLcjU8Nvh5tQ7evgrRtIJUHxITX__w9M_c4mPyGx2b123CkVsDXtk84" />
+              <img className="w-full h-[400px] object-cover opacity-90" alt={t("landing.hero.image.alt")} src="https://lh3.googleusercontent.com/aida-public/AB6AXuDORRxFHQEQQgLB-LIhVTxXwSjX3PFwaeqJK47VYkPcV7-8kExURnYNhcett0B3XsY4Furz0oLDNIL-hv5Gb-CtAJH4O1AQTQEiZegVanQLHzPcE9R5gOcmtSizhcBoPPEw0nyDF5-NDpn_MBo8VnLFFGCe_W0Hr6ohoNeQqB_gs0bschoj3OyC0Ky9FESgTtEANJ0OMhmC_OsDwF8NH4wwFLcjU8Nvh5tQ7evgrRtIJUHxITX__w9M_c4mPyGx2b123CkVsDXtk84" />
             </div>
           </div>
         </div>
@@ -410,7 +330,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         {/* ── PERSONA TOGGLE ── */}
         <section className="bg-surface-container py-8 border-y border-outline-variant/10">
           <div className="max-w-7xl mx-auto px-8 flex flex-col md:flex-row items-center justify-center gap-6">
-            <span id="persona-toggle-label" className="font-label text-sm font-bold text-on-surface-variant uppercase tracking-widest">Tailored for you:</span>
+            <span id="persona-toggle-label" className="font-label text-sm font-bold text-on-surface-variant uppercase tracking-widest">{t("landing.persona.toggleLabel")}</span>
             <div role="group" aria-labelledby="persona-toggle-label" className="flex p-1 bg-surface-container-high rounded-lg border border-outline-variant/20">
               {(["board", "manager", "resident"] as Persona[]).map((p) => (
                 <button
@@ -470,7 +390,7 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             </div>
 
             <div className="mt-12 pt-12 border-t border-outline-variant/10">
-              <p className="text-sm font-bold text-on-surface-variant uppercase tracking-widest mb-6">Why {personaLabels[persona].toLowerCase()}:</p>
+              <p className="text-sm font-bold text-on-surface-variant uppercase tracking-widest mb-6">{t("landing.persona.whyPrefix")} {personaLabels[persona].toLowerCase()}:</p>
               <div className="grid md:grid-cols-2 gap-4">
                 {content.proof.map((item) => (
                   <div key={item} className="flex gap-3">
@@ -486,8 +406,8 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
         {/* ── BENTO GRID ── */}
         <section className="max-w-7xl mx-auto px-8 py-16 space-y-10">
           <div className="mb-12">
-            <h2 className="font-headline text-3xl md:text-4xl font-bold text-on-surface">Integrated Excellence</h2>
-            <p className="text-on-surface-variant mt-2">Professional tools designed for the complexities of modern estates.</p>
+            <h2 className="font-headline text-3xl md:text-4xl font-bold text-on-surface">{t("landing.bento.heading")}</h2>
+            <p className="text-on-surface-variant mt-2">{t("landing.bento.subhead")}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -496,8 +416,8 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <div className="w-10 h-10 bg-primary/5 text-primary rounded-lg flex items-center justify-center mb-4" aria-hidden="true">
                 <span className="material-symbols-outlined" style={{"fontVariationSettings": "'FILL' 1"}}>account_balance_wallet</span>
               </div>
-              <h3 className="font-headline text-xl font-bold mb-2">Automated Dues</h3>
-              <p className="text-sm text-on-surface-variant leading-relaxed">Collect payments and generate late notices without manual intervention.</p>
+              <h3 className="font-headline text-xl font-bold mb-2">{t("landing.bento.dues.title")}</h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">{t("landing.bento.dues.body")}</p>
             </div>
 
             {/* Card 2 */}
@@ -505,8 +425,8 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <div className="w-10 h-10 bg-primary/5 text-primary rounded-lg flex items-center justify-center mb-4" aria-hidden="true">
                 <span className="material-symbols-outlined" style={{"fontVariationSettings": "'FILL' 1"}}>engineering</span>
               </div>
-              <h3 className="font-headline text-xl font-bold mb-2">Maintenance Hub</h3>
-              <p className="text-sm text-on-surface-variant leading-relaxed">Track work orders from submission to completion. Manage vendors and schedule recurring maintenance in one place.</p>
+              <h3 className="font-headline text-xl font-bold mb-2">{t("landing.bento.maintenance.title")}</h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">{t("landing.bento.maintenance.body")}</p>
             </div>
 
             {/* Card 3 */}
@@ -514,8 +434,8 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <div className="w-10 h-10 bg-primary/5 text-primary rounded-lg flex items-center justify-center mb-4" aria-hidden="true">
                 <span className="material-symbols-outlined" style={{"fontVariationSettings": "'FILL' 1"}}>description</span>
               </div>
-              <h3 className="font-headline text-xl font-bold mb-2">Smart Archives</h3>
-              <p className="text-sm text-on-surface-variant leading-relaxed">Store and retrieve governing documents, meeting minutes, and notices — organized, accessible, and always up to date.</p>
+              <h3 className="font-headline text-xl font-bold mb-2">{t("landing.bento.archives.title")}</h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">{t("landing.bento.archives.body")}</p>
             </div>
 
             {/* Card 4 */}
@@ -523,16 +443,16 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <div className="w-10 h-10 bg-primary/5 text-primary rounded-lg flex items-center justify-center mb-4" aria-hidden="true">
                 <span className="material-symbols-outlined" style={{"fontVariationSettings": "'FILL' 1"}}>campaign</span>
               </div>
-              <h3 className="font-headline text-xl font-bold mb-2">Mass Comms</h3>
-              <p className="text-sm text-on-surface-variant leading-relaxed">Send announcements, notices, and updates to all residents or targeted groups via email — directly from the platform.</p>
+              <h3 className="font-headline text-xl font-bold mb-2">{t("landing.bento.comms.title")}</h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">{t("landing.bento.comms.body")}</p>
             </div>
 
             {/* Card 5 - Span 2 */}
             <div className="md:col-span-2 bg-gradient-to-br from-primary to-primary-container p-8 rounded-xl shadow-lg text-white relative overflow-hidden group">
               <div className="relative z-10">
-                <h3 className="font-headline text-2xl font-bold mb-4">Real-time Financial Reporting</h3>
-                <p className="max-w-md mb-6 text-on-primary-container">Generate balance sheets, income statements, and budget comparisons with a single click. No more waiting for end-of-month reconciliations.</p>
-                <button className="bg-white text-primary px-6 py-2 rounded font-bold text-sm hover:opacity-90 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={() => setDemoModalOpen(true)}>Explore Analytics</button>
+                <h3 className="font-headline text-2xl font-bold mb-4">{t("landing.bento.reporting.title")}</h3>
+                <p className="max-w-md mb-6 text-on-primary-container">{t("landing.bento.reporting.body")}</p>
+                <button className="bg-white text-primary px-6 py-2 rounded font-bold text-sm hover:opacity-90 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={() => setDemoModalOpen(true)}>{t("landing.bento.reporting.cta")}</button>
               </div>
               <span className="material-symbols-outlined absolute -bottom-4 -right-4 text-9xl opacity-10 group-hover:scale-110 transition-transform" aria-hidden="true">monitoring</span>
             </div>
@@ -542,8 +462,8 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <div className="w-10 h-10 bg-primary/5 text-primary rounded-lg flex items-center justify-center mb-4" aria-hidden="true">
                 <span className="material-symbols-outlined" style={{"fontVariationSettings": "'FILL' 1"}}>how_to_reg</span>
               </div>
-              <h3 className="font-headline text-xl font-bold mb-2">Board Vote Tracking</h3>
-              <p className="text-sm text-on-surface-variant leading-relaxed">Record resolutions, track votes, and confirm quorum during board meetings — with a complete audit trail.</p>
+              <h3 className="font-headline text-xl font-bold mb-2">{t("landing.bento.voting.title")}</h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">{t("landing.bento.voting.body")}</p>
             </div>
 
             {/* Card 7 */}
@@ -551,8 +471,8 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <div className="w-10 h-10 bg-primary/5 text-primary rounded-lg flex items-center justify-center mb-4" aria-hidden="true">
                 <span className="material-symbols-outlined" style={{"fontVariationSettings": "'FILL' 1"}}>calendar_month</span>
               </div>
-              <h3 className="font-headline text-xl font-bold mb-2">Inspections & Schedules</h3>
-              <p className="text-sm text-on-surface-variant leading-relaxed">Schedule and track property inspections, log findings, and manage recurring maintenance across all your buildings.</p>
+              <h3 className="font-headline text-xl font-bold mb-2">{t("landing.bento.inspections.title")}</h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">{t("landing.bento.inspections.body")}</p>
             </div>
           </div>
         </section>
@@ -566,8 +486,8 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 <span className="material-symbols-outlined text-primary">verified_user</span>
               </div>
               <div>
-                <h2 id="compliance-heading" className="font-headline text-2xl font-bold mb-2">Always Audit-Ready</h2>
-                <p className="text-on-surface-variant leading-relaxed">Every transaction, vote, and communication is timestamped and immutable. Your Condo Manager ensures your association meets state regulations effortlessly.</p>
+                <h2 id="compliance-heading" className="font-headline text-2xl font-bold mb-2">{t("landing.compliance.audit.title")}</h2>
+                <p className="text-on-surface-variant leading-relaxed">{t("landing.compliance.audit.body")}</p>
               </div>
             </div>
             <div className="flex gap-6">
@@ -575,16 +495,18 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 <span className="material-symbols-outlined text-primary">encrypted</span>
               </div>
               <div>
-                <h3 className="font-headline text-2xl font-bold mb-2">Secure Institutional Access</h3>
-                <p className="text-on-surface-variant leading-relaxed">Bank-grade encryption and 2FA protect sensitive owner data. Granular permissions ensure board members only see what they need to.</p>
+                <h3 className="font-headline text-2xl font-bold mb-2">{t("landing.compliance.access.title")}</h3>
+                <p className="text-on-surface-variant leading-relaxed">{t("landing.compliance.access.body")}</p>
               </div>
             </div>
           </div>
           <div className="flex-1 w-full max-w-md">
+            {/* Decorative security-log mock — timestamps + entries are illustrative
+                and stay inline (not user-actionable copy). */}
             <div className="bg-white p-4 rounded-xl shadow-lg relative overflow-hidden">
               <div className="flex items-center justify-between mb-4 border-b pb-4 border-surface-container">
-                <span className="font-bold text-sm">Security Log</span>
-                <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded">ACTIVE</span>
+                <span className="font-bold text-sm">{t("landing.compliance.log.label")}</span>
+                <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded">{t("landing.compliance.log.statusActive")}</span>
               </div>
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-xs">
@@ -611,8 +533,8 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             <img className="w-full h-full object-cover" alt="" aria-hidden="true" loading="lazy" decoding="async" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGylkVvJ6DR43ZSa3V5HhWYa4Tm_rV6NrxTJw7NwAHUssjyQI9IHIa5AtnSzWE4jalnOoKDh2PG82f2JXxDelDB9MraXOmdzj6Z3kAjShgD8G4Es537T5X_SqzvnFFjqgxLddQCR-aIR_-rTSWLC6Y3zAUVcdNFriTJRpEGXHl7xP0TnLB24YApCP8hIhS8U343a-5Q7cuVa-poEXGGv13F2V9xRt-XbskyOJKdcVLCJ7MbSGzlViwO5Y20scclZcr2JFpv6FYuvA" />
           </div>
           <div className="relative z-10 max-w-2xl mx-auto">
-            <h2 className="font-headline text-4xl md:text-5xl text-white font-bold mb-6">Ready to elevate your association?</h2>
-            <p className="text-slate-300 text-lg mb-10">The modern platform for condo and HOA associations — built to handle finances, governance, residents, and maintenance in one place.</p>
+            <h2 className="font-headline text-4xl md:text-5xl text-white font-bold mb-6">{t("landing.finalCta.title")}</h2>
+            <p className="text-slate-300 text-lg mb-10">{t("landing.finalCta.body")}</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               {hasWorkspaceAccess ? (
                 <Button
@@ -621,16 +543,16 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                   className="bg-white text-slate-900 hover:bg-white/90"
                 >
                   <Link href="/pricing">
-                    View pricing <ArrowRight className="ml-2 h-4 w-4" />
+                    {t("landing.finalCta.viewPricing")} <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
               ) : (
                 <>
                   <button className="bg-white text-slate-900 px-8 py-4 rounded-lg font-bold hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={onStartGoogleSignIn} data-testid="button-landing-open-workspace">
-                    Start Your Free Trial
+                    {t("landing.finalCta.startTrial")}
                   </button>
                   <button className="border border-white/30 text-white px-8 py-4 rounded-lg font-bold hover:bg-white/10 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={() => setDemoModalOpen(true)}>
-                    Speak with an Expert
+                    {t("landing.finalCta.speakExpert")}
                   </button>
                 </>
               )}
