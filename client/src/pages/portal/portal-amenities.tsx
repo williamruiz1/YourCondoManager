@@ -222,7 +222,13 @@ function AmenityCard({ amenity, onBookingSuccess }: { amenity: Amenity; onBookin
       <CardContent className="flex flex-col gap-2">
         {amenity.description ? <p className="text-sm text-muted-foreground">{amenity.description}</p> : null}
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-          {amenity.capacity ? <span>Up to {amenity.capacity}</span> : null}
+          {/*
+            Wave 49 (gap-audit fix #1): clarify capacity copy. The amenity is
+            booked as a single reservation slot — multiple households cannot
+            reserve the same window. `capacity` describes the maximum party
+            size for that single reservation, not concurrent bookings.
+          */}
+          {amenity.capacity ? <span>Up to {amenity.capacity} people per reservation</span> : null}
           <span>
             {amenity.minDurationMinutes}–{amenity.maxDurationMinutes} min
           </span>

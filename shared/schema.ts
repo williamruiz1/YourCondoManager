@@ -3011,7 +3011,14 @@ export const amenityReservations = pgTable("amenity_reservations", {
   endAt: timestamp("end_at").notNull(),
   status: amenityReservationStatusEnum("status").notNull().default("pending"),
   notes: text("notes"),
-  approvedBy: varchar("approved_by").references(() => persons.id),
+  // Wave 49 (gap-audit follow-up): identifier of the admin user who approved
+  // the reservation. Stores `admin_users.id`. Originally this column was
+  // declared as a foreign key to `persons.id`, which made it impossible to
+  // write the approving admin (admins are not persons). The FK was dropped
+  // in migration 0021 and the column is now a free-form varchar. Always
+  // written by the admin PATCH handler when status flips to "approved" so
+  // the reservation has a complete audit trail.
+  approvedBy: varchar("approved_by"),
   approvedAt: timestamp("approved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

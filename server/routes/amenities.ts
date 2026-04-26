@@ -147,8 +147,16 @@ export function registerAmenityRoutes(
       const updateData: Record<string, unknown> = { updatedAt: new Date() };
       if (status) updateData.status = status;
       if (notes !== undefined) updateData.notes = notes;
+      // Wave 49 (gap-audit fix #2): write `approvedBy` whenever status flips
+      // to "approved" so the reservation carries the admin user id alongside
+      // the approval timestamp. Migration 0021 dropped the FK to persons.id
+      // so this column can hold an admin_users.id without violating
+      // referential integrity. Rejection is intentionally NOT audited here
+      // (the audit only flagged the approve case); rejection auditing would
+      // require an additional `rejectedBy` column.
       if (status === "approved") {
         updateData.approvedAt = new Date();
+        updateData.approvedBy = req.adminUserId ?? null;
       }
       const [updated] = await db.update(amenityReservations)
         .set(updateData)
