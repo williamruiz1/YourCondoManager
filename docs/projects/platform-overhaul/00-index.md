@@ -2,7 +2,7 @@
 **Initiative:** Spec-First Platform Overhaul
 **Owner:** YCM Command Center
 **Process skill:** [`docs/skills/spec-first-overhaul-process-skill.md`](../../skills/spec-first-overhaul-process-skill.md)
-**Last updated:** 2026-04-25 (Wave 35b docs catch-up: Layer 5 status sync post-Waves 21/23/25/27/28/29/30/31/33; 4.1 Tier 3 row added post-Wave 32; Change Log appended for Waves 22–33; self-review at `self-review-2026-04-25.md`.)
+**Last updated:** 2026-04-26 (Wave 45: Layer 5 row 5.11 added — Cross-browser Playwright Firefox + WebKit projects, ship-and-lock.)
 
 ---
 
@@ -92,6 +92,7 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 5.8 | `prefers-reduced-motion` audit | **SPEC LOCKED · SHIPPED** (Wave 29, 2026-04-25 — ship-and-lock, PR #62) | [`decisions/5.8-motion-reduce-audit.md`](decisions/5.8-motion-reduce-audit.md) |
 | 5.9 | CI pipeline scaffold | **SPEC LOCKED · SHIPPED** (Wave 30 GitHub Actions: tsc + lint + vitest + build + Playwright + axe + visual, PR #59) | [`decisions/5.9-ci-pipeline.md`](decisions/5.9-ci-pipeline.md) |
 | 5.10 | Storybook for shared component library | **SPEC LOCKED · IN BUILD** (Wave 37, 2026-04-26 — Storybook 10.3 + react-vite + addon-a11y; 10 story files / 30 stories covering EmptyState, ErrorState, ErrorBoundary, HubAlertWidget, HomeAlertsPanel, BreadcrumbNav, two election charts, SignupOnboardingChecklist, TrialBanner) | [`decisions/5.10-component-library-docs.md`](decisions/5.10-component-library-docs.md) |
+| 5.11 | Cross-browser Playwright (Firefox + WebKit) | **SPEC LOCKED · SHIPPED** (Wave 45, 2026-04-26 — ship-and-lock; Firefox + WebKit projects added to `playwright.config.ts`; visual-regression stays chromium-only via `testIgnore`; CI installs all three browsers via `--with-deps`) | [`decisions/5.11-cross-browser-e2e.md`](decisions/5.11-cross-browser-e2e.md) |
 
 ---
 
