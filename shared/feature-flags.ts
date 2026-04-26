@@ -37,23 +37,13 @@
 //                           writes). Scheduled for full removal once every
 //                           environment has run with the flag ON across at
 //                           least one full monthly billing cycle.
-//   - HUB_VISIBILITY_RENAME: introduced 1.5 HV-1 (default OFF) — gated the
-//                            dual-vocab write cutover for `hub_visibility_level`
-//                            (old `public|resident|owner|board|admin`) and
-//                            `community_announcements.visibility_level` text
-//                            column to the role-agnostic new vocab
-//                            (`public|residents|unit-owners|board-only|operator-only`).
-//                            HV-2 (1.5 HV-2): flipped to default ON. Prod-data
-//                            audit at HV-2 start confirmed zero old-vocab rows
-//                            in either column (hub_map_issues: 0 rows;
-//                            community_announcements: 5 rows, all NULL
-//                            visibility_level), so no data migration is
-//                            required. Writes are wired to emit new vocab via
-//                            `normalizeHubVisibility()` regardless of flag
-//                            state; the flag is retained as a belt-and-suspenders
-//                            kill-switch for the rollout window. Removed in
-//                            HV-3 after old enum values are dropped and every
-//                            call site uses the new vocab exclusively.
+//   - HUB_VISIBILITY_RENAME: introduced 1.5 HV-1 (default OFF), flipped to
+//                            default ON in HV-2 alongside the code-only write
+//                            cutover, and REMOVED in HV-3 (Wave 36) after the
+//                            `0018_hub_visibility_rename_drop_old.sql`
+//                            migration dropped the old enum values. Every
+//                            write path now emits new vocab unconditionally;
+//                            the flag had no remaining behavioral effect.
 //
 // Do NOT wire this helper into existing code yet. Phase 8a is the first consumer.
 
@@ -78,13 +68,7 @@ export type FeatureFlagKey =
   // Wave 12 (Phase 5.1 cleanup) flipped the default to ON and deleted the
   // legacy posters. Per-association override still supported via
   // getFeatureFlagForAssociation().
-  | "ASSESSMENT_EXECUTION_UNIFIED"
-  // 1.5 HV-1 — default OFF; gates the `hub_visibility_level` vocabulary
-  // cutover. While OFF, writes continue to emit old vocab and reads accept
-  // both via `shared/hub-visibility.ts`. Flipped per-association in HV-2 to
-  // begin emitting new vocab; removed from code in HV-3 after old enum
-  // values are dropped.
-  | "HUB_VISIBILITY_RENAME";
+  | "ASSESSMENT_EXECUTION_UNIFIED";
 
 /**
  * Compile-time defaults. Used when no env override is present.
@@ -93,9 +77,6 @@ const DEFAULTS: Record<FeatureFlagKey, boolean> = {
   PORTAL_ROLE_COLLAPSE: true,
   BOARD_SHUNT_ACTIVE: true,
   ASSESSMENT_EXECUTION_UNIFIED: true,
-  // 1.5 HV-2: flipped ON. Prod-data audit showed zero old-vocab rows, so
-  // every new write safely emits new vocab. See feature-flag lifecycle note.
-  HUB_VISIBILITY_RENAME: true,
 };
 
 /**

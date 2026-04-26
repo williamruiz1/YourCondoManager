@@ -2126,9 +2126,10 @@ export const insertBoardPackageSchema = createInsertSchema(boardPackages).omit({
   updatedAt: true,
 });
 // `visibility_level` on community_announcements is a plain text column (NOT
-// enum-bound) and nullable — see `hub_visibility_level` dual-vocab parity
-// note above. Accept old ∪ new vocabularies during HV-1 + HV-2. HV-3 narrows
-// this to new vocab only.
+// enum-bound) and nullable. Post-HV-3 the column is constrained to the new
+// vocabulary via a CHECK constraint added in
+// `0018_hub_visibility_rename_drop_old.sql`. The zod schema mirrors that
+// constraint so invalid writes fail at the API boundary, not the DB.
 export const insertCommunityAnnouncementSchema = createInsertSchema(communityAnnouncements).omit({ id: true, createdAt: true, updatedAt: true }).extend({
   visibilityLevel: z.enum(HUB_VISIBILITY_ALL_VALUES).nullable().optional(),
 });
@@ -2839,16 +2840,15 @@ export type PlatformWebhookEvent = typeof platformWebhookEvents.$inferSelect;
 // New vocab (role-agnostic, per 2.1 Q11): public | residents | unit-owners |
 //   board-only | operator-only. Both legal during HV-1 (additive) and HV-2
 //   (backfill + dual-read). HV-3 drops the old values via enum recreate.
-// Mapping (see docs/projects/platform-overhaul/decisions/1.5-hub-visibility-rename.md):
-//   public   → public        (preserved verbatim — public-API safe)
-//   resident → residents
-//   owner    → unit-owners
-//   board    → board-only
-//   admin    → operator-only
-// Translation helper: shared/hub-visibility.ts.
+// Vocabulary (post-HV-3, Wave 36):
+//   public | residents | unit-owners | board-only | operator-only
+// `public` is preserved verbatim (public-API safe — see
+// `routes.ts:/api/hub/:identifier/public`). Old vocab
+// (`resident|owner|board|admin`) was dropped via the
+// `0018_hub_visibility_rename_drop_old.sql` recreate-and-recast migration.
+// Helper: shared/hub-visibility.ts.
 export const hubVisibilityLevelEnum = pgEnum("hub_visibility_level",
-  ["public", "resident", "owner", "board", "admin",
-   "residents", "unit-owners", "board-only", "operator-only"]);
+  ["public", "residents", "unit-owners", "board-only", "operator-only"]);
 export const hubInfoBlockCategoryEnum = pgEnum("hub_info_block_category", ["trash", "parking", "emergency", "maintenance", "rules", "amenities", "custom"]);
 export const hubActionRouteTypeEnum = pgEnum("hub_action_route_type", ["internal", "external"]);
 export const hubMapNodeTypeEnum = pgEnum("hub_map_node_type", ["building", "unit", "common-area", "parking", "amenity", "path", "infrastructure"]);
@@ -2962,7 +2962,7 @@ export const hubMapIssues = pgTable("hub_map_issues", {
   images: jsonb("images").notNull().default(sql`'[]'::jsonb`),
   coordinates: jsonb("coordinates"),
   status: hubMapIssueStatusEnum("status").notNull().default("reported"),
-  visibilityLevel: hubVisibilityLevelEnum("visibility_level").notNull().default("board"),
+  visibilityLevel: hubVisibilityLevelEnum("visibility_level").notNull().default("board-only"),
   priority: roadmapPriorityEnum("priority").notNull().default("medium"),
   linkedTicketId: varchar("linked_ticket_id"),
   reviewedBy: text("reviewed_by"),
@@ -2973,10 +2973,8 @@ export const hubMapIssues = pgTable("hub_map_issues", {
 });
 export type HubMapIssue = typeof hubMapIssues.$inferSelect;
 export type InsertHubMapIssue = typeof hubMapIssues.$inferInsert;
-// Parity window: the `visibility_level` column on hub_map_issues is enum-bound
-// and now accepts both old and new vocabularies. Callers may POST either
-// during HV-1 + HV-2; HV-3 narrows to new vocab only via the recreate/recast
-// migration. See shared/hub-visibility.ts.
+// Post-HV-3 (Wave 36): the `visibility_level` column on hub_map_issues is
+// enum-bound to the new vocabulary only (5 values). See shared/hub-visibility.ts.
 export const insertHubMapIssueSchema = createInsertSchema(hubMapIssues).extend({
   visibilityLevel: z.enum(HUB_VISIBILITY_ALL_VALUES).optional(),
 });

@@ -16343,23 +16343,23 @@ This is an automated demo request from the Your Condo Manager website.
       const [association] = await db.select({ name: associations.name, city: associations.city, state: associations.state })
         .from(associations).where(eq(associations.id, associationId));
 
-      // Visibility hierarchy: public < resident(s) < owner/unit-owners < board/board-only < admin/operator-only.
-      // 1.5 HV-2 parity window: filter must accept BOTH old and new vocab so rows
-      // written under HV-1 (old) and HV-2+ (new) are equally visible. HV-3
-      // narrows this to new vocab only after old enum values are dropped.
+      // Visibility hierarchy: public < residents < unit-owners < board-only < operator-only.
+      // Post-HV-3 (Wave 36) the enum is canonical new vocab only — the old
+      // values (`resident|owner|board|admin`) were dropped via migration
+      // `0018_hub_visibility_rename_drop_old.sql`.
       //
       // Phase 8a — retired portal roles "tenant" / "readonly" collapse to
       // "owner" in the DB; only "owner" and "board-member" remain valid
       // values on the left side of these role checks.
       const visibilityLevels: string[] = ["public"];
       if (["owner", "board-member"].includes(role)) {
-        visibilityLevels.push("resident", "residents");
+        visibilityLevels.push("residents");
       }
       if (["owner", "board-member"].includes(role)) {
-        visibilityLevels.push("owner", "unit-owners");
+        visibilityLevels.push("unit-owners");
       }
       if (role === "board-member" || req.portalHasBoardAccess) {
-        visibilityLevels.push("board", "board-only");
+        visibilityLevels.push("board-only");
       }
 
       // Get role-filtered notices

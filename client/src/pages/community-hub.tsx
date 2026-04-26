@@ -996,21 +996,15 @@ function NoticesManager({ associationId, notices }: { associationId: string; not
     normal: "bg-gray-100 text-gray-800",
   };
 
-  // 1.5 HV-2: during the parity window the column may still contain old-vocab
-  // rows (migration dropped in HV-3). Render labels for both vocabularies so
-  // legacy rows continue to display correctly.
+  // 1.5 HV-3 (Wave 36): the enum is canonical new vocab only. Old-vocab
+  // rendering removed; the recreate-and-recast migration coerced any legacy
+  // rows to the new strings (zero rows in prod per the HV-3 audit, anyway).
   const visibilityLabels: Record<string, string> = {
-    // new vocab (emitted by every write post-HV-2)
     public: "Public",
     residents: "Residents",
     "unit-owners": "Unit owners",
     "board-only": "Board only",
     "operator-only": "Operator only",
-    // old vocab (still accepted on read for any mid-deploy / legacy row)
-    resident: "Residents",
-    owner: "Unit owners",
-    board: "Board only",
-    admin: "Operator only",
   };
 
   return (
