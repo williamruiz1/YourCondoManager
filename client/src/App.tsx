@@ -21,7 +21,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AssociationProvider, useAssociationContext } from "@/context/association-context";
-import { BoardPortal } from "@/pages/board-portal";
 import { GlobalCommandPalette } from "@/components/global-command-palette";
 import { canAccessWipRoute } from "@/lib/wip-features";
 import { trackPageView } from "@/lib/tracking";
@@ -1163,21 +1162,18 @@ function AuthAwareApp() {
 
   const adminRole = authSession?.admin?.role ?? null;
   const hasWorkspaceAccess = Boolean(authSession?.authenticated && authSession.admin);
-  const isBoardMember = adminRole === "board-officer" || adminRole === "assisted-board";
   const isWorkspaceRoute = location === "/app" || location.startsWith("/app/");
 
   if (isWorkspaceRoute && authSessionLoading) {
     return <RouteFallback />;
   }
 
-  // Board-member Google sign-in → show BoardPortal with session-based auth
-  if (hasWorkspaceAccess && isBoardMember) {
-    return (
-      <AssociationProvider>
-        <BoardMemberPortalShell onLogout={logoutGoogleSession} />
-      </AssociationProvider>
-    );
-  }
+  // Phase 8c — BoardPortal shunt retired. board-officer / assisted-board admin
+  // sessions now fall through to the standard WorkspaceShell + AppSidebar path
+  // below (the sidebar already enumerates their permitted nav items via the
+  // `roles` arrays on each `WorkspaceSectionTab` / `NavLink`). The previous
+  // shunt rendered an alternative six-section portal shell at the AuthAwareApp
+  // root, bypassing WorkspaceRouter entirely.
 
   return (
     <>
@@ -1213,24 +1209,6 @@ function AuthAwareApp() {
         </Suspense>
       ) : null}
     </>
-  );
-}
-
-function BoardMemberPortalShell({ onLogout }: { onLogout: () => Promise<void> }) {
-  const { activeAssociationId, associationResolved, associations } = useAssociationContext();
-
-  if (!associationResolved || !activeAssociationId) {
-    return <RouteFallback />;
-  }
-
-  const associationName = associations.find((a) => a.id === activeAssociationId)?.name;
-
-  return (
-    <BoardPortal
-      associationId={activeAssociationId}
-      associationName={associationName}
-      onLogout={onLogout}
-    />
   );
 }
 

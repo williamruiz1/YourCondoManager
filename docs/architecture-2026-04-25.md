@@ -212,12 +212,11 @@ Generic background-jobs primitive used initially by the assessment-rules `POST /
 
 ## 4. Feature Flag Inventory
 
-As of 2026-04-25, four flags exist in `shared/feature-flags.ts`:
+As of Phase 8c (Wave 47), three flags exist in `shared/feature-flags.ts`. `PORTAL_ROLE_COLLAPSE` was retired in Phase 8c — the always-on collapse path is now hardcoded in `server/portal-role-collapse.ts`.
 
 | Flag | Default | Lifecycle |
 |---|---|---|
-| `PORTAL_ROLE_COLLAPSE` | ON | Phase 8b dark-launch (OFF) → Phase 8a flipped ON alongside migration `0014_portal_role_collapse.sql` → Phase 8c will remove the flag from code. |
-| `BOARD_SHUNT_ACTIVE` | ON | Phase 13 dark-launch (ON). When flipped OFF, `board-officer` / `assisted-board` sessions fall through to `WorkspaceShell` + `AppSidebar` instead of the legacy shunt at `client/src/App.tsx:1051-1057`. Removed entirely after one clean release cycle with flag OFF. |
+| `BOARD_SHUNT_ACTIVE` | ON | Phase 13 dark-launch (ON). When flipped OFF, `board-officer` / `assisted-board` sessions fall through to `WorkspaceShell` + `AppSidebar` instead of the legacy shunt. Phase 8c (Wave 47) retired the BoardPortal shunt itself; the flag survives as a placeholder for any future reintroduction of a board-only shell. Removed entirely after one clean release cycle. |
 | `ASSESSMENT_EXECUTION_UNIFIED` | ON | Wave 7 (4.3 Q3) introduced default OFF as a shadow-write parity window. Wave 12 flipped default ON and deleted legacy posters. Per-association override supported via `FEATURE_FLAG_ASSESSMENT_EXECUTION_UNIFIED_<associationId>`. Scheduled for removal once every env runs with the flag ON across one full monthly billing cycle. |
 | `HUB_VISIBILITY_RENAME` | ON | 1.5 HV-1 introduced default OFF. HV-2 flipped to default ON; prod-data audit confirmed zero old-vocab rows in `hub_map_issues` and `community_announcements`. Belt-and-suspenders kill-switch; removed in HV-3. |
 

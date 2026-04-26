@@ -259,7 +259,6 @@ import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import {
   getEffectivePortalRole,
-  isPortalRoleCollapseOn,
   requireBoardAccess,
   requireBoardAccessReadOnly,
 } from "./portal-role-collapse";
@@ -1171,14 +1170,10 @@ async function requirePortal(req: PortalRequest, res: Response, next: NextFuncti
   req.portalPersonId = access.personId;
   req.portalUnitId = access.unitId ?? null;
   req.portalEmail = access.email;
-  // Phase 8b — flag-gated portal role collapse. When
-  // PORTAL_ROLE_COLLAPSE is ON, the request carries the canonical
-  // post-collapse role `"owner"`; board access is a boolean augmentation
-  // via `portalHasBoardAccess`. When OFF (the default), the raw DB role
-  // string flows through unchanged (shadow-compat for the legacy 4-value
-  // enum).
-  const flagOn = isPortalRoleCollapseOn();
-  req.portalRole = getEffectivePortalRole(access.role, hasBoardAccess, flagOn);
+  // Phase 8c — `PORTAL_ROLE_COLLAPSE` flag retired. The request carries the
+  // canonical post-collapse role `"owner"` unconditionally; board access is a
+  // boolean augmentation via `portalHasBoardAccess`.
+  req.portalRole = getEffectivePortalRole(access.role, hasBoardAccess);
   req.portalBoardRoleId = boardRole?.id ?? null;
   req.portalHasBoardAccess = hasBoardAccess;
   req.portalEffectiveRole = effectiveRole;

@@ -150,18 +150,14 @@ describe("5.8 motion-reduce — global CSS", () => {
 
 describe("5.8 motion-reduce — call-site adoption", () => {
   it("imperative scrollIntoView call sites route through getScrollBehavior", async () => {
+    // Phase 8c — board-portal.tsx retired; only units.tsx remains as a
+    // call site that routes scrollIntoView through `getScrollBehavior()`.
     const units = await fs.readFile(
       path.join(REPO_ROOT, "client/src/pages/units.tsx"),
       "utf8",
     );
-    const board = await fs.readFile(
-      path.join(REPO_ROOT, "client/src/pages/board-portal.tsx"),
-      "utf8",
-    );
     expect(units).toMatch(/getScrollBehavior\(\)/);
-    expect(board).toMatch(/getScrollBehavior\(\)/);
-    // No raw `behavior: "smooth"` strings should remain in these files.
+    // No raw `behavior: "smooth"` strings should remain.
     expect(units).not.toMatch(/behavior:\s*"smooth"/);
-    expect(board).not.toMatch(/behavior:\s*"smooth"/);
   });
 });
