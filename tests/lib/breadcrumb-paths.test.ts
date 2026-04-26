@@ -51,11 +51,15 @@ describe("breadcrumb-paths: getBreadcrumbTrail", () => {
     expect(trail[1].href).toBeUndefined();
   });
 
-  it("seeds /app/financial/rules with Financials > Assessment Rules (4.3 Wave 8)", () => {
+  it("seeds /app/financial/rules with Financials > Assessment Rules (4.3 Wave 8 + Phase 12)", () => {
+    // Phase 12 (3.3 Zone 1) repointed the Financials root href from
+    // `/app/financial/foundation` to `/app/financials` so it lands on the
+    // canonical hub URL per 1.2 Q4. The remainder of the trail is
+    // unchanged.
     const trail = getBreadcrumbTrail("/app/financial/rules");
     expect(trail).toHaveLength(2);
     expect(trail[0].label).toBe("Financials");
-    expect(trail[0].href).toBe("/app/financial/foundation");
+    expect(trail[0].href).toBe("/app/financials");
     expect(trail[1].label).toBe("Assessment Rules");
     expect(trail[1].href).toBeUndefined();
   });

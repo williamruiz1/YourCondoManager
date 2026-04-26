@@ -379,7 +379,7 @@ function FinancialRulesInner() {
           summary={t("financialRules.summary")}
           eyebrow={t("financialRules.eyebrow")}
           breadcrumbs={[
-            { label: t("financialRules.crumb.financials"), href: "/app/financial/foundation" },
+            { label: t("financialRules.crumb.financials"), href: "/app/financials" },
             { label: t("financialRules.crumb.assessmentRules") },
           ]}
           subPages={financeSubPages}

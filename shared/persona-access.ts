@@ -1,29 +1,39 @@
 /**
- * shared/persona-access.ts — Phase 0b.2 skeleton per ADR 0b.
+ * shared/persona-access.ts — ADR 0b contract + zone-by-zone manifest data.
  *
  * This module is the single source of truth for persona-to-route and
  * persona-to-feature access across the application. Both the sidebar
  * (3.1 Q9) and `<RouteGuard>` (2.3 Q9) derive their visibility and gating
  * from the exports below — no inline `roles: [...]` arrays anywhere else.
  *
- * --- Phase 0b.2 scope (THIS FILE TODAY) ---
- * - Locks the export surface (types + function signatures) matching ADR 0b
- *   exactly so downstream phases can compile against stable contracts.
- * - Ships EMPTY manifests. `canAccess` is a pure predicate over the empty
- *   ROUTE_MANIFEST, which means it returns `false` for every input under
- *   the strict default-deny posture (OQ-3 Option A).
- * - `usePersonaToggles()` returns an empty `PersonaToggleState`; no
- *   features are enabled under the stub. Parameterless signature per
- *   OQ-2 Option A.
+ * --- Phase 0b.2 (shipped) ---
+ * - Locked the export surface (types + function signatures) matching ADR 0b.
+ * - Shipped empty manifests; `canAccess` defaulted-deny every input.
  *
- * --- Phase 9 scope (NOT THIS FILE TODAY) ---
- * - Populates `ROUTE_MANIFEST` from the 3.2 route table × 0.2 persona
- *   boundary matrix.
+ * --- Phase 12 (Zone 1 — Financials) — THIS FILE TODAY ---
+ * - Populates `ROUTE_MANIFEST` for Financials zone routes only:
+ *   `/app/financials` hub + 5 plural-to-singular redirects + 6 canonical
+ *   sub-pages (foundation, billing, rules, payments, expenses, reports) +
+ *   9 legacy singular-prefix redirects + `/app/settings/billing` (which
+ *   logically belongs to the Financials zone per 4.4 Q6 even though its
+ *   URL sits under `/app/settings/*`).
+ * - Operations / Governance / Communications / Platform routes still
+ *   absent — they land in Phases 13–16 per 3.3 Q5 (one zone PR each,
+ *   stop-the-line discipline).
+ * - Source of role lists: 0.2 Persona Boundary Matrix (LOCKED, amended
+ *   `f8dbf76`). `/app/financial/*` row = Manager + Board Officer +
+ *   Assisted Board (read-only via `useIsReadOnly()` hook) + PM Assistant +
+ *   Viewer. Platform Admin is ❌ on the customer-tenant-scoped Financials
+ *   zone per the 0.2 matrix and Persona 6 definition (Platform Admin
+ *   manages YCM-internal operator tooling, not customer association
+ *   day-to-day work). `/app/settings/billing` is Manager-only per 4.4 Q6.
+ *
+ * --- Phase 9 / Phases 13–16 scope (NOT THIS FILE TODAY) ---
+ * - Populates remaining zones (Operations, Governance, Communications,
+ *   Platform) and `/portal/*` routes.
  * - Populates `FEATURE_MANIFEST` from the 0.2 PM-Managed Default Access
- *   Table.
- * - Replaces the empty-manifest lookup in `canAccess` with the real
- *   lookup. The function body shown here already implements the correct
- *   predicate — Phase 9 only needs to drop data into the manifests.
+ *   Table (Phase 9 owns the feature-domain rows; per-route gating is
+ *   sufficient for zone landings).
  * - Wires `usePersonaToggles()` to `tenant_configs` per 3.1 Q6.
  */
 
@@ -46,10 +56,90 @@ import type { AdminRole } from "./schema";
 
 export type RouteManifest = Readonly<Record<string, readonly AdminRole[]>>;
 
+// ---------------------------------------------------------------------------
+// Persona-class role lists — derived from 0.2 Persona Boundary Matrix.
+// ---------------------------------------------------------------------------
+//
+// Internal constants to keep the per-route role lists DRY and self-evident.
+// Match the equivalent constants in `client/src/components/app-sidebar-zones.ts`
+// (which the sidebar already consumes as of Phase 11). Future phases may
+// consolidate the two source-of-truth files; for now the duplication is
+// intentional — the sidebar tree is per-zone, the manifest is per-route.
+
+/** Manager-equivalent operator personas. Used for `/app/financial/*` per
+ * 0.2 matrix (Platform Admin is `❌` on customer-tenant Financials per
+ * Persona 6 definition). Assisted Board is `read-only` — read-only is
+ * enforced at the action level via `useIsReadOnly()` per 2.3 Q7, not
+ * by exclusion from this list (the manifest is visibility, not
+ * write-action gating). */
+const FIVE_PERSONA_OPERATOR: readonly AdminRole[] = [
+  "manager",
+  "board-officer",
+  "assisted-board",
+  "pm-assistant",
+  "viewer",
+];
+
 /**
- * Phase 0b.2: empty. Phase 9 populates from the 3.2 × 0.2 cross-table.
+ * `/app/settings/billing` shipped role list — Manager + Board Officer +
+ * PM Assistant + Platform Admin. NOTE: 4.4 Q6 spec says Manager-only, but
+ * the shipped page (`client/src/pages/settings-billing.tsx`) and its
+ * tests (`tests/settings-billing-page.client.test.tsx`) exercise the
+ * 4-role list. To avoid breaking shipped behavior and tests in this PR,
+ * Phase 12 (3.3 Zone 1) matches the manifest to the shipped 4-role
+ * gate. A founder Human Task is filed to resolve the spec/code drift —
+ * once resolved, the manifest can be tightened or the spec relaxed.
  */
-export const ROUTE_MANIFEST: RouteManifest = {};
+const SETTINGS_BILLING_ROLES: readonly AdminRole[] = [
+  "platform-admin",
+  "manager",
+  "board-officer",
+  "pm-assistant",
+];
+
+/**
+ * Phase 12 (Zone 1 — Financials): populated for all Financials zone
+ * routes. Other zones are still absent — `canAccess` strict-defaults-deny
+ * for any unlisted route per OQ-3 Option A.
+ */
+export const ROUTE_MANIFEST: RouteManifest = {
+  // ---- Financials zone hub (3.2 Q1, Phase 11) ----
+  "/app/financials": FIVE_PERSONA_OPERATOR,
+
+  // ---- Financials zone plural-to-singular redirects (3.2 Q1, Phase 11) ----
+  // Same persona list as the destination so a permitted persona reaches
+  // the redirect, navigates, and reaches the destination uninterrupted.
+  "/app/financials/foundation": FIVE_PERSONA_OPERATOR,
+  "/app/financials/billing": FIVE_PERSONA_OPERATOR,
+  "/app/financials/payments": FIVE_PERSONA_OPERATOR,
+  "/app/financials/expenses": FIVE_PERSONA_OPERATOR,
+  "/app/financials/reports": FIVE_PERSONA_OPERATOR,
+
+  // ---- Financials zone canonical sub-pages (3.2 — preserved from current) ----
+  "/app/financial/foundation": FIVE_PERSONA_OPERATOR,
+  "/app/financial/billing": FIVE_PERSONA_OPERATOR,
+  "/app/financial/payments": FIVE_PERSONA_OPERATOR,
+  "/app/financial/expenses": FIVE_PERSONA_OPERATOR,
+  "/app/financial/reports": FIVE_PERSONA_OPERATOR,
+  // 4.3 Q9 consolidated assessment-rules surface.
+  "/app/financial/rules": FIVE_PERSONA_OPERATOR,
+
+  // ---- Financials zone legacy singular-prefix redirects (3.2 Q4 archive) ----
+  "/app/financial/fees": FIVE_PERSONA_OPERATOR,
+  "/app/financial/recurring-charges": FIVE_PERSONA_OPERATOR,
+  "/app/financial/ledger": FIVE_PERSONA_OPERATOR,
+  "/app/financial/assessments": FIVE_PERSONA_OPERATOR,
+  "/app/financial/late-fees": FIVE_PERSONA_OPERATOR,
+  "/app/financial/invoices": FIVE_PERSONA_OPERATOR,
+  "/app/financial/utilities": FIVE_PERSONA_OPERATOR,
+  "/app/financial/budgets": FIVE_PERSONA_OPERATOR,
+  "/app/financial/reconciliation": FIVE_PERSONA_OPERATOR,
+
+  // ---- Owner-billing surface (3.2 amendment 2026-04-21 / 4.4 Q6) ----
+  // Sub-route of /app/settings but logically Financials-zone (Stripe
+  // Customer Portal landing for the paying account holder).
+  "/app/settings/billing": SETTINGS_BILLING_ROLES,
+};
 
 // ---------------------------------------------------------------------------
 // Feature manifest

@@ -438,7 +438,9 @@ export const strings = {
   "common.eyebrow.operations": "Operations",
   "common.eyebrow.governance": "Board & Governance",
   "common.eyebrow.records": "Records",
-  "common.crumb.finance": "Finance",
+  // Phase 12 (3.3 Zone 1): "Finance" → "Financials" to match 1.1 Q1
+  // canonical zone label and align with the breadcrumb-paths.ts registry.
+  "common.crumb.finance": "Financials",
   "common.crumb.operations": "Operations",
   "common.crumb.board": "Board",
   "common.crumb.dashboard": "Dashboard",

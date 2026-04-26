@@ -17,7 +17,7 @@ export default function FinancialExpensesPage() {
           title="Expenses"
           summary="Track vendor invoices, utility payments, and budget variance in one place."
           eyebrow="Finance"
-          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Expenses" }]}
+          breadcrumbs={[{ label: "Financials", href: "/app/financials" }, { label: "Expenses" }]}
           subPages={financeSubPages}
         />
         <Tabs defaultValue="invoices" className="space-y-6">

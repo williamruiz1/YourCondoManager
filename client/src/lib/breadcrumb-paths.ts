@@ -140,13 +140,64 @@ export const BREADCRUMB_PATHS: Readonly<Record<string, BreadcrumbTrail>> = Objec
     { label: "Inbox" },
   ],
 
+  // ---- Phase 12 (3.3 Zone 1 — Financials) breadcrumb entries ----
+  //
+  // Per 1.1 Q1 the canonical zone label is "Financials". Per 1.2 Q4 the
+  // hub URL is /app/financials. Per 1.3 Q3 the hub trail is two-level
+  // (Home zone > Financials hub), with the leaf zone-label non-linked.
+  // Per 1.3 Q1 amendment 2026-04-23, "Home" is permitted as a root label
+  // when it refers to the Home-zone label (1.1 Q3).
+  //
+  // Sub-pages use portfolio-scoped two-segment Pattern B per 1.3 Q2:
+  // `Financials > Page Title` (zone label as parent, page title from 1.4
+  // catalog as leaf). The zone label `href` points at the hub URL.
+
+  // Financials hub — two-level Home > Financials (hub leaf is the zone
+  // label itself, non-linked per 1.3 Q3).
+  "/app/financials": [
+    { label: "Home", href: "/app" },
+    { label: "Financials" },
+  ],
+
+  // Financials sub-pages (portfolio-scoped leaves under the zone hub).
+  "/app/financial/foundation": [
+    { label: "Financials", href: "/app/financials" },
+    { label: "Chart of Accounts" },
+  ],
+  "/app/financial/billing": [
+    { label: "Financials", href: "/app/financials" },
+    { label: "Billing" },
+  ],
+  "/app/financial/payments": [
+    { label: "Financials", href: "/app/financials" },
+    { label: "Payments" },
+  ],
+  "/app/financial/expenses": [
+    { label: "Financials", href: "/app/financials" },
+    { label: "Expenses" },
+  ],
+  "/app/financial/reports": [
+    { label: "Financials", href: "/app/financials" },
+    { label: "Reports" },
+  ],
+
   // 4.3 Wave 8 — Consolidated Assessment Rules surface. Portfolio-scoped
   // zone > leaf. Financials is the zone label (per 1.1 Q3 Financials
   // zone). Leaf is the page title (per 1.4 Q1). See
   // docs/projects/platform-overhaul/decisions/4.3-recurring-assessment-rules-engine.md#q9.
   "/app/financial/rules": [
-    { label: "Financials", href: "/app/financial/foundation" },
+    { label: "Financials", href: "/app/financials" },
     { label: "Assessment Rules" },
+  ],
+
+  // 4.4 Q6 — Manager-only owner-billing surface. Sub-route of
+  // /app/settings (zone-wise) but logically Financials per the Phase 12
+  // bundle. Trail uses Financials as the zone-label root since billing
+  // pertains to the customer's account financials, not generic
+  // workspace settings.
+  "/app/settings/billing": [
+    { label: "Financials", href: "/app/financials" },
+    { label: "Billing & Subscription" },
   ],
 
   // 3.5 Wave 11 — Owner Portal Restructure. First-person zone labels per
