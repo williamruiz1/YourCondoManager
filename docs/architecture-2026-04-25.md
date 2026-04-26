@@ -1,7 +1,7 @@
 # YCM Architecture — 2026-04-25
 
-**Snapshot date:** 2026-04-25
-**Context:** post-Wave-19 (perf + Layer 5 polish) and pre-Wave-20 docs backfill. 22+ PRs merged this session across Layers 0–5 of the Platform Overhaul.
+**Snapshot date:** 2026-04-25 (initial publication post-Wave-19; appended Wave-35b catch-up after Waves 22–33).
+**Context:** post-Wave-19 (perf + Layer 5 polish) and pre-Wave-20 docs backfill. 22+ PRs merged in the Wave-19 session across Layers 0–5 of the Platform Overhaul. **Wave 35b appended:** Wave 25 (axe + visual regression), Wave 30 (CI pipeline), Wave 32 (Tier 3 alert notifications), Wave 33 (background job queue) — see § 3.6–3.9 below.
 **Audience:** new contributors, future agents, and reviewers needing a one-page mental model of the platform.
 
 This is a snapshot, not a moving document. Per-module decisions live in [`docs/projects/platform-overhaul/decisions/`](projects/platform-overhaul/decisions/) and per-module ACs/handoffs live in [`docs/projects/platform-overhaul/handoffs/`](projects/platform-overhaul/handoffs/). When this doc disagrees with a locked decision doc, the decision doc wins.
@@ -163,6 +163,50 @@ Mirror of `WorkspaceShell` for the owner-portal side. Centralizes session gate, 
 ### 3.5 Feature flag contract
 
 All flags live in `shared/feature-flags.ts`. Server reads `process.env.FEATURE_FLAG_<KEY>`; client (Vite bundle) reads `import.meta.env.VITE_FEATURE_FLAG_<KEY>`. Defaults are the single source of truth in `DEFAULTS` in that file. Per-association override supported via `getFeatureFlagForAssociation()`.
+
+### 3.6 Wave 25 — Automated quality gates (5.7)
+
+`@axe-core/playwright` integration plus `expect(page).toHaveScreenshot()` visual-regression baselines run as part of the Playwright job in CI (Wave 30 / 5.9). Baselines live under `e2e/__screenshots__/` and are regenerated locally with `npx playwright test --update-snapshots`.
+
+- Axe scan runs against every authenticated route in the existing 5 specs; serious/critical violations fail the build (filed Wave 25 follow-up: Radix Tabs inactive-trigger color contrast — PPM `ee01d2eb`).
+- Visual baselines are captured on the CI Linux runner; the `docs/ci-cd.md` runbook calls out the platform-specific PNG caveat for contributors regenerating baselines on macOS.
+- No external services (Percy/Chromatic) — visual diffs are stored in-repo and reviewed in PR.
+- Decision doc: [`decisions/5.7-automated-quality-gates.md`](projects/platform-overhaul/decisions/5.7-automated-quality-gates.md). Shipped via PR #56.
+
+### 3.7 Wave 30 — CI pipeline (5.9)
+
+GitHub Actions workflow at `.github/workflows/ci.yml` runs four jobs on every PR to `main` and every push to `main`:
+
+- `check` — `npm run check` (tsc) + `npm run lint` (ESLint).
+- `test` — `npx vitest run`.
+- `build` — `npm run build` (Vite production bundle).
+- `playwright` — three modes sequentially in one job (route-mock, real-backend, visual regression) to amortize the npm-install + browser-install setup cost.
+
+Concurrency group cancels superseded runs; `paths-ignore` (`**/*.md`, `docs/**`) on the `pull_request` trigger skips the whole workflow for docs-only PRs (pushes to `main` always run). Failure path uploads `playwright-traces` (test-results + report) as a 7-day retention artifact. Zero CI secrets — `script/playwright-real-backend.ts` defaults `SESSION_SECRET` for tests.
+
+- Decision doc: [`decisions/5.9-ci-pipeline.md`](projects/platform-overhaul/decisions/5.9-ci-pipeline.md). Runbook: [`docs/ci-cd.md`](ci-cd.md). Shipped via PR #59.
+
+### 3.8 Wave 32 — Tier 3 alert notifications (4.1 Tier 3)
+
+Opt-in per-user severity-gated rate-limited push + email delivery layered on top of the cross-association alert engine (3.2).
+
+- New schema: `notification_preferences` (per-operator severity matrix) and `push_subscriptions` (browser endpoint + keys).
+- Delivery channels: Web Push via VAPID (`server/push-provider.ts` extended for admin operators) and SMTP (`server/email-provider.ts`). Provider selection driven by per-user prefs.
+- Severity gate: only `severity in {warning, critical}` fan out by default; `info` requires explicit opt-in.
+- Rate limiter: per-user-per-source-type debounce window prevents storms when a batch of source rows transitions in a single transaction.
+- Server entry point: `server/notifications.ts` orchestrates fan-out from the alert-cache invalidation hook (4.1 v2 / Wave 19).
+- New endpoints: `GET/PATCH /api/admin/notification-preferences`, `GET /api/admin/push/vapid-public-key`, `POST/DELETE /api/admin/push/subscribe` (see API reference for shapes).
+- Decision doc: [`decisions/4.1-tier-3-notifications.md`](projects/platform-overhaul/decisions/4.1-tier-3-notifications.md). Shipped via PR #63.
+
+### 3.9 Wave 33 — Background job queue (5.4-F3)
+
+Generic background-jobs primitive used initially by the assessment-rules `POST /api/financial/rules/:ruleId/run` endpoint to escalate runs on associations >500 units from sync to async.
+
+- New `background_jobs` table records `state` (`queued | running | done | failed`), `payload` (JSON), `resultJson`, timestamps, and error text. The orchestrator polls and processes the queue.
+- Run endpoint behavior: small associations (≤ threshold) execute synchronously and return the run-log rows inline. Large associations enqueue a job, return a `jobId`, and respond with the message `"Run enqueued — poll GET /api/financial/jobs/:jobId for status."`. The UI polls until `state === "done"` and then renders the hydrated `assessment_run_log` rows the orchestrator wrote.
+- New endpoint: `GET /api/financial/jobs/:jobId` (Admin, role-gated, association-scoped from job payload).
+- Side effect: server bundle trimmed from 2.4 MB → 1.3 MB by tree-shaking AI-ingestion modules into a lazy-import boundary, also part of this PR.
+- Decision-doc impact: extends `decisions/5.4-performance-audit.md` (F3 deliverable). Shipped via PR #65.
 
 ---
 
