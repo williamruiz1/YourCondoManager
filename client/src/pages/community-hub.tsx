@@ -571,7 +571,7 @@ export default function CommunityHubPage() {
                     <Plus className="h-4 w-4 mr-1.5" />Add Action
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Add Quick Action</DialogTitle>
                   </DialogHeader>
@@ -656,7 +656,7 @@ export default function CommunityHubPage() {
                 <DialogTrigger asChild>
                   <Button size="sm"><Plus className="h-4 w-4 mr-1.5" />Add Block</Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Add Info Block</DialogTitle>
                   </DialogHeader>
@@ -1278,7 +1278,7 @@ function MapLayerManager({ associationId }: { associationId: string }) {
             <DialogTrigger asChild>
               <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1.5" />Add Layer</Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>Add Map Layer</DialogTitle>
               </DialogHeader>

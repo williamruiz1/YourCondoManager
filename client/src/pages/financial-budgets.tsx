@@ -271,7 +271,7 @@ export function FinancialBudgetsContent() {
                   <label className="text-sm font-medium">Fiscal year</label>
                   <Input type="number" value={budgetForm.fiscalYear} onChange={(e) => setBudgetForm((s) => ({ ...s, fiscalYear: e.target.value }))} />
                 </div>
-                <div className={`grid gap-2 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
                   <div className="space-y-1">
                     <label className="text-sm font-medium">Start date</label>
                     <Input type="date" value={budgetForm.periodStart} onChange={(e) => setBudgetForm((s) => ({ ...s, periodStart: e.target.value }))} />

@@ -1262,7 +1262,7 @@ export function MeetingsContent() {
             </DialogHeader>
             <Form {...scheduleForm}>
               <form className="space-y-4" onSubmit={scheduleForm.handleSubmit((v) => createMeeting.mutate(v))}>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <FormField control={scheduleForm.control} name="meetingType" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Type</FormLabel>
@@ -1386,7 +1386,7 @@ export function MeetingsContent() {
                         onChange={(e) => setReminderForm((f) => ({ ...f, name: e.target.value }))}
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <label className="text-sm font-medium">Trigger</label>
                         <Select
@@ -1418,7 +1418,7 @@ export function MeetingsContent() {
                         </Select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <label className="text-sm font-medium">Days offset</label>
                         <Input
