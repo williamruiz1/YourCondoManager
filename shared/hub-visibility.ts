@@ -1,37 +1,30 @@
-// @zone: (cross-cutting — hub visibility translation)
-// Dual-vocab translation helper for the `hub_visibility_level` enum and the
-// `community_announcements.visibility_level` text column during the 1.5
-// Hub Visibility Rename parity window.
+// @zone: (cross-cutting — hub visibility)
+// Hub visibility vocabulary helper for the `hub_visibility_level` enum and the
+// `community_announcements.visibility_level` text column.
 //
 // Spec: docs/projects/platform-overhaul/decisions/1.5-hub-visibility-rename.md
 //
 // Lifecycle:
-//   - HV-1 (this wave) — additive: helper ships, but no caller is migrated.
-//     The schema enum now accepts both old and new values; writes stay old.
-//   - HV-2 — backfill + dual-read: callers normalize inputs with
-//     `normalizeHubVisibility` and (per-association, flag-gated) begin
-//     emitting new vocab on write.
-//   - HV-3 — this file is deleted after old enum values are dropped and
-//     every call site uses new vocab exclusively.
+//   - HV-1 (Wave 17) — additive: helper introduced, schema enum extended to
+//     accept both old and new values; writes stayed old. Zero behavior change.
+//   - HV-2 (Wave 27) — code-only cutover: `HUB_VISIBILITY_RENAME` flag flipped
+//     ON, every write path normalized through `normalizeHubVisibility()` to
+//     emit new vocab. Reads still accepted both vocabs (parity window).
+//   - HV-3 (Wave 36, this PR) — old enum values dropped via the
+//     `0018_hub_visibility_rename_drop_old.sql` recreate-and-recast migration.
+//     `HubVisibilityOld` type and `toNewVocab` mapping function are retired.
+//     `normalizeHubVisibility` is kept as an identity shim for the immediate
+//     follow-up wave to delete; this avoids touching all 19 call sites in
+//     the same PR as the migration.
 //
-// Mapping table (from the 1.5 decision doc):
-//   | Old      | New           |
-//   | -------- | ------------- |
-//   | public   | public        | (preserved verbatim — public-API safe)
-//   | resident | residents     |
-//   | owner    | unit-owners   |
-//   | board    | board-only    |
-//   | admin    | operator-only |
+// Vocabulary (5 values, role-agnostic, 2.1 Q11 illustrative list):
+//   public | residents | unit-owners | board-only | operator-only
+//
+// `public` is preserved verbatim for the anonymous public hub endpoint
+// (server/routes.ts:`/api/hub/:identifier/public`); breaking that string would
+// silently regress every external consumer keyed on it.
 
-/** Old, role-coupled vocabulary. Legal today; retired in HV-3. */
-export type HubVisibilityOld =
-  | "public"
-  | "resident"
-  | "owner"
-  | "board"
-  | "admin";
-
-/** New, role-agnostic vocabulary (per 2.1 Q11). Target of the rename. */
+/** Canonical hub-visibility vocabulary (post-HV-3). */
 export type HubVisibilityNew =
   | "public"
   | "residents"
@@ -39,85 +32,48 @@ export type HubVisibilityNew =
   | "board-only"
   | "operator-only";
 
-/** Union accepted anywhere during the HV-1 + HV-2 parity window. */
-export type HubVisibility = HubVisibilityOld | HubVisibilityNew;
+/**
+ * Backwards-compatible alias. Pre-HV-3 the type was a discriminated union of
+ * old + new vocab; HV-3 collapsed it to just the new vocab. Kept as a named
+ * export so call sites that still import `HubVisibility` keep compiling.
+ */
+export type HubVisibility = HubVisibilityNew;
 
 /**
- * Ordered list of all legal values (old ∪ new) for use in zod `z.enum([...])`.
- * Exported so CRUD validators can accept both vocabularies without having to
- * hard-code the full list in every call site.
+ * Ordered list of all legal values, for use in zod `z.enum([...])`. Exported
+ * so CRUD validators can accept the canonical vocabulary without hard-coding
+ * the full list at every call site.
  *
- * Order matters for zod error messages; we list old first (current on-the-wire
- * reality) then new (destination).
+ * Post-HV-3: 5 values, no old vocab. Any input outside this list is rejected
+ * by the zod parser before the helper is reached.
  */
 export const HUB_VISIBILITY_ALL_VALUES = [
   "public",
-  "resident",
-  "owner",
-  "board",
-  "admin",
   "residents",
   "unit-owners",
   "board-only",
   "operator-only",
-] as const satisfies readonly HubVisibility[];
-
-/** Old → new lookup. `public` is preserved verbatim. */
-const OLD_TO_NEW: Record<HubVisibilityOld, HubVisibilityNew> = {
-  public: "public",
-  resident: "residents",
-  owner: "unit-owners",
-  board: "board-only",
-  admin: "operator-only",
-};
-
-const NEW_VALUES = new Set<HubVisibilityNew>([
-  "public",
-  "residents",
-  "unit-owners",
-  "board-only",
-  "operator-only",
-]);
+] as const satisfies readonly HubVisibilityNew[];
 
 /**
- * Map a value from either vocabulary to the NEW vocabulary.
+ * Identity over the new vocabulary. Pre-HV-3 this also mapped old → new for
+ * the dual-vocab parity window; the migration dropped that need. The function
+ * is retained as a deprecation shim so we do not touch every call site in the
+ * same PR as the schema change. A follow-up wave will delete this and inline
+ * the value at every call site.
  *
- * - Old values map per the 1.5 decision-doc table.
- * - New values pass through unchanged (already in target form).
- * - `null` passes through unchanged. The `community_announcements.visibility_level`
- *   column allows NULL, and the public-read path treats NULL as "public-ish"
- *   (see `server/routes.ts` — `isNull || eq "public"`). Preserving NULL is
- *   load-bearing for that contract; HV-2 backfill must NOT convert NULLs.
+ * NULLs pass through unchanged. The `community_announcements.visibility_level`
+ * column allows NULL, and the public-read path treats NULL as "public-ish"
+ * (see `server/routes.ts` — `isNull || eq "public"`). Preserving NULL is
+ * load-bearing for that contract.
  *
- * @throws never — this helper is total over the documented union. An unknown
- *   string that slips past the type system falls through to being returned as
- *   a `HubVisibilityNew` cast, which is a programmer bug elsewhere; callers
- *   should validate with the zod schema before calling.
- */
-export function toNewVocab(
-  v: HubVisibility | null,
-): HubVisibilityNew | null {
-  if (v === null || v === undefined) return null;
-  if (NEW_VALUES.has(v as HubVisibilityNew)) {
-    return v as HubVisibilityNew;
-  }
-  // At this point `v` is either an old value or an unknown string. Look it up
-  // in the old→new map; if it matches, return the new value. Otherwise return
-  // it unchanged (the caller validated, or failed to — not this helper's job).
-  const mapped = OLD_TO_NEW[v as HubVisibilityOld];
-  return mapped ?? (v as HubVisibilityNew);
-}
-
-/**
- * Accept either vocabulary and emit new. Callers that read from storage (where
- * both vocabs may be present during HV-2) should pipe the value through this
- * before comparing or rendering. Semantically identical to `toNewVocab`; kept
- * as a named export so intent reads clearly at call sites:
- *
- *   const canonical = normalizeHubVisibility(row.visibilityLevel);
+ * @deprecated since HV-3 (Wave 36). Use the input value directly; this helper
+ * is now an identity over `HubVisibilityNew | null`. Scheduled for removal in
+ * a follow-up wave.
  */
 export function normalizeHubVisibility(
-  v: HubVisibility | null,
+  v: HubVisibilityNew | null | undefined,
 ): HubVisibilityNew | null {
-  return toNewVocab(v);
+  if (v === null || v === undefined) return null;
+  return v;
 }

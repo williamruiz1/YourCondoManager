@@ -1,65 +1,49 @@
 /**
- * Hub visibility translation helper tests — 1.5 HV-1.
+ * Hub visibility helper tests — 1.5 HV-3 (Wave 36).
  *
  * Spec: docs/projects/platform-overhaul/decisions/1.5-hub-visibility-rename.md
  *
- * Covers:
- *   - `toNewVocab` maps each old value to its new counterpart per the 1.5
- *     decision-doc table.
- *   - `normalizeHubVisibility` is identity on new values.
- *   - NULLs pass through unchanged (load-bearing for the public-read
- *     NULL-equivalence contract in `server/routes.ts`).
- *   - Type-level: both `HubVisibilityOld` and `HubVisibilityNew` are
- *     assignable to `HubVisibility`.
- *   - `HUB_VISIBILITY_ALL_VALUES` contains every legal value (old ∪ new).
+ * Post-HV-3 the helper has collapsed:
+ *   - `HubVisibilityOld` and `toNewVocab` retired (no more dual vocab).
+ *   - `HubVisibilityNew` is the canonical type; `HubVisibility` is an alias.
+ *   - `HUB_VISIBILITY_ALL_VALUES` contains exactly the 5 new values.
+ *   - `normalizeHubVisibility` is now an identity over `HubVisibilityNew | null`,
+ *     kept temporarily as a deprecation shim until call sites are inlined.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   HUB_VISIBILITY_ALL_VALUES,
   normalizeHubVisibility,
-  toNewVocab,
   type HubVisibility,
   type HubVisibilityNew,
-  type HubVisibilityOld,
 } from "../shared/hub-visibility";
 
-describe("toNewVocab — old → new mapping (1.5 decision-doc table)", () => {
-  it("public → public (preserved verbatim — public-API safe)", () => {
-    expect(toNewVocab("public")).toBe("public");
+describe("HUB_VISIBILITY_ALL_VALUES — canonical 5-value vocabulary", () => {
+  it("contains exactly the 5 new vocabulary values", () => {
+    expect(HUB_VISIBILITY_ALL_VALUES).toHaveLength(5);
+    expect(new Set(HUB_VISIBILITY_ALL_VALUES).size).toBe(5);
   });
 
-  it("resident → residents", () => {
-    expect(toNewVocab("resident")).toBe("residents");
+  it("includes every new vocab value, nothing else", () => {
+    const expected = [
+      "public",
+      "residents",
+      "unit-owners",
+      "board-only",
+      "operator-only",
+    ];
+    expect([...HUB_VISIBILITY_ALL_VALUES].sort()).toEqual([...expected].sort());
   });
 
-  it("owner → unit-owners", () => {
-    expect(toNewVocab("owner")).toBe("unit-owners");
-  });
-
-  it("board → board-only", () => {
-    expect(toNewVocab("board")).toBe("board-only");
-  });
-
-  it("admin → operator-only", () => {
-    expect(toNewVocab("admin")).toBe("operator-only");
-  });
-
-  it("maps every documented old value (exhaustive)", () => {
-    const expected: Record<HubVisibilityOld, HubVisibilityNew> = {
-      public: "public",
-      resident: "residents",
-      owner: "unit-owners",
-      board: "board-only",
-      admin: "operator-only",
-    };
-    for (const [oldV, newV] of Object.entries(expected)) {
-      expect(toNewVocab(oldV as HubVisibilityOld)).toBe(newV);
+  it("does NOT include any retired old-vocab values", () => {
+    for (const oldVal of ["resident", "owner", "board", "admin"]) {
+      expect(HUB_VISIBILITY_ALL_VALUES).not.toContain(oldVal);
     }
   });
 });
 
-describe("normalizeHubVisibility — identity on new values", () => {
+describe("normalizeHubVisibility — identity shim over the new vocabulary", () => {
   const newValues: HubVisibilityNew[] = [
     "public",
     "residents",
@@ -69,88 +53,31 @@ describe("normalizeHubVisibility — identity on new values", () => {
   ];
 
   for (const v of newValues) {
-    it(`${v} → ${v} (pass-through)`, () => {
+    it(`${v} → ${v} (identity)`, () => {
       expect(normalizeHubVisibility(v)).toBe(v);
     });
   }
-});
 
-describe("normalizeHubVisibility — NULL handling", () => {
   it("null → null (load-bearing for public-read NULL-equivalence contract)", () => {
     expect(normalizeHubVisibility(null)).toBeNull();
   });
 
-  it("toNewVocab(null) === null", () => {
-    expect(toNewVocab(null)).toBeNull();
+  it("undefined → null (treated as 'no value supplied')", () => {
+    expect(normalizeHubVisibility(undefined)).toBeNull();
   });
 });
 
-describe("normalizeHubVisibility — accepts either vocab, emits new", () => {
-  it("accepts old and emits new", () => {
-    expect(normalizeHubVisibility("resident")).toBe("residents");
-    expect(normalizeHubVisibility("owner")).toBe("unit-owners");
-    expect(normalizeHubVisibility("board")).toBe("board-only");
-    expect(normalizeHubVisibility("admin")).toBe("operator-only");
-  });
-
-  it("accepts new and emits new unchanged", () => {
-    expect(normalizeHubVisibility("residents")).toBe("residents");
-    expect(normalizeHubVisibility("unit-owners")).toBe("unit-owners");
-    expect(normalizeHubVisibility("board-only")).toBe("board-only");
-    expect(normalizeHubVisibility("operator-only")).toBe("operator-only");
-  });
-});
-
-describe("type-level assignability (compile-time only)", () => {
-  it("HubVisibilityOld is assignable to HubVisibility", () => {
-    const oldVal: HubVisibilityOld = "resident";
-    const union: HubVisibility = oldVal;
-    expect(union).toBe("resident");
-  });
-
-  it("HubVisibilityNew is assignable to HubVisibility", () => {
+describe("type-level contract (compile-time only)", () => {
+  it("HubVisibility is an alias for HubVisibilityNew", () => {
+    // If these assignments compile, the alias holds. The runtime check is just
+    // a smoke assertion that one of the values round-trips.
     const newVal: HubVisibilityNew = "residents";
-    const union: HubVisibility = newVal;
-    expect(union).toBe("residents");
+    const aliasVal: HubVisibility = newVal;
+    expect(aliasVal).toBe("residents");
   });
 
-  it("HubVisibility accepts both vocabs in the same array", () => {
-    const mixed: HubVisibility[] = [
-      "public",
-      "resident",
-      "residents",
-      "owner",
-      "unit-owners",
-      "board",
-      "board-only",
-      "admin",
-      "operator-only",
-    ];
-    expect(mixed).toHaveLength(9);
-  });
-});
-
-describe("HUB_VISIBILITY_ALL_VALUES — enum source for zod", () => {
-  it("contains all 9 legal values (old ∪ new, with `public` once)", () => {
-    expect(HUB_VISIBILITY_ALL_VALUES).toHaveLength(9);
-    expect(new Set(HUB_VISIBILITY_ALL_VALUES).size).toBe(9);
-  });
-
-  it("includes every old value", () => {
-    for (const v of ["public", "resident", "owner", "board", "admin"] as const) {
-      expect(HUB_VISIBILITY_ALL_VALUES).toContain(v);
-    }
-  });
-
-  it("includes every new value", () => {
-    for (const v of [
-      "public",
-      "residents",
-      "unit-owners",
-      "board-only",
-      "operator-only",
-    ] as const) {
-      expect(HUB_VISIBILITY_ALL_VALUES).toContain(v);
-    }
+  it("HUB_VISIBILITY_ALL_VALUES is assignable to readonly HubVisibilityNew[]", () => {
+    const sink: readonly HubVisibilityNew[] = HUB_VISIBILITY_ALL_VALUES;
+    expect(sink).toEqual(HUB_VISIBILITY_ALL_VALUES);
   });
 });
