@@ -76,7 +76,19 @@ describe("PmUpgradePrompt (4.4 Q6 — Wave 39 dual-path)", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("Primary path: 'Add HOA on self-managed' navigates to /signup?plan=self-managed&context=add", () => {
+  it("Primary path (authenticated default): 'Add HOA on self-managed' opens AddHoaDialog", () => {
+    const onClose = vi.fn();
+    render(<PmUpgradePrompt open={true} onClose={onClose} />);
+    fireEvent.click(screen.getByTestId("pm-upgrade-add-self-managed"));
+
+    // Outer prompt closes (parent state flips), inner Add HOA dialog opens.
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("add-hoa-dialog")).toBeInTheDocument();
+    // The dismiss key is NOT set yet — that happens on Stripe redirect.
+    expect(localStorage.getItem(PM_UPGRADE_DISMISSED_KEY)).toBeNull();
+  });
+
+  it("Primary path (authenticated=false fallback): redirects to /signup?plan=self-managed&context=add", () => {
     // jsdom's window.location is read-only via assignment but href is settable.
     const hrefSetter = vi.fn();
     Object.defineProperty(window, "location", {
@@ -89,7 +101,7 @@ describe("PmUpgradePrompt (4.4 Q6 — Wave 39 dual-path)", () => {
     });
 
     const onClose = vi.fn();
-    render(<PmUpgradePrompt open={true} onClose={onClose} />);
+    render(<PmUpgradePrompt open={true} onClose={onClose} authenticated={false} />);
     fireEvent.click(screen.getByTestId("pm-upgrade-add-self-managed"));
 
     expect(hrefSetter).toHaveBeenCalledWith(
