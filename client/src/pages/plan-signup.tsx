@@ -48,7 +48,7 @@ const PLANS: Record<
       "Owner Portal",
       "Document Management",
     ],
-    trial: "14-day free trial",
+    trial: "21-day free trial",
   },
   "property-manager": {
     name: "Property Manager",
@@ -61,7 +61,7 @@ const PLANS: Record<
       "Advanced Asset Management",
       "Bulk Reporting",
     ],
-    trial: "14-day free trial",
+    trial: "21-day free trial",
   },
   // PRICING STALE — "Enterprise" tier name superseded. See docs/strategy/pricing-and-positioning.md
   enterprise: {
@@ -153,7 +153,7 @@ function PlanPanel({ planKey, resolvedPrice }: { planKey: PlanKey; resolvedPrice
 
         <div className="mt-8 rounded-xl bg-white/10 px-5 py-4 text-sm font-body opacity-90">
           <span className="font-semibold">{plan.trial}</span>
-          {plan.trial.includes("14-day") && (
+          {plan.trial.includes("21-day") && (
             <span> — no credit card required to start.</span>
           )}
         </div>
@@ -362,7 +362,7 @@ export default function PlanSignupPage() {
             ) : (
               <>
                 <h1 className="font-headline text-3xl font-bold text-on-surface mb-2">
-                  Start your 14-day free trial
+                  Start your 21-day free trial
                 </h1>
                 <p className="text-sm font-body text-on-surface/60">
                   No credit card required to start.

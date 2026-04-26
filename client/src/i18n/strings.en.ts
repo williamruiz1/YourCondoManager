@@ -399,7 +399,7 @@ export const strings = {
 
   "settings.billing.trial.endsLabel": "Trial ends:",
   "settings.billing.trial.note":
-    "14-day free trial · 7-day grace window after trial ends before workspace is locked. Add a payment method in the Stripe Customer Portal to continue uninterrupted.",
+    "21-day free trial · 7-day grace window after trial ends before workspace is locked. Add a payment method in the Stripe Customer Portal to continue uninterrupted.",
 
   "settings.billing.period.cancels": "Cancels on:",
   "settings.billing.period.next": "Next invoice:",
