@@ -127,6 +127,13 @@
       "when": 1777500000000,
       "tag": "0018_hub_visibility_rename_drop_old",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1777600000000,
+      "tag": "0019_backfill_legacy_board_admin",
+      "breakpoints": true
     }
   ]
 }
