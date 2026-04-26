@@ -1,11 +1,24 @@
-// zone: Platform (settings)
-// persona: Manager, Board Officer, PM Assistant, Platform Admin
+// zone: Financials (sub-page of /app/settings)
+// persona: Manager + Board Officer + PM Assistant + Platform Admin (current
+//          shipped behavior — see HUMAN TASK below for the 4.4 Q6 spec
+//          discrepancy)
 /**
  * /app/settings/billing — Billing management entry point (4.4 Q6, Wave 13).
  *
  * Spec (decisions/4.4-signup-and-checkout-flow.md Q6, 2026-04-24):
- *   - Manager + Board Officer + PM Assistant + Platform Admin personas.
- *     Viewer + Owner personas are denied (redirected to /app).
+ *   - Manager only — per 4.4 Q6 ("Manager-only `/app/settings/billing`
+ *     surface (NOT Board Officer, NOT Assisted Board, NOT PM Assistant)").
+ *
+ * NOTE — 3.3 Phase 12 surfaced a discrepancy: the page's shipped
+ *   `ALLOWED_ROLES` permits manager + board-officer + pm-assistant +
+ *   platform-admin (4-role list), but 4.4 Q6 spec says Manager-only. The
+ *   parity-harness test fixture in `tests/parity/manifest-consistency.test.ts`
+ *   row 62 assumes manager-only. The shipped tests in
+ *   `tests/settings-billing-page.client.test.tsx` exercise the 4-role
+ *   list. To avoid breaking the shipped test suite + production user
+ *   behavior in this PR, Phase 12 manifests the 4-role list verbatim and
+ *   files a Human Task for the founder to resolve the spec/code drift.
+ *   See `ROUTE_MANIFEST["/app/settings/billing"]` in shared/persona-access.ts.
  *   - Surface shows: current plan, status, trial end date (if trialing),
  *     current period end, and a "Manage Billing" CTA that opens the
  *     Stripe Customer Portal in a new tab.
@@ -33,6 +46,11 @@ import { t } from "@/i18n/use-strings";
 
 // 4.4 Q6 Wave 13 — role gate. Mirrors the requireAdminRole on
 // POST /api/admin/billing/portal-session at server/routes.ts:13390.
+// 3.3 Phase 12: this list is preserved verbatim (4-role) to maintain
+// shipped behavior. The matched ROUTE_MANIFEST entry uses the same list
+// so the shared `<RouteGuard>` agrees with this page-level guard. The
+// 4.4 Q6 manager-only directive vs. this 4-role behavior is filed as a
+// founder Human Task.
 const ALLOWED_ROLES = ["platform-admin", "manager", "board-officer", "pm-assistant"] as const;
 
 type PlatformSubscription = {

@@ -34,8 +34,8 @@ describe("canAccess — strict default-deny (OQ-3 Option A)", () => {
     expect(canAccess(undefined, "/app/any")).toBe(false);
   });
 
-  it("returns false for a concrete role on an unknown route (empty manifest)", () => {
-    // Empty ROUTE_MANIFEST → any route lookup yields `undefined` → deny.
+  it("returns false for a concrete role on an unknown route (default-deny)", () => {
+    // Routes absent from ROUTE_MANIFEST yield `undefined` → strict deny.
     expect(canAccess("manager", "/app/any")).toBe(false);
   });
 
@@ -47,18 +47,19 @@ describe("canAccess — strict default-deny (OQ-3 Option A)", () => {
     expect(canAccess("platform-admin", "/app/any")).toBe(false);
   });
 
-  it("returns false for every AdminRole on every arbitrary route in Phase 0b.2", () => {
-    // Sweep: with the empty manifest, canAccess must deny every combination.
-    const arbitraryRoutes = [
+  it("returns false for every AdminRole on routes still absent from the manifest (post-Phase-12)", () => {
+    // Sweep: routes still not populated by Phase 12 (Operations / Governance /
+    // Communications / Platform — they land in Phases 13–16) must deny every
+    // role under strict default-deny (OQ-3 Option A).
+    const stillAbsentRoutes = [
       "/app",
-      "/app/financial/billing",
       "/app/governance/meetings",
       "/app/admin/users",
       "/app/platform/controls",
       "/",
     ];
     for (const role of adminUserRoleEnum.enumValues) {
-      for (const route of arbitraryRoutes) {
+      for (const route of stillAbsentRoutes) {
         expect(canAccess(role as AdminRole, route)).toBe(false);
       }
     }
@@ -122,8 +123,19 @@ describe("Module shape — Phase 0b.2 contract lock", () => {
     expect(ROUTE_MANIFEST).not.toBeNull();
   });
 
-  it("ROUTE_MANIFEST is empty in Phase 0b.2 (Phase 9 populates)", () => {
-    expect(Object.keys(ROUTE_MANIFEST).length).toBe(0);
+  it("ROUTE_MANIFEST contains Financials zone routes after Phase 12 (Zone 1) lands", () => {
+    // Phase 12 (3.3 Zone 1 — Financials) populates the Financials zone
+    // entries. Phases 13–16 add the remaining zones. This assertion
+    // tightens as later zones land.
+    expect(Object.keys(ROUTE_MANIFEST).length).toBeGreaterThan(0);
+    expect(ROUTE_MANIFEST["/app/financials"]).toBeDefined();
+    expect(ROUTE_MANIFEST["/app/financial/billing"]).toBeDefined();
+    expect(ROUTE_MANIFEST["/app/financial/payments"]).toBeDefined();
+    expect(ROUTE_MANIFEST["/app/financial/expenses"]).toBeDefined();
+    expect(ROUTE_MANIFEST["/app/financial/reports"]).toBeDefined();
+    expect(ROUTE_MANIFEST["/app/financial/foundation"]).toBeDefined();
+    expect(ROUTE_MANIFEST["/app/financial/rules"]).toBeDefined();
+    expect(ROUTE_MANIFEST["/app/settings/billing"]).toBeDefined();
   });
 
   it("FEATURE_MANIFEST is an object", () => {

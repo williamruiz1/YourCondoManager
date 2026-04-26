@@ -1247,7 +1247,7 @@ export default function FinancialReportsPage() {
           title="Reports"
           eyebrow="Finance"
           summary="Financial reports, accounts receivable aging, and bank reconciliation for the active association."
-          breadcrumbs={[{ label: "Finance", href: "/app/financial/foundation" }, { label: "Reports" }]}
+          breadcrumbs={[{ label: "Financials", href: "/app/financials" }, { label: "Reports" }]}
           subPages={financeSubPages}
         />
         <Tabs defaultValue="summary" className="space-y-6">

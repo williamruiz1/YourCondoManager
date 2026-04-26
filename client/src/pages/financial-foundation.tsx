@@ -711,7 +711,7 @@ export default function FinancialFoundationPage() {
           summary={t("financialFoundation.summary")}
           eyebrow={t("common.eyebrow.finance")}
           breadcrumbs={[
-            { label: t("common.crumb.finance"), href: "/app/financial/foundation" },
+            { label: t("common.crumb.finance"), href: "/app/financials" },
             { label: t("financialFoundation.crumb") },
           ]}
           subPages={financeSubPages}

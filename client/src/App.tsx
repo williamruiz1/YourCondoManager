@@ -31,6 +31,7 @@ import { useUserSettings, applyTheme, setAdminIdForSettings, formatSettingsDate 
 import { TrialBanner } from "@/components/trial-banner";
 import { SubscriptionLockScreen } from "@/components/subscription-lock-screen";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { RouteGuard } from "@/components/RouteGuard";
 import type { AdminRole } from "@shared/schema";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
@@ -271,19 +272,37 @@ function WorkspaceRouter({
          * Phase 11 (3.2 — 61-route canonical table)
          * Hub URLs at the zone root per 1.2 Q4. Each hub is a navigation
          * surface (zone title, brief description, sub-page link list).
-         * Per 3.2 Q5 there are NO /portal/* changes in this PR. Per the
-         * scope boundary, NO <RouteGuard> wrappers ship in Phase 11 — they
-         * land per-zone in Phases 12–16.
+         * Per 3.2 Q5 there are NO /portal/* changes in this PR.
+         *
+         * Phase 12 (3.3 Zone 1 — Financials) wraps every Financials route
+         * in `<RouteGuard route="...">` per ADR 0b. The role list is
+         * sourced exclusively from `shared/persona-access.ts`
+         * `ROUTE_MANIFEST` — never inline literals. Phases 13–16 wrap
+         * Operations / Governance / Communications / Platform.
          * --------------------------------------------------------------- */}
-        <Route path="/app/financials" component={FinancialsHubPage} />
+        <Route path="/app/financials">
+          <RouteGuard route="/app/financials"><FinancialsHubPage /></RouteGuard>
+        </Route>
         {/* 3.2 Q1 — plural-to-singular legacy redirects. These catch
             accidental plural deep-links without renaming the singular
-            /app/financial/* subtree. */}
-        <Route path="/app/financials/foundation"><RouteRedirect to="/app/financial/foundation" /></Route>
-        <Route path="/app/financials/billing"><RouteRedirect to="/app/financial/billing" /></Route>
-        <Route path="/app/financials/payments"><RouteRedirect to="/app/financial/payments" /></Route>
-        <Route path="/app/financials/expenses"><RouteRedirect to="/app/financial/expenses" /></Route>
-        <Route path="/app/financials/reports"><RouteRedirect to="/app/financial/reports" /></Route>
+            /app/financial/* subtree. RouteGuard wraps the redirect so
+            unauthorized personas don't even reach the redirect-to-target
+            step (consistent with the destination's manifest entry). */}
+        <Route path="/app/financials/foundation">
+          <RouteGuard route="/app/financials/foundation"><RouteRedirect to="/app/financial/foundation" /></RouteGuard>
+        </Route>
+        <Route path="/app/financials/billing">
+          <RouteGuard route="/app/financials/billing"><RouteRedirect to="/app/financial/billing" /></RouteGuard>
+        </Route>
+        <Route path="/app/financials/payments">
+          <RouteGuard route="/app/financials/payments"><RouteRedirect to="/app/financial/payments" /></RouteGuard>
+        </Route>
+        <Route path="/app/financials/expenses">
+          <RouteGuard route="/app/financials/expenses"><RouteRedirect to="/app/financial/expenses" /></RouteGuard>
+        </Route>
+        <Route path="/app/financials/reports">
+          <RouteGuard route="/app/financials/reports"><RouteRedirect to="/app/financial/reports" /></RouteGuard>
+        </Route>
 
         <Route path="/app/operations" component={OperationsHubPage} />
         <Route path="/app/operations/dashboard" component={OperationsDashboardPage} />
@@ -314,23 +333,26 @@ function WorkspaceRouter({
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
-        {/* Finance — consolidated routes (Wave 18: each wrapped in zone-scoped ErrorBoundary) */}
-        <Route path="/app/financial/foundation"><ZoneBoundary zone="Financials"><FinancialFoundationPage /></ZoneBoundary></Route>
-        <Route path="/app/financial/rules"><ZoneBoundary zone="Financials"><FinancialRulesPage /></ZoneBoundary></Route>
-        <Route path="/app/financial/billing"><ZoneBoundary zone="Financials"><FinancialBillingPage /></ZoneBoundary></Route>
-        <Route path="/app/financial/payments"><ZoneBoundary zone="Financials"><FinancialPaymentsPage /></ZoneBoundary></Route>
-        <Route path="/app/financial/expenses"><ZoneBoundary zone="Financials"><FinancialExpensesPage /></ZoneBoundary></Route>
-        <Route path="/app/financial/reports"><ZoneBoundary zone="Financials"><FinancialReportsPage /></ZoneBoundary></Route>
-        {/* Finance — legacy redirects (3.2 Q4 archive — preserved verbatim) */}
-        <Route path="/app/financial/fees"><RouteRedirect to="/app/financial/foundation" /></Route>
-        <Route path="/app/financial/recurring-charges"><RouteRedirect to="/app/financial/foundation" /></Route>
-        <Route path="/app/financial/ledger"><RouteRedirect to="/app/financial/billing" /></Route>
-        <Route path="/app/financial/assessments"><RouteRedirect to="/app/financial/billing" /></Route>
-        <Route path="/app/financial/late-fees"><RouteRedirect to="/app/financial/billing" /></Route>
-        <Route path="/app/financial/invoices"><RouteRedirect to="/app/financial/expenses" /></Route>
-        <Route path="/app/financial/utilities"><RouteRedirect to="/app/financial/expenses" /></Route>
-        <Route path="/app/financial/budgets"><RouteRedirect to="/app/financial/expenses" /></Route>
-        <Route path="/app/financial/reconciliation"><RouteRedirect to="/app/financial/reports" /></Route>
+        {/* Finance — consolidated routes (Wave 18: each wrapped in zone-scoped ErrorBoundary;
+            Phase 12: wrapped in <RouteGuard> per ADR 0b — role list lives in ROUTE_MANIFEST). */}
+        <Route path="/app/financial/foundation"><RouteGuard route="/app/financial/foundation"><ZoneBoundary zone="Financials"><FinancialFoundationPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/rules"><RouteGuard route="/app/financial/rules"><ZoneBoundary zone="Financials"><FinancialRulesPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/billing"><RouteGuard route="/app/financial/billing"><ZoneBoundary zone="Financials"><FinancialBillingPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/payments"><RouteGuard route="/app/financial/payments"><ZoneBoundary zone="Financials"><FinancialPaymentsPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/expenses"><RouteGuard route="/app/financial/expenses"><ZoneBoundary zone="Financials"><FinancialExpensesPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/reports"><RouteGuard route="/app/financial/reports"><ZoneBoundary zone="Financials"><FinancialReportsPage /></ZoneBoundary></RouteGuard></Route>
+        {/* Finance — legacy redirects (3.2 Q4 archive — preserved verbatim;
+            Phase 12: wrapped in <RouteGuard> so unauthorized personas don't
+            silently navigate through to the destination). */}
+        <Route path="/app/financial/fees"><RouteGuard route="/app/financial/fees"><RouteRedirect to="/app/financial/foundation" /></RouteGuard></Route>
+        <Route path="/app/financial/recurring-charges"><RouteGuard route="/app/financial/recurring-charges"><RouteRedirect to="/app/financial/foundation" /></RouteGuard></Route>
+        <Route path="/app/financial/ledger"><RouteGuard route="/app/financial/ledger"><RouteRedirect to="/app/financial/billing" /></RouteGuard></Route>
+        <Route path="/app/financial/assessments"><RouteGuard route="/app/financial/assessments"><RouteRedirect to="/app/financial/billing" /></RouteGuard></Route>
+        <Route path="/app/financial/late-fees"><RouteGuard route="/app/financial/late-fees"><RouteRedirect to="/app/financial/billing" /></RouteGuard></Route>
+        <Route path="/app/financial/invoices"><RouteGuard route="/app/financial/invoices"><RouteRedirect to="/app/financial/expenses" /></RouteGuard></Route>
+        <Route path="/app/financial/utilities"><RouteGuard route="/app/financial/utilities"><RouteRedirect to="/app/financial/expenses" /></RouteGuard></Route>
+        <Route path="/app/financial/budgets"><RouteGuard route="/app/financial/budgets"><RouteRedirect to="/app/financial/expenses" /></RouteGuard></Route>
+        <Route path="/app/financial/reconciliation"><RouteGuard route="/app/financial/reconciliation"><RouteRedirect to="/app/financial/reports" /></RouteGuard></Route>
         {/* Operations — consolidated routes (Wave 18: zone-scoped ErrorBoundary) */}
         <Route path="/app/vendors"><ZoneBoundary zone="Operations"><VendorsPage /></ZoneBoundary></Route>
         <Route path="/app/work-orders"><ZoneBoundary zone="Operations"><WorkOrdersPage /></ZoneBoundary></Route>
@@ -384,8 +406,13 @@ function WorkspaceRouter({
         <Route path="/app/help-center" component={HelpCenterPage} />
         {/* 4.4 Q6 (Wave 13) — Billing management entry point. Must match
             BEFORE /app/settings so wouter resolves the specific path first
-            in declaration order. */}
-        <Route path="/app/settings/billing" component={SettingsBillingPage} />
+            in declaration order.
+            Phase 12: Manager-only per 4.4 Q6 / 0.2 matrix; gate sourced
+            from ROUTE_MANIFEST (Financials zone, even though URL sits
+            under /app/settings/*). */}
+        <Route path="/app/settings/billing">
+          <RouteGuard route="/app/settings/billing"><SettingsBillingPage /></RouteGuard>
+        </Route>
         <Route path="/app/settings" component={UserSettingsPage} />
         <Route component={NotFound} />
       </Switch>
