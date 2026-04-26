@@ -162,24 +162,24 @@ function pct(value: number) {
 function getStatusTone(status: FeatureStatus) {
   if (status === "active") {
     return {
-      badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      panel: "border-emerald-200 bg-emerald-50/40",
-      rail: "bg-emerald-500",
+      badge: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300",
+      panel: "border-emerald-200 bg-emerald-50/40 dark:border-emerald-900/50 dark:bg-emerald-950/20",
+      rail: "bg-emerald-500 dark:bg-emerald-600",
     };
   }
 
   if (status === "partial") {
     return {
-      badge: "border-amber-200 bg-amber-50 text-amber-700",
-      panel: "border-amber-200 bg-amber-50/40",
-      rail: "bg-amber-500",
+      badge: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300",
+      panel: "border-amber-200 bg-amber-50/40 dark:border-amber-900/50 dark:bg-amber-950/20",
+      rail: "bg-amber-500 dark:bg-amber-600",
     };
   }
 
   return {
-    badge: "border-slate-200 bg-slate-100 text-slate-600",
-    panel: "border-slate-200 bg-slate-50",
-    rail: "bg-slate-400",
+    badge: "border-border bg-muted text-muted-foreground",
+    panel: "border-border bg-muted/40",
+    rail: "bg-muted-foreground/40",
   };
 }
 
@@ -1098,7 +1098,7 @@ export default function RoadmapPage() {
 
               return (
                 <Collapsible key={module.id} open={moduleExpanded} onOpenChange={() => toggleModuleExpanded(module.id)}>
-                  <Card className={cn("overflow-hidden border", moduleTone.panel, moduleBacklog ? "ring-2 ring-blue-300" : "")}>
+                  <Card className={cn("overflow-hidden border", moduleTone.panel, moduleBacklog ? "ring-2 ring-blue-300 dark:ring-blue-500/60" : "")}>
                     <CardHeader className="pb-4">
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div className="flex items-start gap-3">
@@ -1155,7 +1155,7 @@ export default function RoadmapPage() {
                               open={featureExpanded}
                               onOpenChange={() => toggleFeatureSetExpanded(featureSetKey)}
                             >
-                              <div className={cn("rounded-lg border p-4", featureTone.panel, featureBacklog ? "ring-2 ring-blue-300" : "")}>
+                              <div className={cn("rounded-lg border p-4", featureTone.panel, featureBacklog ? "ring-2 ring-blue-300 dark:ring-blue-500/60" : "")}>
                                 <div className="flex items-start justify-between gap-3 flex-wrap">
                                   <div className="flex items-start gap-3">
                                     <CollapsibleTrigger asChild>
@@ -1204,7 +1204,7 @@ export default function RoadmapPage() {
                                     return (
                                       <div key={unit.id} className="grid grid-cols-[10px_1fr] gap-3">
                                         <div className={cn("mt-1 rounded-full", unitTone.rail)} />
-                                        <div className={cn("rounded-md border bg-background px-3 py-3", unitBacklog ? "ring-2 ring-blue-300" : "")}>
+                                        <div className={cn("rounded-md border bg-background px-3 py-3", unitBacklog ? "ring-2 ring-blue-300 dark:ring-blue-500/60" : "")}>
                                           <div className="flex items-center justify-between gap-3 flex-wrap">
                                             <div>
                                               <div className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Functional Unit {unit.id}</div>

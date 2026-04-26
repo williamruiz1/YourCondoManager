@@ -270,7 +270,7 @@ function RunHistoryTab() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-blue-500" aria-hidden="true" /> {t("financialRules.runHistory.title")}
+                <Calendar className="h-4 w-4 text-blue-500 dark:text-blue-400" aria-hidden="true" /> {t("financialRules.runHistory.title")}
               </CardTitle>
               <CardDescription>
                 {t("financialRules.runHistory.body")}
@@ -342,7 +342,7 @@ function RunHistoryTab() {
                         "—"
                       )}
                     </TableCell>
-                    <TableCell className="text-xs text-red-600 max-w-xs truncate" title={row.errorMessage ?? undefined}>
+                    <TableCell className="text-xs text-red-600 dark:text-red-400 max-w-xs truncate" title={row.errorMessage ?? undefined}>
                       {row.errorMessage ?? "—"}
                     </TableCell>
                   </TableRow>

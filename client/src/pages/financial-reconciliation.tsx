@@ -272,7 +272,7 @@ export function FinancialReconciliationContent() {
           { step: 4, label: "Lock Period", done: periods.some(p => p.status === "locked") },
         ].map((s, i, arr) => (
           <div key={s.step} className={`flex items-center gap-2 flex-1 px-4 py-3 text-sm ${s.done ? "bg-green-50 dark:bg-green-900/20" : ""}`}>
-            <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold shrink-0 ${s.done ? "bg-green-500 text-white" : "bg-muted-foreground/20 text-muted-foreground"}`}>
+            <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold shrink-0 ${s.done ? "bg-green-500 dark:bg-green-600 text-white" : "bg-muted-foreground/20 text-muted-foreground"}`}>
               {s.done ? <CheckCircle2 className="h-4 w-4" /> : s.step}
             </div>
             <span className={`font-medium truncate ${s.done ? "text-green-700 dark:text-green-400" : "text-muted-foreground"}`}>{s.label}</span>
@@ -322,9 +322,9 @@ export function FinancialReconciliationContent() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">
               {[
                 { label: "Total", value: stats.total, color: "" },
-                { label: "Unmatched", value: stats.unmatched, color: stats.unmatched > 0 ? "text-red-600" : "text-green-600" },
-                { label: "Auto-Matched", value: stats.autoMatched, color: "text-green-600" },
-                { label: "Manual", value: stats.manualMatched, color: "text-blue-600" },
+                { label: "Unmatched", value: stats.unmatched, color: stats.unmatched > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400" },
+                { label: "Auto-Matched", value: stats.autoMatched, color: "text-green-600 dark:text-green-400" },
+                { label: "Manual", value: stats.manualMatched, color: "text-blue-600 dark:text-blue-400" },
                 { label: "Excluded", value: stats.excluded, color: "text-muted-foreground" },
               ].map((s) => (
                 <div key={s.label} className="text-center rounded-md border p-2">
@@ -344,7 +344,7 @@ export function FinancialReconciliationContent() {
             <div className={`gap-3 ${isMobile ? "grid grid-cols-1" : "flex items-center justify-between"}`}>
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <GitMerge className="h-4 w-4 text-blue-500" /> Match Queue
+                  <GitMerge className="h-4 w-4 text-blue-500 dark:text-blue-400" /> Match Queue
                 </CardTitle>
                 <CardDescription>Review and match bank transactions to ledger entries</CardDescription>
               </div>
@@ -390,7 +390,7 @@ export function FinancialReconciliationContent() {
                           <div className="text-sm font-medium leading-5">{tx.description}</div>
                           <div className="text-xs text-muted-foreground">{new Date(tx.transactionDate).toLocaleDateString()}</div>
                         </div>
-                        <div className={`text-sm font-semibold shrink-0 ${tx.amount < 0 ? "text-red-600" : "text-green-600"}`}>
+                        <div className={`text-sm font-semibold shrink-0 ${tx.amount < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                           {tx.amount < 0 ? "-" : "+"}${Math.abs(tx.amount).toFixed(2)}
                         </div>
                       </div>
@@ -449,7 +449,7 @@ export function FinancialReconciliationContent() {
                       <TableRow key={tx.id}>
                         <TableCell className="text-sm text-muted-foreground">{new Date(tx.transactionDate).toLocaleDateString()}</TableCell>
                         <TableCell className="max-w-xs truncate text-sm">{tx.description}</TableCell>
-                        <TableCell className={`font-medium ${tx.amount < 0 ? "text-red-600" : "text-green-600"}`}>
+                        <TableCell className={`font-medium ${tx.amount < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                           {tx.amount < 0 ? "-" : "+"}${Math.abs(tx.amount).toFixed(2)}
                         </TableCell>
                         <TableCell>{matchStatusBadge(tx.matchStatus)}</TableCell>
@@ -488,12 +488,12 @@ export function FinancialReconciliationContent() {
             )}
 
             {stats.unmatched === 0 && transactions.length > 0 && (
-              <div className="flex items-center gap-2 text-sm text-green-600 mt-3">
+              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mt-3">
                 <CheckCircle2 className="h-4 w-4" /> All transactions are matched. Reconciliation complete.
               </div>
             )}
             {stats.unmatched > 0 && (
-              <div className="flex items-center gap-2 text-sm text-amber-600 mt-3">
+              <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 mt-3">
                 <AlertCircle className="h-4 w-4" /> {stats.unmatched} unmatched transaction{stats.unmatched !== 1 ? "s" : ""} require review.
               </div>
             )}
@@ -507,7 +507,7 @@ export function FinancialReconciliationContent() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
-                <Lock className="h-4 w-4 text-purple-500" /> Period Close Controls
+                <Lock className="h-4 w-4 text-purple-500 dark:text-purple-400" /> Period Close Controls
               </CardTitle>
               <CardDescription>Create, close, and lock reconciliation periods to prevent edits to matched transactions.</CardDescription>
             </div>
@@ -747,7 +747,7 @@ export function FinancialReconciliationContent() {
                 />
               </label>
               {csvParseError && (
-                <div className="flex items-center gap-1.5 text-xs text-red-600 mt-1">
+                <div className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400 mt-1">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {csvParseError}
                 </div>
               )}

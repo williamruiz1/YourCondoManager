@@ -17,7 +17,7 @@ export function AssociationScopeBanner({
   const hasAssociation = Boolean(activeAssociationId);
 
   return (
-    <div className={`rounded-xl border ${hasAssociation ? "bg-muted/30" : "border-dashed bg-amber-50/60"} px-4 py-3`}>
+    <div className={`rounded-xl border ${hasAssociation ? "bg-muted/30" : "border-dashed bg-amber-50/60 dark:bg-amber-950/30"} px-4 py-3`}>
       <div className={`flex ${compact ? "items-center" : "items-start"} justify-between gap-4 flex-wrap`}>
         <div className="flex items-start gap-3">
           <div className="mt-0.5 rounded-md bg-background p-2 border">

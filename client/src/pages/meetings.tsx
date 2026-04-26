@@ -204,7 +204,7 @@ function QuorumDialog({ meeting, persons }: { meeting: GovernanceMeeting; person
           <DialogTitle>Attendance &amp; Quorum</DialogTitle>
           <DialogDescription>{meeting.title}</DialogDescription>
         </DialogHeader>
-        <div className={`rounded-lg border p-3 text-sm font-medium ${quorumMet ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-700"}`}>
+        <div className={`rounded-lg border p-3 text-sm font-medium ${quorumMet ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-950/30 dark:border-green-900/50 dark:text-green-300" : "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-900/50 dark:text-red-300"}`}>
           {quorumMet ? "✓ Quorum met" : "✗ Quorum not met"} — {presentCount} of {total} present
           {total > 0 && ` (need ${quorumThreshold})`}
         </div>
@@ -383,7 +383,7 @@ function InMeetingVoteDialog({
                             className="h-4 w-4 accent-primary"
                           />
                           <span className={`text-xs font-medium capitalize ${
-                            choice === "aye" ? "text-green-700" : choice === "nay" ? "text-red-700" : "text-muted-foreground"
+                            choice === "aye" ? "text-green-700 dark:text-green-400" : choice === "nay" ? "text-red-700 dark:text-red-400" : "text-muted-foreground"
                           }`}>
                             {choice}
                           </span>
@@ -399,9 +399,9 @@ function InMeetingVoteDialog({
           {/* Live tally */}
           {votedCount > 0 && (
             <div className={`rounded-lg border p-3 text-sm font-medium ${
-              result === "Passed" ? "bg-green-50 border-green-200 text-green-800"
-                : result === "Failed" ? "bg-red-50 border-red-200 text-red-700"
-                : "bg-yellow-50 border-yellow-200 text-yellow-800"
+              result === "Passed" ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-950/30 dark:border-green-900/50 dark:text-green-300"
+                : result === "Failed" ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-900/50 dark:text-red-300"
+                : "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-950/30 dark:border-yellow-900/50 dark:text-yellow-300"
             }`}>
               <div className="flex items-center justify-between">
                 <span>{result}</span>
@@ -1049,8 +1049,8 @@ export function MeetingsContent() {
                                 {/* Tally */}
                                 <div className="flex gap-3 flex-wrap text-sm">
                                   <span className="text-muted-foreground">{rVotes.length} vote{rVotes.length !== 1 ? "s" : ""}:</span>
-                                  <span className="font-medium text-green-700">Yes {rVotes.filter((v) => v.voteChoice === "yes").length}</span>
-                                  <span className="font-medium text-red-700">No {rVotes.filter((v) => v.voteChoice === "no").length}</span>
+                                  <span className="font-medium text-green-700 dark:text-green-400">Yes {rVotes.filter((v) => v.voteChoice === "yes").length}</span>
+                                  <span className="font-medium text-red-700 dark:text-red-400">No {rVotes.filter((v) => v.voteChoice === "no").length}</span>
                                   <span className="text-muted-foreground">Abstain {rVotes.filter((v) => v.voteChoice === "abstain").length}</span>
                                 </div>
                                 {/* Record vote form */}
@@ -1139,11 +1139,11 @@ export function MeetingsContent() {
                     <div className="space-y-2">
                       {linkedElections.map((election) => {
                         const statusColors: Record<string, string> = {
-                          draft: "bg-gray-100 text-gray-700",
-                          open: "bg-green-100 text-green-700",
-                          closed: "bg-yellow-100 text-yellow-700",
-                          certified: "bg-blue-100 text-blue-700",
-                          cancelled: "bg-red-100 text-red-700",
+                          draft: "bg-muted text-muted-foreground",
+                          open: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300",
+                          closed: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300",
+                          certified: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+                          cancelled: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300",
                         };
                         return (
                           <div
@@ -1154,11 +1154,11 @@ export function MeetingsContent() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-medium text-sm">{election.title}</span>
-                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[election.status] ?? "bg-gray-100 text-gray-700"}`}>
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[election.status] ?? "bg-muted text-muted-foreground"}`}>
                                     {election.status}
                                   </span>
                                   {election.votingRule === "board-only" && (
-                                    <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-xs font-medium">
+                                    <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 px-2 py-0.5 text-xs font-medium">
                                       Board Only
                                     </span>
                                   )}

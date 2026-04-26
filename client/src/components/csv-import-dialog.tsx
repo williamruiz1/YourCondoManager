@@ -256,7 +256,7 @@ export function CsvImportDialog({
           <div className="space-y-4">
             <div className="flex gap-6">
               <div className="flex items-center gap-2 text-sm">
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                 <span>
                   <strong>{importResult.createdCount}</strong> created
                 </span>

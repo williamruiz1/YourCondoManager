@@ -165,7 +165,7 @@ export function SignupOnboardingChecklist() {
                 data-testid={`onboarding-item-${item.key}`}
               >
                 {done ? (
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500 dark:text-green-400" />
                 ) : (
                   <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
                 )}

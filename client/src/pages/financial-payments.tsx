@@ -358,7 +358,7 @@ function GatewayTab({
           <p className="text-sm font-medium">Active connections ({activeConnections.length})</p>
           {activeConnections.map((c) => (
             <div key={c.id} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center">
-              <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+              <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium capitalize">{c.provider}</p>
                 {c.providerAccountId && (
@@ -872,7 +872,7 @@ function WebhookSecurityCard({ associationId }: { associationId: string | null }
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Shield className="h-4 w-4 text-green-600" /> Webhook Signing Secrets
+          <Shield className="h-4 w-4 text-green-600 dark:text-green-400" /> Webhook Signing Secrets
         </CardTitle>
         <CardDescription>Store HMAC-SHA256 signing keys. Incoming webhook requests include an <code>x-webhook-hmac-sha256</code> header to authenticate payloads.</CardDescription>
       </CardHeader>
@@ -1048,7 +1048,7 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
               <div className="text-xs text-muted-foreground space-y-1">
                 <div className="font-medium text-foreground mb-1">State History:</div>
                 {transitions.map((t: any, i: number) => (
-                  <div key={i} className="rounded-md border bg-white px-3 py-2">
+                  <div key={i} className="rounded-md border bg-card px-3 py-2">
                     {t.fromStatus} → {t.toStatus} · {t.reason} · {new Date(t.transitionedAt).toLocaleString()}
                   </div>
                 ))}
@@ -1139,7 +1139,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                       <tr key={e.id} className="border-b last:border-0">
                         <td className="py-1.5 pr-4 text-muted-foreground">{new Date(e.postedAt).toLocaleDateString()}</td>
                         <td className="py-1.5 pr-4"><Badge variant={e.entryType === "payment" ? "default" : "secondary"} className="text-xs">{e.entryType}</Badge></td>
-                        <td className={`py-1.5 pr-4 font-medium ${e.amount < 0 ? "text-green-600" : "text-red-500"}`}>{e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}</td>
+                        <td className={`py-1.5 pr-4 font-medium ${e.amount < 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>{e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}</td>
                         <td className="py-1.5 pr-4 font-mono text-xs">{e.unitId.slice(0, 8)}</td>
                         <td className="py-1.5 pr-4 font-mono text-xs">{e.personId.slice(0, 8)}</td>
                         <td className="py-1.5 text-muted-foreground truncate max-w-xs">{e.description ?? "—"}</td>
@@ -1156,7 +1156,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                         <div className="text-sm font-medium">{e.description ?? "Payment activity"}</div>
                         <div className="mt-1 text-xs text-muted-foreground">{new Date(e.postedAt).toLocaleDateString()}</div>
                       </div>
-                      <div className={`text-sm font-semibold ${e.amount < 0 ? "text-green-600" : "text-red-500"}`}>
+                      <div className={`text-sm font-semibold ${e.amount < 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
                         {e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}
                       </div>
                     </div>
@@ -1213,15 +1213,15 @@ function PaymentTransactionsTab({ associationId }: { associationId: string | nul
 
   const statusBadge = (status: string) => {
     const colors: Record<string, string> = {
-      succeeded: "bg-green-100 text-green-800",
-      initiated: "bg-amber-100 text-amber-800",
-      pending: "bg-amber-100 text-amber-800",
-      failed: "bg-red-100 text-red-800",
-      canceled: "bg-red-100 text-red-800",
-      reversed: "bg-red-100 text-red-800",
-      draft: "bg-gray-100 text-gray-600",
+      succeeded: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
+      initiated: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+      pending: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+      failed: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
+      canceled: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
+      reversed: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
+      draft: "bg-muted text-muted-foreground",
     };
-    return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[status] ?? "bg-gray-100 text-gray-600"}`}>{status}</span>;
+    return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[status] ?? "bg-muted text-muted-foreground"}`}>{status}</span>;
   };
 
   return (
@@ -1267,7 +1267,7 @@ function PaymentTransactionsTab({ associationId }: { associationId: string | nul
                     <TableCell>{statusBadge(txn.status)}</TableCell>
                     <TableCell className="text-xs font-mono">{txn.receiptReference ?? "—"}</TableCell>
                     <TableCell className="text-xs font-mono max-w-[140px] truncate">{txn.providerPaymentId ?? txn.providerIntentId ?? "—"}</TableCell>
-                    <TableCell className="text-xs text-red-600 max-w-[200px] truncate">{txn.failureReason ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-red-600 dark:text-red-400 max-w-[200px] truncate">{txn.failureReason ?? "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1300,7 +1300,7 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <AlertCircle className="h-4 w-4 text-amber-500" /> Exception Review
+          <AlertCircle className="h-4 w-4 text-amber-500 dark:text-amber-400" /> Exception Review
         </CardTitle>
         <CardDescription>Flagged transactions: large amounts, negative adjustments, and possible duplicates.</CardDescription>
       </CardHeader>
@@ -1308,7 +1308,7 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
         {isLoading ? (
           <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 rounded bg-muted animate-pulse motion-reduce:animate-none" />)}</div>
         ) : exceptions.length === 0 ? (
-          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-4 text-sm text-green-600">
+          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 text-green-600 dark:border-green-900/40 dark:bg-green-950/30 dark:text-green-300 px-3 py-4 text-sm">
             <CheckCircle2 className="h-4 w-4" /> No exceptions found. All payment activity looks clean.
           </div>
         ) : (
@@ -1323,7 +1323,7 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
                       <td className="py-1.5 pr-4">
                         <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>
                       </td>
-                      <td className="py-1.5 pr-4 font-medium text-red-500">${Math.abs(ex.amount).toFixed(2)}</td>
+                      <td className="py-1.5 pr-4 font-medium text-red-500 dark:text-red-400">${Math.abs(ex.amount).toFixed(2)}</td>
                       <td className="py-1.5 pr-4 font-mono text-xs">{ex.unitId.slice(0, 8)}</td>
                       <td className="py-1.5 pr-4 font-mono text-xs">{ex.personId.slice(0, 8)}</td>
                       <td className="py-1.5 text-muted-foreground">{ex.description}</td>
@@ -1340,7 +1340,7 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
                       <div className="text-sm font-medium">{ex.description}</div>
                       <div className="mt-1 text-xs text-muted-foreground">{new Date(ex.postedAt).toLocaleDateString()}</div>
                     </div>
-                    <div className="text-sm font-semibold text-red-500">${Math.abs(ex.amount).toFixed(2)}</div>
+                    <div className="text-sm font-semibold text-red-500 dark:text-red-400">${Math.abs(ex.amount).toFixed(2)}</div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>

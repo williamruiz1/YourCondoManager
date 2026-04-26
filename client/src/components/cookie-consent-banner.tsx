@@ -93,7 +93,7 @@ export function CookieConsentBanner() {
             We use cookies to enhance your experience, analyze site traffic, and serve you personalized content. By continuing to use this site, you consent to our use of cookies. You can manage your preferences or learn more by visiting our{" "}
             <a
               href="/privacy-policy"
-              className="text-primary hover:underline font-medium"
+              className="text-primary dark:text-blue-300 hover:underline font-medium"
             >
               Privacy Policy
             </a>
@@ -103,7 +103,7 @@ export function CookieConsentBanner() {
                 localStorage.removeItem("cookie-consent");
                 window.location.reload();
               }}
-              className="text-primary hover:underline font-medium cursor-pointer"
+              className="text-primary dark:text-blue-300 hover:underline font-medium cursor-pointer"
             >
               Cookie Settings
             </button>

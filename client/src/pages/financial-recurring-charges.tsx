@@ -248,8 +248,8 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
             {[
               { label: "Active Schedules", value: activeSchedules, color: "" },
               { label: "Total Runs", value: runStats.total, color: "" },
-              { label: "Successful", value: runStats.success, color: "text-green-600" },
-              { label: "Failed", value: runStats.failed, color: runStats.failed > 0 ? "text-red-600" : "text-muted-foreground" },
+              { label: "Successful", value: runStats.success, color: "text-green-600 dark:text-green-400" },
+              { label: "Failed", value: runStats.failed, color: runStats.failed > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground" },
             ].map(s => (
               <Card key={s.label}>
                 <CardContent className="pt-4 pb-3">
@@ -375,7 +375,7 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 text-blue-500" /> Run History
+                <RefreshCw className="h-4 w-4 text-blue-500 dark:text-blue-400" /> Run History
               </CardTitle>
               <CardDescription>
                 {selectedScheduleId ? `Showing runs for selected schedule` : "All charge run records for this association"}
@@ -427,7 +427,7 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
                     <TableCell className="font-medium">${r.amount.toFixed(2)}</TableCell>
                     <TableCell>{statusBadge(r.status)}</TableCell>
                     <TableCell className="text-sm">{r.retryCount}</TableCell>
-                    <TableCell className="text-xs text-red-600 max-w-xs truncate">{r.errorMessage ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-red-600 dark:text-red-400 max-w-xs truncate">{r.errorMessage ?? "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {r.nextRetryAt ? new Date(r.nextRetryAt).toLocaleString() : "—"}
                     </TableCell>
@@ -437,7 +437,7 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
                           <RotateCcw className="h-4 w-4" />
                         </Button>
                       )}
-                      {r.status === "success" && <CheckCircle2 className="h-4 w-4 text-green-500 inline-block" />}
+                      {r.status === "success" && <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400 inline-block" />}
                       {r.status === "skipped" && <AlertCircle className="h-4 w-4 text-muted-foreground inline-block" />}
                     </TableCell>
                   </TableRow>

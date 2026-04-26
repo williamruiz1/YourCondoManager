@@ -538,7 +538,7 @@ export default function CommunityHubPage() {
                           onClick={() => toggleSection(section)}
                         >
                           {isActive ? (
-                            <Eye className="h-4 w-4 text-green-600" />
+                            <Eye className="h-4 w-4 text-green-600 dark:text-green-400" />
                           ) : (
                             <EyeOff className="h-4 w-4 text-muted-foreground" />
                           )}
@@ -991,9 +991,9 @@ function NoticesManager({ associationId, notices }: { associationId: string; not
   }
 
   const priorityColors: Record<string, string> = {
-    urgent: "bg-red-100 text-red-800",
-    important: "bg-amber-100 text-amber-800",
-    normal: "bg-gray-100 text-gray-800",
+    urgent: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
+    important: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+    normal: "bg-muted text-muted-foreground",
   };
 
   // 1.5 HV-3 (Wave 36): the enum is canonical new vocab only. Old-vocab
@@ -1144,7 +1144,7 @@ function NoticesManager({ associationId, notices }: { associationId: string; not
                     type="checkbox"
                     checked={selectedIds.size === notices.length}
                     onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-gray-300"
+                    className="h-4 w-4 rounded border-input"
                   />
                   <span className="text-xs text-muted-foreground">Select all</span>
                 </div>
@@ -1158,13 +1158,13 @@ function NoticesManager({ associationId, notices }: { associationId: string; not
                     type="checkbox"
                     checked={selectedIds.has(notice.id)}
                     onChange={() => toggleSelected(notice.id)}
-                    className="h-4 w-4 mt-0.5 rounded border-gray-300 shrink-0"
+                    className="h-4 w-4 mt-0.5 rounded border-input shrink-0"
                     onClick={(e) => e.stopPropagation()}
                   />
                   <div className="min-w-0 flex-1" onClick={() => openEdit(notice)}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">{notice.title}</span>
-                      {notice.isPinned === 1 && <Pin className="h-3 w-3 text-blue-500" />}
+                      {notice.isPinned === 1 && <Pin className="h-3 w-3 text-blue-500 dark:text-blue-400" />}
                       {notice.isDraft === 1 && <Badge variant="secondary" className="text-xs">Draft</Badge>}
                       {notice.isPublished === 1 && notice.isDraft !== 1 && <Badge variant="default" className="text-xs">Published</Badge>}
                       <span className={`text-xs px-2 py-0.5 rounded-full ${priorityColors[notice.priority] || priorityColors.normal}`}>
@@ -1260,12 +1260,12 @@ function MapLayerManager({ associationId }: { associationId: string }) {
   });
 
   const statusColors: Record<string, string> = {
-    "reported": "bg-yellow-100 text-yellow-800",
-    "under-review": "bg-blue-100 text-blue-800",
-    "approved": "bg-indigo-100 text-indigo-800",
-    "in-progress": "bg-purple-100 text-purple-800",
-    "resolved": "bg-green-100 text-green-800",
-    "dismissed": "bg-gray-100 text-gray-800",
+    "reported": "bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300",
+    "under-review": "bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
+    "approved": "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300",
+    "in-progress": "bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300",
+    "resolved": "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
+    "dismissed": "bg-muted text-muted-foreground",
   };
 
   return (

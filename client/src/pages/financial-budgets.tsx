@@ -521,7 +521,7 @@ export function FinancialBudgetsContent() {
               <div className={`gap-4 text-sm ${isMobile ? "grid grid-cols-1" : "flex"}`}>
                 <span>Planned: <strong>{formatCurrency(budgetTotals.planned)}</strong></span>
                 <span>Actual: <strong>{formatCurrency(budgetTotals.actual)}</strong></span>
-                <span className={cn("font-semibold", budgetTotals.variance < 0 ? "text-red-600" : "text-green-600")}>
+                <span className={cn("font-semibold", budgetTotals.variance < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400")}>
                   Variance: {formatCurrency(budgetTotals.variance)}
                 </span>
               </div>
@@ -633,7 +633,7 @@ export function FinancialBudgetsContent() {
                   <div className="font-medium">{window.months} months</div>
                   <div>
                     <div className="text-xs text-muted-foreground">Net Change</div>
-                    <div className={cn(window.projectedNetChange < 0 ? "text-red-600" : "text-green-700")}>${window.projectedNetChange.toFixed(2)}</div>
+                    <div className={cn(window.projectedNetChange < 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>${window.projectedNetChange.toFixed(2)}</div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">Ending Balance</div>
@@ -664,7 +664,7 @@ export function FinancialBudgetsContent() {
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Variance</div>
-                  <div className={cn(row.varianceAmount < 0 ? "text-red-600" : "text-foreground")}>
+                  <div className={cn(row.varianceAmount < 0 ? "text-red-600 dark:text-red-400" : "text-foreground")}>
                     ${row.varianceAmount.toFixed(2)}
                   </div>
                 </div>

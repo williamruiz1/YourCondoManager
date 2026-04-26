@@ -291,9 +291,9 @@ export default function InsurancePage() {
       />
 
       {expiringSoon.length > 0 && (
-        <Card className="border-orange-300 bg-orange-50/50" role="status">
+        <Card className="border-orange-300 bg-orange-50/50 dark:border-orange-900/50 dark:bg-orange-950/30" role="status">
           <CardContent className="p-4 flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-orange-500 mt-0.5 shrink-0" aria-hidden="true" />
+            <AlertTriangle className="h-5 w-5 text-orange-500 dark:text-orange-400 mt-0.5 shrink-0" aria-hidden="true" />
             <div>
               <div className="font-medium text-sm">
                 {expiringSoon.length} polic{expiringSoon.length === 1 ? "y" : "ies"} expiring within 90 days

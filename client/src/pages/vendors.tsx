@@ -872,11 +872,11 @@ export function VendorsContent() {
                         <div className="text-xs text-muted-foreground mt-0.5">Total</div>
                       </div>
                       <div className="rounded-md border p-3 text-center">
-                        <div className="text-2xl font-bold text-orange-600">{vendorMetrics.openWorkOrders}</div>
+                        <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{vendorMetrics.openWorkOrders}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">Open</div>
                       </div>
                       <div className="rounded-md border p-3 text-center">
-                        <div className="text-2xl font-bold text-green-600">{vendorMetrics.closedWorkOrders}</div>
+                        <div className="text-2xl font-bold text-green-600 dark:text-green-400">{vendorMetrics.closedWorkOrders}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">Closed</div>
                       </div>
                     </div>

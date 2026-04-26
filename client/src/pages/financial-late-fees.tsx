@@ -757,7 +757,7 @@ export function FinancialLateFeesContent() {
                     <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                       <div>
                         <div className="uppercase tracking-wide">Balance Owed</div>
-                        <div className="mt-1 text-sm text-red-600">{formatCurrency(Math.abs(row.balance))}</div>
+                        <div className="mt-1 text-sm text-red-600 dark:text-red-400">{formatCurrency(Math.abs(row.balance))}</div>
                       </div>
                       <div>
                         <div className="uppercase tracking-wide">Late Fee</div>
@@ -798,7 +798,7 @@ export function FinancialLateFeesContent() {
                           />
                         </TableCell>
                         <TableCell className="font-medium font-mono text-xs">{row.unitId.slice(0, 8)}</TableCell>
-                        <TableCell className="text-red-600">{formatCurrency(Math.abs(row.balance))}</TableCell>
+                        <TableCell className="text-red-600 dark:text-red-400">{formatCurrency(Math.abs(row.balance))}</TableCell>
                         <TableCell>{row.daysLate}</TableCell>
                         <TableCell className="font-semibold">{formatCurrency(row.calculatedFee)}</TableCell>
                       </TableRow>
@@ -979,7 +979,7 @@ export function FinancialLateFeesContent() {
                       <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                         <div>
                           <div className="uppercase tracking-wide">Balance</div>
-                          <div className="mt-1 text-sm font-medium text-red-600">{formatCurrency(Math.abs(esc.balance))}</div>
+                          <div className="mt-1 text-sm font-medium text-red-600 dark:text-red-400">{formatCurrency(Math.abs(esc.balance))}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide">Days Overdue</div>
@@ -1016,7 +1016,7 @@ export function FinancialLateFeesContent() {
                         <TableCell className="font-mono text-sm">{esc.unitId.slice(0, 8)}</TableCell>
                         <TableCell className="font-mono text-sm">{esc.personId.slice(0, 8)}</TableCell>
                         <TableCell><Badge variant="outline">Stage {esc.currentStage}</Badge></TableCell>
-                        <TableCell className="text-red-600 font-medium">{formatCurrency(Math.abs(esc.balance))}</TableCell>
+                        <TableCell className="text-red-600 dark:text-red-400 font-medium">{formatCurrency(Math.abs(esc.balance))}</TableCell>
                         <TableCell>{esc.daysPastDue}d</TableCell>
                         <TableCell><Badge variant={esc.status === "active" ? "destructive" : esc.status === "resolved" ? "default" : "secondary"}>{esc.status}</Badge></TableCell>
                         <TableCell className="text-right">
@@ -1222,7 +1222,7 @@ export function FinancialLateFeesContent() {
         <CardContent className="pt-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <HandCoins className="h-5 w-5 text-orange-500" />
+              <HandCoins className="h-5 w-5 text-orange-500 dark:text-orange-400" />
               <div>
                 <div className="font-semibold">Collections Handoff &amp; Aging Dashboard</div>
                 <div className="text-xs text-muted-foreground">AR aging buckets and accounts referred to external collections</div>
@@ -1255,11 +1255,11 @@ export function FinancialLateFeesContent() {
               {/* Aging Buckets */}
               <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
                 {[
-                  { label: "Current (0-30d)", value: agingData.buckets.current, color: "text-green-600" },
-                  { label: "31-60 Days", value: agingData.buckets.days31to60, color: "text-yellow-600" },
-                  { label: "61-90 Days", value: agingData.buckets.days61to90, color: "text-orange-500" },
-                  { label: "91-120 Days", value: agingData.buckets.days91to120, color: "text-red-500" },
-                  { label: "120+ Days", value: agingData.buckets.over120, color: "text-red-700 font-bold" },
+                  { label: "Current (0-30d)", value: agingData.buckets.current, color: "text-green-600 dark:text-green-400" },
+                  { label: "31-60 Days", value: agingData.buckets.days31to60, color: "text-yellow-600 dark:text-yellow-400" },
+                  { label: "61-90 Days", value: agingData.buckets.days61to90, color: "text-orange-500 dark:text-orange-400" },
+                  { label: "91-120 Days", value: agingData.buckets.days91to120, color: "text-red-500 dark:text-red-400" },
+                  { label: "120+ Days", value: agingData.buckets.over120, color: "text-red-700 dark:text-red-300 font-bold" },
                 ].map((b) => (
                   <div key={b.label} className="rounded-md border p-3 text-center">
                     <div className={`text-lg font-semibold ${b.color}`}>${b.value.toFixed(0)}</div>
@@ -1269,9 +1269,9 @@ export function FinancialLateFeesContent() {
               </div>
 
               <div className="flex gap-4 text-sm text-muted-foreground">
-                <span>Total Delinquent: <span className="text-red-600 font-medium">${agingData.totalDelinquent.toFixed(2)}</span></span>
+                <span>Total Delinquent: <span className="text-red-600 dark:text-red-400 font-medium">${agingData.totalDelinquent.toFixed(2)}</span></span>
                 <span>Active Referrals: <span className="font-medium">{agingData.activeHandoffs}</span></span>
-                <span>Settled: <span className="text-green-600 font-medium">${agingData.settledAmount.toFixed(2)}</span></span>
+                <span>Settled: <span className="text-green-600 dark:text-green-400 font-medium">${agingData.settledAmount.toFixed(2)}</span></span>
               </div>
 
               {/* Handoff Records */}
@@ -1294,11 +1294,11 @@ export function FinancialLateFeesContent() {
                         <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                           <div>
                             <div className="uppercase tracking-wide">Referred</div>
-                            <div className="mt-1 text-sm text-red-600">${h.referralAmount.toFixed(2)}</div>
+                            <div className="mt-1 text-sm text-red-600 dark:text-red-400">${h.referralAmount.toFixed(2)}</div>
                           </div>
                           <div>
                             <div className="uppercase tracking-wide">Current Balance</div>
-                            <div className="mt-1 text-sm text-red-600">${h.currentBalance.toFixed(2)}</div>
+                            <div className="mt-1 text-sm text-red-600 dark:text-red-400">${h.currentBalance.toFixed(2)}</div>
                           </div>
                           <div>
                             <div className="uppercase tracking-wide">Person</div>
@@ -1339,8 +1339,8 @@ export function FinancialLateFeesContent() {
                           <TableCell className="font-mono text-xs">{h.unitId.slice(0, 8)}</TableCell>
                           <TableCell className="font-mono text-xs">{h.personId.slice(0, 8)}</TableCell>
                           <TableCell className="text-sm">{new Date(h.referralDate).toLocaleDateString()}</TableCell>
-                          <TableCell className="text-red-600">${h.referralAmount.toFixed(2)}</TableCell>
-                          <TableCell className="text-red-600">${h.currentBalance.toFixed(2)}</TableCell>
+                          <TableCell className="text-red-600 dark:text-red-400">${h.referralAmount.toFixed(2)}</TableCell>
+                          <TableCell className="text-red-600 dark:text-red-400">${h.currentBalance.toFixed(2)}</TableCell>
                           <TableCell className="text-sm">{h.agencyName ?? "—"}</TableCell>
                           <TableCell>
                             <Badge variant={h.status === "settled" ? "default" : h.status === "active" ? "destructive" : "secondary"}>

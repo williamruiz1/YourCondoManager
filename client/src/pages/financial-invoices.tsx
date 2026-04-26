@@ -357,7 +357,7 @@ export function FinancialInvoicesContent() {
       </Dialog>
 
       {apStats.overdueCount > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300 p-3 text-sm">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span><strong>{apStats.overdueCount} invoice{apStats.overdueCount !== 1 ? "s" : ""}</strong> past due — ${apStats.overdueAmount.toFixed(2)} outstanding</span>
         </div>
@@ -374,15 +374,15 @@ export function FinancialInvoicesContent() {
           <div className="text-2xl font-bold">${apStats.approvedAmount.toFixed(2)}</div>
         </div>
         <div className="rounded-lg border p-4">
-          <div className={`flex items-center gap-2 text-sm mb-1 ${apStats.overdueCount > 0 ? "text-red-600" : "text-muted-foreground"}`}>
+          <div className={`flex items-center gap-2 text-sm mb-1 ${apStats.overdueCount > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
             <AlertTriangle className="h-4 w-4" /> Overdue
           </div>
-          <div className={`text-2xl font-bold ${apStats.overdueCount > 0 ? "text-red-600" : ""}`}>${apStats.overdueAmount.toFixed(2)}</div>
+          <div className={`text-2xl font-bold ${apStats.overdueCount > 0 ? "text-red-600 dark:text-red-400" : ""}`}>${apStats.overdueAmount.toFixed(2)}</div>
           <div className="text-xs text-muted-foreground">{apStats.overdueCount} past due date</div>
         </div>
         <div className="rounded-lg border p-4">
           <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><DollarSign className="h-4 w-4" /> Paid (MTD)</div>
-          <div className="text-2xl font-bold text-green-700">${apStats.paidMtdAmount.toFixed(2)}</div>
+          <div className="text-2xl font-bold text-green-700 dark:text-green-400">${apStats.paidMtdAmount.toFixed(2)}</div>
           <div className="text-xs text-muted-foreground">{apStats.paidMtdCount} invoice{apStats.paidMtdCount !== 1 ? "s" : ""} this month</div>
         </div>
       </div>
@@ -445,7 +445,7 @@ export function FinancialInvoicesContent() {
                 const today = new Date(); today.setHours(0,0,0,0);
                 const isOverdue = row.dueDate && new Date(row.dueDate) < today && row.status !== "paid" && row.status !== "void";
                 return (
-                  <div key={row.id} className={`rounded-lg border p-4 space-y-3 ${isOverdue ? "border-red-200 bg-red-50/40" : ""}`}>
+                  <div key={row.id} className={`rounded-lg border p-4 space-y-3 ${isOverdue ? "border-red-200 bg-red-50/40 dark:border-red-900/50 dark:bg-red-950/20" : ""}`}>
                     <div className="flex items-start gap-3">
                       <Checkbox checked={selectedIds.has(row.id)} onCheckedChange={(v) => { setSelectedIds(prev => { const next = new Set(prev); v ? next.add(row.id) : next.delete(row.id); return next; }); }} />
                       <div className="min-w-0 flex-1">
@@ -525,7 +525,7 @@ export function FinancialInvoicesContent() {
                   const today = new Date(); today.setHours(0,0,0,0);
                   const isOverdue = row.dueDate && new Date(row.dueDate) < today && row.status !== "paid" && row.status !== "void";
                   return (
-                    <TableRow key={row.id} className={isOverdue ? "bg-red-50/50" : ""}>
+                    <TableRow key={row.id} className={isOverdue ? "bg-red-50/50 dark:bg-red-950/20" : ""}>
                       <TableCell className="w-8"><Checkbox checked={selectedIds.has(row.id)} onCheckedChange={(v) => { setSelectedIds(prev => { const next = new Set(prev); v ? next.add(row.id) : next.delete(row.id); return next; }); }} /></TableCell>
                       <TableCell className="font-medium">{row.vendorName}</TableCell>
                       <TableCell>{row.invoiceNumber || "-"}</TableCell>

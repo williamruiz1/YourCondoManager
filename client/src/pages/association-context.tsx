@@ -758,7 +758,7 @@ export default function AssociationContextPage() {
                   {overviewLoading ? "\u2014" : (overview?.units ?? 0)}
                 </span>
                 <div className="mt-3">
-                  <span className="text-[10px] text-green-700 font-bold bg-green-50 px-2.5 py-1 rounded-full inline-block">
+                  <span className="text-[10px] text-green-700 font-bold bg-green-50 dark:text-green-300 dark:bg-green-950/40 px-2.5 py-1 rounded-full inline-block">
                     {overview ? `${overview.occupancyRatePercent}% Occupied` : "\u2014"}
                   </span>
                 </div>
@@ -856,7 +856,7 @@ export default function AssociationContextPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                       {onboardingChecklistItems.map((item) => (
                         <div key={item.label} className="flex items-center gap-2">
-                          <span className={`material-symbols-outlined text-[18px] shrink-0 ${item.done ? "text-green-600" : "text-primary"}`}>
+                          <span className={`material-symbols-outlined text-[18px] shrink-0 ${item.done ? "text-green-600 dark:text-green-400" : "text-primary"}`}>
                             {item.done ? "check_circle" : "pending"}
                           </span>
                           <span className="text-xs text-on-surface-variant leading-tight">
@@ -1558,9 +1558,9 @@ export default function AssociationContextPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-lg p-4 bg-green-50">
+                  <div className="rounded-lg p-4 bg-green-50 dark:bg-green-950/30">
                     <div className="flex items-start gap-2">
-                      <span className="material-symbols-outlined text-green-600 text-[18px] mt-0.5 shrink-0">check_circle</span>
+                      <span className="material-symbols-outlined text-green-600 dark:text-green-400 text-[18px] mt-0.5 shrink-0">check_circle</span>
                       <div>
                         <p className="text-sm font-bold text-on-surface">All clear</p>
                         <p className="text-xs text-on-surface-variant mt-0.5">No critical items require attention right now.</p>
@@ -1582,9 +1582,9 @@ export default function AssociationContextPage() {
                       )}
                       {/* Avatar circle */}
                       <div className={`absolute left-0 top-0 w-6 h-6 rounded-full flex items-center justify-center ${
-                        event.type === "financial" ? "bg-green-100 text-green-700" :
-                        event.type === "work_order" ? "bg-blue-100 text-blue-700" :
-                        event.type === "document" ? "bg-purple-100 text-purple-700" :
+                        event.type === "financial" ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300" :
+                        event.type === "work_order" ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300" :
+                        event.type === "document" ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300" :
                         "bg-surface-container text-on-surface-variant"
                       }`}>
                         <span className="material-symbols-outlined text-[12px]">{event.icon}</span>
@@ -1840,9 +1840,9 @@ function KpiCard({
   secondaryValue?: string;
 }) {
   const toneClassName = tone === "positive"
-    ? "border-emerald-200 bg-emerald-50/70"
+    ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/30"
     : tone === "warning"
-      ? "border-amber-200 bg-amber-50/70"
+      ? "border-amber-200 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/30"
       : "border-border bg-background";
 
   return (

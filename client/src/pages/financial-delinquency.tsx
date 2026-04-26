@@ -403,7 +403,7 @@ export function FinancialDelinquencyContent() {
         <Card>
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wide">Total Owed</div>
-            <div className="text-2xl font-bold mt-1 text-red-600">{formatCurrency(totalOwed)}</div>
+            <div className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{formatCurrency(totalOwed)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -514,7 +514,7 @@ export function FinancialDelinquencyContent() {
                         </div>
                         <div>
                           <div className="uppercase tracking-wide">Balance</div>
-                          <div className="mt-1 text-sm font-medium text-red-600">{formatCurrency(esc.balance)}</div>
+                          <div className="mt-1 text-sm font-medium text-red-600 dark:text-red-400">{formatCurrency(esc.balance)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide">Days Overdue</div>
@@ -567,7 +567,7 @@ export function FinancialDelinquencyContent() {
                           <TableCell className="font-medium">Unit {esc.unitNumber}</TableCell>
                           <TableCell className="text-muted-foreground">{esc.personName}</TableCell>
                           <TableCell><Badge variant="outline">Stage {esc.currentStage}</Badge></TableCell>
-                          <TableCell className="text-red-600 font-medium">{formatCurrency(esc.balance)}</TableCell>
+                          <TableCell className="text-red-600 dark:text-red-400 font-medium">{formatCurrency(esc.balance)}</TableCell>
                           <TableCell>{esc.daysPastDue}d</TableCell>
                           <TableCell>
                             <Badge variant={statusBadgeVariant(esc.status)}>{statusLabels[esc.status] ?? esc.status}</Badge>
@@ -835,11 +835,11 @@ function AgingDashboard({ associationId }: { associationId: string | null }) {
   const filtered = bucketFilter === "all" ? units : units.filter(u => u.bucket === bucketFilter);
 
   const bucketCards = [
-    { key: "current", label: "Current (0-30)", amount: buckets.current, color: "text-green-700 bg-green-50 border-green-200" },
-    { key: "days31to60", label: "31-60 Days", amount: buckets.days31to60, color: "text-amber-700 bg-amber-50 border-amber-200" },
-    { key: "days61to90", label: "61-90 Days", amount: buckets.days61to90, color: "text-orange-700 bg-orange-50 border-orange-200" },
-    { key: "days91to120", label: "91-120 Days", amount: buckets.days91to120, color: "text-red-600 bg-red-50 border-red-200" },
-    { key: "over120", label: "120+ Days", amount: buckets.over120, color: "text-red-800 bg-red-100 border-red-300" },
+    { key: "current", label: "Current (0-30)", amount: buckets.current, color: "text-green-700 bg-green-50 border-green-200 dark:text-green-300 dark:bg-green-950/30 dark:border-green-900/50" },
+    { key: "days31to60", label: "31-60 Days", amount: buckets.days31to60, color: "text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950/30 dark:border-amber-900/50" },
+    { key: "days61to90", label: "61-90 Days", amount: buckets.days61to90, color: "text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-300 dark:bg-orange-950/30 dark:border-orange-900/50" },
+    { key: "days91to120", label: "91-120 Days", amount: buckets.days91to120, color: "text-red-600 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-950/30 dark:border-red-900/50" },
+    { key: "over120", label: "120+ Days", amount: buckets.over120, color: "text-red-800 bg-red-100 border-red-300 dark:text-red-200 dark:bg-red-950/40 dark:border-red-800/60" },
   ];
 
   const csvHeaders = ["Unit", "Owner", "Balance", "Bucket", "Days Past Due", "Last Payment", "Notice Stage", "Next Retry", "Autopay"];
@@ -959,17 +959,17 @@ function NoticesTab({ associationId }: { associationId: string | null }) {
   if (!associationId) return <div className="text-sm text-muted-foreground p-4">Select an association.</div>;
 
   const stageColors: Record<string, string> = {
-    payment_failed_notice: "bg-amber-100 text-amber-800",
-    delinquency_notice_1: "bg-orange-100 text-orange-800",
-    delinquency_notice_2: "bg-red-100 text-red-800",
-    final_notice: "bg-red-200 text-red-900",
+    payment_failed_notice: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+    delinquency_notice_1: "bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300",
+    delinquency_notice_2: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
+    final_notice: "bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-200",
   };
 
   const statusColors: Record<string, string> = {
-    queued: "bg-blue-100 text-blue-800",
-    sent: "bg-green-100 text-green-800",
-    skipped: "bg-gray-100 text-gray-600",
-    failed: "bg-red-100 text-red-800",
+    queued: "bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
+    sent: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
+    skipped: "bg-muted text-muted-foreground",
+    failed: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
   };
 
   return (
@@ -1005,14 +1005,14 @@ function NoticesTab({ associationId }: { associationId: string | null }) {
                   <TableRow key={n.id}>
                     <TableCell className="text-xs">{new Date(n.createdAt).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stageColors[n.noticeStage] ?? "bg-gray-100 text-gray-600"}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stageColors[n.noticeStage] ?? "bg-muted text-muted-foreground"}`}>
                         {n.noticeStage.replace(/_/g, " ")}
                       </span>
                     </TableCell>
                     <TableCell className="text-sm tabular-nums">{n.triggerDaysPastDue}</TableCell>
                     <TableCell className="text-sm text-right tabular-nums">${(n.amountOwedCents / 100).toFixed(2)}</TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[n.status] ?? "bg-gray-100 text-gray-600"}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[n.status] ?? "bg-muted text-muted-foreground"}`}>
                         {n.status}
                       </span>
                     </TableCell>
@@ -1132,7 +1132,7 @@ function DelinquencySettingsTab({ associationId }: { associationId: string | nul
                 type="checkbox"
                 checked={form.autoLateFeeEnabled}
                 onChange={e => setForm(f => ({ ...f, autoLateFeeEnabled: e.target.checked }))}
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-input"
               />
               <span className="text-sm">{form.autoLateFeeEnabled ? "Enabled" : "Disabled"}</span>
             </div>
