@@ -331,15 +331,15 @@ export function FinancialInvoicesContent() {
               <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                 Invoices are filed under the selected association's vendor registry. Create the vendor in `/app/vendors` first if it does not exist yet.
               </div>
-              <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <FormField control={form.control} name="invoiceNumber" render={({ field }) => (<FormItem><FormLabel>Invoice #</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} {...field} /></FormControl><FormMessage /></FormItem>)} />
                 <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
               </div>
-              <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <FormField control={form.control} name="invoiceDate" render={({ field }) => (<FormItem><FormLabel>Invoice Date</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                 <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
               </div>
-              <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <FormField control={form.control} name="accountId" render={({ field }) => (
                   <FormItem><FormLabel>Account</FormLabel><Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}><FormControl><SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="none">none</SelectItem>{accounts?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                 )} />

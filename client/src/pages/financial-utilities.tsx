@@ -165,17 +165,17 @@ export function FinancialUtilitiesContent() {
                 <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                   Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                 </div>
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField control={form.control} name="utilityType" render={({ field }) => (<FormItem><FormLabel>Utility Type</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} placeholder="Water" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="providerName" render={({ field }) => (<FormItem><FormLabel>Provider</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} placeholder="Provider" {...field} /></FormControl><FormMessage /></FormItem>)} />
                 </div>
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="number" min="0" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="status" render={({ field }) => (
                     <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger className={isMobile ? "min-h-11" : undefined}><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="due">due</SelectItem><SelectItem value="scheduled">scheduled</SelectItem><SelectItem value="paid">paid</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />
                 </div>
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Due Date</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="paidDate" render={({ field }) => (<FormItem><FormLabel>Paid Date</FormLabel><FormControl><Input className={isMobile ? "min-h-11" : undefined} type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                 </div>

@@ -284,7 +284,7 @@ export function FinancialDelinquencyContent() {
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
           Association: <span className="font-medium">{activeAssociationName || "None"}</span>
         </div>
-        <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Stage #</label>
             <Input
@@ -315,7 +315,7 @@ export function FinancialDelinquencyContent() {
             onChange={(e) => setThresholdForm((f) => ({ ...f, stageName: e.target.value }))}
           />
         </div>
-        <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Min Balance ($)</label>
             <Input
@@ -336,7 +336,7 @@ export function FinancialDelinquencyContent() {
             />
           </div>
         </div>
-        <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Late Fee % (optional)</label>
             <Input
@@ -370,16 +370,16 @@ export function FinancialDelinquencyContent() {
           />
           <label htmlFor="isActive" className="text-sm">Active</label>
         </div>
-        <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button
-            className={isMobile ? "w-full" : undefined}
+            className="w-full sm:w-auto"
             variant="outline"
             onClick={() => { setThresholdDialogOpen(false); setEditingThreshold(null); resetThresholdForm(); }}
           >
             Cancel
           </Button>
           <Button
-            className={isMobile ? "w-full" : undefined}
+            className="w-full sm:w-auto"
             onClick={() => editingThreshold ? updateThreshold.mutate() : createThreshold.mutate()}
             disabled={!thresholdForm.stageName || createThreshold.isPending || updateThreshold.isPending}
           >

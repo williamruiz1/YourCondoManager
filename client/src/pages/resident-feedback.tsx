@@ -252,9 +252,9 @@ export default function ResidentFeedbackPage() {
                                 <div className="text-sm">{fb.subject || "(no subject)"}</div>
                                 {fb.feedbackText && <div className="text-sm text-muted-foreground bg-muted/30 rounded p-2">{fb.feedbackText}</div>}
                                 <Textarea placeholder="Internal notes about this feedback..." value={adminNoteText} onChange={(e) => setAdminNoteText(e.target.value)} rows={3} aria-label={t("residentFeedback.dialog.noteTitle")} />
-                                <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                                  <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setNoteDialogFeedback(null)}>{t("common.action.cancel")}</Button>
-                                  <Button className={isMobile ? "w-full" : undefined} onClick={() => updateFeedback.mutate({ id: fb.id, adminNotes: adminNoteText })}>{t("residentFeedback.action.saveNote")}</Button>
+                                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                  <Button className="w-full sm:w-auto" variant="outline" onClick={() => setNoteDialogFeedback(null)}>{t("common.action.cancel")}</Button>
+                                  <Button className="w-full sm:w-auto" onClick={() => updateFeedback.mutate({ id: fb.id, adminNotes: adminNoteText })}>{t("residentFeedback.action.saveNote")}</Button>
                                 </div>
                               </div>
                             </DialogContent>

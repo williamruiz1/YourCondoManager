@@ -388,7 +388,7 @@ export function BoardPackagesContent() {
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                 Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <Input
                   className={isMobile ? "min-h-11" : undefined}
                   placeholder="Template title"
@@ -408,7 +408,7 @@ export function BoardPackagesContent() {
               <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
                 Example: a monthly board template can auto-generate 7 days before each board meeting and include financial, governance, and operations sections.
               </div>
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
                 <label className="flex items-center gap-2 rounded border px-3 py-2 text-sm">
                   <input
                     type="checkbox"
@@ -444,7 +444,7 @@ export function BoardPackagesContent() {
               </div>
               <div className="space-y-2">
                 <div className="text-sm font-medium">Included sections</div>
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
                   {sectionOptions.map((section) => (
                     <label key={section.key} className="flex items-center gap-2 rounded border px-3 py-2 text-sm">
                       <input
@@ -463,10 +463,10 @@ export function BoardPackagesContent() {
                 value={templateForm.notes}
                 onChange={(event) => setTemplateForm((current) => ({ ...current, notes: event.target.value }))}
               />
-              <div className={`flex justify-end gap-2 ${isMobile ? "flex-col" : ""}`}>
-                <Button className={isMobile ? "w-full min-h-11" : undefined} variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button className="w-full sm:w-auto" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
                 <Button
-                  className={isMobile ? "w-full min-h-11" : undefined}
+                  className="w-full sm:w-auto"
                   onClick={() => saveTemplate.mutate()}
                   disabled={!templateForm.title.trim() || templateForm.sections.length === 0}
                 >

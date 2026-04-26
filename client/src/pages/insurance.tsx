@@ -203,7 +203,7 @@ export default function InsurancePage() {
               </DialogHeader>
               <Form {...form}>
                 <form className="space-y-4" onSubmit={form.handleSubmit((v) => createMutation.mutate(v))}>
-                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                     <FormField control={form.control} name="policyType" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Policy Type</FormLabel>
@@ -231,7 +231,7 @@ export default function InsurancePage() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                     <FormField control={form.control} name="effectiveDate" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Effective Date</FormLabel>
@@ -247,7 +247,7 @@ export default function InsurancePage() {
                       </FormItem>
                     )} />
                   </div>
-                  <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                     <FormField control={form.control} name="premiumAmount" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Annual Premium ($)</FormLabel>

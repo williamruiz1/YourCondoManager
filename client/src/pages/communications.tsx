@@ -1652,7 +1652,7 @@ export function CommunicationsContent() {
                 <DialogTrigger asChild>
                   <Button>Send to {recipientPreview.recipients.length} Recipient{recipientPreview.recipients.length !== 1 ? "s" : ""}</Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Confirm Send</DialogTitle>
                   </DialogHeader>
@@ -1670,10 +1670,10 @@ export function CommunicationsContent() {
                       )}
                     </div>
                   </div>
-                  <div className={`mt-2 gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                    <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setConfirmSendOpen(false)}>Cancel</Button>
+                  <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <Button className="w-full sm:w-auto" variant="outline" onClick={() => setConfirmSendOpen(false)}>Cancel</Button>
                     <Button
-                      className={isMobile ? "w-full" : undefined}
+                      className="w-full sm:w-auto"
                       onClick={() => { sendTargeted.mutate(); setConfirmSendOpen(false); }}
                       disabled={sendTargeted.isPending}
                     >
@@ -1783,9 +1783,10 @@ export function CommunicationsContent() {
                   <div><span className="text-muted-foreground">Body: </span>{emergencyForm.body}</div>
                 </div>
               </div>
-              <div className="flex justify-end gap-2 mt-2">
-                <Button variant="outline" onClick={() => setEmergencyAlertOpen(false)}>Cancel</Button>
+              <div className="flex flex-col-reverse gap-2 mt-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => setEmergencyAlertOpen(false)}>Cancel</Button>
                 <Button
+                  className="w-full sm:w-auto"
                   onClick={() => sendEmergencyAlert.mutate()}
                   disabled={sendEmergencyAlert.isPending}
                 >
@@ -2133,7 +2134,7 @@ export function CommunicationsContent() {
                 <DialogTrigger asChild>
                   <Button size="sm" disabled={!selectedAssociationId}>Add Reminder Rule</Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+                <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-h-[85vh] sm:max-w-lg">
                   <DialogHeader><DialogTitle>Create Payment Reminder Rule</DialogTitle></DialogHeader>
                   <div className="space-y-3">
                     <Input placeholder="Rule name (e.g. 7-day overdue reminder)" value={reminderRuleForm.name} onChange={(e) => setReminderRuleForm((f) => ({ ...f, name: e.target.value }))} />
@@ -2160,9 +2161,9 @@ export function CommunicationsContent() {
                         {(templates ?? []).map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                      <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setReminderRuleOpen(false)}>Cancel</Button>
-                      <Button className={isMobile ? "w-full" : undefined} onClick={() => createReminderRule.mutate()} disabled={!reminderRuleForm.name.trim() || createReminderRule.isPending}>Create Rule</Button>
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <Button className="w-full sm:w-auto" variant="outline" onClick={() => setReminderRuleOpen(false)}>Cancel</Button>
+                      <Button className="w-full sm:w-auto" onClick={() => createReminderRule.mutate()} disabled={!reminderRuleForm.name.trim() || createReminderRule.isPending}>Create Rule</Button>
                     </div>
                   </div>
                 </DialogContent>

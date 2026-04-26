@@ -353,9 +353,9 @@ export function FinancialFoundationContent() {
                       <label className="text-xs text-muted-foreground">Additional notes</label>
                       <Input className={isMobile ? "min-h-11" : undefined} placeholder="Optional context..." value={approvalForm.notes} onChange={(e) => setApprovalForm((f) => ({ ...f, notes: e.target.value }))} />
                     </div>
-                    <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                      <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
-                      <Button className={isMobile ? "w-full" : undefined} onClick={() => createApproval.mutate()} disabled={!approvalForm.changeDescription.trim() || createApproval.isPending}>Submit Request</Button>
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <Button className="w-full sm:w-auto" variant="outline" onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
+                      <Button className="w-full sm:w-auto" onClick={() => createApproval.mutate()} disabled={!approvalForm.changeDescription.trim() || createApproval.isPending}>Submit Request</Button>
                     </div>
                   </div>
                 </DialogContent>

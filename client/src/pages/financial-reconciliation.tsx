@@ -659,7 +659,7 @@ export function FinancialReconciliationContent() {
           </DialogHeader>
           <div className="space-y-3">
             <Input placeholder="Period label (e.g., March 2026)" value={periodForm.periodLabel} onChange={e => setPeriodForm(f => ({ ...f, periodLabel: e.target.value }))} />
-            <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Start Date</label>
                 <Input type="date" value={periodForm.startDate} onChange={e => setPeriodForm(f => ({ ...f, startDate: e.target.value }))} />
@@ -670,9 +670,9 @@ export function FinancialReconciliationContent() {
               </div>
             </div>
             <Textarea placeholder="Notes (optional)" value={periodForm.notes} onChange={e => setPeriodForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
-            <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-              <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setPeriodDialogOpen(false)}>Cancel</Button>
-              <Button className={isMobile ? "w-full" : undefined} onClick={() => createPeriod.mutate()} disabled={!periodForm.periodLabel || !periodForm.startDate || !periodForm.endDate || createPeriod.isPending}>Create</Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button className="w-full sm:w-auto" variant="outline" onClick={() => setPeriodDialogOpen(false)}>Cancel</Button>
+              <Button className="w-full sm:w-auto" onClick={() => createPeriod.mutate()} disabled={!periodForm.periodLabel || !periodForm.startDate || !periodForm.endDate || createPeriod.isPending}>Create</Button>
             </div>
           </div>
         </DialogContent>
@@ -698,9 +698,9 @@ export function FinancialReconciliationContent() {
                 <label className="text-xs text-muted-foreground">Notes</label>
                 <Textarea placeholder="Reconciliation notes" value={manualNotes} onChange={e => setManualNotes(e.target.value)} rows={2} />
               </div>
-              <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-                <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setManualMatchTx(null)}>Cancel</Button>
-                <Button className={isMobile ? "w-full" : undefined} onClick={() => manualMatch.mutate()} disabled={manualMatch.isPending}>Save Match</Button>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button className="w-full sm:w-auto" variant="outline" onClick={() => setManualMatchTx(null)}>Cancel</Button>
+                <Button className="w-full sm:w-auto" onClick={() => manualMatch.mutate()} disabled={manualMatch.isPending}>Save Match</Button>
               </div>
             </div>
           )}
@@ -715,7 +715,7 @@ export function FinancialReconciliationContent() {
           </DialogHeader>
           <div className="space-y-3">
             <Input placeholder="Filename / statement label" value={importForm.filename} onChange={e => setImportForm(f => ({ ...f, filename: e.target.value }))} />
-            <div className={`grid gap-3 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Statement Date</label>
                 <Input type="date" value={importForm.statementDate} onChange={e => setImportForm(f => ({ ...f, statementDate: e.target.value }))} />
@@ -758,9 +758,9 @@ export function FinancialReconciliationContent() {
               </label>
               <Textarea placeholder='[{"date":"2026-03-01","description":"Payment from Unit 1","amount":-250.00}]' value={importForm.transactions} onChange={e => setImportForm(f => ({ ...f, transactions: e.target.value }))} rows={4} className="font-mono text-xs" />
             </div>
-            <div className={`gap-2 ${isMobile ? "grid grid-cols-1" : "flex justify-end"}`}>
-              <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setImportDialogOpen(false)}>Cancel</Button>
-              <Button className={isMobile ? "w-full" : undefined} onClick={() => createImport.mutate()} disabled={createImport.isPending}>Import</Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button className="w-full sm:w-auto" variant="outline" onClick={() => setImportDialogOpen(false)}>Cancel</Button>
+              <Button className="w-full sm:w-auto" onClick={() => createImport.mutate()} disabled={createImport.isPending}>Import</Button>
             </div>
           </div>
         </DialogContent>

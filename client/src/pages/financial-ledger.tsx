@@ -146,10 +146,10 @@ function SendNoticeDialog({
             />
           </div>
         </div>
-        <DialogFooter className={isMobile ? "grid grid-cols-1 gap-2" : undefined}>
-          <Button className={isMobile ? "w-full" : undefined} variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+        <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button
-            className={isMobile ? "w-full" : undefined}
+            className="w-full sm:w-auto"
             onClick={() => sendMutation.mutate()}
             disabled={sendMutation.isPending || !subject.trim() || !body.trim()}
           >
@@ -344,7 +344,7 @@ export function FinancialLedgerContent() {
                 <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                   Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
                 </div>
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField control={form.control} name="unitId" render={({ field }) => (
                     <FormItem><FormLabel>Unit</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{units?.map((u) => <SelectItem key={u.id} value={u.id}>{u.unitNumber}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                   )} />
@@ -352,7 +352,7 @@ export function FinancialLedgerContent() {
                     <FormItem><FormLabel>Owner</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{persons?.map((p) => <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                   )} />
                 </div>
-                <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <FormField control={form.control} name="entryType" render={({ field }) => (
                     <FormItem><FormLabel>Type</FormLabel><Select value={field.value} onValueChange={field.onChange}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="charge">charge</SelectItem><SelectItem value="assessment">assessment</SelectItem><SelectItem value="payment">payment</SelectItem><SelectItem value="late-fee">late-fee</SelectItem><SelectItem value="credit">credit</SelectItem><SelectItem value="adjustment">adjustment</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />

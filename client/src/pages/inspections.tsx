@@ -223,7 +223,7 @@ export function InspectionsContent() {
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                 Association Context: <span className="font-medium">{activeAssociationName || "None selected"}</span>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <Select value={form.locationType} onValueChange={(value: LocationType) => setForm((current) => ({ ...current, locationType: value }))}>
                   <SelectTrigger><SelectValue placeholder="Location type" /></SelectTrigger>
                   <SelectContent>
@@ -264,7 +264,7 @@ export function InspectionsContent() {
                 {form.findings.map((finding, index) => (
                   <Card key={`${index}-${finding.linkedWorkOrderId || "new"}`}>
                     <CardContent className="pt-4 space-y-3">
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                         <Input placeholder="Finding title" value={finding.title} onChange={(e) => updateFinding(index, { title: e.target.value })} />
                         <Input
                           placeholder="Photo URLs, comma separated"
@@ -301,9 +301,10 @@ export function InspectionsContent() {
                 ))}
               </div>
 
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => setOpen(false)}>Cancel</Button>
                 <Button
+                  className="w-full sm:w-auto"
                   onClick={() => saveInspection.mutate()}
                   disabled={!form.locationText.trim() || !form.inspectorName.trim() || !form.inspectionType.trim()}
                 >

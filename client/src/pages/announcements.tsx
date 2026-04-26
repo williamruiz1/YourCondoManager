@@ -196,9 +196,9 @@ export function AnnouncementsContent() {
                   </label>
                 </div>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setNotifyOpen(false)}>Cancel</Button>
-                <Button onClick={() => sendNotification.mutate()} disabled={sendNotification.isPending || (!notifyChannels.push && !notifyChannels.sms)}>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => setNotifyOpen(false)}>Cancel</Button>
+                <Button className="w-full sm:w-auto" onClick={() => sendNotification.mutate()} disabled={sendNotification.isPending || (!notifyChannels.push && !notifyChannels.sms)}>
                   {sendNotification.isPending ? "Sending…" : "Send Now"}
                 </Button>
               </div>
@@ -218,7 +218,7 @@ export function AnnouncementsContent() {
             <div className="space-y-3">
               <Input placeholder="Title *" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
               <Textarea placeholder="Body *" value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} rows={5} />
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                 <Select value={form.priority} onValueChange={(v) => setForm((f) => ({ ...f, priority: v as typeof form.priority }))}>
                   <SelectTrigger><SelectValue placeholder="Priority" /></SelectTrigger>
                   <SelectContent>
@@ -252,9 +252,9 @@ export function AnnouncementsContent() {
                   Publish immediately
                 </label>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={() => saveAnnouncement.mutate()} disabled={!form.title.trim() || !form.body.trim() || saveAnnouncement.isPending}>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button className="w-full sm:w-auto" onClick={() => saveAnnouncement.mutate()} disabled={!form.title.trim() || !form.body.trim() || saveAnnouncement.isPending}>
                   {editing ? "Save Changes" : "Create"}
                 </Button>
               </div>
