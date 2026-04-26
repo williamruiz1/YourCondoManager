@@ -13999,7 +13999,10 @@ This is an automated demo request from the Your Condo Manager website.
         customer: customerId,
         "line_items[0][price]": priceId,
         "line_items[0][quantity]": "1",
-        "subscription_data[trial_period_days]": "14",
+        // 4.4 Q5 (Wave 39, founder-ratified 2026-04-26): trial 14 → 21 days.
+        // Rationale: 21d trial + 7d grace = 4 real weeks before hard-lock.
+        // payment_method_collection stays "if_required" — no CC upfront.
+        "subscription_data[trial_period_days]": "21",
         success_url: `${baseUrl}/signup/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/pricing`,
       });

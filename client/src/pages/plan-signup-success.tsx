@@ -201,14 +201,14 @@ export default function PlanSignupSuccessPage() {
           )}
         </p>
 
-        {/* 4.4 Q5 (Wave 13) — trial-model messaging: 14-day trial + 7-day
-            grace before workspace locks. Keeps the original "no credit
-            card required" stance while surfacing the grace window. */}
+        {/* 4.4 Q5 (Wave 39, founder-ratified 2026-04-26) — trial-model
+            messaging: 21-day trial + 7-day grace before workspace locks.
+            No credit card required up front; we'll prompt for payment
+            after the trial. */}
         <p className="text-xs font-body text-on-surface/50 mb-10 leading-relaxed" data-testid="signup-success-trial-fine-print">
-          Your 14-day free trial starts today — no credit card required. Add a payment
-          method any time before the trial ends. After the trial, you have a 7-day grace
-          window to complete billing before workspace access is paused. You can manage billing
-          at <span className="font-semibold">Settings → Billing</span> at any time.
+          Your 21-day free trial starts today — no credit card required up front. We'll prompt
+          for payment after your trial ends. You'll have 7 days of grace to complete payment
+          before access locks. You can manage billing at <span className="font-semibold">Settings → Billing</span> at any time.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
