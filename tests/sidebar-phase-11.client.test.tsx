@@ -174,6 +174,66 @@ describe("Phase 11 — retired surfaces (3.1 Q11 + Q2)", () => {
   });
 });
 
+describe("Phase 11 — sidebar association anchor (post-Phase-11 hotfix)", () => {
+  // Regression coverage for the post-Phase-11 hotfix that restores the
+  // clickable association anchor in the sidebar header. Pre-Phase-11 the
+  // sidebar header advertised the active association as a `Link` to
+  // `/app/association-context` (or a `Select association` CTA when no
+  // association was active). Phase 11 turned the active-association badge
+  // into a non-clickable `<div>` and dropped the empty-state CTA entirely,
+  // so a freshly-logged-in user (cleared localStorage → no active
+  // association yet) saw no association name and no CTA — only the
+  // top-app-bar `<Select>` switcher, which a Platform Admin with a long
+  // platform-wide dropdown cannot easily scan to find their HOA. This
+  // suite locks the restoration in place.
+
+  it("renders a clickable Link to /app/association-context when an association is active", () => {
+    const { container, unmount } = renderSidebar({
+      role: "platform-admin",
+      activeAssociationId: "assn-1",
+    });
+    const anchor = container.querySelector(
+      '[data-testid="link-selected-association-overview"]',
+    ) as HTMLAnchorElement | null;
+    expect(anchor).not.toBeNull();
+    expect(anchor?.tagName.toLowerCase()).toBe("a");
+    expect(anchor?.getAttribute("href")).toBe("/app/association-context");
+    unmount();
+  });
+
+  it("renders a 'Select association' Link to /app/associations when no active association", () => {
+    // No `activeAssociationId` seeded — the sidebar must advertise an
+    // empty-state CTA so the user can navigate to the associations
+    // surface and pick one. Without this, a fresh login that hasn't
+    // hydrated `activeAssociationId` yet shows nothing in the sidebar
+    // header.
+    const { container, unmount } = renderSidebar({ role: "platform-admin" });
+    const cta = container.querySelector(
+      '[data-testid="link-select-association"]',
+    ) as HTMLAnchorElement | null;
+    expect(cta).not.toBeNull();
+    expect(cta?.tagName.toLowerCase()).toBe("a");
+    expect(cta?.getAttribute("href")).toBe("/app/associations");
+    unmount();
+  });
+
+  it("Platform Admin sees the sidebar Associations sub-link (Home zone)", () => {
+    // Phase 11 declares Associations as a sub-item of the Home zone with
+    // `roles: PORTFOLIO_OPERATORS` (which includes platform-admin). This
+    // test asserts the rendered DOM matches the spec, so a future
+    // refactor that drops platform-admin from PORTFOLIO_OPERATORS would
+    // immediately fail this regression check rather than silently leaving
+    // platform-admins without a sidebar entry to their HOA list.
+    const { container, unmount } = renderSidebar({ role: "platform-admin" });
+    const link = container.querySelector(
+      '[data-testid="link-nav-associations"]',
+    ) as HTMLAnchorElement | null;
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute("href")).toBe("/app/associations");
+    unmount();
+  });
+});
+
 describe("Phase 11 — source-level invariants (3.1 AC 39)", () => {
   it("app-sidebar.tsx contains zero `roles: [` literals (excluding doc comments)", async () => {
     // Per 3.1 Q9 + AC 39: every role gate sources from the canonical
