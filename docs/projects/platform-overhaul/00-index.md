@@ -91,7 +91,7 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 5.7 | Automated quality gates | **SPEC LOCKED · SHIPPED** (Wave 25 axe-core + visual regression in Playwright, PR #56) | [`decisions/5.7-automated-quality-gates.md`](decisions/5.7-automated-quality-gates.md) |
 | 5.8 | `prefers-reduced-motion` audit | **SPEC LOCKED · SHIPPED** (Wave 29, 2026-04-25 — ship-and-lock, PR #62) | [`decisions/5.8-motion-reduce-audit.md`](decisions/5.8-motion-reduce-audit.md) |
 | 5.9 | CI pipeline scaffold | **SPEC LOCKED · SHIPPED** (Wave 30 GitHub Actions: tsc + lint + vitest + build + Playwright + axe + visual, PR #59) | [`decisions/5.9-ci-pipeline.md`](decisions/5.9-ci-pipeline.md) |
-| 5.10 | Storybook for shared component library | **QUEUED** (Wave 34 task `194b5466` in_progress; not landed on `main` as of 2026-04-25) | _decision doc pending_ |
+| 5.10 | Storybook for shared component library | **SPEC LOCKED · IN BUILD** (Wave 37, 2026-04-26 — Storybook 10.3 + react-vite + addon-a11y; 10 story files / 30 stories covering EmptyState, ErrorState, ErrorBoundary, HubAlertWidget, HomeAlertsPanel, BreadcrumbNav, two election charts, SignupOnboardingChecklist, TrialBanner) | [`decisions/5.10-component-library-docs.md`](decisions/5.10-component-library-docs.md) |
 
 ---
 

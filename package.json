@@ -38,7 +38,9 @@
     "verify:seed-integrity": "tsx script/verify-seed-integrity.ts",
     "verify:financial": "tsx script/verify-financial.ts",
     "optimize:images": "tsx script/optimize-images.ts",
-    "load-test": "tsx script/load-test.ts"
+    "load-test": "tsx script/load-test.ts",
+    "storybook": "storybook dev -p 6006",
+    "storybook:build": "storybook build"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -119,6 +121,8 @@
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
+    "@storybook/addon-a11y": "^10.3.5",
+    "@storybook/react-vite": "^10.3.5",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.1.18",
     "@testing-library/jest-dom": "^6.9.1",
@@ -144,6 +148,7 @@
     "jsdom": "^29.0.2",
     "pg-gateway": "^0.3.0-beta.4",
     "postcss": "^8.4.47",
+    "storybook": "^10.3.5",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.5",
     "typescript": "5.6.3",
