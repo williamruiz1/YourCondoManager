@@ -85,16 +85,8 @@ export default defineConfig({
       name: "firefox",
       use: { ...devices["Desktop Firefox"] },
       // visual-regression — chromium-only baselines (see comment above).
-      // signup-onboarding — engine-specific timeout on
-      //   page.waitForResponse(/api/public/signup/complete) at line
-      //   147; chromium passes in ~1s, Firefox + WebKit hit the 30s
-      //   timeout. Filed as workitem 4d261ed2-456f-4366-ab13-9a048f6ddf4b
-      //   (Wave 45 follow-up). Excluded here so CI runs clean while
-      //   the engine-agnostic fix is being investigated; remove this
-      //   ignore line once the spec is engine-agnostic.
       testIgnore: [
         /visual-regression\.spec\.ts/,
-        /signup-onboarding\.spec\.ts/,
       ],
     },
     {
@@ -103,7 +95,6 @@ export default defineConfig({
       // See firefox project for rationale on each ignore.
       testIgnore: [
         /visual-regression\.spec\.ts/,
-        /signup-onboarding\.spec\.ts/,
       ],
     },
   ],
