@@ -23,7 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
-import { loginAsManager } from "./helpers/auth-helper";
+import { loginAsManager, realAdminLogin } from "./helpers/auth-helper";
 import { runAxeAuditSoft } from "./helpers/a11y-check";
 import {
   createRealBackend,
@@ -207,5 +207,78 @@ test.describe("Wave 16a/17 — alerts lifecycle", () => {
     // Wave 25 — axe-core audit on the workspace shell after the
     // alerts flow settles.
     await runAxeAuditSoft(page, "alerts-lifecycle:real-backend");
+  });
+
+  // -------------------------------------------------------------------
+  // Wave 16d — real-SESSION variant. Same assertions as the test above,
+  // but the manager session is established via POST /api/auth/test-login
+  // (real passport+express-session pipeline; only the Google OAuth
+  // identity assertion is bypassed). Regression-net for the auth layer.
+  // Gated on PLAYWRIGHT_TEST_MODE=1 — run via `test:playwright:test-mode`.
+  // -------------------------------------------------------------------
+  test.describe("real-session (Wave 16d)", () => {
+    test.skip(process.env.PLAYWRIGHT_TEST_MODE !== "1", "PLAYWRIGHT_TEST_MODE not set");
+
+    test("alert lifecycle works under a passport-issued session", async ({ page }) => {
+      const adminEmail = "manager@e2e.test";
+      // Seed admin_users + scope row so realAdminLogin's existence check
+      // passes and requireAdmin allows /api/alerts/cross-association.
+      await backend.pool.query(
+        `INSERT INTO admin_users (id, email, role, is_active)
+         VALUES (gen_random_uuid(), $1, 'manager', 1)
+         ON CONFLICT (email) DO UPDATE SET role = 'manager', is_active = 1`,
+        [adminEmail],
+      );
+      const { rows: adminRows } = await backend.pool.query<{ id: string }>(
+        `SELECT id FROM admin_users WHERE email = $1`,
+        [adminEmail],
+      );
+      const adminId = adminRows[0]?.id;
+      if (!adminId) throw new Error("Failed to seed admin_users row");
+      await backend.pool.query(
+        `INSERT INTO admin_association_scopes (id, admin_user_id, association_id)
+         VALUES (gen_random_uuid(), $1, $2) ON CONFLICT (admin_user_id, association_id) DO NOTHING`,
+        [adminId, ASSOCIATION_ID],
+      );
+
+      const { id: workOrderId } = await backend.seedOverdueWorkOrder({
+        title: "Roof inspection overdue (real session)",
+        associationId: ASSOCIATION_ID,
+      });
+
+      // Real-session login — issues a real sid_dev cookie via passport.
+      await realAdminLogin(page, adminEmail);
+      await page.goto("/app");
+
+      const firstBody = await page.evaluate(async () => {
+        const res = await fetch("/api/alerts/cross-association", { credentials: "include" });
+        return { status: res.status, body: await res.json() };
+      });
+      expect(firstBody.status).toBe(200);
+      const overdue = (firstBody.body as { alerts: Array<{ ruleType: string; recordId: string }> })
+        .alerts.filter((a) => a.ruleType === "overdue-work-order");
+      expect(overdue).toHaveLength(1);
+      expect(overdue[0].recordId).toBe(workOrderId);
+
+      const patch = await page.evaluate(async (id: string) => {
+        const res = await fetch(`/api/work-orders/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ status: "closed" }),
+        });
+        return { ok: res.ok };
+      }, workOrderId);
+      expect(patch.ok).toBe(true);
+
+      const afterBody = await page.evaluate(async () => {
+        const res = await fetch("/api/alerts/cross-association", { credentials: "include" });
+        return { status: res.status, body: await res.json() };
+      });
+      expect(afterBody.status).toBe(200);
+      const remaining = (afterBody.body as { alerts: Array<{ ruleType: string; recordId: string }> })
+        .alerts.filter((a) => a.ruleType === "overdue-work-order" && a.recordId === workOrderId);
+      expect(remaining).toHaveLength(0);
+    });
   });
 });

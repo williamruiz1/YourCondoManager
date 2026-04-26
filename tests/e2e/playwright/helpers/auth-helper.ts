@@ -15,6 +15,23 @@
 
 import type { Page, Route } from "@playwright/test";
 
+// ---------------------------------------------------------------------------
+// Wave 16d — real-session helper APIs.
+//
+// These run alongside the route-mock helpers below. They hit the
+// dev-server's `/api/auth/test-login` (manager) and the OTP request +
+// `/api/__test/last-otp` capture (portal) so the session cookie /
+// portal access id are issued by the REAL handlers — only the OAuth /
+// email-delivery legs are bypassed. Use these for regression-net specs
+// that need to exercise passport + express-session round-trips and the
+// portal OTP flow end-to-end.
+//
+// Both helpers REQUIRE the dev server to be running with NODE_ENV=test
+// AND PLAYWRIGHT_TEST_MODE=1. The harness `npm run test:playwright:test-mode`
+// sets both. Without those env vars, the test-only endpoints 404 and
+// these helpers will throw (production cannot be hit by accident).
+// ---------------------------------------------------------------------------
+
 export type ManagerSession = {
   userId: string;
   email: string;
@@ -207,4 +224,90 @@ export async function loginAsGuest(page: Page): Promise<void> {
       body: JSON.stringify({ authenticated: false }),
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Wave 16d — real-session helpers. Both REQUIRE the dev server to be
+// running under NODE_ENV=test AND PLAYWRIGHT_TEST_MODE=1 (the harness
+// `npm run test:playwright:test-mode` sets both). See server/test-routes.ts
+// for the gate definition + security audit.
+// ---------------------------------------------------------------------------
+
+/**
+ * Real-session admin login. Hits POST /api/auth/test-login which calls
+ * passport.serializeUser + req.login — the response sets a real
+ * express-session cookie that Playwright stores on the BrowserContext.
+ * The email MUST correspond to an existing admin_users row.
+ */
+export async function realAdminLogin(page: Page, email: string): Promise<void> {
+  const response = await page.request.post("/api/auth/test-login", {
+    data: { email },
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok()) {
+    const body = await response.text();
+    throw new Error(
+      `realAdminLogin: /api/auth/test-login → ${response.status()} for ${email}. ` +
+      `Body: ${body}. Is the dev server running under NODE_ENV=test AND PLAYWRIGHT_TEST_MODE=1?`,
+    );
+  }
+}
+
+/**
+ * Real-session portal owner login via OTP. Triggers the production
+ * /api/portal/request-login flow, polls /api/__test/last-otp for the
+ * captured 6-digit code, then submits it via /api/portal/verify-login.
+ * The returned portalAccessId is injected into localStorage on the page
+ * (PortalShell sends it as `x-portal-access-id` — portal auth is
+ * header-based, not cookie-based, in YCM).
+ */
+export async function realPortalLogin(page: Page, email: string): Promise<void> {
+  const requestRes = await page.request.post("/api/portal/request-login", {
+    data: { email },
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!requestRes.ok()) {
+    throw new Error(`realPortalLogin: request-login → ${requestRes.status()}: ${await requestRes.text()}`);
+  }
+
+  let otp: string | null = null;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const lookup = await page.request.get(`/api/__test/last-otp?email=${encodeURIComponent(email)}`);
+    if (lookup.ok()) {
+      const body = await lookup.json() as { otp?: string };
+      if (typeof body.otp === "string" && /^\d{6}$/.test(body.otp)) {
+        otp = body.otp;
+        break;
+      }
+    } else if (lookup.status() !== 404) {
+      throw new Error(
+        `realPortalLogin: last-otp → ${lookup.status()}: ${await lookup.text()}. ` +
+        `Is the dev server running under NODE_ENV=test AND PLAYWRIGHT_TEST_MODE=1?`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!otp) {
+    throw new Error(`realPortalLogin: timed out waiting for OTP capture for ${email}.`);
+  }
+
+  const verifyRes = await page.request.post("/api/portal/verify-login", {
+    data: { email, otp },
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!verifyRes.ok()) {
+    throw new Error(`realPortalLogin: verify-login → ${verifyRes.status()}: ${await verifyRes.text()}`);
+  }
+  const verifyBody = await verifyRes.json() as { portalAccessId?: string; associations?: unknown[] };
+  if (!verifyBody.portalAccessId) {
+    throw new Error(
+      `realPortalLogin: verify-login did not return a portalAccessId. ` +
+      `(Multi-association picker not supported by this helper — pre-seed a single portal_access row.) ` +
+      `Body: ${JSON.stringify(verifyBody)}`,
+    );
+  }
+  const portalAccessId = verifyBody.portalAccessId;
+  await page.addInitScript((id: string) => {
+    window.localStorage.setItem("portalAccessId", id);
+  }, portalAccessId);
 }

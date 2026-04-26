@@ -4,6 +4,12 @@ import type Mail from "nodemailer/lib/mailer";
 import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "./db";
 import { emailEvents, emailLogs, type EmailEvent, type EmailLog } from "@shared/schema";
+// Wave 16d — capture every outbound email to an in-memory ring when
+// (and ONLY when) `NODE_ENV=test` AND `PLAYWRIGHT_TEST_MODE=1`. The
+// capture function is a no-op outside of test mode; production cannot
+// reach it. See server/test-routes.ts for the full gate definition
+// and the /api/__test/last-otp consumer.
+import { captureTestEmail } from "./test-routes";
 
 type EmailAddressLike = string | string[] | null | undefined;
 
@@ -390,6 +396,17 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
   if (trackingEnabled && html) {
     html = appendTrackingPixel(rewriteTrackedLinks(html, emailLog.id, config), emailLog.id, config);
   }
+
+  // Wave 16d — capture into the in-memory test mailer BEFORE we hand
+  // off to the real SMTP transport (or the simulation branch). The
+  // capture is a no-op unless both NODE_ENV=test AND
+  // PLAYWRIGHT_TEST_MODE=1 — production never sees this path.
+  captureTestEmail({
+    to,
+    subject: payload.subject,
+    text: text || "",
+    html: html || "",
+  });
 
   if (!isSmtpConfigured(config)) {
     console.warn("[email][simulation-mode] Email not sent — no provider configured", { to, subject: payload.subject });
