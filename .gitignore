@@ -20,6 +20,9 @@ playwright/.cache/
 # Wave 17 — real-backend handoff (connection string for ephemeral pglite)
 .playwright-real-backend.json
 
+# Wave 37 — Storybook static build output
+storybook-static/
+
 .pocketpm/
 # PPM:START v1
 .pocketpm/CONTEXT.md
