@@ -1,0 +1,42 @@
+                                                                                                                                
+  psql "$DATABASE_URL" <<'SQL'        
+  -- Q1: does CHC still exist?                                                                                                                                                                        
+  SELECT id, name, status, archived_at, created_at
+  FROM associations                                                                                                                                                                                   
+  WHERE name ILIKE '%chc%' OR name ILIKE '%condo%hill%'                                                                           
+  ORDER BY created_at DESC;                                                                                                                                                                           
+                                                                                                                                  
+  -- Q2: your admin_users row                                                                                                                                                                         
+  SELECT id, email, role, created_at                                                                                              
+  FROM admin_users                    
+  WHERE email = 'yourcondomanagement@gmail.com';                                                                                                                                                      
+  
+  -- Q3: your scope rows                                                                                                                                                                              
+  SELECT                                                                                                                          
+    s.admin_user_id,                                                                                                                                                                                  
+    s.association_id,
+    a.name AS association_name,                                                                                                                                                                       
+    a.archived_at,                                                                                                                
+    s.role AS scope_role,             
+    s.created_at AS scope_created_at                                                                                                                                                                  
+  FROM admin_association_scopes s
+  JOIN admin_users u ON u.id = s.admin_user_id                                                                                                                                                        
+  LEFT JOIN associations a ON a.id = s.association_id                                                                                                                                                 
+  WHERE u.email = 'yourcondomanagement@gmail.com'
+  ORDER BY a.name NULLS LAST;                                                                                                                                                                         
+  SQL                                                                                                                             
+                                                                                                                                                                                                      
+  Three result sets will print sequentially. I'll diagnose from the output.                                                                                                                           
+                                      
+  If psql isn't available in your Replit shell, swap to:                                                                                                                                              
+                                                                                                                                  
+  npx tsx -e "                                                                                                                                                                                        
+  import { Client } from 'pg';                                                                                                                                                                        
+  const c = new Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();                                                                                                                                                                                  
+  console.log('Q1 - CHC associations:'); console.table((await c.query(\"SELECT id, name, status, archived_at FROM associations WHERE name ILIKE '%chc%' ORDER BY created_at DESC\")).rows);           
+  console.log('Q2 - your admin_user:'); console.table((await c.query(\"SELECT id, email, role FROM admin_users WHERE email = 'yourcondomanagement@gmail.com'\")).rows);                               
+  console.log('Q3 - your scope rows:'); console.table((await c.query(\"SELECT s.association_id, a.name, a.archived_at, s.role FROM admin_association_scopes s JOIN admin_users u ON                   
+  u.id=s.admin_user_id LEFT JOIN associations a ON a.id=s.association_id WHERE u.email='yourcondomanagement@gmail.com' ORDER BY a.name NULLS LAST\")).rows);                                          
+  await c.end();                                                                                                                                                                                      
+  "                                                              
