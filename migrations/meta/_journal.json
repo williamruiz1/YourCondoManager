@@ -141,6 +141,13 @@
       "when": 1777700000000,
       "tag": "0020_admin_user_role_drop_board_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1777800000000,
+      "tag": "0021_amenity_approved_by_drop_fk",
+      "breakpoints": true
     }
   ]
 }

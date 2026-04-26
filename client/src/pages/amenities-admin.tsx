@@ -231,7 +231,12 @@ export default function AmenitiesAdminPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <Label>Capacity</Label>
+                      {/*
+                        Wave 49 (gap-audit fix #1): capacity is the maximum
+                        party size for a single reservation, not concurrent
+                        bookings. Helper text clarifies this for admins.
+                      */}
+                      <Label>Capacity (party size)</Label>
                       <Input type="number" value={amenityForm.capacity} onChange={(e) => setAmenityForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="Optional" />
                     </div>
                     <div>
