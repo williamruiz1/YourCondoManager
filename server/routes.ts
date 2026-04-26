@@ -1614,40 +1614,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    * Verify the caller is permitted to mutate read-state for this alertId.
    *
    * Returns `null` on success, or an HTTP response payload to return on
-   * failure. Runs the cross-association aggregator with `readState: "all"`
-   * + `skipCache: true` so that:
-   *   - cross-tenant alertIds (records in associations outside the caller's
-   *     scope) are rejected with 404 (looks identical to an unknown id),
-   *   - already-read / already-dismissed alerts are still mutable
-   *     (read→read toggle, dismiss→restore→re-dismiss),
-   *   - a freshly-cached `getCrossAssociationAlerts` response cannot leak
-   *     stale visibility into the write path.
+   * failure. Wave 35a: replaced the previous full-orchestrator
+   * `assertAlertOwnership` with `assertAlertMutationAuth` — a single SELECT
+   * against the alertId's source table to recover the tenant
+   * (associationId), then a role + feature-domain + association-scope
+   * gate. Same security guarantees:
+   *   - cross-tenant alertIds → 404 (opaque to probes),
+   *   - role missing the feature-domain → 403,
+   *   - unknown / malformed alertId → 404.
+   * O(1) DB query instead of O(N associations × 9 resolvers) per click.
    */
   async function assertAlertOwnership(
     req: AdminRequest,
     alertId: string,
   ): Promise<{ status: number; body: { message: string; code?: string } } | null> {
-    const { getCrossAssociationAlerts, resolvePermittedAssociations } = await import("./alerts");
-    const permittedAssociations = await resolvePermittedAssociations({
-      adminRole: req.adminRole!,
-      adminScopedAssociationIds: req.adminScopedAssociationIds ?? [],
-    });
-    const { alerts } = await getCrossAssociationAlerts({
+    const { assertAlertMutationAuth } = await import("./alerts");
+    return assertAlertMutationAuth({
       adminUserId: req.adminUserId!,
       adminRole: req.adminRole!,
-      personaToggles: {},
-      permittedAssociations,
-      readState: "all",
-      limit: 500,
-      skipCache: true,
+      adminScopedAssociationIds: req.adminScopedAssociationIds ?? [],
+      alertId,
     });
-    if (!alerts.some((a) => a.alertId === alertId)) {
-      return {
-        status: 404,
-        body: { message: "Alert not found", code: "ALERT_NOT_FOUND" },
-      };
-    }
-    return null;
   }
 
   async function handleAlertReadStateMutation(
@@ -13531,17 +13518,35 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
+  // Wave 35a — zod-validated body. At least one of `email` / `push` must be
+  // a boolean; superRefine rejects an empty patch with the same 400 we used
+  // to hand-roll.
+  const notificationPreferencesPatchSchema = z
+    .object({
+      email: z.boolean().optional(),
+      push: z.boolean().optional(),
+    })
+    .strict()
+    .superRefine((value, ctx) => {
+      if (value.email === undefined && value.push === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "At least one of email/push must be provided as a boolean",
+        });
+      }
+    });
+
   app.patch("/api/admin/notification-preferences", requireAdmin, async (req: AdminRequest, res) => {
     try {
       const adminUserId = req.adminUserId;
       if (!adminUserId) return res.status(401).json({ message: "Not authenticated" });
-      const { email, push } = (req.body ?? {}) as { email?: unknown; push?: unknown };
-      const patch: { notifyAlertsEmail?: number; notifyAlertsPush?: number; updatedAt: Date } = { updatedAt: new Date() };
-      if (typeof email === "boolean") patch.notifyAlertsEmail = email ? 1 : 0;
-      if (typeof push === "boolean") patch.notifyAlertsPush = push ? 1 : 0;
-      if (patch.notifyAlertsEmail === undefined && patch.notifyAlertsPush === undefined) {
-        return res.status(400).json({ message: "At least one of email/push must be provided as a boolean" });
+      const parsed = notificationPreferencesPatchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Validation error", errors: parsed.error.flatten() });
       }
+      const patch: { notifyAlertsEmail?: number; notifyAlertsPush?: number; updatedAt: Date } = { updatedAt: new Date() };
+      if (parsed.data.email !== undefined) patch.notifyAlertsEmail = parsed.data.email ? 1 : 0;
+      if (parsed.data.push !== undefined) patch.notifyAlertsPush = parsed.data.push ? 1 : 0;
       const row = await loadOrCreatePrefsRow(adminUserId);
       const [updated] = await db
         .update(adminUserPreferences)
