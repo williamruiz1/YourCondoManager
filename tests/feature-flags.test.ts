@@ -2,8 +2,9 @@
  * Feature flag helper tests — Phase 5b of Platform Overhaul.
  *
  * Covers:
- *   - Default values match the documented lifecycle (PORTAL_ROLE_COLLAPSE on
- *     post-Phase-8a, BOARD_SHUNT_ACTIVE on).
+ *   - Default values match the documented lifecycle (BOARD_SHUNT_ACTIVE on,
+ *     ASSESSMENT_EXECUTION_UNIFIED on). PORTAL_ROLE_COLLAPSE was retired in
+ *     Phase 8c — its assertions are intentionally absent.
  *   - process.env override for "true" / "false".
  *   - Malformed env values fall through to defaults.
  *   - Cross-flag independence (overriding one does not leak to the other).
@@ -21,7 +22,6 @@ import {
 } from "../shared/feature-flags";
 
 const FLAG_KEYS: FeatureFlagKey[] = [
-  "PORTAL_ROLE_COLLAPSE",
   "BOARD_SHUNT_ACTIVE",
   "ASSESSMENT_EXECUTION_UNIFIED",
 ];
@@ -35,12 +35,15 @@ describe("feature flags — defaults", () => {
     for (const k of FLAG_KEYS) delete process.env[envKey(k)];
   });
 
-  it("PORTAL_ROLE_COLLAPSE default is true (Phase 8a flip)", () => {
-    // Phase 8b shipped the flag at default OFF; Phase 8a flipped it to ON
-    // alongside migration 0014_portal_role_collapse.sql. Phase 8c removes
-    // the flag entirely.
-    expect(__FEATURE_FLAG_DEFAULTS__.PORTAL_ROLE_COLLAPSE).toBe(true);
-    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(true);
+  it("PORTAL_ROLE_COLLAPSE is absent from FeatureFlagKey (Phase 8c retired)", () => {
+    // Phase 8c removed the flag entirely. The DEFAULTS map must not carry
+    // a PORTAL_ROLE_COLLAPSE entry, and the FeatureFlagKey union must not
+    // include the literal — TypeScript would have already caught the latter
+    // at compile time, so this asserts the runtime defaults map.
+    expect(
+      (__FEATURE_FLAG_DEFAULTS__ as Record<string, boolean>)
+        .PORTAL_ROLE_COLLAPSE,
+    ).toBeUndefined();
   });
 
   it("BOARD_SHUNT_ACTIVE default is true (Phase 13 dark-launch)", () => {
@@ -60,9 +63,9 @@ describe("feature flags — process.env override", () => {
     for (const k of FLAG_KEYS) delete process.env[envKey(k)];
   });
 
-  it('FEATURE_FLAG_PORTAL_ROLE_COLLAPSE="true" flips the flag on', () => {
-    process.env.FEATURE_FLAG_PORTAL_ROLE_COLLAPSE = "true";
-    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(true);
+  it('FEATURE_FLAG_BOARD_SHUNT_ACTIVE="true" flips the flag on', () => {
+    process.env.FEATURE_FLAG_BOARD_SHUNT_ACTIVE = "true";
+    expect(getFeatureFlag("BOARD_SHUNT_ACTIVE")).toBe(true);
   });
 
   it('FEATURE_FLAG_BOARD_SHUNT_ACTIVE="false" flips the flag off', () => {
@@ -71,24 +74,20 @@ describe("feature flags — process.env override", () => {
   });
 
   it("malformed env value falls through to default", () => {
-    process.env.FEATURE_FLAG_PORTAL_ROLE_COLLAPSE = "yes";
-    // Phase 8a flipped the default to true — malformed values fall through to it.
-    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(true);
-
     process.env.FEATURE_FLAG_BOARD_SHUNT_ACTIVE = "1";
     expect(getFeatureFlag("BOARD_SHUNT_ACTIVE")).toBe(true);
   });
 
   it("empty string env value falls through to default", () => {
-    process.env.FEATURE_FLAG_PORTAL_ROLE_COLLAPSE = "";
-    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(true);
+    process.env.FEATURE_FLAG_BOARD_SHUNT_ACTIVE = "";
+    expect(getFeatureFlag("BOARD_SHUNT_ACTIVE")).toBe(true);
   });
 
   it("overriding one flag does not leak to another", () => {
-    process.env.FEATURE_FLAG_PORTAL_ROLE_COLLAPSE = "true";
-    expect(getFeatureFlag("PORTAL_ROLE_COLLAPSE")).toBe(true);
-    expect(getFeatureFlag("BOARD_SHUNT_ACTIVE")).toBe(
-      __FEATURE_FLAG_DEFAULTS__.BOARD_SHUNT_ACTIVE,
+    process.env.FEATURE_FLAG_BOARD_SHUNT_ACTIVE = "false";
+    expect(getFeatureFlag("BOARD_SHUNT_ACTIVE")).toBe(false);
+    expect(getFeatureFlag("ASSESSMENT_EXECUTION_UNIFIED")).toBe(
+      __FEATURE_FLAG_DEFAULTS__.ASSESSMENT_EXECUTION_UNIFIED,
     );
   });
 

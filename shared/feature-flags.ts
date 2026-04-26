@@ -17,7 +17,9 @@
 //   - PORTAL_ROLE_COLLAPSE: introduced Phase 8b dark-launch (default OFF);
 //                           flipped ON in Phase 8a alongside the enum-collapse
 //                           migration (0014_portal_role_collapse.sql); removed
-//                           entirely in Phase 8c.
+//                           entirely in Phase 8c (this flag is GONE — the
+//                           always-on collapse behaviour is now hardcoded in
+//                           `server/portal-role-collapse.ts`).
 //   - BOARD_SHUNT_ACTIVE:   introduced Phase 13 dark-launch (default ON), flipped
 //                           OFF via follow-up PR after one clean release cycle,
 //                           then removed entirely.
@@ -56,10 +58,6 @@
  *   3. Document its lifecycle (introduced / removed) in the comment above.
  */
 export type FeatureFlagKey =
-  // Phase 8a — default ON (flipped alongside migration 0014_portal_role_collapse.sql).
-  // Phase 8b introduced the flag at default OFF as a server-side dark-launch.
-  // Phase 8c removes the flag from code (hardcoded as the "always true" path).
-  | "PORTAL_ROLE_COLLAPSE"
   // Phase 13 dark-launch — default ON; when flipped OFF, board-officer /
   // assisted-board sessions fall through to WorkspaceShell + AppSidebar
   // instead of the shunt at client/src/App.tsx:1051-1057.
@@ -74,7 +72,6 @@ export type FeatureFlagKey =
  * Compile-time defaults. Used when no env override is present.
  */
 const DEFAULTS: Record<FeatureFlagKey, boolean> = {
-  PORTAL_ROLE_COLLAPSE: true,
   BOARD_SHUNT_ACTIVE: true,
   ASSESSMENT_EXECUTION_UNIFIED: true,
 };

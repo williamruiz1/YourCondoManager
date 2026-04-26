@@ -68,9 +68,10 @@ describe("HV-3 — HUB_VISIBILITY_RENAME flag retired", () => {
     expect(featureFlagsSource).not.toMatch(/HUB_VISIBILITY_RENAME:\s*(true|false)/);
   });
 
-  it("FeatureFlagKey union still has the surviving 3 flags", () => {
+  it("FeatureFlagKey union still has the surviving flags", () => {
+    // Phase 8c retired PORTAL_ROLE_COLLAPSE; surviving flags are
+    // BOARD_SHUNT_ACTIVE and ASSESSMENT_EXECUTION_UNIFIED.
     const surviving: FeatureFlagKey[] = [
-      "PORTAL_ROLE_COLLAPSE",
       "BOARD_SHUNT_ACTIVE",
       "ASSESSMENT_EXECUTION_UNIFIED",
     ];
