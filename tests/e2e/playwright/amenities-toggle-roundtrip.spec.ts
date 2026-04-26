@@ -25,7 +25,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 import { loginAsManager, loginAsOwner } from "./helpers/auth-helper";
-import { runAxeAuditSoft } from "./helpers/a11y-check";
+import { runAxeAudit } from "./helpers/a11y-check";
 import {
   createRealBackend,
   createSeedStore,
@@ -139,7 +139,9 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
       await expect(page).toHaveURL(/\/portal\/amenities/);
 
       // Wave 25 — axe-core audit on the portal amenities surface.
-      await runAxeAuditSoft(page, "amenities-roundtrip:route-mock");
+      // Promoted from soft → hard in the Wave 25 follow-up after the
+      // Radix Tabs inactive-trigger contrast fix (PPM ee01d2eb).
+      await runAxeAudit(page, "amenities-roundtrip:route-mock");
     });
     return;
   }
@@ -260,6 +262,8 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
     await expect(page).toHaveURL(/\/portal\/amenities/);
 
     // Wave 25 — axe-core audit on the portal amenities surface.
-    await runAxeAuditSoft(page, "amenities-roundtrip:real-backend");
+    // Promoted from soft → hard in the Wave 25 follow-up after the
+    // Radix Tabs inactive-trigger contrast fix (PPM ee01d2eb).
+    await runAxeAudit(page, "amenities-roundtrip:real-backend");
   });
 });
