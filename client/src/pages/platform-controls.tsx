@@ -1067,7 +1067,7 @@ export default function PlatformControlsPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-500" /> QA / UAT Seed Data Management
+            <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" /> QA / UAT Seed Data Management
           </CardTitle>
           <CardDescription>Identify and remove QA validation associations after UAT sign-off. This action is irreversible.</CardDescription>
         </CardHeader>
@@ -1109,7 +1109,7 @@ export default function PlatformControlsPage() {
 
           {qaPreview && (
             <div className="space-y-2">
-              <div className="text-sm font-medium text-amber-700">{qaPreview.count} QA associations identified:</div>
+              <div className="text-sm font-medium text-amber-700 dark:text-amber-400">{qaPreview.count} QA associations identified:</div>
               <div className="max-h-48 overflow-y-auto space-y-1">
                 {qaPreview.associations.map(a => (
                   <div key={a.id} className="text-xs font-mono bg-muted/30 rounded px-2 py-1 flex justify-between">

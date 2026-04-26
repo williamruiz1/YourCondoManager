@@ -125,13 +125,13 @@ export default function BoardPage() {
     // Wave 31 a11y: section landmark + aria-labelledby (heading id below).
     <section className="p-6 space-y-6" aria-labelledby="board-heading">
       {expiredRoles.length > 0 && (
-        <div role="status" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div role="status" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300 p-3 text-sm">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
           <span><strong>{expiredRoles.length} board role{expiredRoles.length !== 1 ? "s" : ""}</strong> have expired and may indicate a vacancy: {expiredRoles.map((br) => getPersonName(br.personId)).join(", ")}</span>
         </div>
       )}
       {expiringRoles.length > 0 && (
-        <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300 p-3 text-sm">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
           <span><strong>{expiringRoles.length} board term{expiringRoles.length !== 1 ? "s" : ""}</strong> expiring within 90 days: {expiringRoles.map((br) => `${getPersonName(br.personId)} (${new Date(br.endDate!).toLocaleDateString()})`).join(", ")}</span>
         </div>
@@ -261,7 +261,7 @@ export default function BoardPage() {
                       const isExpiring = endDate && endDate >= today && endDate <= in90Days;
                       const daysUntilEnd = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
                       return (
-                      <TableRow key={br.id} data-testid={`row-board-${br.id}`} className={isExpired ? "bg-red-50/40" : isExpiring ? "bg-amber-50/40" : ""}>
+                      <TableRow key={br.id} data-testid={`row-board-${br.id}`} className={isExpired ? "bg-red-50/40 dark:bg-red-950/20" : isExpiring ? "bg-amber-50/40 dark:bg-amber-950/20" : ""}>
                         <TableCell className="font-medium">{getPersonName(br.personId)}</TableCell>
                         <TableCell className="text-muted-foreground">{getAssocName(br.associationId)}</TableCell>
                         <TableCell><Badge variant={getRoleBadgeVariant(br.role)}>{br.role}</Badge></TableCell>
@@ -269,11 +269,11 @@ export default function BoardPage() {
                         <TableCell>
                           {endDate ? (
                             <div className="space-y-0.5">
-                              <div className={isExpired ? "text-red-600 font-medium" : isExpiring ? "text-amber-700 font-medium" : "text-muted-foreground"}>
+                              <div className={isExpired ? "text-red-600 dark:text-red-400 font-medium" : isExpiring ? "text-amber-700 dark:text-amber-400 font-medium" : "text-muted-foreground"}>
                                 {endDate.toLocaleDateString()}
                               </div>
                               {isExpired && <Badge variant="destructive" className="text-xs">Expired</Badge>}
-                              {isExpiring && daysUntilEnd !== null && <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Expires in {daysUntilEnd}d</Badge>}
+                              {isExpiring && daysUntilEnd !== null && <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100 dark:text-amber-300 dark:border-amber-900/50 dark:bg-amber-950/40">Expires in {daysUntilEnd}d</Badge>}
                             </div>
                           ) : <span className="text-muted-foreground text-sm">No end date</span>}
                         </TableCell>
@@ -293,7 +293,7 @@ export default function BoardPage() {
                   const isExpiring = endDate && endDate >= today && endDate <= in90Days;
                   const daysUntilEnd = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
                   return (
-                    <div key={br.id} data-testid={`row-board-${br.id}`} className={`rounded-xl border p-4 space-y-3 ${isExpired ? "bg-red-50/40" : isExpiring ? "bg-amber-50/40" : ""}`}>
+                    <div key={br.id} data-testid={`row-board-${br.id}`} className={`rounded-xl border p-4 space-y-3 ${isExpired ? "bg-red-50/40 dark:bg-red-950/20" : isExpiring ? "bg-amber-50/40 dark:bg-amber-950/20" : ""}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-medium">{getPersonName(br.personId)}</div>
@@ -308,7 +308,7 @@ export default function BoardPage() {
                         </div>
                         <div>
                           <div className="text-muted-foreground">Term end</div>
-                          <div className={`mt-1 ${isExpired ? "text-red-600 font-medium" : isExpiring ? "text-amber-700 font-medium" : ""}`}>
+                          <div className={`mt-1 ${isExpired ? "text-red-600 dark:text-red-400 font-medium" : isExpiring ? "text-amber-700 dark:text-amber-400 font-medium" : ""}`}>
                             {endDate ? endDate.toLocaleDateString() : "No end date"}
                           </div>
                         </div>
@@ -316,7 +316,7 @@ export default function BoardPage() {
                       <div className="flex flex-wrap gap-2">
                         {isExpired ? <Badge variant="destructive">Expired</Badge> : endDate ? <Badge variant="outline">Active</Badge> : <Badge variant="default">Active</Badge>}
                         {isExpiring && daysUntilEnd !== null ? (
-                          <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Expires in {daysUntilEnd}d</Badge>
+                          <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100 dark:text-amber-300 dark:border-amber-900/50 dark:bg-amber-950/40">Expires in {daysUntilEnd}d</Badge>
                         ) : null}
                       </div>
                     </div>

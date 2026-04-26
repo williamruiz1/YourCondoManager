@@ -503,7 +503,7 @@ export function WorkOrdersContent() {
                   <TableRow key={request.id}>
                     <TableCell>{request.title}</TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${request.priority === "urgent" ? "text-red-600" : request.priority === "high" ? "text-orange-600" : "text-slate-700"}`} aria-label={`Priority: ${request.priority}`}>
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${request.priority === "urgent" ? "text-red-600 dark:text-red-400" : request.priority === "high" ? "text-orange-600 dark:text-orange-400" : "text-foreground"}`} aria-label={`Priority: ${request.priority}`}>
                         {request.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
                         {request.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
                         {request.priority}
@@ -514,7 +514,7 @@ export function WorkOrdersContent() {
                     <TableCell>
                       {dueAt ? (
                         <span className="inline-flex items-center gap-1.5">
-                          <span className={`inline-flex items-center gap-1 text-xs font-medium ${isOverdue ? "text-red-600" : "text-muted-foreground"}`} aria-label={isOverdue ? "SLA overdue" : "SLA on track"}>
+                          <span className={`inline-flex items-center gap-1 text-xs font-medium ${isOverdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`} aria-label={isOverdue ? "SLA overdue" : "SLA on track"}>
                             <Clock className="h-3 w-3" aria-hidden="true" />
                             {isOverdue ? "Overdue" : dueAt.toLocaleDateString()}
                           </span>
@@ -556,13 +556,13 @@ export function WorkOrdersContent() {
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Badge variant="secondary">{request.status}</Badge>
-                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${request.priority === "urgent" ? "text-red-600" : request.priority === "high" ? "text-orange-600" : "text-slate-700"}`} aria-label={`Priority: ${request.priority}`}>
+                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${request.priority === "urgent" ? "text-red-600 dark:text-red-400" : request.priority === "high" ? "text-orange-600 dark:text-orange-400" : "text-foreground"}`} aria-label={`Priority: ${request.priority}`}>
                     {request.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
                     {request.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
                     {request.priority}
                   </span>
                   {dueAt && (
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${isOverdue ? "text-red-600" : "text-muted-foreground"}`} aria-label={isOverdue ? "SLA overdue" : "SLA on track"}>
+                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${isOverdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`} aria-label={isOverdue ? "SLA overdue" : "SLA on track"}>
                       <Clock className="h-3 w-3" aria-hidden="true" />
                       {isOverdue ? "Overdue" : dueAt.toLocaleDateString()}
                     </span>
@@ -741,7 +741,7 @@ export function WorkOrdersContent() {
                   <TableCell>{invoices.find((invoice) => invoice.id === order.vendorInvoiceId)?.invoiceNumber || (order.vendorInvoiceId ? "linked" : "-")}</TableCell>
                   <TableCell><Badge variant={order.status === "closed" ? "default" : "secondary"}>{order.status}</Badge></TableCell>
                   <TableCell>
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${order.priority === "urgent" ? "text-red-600" : order.priority === "high" ? "text-orange-600" : order.priority === "low" ? "text-slate-500" : "text-slate-700"}`} aria-label={`Priority: ${order.priority}`}>
+                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${order.priority === "urgent" ? "text-red-600 dark:text-red-400" : order.priority === "high" ? "text-orange-600 dark:text-orange-400" : order.priority === "low" ? "text-muted-foreground" : "text-foreground"}`} aria-label={`Priority: ${order.priority}`}>
                       {order.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
                       {order.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
                       {order.priority === "medium" && <Minus className="h-3 w-3" aria-hidden="true" />}
@@ -757,7 +757,7 @@ export function WorkOrdersContent() {
                       const isActive = order.status !== "closed" && order.status !== "cancelled";
                       const isOverdue = isActive && dueAt < new Date();
                       return (
-                        <span className={`inline-flex items-center gap-1 text-xs font-medium ${isOverdue ? "text-red-600" : "text-muted-foreground"}`} aria-label={isOverdue ? "SLA overdue" : "SLA on track"}>
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium ${isOverdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`} aria-label={isOverdue ? "SLA overdue" : "SLA on track"}>
                           <Clock className="h-3 w-3" aria-hidden="true" />
                           {isOverdue ? "Overdue" : dueAt.toLocaleDateString()}
                         </span>
@@ -798,7 +798,7 @@ export function WorkOrdersContent() {
                     </button>
                     <div className="flex flex-col items-end gap-2">
                       <Badge variant={order.status === "closed" ? "default" : "secondary"}>{order.status}</Badge>
-                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${order.priority === "urgent" ? "text-red-600" : order.priority === "high" ? "text-orange-600" : order.priority === "low" ? "text-slate-500" : "text-slate-700"}`} aria-label={`Priority: ${order.priority}`}>
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${order.priority === "urgent" ? "text-red-600 dark:text-red-400" : order.priority === "high" ? "text-orange-600 dark:text-orange-400" : order.priority === "low" ? "text-muted-foreground" : "text-foreground"}`} aria-label={`Priority: ${order.priority}`}>
                         {order.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
                         {order.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
                         {order.priority === "medium" && <Minus className="h-3 w-3" aria-hidden="true" />}
@@ -813,7 +813,7 @@ export function WorkOrdersContent() {
                     <div>Invoice: {invoices.find((invoice) => invoice.id === order.vendorInvoiceId)?.invoiceNumber || (order.vendorInvoiceId ? "linked" : "-")}</div>
                     <div>
                       SLA: {dueAt ? (
-                        <span className={isOverdue ? "font-medium text-red-600" : ""}>{isOverdue ? "Overdue" : dueAt.toLocaleDateString()}</span>
+                        <span className={isOverdue ? "font-medium text-red-600 dark:text-red-400" : ""}>{isOverdue ? "Overdue" : dueAt.toLocaleDateString()}</span>
                       ) : "—"}
                     </div>
                     <div>

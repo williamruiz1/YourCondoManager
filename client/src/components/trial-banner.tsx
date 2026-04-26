@@ -59,10 +59,10 @@ export function TrialBanner({ trialEndsAt, onUpgrade }: TrialBannerProps) {
   return (
     <div
       data-testid="trial-banner"
-      className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 flex items-center justify-between gap-4"
+      className="bg-amber-50 border-b border-amber-200 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800/60 dark:text-amber-200 px-4 py-2.5 flex items-center justify-between gap-4"
     >
       <div className="flex items-center gap-2 min-w-0">
-        <span className="material-symbols-outlined text-amber-600 text-[18px] flex-shrink-0">schedule</span>
+        <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-[18px] flex-shrink-0">schedule</span>
         <p className="text-sm font-body">
           Your free trial ends on <strong>{format(endsAt, "MMM d, yyyy")}</strong>
           {daysLeft === 0 ? " — today is the last day." : ` — ${daysLeft} day${daysLeft !== 1 ? "s" : ""} remaining.`}
@@ -73,7 +73,7 @@ export function TrialBanner({ trialEndsAt, onUpgrade }: TrialBannerProps) {
         <button
           data-testid="trial-banner-upgrade"
           onClick={onUpgrade}
-          className="bg-amber-600 text-white text-xs font-bold font-body px-3 py-1.5 rounded-md hover:bg-amber-700 transition-colors"
+          className="bg-amber-600 text-white dark:bg-amber-500 dark:text-amber-950 text-xs font-bold font-body px-3 py-1.5 rounded-md hover:bg-amber-700 dark:hover:bg-amber-400 transition-colors"
         >
           Upgrade Now
         </button>
@@ -81,7 +81,7 @@ export function TrialBanner({ trialEndsAt, onUpgrade }: TrialBannerProps) {
           data-testid="trial-banner-dismiss"
           onClick={dismiss}
           aria-label="Dismiss trial banner"
-          className="text-amber-700 hover:text-amber-900 transition-colors"
+          className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 transition-colors"
         >
           <span className="material-symbols-outlined text-[18px]">close</span>
         </button>

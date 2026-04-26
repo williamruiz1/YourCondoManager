@@ -434,7 +434,7 @@ export function FinancialReportsContent() {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Total Income</p>
-                <p className="text-2xl font-bold text-green-700">{formatCurrency(plData.totalIncome)}</p>
+                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(plData.totalIncome)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Payments &amp; credits received</p>
               </CardContent>
             </Card>
@@ -455,7 +455,7 @@ export function FinancialReportsContent() {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Net Position</p>
-                <p className={cn("text-2xl font-bold", plData.netPosition >= 0 ? "text-green-700" : "text-red-600")}>
+                <p className={cn("text-2xl font-bold", plData.netPosition >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
                   {formatCurrency(plData.netPosition)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Income minus charges</p>
@@ -530,13 +530,13 @@ export function FinancialReportsContent() {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Total Collected</p>
-                <p className="text-2xl font-bold text-green-700">{formatCurrency(collectionData.collected)}</p>
+                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(collectionData.collected)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Outstanding</p>
-                <p className={cn("text-2xl font-bold", collectionData.outstanding > 0 ? "text-red-600" : "text-green-700")}>
+                <p className={cn("text-2xl font-bold", collectionData.outstanding > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                   {formatCurrency(collectionData.outstanding)}
                 </p>
               </CardContent>
@@ -544,7 +544,7 @@ export function FinancialReportsContent() {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Collection Rate</p>
-                <p className={cn("text-2xl font-bold", collectionData.rate >= 90 ? "text-green-700" : collectionData.rate >= 70 ? "text-yellow-600" : "text-red-600")}>
+                <p className={cn("text-2xl font-bold", collectionData.rate >= 90 ? "text-green-700 dark:text-green-400" : collectionData.rate >= 70 ? "text-yellow-600 dark:text-yellow-400" : "text-red-600 dark:text-red-400")}>
                   {collectionData.rate.toFixed(1)}%
                 </p>
               </CardContent>
@@ -557,7 +557,7 @@ export function FinancialReportsContent() {
               <p className="text-sm font-medium mb-2">Collection Rate</p>
               <div className="h-4 w-full rounded-full bg-muted overflow-hidden">
                 <div
-                  className={cn("h-full rounded-full transition-all", collectionData.rate >= 90 ? "bg-green-500" : collectionData.rate >= 70 ? "bg-yellow-500" : "bg-red-500")}
+                  className={cn("h-full rounded-full transition-all", collectionData.rate >= 90 ? "bg-green-500 dark:bg-green-600" : collectionData.rate >= 70 ? "bg-yellow-500 dark:bg-yellow-600" : "bg-red-500 dark:bg-red-600")}
                   style={{ width: `${Math.min(100, collectionData.rate)}%` }}
                 />
               </div>
@@ -584,7 +584,7 @@ export function FinancialReportsContent() {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Delinquent Accounts</p>
-                <p className={cn("text-2xl font-bold", agingData.delinquent.length > 0 ? "text-red-600" : "text-green-700")}>
+                <p className={cn("text-2xl font-bold", agingData.delinquent.length > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                   {agingData.delinquent.length}
                 </p>
               </CardContent>
@@ -592,7 +592,7 @@ export function FinancialReportsContent() {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Total Delinquent Amount</p>
-                <p className={cn("text-2xl font-bold", agingData.totalDelinquent > 0 ? "text-red-600" : "text-green-700")}>
+                <p className={cn("text-2xl font-bold", agingData.totalDelinquent > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                   {formatCurrency(agingData.totalDelinquent)}
                 </p>
               </CardContent>
@@ -618,7 +618,7 @@ export function FinancialReportsContent() {
                             {row.balance < 0 ? "Past Due" : "Current"}
                           </Badge>
                         </div>
-                        <div className={cn("text-sm font-semibold", row.balance < 0 ? "text-red-600" : "text-green-700")}>
+                        <div className={cn("text-sm font-semibold", row.balance < 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                           {formatCurrency(row.balance)}
                         </div>
                       </div>
@@ -645,7 +645,7 @@ export function FinancialReportsContent() {
                         <TableRow key={`${row.unitId}-${row.personId}`}>
                           <TableCell className="font-medium">{row.unitId.slice(0, 8)}</TableCell>
                           <TableCell>{row.personId.slice(0, 8)}</TableCell>
-                          <TableCell className={cn("text-right font-medium", row.balance < 0 ? "text-red-600" : "text-green-700")}>
+                          <TableCell className={cn("text-right font-medium", row.balance < 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                             {formatCurrency(row.balance)}
                           </TableCell>
                           <TableCell>
@@ -689,7 +689,7 @@ export function FinancialReportsContent() {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Reserve % of Budget</p>
-                <p className={cn("text-2xl font-bold", reserveData.reservePercent >= 15 ? "text-green-700" : "text-amber-600")}>
+                <p className={cn("text-2xl font-bold", reserveData.reservePercent >= 15 ? "text-green-700 dark:text-green-400" : "text-amber-600 dark:text-amber-400")}>
                   {reserveData.reservePercent}%
                 </p>
               </CardContent>
@@ -697,7 +697,7 @@ export function FinancialReportsContent() {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Est. Reserve Balance</p>
-                <p className="text-2xl font-bold text-blue-700">{formatCurrency(reserveData.estimatedReserveBalance)}</p>
+                <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{formatCurrency(reserveData.estimatedReserveBalance)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Based on collections × reserve %</p>
               </CardContent>
             </Card>
@@ -755,10 +755,10 @@ export function FinancialReportsContent() {
             </Button>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Net Position</p><p className={cn("text-2xl font-bold", plData.netPosition >= 0 ? "text-green-700" : "text-red-600")}>{formatCurrency(plData.netPosition)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Collection Rate</p><p className={cn("text-2xl font-bold", collectionData.rate >= 90 ? "text-green-700" : "text-amber-600")}>{collectionData.rate.toFixed(1)}%</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Delinquent</p><p className="text-2xl font-bold text-red-600">{formatCurrency(agingData.totalDelinquent)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Est. Reserve Balance</p><p className="text-2xl font-bold text-blue-700">{formatCurrency(reserveData.estimatedReserveBalance)}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Net Position</p><p className={cn("text-2xl font-bold", plData.netPosition >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>{formatCurrency(plData.netPosition)}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Collection Rate</p><p className={cn("text-2xl font-bold", collectionData.rate >= 90 ? "text-green-700 dark:text-green-400" : "text-amber-600 dark:text-amber-400")}>{collectionData.rate.toFixed(1)}%</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Delinquent</p><p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(agingData.totalDelinquent)}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Est. Reserve Balance</p><p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{formatCurrency(reserveData.estimatedReserveBalance)}</p></CardContent></Card>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
@@ -766,9 +766,9 @@ export function FinancialReportsContent() {
               <CardContent>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between"><span>Total Billed</span><span className="font-medium">{formatCurrency(plData.totalCharges)}</span></div>
-                  <div className="flex justify-between"><span>Total Collected</span><span className="font-medium text-green-700">{formatCurrency(Math.abs(plData.totalIncome))}</span></div>
-                  <div className="flex justify-between"><span>Outstanding</span><span className="font-medium text-red-600">{formatCurrency(collectionData.outstanding)}</span></div>
-                  <div className="border-t pt-2 flex justify-between font-semibold"><span>Net Position</span><span className={plData.netPosition >= 0 ? "text-green-700" : "text-red-600"}>{formatCurrency(plData.netPosition)}</span></div>
+                  <div className="flex justify-between"><span>Total Collected</span><span className="font-medium text-green-700 dark:text-green-400">{formatCurrency(Math.abs(plData.totalIncome))}</span></div>
+                  <div className="flex justify-between"><span>Outstanding</span><span className="font-medium text-red-600 dark:text-red-400">{formatCurrency(collectionData.outstanding)}</span></div>
+                  <div className="border-t pt-2 flex justify-between font-semibold"><span>Net Position</span><span className={plData.netPosition >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}>{formatCurrency(plData.netPosition)}</span></div>
                 </div>
               </CardContent>
             </Card>
@@ -780,7 +780,7 @@ export function FinancialReportsContent() {
                     {agingData.delinquent.slice(0, 8).map((r) => (
                       <div key={`${r.unitId}-${r.personId}`} className="rounded-lg border p-4 flex items-start justify-between gap-3">
                         <div className="font-medium">{r.unitId.slice(0, 8)}</div>
-                        <div className="text-sm font-semibold text-red-600">{formatCurrency(Math.abs(r.balance))}</div>
+                        <div className="text-sm font-semibold text-red-600 dark:text-red-400">{formatCurrency(Math.abs(r.balance))}</div>
                       </div>
                     ))}
                     {agingData.delinquent.length === 0 && <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No delinquent accounts</div>}
@@ -792,7 +792,7 @@ export function FinancialReportsContent() {
                       {agingData.delinquent.slice(0, 8).map((r) => (
                         <TableRow key={`${r.unitId}-${r.personId}`}>
                           <TableCell>{r.unitId.slice(0, 8)}</TableCell>
-                          <TableCell className="text-right text-red-600 font-medium">{formatCurrency(Math.abs(r.balance))}</TableCell>
+                          <TableCell className="text-right text-red-600 dark:text-red-400 font-medium">{formatCurrency(Math.abs(r.balance))}</TableCell>
                         </TableRow>
                       ))}
                       {agingData.delinquent.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No delinquent accounts</TableCell></TableRow>}
@@ -887,7 +887,7 @@ function ProfitLossTab({ associationId }: { associationId: string }) {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Total Income</p>
-                <p className="text-2xl font-bold text-green-700">{formatCurrency(data.income.total)}</p>
+                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(data.income.total)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Payments &amp; credits received</p>
               </CardContent>
             </Card>
@@ -901,7 +901,7 @@ function ProfitLossTab({ associationId }: { associationId: string }) {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Net</p>
-                <p className={cn("text-2xl font-bold", data.net >= 0 ? "text-green-700" : "text-red-600")}>
+                <p className={cn("text-2xl font-bold", data.net >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
                   {formatCurrency(data.net)}
                 </p>
               </CardContent>
@@ -909,7 +909,7 @@ function ProfitLossTab({ associationId }: { associationId: string }) {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Budget Variance</p>
-                <p className={cn("text-2xl font-bold", data.budgetComparison.variance >= 0 ? "text-green-700" : "text-red-600")}>
+                <p className={cn("text-2xl font-bold", data.budgetComparison.variance >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
                   {formatCurrency(data.budgetComparison.variance)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">vs {formatCurrency(data.budgetComparison.planned)} planned</p>
@@ -932,7 +932,7 @@ function ProfitLossTab({ associationId }: { associationId: string }) {
                     {data.income.byCategory.map((row) => (
                       <TableRow key={row.category}>
                         <TableCell className="capitalize">{row.category.replace(/-/g, " ")}</TableCell>
-                        <TableCell className="text-right font-medium text-green-700">{formatCurrency(row.amount)}</TableCell>
+                        <TableCell className="text-right font-medium text-green-700 dark:text-green-400">{formatCurrency(row.amount)}</TableCell>
                       </TableRow>
                     ))}
                     {data.income.byCategory.length === 0 && (
@@ -940,7 +940,7 @@ function ProfitLossTab({ associationId }: { associationId: string }) {
                     )}
                     <TableRow className="font-semibold border-t">
                       <TableCell>Total Income</TableCell>
-                      <TableCell className="text-right text-green-700">{formatCurrency(data.income.total)}</TableCell>
+                      <TableCell className="text-right text-green-700 dark:text-green-400">{formatCurrency(data.income.total)}</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -957,11 +957,11 @@ function ProfitLossTab({ associationId }: { associationId: string }) {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Actual (Received)</span>
-                    <span className="font-medium text-green-700">{formatCurrency(data.budgetComparison.actual)}</span>
+                    <span className="font-medium text-green-700 dark:text-green-400">{formatCurrency(data.budgetComparison.actual)}</span>
                   </div>
                   <div className="flex justify-between border-t pt-3 font-semibold">
                     <span>Variance</span>
-                    <span className={data.budgetComparison.variance >= 0 ? "text-green-700" : "text-red-600"}>
+                    <span className={data.budgetComparison.variance >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
                       {data.budgetComparison.variance >= 0 ? "+" : ""}{formatCurrency(data.budgetComparison.variance)}
                     </span>
                   </div>
@@ -1006,37 +1006,37 @@ function ArAgingTab({ associationId }: { associationId: string }) {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Current (0–30 days)</p>
-                <p className="text-2xl font-bold text-green-700">{formatCurrency(data.summary.current)}</p>
+                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(data.summary.current)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">31–60 days</p>
-                <p className={cn("text-2xl font-bold", data.summary.days30 > 0 ? "text-amber-600" : "text-green-700")}>{formatCurrency(data.summary.days30)}</p>
+                <p className={cn("text-2xl font-bold", data.summary.days30 > 0 ? "text-amber-600 dark:text-amber-400" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.days30)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">61–90 days</p>
-                <p className={cn("text-2xl font-bold", data.summary.days60 > 0 ? "text-orange-600" : "text-green-700")}>{formatCurrency(data.summary.days60)}</p>
+                <p className={cn("text-2xl font-bold", data.summary.days60 > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.days60)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">91–120 days</p>
-                <p className={cn("text-2xl font-bold", data.summary.days90 > 0 ? "text-red-600" : "text-green-700")}>{formatCurrency(data.summary.days90)}</p>
+                <p className={cn("text-2xl font-bold", data.summary.days90 > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.days90)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">120+ days</p>
-                <p className={cn("text-2xl font-bold", data.summary.days120plus > 0 ? "text-red-700" : "text-green-700")}>{formatCurrency(data.summary.days120plus)}</p>
+                <p className={cn("text-2xl font-bold", data.summary.days120plus > 0 ? "text-red-700" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.days120plus)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Total Outstanding</p>
-                <p className={cn("text-2xl font-bold", data.summary.total > 0 ? "text-red-600" : "text-green-700")}>{formatCurrency(data.summary.total)}</p>
+                <p className={cn("text-2xl font-bold", data.summary.total > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.total)}</p>
               </CardContent>
             </Card>
           </div>
@@ -1065,7 +1065,7 @@ function ArAgingTab({ associationId }: { associationId: string }) {
                       <TableCell className="text-right">{row.days60 > 0 ? formatCurrency(row.days60) : "—"}</TableCell>
                       <TableCell className="text-right">{row.days90 > 0 ? formatCurrency(row.days90) : "—"}</TableCell>
                       <TableCell className="text-right">{row.days120plus > 0 ? formatCurrency(row.days120plus) : "—"}</TableCell>
-                      <TableCell className="text-right font-semibold text-red-600">{formatCurrency(row.total)}</TableCell>
+                      <TableCell className="text-right font-semibold text-red-600 dark:text-red-400">{formatCurrency(row.total)}</TableCell>
                     </TableRow>
                   ))}
                   {data.byUnit.length === 0 && (
@@ -1150,13 +1150,13 @@ function BoardSummaryTab({ associationId }: { associationId: string }) {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Payments Received</p>
-                <p className="text-2xl font-bold text-green-700">{formatCurrency(data.paymentsReceived)}</p>
+                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(data.paymentsReceived)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Collection Rate</p>
-                <p className={cn("text-2xl font-bold", data.collectionRate >= 90 ? "text-green-700" : data.collectionRate >= 70 ? "text-amber-600" : "text-red-600")}>
+                <p className={cn("text-2xl font-bold", data.collectionRate >= 90 ? "text-green-700 dark:text-green-400" : data.collectionRate >= 70 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400")}>
                   {data.collectionRate.toFixed(1)}%
                 </p>
               </CardContent>
@@ -1164,7 +1164,7 @@ function BoardSummaryTab({ associationId }: { associationId: string }) {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Outstanding Balance</p>
-                <p className={cn("text-2xl font-bold", data.totalOutstanding > 0 ? "text-red-600" : "text-green-700")}>
+                <p className={cn("text-2xl font-bold", data.totalOutstanding > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                   {formatCurrency(data.totalOutstanding)}
                 </p>
               </CardContent>
@@ -1172,7 +1172,7 @@ function BoardSummaryTab({ associationId }: { associationId: string }) {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Delinquent Units</p>
-                <p className={cn("text-2xl font-bold", data.delinquentUnits > 0 ? "text-red-600" : "text-green-700")}>
+                <p className={cn("text-2xl font-bold", data.delinquentUnits > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                   {data.delinquentUnits}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Units with balance due</p>
@@ -1183,12 +1183,12 @@ function BoardSummaryTab({ associationId }: { associationId: string }) {
                 <p className="text-sm text-muted-foreground">Budget Utilization</p>
                 {data.budgetUtilization !== null ? (
                   <>
-                    <p className={cn("text-2xl font-bold", data.budgetUtilization >= 80 ? "text-green-700" : data.budgetUtilization >= 50 ? "text-amber-600" : "text-red-600")}>
+                    <p className={cn("text-2xl font-bold", data.budgetUtilization >= 80 ? "text-green-700 dark:text-green-400" : data.budgetUtilization >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400")}>
                       {data.budgetUtilization}%
                     </p>
                     <div className="mt-2 h-2 w-full rounded-full bg-muted overflow-hidden">
                       <div
-                        className={cn("h-full rounded-full", data.budgetUtilization >= 80 ? "bg-green-500" : data.budgetUtilization >= 50 ? "bg-amber-500" : "bg-red-500")}
+                        className={cn("h-full rounded-full", data.budgetUtilization >= 80 ? "bg-green-500 dark:bg-green-600" : data.budgetUtilization >= 50 ? "bg-amber-500 dark:bg-amber-600" : "bg-red-500 dark:bg-red-600")}
                         style={{ width: `${Math.min(100, data.budgetUtilization)}%` }}
                       />
                     </div>

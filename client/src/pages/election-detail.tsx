@@ -73,14 +73,14 @@ const CHART_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4", "#8
 
 function statusBadge(status: string) {
   const colors: Record<string, string> = {
-    draft: "bg-gray-100 text-gray-700",
-    open: "bg-green-100 text-green-700",
-    closed: "bg-yellow-100 text-yellow-700",
-    certified: "bg-blue-100 text-blue-700",
-    cancelled: "bg-red-100 text-red-700",
+    draft: "bg-muted text-muted-foreground",
+    open: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300",
+    closed: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300",
+    certified: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+    cancelled: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300",
   };
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] ?? "bg-gray-100 text-gray-700"}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] ?? "bg-muted text-muted-foreground"}`}>
       {status}
     </span>
   );
@@ -100,13 +100,13 @@ function votingRuleLabel(r: string) {
 
 function tokenStatusBadge(status: string) {
   const colors: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-700",
-    cast: "bg-green-100 text-green-700",
-    "consumed-by-proxy": "bg-blue-100 text-blue-700",
-    revoked: "bg-red-100 text-red-700",
+    pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300",
+    cast: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300",
+    "consumed-by-proxy": "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+    revoked: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300",
   };
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] ?? "bg-gray-100 text-gray-700"}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] ?? "bg-muted text-muted-foreground"}`}>
       {status}
     </span>
   );
@@ -319,7 +319,7 @@ function CancelElectionDialog({ election, onCancelled }: { election: Election; o
         <div className="space-y-3 text-sm">
           <p>Are you sure you want to cancel <strong>{election.title}</strong>?</p>
           {election.status === "open" && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-start gap-2">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300 px-3 py-2 text-xs flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
               <span>This election is currently open. Cancelling it will revoke all outstanding ballot tokens. Votes already cast will be preserved for audit purposes.</span>
             </div>
@@ -427,9 +427,9 @@ function VoterTokenTable({ electionId, proxies = [] }: { electionId: string; pro
           <CardTitle className="text-sm font-medium">Voter Tokens ({tokens.length})</CardTitle>
           <div className="flex items-center gap-2 text-xs">
             <Badge variant="secondary">{pendingCount} pending</Badge>
-            <Badge variant="secondary" className="bg-green-50 text-green-700">{castCount} cast</Badge>
-            {proxyCount > 0 && <Badge variant="secondary" className="bg-blue-50 text-blue-700">{proxyCount} proxy</Badge>}
-            {revokedCount > 0 && <Badge variant="secondary" className="bg-red-50 text-red-700">{revokedCount} revoked</Badge>}
+            <Badge variant="secondary" className="bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300">{castCount} cast</Badge>
+            {proxyCount > 0 && <Badge variant="secondary" className="bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">{proxyCount} proxy</Badge>}
+            {revokedCount > 0 && <Badge variant="secondary" className="bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300">{revokedCount} revoked</Badge>}
           </div>
         </div>
         <div className="relative mt-2">
@@ -474,7 +474,7 @@ function VoterTokenTable({ electionId, proxies = [] }: { electionId: string; pro
                       (() => {
                         const proxy = proxies.find((p: any) => p.ownerPersonId === token.personId && !p.revokedAt);
                         return proxy ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 text-xs font-medium">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 text-xs font-medium">
                             <Users className="h-3 w-3" />
                             {proxy.proxyName || proxy.proxyPersonId}
                           </span>
@@ -557,7 +557,7 @@ function NominationsSection({ electionId }: { electionId: string }) {
           <Users className="h-4 w-4" />
           Nominations ({nominations.length})
           {pendingNominations.length > 0 && (
-            <Badge variant="secondary" className="bg-yellow-50 text-yellow-700 ml-1">
+            <Badge variant="secondary" className="bg-yellow-50 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300 ml-1">
               {pendingNominations.length} pending
             </Badge>
           )}
@@ -578,10 +578,10 @@ function NominationsSection({ electionId }: { electionId: string }) {
                       <span className="text-sm font-medium">{nom.name}</span>
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                         nom.status === "pending"
-                          ? "bg-yellow-100 text-yellow-700"
+                          ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300"
                           : nom.status === "approved"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
+                          ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300"
+                          : "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
                       }`}>
                         {nom.status}
                       </span>
@@ -600,7 +600,7 @@ function NominationsSection({ electionId }: { electionId: string }) {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 px-2 text-xs text-green-700 hover:text-green-800 hover:bg-green-50"
+                        className="h-7 px-2 text-xs text-green-700 hover:text-green-800 hover:bg-green-50 dark:text-green-400 dark:hover:text-green-300 dark:hover:bg-green-950/30"
                         disabled={approveMutation.isPending}
                         onClick={() => approveMutation.mutate(nom.optionId)}
                       >
@@ -610,7 +610,7 @@ function NominationsSection({ electionId }: { electionId: string }) {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 px-2 text-xs text-red-700 hover:text-red-800 hover:bg-red-50"
+                        className="h-7 px-2 text-xs text-red-700 hover:text-red-800 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950/30"
                         disabled={rejectMutation.isPending}
                         onClick={() => rejectMutation.mutate(nom.optionId)}
                       >
@@ -752,7 +752,7 @@ export default function ElectionDetailPage({ id }: { id: string }) {
           <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
             <span>{voteTypeLabel(election.voteType)}</span>
             <span>{votingRuleLabel(election.votingRule)}</span>
-            {election.isSecretBallot ? <span className="text-amber-600">Secret ballot</span> : null}
+            {election.isSecretBallot ? <span className="text-amber-600 dark:text-amber-400">Secret ballot</span> : null}
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
             {election.opensAt && <span>Opens: {new Date(election.opensAt).toLocaleString()}</span>}
@@ -880,7 +880,7 @@ export default function ElectionDetailPage({ id }: { id: string }) {
               <div className="text-xs text-muted-foreground">Eligible Voters</div>
             </CardContent>
           </Card>
-          <Card className={tally.quorumMet ? "border-green-200 bg-green-50/50" : "border-yellow-200 bg-yellow-50/50"}>
+          <Card className={tally.quorumMet ? "border-green-200 bg-green-50/50 dark:border-green-900/50 dark:bg-green-950/30" : "border-yellow-200 bg-yellow-50/50 dark:border-yellow-900/50 dark:bg-yellow-950/30"}>
             <CardContent className="py-3 px-4 text-center">
               <div className="text-2xl font-bold">{tally.participationPercent}%</div>
               <div className="text-xs text-muted-foreground">
@@ -937,7 +937,7 @@ export default function ElectionDetailPage({ id }: { id: string }) {
       )}
 
       {tally && tally.isCertified && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300 px-4 py-3 text-sm">
           Certified on {tally.certifiedAt ? new Date(tally.certifiedAt).toLocaleDateString() : "---"}
           {election.certifiedBy && <span> by {election.certifiedBy}</span>}
         </div>

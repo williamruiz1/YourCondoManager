@@ -635,7 +635,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                               aria-label="Toggle owner portal visibility"
                             />
                             {d.isPortalVisible ? (
-                              <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                              <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
                                 <Eye className="h-3 w-3" />Visible
                               </span>
                             ) : (
@@ -698,7 +698,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                           aria-label="Toggle owner portal visibility"
                         />
                         {d.isPortalVisible ? (
-                          <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                          <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
                             <Eye className="h-3 w-3" />Visible
                           </span>
                         ) : (

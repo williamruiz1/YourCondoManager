@@ -1502,7 +1502,7 @@ export default function AiIngestionPage() {
                     <div className="font-medium">{record.recordType}</div>
                     <div className="text-xs text-muted-foreground">{record.id.slice(0, 8)}</div>
                     {record.supersededAt ? (
-                      <div className="text-xs text-amber-700">Superseded {new Date(record.supersededAt).toLocaleString()}</div>
+                      <div className="text-xs text-amber-700 dark:text-amber-400">Superseded {new Date(record.supersededAt).toLocaleString()}</div>
                     ) : null}
                     {trace ? (
                       <div className="text-xs text-muted-foreground">
@@ -1610,7 +1610,7 @@ export default function AiIngestionPage() {
               onChange={(e) => setRecordPayloadEditors((previous) => ({ ...previous, [selectedRecord.id]: e.target.value }))}
             />
             {selectedPayloadParse.error ? (
-              <div className="text-xs text-red-600">JSON error: {selectedPayloadParse.error}</div>
+              <div className="text-xs text-red-600 dark:text-red-400">JSON error: {selectedPayloadParse.error}</div>
             ) : null}
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => setSelectedRecordId(selectedRecord.id)}>Import Runs</Button>
@@ -2037,7 +2037,7 @@ export default function AiIngestionPage() {
                     <div className="font-medium">{clause.title}</div>
                     <div className="text-xs text-muted-foreground">job {clause.ingestionJobId.slice(0, 8)}</div>
                     {clause.supersededAt ? (
-                      <div className="text-xs text-amber-700">Superseded {new Date(clause.supersededAt).toLocaleString()}</div>
+                      <div className="text-xs text-amber-700 dark:text-amber-400">Superseded {new Date(clause.supersededAt).toLocaleString()}</div>
                     ) : null}
                       </TableCell>
                       <TableCell>{clause.confidenceScore != null ? `${Math.round(clause.confidenceScore * 100)}%` : "-"}</TableCell>

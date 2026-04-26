@@ -19,7 +19,7 @@ export function MobileSectionShell({
   className?: string;
 }) {
   return (
-    <section className={cn("space-y-4 rounded-2xl border bg-white p-4 shadow-sm sm:p-5 md:p-6", className)}>
+    <section className={cn("space-y-4 rounded-2xl border bg-card p-4 shadow-sm sm:p-5 md:p-6", className)}>
       <div className="space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1.5">

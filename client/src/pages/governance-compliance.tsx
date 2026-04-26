@@ -104,9 +104,9 @@ const calendarSchema = z.object({
 
 function MobileDesktopHandoff({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+    <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 px-3 py-3 text-sm">
       <div className="font-medium">{title}</div>
-      <div className="mt-1 text-xs leading-5 text-amber-800">{body}</div>
+      <div className="mt-1 text-xs leading-5 text-amber-800 dark:text-amber-300">{body}</div>
     </div>
   );
 }
@@ -792,8 +792,8 @@ export function GovernanceComplianceContent() {
                         <div className="flex-1 min-w-0">
                           <span className="text-xs font-medium">{t.name}</span>
                           <span className="text-xs text-muted-foreground ml-1.5">v{t.versionNumber}</span>
-                          {t.publicationStatus !== "published" && <span className="ml-1 text-xs text-amber-600">({t.publicationStatus})</span>}
-                          {t.nextReviewDueAt && new Date(t.nextReviewDueAt) < now && <span className="ml-1 text-xs text-red-600">⚠ stale</span>}
+                          {t.publicationStatus !== "published" && <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">({t.publicationStatus})</span>}
+                          {t.nextReviewDueAt && new Date(t.nextReviewDueAt) < now && <span className="ml-1 text-xs text-red-600 dark:text-red-400">⚠ stale</span>}
                         </div>
                         <div className="flex gap-1 shrink-0">
                           {activeAssociationId && t.publicationStatus === "published" && (
@@ -826,7 +826,7 @@ export function GovernanceComplianceContent() {
                     <div key={v.id} className="flex items-center gap-3 text-xs">
                       <Badge variant={v.publicationStatus === "published" ? "default" : "secondary"} className="text-xs">v{v.versionNumber}</Badge>
                       <span className="text-muted-foreground">{v.publicationStatus}</span>
-                      {v.scope === "association" && <span className="text-blue-600">association overlay</span>}
+                      {v.scope === "association" && <span className="text-blue-600 dark:text-blue-400">association overlay</span>}
                       {v.createdAt && <span className="text-muted-foreground">{new Date(v.createdAt).toLocaleDateString()}</span>}
                       {v.createdBy && <span className="text-muted-foreground">by {v.createdBy}</span>}
                     </div>
@@ -982,7 +982,7 @@ export function GovernanceComplianceContent() {
                     <div>Source: <span className="font-medium text-foreground">{alert.sourceAuthority || "-"}</span></div>
                   </div>
                   {alert.staleRegulatoryRecord ? (
-                    <div className="rounded-lg border border-destructive/30 bg-red-50 px-3 py-2 text-xs text-destructive">The source regulatory record is past its review date. Verify the jurisdiction source before dismissing this alert.</div>
+                    <div className="rounded-lg border border-destructive/30 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-destructive">The source regulatory record is past its review date. Verify the jurisdiction source before dismissing this alert.</div>
                   ) : null}
                   {alert.suppressionReason ? (
                     <div className="rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">Override reason: {alert.suppressionReason}</div>
@@ -1328,18 +1328,18 @@ export function GovernanceComplianceContent() {
                     const isOverdue = dueDate && dueDate < now && t.status !== "done";
                     const isDueSoon = daysUntil !== null && daysUntil >= 0 && daysUntil <= 14 && t.status !== "done";
                     return (
-                    <TableRow key={t.id} className={isOverdue ? "bg-red-50/50" : isDueSoon ? "bg-amber-50/50" : ""}>
+                    <TableRow key={t.id} className={isOverdue ? "bg-red-50/50 dark:bg-red-950/20" : isDueSoon ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}>
                       <TableCell>{t.title}</TableCell>
                       <TableCell>
                         <div className="space-y-0.5">
-                          <div className={isOverdue ? "text-red-600 font-medium" : isDueSoon ? "text-amber-700 font-medium" : ""}>
+                          <div className={isOverdue ? "text-red-600 dark:text-red-400 font-medium" : isDueSoon ? "text-amber-700 dark:text-amber-400 font-medium" : ""}>
                             {dueDate ? dueDate.toLocaleDateString() : "-"}
                           </div>
                           {isOverdue && daysUntil !== null && (
                             <Badge variant="destructive" className="text-xs">{Math.abs(daysUntil)}d overdue</Badge>
                           )}
                           {isDueSoon && (
-                            <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100">Due in {daysUntil}d</Badge>
+                            <Badge variant="secondary" className="text-xs text-amber-700 border-amber-300 bg-amber-100 dark:text-amber-300 dark:border-amber-900/50 dark:bg-amber-950/40">Due in {daysUntil}d</Badge>
                           )}
                         </div>
                       </TableCell>
@@ -1352,7 +1352,7 @@ export function GovernanceComplianceContent() {
                       <TableCell>
                         <div className="flex items-center gap-2 flex-wrap">
                           {Array.isArray((t as any).evidenceUrlsJson) && ((t as any).evidenceUrlsJson as string[]).map((url: string, i: number) => (
-                            <a key={i} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                            <a key={i} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
                               <Paperclip className="h-3 w-3" />{i + 1}
                             </a>
                           ))}
@@ -1402,7 +1402,7 @@ export function GovernanceComplianceContent() {
                   const isOverdue = dueDate && dueDate < now && t.status !== "done";
                   const isDueSoon = daysUntil !== null && daysUntil >= 0 && daysUntil <= 14 && t.status !== "done";
                   return (
-                    <div key={t.id} className={`rounded-xl border p-4 space-y-3 ${isOverdue ? "bg-red-50/50" : isDueSoon ? "bg-amber-50/50" : ""}`}>
+                    <div key={t.id} className={`rounded-xl border p-4 space-y-3 ${isOverdue ? "bg-red-50/50 dark:bg-red-950/20" : isDueSoon ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-medium">{t.title}</div>
@@ -1420,7 +1420,7 @@ export function GovernanceComplianceContent() {
                       </Select>
                       <div className="flex items-center gap-2 flex-wrap">
                         {Array.isArray((t as any).evidenceUrlsJson) && ((t as any).evidenceUrlsJson as string[]).map((url: string, i: number) => (
-                          <a key={i} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs text-blue-600 hover:underline">
+                          <a key={i} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
                             <Paperclip className="h-3 w-3" />Evidence {i + 1}
                           </a>
                         ))}
@@ -1461,7 +1461,7 @@ export function GovernanceComplianceContent() {
         <Card>
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center gap-2">
-              <Vote className="h-5 w-5 text-indigo-600" />
+              <Vote className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               <h2 className="text-lg font-semibold">Election Compliance</h2>
             </div>
 
@@ -1475,7 +1475,7 @@ export function GovernanceComplianceContent() {
                 <div className="text-sm text-muted-foreground">Avg Participation</div>
               </div>
               <div className="rounded-lg border p-4 text-center">
-                <div className="text-2xl font-bold text-green-600">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                   {electionCompliance.byYear.reduce((s, y) => s + y.quorumMet, 0)}
                 </div>
                 <div className="text-sm text-muted-foreground">
@@ -1502,8 +1502,8 @@ export function GovernanceComplianceContent() {
                       <TableRow key={row.year}>
                         <TableCell className="font-medium">{row.year}</TableCell>
                         <TableCell className="text-right">{row.count}</TableCell>
-                        <TableCell className="text-right text-green-600">{row.quorumMet}</TableCell>
-                        <TableCell className="text-right text-red-600">{row.quorumFailed}</TableCell>
+                        <TableCell className="text-right text-green-600 dark:text-green-400">{row.quorumMet}</TableCell>
+                        <TableCell className="text-right text-red-600 dark:text-red-400">{row.quorumFailed}</TableCell>
                         <TableCell className="text-right">{row.avgParticipation}%</TableCell>
                       </TableRow>
                     ))}

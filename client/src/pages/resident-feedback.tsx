@@ -119,7 +119,7 @@ export default function ResidentFeedbackPage() {
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-sm text-muted-foreground">{t("residentFeedback.stats.avg")}</div>
-                  <div className={`text-2xl font-semibold ${analytics.avgScore !== null ? (analytics.avgScore >= 4 ? "text-green-600" : analytics.avgScore >= 3 ? "text-yellow-600" : "text-destructive") : ""}`}>
+                  <div className={`text-2xl font-semibold ${analytics.avgScore !== null ? (analytics.avgScore >= 4 ? "text-green-600 dark:text-green-400" : analytics.avgScore >= 3 ? "text-yellow-600 dark:text-yellow-400" : "text-destructive") : ""}`}>
                     {analytics.avgScore !== null ? analytics.avgScore.toFixed(1) : "N/A"} <span className="text-sm font-normal text-muted-foreground">/ 5</span>
                   </div>
                 </CardContent>

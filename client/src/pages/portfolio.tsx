@@ -26,10 +26,10 @@ type PortfolioActivityEvent = {
 };
 
 function activityColor(type: PortfolioActivityEvent["type"], title: string) {
-  if (type === "work_order") return title.includes("closed") ? "bg-green-500" : "bg-blue-500";
-  if (type === "financial") return title.includes("Payment") ? "bg-green-500" : "bg-amber-500";
-  if (type === "document") return "bg-blue-500";
-  return "bg-slate-400";
+  if (type === "work_order") return title.includes("closed") ? "bg-green-500 dark:bg-green-600" : "bg-blue-500 dark:bg-blue-600";
+  if (type === "financial") return title.includes("Payment") ? "bg-green-500 dark:bg-green-600" : "bg-amber-500 dark:bg-amber-600";
+  if (type === "document") return "bg-blue-500 dark:bg-blue-600";
+  return "bg-muted-foreground/40";
 }
 
 function formatRelativeTime(iso: string): string {
@@ -149,7 +149,7 @@ function alertIcon(type: string) {
 function StatusBadge({ health }: { health: AssociationKPI["health"] }) {
   if (health === "good")
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800">
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300">
         Stable
       </span>
     );
@@ -600,7 +600,7 @@ export default function PortfolioPage() {
             {mergedAlerts.length === 0 ? (
               <div className="p-4 bg-surface-container-lowest dark:bg-slate-900 rounded-xl editorial-shadow border border-outline-variant/20 dark:border-slate-700/30">
                 <div className="flex items-center gap-2 text-sm text-on-surface-variant dark:text-slate-400">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                   No active alerts — all thresholds within range.
                 </div>
               </div>

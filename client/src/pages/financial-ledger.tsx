@@ -824,7 +824,7 @@ export function FinancialLedgerContent() {
           <CardContent className="pt-6 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                <AlertTriangle className="h-4 w-4 text-orange-500 dark:text-orange-400" />
                 <div className="font-semibold text-sm">Finance-Grade Alerts</div>
                 {criticalAlertCount > 0 && (
                   <Badge variant="destructive">{criticalAlertCount} critical</Badge>
@@ -852,7 +852,7 @@ export function FinancialLedgerContent() {
               <div className="space-y-2">
                 {financialAlertsList.map((alert) => (
                   <div key={alert.id} className={`flex items-start gap-3 rounded-md border px-3 py-2 ${alert.severity === "critical" ? "bg-red-50 dark:bg-red-950/20 border-red-200" : "bg-orange-50 dark:bg-orange-950/20 border-orange-200"}`}>
-                    <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${alert.severity === "critical" ? "text-red-600" : "text-orange-600"}`} />
+                    <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${alert.severity === "critical" ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium">{alert.title}</div>
                       <div className="text-xs text-muted-foreground">{alert.message}</div>

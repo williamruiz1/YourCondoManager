@@ -129,7 +129,7 @@ export function HubAlertWidget({ zone }: HubAlertWidgetProps) {
         <CardContent className="p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+              <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
               <Badge
                 variant="outline"
                 className="border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"

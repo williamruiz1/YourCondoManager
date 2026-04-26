@@ -1657,7 +1657,7 @@ export function CommunicationsContent() {
                     <DialogTitle>Confirm Send</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 text-sm">
-                    <div className="rounded-lg border bg-amber-50 border-amber-200 p-3 flex gap-2 text-amber-800">
+                    <div className="rounded-lg border bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-300 p-3 flex gap-2">
                       <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                       <span>This will send a live email to <strong>{recipientPreview.recipients.length} recipient{recipientPreview.recipients.length !== 1 ? "s" : ""}</strong>. This action cannot be undone.</span>
                     </div>
@@ -1666,7 +1666,7 @@ export function CommunicationsContent() {
                       {targetedForm.subject && <div><span className="text-muted-foreground">Subject: </span><strong>{targetedForm.subject}</strong></div>}
                       <div><span className="text-muted-foreground">Recipients: </span><strong>{recipientPreview.recipients.length} of {recipientPreview.candidateCount}</strong></div>
                       {recipientPreview.missingEmailCount > 0 && (
-                        <div className="text-amber-600">{recipientPreview.missingEmailCount} contact{recipientPreview.missingEmailCount !== 1 ? "s" : ""} will be skipped (no email on file)</div>
+                        <div className="text-amber-600 dark:text-amber-400">{recipientPreview.missingEmailCount} contact{recipientPreview.missingEmailCount !== 1 ? "s" : ""} will be skipped (no email on file)</div>
                       )}
                     </div>
                   </div>
@@ -2251,15 +2251,15 @@ export function CommunicationsContent() {
                 </div>
                 <div className="rounded-md border p-3 text-center">
                   <div className="text-xs text-muted-foreground">Delivered</div>
-                  <div className="text-xl font-semibold text-green-600">{deliveryStats.delivered} <span className="text-sm text-muted-foreground">({deliveryStats.deliveryRate}%)</span></div>
+                  <div className="text-xl font-semibold text-green-600 dark:text-green-400">{deliveryStats.delivered} <span className="text-sm text-muted-foreground">({deliveryStats.deliveryRate}%)</span></div>
                 </div>
                 <div className="rounded-md border p-3 text-center">
                   <div className="text-xs text-muted-foreground">Opened</div>
-                  <div className="text-xl font-semibold text-blue-600">{deliveryStats.opened} <span className="text-sm text-muted-foreground">({deliveryStats.openRate}%)</span></div>
+                  <div className="text-xl font-semibold text-blue-600 dark:text-blue-400">{deliveryStats.opened} <span className="text-sm text-muted-foreground">({deliveryStats.openRate}%)</span></div>
                 </div>
                 <div className="rounded-md border p-3 text-center">
                   <div className="text-xs text-muted-foreground">Bounced</div>
-                  <div className="text-xl font-semibold text-red-600">{deliveryStats.bounced} <span className="text-sm text-muted-foreground">({deliveryStats.bounceRate}%)</span></div>
+                  <div className="text-xl font-semibold text-red-600 dark:text-red-400">{deliveryStats.bounced} <span className="text-sm text-muted-foreground">({deliveryStats.bounceRate}%)</span></div>
                 </div>
               </div>
               {deliveryStats.bouncedEmails.length > 0 ? (

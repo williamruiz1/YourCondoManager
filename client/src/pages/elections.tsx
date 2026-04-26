@@ -60,14 +60,14 @@ const optionSchema = z.object({
 
 function statusBadge(status: string) {
   const colors: Record<string, string> = {
-    draft: "bg-gray-100 text-gray-700",
-    open: "bg-green-100 text-green-700",
-    closed: "bg-yellow-100 text-yellow-700",
-    certified: "bg-blue-100 text-blue-700",
-    cancelled: "bg-red-100 text-red-700",
+    draft: "bg-muted text-muted-foreground",
+    open: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300",
+    closed: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300",
+    certified: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+    cancelled: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300",
   };
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] ?? "bg-gray-100 text-gray-700"}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] ?? "bg-muted text-muted-foreground"}`}>
       {status}
     </span>
   );
@@ -127,7 +127,7 @@ function ElectionTallyPanel({ election, adminRole }: { election: Election; admin
                 <div className="text-2xl font-bold">{tally.eligibleCount}</div>
                 <div className="text-xs text-muted-foreground">Eligible</div>
               </div>
-              <div className={`rounded-lg border p-3 text-center ${tally.quorumMet ? "border-green-200 bg-green-50" : "border-yellow-200 bg-yellow-50"}`}>
+              <div className={`rounded-lg border p-3 text-center ${tally.quorumMet ? "border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950/30" : "border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-950/30"}`}>
                 <div className="text-2xl font-bold">{tally.participationPercent}%</div>
                 <div className="text-xs text-muted-foreground">Participation {tally.quorumMet ? "(quorum met)" : "(below quorum)"}</div>
               </div>
@@ -159,7 +159,7 @@ function ElectionTallyPanel({ election, adminRole }: { election: Election; admin
             )}
 
             {tally.isCertified && (
-              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300 px-3 py-2 text-xs">
                 Certified on {tally.certifiedAt ? new Date(tally.certifiedAt).toLocaleDateString() : "—"}
               </div>
             )}
@@ -886,19 +886,19 @@ export function ElectionsContent() {
           </Card>
           <Card>
             <CardContent className="py-3 px-4">
-              <div className="text-2xl font-bold text-green-600">{statusCounts.open}</div>
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">{statusCounts.open}</div>
               <div className="text-xs text-muted-foreground">Currently Open</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="py-3 px-4">
-              <div className="text-2xl font-bold text-blue-600">{statusCounts.certified}</div>
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{statusCounts.certified}</div>
               <div className="text-xs text-muted-foreground">Certified</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="py-3 px-4">
-              <div className="text-2xl font-bold text-yellow-600">{statusCounts.closed}</div>
+              <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{statusCounts.closed}</div>
               <div className="text-xs text-muted-foreground">Pending Certification</div>
             </CardContent>
           </Card>
@@ -1008,7 +1008,7 @@ export function ElectionsContent() {
                 <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
                   {election.opensAt && <span>Opens {new Date(election.opensAt).toLocaleDateString()}</span>}
                   {election.closesAt && <span>Closes {new Date(election.closesAt).toLocaleDateString()}</span>}
-                  {election.isSecretBallot ? <span className="text-amber-600">Secret ballot</span> : null}
+                  {election.isSecretBallot ? <span className="text-amber-600 dark:text-amber-400">Secret ballot</span> : null}
                   <span>Quorum: {election.quorumPercent}%</span>
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -1068,7 +1068,7 @@ export function ElectionsContent() {
                   <TableRow key={election.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/app/governance/elections/${election.id}`)}>
                     <TableCell>
                       <div className="font-medium text-sm">{election.title}</div>
-                      {election.isSecretBallot ? <div className="text-xs text-amber-600">Secret ballot</div> : null}
+                      {election.isSecretBallot ? <div className="text-xs text-amber-600 dark:text-amber-400">Secret ballot</div> : null}
                       {election.meetingId && meetingNameMap.get(election.meetingId) && (
                         <div className="text-xs text-muted-foreground">Meeting: {meetingNameMap.get(election.meetingId)}</div>
                       )}
