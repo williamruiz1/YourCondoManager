@@ -10,8 +10,11 @@ import {
   insertAmenityBlockSchema,
   insertAmenityReservationSchema,
 } from "@shared/schema";
+import type { AdminRole } from "@shared/schema";
 
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
+// `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
+// the canonical source of truth, derived from `adminUserRoleEnum.enumValues`).
+
 type AdminRequest = Request & {
   adminUserId?: string;
   adminUserEmail?: string;

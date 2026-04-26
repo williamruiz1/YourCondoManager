@@ -15,6 +15,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { ownerships, units, persons, associations, savedPaymentMethods, autopayEnrollments } from "@shared/schema";
+import type { AdminRole } from "@shared/schema";
 import { storage } from "../storage";
 import {
   createPaymentTransaction,
@@ -29,8 +30,8 @@ import {
 } from "../services/payment-service";
 
 // ── Types (mirrored from routes.ts / autopay.ts) ────────────────────────────
-
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
+// `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
+// the canonical source of truth, derived from `adminUserRoleEnum.enumValues`).
 
 type AdminRequest = Request & {
   adminUserId?: string;

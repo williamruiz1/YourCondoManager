@@ -29,6 +29,7 @@ import {
   savedPaymentMethods,
   units,
 } from "@shared/schema";
+import type { AdminRole } from "@shared/schema";
 import { storage } from "../storage";
 import {
   createPaymentTransaction,
@@ -38,8 +39,8 @@ import {
 import { markTransactionForRetry, getDelinquencySettings } from "../services/retry-service";
 
 // ── Re-usable types (mirrored from routes.ts) ────────────────────────────────
-
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
+// `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
+// the canonical source of truth, derived from `adminUserRoleEnum.enumValues`).
 
 export type AdminRequest = Request & {
   adminUserId?: string;

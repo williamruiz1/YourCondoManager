@@ -240,6 +240,7 @@ import {
   PM_TOGGLE_KEYS,
   isPmToggleKey,
 } from "@shared/schema";
+import type { AdminRole } from "@shared/schema";
 import {
   listTogglesForAssociation,
   setToggle,
@@ -804,7 +805,6 @@ function validateExecutiveSlidePayload(payload: Record<string, unknown>, options
   }
 }
 
-type AdminRole = "platform-admin" | "board-officer" | "assisted-board" | "pm-assistant" | "manager" | "viewer";
 type AdminRequest = Request & {
   adminUserId?: string;
   adminUserEmail?: string;
@@ -828,26 +828,12 @@ function normalizeAiIngestionRolloutMode(value: unknown): AiIngestionRolloutMode
   return value === "disabled" || value === "canary" || value === "full" ? value : "full";
 }
 
-function normalizeAdminRole(value: unknown): AdminRole {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (normalized === "platform-admin" || normalized === "board-officer" || normalized === "assisted-board" || normalized === "pm-assistant" || normalized === "manager" || normalized === "viewer") {
-    return normalized;
-  }
-  if (normalized === "admin" || normalized === "super-admin" || normalized === "superadmin" || normalized === "platform_admin") {
-    return "platform-admin";
-  }
-  // Legacy "board-admin" and variants map to "assisted-board" (conservative default)
-  if (normalized === "board-admin" || normalized === "association-admin" || normalized === "board_admin" || normalized === "board-member" || normalized === "boardmember") {
-    return "assisted-board";
-  }
-  if (normalized === "association-manager" || normalized === "operator") {
-    return "manager";
-  }
-  return "viewer";
-}
-
-async function applyAdminContext(req: AdminRequest, adminUser: { id: string; email: string; role: string }) {
-  const normalizedRole = normalizeAdminRole(adminUser.role);
+async function applyAdminContext(req: AdminRequest, adminUser: { id: string; email: string; role: AdminRole }) {
+  // Wave 38 / Phase 14: `normalizeAdminRole` retired. After migration 0019
+  // (`0019_backfill_legacy_board_admin.sql`) the DB-level enum constraint on
+  // `admin_users.role` plus the canonical-only data state guarantee the value
+  // here is one of the six canonical strings. No defensive coercion needed.
+  const normalizedRole: AdminRole = adminUser.role;
   debug("[applyAdminContext]", {
     adminUserId: adminUser.id,
     email: adminUser.email,
