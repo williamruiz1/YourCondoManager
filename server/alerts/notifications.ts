@@ -48,7 +48,7 @@ import {
 import type { AdminRole, AdminUser } from "@shared/schema";
 import { sendPlatformEmail } from "../email-provider";
 import { sendPushNotification as sendPushToEndpoint } from "../push-provider";
-import { getCrossAssociationAlerts } from "./index";
+import { canAccessAlert, getCriticalAlertsForFanOut } from "./index";
 import type { AlertItem, AlertSeverity } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -109,25 +109,31 @@ export async function fanOutCriticalAlerts(opts: { now?: Date } = {}): Promise<F
   //    admins with no prefs row at all (defaults apply: email ON).
   const optedInAdmins = await loadOptedInAdmins();
 
+  // 3. Wave 35a — single-pass fan-out. Compute the universe of critical
+  //    alerts ONCE per tick (one orchestrator run, ~9 storage calls total)
+  //    instead of per-admin. Per-admin filtering is done in-memory below.
+  //    Pre-Wave-35a: 50 admins × 50 associations × 9 resolvers = 22,500
+  //    resolver invocations every 5 minutes; this collapses to ~9 per tick
+  //    regardless of admin count.
+  const criticalUniverse = optedInAdmins.length > 0
+    ? (await getCriticalAlertsForFanOut({ now, severities: CRITICAL_SEVERITIES })).alerts
+    : [];
+
   for (const admin of optedInAdmins) {
     // Resolve this admin's permitted associations. Platform-admins see all;
     // others see their adminAssociationScopes.
     const permittedAssociations = await loadPermittedAssociations(admin);
     if (permittedAssociations.length === 0) continue;
 
-    const orch = await getCrossAssociationAlerts({
-      adminUserId: admin.id,
-      adminRole: admin.role,
-      personaToggles: {},
-      permittedAssociations,
-      // We want everything, even already-read alerts — the dedup is on
-      // alert_notifications, not on read-state.
-      readState: "all",
-      // Don't poison the 60s server-cache used by user-facing surfaces.
-      skipCache: true,
-      now,
-    });
-    const criticalAlerts = orch.alerts.filter((a) => CRITICAL_SEVERITIES.includes(a.severity));
+    // Filter the cached universe down to (a) the admin's permitted
+    // associations and (b) the role's permitted feature-domains. The
+    // canAccessAlert predicate is the same gate the user-facing GET
+    // endpoint applies — using it here keeps notification visibility in
+    // lock-step with on-screen visibility.
+    const permittedIds = new Set(permittedAssociations.map((a) => a.id));
+    const criticalAlerts = criticalUniverse.filter(
+      (a) => permittedIds.has(a.associationId) && canAccessAlert(admin.role, a.featureDomain, {}),
+    );
     if (criticalAlerts.length === 0) continue;
 
     if (isFirstCycle) {

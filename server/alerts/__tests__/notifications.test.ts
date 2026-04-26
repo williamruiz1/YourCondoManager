@@ -351,6 +351,18 @@ vi.mock("../index", () => ({
     alerts: orchAlerts.value,
     readStateBy: {},
   })),
+  // Wave 35a: shared per-cycle compute. Tests drive the payload via
+  // orchAlerts.value the same as before — fanOutCriticalAlerts now reads
+  // from this single call instead of one-per-admin. The real impl filters
+  // by `severities` server-side; this mock mirrors that so the severity-
+  // gate test (high/medium/low → 0 sends) passes.
+  getCriticalAlertsForFanOut: vi.fn(async ({ severities }: { severities: readonly string[] } = { severities: ["critical"] }) => ({
+    alerts: orchAlerts.value.filter((a: any) => severities.includes(a.severity)),
+  })),
+  lookupAlertById: vi.fn(async () => null),
+  // Re-export of canAccessAlert from index — test scenarios all stage
+  // alerts that the persona can access, so default-allow is fine here.
+  canAccessAlert: vi.fn(() => true),
 }));
 
 // ---- Channel send stubs -------------------------------------------------
