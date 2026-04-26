@@ -57,9 +57,16 @@
 //  36. `governance.*`               — `client/src/pages/governance.tsx`
 //  37. `communityHubPublic.*`       — `client/src/pages/community-hub-public.tsx`
 //
-// Public marketing surfaces (landing.tsx, pricing.tsx, solutions.tsx)
-// receive a11y fixes only — i18n is deferred until a non-English market
-// launches; brochure copy is translated separately at that time.
+// Surfaces extended (3 — Wave 42, public marketing brochure):
+//  38. `landing.*`                  — `client/src/pages/landing.tsx`
+//  39. `pricing.*`                  — `client/src/pages/pricing.tsx`
+//  40. `solutions.*`                — `client/src/pages/solutions.tsx`
+//
+// Wave 42 closes the Wave 31 deferral. The 3 brochure surfaces now flow
+// through the registry like every other surface; static UI copy is
+// extracted, dynamic content (tier price numbers from API, plan-name
+// lookups) stays inline. Translation engine still ships in a follow-up
+// wave when product commits to a non-English locale.
 //
 // Common keys live under `common.*`. Surface-specific copy stays
 // scoped under its surface prefix.
@@ -942,6 +949,335 @@ export const strings = {
   "communityHubPublic.error.title": "Community Hub Not Found",
   "communityHubPublic.error.body":
     "This community hub doesn't exist or hasn't been enabled yet.",
+
+  // ---------------------------------------------------------------------
+  // Wave 42 — public marketing brochure (3 surfaces)
+  //
+  // Static UI copy only. Dynamic content (tier prices loaded from the
+  // pricing strategy doc / API, plan-name labels driven by Stripe lookup)
+  // intentionally stays inline.
+  // ---------------------------------------------------------------------
+
+  // Shared marketing chrome (top-nav, mobile menu, persona toggle, common CTAs).
+  "marketing.brand": "Your Condo Manager",
+  "marketing.skipToContent": "Skip to main content",
+  "marketing.nav.label": "Main navigation",
+  "marketing.nav.platform": "Platform",
+  "marketing.nav.solutions": "Solutions",
+  "marketing.nav.pricing": "Pricing",
+  "marketing.nav.toggleMenu": "Toggle menu",
+  "marketing.cta.signIn": "Sign In",
+  "marketing.cta.openWorkspace": "Open Workspace",
+  "marketing.cta.startFreeTrial": "Start Free Trial",
+  "marketing.persona.manager": "Property Managers",
+  "marketing.persona.board": "Board Members",
+  "marketing.persona.resident": "Residents",
+
+  // ---------------------------------------------------------------------
+  // 38. Landing (`/`)
+  // ---------------------------------------------------------------------
+  "landing.hero.eyebrow": "Architecture of Trust",
+  "landing.hero.headlineLead": "Everything your association needs.",
+  "landing.hero.headlineEmphasis": "Nothing it doesn't.",
+  "landing.hero.subhead":
+    "The definitive platform for modern property governance. Streamline operations, empower boards, and engage residents with structural clarity.",
+  "landing.hero.cta.primary": "Get Started Free",
+  "landing.hero.cta.secondary": "Schedule Demo",
+  "landing.hero.image.alt":
+    "Modern architectural glass facade reflecting a clear blue sky with sophisticated structural lines and high-end professional aesthetic",
+
+  "landing.persona.toggleLabel": "Tailored for you:",
+  "landing.persona.whyPrefix": "Why",
+
+  // Persona — board (default)
+  "landing.persona.board.badge": "For self-managed condo boards",
+  "landing.persona.board.headline":
+    "Give your board the tools to govern with confidence.",
+  "landing.persona.board.subhead":
+    "Your Condo Manager gives volunteer boards everything needed to handle finances, governance, residents, and maintenance — without expensive management fees or complicated software.",
+  "landing.persona.board.ctaPrimary": "Start managing your association",
+  "landing.persona.board.ctaSecondary": "See what's included",
+  "landing.persona.board.feature.finances.title": "Clear, simple finances",
+  "landing.persona.board.feature.finances.body":
+    "Collect assessments, track expenses, manage budgets, and produce statements your board and owners can actually understand.",
+  "landing.persona.board.feature.governance.title": "Governance made easy",
+  "landing.persona.board.feature.governance.body":
+    "Store governing documents, track board decisions, manage meeting minutes, and stay compliant — all in one place.",
+  "landing.persona.board.feature.portal.title": "Owner & resident portal",
+  "landing.persona.board.feature.portal.body":
+    "Give owners a portal to view their account, pay dues, and access documents without calling a board member.",
+  "landing.persona.board.feature.maintenance.title": "Maintenance tracking",
+  "landing.persona.board.feature.maintenance.body":
+    "Log work orders, track vendor activity, and build maintenance schedules so nothing falls through the cracks.",
+  "landing.persona.board.proof.1": "No property management experience required",
+  "landing.persona.board.proof.2": "Designed for board volunteers, not accountants",
+  "landing.persona.board.proof.3": "Residents stay informed automatically",
+  "landing.persona.board.proof.4": "All your records in one secure place",
+
+  // Persona — manager
+  "landing.persona.manager.badge": "For property management companies",
+  "landing.persona.manager.headline":
+    "Run your entire portfolio from one command center.",
+  "landing.persona.manager.subhead":
+    "Your Condo Manager gives property managers a single platform for every association — billing, owners, maintenance, governance, and reporting — without the spreadsheets.",
+  "landing.persona.manager.ctaPrimary": "Get started — it's free",
+  "landing.persona.manager.ctaSecondary": "Schedule a demo",
+  "landing.persona.manager.feature.visibility.title": "Portfolio-wide visibility",
+  "landing.persona.manager.feature.visibility.body":
+    "See every association's financial health, open work orders, and compliance status at a glance. Drill into any property in one click.",
+  "landing.persona.manager.feature.billing.title": "Automated billing & ledger",
+  "landing.persona.manager.feature.billing.body":
+    "Run assessments, late fees, utility billing, and recurring charges across all properties. Keep every ledger clean and audit-ready.",
+  "landing.persona.manager.feature.reporting.title": "Board-ready reporting",
+  "landing.persona.manager.feature.reporting.body":
+    "Generate financial reports, board packages, and meeting minutes without exporting to a third tool.",
+  "landing.persona.manager.feature.team.title": "Role-based team access",
+  "landing.persona.manager.feature.team.body":
+    "Invite your whole team with scoped permissions per association — no shared passwords, no access sprawl.",
+  "landing.persona.manager.proof.1": "Manage dozens of associations from one login",
+  "landing.persona.manager.proof.2": "Role-based access for your whole team",
+  "landing.persona.manager.proof.3": "No per-association setup headaches",
+  "landing.persona.manager.proof.4": "Consistent workflow across every property",
+
+  // Persona — resident
+  "landing.persona.resident.badge": "For residents & homeowners",
+  "landing.persona.resident.headline":
+    "Stay connected and in control of your home.",
+  "landing.persona.resident.subhead":
+    "Access your account, pay dues online, track maintenance requests, and stay informed about your community — all without making a phone call.",
+  "landing.persona.resident.ctaPrimary": "Access your portal",
+  "landing.persona.resident.ctaSecondary": "Learn more",
+  "landing.persona.resident.feature.pay.title": "Pay dues online",
+  "landing.persona.resident.feature.pay.body":
+    "View your account balance, pay assessments, and download statements from any device, any time.",
+  "landing.persona.resident.feature.requests.title": "Submit & track requests",
+  "landing.persona.resident.feature.requests.body":
+    "Create maintenance requests and follow their status in real time — no chasing the board down.",
+  "landing.persona.resident.feature.documents.title": "Community documents",
+  "landing.persona.resident.feature.documents.body":
+    "Access bylaws, meeting minutes, rules, and notices whenever you need them, all in one place.",
+  "landing.persona.resident.feature.informed.title": "Stay informed",
+  "landing.persona.resident.feature.informed.body":
+    "Receive announcements, board updates, and community news delivered straight to you.",
+  "landing.persona.resident.proof.1": "Pay dues anytime, from any device",
+  "landing.persona.resident.proof.2": "No more chasing the board for information",
+  "landing.persona.resident.proof.3": "Your full account history always accessible",
+  "landing.persona.resident.proof.4": "Stay in the loop on community updates",
+
+  // Bento grid
+  "landing.bento.heading": "Integrated Excellence",
+  "landing.bento.subhead":
+    "Professional tools designed for the complexities of modern estates.",
+  "landing.bento.dues.title": "Automated Dues",
+  "landing.bento.dues.body":
+    "Collect payments and generate late notices without manual intervention.",
+  "landing.bento.maintenance.title": "Maintenance Hub",
+  "landing.bento.maintenance.body":
+    "Track work orders from submission to completion. Manage vendors and schedule recurring maintenance in one place.",
+  "landing.bento.archives.title": "Smart Archives",
+  "landing.bento.archives.body":
+    "Store and retrieve governing documents, meeting minutes, and notices — organized, accessible, and always up to date.",
+  "landing.bento.comms.title": "Mass Comms",
+  "landing.bento.comms.body":
+    "Send announcements, notices, and updates to all residents or targeted groups via email — directly from the platform.",
+  "landing.bento.reporting.title": "Real-time Financial Reporting",
+  "landing.bento.reporting.body":
+    "Generate balance sheets, income statements, and budget comparisons with a single click. No more waiting for end-of-month reconciliations.",
+  "landing.bento.reporting.cta": "Explore Analytics",
+  "landing.bento.voting.title": "Board Vote Tracking",
+  "landing.bento.voting.body":
+    "Record resolutions, track votes, and confirm quorum during board meetings — with a complete audit trail.",
+  "landing.bento.inspections.title": "Inspections & Schedules",
+  "landing.bento.inspections.body":
+    "Schedule and track property inspections, log findings, and manage recurring maintenance across all your buildings.",
+
+  // Compliance / security panel
+  "landing.compliance.audit.title": "Always Audit-Ready",
+  "landing.compliance.audit.body":
+    "Every transaction, vote, and communication is timestamped and immutable. Your Condo Manager ensures your association meets state regulations effortlessly.",
+  "landing.compliance.access.title": "Secure Institutional Access",
+  "landing.compliance.access.body":
+    "Bank-grade encryption and 2FA protect sensitive owner data. Granular permissions ensure board members only see what they need to.",
+  "landing.compliance.log.label": "Security Log",
+  "landing.compliance.log.statusActive": "ACTIVE",
+
+  // Final CTA
+  "landing.finalCta.title": "Ready to elevate your association?",
+  "landing.finalCta.body":
+    "The modern platform for condo and HOA associations — built to handle finances, governance, residents, and maintenance in one place.",
+  "landing.finalCta.viewPricing": "View pricing",
+  "landing.finalCta.startTrial": "Start Your Free Trial",
+  "landing.finalCta.speakExpert": "Speak with an Expert",
+
+  // ---------------------------------------------------------------------
+  // 39. Pricing (`/pricing`)
+  // ---------------------------------------------------------------------
+  "pricing.hero.eyebrow": "Simple, Transparent Pricing",
+  "pricing.hero.headlineLead": "Run your association",
+  "pricing.hero.headlineEmphasis": "without a property manager.",
+  "pricing.hero.subhead":
+    "Flat monthly pricing per association. No per-unit fees, no contracts, no surprises. Built for self-managed boards who want a real system — not another spreadsheet.",
+
+  "pricing.cards.popular": "Most Popular",
+  "pricing.cards.perMonth": "/month",
+  "pricing.cards.startTrial14": "Start 14-Day Free Trial",
+  "pricing.cards.startTrial": "Start Free Trial",
+  "pricing.cards.contactSales": "Contact Sales",
+
+  "pricing.cards.selfManaged.name": "Self-Managed",
+  "pricing.cards.selfManaged.tagline":
+    "For self-managed Boards & Condo Associations.",
+  "pricing.cards.selfManaged.tierLowLabel": "Under 30 units:",
+  "pricing.cards.selfManaged.tierHighLabel": "30 units or more:",
+  "pricing.cards.selfManaged.feeNote": "Per association. No per-unit fees.",
+  "pricing.cards.selfManaged.feature.portal": "Owner Portal with payment history",
+  "pricing.cards.selfManaged.feature.dues":
+    "Automated dues & assessment collection",
+  "pricing.cards.selfManaged.feature.maintenance":
+    "Maintenance request tracking",
+  "pricing.cards.selfManaged.feature.documents":
+    "Document management & board packages",
+  "pricing.cards.selfManaged.feature.governance":
+    "Governance meeting & compliance tools",
+
+  "pricing.cards.propertyManager.name": "Property Manager",
+  "pricing.cards.propertyManager.tagline": "For growing management firms.",
+  "pricing.cards.propertyManager.feature.scope": "Manage 5–10 Associations",
+  "pricing.cards.propertyManager.feature.dashboard":
+    "Multi-Portfolio Dashboard",
+  "pricing.cards.propertyManager.feature.vendor": "Vendor Marketplace Access",
+  "pricing.cards.propertyManager.feature.assets":
+    "Advanced Asset Management",
+  "pricing.cards.propertyManager.feature.reporting":
+    "Bulk Reporting & Exports",
+
+  "pricing.cards.enterprise.name": "Enterprise",
+  "pricing.cards.enterprise.tagline":
+    "Bespoke solutions for large portfolios.",
+  "pricing.cards.enterprise.priceCustom": "Custom",
+  "pricing.cards.enterprise.feature.scope": "10+ Associations",
+  "pricing.cards.enterprise.feature.success":
+    "Dedicated Success Manager",
+  "pricing.cards.enterprise.feature.app": "White-label Resident App",
+  "pricing.cards.enterprise.feature.api": "API & Custom Integrations",
+
+  "pricing.compare.heading": "Plan Comparison",
+  "pricing.compare.col.capability": "Capability",
+  "pricing.compare.col.selfManaged": "Self-Managed",
+  "pricing.compare.col.propertyManager": "Property Manager",
+  "pricing.compare.col.enterprise": "Enterprise",
+  "pricing.compare.row.associations": "Associations",
+  "pricing.compare.row.unitPricing": "Unit Pricing",
+  "pricing.compare.row.multiPortfolio": "Multi-Portfolio View",
+  "pricing.compare.row.residentApp": "Resident App",
+  "pricing.compare.row.api": "API Access",
+  "pricing.compare.row.support": "Support",
+  "pricing.compare.value.standardized": "Standardized",
+  "pricing.compare.value.customized": "Customized",
+  "pricing.compare.value.standardApp": "Standard",
+  "pricing.compare.value.whitelabelApp": "White-label available",
+  "pricing.compare.value.helpCenter": "Help Center",
+  "pricing.compare.value.priorityChat": "Priority Email / Chat",
+  "pricing.compare.value.dedicated": "Dedicated Account Manager",
+
+  "pricing.trust.security.title": "Unrivaled Security.",
+  "pricing.trust.security.body":
+    "Your association data is protected by bank-grade encryption and regional compliance standards. We take the burden of trust off your shoulders.",
+  "pricing.trust.security.gdpr": "GDPR Ready",
+  "pricing.trust.security.soc2": "SOC 2 Type II",
+  "pricing.trust.uptime.title": "99.9% Uptime",
+  "pricing.trust.uptime.body":
+    "Our infrastructure is built on distributed cloud systems, ensuring your portal is always live for residents.",
+  "pricing.trust.setup.title.line1": "Setup in",
+  "pricing.trust.setup.title.line2": "Minutes",
+  "pricing.trust.integrate.title.line1": "Integrate",
+  "pricing.trust.integrate.title.line2": "Anywhere",
+
+  "pricing.finalCta.title": "Ready to stop managing on spreadsheets?",
+  "pricing.finalCta.body":
+    "Your Condo Manager gives self-managed boards a real system of record — dues collection, owner portal, maintenance tracking, and governance tools in one place. No property manager required.",
+  "pricing.finalCta.startTrial": "Start 14-Day Free Trial",
+  "pricing.finalCta.scheduleDemo": "Schedule a Demo",
+
+  // ---------------------------------------------------------------------
+  // 40. Solutions (`/solutions`)
+  // ---------------------------------------------------------------------
+  "solutions.hero.eyebrow": "Our Solutions",
+  "solutions.hero.headlineLead": "The Infrastructure of",
+  "solutions.hero.headlineEmphasis": "Modern Excellence.",
+  "solutions.hero.subhead":
+    "Your Condo Manager provides the architectural framework for high-performance property ecosystems—from independent boards to global management firms.",
+  "solutions.hero.scrollHint": "SCROLL TO EXPLORE",
+
+  "solutions.persona.toggleLabel": "Choose your solution:",
+
+  // Section — board (self-managed associations)
+  "solutions.board.headline.line1": "Self-Managed",
+  "solutions.board.headline.line2": "Associations",
+  "solutions.board.body":
+    "Empower your board with professional-grade tools designed for simplicity and total transparency. We remove the friction of community governance.",
+  "solutions.board.feature.dues.title": "Dues Collection",
+  "solutions.board.feature.dues.body":
+    "Automated, secure digital payments with real-time delinquency tracking.",
+  "solutions.board.feature.maintenance.title": "Maintenance Hubs",
+  "solutions.board.feature.maintenance.body":
+    "Centralized ticketing for common areas and private unit requests.",
+  "solutions.board.feature.voting.title": "Digital Voting",
+  "solutions.board.feature.voting.body":
+    "Legally-compliant proxy voting and secure community polls.",
+  "solutions.board.image.alt": "Modern architectural detail",
+
+  // Section — manager (property management companies)
+  "solutions.manager.eyebrow": "Enterprise Scale",
+  "solutions.manager.headline.line1": "Property Management",
+  "solutions.manager.headline.line2": "Companies",
+  "solutions.manager.subhead":
+    "Sophisticated multi-entity management for firms that demand precision, scalability, and institutional-grade reporting.",
+  "solutions.manager.reporting.title": "Centralized Reporting",
+  "solutions.manager.reporting.body":
+    "Aggregate financial data across your entire portfolio. Generate board-ready reports in seconds with customizable KPIs.",
+  "solutions.manager.reporting.image.alt": "Data visualization",
+  "solutions.manager.accounting.title.line1": "Multi-Entity",
+  "solutions.manager.accounting.title.line2": "Accounting",
+  "solutions.manager.accounting.body":
+    "Robust GL, automated bank recs, and segmented financial tracking for every association under management.",
+  "solutions.manager.accounting.cta": "Learn about Security",
+  "solutions.manager.vendor.title": "Vendor Management",
+  "solutions.manager.vendor.body":
+    "Streamline procurement and work orders with integrated compliance tracking and automated COI monitoring.",
+  "solutions.manager.comms.title": "Automated Communications",
+  "solutions.manager.comms.body":
+    "Broadcast notifications via SMS, email, and app push across all properties simultaneously.",
+
+  // Section — resident (modern resident journey)
+  "solutions.resident.eyebrow": "Resident Experience",
+  "solutions.resident.headline": "The Modern Resident Journey",
+  "solutions.resident.body":
+    "Property management is no longer just about maintenance; it's about hospitality. Provide your residents with a high-touch digital experience that enhances their lifestyle.",
+  "solutions.resident.image.alt": "Resident using mobile app",
+  "solutions.resident.booking.label": "Upcoming Booking",
+  "solutions.resident.booking.title": "Rooftop Lounge",
+  "solutions.resident.booking.time": "Today at 7:00 PM",
+  "solutions.resident.feature.amenity.title": "Amenity Booking",
+  "solutions.resident.feature.amenity.body":
+    "Real-time scheduling for pools, gyms, and party rooms with integrated guest management.",
+  "solutions.resident.feature.payments.title": "One-Touch Payments",
+  "solutions.resident.feature.payments.body":
+    "A seamless mobile-first wallet for recurring dues, guest parking, and on-demand services.",
+  "solutions.resident.feature.bulletin.title": "Community Bulletin",
+  "solutions.resident.feature.bulletin.body":
+    "A curated digital space for local announcements, community classifieds, and verified social groups.",
+
+  // Final CTA
+  "solutions.finalCta.title": "Ready to elevate your estate?",
+  "solutions.finalCta.body":
+    "Join the leading properties that have standardized their operations on Your Condo Manager.",
+  "solutions.finalCta.requestDemo": "Request a Demo",
+  "solutions.finalCta.requestDemoAria":
+    "Request a demo of Your Condo Manager solutions",
+  "solutions.finalCta.viewPricing": "View Pricing",
+  "solutions.finalCta.viewPricingAria":
+    "View Your Condo Manager pricing",
 } as const;
 
 export type StringKey = keyof typeof strings;

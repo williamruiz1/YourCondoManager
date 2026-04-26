@@ -1,5 +1,5 @@
 /**
- * 5.6 — i18n registry tests (Wave 21 + Wave 24 + Wave 27 + Wave 31).
+ * 5.6 — i18n registry tests (Wave 21 + Wave 24 + Wave 27 + Wave 31 + Wave 42).
  *
  * Spec: docs/projects/platform-overhaul/decisions/5.6-i18n-scaffolding.md
  *
@@ -22,9 +22,13 @@
  *
  * Wave 31 (round 4) extends the registry to 4 more operator surfaces
  * (board members, board packages, governance overview, community hub
- * public). Public marketing pages (landing/pricing/solutions) intentionally
- * stay un-extracted — brochure copy is translated separately at non-English
- * market launch.
+ * public). Public marketing pages (landing/pricing/solutions) were
+ * deferred at the time and tracked in the README backlog.
+ *
+ * Wave 42 closes the Wave 31 deferral by extracting the 3 public marketing
+ * pages (`landing.tsx`, `pricing.tsx`, `solutions.tsx`) into the registry
+ * under `marketing.*`, `landing.*`, `pricing.*`, `solutions.*`. Static UI
+ * copy only — dynamic price/tier values stay inline.
  */
 
 import { describe, it, expect } from "vitest";
@@ -58,6 +62,14 @@ describe("i18n strings.en", () => {
     // should clear 400 — if it drops below, the round-4 extension was
     // reverted.
     expect(Object.keys(strings).length).toBeGreaterThanOrEqual(400);
+  });
+
+  it("exports at least 800 keys after Wave 42 marketing extraction", () => {
+    // Wave 42 added ~215 keys across the 3 public marketing surfaces
+    // (landing, pricing, solutions) plus the shared `marketing.*` chrome
+    // namespace. Combined total should clear 800 — if it drops below, the
+    // brochure-extraction work was reverted.
+    expect(Object.keys(strings).length).toBeGreaterThanOrEqual(800);
   });
 
   it("every value is a non-empty string", () => {
@@ -159,6 +171,40 @@ describe("i18n strings.en", () => {
     expect(strings).toHaveProperty("communityHubPublic.error.title");
     expect(strings).toHaveProperty("common.saving");
   });
+
+  it("includes the Wave 42 marketing surface anchor keys", () => {
+    // Spot-checks for each of the 3 Wave 42 surfaces (landing, pricing,
+    // solutions) plus the shared marketing chrome namespace. If any of
+    // these regresses, the brochure extraction was partially reverted.
+    expect(strings).toHaveProperty("marketing.brand");
+    expect(strings).toHaveProperty("marketing.skipToContent");
+    expect(strings).toHaveProperty("marketing.nav.platform");
+    expect(strings).toHaveProperty("marketing.cta.openWorkspace");
+    expect(strings).toHaveProperty("marketing.persona.board");
+
+    expect(strings).toHaveProperty("landing.hero.eyebrow");
+    expect(strings).toHaveProperty("landing.hero.headlineLead");
+    expect(strings).toHaveProperty("landing.persona.toggleLabel");
+    expect(strings).toHaveProperty("landing.persona.board.headline");
+    expect(strings).toHaveProperty("landing.bento.heading");
+    expect(strings).toHaveProperty("landing.compliance.audit.title");
+    expect(strings).toHaveProperty("landing.finalCta.title");
+
+    expect(strings).toHaveProperty("pricing.hero.eyebrow");
+    expect(strings).toHaveProperty("pricing.cards.popular");
+    expect(strings).toHaveProperty("pricing.cards.selfManaged.name");
+    expect(strings).toHaveProperty("pricing.cards.startTrial14");
+    expect(strings).toHaveProperty("pricing.compare.heading");
+    expect(strings).toHaveProperty("pricing.trust.security.title");
+    expect(strings).toHaveProperty("pricing.finalCta.title");
+
+    expect(strings).toHaveProperty("solutions.hero.eyebrow");
+    expect(strings).toHaveProperty("solutions.persona.toggleLabel");
+    expect(strings).toHaveProperty("solutions.board.headline.line1");
+    expect(strings).toHaveProperty("solutions.manager.reporting.title");
+    expect(strings).toHaveProperty("solutions.resident.headline");
+    expect(strings).toHaveProperty("solutions.finalCta.title");
+  });
 });
 
 describe("t()", () => {
@@ -192,6 +238,21 @@ describe("t()", () => {
     expect(t("governance.tabs.elections")).toBe("Elections");
     expect(t("communityHubPublic.title")).toBe("Community Hub");
     expect(t("common.saving")).toBe("Saving…");
+  });
+
+  it("returns the registered value for Wave 42 marketing keys", () => {
+    // Spot checks confirming new Wave 42 keys render correctly via t().
+    expect(t("marketing.brand")).toBe("Your Condo Manager");
+    expect(t("marketing.cta.openWorkspace")).toBe("Open Workspace");
+    expect(t("landing.hero.eyebrow")).toBe("Architecture of Trust");
+    expect(t("landing.persona.board.headline")).toBe(
+      "Give your board the tools to govern with confidence.",
+    );
+    expect(t("pricing.cards.popular")).toBe("Most Popular");
+    expect(t("pricing.cards.selfManaged.name")).toBe("Self-Managed");
+    expect(t("pricing.compare.heading")).toBe("Plan Comparison");
+    expect(t("solutions.hero.headlineEmphasis")).toBe("Modern Excellence.");
+    expect(t("solutions.finalCta.title")).toBe("Ready to elevate your estate?");
   });
 
   it("returns the key itself for unknown keys (safe fallback)", () => {
