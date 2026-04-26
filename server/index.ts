@@ -281,6 +281,17 @@ app.use((req, res, next) => {
 
   await registerRoutes(httpServer, app);
 
+  // Wave 16d — test-only Playwright helper routes. Registration is
+  // gated at *call time*: registerTestRoutes() refuses to register
+  // unless NODE_ENV=test AND PLAYWRIGHT_TEST_MODE=1. Each handler ALSO
+  // re-checks the gate on every request as defense-in-depth. The import
+  // is unconditional (so type-check / build see it) but the side-effect
+  // is skipped in production.
+  if (process.env.NODE_ENV === "test" && process.env.PLAYWRIGHT_TEST_MODE === "1") {
+    const { registerTestRoutes } = await import("./test-routes");
+    registerTestRoutes(app);
+  }
+
   // Log DB state on startup for deployment verification
   pool.query(`
     SELECT

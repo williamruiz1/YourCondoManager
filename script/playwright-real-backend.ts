@@ -59,6 +59,14 @@ async function main() {
     void cleanup().then(() => process.exit(0));
   });
 
+  // Wave 16d — when PLAYWRIGHT_TEST_MODE=1 is set, force NODE_ENV=test
+  // so the test-only routes (server/test-routes.ts) become reachable.
+  // Both env vars together are the BOTH-required gate. The session
+  // cookie name stays `sid_dev` (server/index.ts:95 only flips to `sid`
+  // when NODE_ENV === "production") so the existing real-backend
+  // specs that read `cookieName: "sid_dev"` keep working.
+  const inTestMode = process.env.PLAYWRIGHT_TEST_MODE === "1";
+
   const dev = spawn("npx", ["tsx", "watch", "server/index.ts"], {
     cwd: REPO_ROOT,
     stdio: "inherit",
@@ -66,7 +74,8 @@ async function main() {
       ...process.env,
       DATABASE_URL: handle.connectionString,
       SESSION_SECRET: process.env.SESSION_SECRET ?? "wave17-playwright-test-secret",
-      NODE_ENV: "development",
+      NODE_ENV: inTestMode ? "test" : "development",
+      PLAYWRIGHT_TEST_MODE: inTestMode ? "1" : "",
       AUTOMATION_SWEEPS_ENABLED: "0",
     },
   });
