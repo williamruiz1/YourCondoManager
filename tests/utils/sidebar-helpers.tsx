@@ -20,6 +20,7 @@ import { memoryLocation } from "wouter/memory-location";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { AssociationProvider } from "@/context/association-context";
 import type { AuthSession } from "@/hooks/useAdminRole";
 import type { AdminRole } from "@shared/schema";
 
@@ -184,6 +185,30 @@ export function renderSidebar(options: RenderSidebarOptions = {}): RenderResult 
 
   if (activeAssociationId) {
     queryClient.setQueryData(["active-association"], activeAssociationId);
+    // Seed the `/api/associations` query cache so `useActiveAssociation()`
+    // can resolve the active association by id (the sidebar header badge
+    // reads `activeAssociation`/`activeAssociationName` through this list).
+    // The minimal shape covers the fields the sidebar actually consults.
+    queryClient.setQueryData(
+      ["/api/associations"],
+      [
+        {
+          id: activeAssociationId,
+          name: `Test Association ${activeAssociationId}`,
+          amenitiesEnabled: 1,
+        } as unknown as object,
+      ],
+    );
+    // Also persist the active id to localStorage so the
+    // `AssociationProvider` (when wrapped) hydrates with this id rather
+    // than the empty default. The post-Phase-11 hotfix tests rely on the
+    // sidebar receiving a non-empty `activeAssociationId`, which the
+    // `useActiveAssociation` hook resolves through `AssociationContext`.
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("activeAssociationId", activeAssociationId);
+    }
+  } else if (typeof window !== "undefined") {
+    window.localStorage.removeItem("activeAssociationId");
   }
 
   const { hook } = memoryLocation({ path: initialPath });
@@ -192,7 +217,9 @@ export function renderSidebar(options: RenderSidebarOptions = {}): RenderResult 
     <QueryClientProvider client={queryClient}>
       <Router hook={hook}>
         <SidebarProvider>
-          <AppSidebar adminRole={role ?? null} />
+          <AssociationProvider>
+            <AppSidebar adminRole={role ?? null} />
+          </AssociationProvider>
         </SidebarProvider>
       </Router>
     </QueryClientProvider>,

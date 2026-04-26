@@ -206,14 +206,22 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
           </div>
         </Link>
         {/* 3.1 Q10 — association switcher lives in the top app-bar only.
-            The single-association display badge below is informational only
-            (read-only label), not a switcher. Multi-association switching
-            happens exclusively in the header. */}
-        {activeAssociationId ? (
-          <div className="px-3 pb-3 group-data-[collapsible=icon]:hidden">
-            <div
-              className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm"
-              data-testid="text-selected-association-overview"
+            The badge below is informational + a link to the per-association
+            overview surface (it is NOT a switcher). Multi-association
+            switching happens exclusively in the header `<Select>`.
+            Phase-11 hotfix: restore the clickable Link affordance + the
+            "Select association" empty-state surfaced pre-Phase-11, so the
+            sidebar always advertises the active-association anchor (or a
+            CTA to choose one) — without this the active association name
+            disappears from the sidebar entirely until the auto-select
+            effect resolves, leaving operators (especially platform-admins
+            with a long header dropdown) unable to locate their HOA. */}
+        <div className="px-3 pb-3 group-data-[collapsible=icon]:hidden">
+          {activeAssociationId ? (
+            <Link
+              href="/app/association-context"
+              className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/60"
+              data-testid="link-selected-association-overview"
             >
               <span className="material-symbols-outlined text-[16px] text-muted-foreground flex-shrink-0">
                 domain
@@ -222,13 +230,29 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
                 <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5 font-label">
                   Association
                 </div>
-                <div className="text-xs font-semibold truncate font-body">
+                <div
+                  className="text-xs font-semibold truncate font-body"
+                  data-testid="text-selected-association-overview"
+                >
                   {activeAssociationName}
                 </div>
               </div>
-            </div>
-          </div>
-        ) : null}
+            </Link>
+          ) : (
+            <Link
+              href="/app/associations"
+              className="flex items-center gap-2 rounded-lg border border-dashed border-sidebar-border px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/30"
+              data-testid="link-select-association"
+            >
+              <span className="material-symbols-outlined text-[16px] text-muted-foreground flex-shrink-0">
+                domain_add
+              </span>
+              <span className="text-xs text-muted-foreground font-body">
+                Select association
+              </span>
+            </Link>
+          )}
+        </div>
       </SidebarHeader>
 
       {/* Wave 23 a11y: deferred Wave 21 fix. The shadcn Sidebar primitive
