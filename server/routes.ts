@@ -1036,13 +1036,42 @@ async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction
   });
 }
 
+/**
+ * Assert that the calling admin's scope covers `associationId`.
+ *
+ * Behavior (PPM workitem `a8dd8fbd-c008-4262-9077-a64fb4e03bb9`,
+ * self-review M6 — fail-closed hardening):
+ *
+ *   - `platform-admin` always passes (cross-association by design).
+ *   - Any other role with a non-empty `adminScopedAssociationIds` must
+ *     have `associationId` in that list, else throws.
+ *   - Any other role with an EMPTY `adminScopedAssociationIds` is
+ *     denied (fail-closed). Previously this short-circuited to
+ *     "allowed", which meant a non-platform admin who somehow
+ *     reached this helper without scope rows could pass any
+ *     association check. The upstream `applyAdminContext` setter
+ *     hydrates scopes from `getAdminAssociationScopesByUserId` plus
+ *     `portal_access`; an empty array there is a misconfiguration
+ *     signal, not a global-allow signal.
+ *
+ * The `req.adminRole` truthiness gate is preserved for paranoia: a
+ * request that reaches this helper without an `adminRole` set has
+ * already failed earlier middleware, but if it does, we deny.
+ */
 function assertAssociationScope(req: AdminRequest, associationId: string) {
   if (req.adminRole === "platform-admin") return;
-  const scopedAssociationIds = req.adminScopedAssociationIds ?? [];
   if (!associationId) {
     throw new Error("associationId is required");
   }
-  if (req.adminRole && scopedAssociationIds.length > 0 && !scopedAssociationIds.includes(associationId)) {
+  // Defense-in-depth: a request with no role should never reach here,
+  // but if it does, deny.
+  if (!req.adminRole) {
+    throw new Error("Association is outside admin scope");
+  }
+  const scopedAssociationIds = req.adminScopedAssociationIds ?? [];
+  // Fail-closed: empty scope for a non-platform-admin role is a denial.
+  // Previously this branch short-circuited to "allowed".
+  if (scopedAssociationIds.length === 0 || !scopedAssociationIds.includes(associationId)) {
     throw new Error("Association is outside admin scope");
   }
 }
