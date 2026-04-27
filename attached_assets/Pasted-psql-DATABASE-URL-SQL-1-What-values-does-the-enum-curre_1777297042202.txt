@@ -1,0 +1,14 @@
+psql "$DATABASE_URL" <<'SQL'
+  -- 1. What values does the enum currently have?                                                                                                                                                     
+  SELECT unnest(enum_range(NULL::admin_user_role)) AS valid_values;                                                                                                                                   
+                                      
+  -- 2. Any column defaulting to 'board-admin'?                                                                                                                                                       
+  SELECT table_schema, table_name, column_name, column_default                                                                   
+  FROM information_schema.columns                                                                                                                                                                     
+  WHERE column_default LIKE '%board-admin%';                                                                                     
+                                                                                                                                                                                                      
+  -- 3. All columns using the admin_user_role enum + any 'board-admin' rows in each                                                                                                                   
+  SELECT table_schema, table_name, column_name                                                                                                                                                        
+  FROM information_schema.columns                                                                                                                                                                     
+  WHERE udt_name = 'admin_user_role';                                                                                            
+  SQL                                                     
