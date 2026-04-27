@@ -1,0 +1,27 @@
+psql "$DATABASE_URL" <<'SQL'
+  -- Check constraints referencing board-admin                                                                                                                                                        
+  SELECT conrelid::regclass AS table_name, conname, pg_get_constraintdef(oid) AS def                                             
+  FROM pg_constraint                                                                                                                                                                                  
+  WHERE pg_get_constraintdef(oid) LIKE '%board-admin%';                                                                          
+                                                                                                                                                                                                      
+  -- Views referencing board-admin                                                                                               
+  SELECT schemaname, viewname FROM pg_views
+  WHERE definition LIKE '%board-admin%';                                                                                                                                                              
+  
+  -- Functions / triggers referencing board-admin                                                                                                                                                     
+  SELECT n.nspname AS schema, p.proname AS function_name                                                                         
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace                                                                                                                                        
+  WHERE pg_get_functiondef(p.oid) LIKE '%board-admin%';                                                                                                                                               
+                                      
+  -- Index expressions referencing board-admin                                                                                                                                                        
+  SELECT schemaname, tablename, indexname, indexdef FROM pg_indexes                                                              
+  WHERE indexdef LIKE '%board-admin%';                                                                                                                                                                
+                                                                                                                                                                                                      
+  -- Materialized view definitions    
+  SELECT schemaname, matviewname FROM pg_matviews                                                                                                                                                     
+  WHERE definition LIKE '%board-admin%';                                                                                         
+                                                                                                                                                                                                      
+  -- Comments / extensions / sequences (catch-all)                                                                                                                                                    
+  SELECT description FROM pg_description WHERE description LIKE '%board-admin%';                                                                                                                      
+  SQL                                                                                                                                                                                                 
+                                                               
