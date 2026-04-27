@@ -1,0 +1,38 @@
+Migration is still failing on the old_role cast despite the row being cleaned. Two possibilities — let's eliminate both.                                                                            
+                                                
+  Theory 1: Another table/column also uses the admin_user_role enum and still has board-admin rows. The earlier information_schema.columns probe might have missed it (some enum-typed columns don't  
+  show up under udt_name if they reference the type via a domain or older syntax).                                                                                                                    
+                                                                                                                                                                                                      
+  Theory 2: Replit's deployment is caching the old migration plan from before your UPDATE, so it's re-running a plan generated when the bad rows still existed.                                       
+                                                                                                                                                                                                      
+  Check theory 1 (definitive — uses pg_attribute, more reliable than information_schema)                                                                                                              
+                                                                                                                                                                                                      
+  psql "$DATABASE_URL" <<'SQL'                                                                                                                                                                        
+  -- Every column anywhere using admin_user_role                                                                               
+  SELECT n.nspname AS schema, c.relname AS table, a.attname AS column                                                                                                                                 
+  FROM pg_attribute a
+  JOIN pg_class c ON c.oid = a.attrelid                                                                                                                                                               
+  JOIN pg_namespace n ON n.oid = c.relnamespace                                                                                                                                                       
+  JOIN pg_type t ON t.oid = a.atttypid
+  WHERE t.typname = 'admin_user_role'                                                                                                                                                                 
+    AND a.attnum > 0 AND NOT a.attisdropped                                                                                    
+    AND c.relkind = 'r'                                                                                                                                                                               
+  ORDER BY 1,2,3;                                                                                                              
+                                                                                                                                                                                                      
+  -- Confirm zero board-admin rows in the known-cleaned places                                                                                                                                        
+  SELECT 'admin_users.role' AS where_, count(*) FROM admin_users WHERE role::text = 'board-admin'                                                                                                     
+  UNION ALL SELECT 'pcl.old_role', count(*) FROM permission_change_logs WHERE old_role::text = 'board-admin'                                                                                          
+  UNION ALL SELECT 'pcl.new_role', count(*) FROM permission_change_logs WHERE new_role::text = 'board-admin';                                                                                         
+  SQL                                                                                                                                                                                                 
+                                                                                                                                                                                                      
+  Paste both result sets.                                                                                                                                                                             
+                                                                                                                               
+  If query 1 returns more tables than admin_users and permission_change_logs → run the same UPDATE pattern on those new ones, then retry publish.                                                     
+                                                                                                                               
+  If query 1 returns only admin_users and permission_change_logs AND query 2 shows all zeroes → it's theory 2 (cached plan). Fix is to force a fresh deployment cycle:                                
+                                                                                                                               
+  # touch a no-op change to force the build to re-plan                                                                                                                                                
+  echo "" >> README.md                                                                                                                                                                                
+  git add README.md && git commit -m "chore: nudge deploy" && git push                                                                                                                                
+                                                                                                                                                                                                      
+  Then retry Publish from a freshly-built deploy. The new plan will be generated against the now-clean DB.             
