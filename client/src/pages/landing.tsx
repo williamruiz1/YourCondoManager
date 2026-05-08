@@ -23,12 +23,15 @@ import { useStrings } from "@/i18n/use-strings";
 
 type LandingPageProps = {
   hasWorkspaceAccess: boolean;
+  isAuthenticatedNoAccess?: boolean;
+  authenticatedEmail?: string | null;
   onStartGoogleSignIn: () => void;
+  onLogout?: () => void;
 };
 
 type Persona = "manager" | "board" | "resident";
 
-export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }: LandingPageProps) {
+export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAccess, authenticatedEmail, onStartGoogleSignIn, onLogout }: LandingPageProps) {
   // Default to "board" — Track 1 outreach targets self-managed volunteer boards.
   // Property Manager (Track 2) is secondary and can self-select via the toggle.
   const [persona, setPersona] = useState<Persona>("board");
@@ -169,6 +172,35 @@ export default function LandingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
   };
 
   const content = personaContent[persona];
+
+  if (isAuthenticatedNoAccess) {
+    return (
+      <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center px-4">
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto">
+            <svg className="w-8 h-8 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">No workspace access</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              You're signed in as <span className="font-medium text-slate-800 dark:text-slate-200">{authenticatedEmail}</span> but this account hasn't been granted workspace access yet.
+            </p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-500">Contact your administrator to get access.</p>
+          </div>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="text-sm text-slate-600 dark:text-slate-400 hover:text-primary transition-colors underline underline-offset-2"
+            >
+              Sign out
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950">

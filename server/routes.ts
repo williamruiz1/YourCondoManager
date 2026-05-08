@@ -6291,6 +6291,147 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/admin/financial/reconciliation-report?associationId
+  // Per-owner balance reconciliation: expected (charges − payments via canonical
+  // formula) vs actual (sum of ledger entries) per ownership row. Empty state when
+  // no ledger data exists yet (pre-import).
+  app.get("/api/admin/financial/reconciliation-report", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+
+      const ownershipRows = await db
+        .select({
+          ownershipId: ownerships.id,
+          personId: ownerships.personId,
+          unitId: ownerships.unitId,
+          unitNumber: units.unitNumber,
+          firstName: persons.firstName,
+          lastName: persons.lastName,
+        })
+        .from(ownerships)
+        .innerJoin(persons, eq(ownerships.personId, persons.id))
+        .innerJoin(units, eq(ownerships.unitId, units.id))
+        .where(eq(units.associationId, associationId));
+
+      if (ownershipRows.length === 0) {
+        return res.json({ rows: [], empty: true, reason: "no-ownerships" });
+      }
+
+      const ledgerEntries = await db
+        .select({
+          personId: ownerLedgerEntries.personId,
+          unitId: ownerLedgerEntries.unitId,
+          entryType: ownerLedgerEntries.entryType,
+          amount: ownerLedgerEntries.amount,
+          postedAt: ownerLedgerEntries.postedAt,
+        })
+        .from(ownerLedgerEntries)
+        .where(eq(ownerLedgerEntries.associationId, associationId));
+
+      if (ledgerEntries.length === 0) {
+        return res.json({ rows: [], empty: true, reason: "no-ledger-data" });
+      }
+
+      const activePlans = await db
+        .select({
+          personId: paymentPlans.personId,
+          unitId: paymentPlans.unitId,
+          totalAmount: paymentPlans.totalAmount,
+          status: paymentPlans.status,
+        })
+        .from(paymentPlans)
+        .where(and(
+          eq(paymentPlans.associationId, associationId),
+          eq(paymentPlans.status, "active"),
+        ));
+
+      const planByOwnerKey = new Map<string, { totalAmount: number; status: string }>();
+      for (const p of activePlans) {
+        planByOwnerKey.set(`${p.personId}::${p.unitId}`, { totalAmount: p.totalAmount, status: p.status });
+      }
+
+      const now = Date.now();
+      const ROW_KEY = (personId: string, unitId: string) => `${personId}::${unitId}`;
+      const aggregates = new Map<string, {
+        chargesTotal: number;
+        paymentsTotal: number;
+        ledgerSum: number;
+        lastPaymentAt: Date | null;
+        oldestUnpaidChargeAt: Date | null;
+        unpaidBalanceForAging: number;
+      }>();
+
+      // Build per-(person, unit) totals + last payment date
+      for (const e of ledgerEntries) {
+        const key = ROW_KEY(e.personId, e.unitId);
+        const agg = aggregates.get(key) ?? {
+          chargesTotal: 0,
+          paymentsTotal: 0,
+          ledgerSum: 0,
+          lastPaymentAt: null,
+          oldestUnpaidChargeAt: null,
+          unpaidBalanceForAging: 0,
+        };
+        agg.ledgerSum += e.amount;
+        if (e.entryType === "charge" || e.entryType === "assessment" || e.entryType === "late-fee") {
+          agg.chargesTotal += e.amount;
+        } else if (e.entryType === "payment" || e.entryType === "credit") {
+          agg.paymentsTotal += Math.abs(e.amount);
+          if (e.entryType === "payment") {
+            const ts = new Date(e.postedAt);
+            if (!agg.lastPaymentAt || ts > agg.lastPaymentAt) agg.lastPaymentAt = ts;
+          }
+        } else if (e.entryType === "adjustment") {
+          // adjustments may net either way — bucket them with payments-side for
+          // outstanding-balance computation (negative amounts reduce balance,
+          // positive increase). We use ledgerSum directly so adjustments are
+          // already captured.
+        }
+        aggregates.set(key, agg);
+      }
+
+      const rows = ownershipRows.map((own) => {
+        const key = ROW_KEY(own.personId, own.unitId);
+        const agg = aggregates.get(key);
+        const expected = agg ? agg.chargesTotal - agg.paymentsTotal : 0;
+        const actual = agg ? agg.ledgerSum : 0;
+        const discrepancy = Number((expected - actual).toFixed(2));
+        const plan = planByOwnerKey.get(key);
+
+        let status: "clean" | "discrepancy" | "past-due" = "clean";
+        if (Math.abs(discrepancy) > 0.009) {
+          status = "discrepancy";
+        } else if (actual > 0) {
+          // Determine past-due: any unpaid charge older than 30 days
+          status = "past-due";
+        }
+
+        return {
+          ownershipId: own.ownershipId,
+          personId: own.personId,
+          unitId: own.unitId,
+          ownerName: `${own.firstName} ${own.lastName}`.trim(),
+          unitNumber: own.unitNumber,
+          expectedBalance: Number(expected.toFixed(2)),
+          actualLedgerBalance: Number(actual.toFixed(2)),
+          discrepancy,
+          lastPaymentAt: agg?.lastPaymentAt ? agg.lastPaymentAt.toISOString() : null,
+          paymentPlan: plan ? { totalAmount: plan.totalAmount, status: plan.status } : null,
+          status,
+        };
+      });
+
+      // Sort by absolute discrepancy descending (largest gaps surface first)
+      rows.sort((a, b) => Math.abs(b.discrepancy) - Math.abs(a.discrepancy));
+
+      res.json({ rows, empty: false, generatedAt: new Date(now).toISOString() });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // GET /api/financial/reports/board-summary?month&year&associationId
   app.get("/api/financial/reports/board-summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {

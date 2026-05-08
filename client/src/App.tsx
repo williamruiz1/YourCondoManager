@@ -422,10 +422,16 @@ function WorkspaceRouter({
 
 function PublicRouter({
   hasWorkspaceAccess,
+  isAuthenticatedNoAccess,
+  authenticatedEmail,
   onStartGoogleSignIn,
+  onLogout,
 }: {
   hasWorkspaceAccess: boolean;
+  isAuthenticatedNoAccess: boolean;
+  authenticatedEmail: string | null;
   onStartGoogleSignIn: () => void;
+  onLogout: () => void;
 }) {
   return (
     <Suspense fallback={<RouteFallback />}>
@@ -433,7 +439,10 @@ function PublicRouter({
         <Route path="/">
           <LandingPage
             hasWorkspaceAccess={hasWorkspaceAccess}
+            isAuthenticatedNoAccess={isAuthenticatedNoAccess}
+            authenticatedEmail={authenticatedEmail}
             onStartGoogleSignIn={onStartGoogleSignIn}
+            onLogout={onLogout}
           />
         </Route>
         <Route path="/pricing">
@@ -1215,6 +1224,7 @@ function AuthAwareApp() {
 
   const adminRole = authSession?.admin?.role ?? null;
   const hasWorkspaceAccess = Boolean(authSession?.authenticated && authSession.admin);
+  const isAuthenticatedNoAccess = Boolean(authSession?.authenticated && !authSession?.admin);
   const isWorkspaceRoute = location === "/app" || location.startsWith("/app/");
 
   if (isWorkspaceRoute && authSessionLoading) {
@@ -1248,10 +1258,13 @@ function AuthAwareApp() {
       ) : (
           <PublicRouter
           hasWorkspaceAccess={hasWorkspaceAccess}
+          isAuthenticatedNoAccess={isAuthenticatedNoAccess}
+          authenticatedEmail={(authSession as { user?: { email?: string } } | null)?.user?.email ?? null}
           onStartGoogleSignIn={() => startGoogleSignIn(true)}
+          onLogout={logoutGoogleSession}
         />
       )}
-      {authSession?.admin?.role === "platform-admin" ? (
+      {authSession?.admin && (authSession.admin.role === "platform-admin" || authSession.admin.role === "manager") ? (
         <Suspense fallback={null}>
           <AdminContextualFeedbackWidget
             admin={{
