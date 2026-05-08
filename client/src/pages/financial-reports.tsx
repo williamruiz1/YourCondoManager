@@ -20,6 +20,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FinancialReconciliationContent } from "./financial-reconciliation";
+import { FinancialOwnerReconciliationContent } from "./financial-owner-reconciliation";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 
 type LedgerSummaryRow = {
@@ -1254,7 +1255,8 @@ export default function FinancialReportsPage() {
           <TabsList>
             <TabsTrigger value="summary">Summary</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
-            <TabsTrigger value="reconciliation">Reconciliation</TabsTrigger>
+            <TabsTrigger value="reconciliation">Bank Reconciliation</TabsTrigger>
+            <TabsTrigger value="owner-reconciliation">Owner Reconciliation</TabsTrigger>
           </TabsList>
           <TabsContent value="summary" className="mt-0">
             <FinancialSummaryReports />
@@ -1264,6 +1266,9 @@ export default function FinancialReportsPage() {
           </TabsContent>
           <TabsContent value="reconciliation" className="mt-0">
             <FinancialReconciliationContent />
+          </TabsContent>
+          <TabsContent value="owner-reconciliation" className="mt-0">
+            <FinancialOwnerReconciliationContent />
           </TabsContent>
         </Tabs>
       </div>
