@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { and, eq, ilike, sql } from "drizzle-orm";
 import {
-  adminUsers, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
+  adminUsers, adminAssociationScopes, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
   elections, electionOptions, electionBallotTokens, electionBallotCasts, electionProxyDesignations, electionProxyDocuments,
   vendors, vendorInvoices, workOrders,
   associationInsurancePolicies, inspectionRecords,
@@ -28,6 +28,7 @@ const KNOWN_ASSOCIATIONS: (typeof associations.$inferInsert)[] = [
   { id: "7a1f216a-8ac9-4fe9-a8d2-b62b01565a42", name: "Lakewood Residences", address: "450 Lakeview Blvd", city: "Chicago", state: "IL", country: "USA" },
   { id: "1c63e35c-2ac3-4b0a-b2ab-61f873d0d938", name: "Test Towers", address: "100 Test Ave", city: "Austin", state: "TX", country: "USA" },
   { id: "f301d073-ed84-4d73-84ce-3ef28af66f7a", name: "Cherry Hill Court Condominiums", associationType: "HOA", dateFormed: "1990-07-16", ein: "06-1513429", address: "1405 Quinnipiac Ave.", city: "New Haven", state: "CT", country: "USA" },
+  { id: "c7e5t001-0000-4000-8000-000000000001", name: "CHC TEST HOA", associationType: "HOA", address: "1405 Quinnipiac Ave.", city: "New Haven", state: "CT", country: "USA" },
   { id: "628b7d4b-b052-44a5-9bcc-69784581450c", name: "Cherry Hill Court", associationType: "condo", address: "101 Cherry Hill Court", city: "Cherry Hill", state: "NJ", country: "USA" },
   { id: "7c164b67-9e3b-456a-bb49-dd698b0822c4", name: "Verification HOA 1773579706183", associationType: "condo", address: "1 Verification Way", city: "New Haven", state: "CT", country: "USA" },
   { id: "5d4488b7-c229-4412-8762-d822e4f150f3", name: "QA Communications Foundation 364067", address: "100 Verification Way", city: "New Haven", state: "CT", country: "USA" },
@@ -3861,6 +3862,76 @@ export async function seedDatabase() {
     log(`[seed] chc opening balance entries :: ${CHC_BALANCE_ENTRIES.length} entries inserted (13 assessment + 6 HOA dues)`, "seed");
   } else {
     log("[seed] chc opening balance entries :: already exist, skipping", "seed");
+  }
+
+  // ── CHC TEST HOA — buildings, units, property manager, scope ────────────────
+  // Test association for landwllc.help@gmail.com. Mirrors CHC structure but
+  // maintains its own data and is not actionable on the real CHC records.
+  const CHC_TEST_HOA_ID = "c7e5t001-0000-4000-8000-000000000001";
+
+  const [existingCHCTestBuilding] = await db
+    .select()
+    .from(buildings)
+    .where(eq(buildings.id, "chtb0001-0000-4000-8000-000000000001"));
+
+  if (!existingCHCTestBuilding) {
+    await db.insert(buildings).values([
+      { id: "chtb0001-0000-4000-8000-000000000001", associationId: CHC_TEST_HOA_ID, name: "1415", address: "1415 Quinnipiac Ave., New Haven, CT 06513", totalUnits: 3 },
+      { id: "chtb0001-0000-4000-8000-000000000002", associationId: CHC_TEST_HOA_ID, name: "1417", address: "1417 Quinnipiac Ave., New Haven, CT 06513", totalUnits: 7 },
+      { id: "chtb0001-0000-4000-8000-000000000003", associationId: CHC_TEST_HOA_ID, name: "1419", address: "1419 Quinnipiac Ave., New Haven, CT 06513", totalUnits: 1 },
+      { id: "chtb0001-0000-4000-8000-000000000004", associationId: CHC_TEST_HOA_ID, name: "1421", address: "1421 Quinnipiac Ave., New Haven, CT 06513", totalUnits: 7 },
+    ]).onConflictDoNothing();
+
+    await db.insert(units).values([
+      { id: "chtu0001-0000-4000-8000-000000000001", associationId: CHC_TEST_HOA_ID, unitNumber: "A", building: "1415", buildingId: "chtb0001-0000-4000-8000-000000000001" },
+      { id: "chtu0001-0000-4000-8000-000000000002", associationId: CHC_TEST_HOA_ID, unitNumber: "B", building: "1415", buildingId: "chtb0001-0000-4000-8000-000000000001" },
+      { id: "chtu0001-0000-4000-8000-000000000003", associationId: CHC_TEST_HOA_ID, unitNumber: "C", building: "1415", buildingId: "chtb0001-0000-4000-8000-000000000001" },
+      { id: "chtu0001-0000-4000-8000-000000000004", associationId: CHC_TEST_HOA_ID, unitNumber: "A", building: "1417", buildingId: "chtb0001-0000-4000-8000-000000000002" },
+      { id: "chtu0001-0000-4000-8000-000000000005", associationId: CHC_TEST_HOA_ID, unitNumber: "B", building: "1417", buildingId: "chtb0001-0000-4000-8000-000000000002" },
+      { id: "chtu0001-0000-4000-8000-000000000006", associationId: CHC_TEST_HOA_ID, unitNumber: "C", building: "1417", buildingId: "chtb0001-0000-4000-8000-000000000002" },
+      { id: "chtu0001-0000-4000-8000-000000000007", associationId: CHC_TEST_HOA_ID, unitNumber: "D", building: "1417", buildingId: "chtb0001-0000-4000-8000-000000000002" },
+      { id: "chtu0001-0000-4000-8000-000000000008", associationId: CHC_TEST_HOA_ID, unitNumber: "E", building: "1417", buildingId: "chtb0001-0000-4000-8000-000000000002" },
+      { id: "chtu0001-0000-4000-8000-000000000009", associationId: CHC_TEST_HOA_ID, unitNumber: "F", building: "1417", buildingId: "chtb0001-0000-4000-8000-000000000002" },
+      { id: "chtu0001-0000-4000-8000-000000000010", associationId: CHC_TEST_HOA_ID, unitNumber: "G", building: "1417", buildingId: "chtb0001-0000-4000-8000-000000000002" },
+      { id: "chtu0001-0000-4000-8000-000000000011", associationId: CHC_TEST_HOA_ID, unitNumber: "1419", building: "1419", buildingId: "chtb0001-0000-4000-8000-000000000003" },
+      { id: "chtu0001-0000-4000-8000-000000000012", associationId: CHC_TEST_HOA_ID, unitNumber: "A", building: "1421", buildingId: "chtb0001-0000-4000-8000-000000000004" },
+      { id: "chtu0001-0000-4000-8000-000000000013", associationId: CHC_TEST_HOA_ID, unitNumber: "B", building: "1421", buildingId: "chtb0001-0000-4000-8000-000000000004" },
+      { id: "chtu0001-0000-4000-8000-000000000014", associationId: CHC_TEST_HOA_ID, unitNumber: "C", building: "1421", buildingId: "chtb0001-0000-4000-8000-000000000004" },
+      { id: "chtu0001-0000-4000-8000-000000000015", associationId: CHC_TEST_HOA_ID, unitNumber: "D", building: "1421", buildingId: "chtb0001-0000-4000-8000-000000000004" },
+      { id: "chtu0001-0000-4000-8000-000000000016", associationId: CHC_TEST_HOA_ID, unitNumber: "E", building: "1421", buildingId: "chtb0001-0000-4000-8000-000000000004" },
+      { id: "chtu0001-0000-4000-8000-000000000017", associationId: CHC_TEST_HOA_ID, unitNumber: "F", building: "1421", buildingId: "chtb0001-0000-4000-8000-000000000004" },
+      { id: "chtu0001-0000-4000-8000-000000000018", associationId: CHC_TEST_HOA_ID, unitNumber: "G", building: "1421", buildingId: "chtb0001-0000-4000-8000-000000000004" },
+    ]).onConflictDoNothing();
+
+    log(`[seed] chc test hoa :: 4 buildings + 18 units seeded`, "seed");
+  } else {
+    log("[seed] chc test hoa :: buildings/units already exist, skipping", "seed");
+  }
+
+  // Property manager account for CHC TEST HOA
+  const [existingCHCTestManager] = await db
+    .select()
+    .from(adminUsers)
+    .where(eq(adminUsers.id, "landu001-0000-4000-8000-000000000001"));
+
+  if (!existingCHCTestManager) {
+    await db.insert(adminUsers).values({
+      id: "landu001-0000-4000-8000-000000000001",
+      email: "landwllc.help@gmail.com",
+      role: "manager",
+      isActive: 1,
+    }).onConflictDoNothing();
+
+    await db.insert(adminAssociationScopes).values({
+      id: "scope001-0000-4000-8000-000000000001",
+      adminUserId: "landu001-0000-4000-8000-000000000001",
+      associationId: CHC_TEST_HOA_ID,
+      scope: "read-write",
+    }).onConflictDoNothing();
+
+    log(`[seed] chc test hoa :: property manager landwllc.help@gmail.com + association scope seeded`, "seed");
+  } else {
+    log("[seed] chc test hoa :: property manager already exists, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
