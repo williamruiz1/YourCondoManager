@@ -14,6 +14,8 @@ import {
   residentFeedbacks,
   onboardingInvites,
   paymentPlans,
+  hoaFeeSchedules,
+  specialAssessments,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
@@ -3237,6 +3239,628 @@ export async function seedDatabase() {
     log("[seed] payment plans :: 1 plan seeded for Cherry Hill unit 1421-A", "seed");
   } else {
     log("[seed] payment plans :: already exist, skipping", "seed");
+  }
+
+  // ── Real CHC Owners — Section 1: Persons ──────────────────────────────────
+  // 18 real owners from the Google Sheet. Fixed UUIDs (chper002-...) so this
+  // block is fully idempotent on every server start.
+  const CHC_REAL_PERSONS: (typeof persons.$inferInsert)[] = [
+    // 1415-A
+    {
+      id: "chper002-0000-4000-8000-000000000001",
+      firstName: "Nsofor",
+      lastName: "Robinson",
+      email: "nex2none1@gmail.com",
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1415-B
+    {
+      id: "chper002-0000-4000-8000-000000000002",
+      firstName: "Achigasim",
+      lastName: "",
+      email: null,
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1415-C
+    {
+      id: "chper002-0000-4000-8000-000000000003",
+      firstName: "Jose",
+      lastName: "Sanchez",
+      email: null,
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1417-A
+    {
+      id: "chper002-0000-4000-8000-000000000004",
+      firstName: "Charles",
+      lastName: "",
+      email: null,
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1417-B (co-owner 1 of 2)
+    {
+      id: "chper002-0000-4000-8000-000000000005",
+      firstName: "Priscilla",
+      lastName: "Ruiz",
+      email: null,
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1417-B (co-owner 2 of 2)
+    {
+      id: "chper002-0000-4000-8000-000000000006",
+      firstName: "Luz",
+      lastName: "Miranda",
+      email: "luz.miranda@yale.edu",
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1417-C (also 1421-D — same person, reused UUID)
+    {
+      id: "chper002-0000-4000-8000-000000000007",
+      firstName: "Felipe",
+      lastName: "Pantoja",
+      email: "pantojaf2001@hotmail.com",
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1417-D
+    {
+      id: "chper002-0000-4000-8000-000000000008",
+      firstName: "Catherine",
+      lastName: "Fanning",
+      email: "fanningcatherine@hotmail.com",
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1417-E
+    {
+      id: "chper002-0000-4000-8000-000000000009",
+      firstName: "Mary",
+      lastName: "Heyward",
+      email: "maryrichard8386@gmail.com",
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1417-F, 1421-B, 1421-C — same person, reused UUID
+    {
+      id: "chper002-0000-4000-8000-000000000010",
+      firstName: "William",
+      lastName: "Ruiz",
+      email: "williamruiz11@gmail.com",
+      phone: "203-676-4815",
+      mailingAddress: "1707 Chestnut St., Wilmington, DE 19805",
+    },
+    // 1417-G
+    {
+      id: "chper002-0000-4000-8000-000000000011",
+      firstName: "Stephen",
+      lastName: "Torok",
+      email: "dhtorok@comcast.net",
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1419
+    {
+      id: "chper002-0000-4000-8000-000000000012",
+      firstName: "Lester",
+      lastName: "Tillman",
+      email: "lestertillman@hotmail.com",
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1421-A
+    {
+      id: "chper002-0000-4000-8000-000000000013",
+      firstName: "Andrew",
+      lastName: "Simpson",
+      email: null,
+      phone: "475-202-0459",
+      mailingAddress: null,
+    },
+    // 1421-E
+    {
+      id: "chper002-0000-4000-8000-000000000014",
+      firstName: "Thalia",
+      lastName: "Pantoja",
+      email: "thalia.i.pantoja24@gmail.com",
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1421-F (co-owner 1 of 2)
+    {
+      id: "chper002-0000-4000-8000-000000000015",
+      firstName: "Julio",
+      lastName: "Lugo",
+      email: "juliolugo.jl@gmail.com",
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1421-F (co-owner 2 of 2)
+    {
+      id: "chper002-0000-4000-8000-000000000016",
+      firstName: "Ada",
+      lastName: "Lugo",
+      email: null,
+      phone: null,
+      mailingAddress: null,
+    },
+    // 1421-G
+    {
+      id: "chper002-0000-4000-8000-000000000017",
+      firstName: "Magen",
+      lastName: "LLC",
+      email: null,
+      phone: null,
+      mailingAddress: null,
+    },
+  ];
+  for (const p of CHC_REAL_PERSONS) {
+    await db.insert(persons).values(p).onConflictDoNothing();
+  }
+  log(`[seed] chc real persons :: ${CHC_REAL_PERSONS.length} persons upserted (idempotent)`, "seed");
+
+  // ── Real CHC Owners — Section 2: Ownerships ───────────────────────────────
+  // Links each real owner to their unit. Fixed UUIDs (chown002-...) for idempotency.
+  // 1417-B splits 50/50 between Priscilla Ruiz and Luz Miranda.
+  // 1421-F splits 50/50 between Julio and Ada Lugo.
+  // William Ruiz (chper002-...-0010) owns 1417-F, 1421-B, and 1421-C.
+  // Felipe Pantoja (chper002-...-0007) owns 1417-C and 1421-D.
+  const CHC_REAL_OWNERSHIPS: (typeof ownerships.$inferInsert)[] = [
+    // 1415-A — Nsofor Robinson
+    {
+      id: "chown002-0000-4000-8000-000000000001",
+      unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
+      personId: "chper002-0000-4000-8000-000000000001",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1415-B — Achigasim
+    {
+      id: "chown002-0000-4000-8000-000000000002",
+      unitId: "909ed4e8-fb53-49f8-aecf-5b56c10e1e30",
+      personId: "chper002-0000-4000-8000-000000000002",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1415-C — Jose Sanchez
+    {
+      id: "chown002-0000-4000-8000-000000000003",
+      unitId: "341b2050-28cf-4d3d-bc44-ef5a0f6584d9",
+      personId: "chper002-0000-4000-8000-000000000003",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1417-A — Charles
+    {
+      id: "chown002-0000-4000-8000-000000000004",
+      unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
+      personId: "chper002-0000-4000-8000-000000000004",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1417-B — Priscilla Ruiz (50%)
+    {
+      id: "chown002-0000-4000-8000-000000000005",
+      unitId: "b1f60b15-3cec-4cca-8c1c-0a0ba7bf4d7f",
+      personId: "chper002-0000-4000-8000-000000000005",
+      ownershipPercentage: 50,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1417-B — Luz Miranda (50%)
+    {
+      id: "chown002-0000-4000-8000-000000000006",
+      unitId: "b1f60b15-3cec-4cca-8c1c-0a0ba7bf4d7f",
+      personId: "chper002-0000-4000-8000-000000000006",
+      ownershipPercentage: 50,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1417-C — Felipe Pantoja
+    {
+      id: "chown002-0000-4000-8000-000000000007",
+      unitId: "a5b46109-1514-4207-9ed3-2b587ead617f",
+      personId: "chper002-0000-4000-8000-000000000007",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1417-D — Catherine Fanning
+    {
+      id: "chown002-0000-4000-8000-000000000008",
+      unitId: "978bacef-824f-471e-80ea-891a8eaa01f8",
+      personId: "chper002-0000-4000-8000-000000000008",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1417-E — Mary Heyward
+    {
+      id: "chown002-0000-4000-8000-000000000009",
+      unitId: "3b5e2a2f-81cc-4199-9333-858c8f0fca9c",
+      personId: "chper002-0000-4000-8000-000000000009",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1417-F — William Ruiz
+    {
+      id: "chown002-0000-4000-8000-000000000010",
+      unitId: "8b029a2d-c7e4-4cb1-ad82-9f9829877208",
+      personId: "chper002-0000-4000-8000-000000000010",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1417-G — Stephen Torok
+    {
+      id: "chown002-0000-4000-8000-000000000011",
+      unitId: "91e77ac7-b0dc-4bab-a169-f167b20e5cce",
+      personId: "chper002-0000-4000-8000-000000000011",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1419 — Lester Tillman
+    {
+      id: "chown002-0000-4000-8000-000000000012",
+      unitId: "a882cbbb-1061-4764-8b2b-d9398e2ccedb",
+      personId: "chper002-0000-4000-8000-000000000012",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1421-A — Andrew Simpson
+    {
+      id: "chown002-0000-4000-8000-000000000013",
+      unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
+      personId: "chper002-0000-4000-8000-000000000013",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1421-B — William Ruiz (same person as 1417-F)
+    {
+      id: "chown002-0000-4000-8000-000000000014",
+      unitId: "96696dfe-9feb-439a-ba29-88b79c5a74fd",
+      personId: "chper002-0000-4000-8000-000000000010",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1421-C — William Ruiz (same person; secondary email landwllc2022@gmail.com noted in description)
+    {
+      id: "chown002-0000-4000-8000-000000000015",
+      unitId: "16795e0e-2a66-4a5a-9977-0d93e7790c6e",
+      personId: "chper002-0000-4000-8000-000000000010",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1421-D — Felipe Pantoja (same person as 1417-C)
+    {
+      id: "chown002-0000-4000-8000-000000000016",
+      unitId: "f5d74705-ef3d-439d-bf89-a2c1c2a17f34",
+      personId: "chper002-0000-4000-8000-000000000007",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1421-E — Thalia Pantoja
+    {
+      id: "chown002-0000-4000-8000-000000000017",
+      unitId: "3d308aff-6712-4628-b812-e247c38ab92b",
+      personId: "chper002-0000-4000-8000-000000000014",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1421-F — Julio Lugo (50%)
+    {
+      id: "chown002-0000-4000-8000-000000000018",
+      unitId: "968ed680-252a-4be9-ae77-9312e8a5a150",
+      personId: "chper002-0000-4000-8000-000000000015",
+      ownershipPercentage: 50,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1421-F — Ada Lugo (50%)
+    {
+      id: "chown002-0000-4000-8000-000000000019",
+      unitId: "968ed680-252a-4be9-ae77-9312e8a5a150",
+      personId: "chper002-0000-4000-8000-000000000016",
+      ownershipPercentage: 50,
+      startDate: new Date("2021-01-01"),
+    },
+    // 1421-G — Magen LLC
+    {
+      id: "chown002-0000-4000-8000-000000000020",
+      unitId: "a1a7aef1-3b07-414c-ae6a-3093cf5105cd",
+      personId: "chper002-0000-4000-8000-000000000017",
+      ownershipPercentage: 100,
+      startDate: new Date("2021-01-01"),
+    },
+  ];
+  for (const o of CHC_REAL_OWNERSHIPS) {
+    await db.insert(ownerships).values(o).onConflictDoNothing();
+  }
+  log(`[seed] chc real ownerships :: ${CHC_REAL_OWNERSHIPS.length} records upserted (idempotent)`, "seed");
+
+  // ── HOA Fee Schedule — Cherry Hill Court Condominiums ─────────────────────
+  // $270/month HOA fee. Fixed UUID for idempotency.
+  const [existingHoaFeeSchedule] = await db
+    .select()
+    .from(hoaFeeSchedules)
+    .where(eq(hoaFeeSchedules.id, "chfee001-0000-4000-8000-000000000001"));
+
+  if (!existingHoaFeeSchedule) {
+    await db
+      .insert(hoaFeeSchedules)
+      .values({
+        id: "chfee001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_CONDO_ID,
+        name: "Monthly HOA Fee",
+        amount: 270,
+        frequency: "monthly",
+        startDate: new Date("2021-01-01T00:00:00Z"),
+        graceDays: 10,
+        isActive: 1,
+        notes: "Standard monthly HOA fee for all Cherry Hill Court units.",
+      })
+      .onConflictDoNothing();
+    log("[seed] hoa fee schedule :: $270/month fee schedule inserted for Cherry Hill", "seed");
+  } else {
+    log("[seed] hoa fee schedule :: already exists, skipping", "seed");
+  }
+
+  // ── Driveway Assessment — Cherry Hill Court Condominiums ───────────────────
+  // $80,000 total driveway replacement assessment (~2017), split equally across
+  // 18 units at 5% interest. Fixed UUID for idempotency.
+  const [existingDrivewayAssessment] = await db
+    .select()
+    .from(specialAssessments)
+    .where(eq(specialAssessments.id, "chass001-0000-4000-8000-000000000001"));
+
+  if (!existingDrivewayAssessment) {
+    await db
+      .insert(specialAssessments)
+      .values({
+        id: "chass001-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_CONDO_ID,
+        name: "Driveway Replacement Assessment",
+        totalAmount: 80000,
+        startDate: new Date("2021-01-01T00:00:00Z"),
+        interestRatePercent: 5,
+        allocationMethod: "per-unit-equal",
+        isActive: 1,
+        autoPostEnabled: 0,
+        notes: "Driveway replacement completed ~2017. $80,000 total financed across 18 units at 5% interest. Individual balances vary slightly due to interest accrual and payment history.",
+      })
+      .onConflictDoNothing();
+    log("[seed] driveway assessment :: $80,000 special assessment inserted for Cherry Hill", "seed");
+  } else {
+    log("[seed] driveway assessment :: already exists, skipping", "seed");
+  }
+
+  // ── Opening Balance Ledger Entries — Cherry Hill Court Condominiums ────────
+  // Imported current outstanding balances as of 2026-05-08.
+  // Assessment balances use entryType "assessment"; HOA dues arrears use "charge".
+  // Units with $0 outstanding have no entry.
+  const [existingBalanceEntry] = await db
+    .select()
+    .from(ownerLedgerEntries)
+    .where(eq(ownerLedgerEntries.id, "chbal002-0000-4000-8000-000000000001"));
+
+  if (!existingBalanceEntry) {
+    const CHC_BALANCE_ENTRIES: (typeof ownerLedgerEntries.$inferInsert)[] = [
+      // ── Assessment balances (driveway assessment outstanding) ──
+      // 1415-A — Nsofor Robinson — $1,326.19
+      {
+        id: "chbal002-0000-4000-8000-000000000001",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c",
+        personId: "chper002-0000-4000-8000-000000000001",
+        entryType: "assessment",
+        amount: 1326.19,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08",
+      },
+      // 1415-B — Achigasim — $1,719.42
+      {
+        id: "chbal002-0000-4000-8000-000000000002",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "909ed4e8-fb53-49f8-aecf-5b56c10e1e30",
+        personId: "chper002-0000-4000-8000-000000000002",
+        entryType: "assessment",
+        amount: 1719.42,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08 (overdue)",
+      },
+      // 1415-C — Jose Sanchez — $1,318.17
+      {
+        id: "chbal002-0000-4000-8000-000000000003",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "341b2050-28cf-4d3d-bc44-ef5a0f6584d9",
+        personId: "chper002-0000-4000-8000-000000000003",
+        entryType: "assessment",
+        amount: 1318.17,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08",
+      },
+      // 1417-B — Priscilla Ruiz / Luz Miranda — $1,166.24 (assigned to Luz Miranda as primary contact)
+      {
+        id: "chbal002-0000-4000-8000-000000000004",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "b1f60b15-3cec-4cca-8c1c-0a0ba7bf4d7f",
+        personId: "chper002-0000-4000-8000-000000000006",
+        entryType: "assessment",
+        amount: 1166.24,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08",
+      },
+      // 1417-E — Mary Heyward — $1,436.52
+      {
+        id: "chbal002-0000-4000-8000-000000000005",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "3b5e2a2f-81cc-4199-9333-858c8f0fca9c",
+        personId: "chper002-0000-4000-8000-000000000009",
+        entryType: "assessment",
+        amount: 1436.52,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08 (overdue)",
+      },
+      // 1417-F — William Ruiz — $1,525.42
+      {
+        id: "chbal002-0000-4000-8000-000000000006",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "8b029a2d-c7e4-4cb1-ad82-9f9829877208",
+        personId: "chper002-0000-4000-8000-000000000010",
+        entryType: "assessment",
+        amount: 1525.42,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08 (overdue)",
+      },
+      // 1419 — Lester Tillman — $1,759.84
+      {
+        id: "chbal002-0000-4000-8000-000000000007",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "a882cbbb-1061-4764-8b2b-d9398e2ccedb",
+        personId: "chper002-0000-4000-8000-000000000012",
+        entryType: "assessment",
+        amount: 1759.84,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08 (overdue)",
+      },
+      // 1421-A — Andrew Simpson — $1,291.70
+      {
+        id: "chbal002-0000-4000-8000-000000000008",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b",
+        personId: "chper002-0000-4000-8000-000000000013",
+        entryType: "assessment",
+        amount: 1291.70,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08",
+      },
+      // 1421-B — William Ruiz — $2,121.77
+      {
+        id: "chbal002-0000-4000-8000-000000000009",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "96696dfe-9feb-439a-ba29-88b79c5a74fd",
+        personId: "chper002-0000-4000-8000-000000000010",
+        entryType: "assessment",
+        amount: 2121.77,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08 (overdue)",
+      },
+      // 1421-C — William Ruiz — $1,971.42
+      {
+        id: "chbal002-0000-4000-8000-000000000010",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "16795e0e-2a66-4a5a-9977-0d93e7790c6e",
+        personId: "chper002-0000-4000-8000-000000000010",
+        entryType: "assessment",
+        amount: 1971.42,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08 (overdue); secondary contact: landwllc2022@gmail.com",
+      },
+      // 1421-D — Felipe Pantoja — $1,161.71
+      {
+        id: "chbal002-0000-4000-8000-000000000011",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "f5d74705-ef3d-439d-bf89-a2c1c2a17f34",
+        personId: "chper002-0000-4000-8000-000000000007",
+        entryType: "assessment",
+        amount: 1161.71,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08",
+      },
+      // 1421-E — Thalia Pantoja — $1,017.48
+      {
+        id: "chbal002-0000-4000-8000-000000000012",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "3d308aff-6712-4628-b812-e247c38ab92b",
+        personId: "chper002-0000-4000-8000-000000000014",
+        entryType: "assessment",
+        amount: 1017.48,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08",
+      },
+      // 1421-G — Magen LLC — $1,416.20
+      {
+        id: "chbal002-0000-4000-8000-000000000013",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "a1a7aef1-3b07-414c-ae6a-3093cf5105cd",
+        personId: "chper002-0000-4000-8000-000000000017",
+        entryType: "assessment",
+        amount: 1416.20,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — driveway assessment as of 2026-05-08",
+      },
+
+      // ── HOA dues arrears (past-due only) ──
+      // 1415-B — Achigasim — $560.00
+      {
+        id: "chbal002-0000-4000-8000-000000000014",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "909ed4e8-fb53-49f8-aecf-5b56c10e1e30",
+        personId: "chper002-0000-4000-8000-000000000002",
+        entryType: "charge",
+        amount: 560.00,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — HOA dues arrears as of 2026-05-08",
+      },
+      // 1417-A — Charles — $280.00
+      {
+        id: "chbal002-0000-4000-8000-000000000015",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb",
+        personId: "chper002-0000-4000-8000-000000000004",
+        entryType: "charge",
+        amount: 280.00,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — HOA dues arrears as of 2026-05-08",
+      },
+      // 1417-B — Priscilla Ruiz / Luz Miranda — $280.00
+      {
+        id: "chbal002-0000-4000-8000-000000000016",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "b1f60b15-3cec-4cca-8c1c-0a0ba7bf4d7f",
+        personId: "chper002-0000-4000-8000-000000000006",
+        entryType: "charge",
+        amount: 280.00,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — HOA dues arrears as of 2026-05-08",
+      },
+      // 1417-D — Catherine Fanning — $560.00
+      {
+        id: "chbal002-0000-4000-8000-000000000017",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "978bacef-824f-471e-80ea-891a8eaa01f8",
+        personId: "chper002-0000-4000-8000-000000000008",
+        entryType: "charge",
+        amount: 560.00,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — HOA dues arrears as of 2026-05-08",
+      },
+      // 1417-E — Mary Heyward — $415.70
+      {
+        id: "chbal002-0000-4000-8000-000000000018",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "3b5e2a2f-81cc-4199-9333-858c8f0fca9c",
+        personId: "chper002-0000-4000-8000-000000000009",
+        entryType: "charge",
+        amount: 415.70,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — HOA dues arrears as of 2026-05-08",
+      },
+      // 1419 — Lester Tillman — $280.00
+      {
+        id: "chbal002-0000-4000-8000-000000000019",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "a882cbbb-1061-4764-8b2b-d9398e2ccedb",
+        personId: "chper002-0000-4000-8000-000000000012",
+        entryType: "charge",
+        amount: 280.00,
+        postedAt: new Date("2026-05-08T00:00:00Z"),
+        description: "Imported balance — HOA dues arrears as of 2026-05-08",
+      },
+    ];
+    await db.insert(ownerLedgerEntries).values(CHC_BALANCE_ENTRIES).onConflictDoNothing();
+    log(`[seed] chc opening balance entries :: ${CHC_BALANCE_ENTRIES.length} entries inserted (13 assessment + 6 HOA dues)`, "seed");
+  } else {
+    log("[seed] chc opening balance entries :: already exist, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
