@@ -4,7 +4,7 @@ import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual, createHash as cryptoHash, createCipheriv as cryptoCipheriv, createDecipheriv as cryptoDecipheriv, randomBytes as cryptoRandomBytes } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
@@ -240,6 +240,9 @@ import {
   assessmentRunLog,
   PM_TOGGLE_KEYS,
   isPmToggleKey,
+  bankConnections,
+  bankAccounts,
+  bankTransactions,
 } from "@shared/schema";
 import type { AdminRole } from "@shared/schema";
 import {
@@ -265,6 +268,7 @@ import {
 import { updatePaymentTransactionStatus } from "./services/payment-service";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
+import { bankFeedProvider } from "./services/bank-feed";
 
 const uploadDir = path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -16850,6 +16854,313 @@ This is an automated demo request from the Your Condo Manager website.
       res.json(issues);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Plaid bank-feed routes ────────────────────────────────────────────────
+  //
+  // All routes are scoped to an associationId provided in the request body or
+  // query string. requireAdmin + assertAssociationScope enforce tenant isolation.
+  //
+  // Access tokens are encrypted at rest using AES-256-GCM keyed off
+  // PLAID_TOKEN_ENCRYPTION_KEY (falls back to PAYMENT_GATEWAY_ENCRYPTION_KEY
+  // if not set, so existing installs don't need a new env var for Sandbox).
+  // The encrypted payload is stored as JSON in the access_token_encrypted column.
+  //
+  // Encryption helpers are scoped to this block — they follow the same pattern
+  // as encryptGatewaySecret / decryptGatewaySecret in storage.ts.
+
+  function getPlaidTokenEncryptionKey(): Buffer {
+    const raw = (
+      process.env.PLAID_TOKEN_ENCRYPTION_KEY ??
+      process.env.PAYMENT_GATEWAY_ENCRYPTION_KEY
+    )?.trim();
+    if (!raw) {
+      throw new Error(
+        "PLAID_TOKEN_ENCRYPTION_KEY (or PAYMENT_GATEWAY_ENCRYPTION_KEY) must be set before storing Plaid access tokens",
+      );
+    }
+    // Re-use the same sha256 key-derivation pattern as gateway secrets in storage.ts.
+    return cryptoHash("sha256").update(raw).digest();
+  }
+
+  function encryptPlaidToken(token: string): string {
+    const key = getPlaidTokenEncryptionKey();
+    const iv = cryptoRandomBytes(12);
+    const cipher = cryptoCipheriv("aes-256-gcm", key, iv);
+    const ciphertext = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return JSON.stringify({
+      alg: "aes-256-gcm",
+      iv: iv.toString("base64"),
+      tag: tag.toString("base64"),
+      ciphertext: ciphertext.toString("base64"),
+    });
+  }
+
+  function decryptPlaidToken(encrypted: string): string {
+    const parsed = JSON.parse(encrypted) as {
+      alg: string;
+      iv: string;
+      tag: string;
+      ciphertext: string;
+    };
+    if (parsed.alg !== "aes-256-gcm") {
+      throw new Error("Unsupported Plaid token encryption algorithm");
+    }
+    const key = getPlaidTokenEncryptionKey();
+    const decipher = cryptoDecipheriv("aes-256-gcm", key, Buffer.from(parsed.iv, "base64"));
+    decipher.setAuthTag(Buffer.from(parsed.tag, "base64"));
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(parsed.ciphertext, "base64")),
+      decipher.final(),
+    ]);
+    return plaintext.toString("utf8");
+  }
+
+  // POST /api/plaid/create-link-token
+  // Returns a link_token the frontend uses to launch Plaid Link UI.
+  app.post("/api/plaid/create-link-token", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const { associationId } = req.body as { associationId?: string };
+      if (!associationId) {
+        return res.status(400).json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+      }
+      assertAssociationScope(req, associationId);
+
+      const userId = req.adminUserId ?? "unknown";
+      const { linkToken } = await bankFeedProvider.createLinkToken({ associationId, userId });
+
+      res.json({ linkToken });
+    } catch (error: any) {
+      debug("[plaid][create-link-token] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_LINK_TOKEN_ERROR" });
+    }
+  });
+
+  // POST /api/plaid/exchange-token
+  // Exchanges public_token (from Link onSuccess) → access_token, persists connection.
+  app.post("/api/plaid/exchange-token", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const { associationId, publicToken, institutionName } = req.body as {
+        associationId?: string;
+        publicToken?: string;
+        institutionName?: string;
+      };
+
+      if (!associationId) {
+        return res.status(400).json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+      }
+      if (!publicToken) {
+        return res.status(400).json({ error: "publicToken is required", code: "MISSING_PUBLIC_TOKEN" });
+      }
+
+      assertAssociationScope(req, associationId);
+
+      const { accessToken, itemId } = await bankFeedProvider.exchangePublicToken(publicToken);
+      const accessTokenEncrypted = encryptPlaidToken(accessToken);
+
+      const [connection] = await db
+        .insert(bankConnections)
+        .values({
+          associationId,
+          provider: "plaid",
+          providerItemId: itemId,
+          accessTokenEncrypted,
+          institutionName: institutionName ?? null,
+          status: "active",
+          connectedByUserId: req.adminUserId ?? null,
+        })
+        .returning();
+
+      // Immediately fetch and store accounts for this connection.
+      const accounts = await bankFeedProvider.getAccounts(accessToken);
+      if (accounts.length > 0) {
+        await db.insert(bankAccounts).values(
+          accounts.map((acct) => ({
+            bankConnectionId: connection.id,
+            associationId,
+            providerAccountId: acct.providerAccountId,
+            name: acct.name,
+            mask: acct.mask,
+            type: acct.type,
+            subtype: acct.subtype,
+            currentBalanceCents: acct.currentBalanceCents,
+            availableBalanceCents: acct.availableBalanceCents,
+            lastSyncedAt: new Date(),
+          })),
+        ).onConflictDoNothing();
+      }
+
+      res.status(201).json({ connectionId: connection.id, accountCount: accounts.length });
+    } catch (error: any) {
+      debug("[plaid][exchange-token] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_EXCHANGE_ERROR" });
+    }
+  });
+
+  // GET /api/plaid/accounts?associationId=...
+  // Lists bankAccounts for an association.
+  app.get("/api/plaid/accounts", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.query.associationId as string | undefined);
+      if (!associationId) {
+        return res.status(400).json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+      }
+      assertAssociationScope(req, associationId);
+
+      const accounts = await db
+        .select()
+        .from(bankAccounts)
+        .where(eq(bankAccounts.associationId, associationId))
+        .orderBy(desc(bankAccounts.createdAt));
+
+      res.json(accounts);
+    } catch (error: any) {
+      debug("[plaid][accounts] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_ACCOUNTS_ERROR" });
+    }
+  });
+
+  // POST /api/plaid/sync
+  // Fetches transactions from Plaid for all active connections and upserts to bankTransactions.
+  app.post("/api/plaid/sync", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const { associationId, since } = req.body as {
+        associationId?: string;
+        since?: string; // ISO date string, optional; defaults to 30 days ago
+      };
+
+      if (!associationId) {
+        return res.status(400).json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+      }
+      assertAssociationScope(req, associationId);
+
+      const sinceDate = since
+        ? new Date(since)
+        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+      // Fetch all active connections for this association.
+      const connections = await db
+        .select()
+        .from(bankConnections)
+        .where(
+          and(
+            eq(bankConnections.associationId, associationId),
+            eq(bankConnections.status, "active"),
+          ),
+        );
+
+      let totalUpserted = 0;
+
+      for (const conn of connections) {
+        const accessToken = decryptPlaidToken(conn.accessTokenEncrypted);
+
+        // Fetch accounts under this connection and refresh balances.
+        const accountSnapshots = await bankFeedProvider.getAccounts(accessToken);
+        for (const acct of accountSnapshots) {
+          await db
+            .update(bankAccounts)
+            .set({
+              currentBalanceCents: acct.currentBalanceCents,
+              availableBalanceCents: acct.availableBalanceCents,
+              lastSyncedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(bankAccounts.associationId, associationId),
+                eq(bankAccounts.providerAccountId, acct.providerAccountId),
+              ),
+            );
+        }
+
+        // Fetch transactions.
+        const txns = await bankFeedProvider.getTransactions(accessToken, sinceDate);
+
+        // Build a map of providerAccountId → bankAccounts.id for FK resolution.
+        const dbAccounts = await db
+          .select({ id: bankAccounts.id, providerAccountId: bankAccounts.providerAccountId })
+          .from(bankAccounts)
+          .where(eq(bankAccounts.bankConnectionId, conn.id));
+
+        const accountIdMap = new Map(dbAccounts.map((a) => [a.providerAccountId, a.id]));
+
+        for (const txn of txns) {
+          const bankAccountId = accountIdMap.get(txn.providerAccountId);
+          if (!bankAccountId) continue; // account not yet in DB — skip
+
+          await db
+            .insert(bankTransactions)
+            .values({
+              bankAccountId,
+              associationId,
+              providerTransactionId: txn.providerTransactionId,
+              amountCents: txn.amountCents,
+              isoCurrencyCode: txn.isoCurrencyCode,
+              date: txn.date,
+              name: txn.name,
+              merchantName: txn.merchantName,
+              category: txn.category,
+              pending: txn.pending ? 1 : 0,
+            })
+            .onConflictDoNothing();
+
+          totalUpserted++;
+        }
+
+        // Update lastSyncedAt on the connection.
+        await db
+          .update(bankConnections)
+          .set({ lastSyncedAt: new Date() })
+          .where(eq(bankConnections.id, conn.id));
+      }
+
+      res.json({ synced: totalUpserted, connections: connections.length });
+    } catch (error: any) {
+      debug("[plaid][sync] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_SYNC_ERROR" });
+    }
+  });
+
+  // POST /api/webhooks/plaid
+  // Receives Plaid webhook events. No auth required (Plaid calls this directly).
+  // Body is already parsed by the global express.json() middleware in index.ts.
+  app.post("/api/webhooks/plaid", async (req, res) => {
+    try {
+      const rawBody = JSON.stringify(req.body);
+      const event = await bankFeedProvider.verifyWebhook(
+        req.headers as Record<string, string>,
+        rawBody,
+      );
+
+      debug("[plaid][webhook] received", {
+        webhookType: event.webhookType,
+        webhookCode: event.webhookCode,
+        itemId: event.itemId,
+      });
+
+      // TRANSACTIONS / SYNC_UPDATES_AVAILABLE — new transactions available.
+      // ITEM / ERROR                           — mark connection needs_reauth.
+      // ITEM / PENDING_EXPIRATION              — warn admin (future: push notification).
+      if (event.webhookType === "ITEM" && event.webhookCode === "ERROR") {
+        await db
+          .update(bankConnections)
+          .set({ status: "needs_reauth" })
+          .where(eq(bankConnections.providerItemId, event.itemId));
+      } else if (event.webhookType === "ITEM" && event.webhookCode === "USER_PERMISSION_REVOKED") {
+        await db
+          .update(bankConnections)
+          .set({ status: "revoked" })
+          .where(eq(bankConnections.providerItemId, event.itemId));
+      }
+      // TRANSACTIONS / SYNC_UPDATES_AVAILABLE is informational — a periodic
+      // sync job or admin-triggered POST /api/plaid/sync will consume it.
+
+      res.json({ received: true });
+    } catch (error: any) {
+      debug("[plaid][webhook] error", error);
+      // Return 200 so Plaid does not retry on our internal errors.
+      res.status(200).json({ received: false, error: error.message });
     }
   });
 

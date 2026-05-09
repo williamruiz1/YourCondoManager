@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp, pgEnum, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, pgEnum, jsonb, uniqueIndex, index, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HUB_VISIBILITY_ALL_VALUES } from "./hub-visibility";
@@ -3367,3 +3367,79 @@ export const adminPushSubscriptions = pgTable("admin_push_subscriptions", {
 }));
 export type AdminPushSubscription = typeof adminPushSubscriptions.$inferSelect;
 export type InsertAdminPushSubscription = typeof adminPushSubscriptions.$inferInsert;
+
+// ── Bank Feed (Plaid integration) ────────────────────────────────────────────
+//
+// Three tables scoped per-association:
+//   bank_connections   — one row per institution link (Plaid item)
+//   bank_accounts      — one row per account under a connection
+//   bank_transactions  — transaction feed; reconciles to payment_transactions
+//
+// All three tables carry associationId for tenant isolation.
+
+export const bankConnectionStatusEnum = pgEnum("bank_connection_status", [
+  "active",
+  "needs_reauth",
+  "revoked",
+  "error",
+]);
+
+export const bankConnections = pgTable("bank_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  provider: text("provider").notNull(), // 'plaid' for now; interface allows future providers
+  providerItemId: text("provider_item_id").notNull(), // Plaid's item_id
+  accessTokenEncrypted: text("access_token_encrypted").notNull(),
+  institutionName: text("institution_name"),
+  status: bankConnectionStatusEnum("status").notNull().default("active"),
+  connectedByUserId: varchar("connected_by_user_id"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type BankConnection = typeof bankConnections.$inferSelect;
+export type InsertBankConnection = typeof bankConnections.$inferInsert;
+
+export const bankAccounts = pgTable("bank_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bankConnectionId: varchar("bank_connection_id")
+    .notNull()
+    .references(() => bankConnections.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  providerAccountId: text("provider_account_id").notNull(), // Plaid's account_id
+  name: text("name").notNull(),
+  mask: text("mask"), // last 4 digits of account number
+  type: text("type").notNull(), // depository | credit | etc.
+  subtype: text("subtype"), // checking | savings | etc.
+  currentBalanceCents: integer("current_balance_cents"),
+  availableBalanceCents: integer("available_balance_cents"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type BankAccount = typeof bankAccounts.$inferSelect;
+export type InsertBankAccount = typeof bankAccounts.$inferInsert;
+
+export const bankTransactions = pgTable("bank_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bankAccountId: varchar("bank_account_id")
+    .notNull()
+    .references(() => bankAccounts.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  providerTransactionId: text("provider_transaction_id").notNull().unique(),
+  amountCents: integer("amount_cents").notNull(),
+  isoCurrencyCode: text("iso_currency_code").notNull().default("USD"),
+  date: date("date").notNull(),
+  name: text("name").notNull(),
+  merchantName: text("merchant_name"),
+  category: text("category"),
+  pending: integer("pending").notNull().default(0),
+  reconciledToPaymentTransactionId: varchar("reconciled_to_payment_transaction_id").references(
+    () => paymentTransactions.id,
+  ),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type BankTransaction = typeof bankTransactions.$inferSelect;
+export type InsertBankTransaction = typeof bankTransactions.$inferInsert;
