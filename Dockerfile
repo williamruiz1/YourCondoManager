@@ -19,9 +19,8 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Copy built artifacts
+# Copy built artifacts (public/ is inside dist/ per vite outDir config)
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/public ./public
 
 EXPOSE 5000
 
