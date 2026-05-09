@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { and, eq, ilike, sql } from "drizzle-orm";
 import {
-  adminUsers, adminAssociationScopes, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
+  adminUsers, adminAssociationScopes, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, hubPageConfigs, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
   elections, electionOptions, electionBallotTokens, electionBallotCasts, electionProxyDesignations, electionProxyDocuments,
   vendors, vendorInvoices, workOrders,
   associationInsurancePolicies, inspectionRecords,
@@ -3932,6 +3932,28 @@ export async function seedDatabase() {
     log(`[seed] chc test hoa :: property manager landwllc.help@gmail.com + association scope seeded`, "seed");
   } else {
     log("[seed] chc test hoa :: property manager already exists, skipping", "seed");
+  }
+
+  // ── Community Hub config for Cherry Hill Court Condominiums ─────────────────
+  const [existingCHCHub] = await db
+    .select()
+    .from(hubPageConfigs)
+    .where(eq(hubPageConfigs.associationId, CHERRY_HILL_CONDO_ID));
+
+  if (!existingCHCHub) {
+    await db.insert(hubPageConfigs).values({
+      id: "chcfg001-0000-4000-8000-000000000001",
+      associationId: CHERRY_HILL_CONDO_ID,
+      isEnabled: 1,
+      slug: "cherry-hill-court",
+      communityDescription: "Cherry Hill Court Condominiums — New Haven, CT. A vibrant 18-unit community.",
+      themeColor: "#0F1E3C",
+      enabledSections: ["notices", "quick-actions", "info-blocks", "map", "buildings", "contacts"],
+      sectionOrder: ["notices", "quick-actions", "info-blocks", "map", "buildings", "contacts"],
+    }).onConflictDoNothing();
+    log(`[seed] chc hub page config :: enabled with slug 'cherry-hill-court'`, "seed");
+  } else {
+    log("[seed] chc hub page config :: already exists, skipping", "seed");
   }
 
   // Warn if no active platform-admin exists after seeding — this means no one
