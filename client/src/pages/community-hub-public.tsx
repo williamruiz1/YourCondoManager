@@ -1,6 +1,6 @@
 // zone: My Community
 // persona: Owner
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute } from "wouter";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -11,6 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Bell, ExternalLink, Info, ChevronRight, Building2, Phone, MapPin, Calendar, FileText, Download, Mail, KeyRound, Loader2, CheckCircle2, Home } from "lucide-react";
+import { hasMapsApiKey } from "@/lib/maps-loader";
+
+// Lazy-load the map component so the Maps SDK is only fetched when this section
+// is enabled and the community hub actually renders a map section.
+const CommunityMapView = lazy(
+  () => import("@/components/community-map-view"),
+);
 
 type PublicBuilding = {
   id: string;
@@ -197,7 +204,22 @@ export default function CommunityHubPublicPage() {
         </div>
       </section>
     ) : null,
-    map: () => null,
+    map: () =>
+      hasMapsApiKey ? (
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center h-40">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          }
+        >
+          <CommunityMapView
+            identifier={identifier}
+            themeColor={themeColor}
+            buildings={publicBuildings}
+          />
+        </Suspense>
+      ) : null,
     contacts: () => <ContactsSection association={association} themeColor={themeColor} />,
   };
 
@@ -277,7 +299,7 @@ export default function CommunityHubPublicPage() {
           if (s === "events" && meetings.length === 0) return true;
           if (s === "documents" && docs.length === 0) return true;
           if (s === "buildings" && publicBuildings.length === 0) return true;
-          if (s === "map") return true;
+          if (s === "map") return !hasMapsApiKey;
           if (s === "contacts") return false;
           return false;
         }) && (

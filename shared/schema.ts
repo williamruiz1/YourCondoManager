@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp, pgEnum, jsonb, uniqueIndex, index, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, pgEnum, jsonb, uniqueIndex, index, date, decimal } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HUB_VISIBILITY_ALL_VALUES } from "./hub-visibility";
@@ -20,6 +20,9 @@ export const associations = pgTable("associations", {
   // enabled (1). When 0, the owner-portal amenities entry is hidden, the
   // /portal/amenities route 404s, and amenity-reservation APIs return 404.
   amenitiesEnabled: integer("amenities_enabled").notNull().default(1),
+  // Maps onboarding (Phase 1): coordinates stored after admin confirms satellite view
+  latitudeDeg: decimal("latitude_deg", { precision: 10, scale: 7 }),
+  longitudeDeg: decimal("longitude_deg", { precision: 10, scale: 7 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -16707,6 +16707,55 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
+  // GET public map data — association coordinates + building pins
+  // Used by the public community hub map component to render pins without auth.
+  app.get("/api/hub/:identifier/map", async (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkHubRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    try {
+      const identifier = getParam(req.params.identifier);
+      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
+      if (!config) {
+        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
+      }
+      if (!config || !config.isEnabled) {
+        return res.status(404).json({ message: "Community hub not found or not enabled" });
+      }
+      const associationId = config.associationId;
+
+      const [assoc] = await db.select({
+        name: associations.name,
+        address: associations.address,
+        city: associations.city,
+        state: associations.state,
+        latitudeDeg: associations.latitudeDeg,
+        longitudeDeg: associations.longitudeDeg,
+      }).from(associations).where(eq(associations.id, associationId));
+
+      // Return only nodes from the satellite layer (baseImageUrl sentinel)
+      const layers = await db.select().from(hubMapLayers)
+        .where(and(eq(hubMapLayers.associationId, associationId), eq(hubMapLayers.isActive, 1)));
+
+      const satelliteLayers = layers.filter((l) => l.baseImageUrl === "google-maps-satellite");
+      let nodes: Array<{ id: string; label: string; geometry: unknown; linkedBuildingId: string | null; nodeType: string }> = [];
+      if (satelliteLayers.length > 0) {
+        nodes = await db.select({
+          id: hubMapNodes.id,
+          label: hubMapNodes.label,
+          geometry: hubMapNodes.geometry,
+          linkedBuildingId: hubMapNodes.linkedBuildingId,
+          nodeType: hubMapNodes.nodeType,
+        }).from(hubMapNodes).where(eq(hubMapNodes.associationId, associationId));
+      }
+
+      res.json({ association: assoc || null, nodes });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Community Hub — Portal API (authenticated residents)
   // ═══════════════════════════════════════════════════════════════════════════
