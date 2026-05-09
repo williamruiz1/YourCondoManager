@@ -2,6 +2,8 @@ app = "yourcondomanager"
 primary_region = "ewr"
 
 [build]
+  [build.args]
+    VITE_GOOGLE_MAPS_API_KEY = "AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8"
 
 [http_service]
   internal_port = 5000
