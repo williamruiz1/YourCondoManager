@@ -62,7 +62,30 @@ export default function AdminUsersPage() {
   const [newActive, setNewActive] = useState("1");
   const [roleUpdates, setRoleUpdates] = useState<Record<string, { role: string; reason: string }>>({});
 
-  const { data: users, isLoading } = useQuery<AdminUser[]>({ queryKey: ["/api/admin/users"] });
+  // WS11 (Issue #387 / Plaid attestation) — backend enriches GET response with
+  // lastLoginAt, inactiveDays, daysUntilDeactivation. Fields are additive; we
+  // type the augmented shape locally rather than widening the shared AdminUser.
+  type AdminUserWithInactivity = AdminUser & {
+    lastLoginAt: string | null;
+    inactiveDays: number | null;
+    daysUntilDeactivation: number | null;
+  };
+
+  const { data: users, isLoading } = useQuery<AdminUserWithInactivity[]>({ queryKey: ["/api/admin/users"] });
+
+  const reactivateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${id}/active`, { isActive: true });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Admin user reactivated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
   const createUserMutation = useMutation({
     mutationFn: async () => {
@@ -107,6 +130,34 @@ export default function AdminUsersPage() {
   const sortedUsers = useMemo(() => {
     return [...(users ?? [])].sort((a, b) => a.email.localeCompare(b.email));
   }, [users]);
+
+  // WS11 — formatters for last-login display + countdown status badge.
+  const formatLastLogin = (iso: string | null): string => {
+    if (!iso) return "Never";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "Never";
+    return d.toLocaleDateString();
+  };
+
+  const renderInactivityStatus = (user: AdminUserWithInactivity): JSX.Element => {
+    if (user.isActive === 0) {
+      return <Badge variant="destructive">Auto-deactivated</Badge>;
+    }
+    const days = user.daysUntilDeactivation;
+    if (days === null) {
+      return <Badge variant="outline">Unknown</Badge>;
+    }
+    if (days <= 0) {
+      return <Badge variant="destructive">Pending deactivation</Badge>;
+    }
+    if (days <= 15) {
+      return <Badge variant="destructive">{days}d left</Badge>;
+    }
+    if (days <= 30) {
+      return <Badge variant="secondary">{days}d left</Badge>;
+    }
+    return <Badge variant="outline">{days}d left</Badge>;
+  };
 
   const handleApplyRole = (user: AdminUser) => {
     const update = roleUpdates[user.id] || { role: user.role, reason: "" };
@@ -221,6 +272,8 @@ export default function AdminUsersPage() {
                       <TableHead>{t("adminUsers.col.email")}</TableHead>
                       <TableHead>{t("adminUsers.col.currentRole")}</TableHead>
                       <TableHead>{t("adminUsers.col.status")}</TableHead>
+                      <TableHead>Last login</TableHead>
+                      <TableHead>Inactivity</TableHead>
                       <TableHead>{t("adminUsers.col.updateRole")}</TableHead>
                       <TableHead>{t("adminUsers.col.reason")}</TableHead>
                       <TableHead className="text-right">{t("adminUsers.col.action")}</TableHead>
@@ -238,6 +291,10 @@ export default function AdminUsersPage() {
                           <TableCell>
                             {user.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
                           </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">{formatLastLogin(user.lastLoginAt)}</span>
+                          </TableCell>
+                          <TableCell>{renderInactivityStatus(user)}</TableCell>
                           <TableCell>
                             <Select
                               value={update.role}
@@ -274,14 +331,27 @@ export default function AdminUsersPage() {
                             />
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              onClick={() => handleApplyRole(user)}
-                              disabled={updateRoleMutation.isPending}
-                              aria-label={`${t("adminUsers.action.apply")} role change for ${user.email}`}
-                            >
-                              {t("adminUsers.action.apply")}
-                            </Button>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleApplyRole(user)}
+                                disabled={updateRoleMutation.isPending}
+                                aria-label={`${t("adminUsers.action.apply")} role change for ${user.email}`}
+                              >
+                                {t("adminUsers.action.apply")}
+                              </Button>
+                              {user.isActive === 0 ? (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => reactivateMutation.mutate(user.id)}
+                                  disabled={reactivateMutation.isPending}
+                                  aria-label={`Reactivate ${user.email}`}
+                                >
+                                  Reactivate
+                                </Button>
+                              ) : null}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );

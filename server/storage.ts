@@ -14211,6 +14211,24 @@ export class DatabaseStorage implements IStorage {
       afterJson: { role: updated.role, reason: reason.trim() },
     });
 
+    // WS11 (Issue #387 / Plaid attestation) — fire-and-forget role-change
+    // notification email so the admin sees their access level changed.
+    // Imported lazily to avoid a server/de-provisioning ↔ server/storage cycle.
+    void (async (): Promise<void> => {
+      try {
+        const { notifyRoleChange } = await import("./de-provisioning.js");
+        await notifyRoleChange({
+          email: existing.email,
+          fromRole: existing.role,
+          toRole: updated.role,
+          changedBy,
+          reason: reason.trim(),
+        });
+      } catch (err) {
+        console.error("[deprov] notifyRoleChange failed", err);
+      }
+    })();
+
     return updated;
   }
 

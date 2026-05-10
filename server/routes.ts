@@ -29,6 +29,7 @@ function safeInvalidateAlertCache(): void {
   }
 }
 import { createAuthRestoreToken, getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
+import { revokePortalAccess as revokePortalAccessForOwnership } from "./de-provisioning";
 import {
   sendAssociationAdminEmailNotification,
   sendDirectAdminEmailNotification,
@@ -2645,6 +2646,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       const result = await storage.updateOwnership(getParam(req.params.id), parsed, req.adminUserEmail);
       if (!result) return res.status(404).json({ message: "Not found" });
+      // WS11 (Issue #387 / Plaid attestation) — when an ownership ends, auto-revoke
+      // the linked portal_access for the same person+association tuple. Idempotent:
+      // already-revoked rows are left alone. Logged to audit_logs.
+      // Ownership references unit, not association directly; look up the
+      // unit's associationId to scope the revoke correctly.
+      if (parsed.endDate && result.personId && result.unitId) {
+        try {
+          const unit = await storage.getUnitById(result.unitId);
+          if (unit?.associationId) {
+            await revokePortalAccessForOwnership(result.personId, unit.associationId, {
+              actorEmail: req.adminUserEmail ?? "system@ycm.deprov",
+              reason: `ownership ${result.id} ended`,
+            });
+          }
+        } catch (err) {
+          console.error("[deprov] portal-revoke from ownership-PATCH failed", err);
+        }
+      }
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -13455,7 +13474,23 @@ This is an automated demo request from the Your Condo Manager website.
   app.get("/api/admin/users", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
     try {
       const result = await storage.getAdminUsers();
-      res.json(result);
+      // WS11 (Issue #387 / Plaid attestation) — augment with inactivity data
+      // computed from auth_users.lastLoginAt joined to admin_users. Fields are
+      // additive; older callers that read only AdminUser fields continue to work.
+      const { listAdminInactivityCandidates, INACTIVITY_DEACTIVATE_DAYS } = await import("./de-provisioning.js");
+      const inactivity = await listAdminInactivityCandidates();
+      const inactivityById = new Map(inactivity.map((row) => [row.adminUserId, row]));
+      const enriched = result.map((u) => {
+        const row = inactivityById.get(u.id);
+        const lastLoginAt = row?.lastLoginAt ?? null;
+        const inactiveDays = row?.inactiveDays ?? null;
+        const daysUntilDeactivation =
+          u.isActive === 1 && inactiveDays !== null && Number.isFinite(inactiveDays)
+            ? Math.max(0, INACTIVITY_DEACTIVATE_DAYS - inactiveDays)
+            : null;
+        return { ...u, lastLoginAt, inactiveDays, daysUntilDeactivation };
+      });
+      res.json(enriched);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
