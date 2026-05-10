@@ -20,6 +20,7 @@ import { fanOutCriticalAlerts } from "./alerts/notifications";
 import { recoverInFlightJobs } from "./job-queue";
 import { log } from "./logger";
 import { startElectionScheduler } from "./election-scheduler";
+import { startDeprovisioningScheduler } from "./de-provisioning";
 import { createRateLimiter } from "./rate-limit";
 
 // Wave 33 (5.4 Part B): seed.ts is ~120 KB of static demo-data tables. It
@@ -368,6 +369,7 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
     startAutomationJobs();
     startElectionScheduler();
+    startDeprovisioningScheduler();
     // Wave 33 (5.4-F3): re-enqueue any background_jobs rows still in
     // queued/running state from a prior process. Best-effort; failures are
     // logged but never crash the server.
