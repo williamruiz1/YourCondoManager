@@ -48,6 +48,7 @@ const BoardPage = lazy(() => import("@/pages/board"));
 const DocumentsPage = lazy(() => import("@/pages/documents"));
 const RoadmapPage = lazy(() => import("@/pages/roadmap"));
 const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
+const AdminAccessReviewPage = lazy(() => import("@/pages/admin-access-review"));
 const ExecutivePage = lazy(() => import("@/pages/executive"));
 const FinancialFoundationPage = lazy(() => import("@/pages/financial-foundation"));
 const FinancialRulesPage = lazy(() => import("@/pages/financial-rules"));
@@ -193,6 +194,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Admin Roadmap", href: "/app/admin/roadmap", matchPrefixes: ["/app/admin", "/app/admin/roadmap"], roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant"] },
       { label: "Executive", href: "/app/admin/executive", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant"] },
       { label: "Admin Users", href: "/app/admin/users", roles: ["platform-admin"] },
+      { label: "Access Review", href: "/app/admin/access-review", roles: ["platform-admin"] },
       { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
     ],
   },
@@ -332,6 +334,7 @@ function WorkspaceRouter({
             roadmap goes through `/app/admin/roadmap`. */}
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
+        <Route path="/app/admin/access-review" component={AdminAccessReviewPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
         {/* Finance — consolidated routes (Wave 18: each wrapped in zone-scoped ErrorBoundary;
             Phase 12: wrapped in <RouteGuard> per ADR 0b — role list lives in ROUTE_MANIFEST). */}

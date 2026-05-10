@@ -269,6 +269,7 @@ import {
   type InsertElectionProxyDesignation,
   type ElectionProxyDocument,
   type InsertElectionProxyDocument,
+  type AdminRole,
 } from "@shared/schema";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { governanceStateTemplateLibrary } from "@shared/governance-state-template-library";
@@ -4230,6 +4231,33 @@ export interface IStorage {
   upsertAdminUser(data: InsertAdminUser): Promise<AdminUser>;
   updateAdminUserRole(id: string, role: NonNullable<InsertAdminUser["role"]>, changedBy: string, reason?: string): Promise<AdminUser | undefined>;
   setAdminUserActive(id: string, isActive: boolean, changedBy: string): Promise<AdminUser | undefined>;
+  // Admin access review (Issue #347 / WS7)
+  listAdminUsersForAccessReview(now?: Date): Promise<{
+    users: Array<{
+      id: string;
+      email: string;
+      role: AdminRole;
+      isActive: number;
+      createdAt: Date;
+      lastLoginAt: Date | null;
+      associationsCount: number;
+      isInactive: boolean;
+      daysSinceLastLogin: number | null;
+      accountAgeDays: number;
+    }>;
+    inactiveCount: number;
+    totalCount: number;
+    inactivityThresholdDays: number;
+  }>;
+  recordAccessReviewMarkReviewed(adminUserId: string, actorEmail: string): Promise<void>;
+  recordAccessReviewComplete(actorEmail: string, summary: { totalCount: number; inactiveCount: number }): Promise<void>;
+  runQuarterlyAccessReviewReminder(options: { actorEmail: string; now?: Date }): Promise<{
+    fired: boolean;
+    reason: string;
+    inactiveAdmins?: number;
+    totalAdmins?: number;
+    nextReminderAt?: Date;
+  }>;
   getAuthUserById(id: string): Promise<AuthUser | undefined>;
   getAuthUserByEmail(email: string): Promise<AuthUser | undefined>;
   createAuthUser(data: InsertAuthUser): Promise<AuthUser>;
@@ -14262,6 +14290,187 @@ export class DatabaseStorage implements IStorage {
     });
 
     return updated;
+  }
+
+  // ── Admin access review (Issue #347 / WS7 — security-maturity-roadmap) ──
+  //
+  // Returns admin users joined with `authUsers.lastLoginAt` (the actual
+  // last-login signal — populated by `touchAuthUserLogin` in the OAuth
+  // callback path) plus a count of association scopes per admin. Inactive
+  // flag is computed at the boundary, not stored, so the threshold stays
+  // tunable without a migration.
+  //
+  // Architecture note: spec called for `lastLoginAt` on `adminUsers` directly
+  // (with migration 0028); we JOIN authUsers instead because (a) it's already
+  // the populated source of truth, (b) a duplicate column would drift across
+  // the OAuth callback path. See PR description for rationale.
+  async listAdminUsersForAccessReview(now: Date = new Date()): Promise<{
+    users: Array<{
+      id: string;
+      email: string;
+      role: AdminRole;
+      isActive: number;
+      createdAt: Date;
+      lastLoginAt: Date | null;
+      associationsCount: number;
+      isInactive: boolean;
+      daysSinceLastLogin: number | null;
+      accountAgeDays: number;
+    }>;
+    inactiveCount: number;
+    totalCount: number;
+    inactivityThresholdDays: number;
+  }> {
+    const INACTIVITY_DAYS = 90;
+    const allAdmins = await db.select().from(adminUsers);
+
+    // Pull the most-recent `authUsers.lastLoginAt` per `adminUserId`. Multiple
+    // auth-users CAN reference one admin-user (rare, but possible if an admin
+    // has multiple OAuth identities); take the max so we report the most
+    // recent activity across any linked OAuth identity.
+    const authRows = await db
+      .select({ adminUserId: authUsers.adminUserId, lastLoginAt: authUsers.lastLoginAt })
+      .from(authUsers);
+    const lastLoginByAdmin = new Map<string, Date>();
+    for (const row of authRows) {
+      if (!row.adminUserId || !row.lastLoginAt) continue;
+      const existing = lastLoginByAdmin.get(row.adminUserId);
+      if (!existing || row.lastLoginAt > existing) {
+        lastLoginByAdmin.set(row.adminUserId, row.lastLoginAt);
+      }
+    }
+
+    // Association scope counts per admin.
+    const scopeRows = await db
+      .select({ adminUserId: adminAssociationScopes.adminUserId })
+      .from(adminAssociationScopes);
+    const scopeCountByAdmin = new Map<string, number>();
+    for (const row of scopeRows) {
+      scopeCountByAdmin.set(row.adminUserId, (scopeCountByAdmin.get(row.adminUserId) ?? 0) + 1);
+    }
+
+    const nowMs = now.getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+    let inactiveCount = 0;
+
+    const users = allAdmins.map((admin) => {
+      const lastLoginAt = lastLoginByAdmin.get(admin.id) ?? null;
+      const daysSinceLastLogin = lastLoginAt
+        ? Math.floor((nowMs - lastLoginAt.getTime()) / dayMs)
+        : null;
+      const accountAgeDays = Math.floor((nowMs - admin.createdAt.getTime()) / dayMs);
+      // "Inactive" = active account that hasn't logged in in 90+ days. Newly
+      // created admins (account < threshold days old) and never-logged-in
+      // accounts both count as inactive after the threshold elapses.
+      const isInactive =
+        admin.isActive === 1 &&
+        accountAgeDays >= INACTIVITY_DAYS &&
+        (daysSinceLastLogin === null || daysSinceLastLogin >= INACTIVITY_DAYS);
+      if (isInactive) inactiveCount += 1;
+
+      return {
+        id: admin.id,
+        email: admin.email,
+        role: admin.role,
+        isActive: admin.isActive,
+        createdAt: admin.createdAt,
+        lastLoginAt,
+        associationsCount: scopeCountByAdmin.get(admin.id) ?? 0,
+        isInactive,
+        daysSinceLastLogin,
+        accountAgeDays,
+      };
+    });
+
+    return {
+      users,
+      inactiveCount,
+      totalCount: users.length,
+      inactivityThresholdDays: INACTIVITY_DAYS,
+    };
+  }
+
+  async recordAccessReviewMarkReviewed(adminUserId: string, actorEmail: string): Promise<void> {
+    await this.recordAuditEvent({
+      actorEmail,
+      action: "access-review-confirmed",
+      entityType: "admin-user",
+      entityId: adminUserId,
+      associationId: null,
+      beforeJson: null,
+      afterJson: { reviewedAt: new Date().toISOString() },
+    });
+  }
+
+  async recordAccessReviewComplete(actorEmail: string, summary: { totalCount: number; inactiveCount: number }): Promise<void> {
+    await this.recordAuditEvent({
+      actorEmail,
+      action: "access-review-completed",
+      entityType: "admin-access-review",
+      entityId: null,
+      associationId: null,
+      beforeJson: null,
+      afterJson: {
+        completedAt: new Date().toISOString(),
+        totalAdmins: summary.totalCount,
+        inactiveAdmins: summary.inactiveCount,
+      },
+    });
+  }
+
+  async runQuarterlyAccessReviewReminder(options: { actorEmail: string; now?: Date }): Promise<{
+    fired: boolean;
+    reason: string;
+    inactiveAdmins?: number;
+    totalAdmins?: number;
+    nextReminderAt?: Date;
+  }> {
+    const now = options.now ?? new Date();
+    // Find the most recent `access-review-reminder-fired` audit entry. If
+    // it's within the past ~85 days, skip (one reminder per quarter).
+    const recent = await db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.action, "access-review-reminder-fired"))
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(1);
+    const REMINDER_INTERVAL_DAYS = 85;
+    const dayMs = 24 * 60 * 60 * 1000;
+    if (recent.length > 0) {
+      const lastFiredAt = recent[0].createdAt;
+      const daysSince = Math.floor((now.getTime() - lastFiredAt.getTime()) / dayMs);
+      if (daysSince < REMINDER_INTERVAL_DAYS) {
+        const nextReminderAt = new Date(lastFiredAt.getTime() + REMINDER_INTERVAL_DAYS * dayMs);
+        return {
+          fired: false,
+          reason: `last reminder ${daysSince}d ago; next due in ${REMINDER_INTERVAL_DAYS - daysSince}d`,
+          nextReminderAt,
+        };
+      }
+    }
+
+    const review = await this.listAdminUsersForAccessReview(now);
+
+    await this.recordAuditEvent({
+      actorEmail: options.actorEmail,
+      action: "access-review-reminder-fired",
+      entityType: "admin-access-review",
+      entityId: null,
+      associationId: null,
+      beforeJson: null,
+      afterJson: {
+        firedAt: now.toISOString(),
+        totalAdmins: review.totalCount,
+        inactiveAdmins: review.inactiveCount,
+      },
+    });
+
+    return {
+      fired: true,
+      reason: "quarterly cadence reached",
+      inactiveAdmins: review.inactiveCount,
+      totalAdmins: review.totalCount,
+    };
   }
 
   async getAuthUserById(id: string): Promise<AuthUser | undefined> {

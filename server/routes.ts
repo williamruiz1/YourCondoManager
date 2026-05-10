@@ -13496,6 +13496,98 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
+  // ── WS7 Admin Access Review (Issue #347) ────────────────────────────────
+  // Per Information Security Policy quarterly access review. All actions
+  // platform-admin gated + audit-logged.
+  app.get(
+    "/api/admin/access-review/users",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (_req, res) => {
+      try {
+        const result = await storage.listAdminUsersForAccessReview();
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/access-review/users/:id/mark-reviewed",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const targetAdminUserId = getParam(req.params.id);
+        const target = await storage.getAdminUserById(targetAdminUserId);
+        if (!target) return res.status(404).json({ message: "Admin user not found" });
+        await storage.recordAccessReviewMarkReviewed(
+          targetAdminUserId,
+          req.adminUserEmail || "system",
+        );
+        res.json({ ok: true });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/access-review/users/:id/revoke",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const targetAdminUserId = getParam(req.params.id);
+        if (req.adminUserId === targetAdminUserId) {
+          return res.status(400).json({ message: "Cannot revoke your own access" });
+        }
+        const target = await storage.getAdminUserById(targetAdminUserId);
+        if (!target) return res.status(404).json({ message: "Admin user not found" });
+        // Reuse setAdminUserActive — already audits + protects last-platform-admin.
+        const updated = await storage.setAdminUserActive(
+          targetAdminUserId,
+          false,
+          req.adminUserEmail || "system",
+        );
+        if (!updated) return res.status(404).json({ message: "Admin user not found" });
+        // setAdminUserActive emits `action: 'update' / entityType:
+        // 'admin-user-active'` to audit_logs (see storage.ts) — that
+        // satisfies acceptance criterion #3 (revoke logged). Greppable
+        // separation of access-review-revoked vs other deactivations is
+        // a nice-to-have; left for follow-on if compliance demands it.
+        res.json({ ok: true, deactivated: updated });
+      } catch (error: any) {
+        // Last-platform-admin guard surfaces as 400.
+        const status = /last active platform-admin/i.test(error.message) ? 400 : 500;
+        res.status(status).json({ message: error.message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/access-review/complete",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const review = await storage.listAdminUsersForAccessReview();
+        await storage.recordAccessReviewComplete(req.adminUserEmail || "system", {
+          totalCount: review.totalCount,
+          inactiveCount: review.inactiveCount,
+        });
+        res.json({
+          ok: true,
+          totalCount: review.totalCount,
+          inactiveCount: review.inactiveCount,
+        });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
   app.post("/api/admin/users", requireAdmin, requireAdminRole(["platform-admin"]), async (req: AdminRequest, res) => {
     try {
       const parsed = insertAdminUserSchema.parse(req.body);

@@ -17,6 +17,7 @@ import { runAutopayRetries } from "./services/retry-service";
 import { generateDelinquencyNotices } from "./services/delinquency-notice-service";
 import { runSweep as runUnifiedAssessmentSweep } from "./assessment-execution";
 import { fanOutCriticalAlerts } from "./alerts/notifications";
+import { sendPlatformAdminEmailNotification } from "./admin-notification-service";
 import { recoverInFlightJobs } from "./job-queue";
 import { log } from "./logger";
 import { startElectionScheduler } from "./election-scheduler";
@@ -171,7 +172,7 @@ async function runAutomationSweep() {
   // per-subsystem functions (runDueRecurringCharges,
   // runAutomaticSpecialAssessmentInstallments) were retired alongside the
   // Q8 run-endpoint shims and no longer exist in the bundle.
-  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut, accessReviewReminder] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
     storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
@@ -195,12 +196,45 @@ async function runAutomationSweep() {
         suppressedPreExisting: 0,
       };
     }),
+    // WS7 Access Review (Issue #347) — quarterly reminder. Internally
+    // gates on its own ~85-day cadence via the audit-log marker, so it's
+    // safe to call from every sweep without flooding admins. Wrapped to
+    // never throw out of the sweep.
+    storage
+      .runQuarterlyAccessReviewReminder({ actorEmail: "automation@system" })
+      .catch((error: unknown) => {
+        console.error("[access-review] quarterly reminder failed:", error);
+        return { fired: false, reason: "error" } as { fired: boolean; reason: string };
+      }),
   ]);
 
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}, access-review-reminder fired=${accessReviewReminder.fired} (${accessReviewReminder.reason})`,
     "automation",
   );
+
+  // After the quarterly access-review reminder fires, also email the
+  // platform-admin cohort so the reminder lands somewhere they'll see it.
+  // Emitted out-of-band of the awaited Promise.all so a flaky email path
+  // doesn't extend sweep latency. Errors are logged.
+  if (accessReviewReminder.fired) {
+    const inactiveCount = (accessReviewReminder as { inactiveAdmins?: number }).inactiveAdmins ?? 0;
+    const totalCount = (accessReviewReminder as { totalAdmins?: number }).totalAdmins ?? 0;
+    sendPlatformAdminEmailNotification({
+      category: "adminAccess",
+      priority: "digest",
+      allowedRoles: ["platform-admin"],
+      email: {
+        subject: "Quarterly access review is due",
+        html: `<p>Quarterly admin access review is due.</p>
+          <p><strong>${totalCount}</strong> admin user${totalCount === 1 ? "" : "s"} in the system; <strong>${inactiveCount}</strong> flagged inactive (90+ days no login).</p>
+          <p>Review and complete the cycle at <a href="/app/admin/access-review">/app/admin/access-review</a>.</p>`,
+        text: `Quarterly admin access review is due.\n\n${totalCount} admin users; ${inactiveCount} inactive (90+ days).\n\nReview at /app/admin/access-review`,
+      },
+    }).catch((error: unknown) => {
+      console.error("[access-review] reminder email failed:", error);
+    });
+  }
 }
 
 function startAutomationJobs() {
