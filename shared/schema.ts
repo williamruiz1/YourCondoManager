@@ -3410,6 +3410,8 @@ export const bankConnectionStatusEnum = pgEnum("bank_connection_status", [
 export const bankConnections = pgTable("bank_connections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
+  // NULL = admin/association-scope; set = portal-owner-scope (owner pay flow).
+  portalAccessId: varchar("portal_access_id").references(() => portalAccess.id),
   provider: text("provider").notNull(), // 'plaid' for now; interface allows future providers
   providerItemId: text("provider_item_id").notNull(), // Plaid's item_id
   accessTokenEncrypted: text("access_token_encrypted").notNull(),
@@ -3430,6 +3432,7 @@ export const bankAccounts = pgTable("bank_accounts", {
     .notNull()
     .references(() => bankConnections.id),
   associationId: varchar("association_id").notNull().references(() => associations.id),
+  portalAccessId: varchar("portal_access_id").references(() => portalAccess.id),
   providerAccountId: text("provider_account_id").notNull(), // Plaid's account_id
   name: text("name").notNull(),
   mask: text("mask"), // last 4 digits of account number

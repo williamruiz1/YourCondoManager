@@ -10,10 +10,12 @@
 //   /portal/finances/ledger
 //   /portal/finances/assessments/:assessmentId (leverages 4.3 Q5 drill-in)
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Receipt } from "lucide-react";
+import { usePlaidLink } from "react-plaid-link";
+import type { PlaidLinkOnSuccess, PlaidLinkOnSuccessMetadata } from "react-plaid-link";
 import type { OwnerLedgerEntry } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
@@ -72,6 +74,179 @@ function getTitleForPath(path: string): string {
   if (path === "/portal/finances/ledger") return "Ledger";
   if (path.startsWith("/portal/finances/assessments/")) return t("portal.finances.assessment.title");
   return t("portal.finances.title");
+}
+
+// ---------- Plaid bank-payment card (Issue #333) ----------
+//
+// Owner-side Plaid flow. If no portal-scoped bank connection exists, the
+// card surfaces a "Connect your bank" CTA that drives the Plaid Link sheet
+// via /api/portal/plaid/create-link-token. Once connected, the card lets
+// the owner pay against their outstanding balance via /api/portal/plaid/pay
+// — payment is recorded as a pending ledger entry; ACH execution is a
+// follow-up job.
+
+type PortalBankConnection = {
+  id: string;
+  institutionName: string | null;
+  status: string;
+  createdAt: string | Date;
+};
+
+function PortalBankPaymentCard({ balance }: { balance: number }) {
+  const { portalFetch } = usePortalContext();
+  const qc = useQueryClient();
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [confirmAmount, setConfirmAmount] = useState<string>("");
+  const [confirming, setConfirming] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+
+  const { data: connection } = useQuery<PortalBankConnection | null>({
+    queryKey: ["portal/plaid/connection"],
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/plaid/connection");
+      if (!res.ok) return null;
+      return (await res.json()) as PortalBankConnection | null;
+    },
+  });
+
+  const createLinkToken = useMutation({
+    mutationFn: async () => {
+      const res = await portalFetch("/api/portal/plaid/create-link-token", { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<{ linkToken: string }>;
+    },
+    onSuccess: (data) => setLinkToken(data.linkToken),
+  });
+
+  const exchangeToken = useMutation({
+    mutationFn: async (input: { publicToken: string; institutionName: string | null }) => {
+      const res = await portalFetch("/api/portal/plaid/exchange-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      setLinkToken(null);
+      qc.invalidateQueries({ queryKey: ["portal/plaid/connection"] });
+    },
+  });
+
+  const submitPayment = useMutation({
+    mutationFn: async (amount: number) => {
+      const res = await portalFetch("/api/portal/plaid/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, description: "HOA dues — bank payment" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<{ status: string; message: string }>;
+    },
+    onSuccess: (data) => {
+      setSubmitMessage(data.message ?? "Payment submitted — processing in 1-3 business days.");
+      setConfirming(false);
+      setConfirmAmount("");
+      qc.invalidateQueries({ queryKey: ["portal/financial-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["portal/ledger"] });
+    },
+  });
+
+  const onPlaidSuccess = useCallback<PlaidLinkOnSuccess>(
+    (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
+      exchangeToken.mutate({
+        publicToken,
+        institutionName: metadata.institution?.name ?? null,
+      });
+    },
+    [exchangeToken],
+  );
+
+  const { open: openPlaid, ready: plaidReady } = usePlaidLink({
+    token: linkToken,
+    onSuccess: onPlaidSuccess,
+    onExit: () => setLinkToken(null),
+  });
+
+  if (linkToken && plaidReady) {
+    setTimeout(() => openPlaid(), 0);
+  }
+
+  const handlePayClick = () => {
+    setSubmitMessage(null);
+    setConfirmAmount(balance > 0 ? balance.toFixed(2) : "");
+    setConfirming(true);
+  };
+
+  return (
+    <Card data-testid="portal-bank-payment">
+      <CardContent className="space-y-3 py-5">
+        <h2 className="font-headline text-lg">Pay with Bank Account</h2>
+        {submitMessage ? (
+          <p className="text-sm text-on-surface" data-testid="portal-bank-payment-success">{submitMessage}</p>
+        ) : null}
+
+        {!connection ? (
+          <>
+            <p className="text-sm text-on-surface-variant">
+              Link your checking or savings account via Plaid to pay assessments directly from your bank — no card fees.
+            </p>
+            <Button
+              onClick={() => createLinkToken.mutate()}
+              disabled={createLinkToken.isPending}
+              data-testid="portal-bank-connect"
+            >
+              {createLinkToken.isPending ? "Opening…" : "Connect your bank"}
+            </Button>
+          </>
+        ) : !confirming ? (
+          <>
+            <p className="text-sm text-on-surface-variant" data-testid="portal-bank-connected">
+              Connected: <strong>{connection.institutionName ?? "Bank"}</strong>
+            </p>
+            <Button
+              onClick={handlePayClick}
+              disabled={balance <= 0}
+              data-testid="portal-bank-pay-now"
+            >
+              {balance > 0 ? `Pay $${balance.toFixed(2)} from bank` : "No balance due"}
+            </Button>
+          </>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-on-surface-variant">Confirm amount to pay</p>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={confirmAmount}
+              onChange={(e) => setConfirmAmount(e.target.value)}
+              data-testid="portal-bank-confirm-amount"
+            />
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  const amt = Number(confirmAmount);
+                  if (Number.isFinite(amt) && amt > 0) submitPayment.mutate(amt);
+                }}
+                disabled={submitPayment.isPending || !confirmAmount}
+                data-testid="portal-bank-confirm"
+              >
+                {submitPayment.isPending ? "Submitting…" : "Confirm Payment"}
+              </Button>
+              <Button variant="outline" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+            </div>
+            <p className="text-xs text-on-surface-variant">
+              Payment is recorded immediately. ACH transfer settles in 1–3 business days.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // ---------- Hub surface (/portal/finances) ----------
@@ -168,6 +343,8 @@ function FinancesHubContent() {
           </CardContent>
         </Card>
       </section>
+
+      <PortalBankPaymentCard balance={balance} />
 
       <section className="grid gap-4 md:grid-cols-2">
         <Card>

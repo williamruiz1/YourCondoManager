@@ -1,0 +1,277 @@
+// zone: Financials → Bank Connections
+// persona: Manager, Board Officer, Assisted Board, PM Assistant
+//
+// Admin-side Plaid bank connection management for the association.
+// Owners pay via the portal-side flow (see portal-finances.tsx); this page
+// is for HOA-scope (associationId-scoped, portalAccessId NULL) accounts.
+
+import { useCallback, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { usePlaidLink } from "react-plaid-link";
+import type { PlaidLinkOnSuccess, PlaidLinkOnSuccessMetadata } from "react-plaid-link";
+import { apiRequest } from "@/lib/queryClient";
+import { useActiveAssociation } from "@/hooks/use-active-association";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/empty-state";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
+import { Landmark, Receipt } from "lucide-react";
+import type { BankAccount, BankTransaction } from "@shared/schema";
+
+type ConnectedAccount = BankAccount & { lastSyncedAt: string | null };
+type ConnectedTransaction = BankTransaction & { date: string };
+
+function formatDate(value: string | Date | null | undefined) {
+  if (!value) return "—";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString();
+}
+
+function formatMoney(cents: number | null | undefined) {
+  if (typeof cents !== "number") return "—";
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+export default function FinancialBankConnectionsPage() {
+  useDocumentTitle("Bank Connections — YCM");
+  const { activeAssociationId, activeAssociationName } = useActiveAssociation();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+
+  const { data: accounts = [], isLoading: accountsLoading } = useQuery<ConnectedAccount[]>({
+    queryKey: ["/api/plaid/accounts", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) return [];
+      const res = await apiRequest("GET", `/api/plaid/accounts?associationId=${encodeURIComponent(activeAssociationId)}`);
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+
+  const { data: transactions = [] } = useQuery<ConnectedTransaction[]>({
+    queryKey: ["/api/plaid/transactions", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) return [];
+      const res = await apiRequest("GET", `/api/plaid/transactions?associationId=${encodeURIComponent(activeAssociationId)}`);
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+
+  const createLinkToken = useMutation({
+    mutationFn: async () => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const res = await apiRequest("POST", "/api/plaid/create-link-token", { associationId: activeAssociationId });
+      return res.json() as Promise<{ linkToken: string }>;
+    },
+    onSuccess: (data) => setLinkToken(data.linkToken),
+    onError: (err: Error) => toast({ title: "Could not start Plaid Link", description: err.message, variant: "destructive" }),
+  });
+
+  const exchangeToken = useMutation({
+    mutationFn: async (input: { publicToken: string; institutionName: string | null }) => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const res = await apiRequest("POST", "/api/plaid/exchange-token", {
+        associationId: activeAssociationId,
+        publicToken: input.publicToken,
+        institutionName: input.institutionName,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Bank connected" });
+      setLinkToken(null);
+      qc.invalidateQueries({ queryKey: ["/api/plaid/accounts", activeAssociationId] });
+    },
+    onError: (err: Error) => toast({ title: "Connection failed", description: err.message, variant: "destructive" }),
+  });
+
+  const syncNow = useMutation({
+    mutationFn: async () => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const res = await apiRequest("POST", "/api/plaid/sync", { associationId: activeAssociationId });
+      return res.json() as Promise<{ synced: number; connections: number }>;
+    },
+    onSuccess: (data) => {
+      toast({ title: "Sync complete", description: `${data.synced} transactions across ${data.connections} connection(s).` });
+      qc.invalidateQueries({ queryKey: ["/api/plaid/accounts", activeAssociationId] });
+    },
+    onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
+  });
+
+  const disconnect = useMutation({
+    mutationFn: async (connectionId: string) => {
+      const res = await apiRequest("DELETE", `/api/plaid/connections/${connectionId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Bank disconnected" });
+      qc.invalidateQueries({ queryKey: ["/api/plaid/accounts", activeAssociationId] });
+    },
+    onError: (err: Error) => toast({ title: "Disconnect failed", description: err.message, variant: "destructive" }),
+  });
+
+  const onPlaidSuccess = useCallback<PlaidLinkOnSuccess>(
+    (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
+      exchangeToken.mutate({
+        publicToken,
+        institutionName: metadata.institution?.name ?? null,
+      });
+    },
+    [exchangeToken],
+  );
+
+  const { open: openPlaid, ready: plaidReady } = usePlaidLink({
+    token: linkToken,
+    onSuccess: onPlaidSuccess,
+    onExit: () => setLinkToken(null),
+  });
+
+  // Auto-open Plaid Link as soon as the token is fetched and the SDK is ready.
+  if (linkToken && plaidReady) {
+    setTimeout(() => openPlaid(), 0);
+  }
+
+  const uniqueConnectionIds = Array.from(new Set(accounts.map((a) => a.bankConnectionId)));
+
+  return (
+    <div className="mx-auto flex max-w-6xl flex-col gap-6" data-testid="financial-bank-connections">
+      <WorkspacePageHeader
+        title="Bank Connections"
+        summary={activeAssociationName ? `Manage Plaid-linked bank accounts for ${activeAssociationName}.` : "Manage Plaid-linked bank accounts for the association."}
+      />
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Connected Banks</CardTitle>
+            <CardDescription>Live association-owned accounts. Owners' payment-only connections live in the owner portal and are not shown here.</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => syncNow.mutate()}
+              disabled={syncNow.isPending || accounts.length === 0}
+              data-testid="btn-sync-now"
+            >
+              {syncNow.isPending ? "Syncing…" : "Sync Now"}
+            </Button>
+            <Button
+              onClick={() => createLinkToken.mutate()}
+              disabled={createLinkToken.isPending || !activeAssociationId}
+              data-testid="btn-connect-bank"
+            >
+              {createLinkToken.isPending ? "Opening…" : "Connect Bank Account"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="accounts">
+            <TabsList>
+              <TabsTrigger value="accounts" data-testid="tab-accounts">Accounts</TabsTrigger>
+              <TabsTrigger value="transactions" data-testid="tab-transactions">Transactions</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="accounts" className="mt-4">
+              {accountsLoading ? (
+                <p className="text-sm text-on-surface-variant">Loading…</p>
+              ) : accounts.length === 0 ? (
+                <EmptyState
+                  icon={Landmark}
+                  title="No bank accounts connected yet"
+                  description="Click Connect Bank Account to link your association's bank via Plaid."
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Account</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Last 4</TableHead>
+                      <TableHead className="text-right">Current balance</TableHead>
+                      <TableHead>Last synced</TableHead>
+                      <TableHead aria-label="Actions" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {accounts.map((acct) => (
+                      <TableRow key={acct.id} data-testid={`bank-account-row-${acct.id}`}>
+                        <TableCell className="font-medium">{acct.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {acct.subtype ? `${acct.type} · ${acct.subtype}` : acct.type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{acct.mask ? `••${acct.mask}` : "—"}</TableCell>
+                        <TableCell className="text-right">{formatMoney(acct.currentBalanceCents)}</TableCell>
+                        <TableCell className="text-xs text-on-surface-variant">{formatDate(acct.lastSyncedAt)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => disconnect.mutate(acct.bankConnectionId)}
+                            disabled={disconnect.isPending}
+                            data-testid={`btn-disconnect-${acct.id}`}
+                          >
+                            Disconnect
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              {uniqueConnectionIds.length > 0 ? (
+                <p className="mt-3 text-xs text-on-surface-variant">
+                  {uniqueConnectionIds.length} active connection(s).
+                </p>
+              ) : null}
+            </TabsContent>
+
+            <TabsContent value="transactions" className="mt-4">
+              {transactions.length === 0 ? (
+                <EmptyState
+                  icon={Receipt}
+                  title="No transactions yet"
+                  description="Click Sync Now to pull the latest transactions from Plaid Sandbox."
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Reconciled</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {transactions.map((txn) => (
+                      <TableRow key={txn.id}>
+                        <TableCell>{formatDate(txn.date)}</TableCell>
+                        <TableCell>{txn.merchantName ?? txn.name}</TableCell>
+                        <TableCell className="text-right">{formatMoney(txn.amountCents)}</TableCell>
+                        <TableCell>
+                          <Badge variant={txn.reconciledToPaymentTransactionId ? "default" : "outline"}>
+                            {txn.reconciledToPaymentTransactionId ? "Yes" : "No"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

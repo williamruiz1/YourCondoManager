@@ -123,6 +123,8 @@ export const ROUTE_MANIFEST: RouteManifest = {
   "/app/financial/reports": FIVE_PERSONA_OPERATOR,
   // 4.3 Q9 consolidated assessment-rules surface.
   "/app/financial/rules": FIVE_PERSONA_OPERATOR,
+  // Plaid-backed bank-feed admin surface (Issue #333).
+  "/app/financial/bank-connections": FIVE_PERSONA_OPERATOR,
 
   // ---- Financials zone legacy singular-prefix redirects (3.2 Q4 archive) ----
   "/app/financial/fees": FIVE_PERSONA_OPERATOR,
