@@ -86,13 +86,13 @@ export function SiteFooter() {
           Help Center
         </Link>
         <Link
-          href="/privacy-policy"
+          href="/privacy"
           className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-primary dark:hover:text-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
         >
           Privacy Policy
         </Link>
         <Link
-          href="/terms-of-service"
+          href="/terms"
           className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-primary dark:hover:text-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
         >
           Terms of Service

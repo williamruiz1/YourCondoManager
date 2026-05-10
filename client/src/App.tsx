@@ -460,17 +460,30 @@ function PublicRouter({
             onStartGoogleSignIn={onStartGoogleSignIn}
           />
         </Route>
-        <Route path="/privacy-policy">
+        {/* WS2 (Issue #341) — canonical short-form public legal routes.
+            `/privacy` and `/terms` are the canonical URLs; the legacy
+            `/privacy-policy` and `/terms-of-service` paths redirect for
+            backward compatibility (existing links in emails, sitemaps, etc).
+            Both routes render without an auth guard — the wrapping
+            PublicRouter does not gate on session, and the page components
+            do not call any auth-restricted endpoints. */}
+        <Route path="/privacy">
           <PrivacyPolicyPage
             hasWorkspaceAccess={hasWorkspaceAccess}
             onStartGoogleSignIn={onStartGoogleSignIn}
           />
         </Route>
-        <Route path="/terms-of-service">
+        <Route path="/terms">
           <TermsOfServicePage
             hasWorkspaceAccess={hasWorkspaceAccess}
             onStartGoogleSignIn={onStartGoogleSignIn}
           />
+        </Route>
+        <Route path="/privacy-policy">
+          <RouteRedirect to="/privacy" />
+        </Route>
+        <Route path="/terms-of-service">
+          <RouteRedirect to="/terms" />
         </Route>
         <Route path="/signup/success" component={PlanSignupSuccessPage} />
         <Route path="/signup" component={PlanSignupPage} />

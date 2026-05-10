@@ -92,7 +92,7 @@ export function CookieConsentBanner() {
           <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
             We use cookies to enhance your experience, analyze site traffic, and serve you personalized content. By continuing to use this site, you consent to our use of cookies. You can manage your preferences or learn more by visiting our{" "}
             <a
-              href="/privacy-policy"
+              href="/privacy"
               className="text-primary dark:text-blue-300 hover:underline font-medium"
             >
               Privacy Policy
