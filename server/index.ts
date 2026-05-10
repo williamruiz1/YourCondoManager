@@ -3,7 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
-import { initializeAuth } from "./auth";
+import { initializeAuth, enforceSessionAbsoluteAge } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 // Wave 33 (5.4 Part B): seedDatabase is lazy-loaded in the boot block —
@@ -108,6 +108,12 @@ app.use(session({
   },
 }));
 initializeAuth(app);
+
+// WS12 — absolute session timeout enforcement (Issue #388 / Plaid attestation).
+// Runs after passport.session() so `req.user` is populated for authenticated
+// requests; bails out cheaply for unauthenticated traffic. See
+// docs/security/zero-trust-architecture.md §3.2 for rationale.
+app.use(enforceSessionAbsoluteAge);
 
 type AutomationJobState = {
   isRunning: boolean;
