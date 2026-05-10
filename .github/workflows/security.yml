@@ -1,0 +1,73 @@
+# Security gate — additive to ci.yml.
+# Runs on every PR targeting main; fails on critical CVEs only.
+# High/moderate severities are surfaced via PR label so authors can
+# triage without blocking unrelated work.
+#
+# Spec: docs/specs/security-maturity-roadmap-2026-05-10.md (Workstream 1)
+
+name: Security
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  audit:
+    name: security gate (npm audit + tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+
+      - name: TypeScript strict check
+        run: npx tsc --noEmit
+
+      - name: npm audit + severity label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+
+          AUDIT=$(npm audit --json || true)
+          CRIT=$(echo "$AUDIT" | jq '.metadata.vulnerabilities.critical // 0')
+          HIGH=$(echo "$AUDIT" | jq '.metadata.vulnerabilities.high // 0')
+          MOD=$(echo "$AUDIT"  | jq '.metadata.vulnerabilities.moderate // 0')
+          echo "::notice::npm audit — critical=$CRIT high=$HIGH moderate=$MOD"
+
+          # Ensure severity labels exist (idempotent, force-updates color/desc).
+          gh label create "security: critical-vulns" --color "B60205" --description "Critical CVEs detected by security workflow" --force >/dev/null 2>&1 || true
+          gh label create "security: high-vulns"     --color "D93F0B" --description "High-severity CVEs detected by security workflow" --force >/dev/null 2>&1 || true
+          gh label create "security: moderate-vulns" --color "FBCA04" --description "Moderate-severity CVEs detected by security workflow" --force >/dev/null 2>&1 || true
+
+          # Clear any stale severity labels — re-apply only the maximal one below.
+          gh pr edit "$PR_NUMBER" --remove-label "security: critical-vulns" 2>/dev/null || true
+          gh pr edit "$PR_NUMBER" --remove-label "security: high-vulns"     2>/dev/null || true
+          gh pr edit "$PR_NUMBER" --remove-label "security: moderate-vulns" 2>/dev/null || true
+
+          if [ "$CRIT" -gt 0 ]; then
+            gh pr edit "$PR_NUMBER" --add-label "security: critical-vulns"
+          elif [ "$HIGH" -gt 0 ]; then
+            gh pr edit "$PR_NUMBER" --add-label "security: high-vulns"
+          elif [ "$MOD" -gt 0 ]; then
+            gh pr edit "$PR_NUMBER" --add-label "security: moderate-vulns"
+          else
+            echo "No moderate-or-above vulnerabilities found; no severity label applied."
+          fi
+
+          if [ "$CRIT" -gt 0 ]; then
+            echo "::error::$CRIT critical CVE(s) detected — failing the security gate."
+            exit 1
+          fi
