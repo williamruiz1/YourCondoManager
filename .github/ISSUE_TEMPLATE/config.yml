@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: COS Desk Vision Spec — plain-English authoring rule
+    url: https://github.com/williamruiz1/founder-os/blob/main/working/cos-desk-vision-2026-05-10.md
+    about: Read the plain-English canonicalization rule (Feature 1) before opening any Issue. Plain-English fields are required so this Issue surfaces correctly on COS Desk dashboards.
