@@ -1,0 +1,33 @@
+name: Plain-English item
+description: Default issue form with plain-English author fields required for COS Desk surface rendering
+title: "<plain-English title>"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Per [COS Desk Vision Spec v2.4 Feature 1](https://github.com/williamruiz1/founder-os/blob/main/working/cos-desk-vision-2026-05-10.md) + CLAUDE.md OP #19: every Issue rendered on COS Desk surfaces (the dashboard William scans) requires explicit plain-English author fields below. Legacy / William-direct authoring falls back to Issue title → card label and first body paragraph → summary; agents authoring on William's behalf MUST fill the fields.
+  - type: input
+    id: plain_english_title
+    attributes:
+      label: Plain-English title
+      description: 3–5 words. Reads cleanly to a non-technical reviewer. No agent IDs ([014], [018]), no workstream codes (WS-04, M1), no D-numbers, no acronyms.
+      placeholder: e.g. "Add npm-audit security check to CI"
+    validations:
+      required: true
+  - type: textarea
+    id: plain_english_summary
+    attributes:
+      label: Plain-English summary
+      description: 2–3 sentences explaining what this is and why, in language William can scan in 5 seconds.
+      placeholder: |
+        e.g. "Adds a GitHub Actions workflow that runs npm audit on every PR. Critical CVEs fail the PR; high or moderate vulnerabilities add a label so authors can triage without being blocked."
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Implementation notes, links, context — anything else relevant. Free-form.
+    validations:
+      required: false
