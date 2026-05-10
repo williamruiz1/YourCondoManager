@@ -2,8 +2,12 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
 import passport from "passport";
 import { Strategy as GoogleStrategy, type Profile } from "passport-google-oauth20";
+import { eq, and, gte, sql } from "drizzle-orm";
+import { db } from "./db";
+import { authEvents } from "../shared/schema";
 import { storage } from "./storage";
 import { log } from "./logger";
+import { sendPlatformEmail } from "./email-provider";
 
 type SessionWithOAuth = {
   oauthReturnTo?: string;
@@ -394,7 +398,8 @@ export function registerAuthRoutes(app: Express) {
       if (error) return next(error);
       const returnTo = getSafeReturnTo((req.session as SessionWithOAuth).oauthReturnTo || "/");
       const popup = Boolean((req.session as SessionWithOAuth).oauthPopup);
-      const authUserId = (req.user as { id?: string } | undefined)?.id || "";
+      const authUser = req.user as { id?: string; email?: string; adminUserId?: string | null } | undefined;
+      const authUserId = authUser?.id || "";
       const authRestore = authUserId ? createAuthRestoreToken(authUserId) : "";
       if (authRestore) {
         setAuthRestoreCookie(req, res, authRestore);
@@ -402,6 +407,31 @@ export function registerAuthRoutes(app: Express) {
       delete (req.session as SessionWithOAuth).oauthReturnTo;
       delete (req.session as SessionWithOAuth).oauthPopup;
       delete (req.session as SessionWithOAuth).oauthCallbackUrl;
+
+      // WS12 — record auth event + new-IP alert (Issue #388 / Plaid).
+      // Fire-and-forget; failures must not block the redirect.
+      if (authUserId) {
+        const loginAt = new Date();
+        void recordAuthEvent({
+          req,
+          userId: authUserId,
+          adminUserId: authUser?.adminUserId ?? null,
+          eventType: "oauth-login",
+          outcome: "success",
+        }).then((event) => {
+          if (authUser?.email) {
+            void checkNewIpAndAlert({
+              userId: authUserId,
+              adminUserId: authUser?.adminUserId ?? null,
+              email: authUser.email,
+              ipAddress: resolveSourceIp(req),
+              userAgent: truncateUserAgent(req.header("user-agent")),
+              excludeEventId: event?.id ?? null,
+              loginAt,
+            });
+          }
+        });
+      }
 
       if (popup) {
         const safeReturnTo = `${returnTo}${returnTo.includes("?") ? "&" : "?"}auth=success`;
@@ -467,6 +497,29 @@ export function registerAuthRoutes(app: Express) {
       }
       await storage.touchAuthUserLogin(user.id);
       log(`[auth][magic] session established userId=${user.id} email=${user.email} adminUserId=${user.adminUserId ?? "null"}`, "auth");
+
+      // WS12 — record auth event + new-IP alert.
+      const loginAt = new Date();
+      void recordAuthEvent({
+        req,
+        userId: user.id,
+        adminUserId: user.adminUserId ?? null,
+        eventType: "magic-link-redeem",
+        outcome: "success",
+      }).then((event) => {
+        if (user.email) {
+          void checkNewIpAndAlert({
+            userId: user.id,
+            adminUserId: user.adminUserId ?? null,
+            email: user.email,
+            ipAddress: resolveSourceIp(req),
+            userAgent: truncateUserAgent(req.header("user-agent")),
+            excludeEventId: event?.id ?? null,
+            loginAt,
+          });
+        }
+      });
+
       return res.redirect("/app?auth=magic-success");
     });
   };
@@ -505,6 +558,19 @@ export function registerAuthRoutes(app: Express) {
       clearAuthRestoreCookie(req, res);
       await storage.touchAuthUserLogin(user.id);
       log(`[auth][restore] session restored userId=${user.id} email=${user.email} adminUserId=${user.adminUserId ?? "null"}`, "auth");
+
+      // WS12 — record session-restore event. New-IP alert NOT fired here:
+      // session-restore is for the corner case where OAuth callback succeeded
+      // but the cookie was lost in the same flow (private browsing); the
+      // originating OAuth event already fired the alert.
+      void recordAuthEvent({
+        req,
+        userId: user.id,
+        adminUserId: user.adminUserId ?? null,
+        eventType: "session-restore",
+        outcome: "success",
+      });
+
       return res.status(201).json({ authenticated: true, user });
     });
   });
@@ -549,4 +615,229 @@ export function registerAuthRoutes(app: Express) {
 
   app.post("/auth/logout", logoutHandler);
   app.post("/api/auth/logout", logoutHandler);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WS12 — zero-trust controls (Issue #388 / Plaid attestation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the source IP for an inbound request, honoring a single layer of
+ * X-Forwarded-For when present (production deploys behind Replit/CF/etc.).
+ *
+ * The first segment of XFF is the originating client per spec; later segments
+ * are intermediary hops we don't log here.
+ */
+function resolveSourceIp(req: Request): string | null {
+  const xff = (req.header("x-forwarded-for") || "").split(",")[0]?.trim();
+  if (xff) return xff;
+  const remote = req.ip || req.socket?.remoteAddress || null;
+  return remote;
+}
+
+/**
+ * Truncate a user-agent string before persisting. Some browsers send long
+ * strings (Edge mobile in particular); we cap at 512 chars to keep the
+ * `auth_events.user_agent` column small without losing forensic value.
+ */
+function truncateUserAgent(ua: string | undefined | null): string | null {
+  if (!ua) return null;
+  return ua.length > 512 ? ua.slice(0, 512) : ua;
+}
+
+/**
+ * Record an authentication event. Fire-and-forget by design — failures here
+ * MUST NOT block the auth flow itself. Per WS12: this is the durable forensic
+ * trail (Information Security Policy §X.7).
+ */
+export type AuthEventType =
+  | "oauth-login"
+  | "magic-link-redeem"
+  | "session-restore"
+  | "logout"
+  | "session-expired";
+
+export async function recordAuthEvent(input: {
+  req: Request;
+  userId?: string | null;
+  adminUserId?: string | null;
+  eventType: AuthEventType;
+  outcome?: "success" | "failure";
+  failureReason?: string | null;
+}): Promise<{ id: string } | null> {
+  try {
+    const ip = resolveSourceIp(input.req);
+    const ua = truncateUserAgent(input.req.header("user-agent"));
+    const [row] = await db.insert(authEvents).values({
+      userId: input.userId ?? null,
+      adminUserId: input.adminUserId ?? null,
+      eventType: input.eventType,
+      ipAddress: ip,
+      userAgent: ua,
+      outcome: input.outcome ?? "success",
+      failureReason: input.failureReason ?? null,
+    }).returning({ id: authEvents.id });
+    return row ?? null;
+  } catch (error) {
+    log(`[auth][record-event][error] ${(error as Error).message}`, "auth");
+    return null;
+  }
+}
+
+/**
+ * If the just-recorded auth event came from an IP not seen in the last 30 days
+ * for this user, send a "new location login" alert email. Per WS12 / Issue
+ * #388 §3 (anomalous access detection).
+ *
+ * Guards against false positives:
+ *   - First-ever login for a user (no priors) — does NOT alert (the new IP IS
+ *     the establishing IP).
+ *   - Same IP as any auth_event in the last 30 days (excluding the just-
+ *     inserted event) — does NOT alert (familiar IP).
+ *
+ * Fire-and-forget — failures MUST NOT block the auth flow.
+ */
+export async function checkNewIpAndAlert(input: {
+  userId: string;
+  adminUserId?: string | null;
+  email: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  excludeEventId: string | null;
+  loginAt: Date;
+}): Promise<void> {
+  try {
+    if (!input.ipAddress) return;
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    // Pull distinct IPs seen in the last 30 days for this user, excluding the
+    // event we just inserted.
+    const seenIps = await db
+      .select({ ip: authEvents.ipAddress })
+      .from(authEvents)
+      .where(
+        and(
+          eq(authEvents.userId, input.userId),
+          gte(authEvents.createdAt, cutoff),
+          eq(authEvents.outcome, "success"),
+          input.excludeEventId
+            ? sql`${authEvents.id} != ${input.excludeEventId}`
+            : sql`true`,
+        ),
+      );
+
+    const seenSet = new Set(
+      seenIps.map((r) => r.ip).filter((ip): ip is string => Boolean(ip)),
+    );
+
+    // First-ever-login guard: no priors → no alert.
+    if (seenSet.size === 0) return;
+
+    // Familiar-IP guard: matched a recent IP → no alert.
+    if (seenSet.has(input.ipAddress)) return;
+
+    const subject = "New location login to your YCM account";
+    const body = [
+      "We noticed a sign-in to your YourCondoManager account from a location we haven't seen recently.",
+      "",
+      `Time: ${input.loginAt.toISOString()}`,
+      `IP address: ${input.ipAddress}`,
+      `Device: ${input.userAgent ?? "(unknown)"}`,
+      "",
+      "If this was you, no action is needed. If you did not sign in, please:",
+      "  1. Sign out of all sessions immediately",
+      "  2. Review recent activity at /admin/security/recent-events",
+      "  3. Contact your YCM administrator",
+      "",
+      "— YourCondoManager security",
+    ].join("\n");
+
+    await sendPlatformEmail({
+      to: input.email,
+      subject,
+      text: body,
+      // html omitted intentionally — text-only is sufficient for this alert and
+      // avoids HTML-rendering risk in clients that show URLs differently from
+      // their text counterpart.
+    });
+
+    log(`[auth][new-ip-alert] sent userId=${input.userId} email=${input.email} ip=${input.ipAddress}`, "auth");
+  } catch (error) {
+    log(`[auth][new-ip-alert][error] ${(error as Error).message}`, "auth");
+  }
+}
+
+/**
+ * Express middleware enforcing the absolute (hard) session lifetime. Per WS12
+ * §3.2 — sessions expire after `SESSION_ABSOLUTE_MAX_AGE_MS` regardless of
+ * activity (default 30 days; environment-configurable).
+ *
+ * Mechanic: each session row carries a `createdAt` timestamp; if that is
+ * older than the absolute max, destroy the session, clear the cookie, and
+ * return 401 with `code: "SESSION_EXPIRED", reason: "absolute"`.
+ *
+ * The inactivity timeout (rolling `cookie.maxAge`) is enforced upstream by
+ * `express-session`; this middleware only handles the absolute cap.
+ */
+const SESSION_ABSOLUTE_MAX_AGE_MS = Math.max(
+  60_000,
+  Number(process.env.SESSION_ABSOLUTE_MAX_AGE_MS || 30 * 24 * 60 * 60 * 1000),
+);
+
+type SessionWithMetadata = {
+  createdAt?: number;
+};
+
+export function enforceSessionAbsoluteAge(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  // No session → nothing to enforce. Either the request is unauthenticated
+  // (handled by downstream `requireAdmin`/portal middleware) or the session
+  // store hasn't loaded one yet.
+  if (!req.session || !(req as Request & { user?: unknown }).user) {
+    return next();
+  }
+
+  const meta = req.session as unknown as SessionWithMetadata;
+
+  // First request after auth: stamp createdAt. Subsequent requests honor the
+  // initial stamp regardless of `rolling: true` cookie refreshes.
+  if (typeof meta.createdAt !== "number") {
+    meta.createdAt = Date.now();
+    return next();
+  }
+
+  const age = Date.now() - meta.createdAt;
+  if (age <= SESSION_ABSOLUTE_MAX_AGE_MS) return next();
+
+  // Absolute timeout exceeded. Log + record + destroy + 401.
+  const userId = (req as Request & { user?: { id?: string } }).user?.id ?? null;
+  log(`[auth][session-expired] absolute timeout exceeded userId=${userId ?? "unknown"} ageMs=${age}`, "auth");
+
+  void recordAuthEvent({
+    req,
+    userId,
+    eventType: "session-expired",
+    outcome: "success",
+    failureReason: "absolute-timeout",
+  });
+
+  req.session.destroy((sessionError) => {
+    res.clearCookie("sid");
+    res.clearCookie("sid_dev");
+    if (sessionError) {
+      return res.status(500).json({
+        message: "Session expired and could not be destroyed",
+        code: "SESSION_EXPIRED",
+        reason: "absolute",
+      });
+    }
+    return res.status(401).json({
+      message: "Your session has expired. Please sign in again.",
+      code: "SESSION_EXPIRED",
+      reason: "absolute",
+    });
+  });
 }

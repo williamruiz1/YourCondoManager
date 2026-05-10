@@ -272,6 +272,26 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// auth_events — every authentication event logged for forensic reconstruction
+// + new-IP anomaly detection (WS12 / Issue #388 / Plaid attestation evidence).
+// See migrations/0024_auth_events.sql for the canonical DDL +
+// docs/security/zero-trust-architecture.md §5 for usage rationale.
+export const authEvents = pgTable("auth_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => authUsers.id, { onDelete: "set null" }),
+  adminUserId: varchar("admin_user_id").references(() => adminUsers.id, { onDelete: "set null" }),
+  eventType: text("event_type").notNull(),       // oauth-login | magic-link-redeem | session-restore | logout | session-expired
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  outcome: text("outcome").notNull().default("success"),  // success | failure
+  failureReason: text("failure_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  authEventsUserCreatedIdx: index("auth_events_user_id_created_at_idx").on(table.userId, table.createdAt),
+  authEventsAdminCreatedIdx: index("auth_events_admin_user_id_created_at_idx").on(table.adminUserId, table.createdAt),
+  authEventsEventTypeIdx: index("auth_events_event_type_idx").on(table.eventType),
+}));
+
 export const feeFrequencyEnum = pgEnum("fee_frequency", ["monthly", "quarterly", "annually", "one-time"]);
 export const hoaFeeSchedules = pgTable("hoa_fee_schedules", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
