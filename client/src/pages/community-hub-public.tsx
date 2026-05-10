@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Bell, ExternalLink, Info, ChevronRight, Building2, Phone, MapPin, Calendar, FileText, Download, Mail, KeyRound, Loader2, CheckCircle2, Home } from "lucide-react";
+import CommunityMapView from "@/components/community-map-view";
 
 type PublicBuilding = {
   id: string;
@@ -197,7 +198,20 @@ export default function CommunityHubPublicPage() {
         </div>
       </section>
     ) : null,
-    map: () => null,
+    map: () => (
+      <CommunityMapView
+        identifier={identifier}
+        themeColor={themeColor}
+        buildings={publicBuildings}
+        mapsQuery={
+          association
+            ? [association.name, association.city, association.state]
+                .filter(Boolean)
+                .join(", ")
+            : identifier
+        }
+      />
+    ),
     contacts: () => <ContactsSection association={association} themeColor={themeColor} />,
   };
 
@@ -277,7 +291,7 @@ export default function CommunityHubPublicPage() {
           if (s === "events" && meetings.length === 0) return true;
           if (s === "documents" && docs.length === 0) return true;
           if (s === "buildings" && publicBuildings.length === 0) return true;
-          if (s === "map") return true;
+          if (s === "map") return false; // static map always renders (shows placeholder on error)
           if (s === "contacts") return false;
           return false;
         }) && (

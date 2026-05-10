@@ -16707,6 +16707,112 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
+  // GET public map data — association coordinates + building pins
+  // Used by the public community hub map component to render pins without auth.
+  app.get("/api/hub/:identifier/map", async (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkHubRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    try {
+      const identifier = getParam(req.params.identifier);
+      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
+      if (!config) {
+        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
+      }
+      if (!config || !config.isEnabled) {
+        return res.status(404).json({ message: "Community hub not found or not enabled" });
+      }
+      const associationId = config.associationId;
+
+      const [assoc] = await db.select({
+        name: associations.name,
+        address: associations.address,
+        city: associations.city,
+        state: associations.state,
+        latitudeDeg: associations.latitudeDeg,
+        longitudeDeg: associations.longitudeDeg,
+      }).from(associations).where(eq(associations.id, associationId));
+
+      // Return only nodes from the satellite layer (baseImageUrl sentinel)
+      const layers = await db.select().from(hubMapLayers)
+        .where(and(eq(hubMapLayers.associationId, associationId), eq(hubMapLayers.isActive, 1)));
+
+      const satelliteLayers = layers.filter((l) => l.baseImageUrl === "google-maps-satellite");
+      let nodes: Array<{ id: string; label: string; geometry: unknown; linkedBuildingId: string | null; nodeType: string }> = [];
+      if (satelliteLayers.length > 0) {
+        nodes = await db.select({
+          id: hubMapNodes.id,
+          label: hubMapNodes.label,
+          geometry: hubMapNodes.geometry,
+          linkedBuildingId: hubMapNodes.linkedBuildingId,
+          nodeType: hubMapNodes.nodeType,
+        }).from(hubMapNodes).where(eq(hubMapNodes.associationId, associationId));
+      }
+
+      res.json({ association: assoc || null, nodes });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET static satellite map image — public, no auth required
+  // Proxies Google Static Maps API server-side so the Maps JS SDK is never
+  // loaded on the public hub page. Cached 24hrs (satellite view is stable).
+  app.get("/api/hub/:identifier/static-map", async (req, res) => {
+    try {
+      const identifier = getParam(req.params.identifier);
+
+      // Same lookup pattern as /api/hub/:identifier/map
+      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
+      if (!config) {
+        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
+      }
+      if (!config || !config.isEnabled) {
+        return res.status(404).json({ message: "Community hub not found or not enabled" });
+      }
+
+      const [assoc] = await db.select({
+        latitudeDeg: associations.latitudeDeg,
+        longitudeDeg: associations.longitudeDeg,
+      }).from(associations).where(eq(associations.id, config.associationId));
+
+      if (!assoc?.latitudeDeg || !assoc?.longitudeDeg) {
+        return res.status(404).json({ message: "Association coordinates not set" });
+      }
+
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({ message: "Map service not configured" });
+      }
+
+      const lat = assoc.latitudeDeg;
+      const lng = assoc.longitudeDeg;
+      const staticMapUrl =
+        `https://maps.googleapis.com/maps/api/staticmap` +
+        `?center=${lat},${lng}` +
+        `&zoom=18` +
+        `&size=800x450` +
+        `&maptype=satellite` +
+        `&scale=2` +
+        `&key=${apiKey}`;
+
+      const mapRes = await fetch(staticMapUrl);
+      if (!mapRes.ok) {
+        return res.status(503).json({ message: "Failed to fetch map image from Google" });
+      }
+
+      const contentType = mapRes.headers.get("content-type") || "image/png";
+      res.set("Content-Type", contentType);
+      res.set("Cache-Control", "public, max-age=86400");
+
+      const buffer = await mapRes.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (error: any) {
+      res.status(503).json({ message: "Map service temporarily unavailable" });
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Community Hub — Portal API (authenticated residents)
   // ═══════════════════════════════════════════════════════════════════════════
