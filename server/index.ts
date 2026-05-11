@@ -24,6 +24,7 @@ import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
 import { createRateLimiter } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
+import { resolveSessionCookieDomain } from "./session-cookie-domain";
 
 // Wave 33 (5.4 Part B): seed.ts is ~120 KB of static demo-data tables. It
 // only runs once at boot, after the HTTP server has already started
@@ -94,6 +95,26 @@ const sessionCookieSecure: boolean | "auto" = forceSecureCookie
   ? forceSecureCookie === "1" || forceSecureCookie === "true" || forceSecureCookie === "yes"
   : (isProduction ? "auto" : false);
 
+// Issue #447: scope the session cookie to the parent domain in production so
+// login persists across `app.yourcondomanager.org` (product) and
+// `yourcondomanager.org` (marketing). Without this the Set-Cookie header
+// defaults to host-only scope and a user logged in on `app.` appears
+// logged-out when they navigate to the apex marketing surface (cross-host
+// navigation pattern enabled by PR #117 subdomain split).
+//
+// Default in production: `.yourcondomanager.org` (leading dot per RFC 6265
+// for parent-domain scoping that covers apex + every subdomain). Env override
+// `SESSION_COOKIE_DOMAIN` is the escape hatch for preview deploys or future
+// domain changes — explicit empty string falls back to host-only behavior.
+//
+// Local dev / preview environments keep host-only behavior (the dev cookie
+// is named `sid_dev` per existing config; cross-host persistence isn't a
+// concern at localhost or *.fly.dev preview URLs).
+const sessionCookieDomain: string | undefined = resolveSessionCookieDomain(
+  isProduction,
+  process.env.SESSION_COOKIE_DOMAIN,
+);
+
 app.use(session({
   store: new PgStore({
     pool,
@@ -114,6 +135,9 @@ app.use(session({
     secure: sessionCookieSecure,
     sameSite: sessionCookieSameSite as "lax" | "strict" | "none",
     maxAge: sessionMaxAgeMs,
+    // Issue #447 — parent-domain scoping in production only; undefined in
+    // dev/preview defaults to host-only.
+    domain: sessionCookieDomain,
   },
 }));
 initializeAuth(app);
