@@ -278,10 +278,10 @@ Three test layers, all required in CI:
 
 | Surface | Provider | Purpose |
 |---|---|---|
-| **Primary app (production)** | Replit Deployments | Hosts the Express server + serves the Vite-built static SPA. Single VM. |
+| **Primary app (production)** | Fly.io | Hosts the Express server + serves the Vite-built static SPA at `app.yourcondomanager.org` (custom domain, TLS via Fly). Migrated off Replit Deployments 2026-05-11 per Issue #424. |
 | **Webhooks + scheduled jobs** | Fly.io | Stripe + Twilio webhooks, scheduled assessment runs, alert cache invalidations, election scheduler (`server/election-scheduler.ts`). |
 | **Database** | Neon | Postgres 16 serverless. Single primary; branches used for staging + per-PR ephemeral test DBs (manual setup). |
-| **CDN / static assets** | Replit (origin) | Vite-built bundle served directly; CDN layered in front. |
+| **CDN / static assets** | Fly.io (origin) | Vite-built bundle served directly from the Fly app; Cloudflare layered in front. |
 | **Email** | Sendgrid-compatible SMTP via env | `server/email-provider.ts`. |
 | **SMS** | Twilio | `server/sms-provider.ts`. |
 | **Push** | Web Push (VAPID) | `server/push-provider.ts`; service worker in `client/public/sw.js`. |
