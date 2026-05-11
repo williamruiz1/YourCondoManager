@@ -4,6 +4,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { initializeAuth, enforceSessionAbsoluteAge } from "./auth";
+import { subdomainRedirectMiddleware } from "./middleware/subdomain-redirect";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 // Wave 33 (5.4 Part B): seedDatabase is lazy-loaded in the boot block —
@@ -114,6 +115,15 @@ initializeAuth(app);
 // requests; bails out cheaply for unauthenticated traffic. See
 // docs/security/zero-trust-architecture.md §3.2 for rationale.
 app.use(enforceSessionAbsoluteAge);
+
+// Subdomain-aware routing middleware (Issue #434) — splits the HTTP surface
+// across `yourcondomanager.org` (marketing) + `app.yourcondomanager.org`
+// (authenticated product). Runs AFTER session/passport so `req.user` +
+// `req.session?.portalAccessId` are populated, but BEFORE any route
+// handlers so app-only paths get a 301 instead of a 404 on the marketing
+// host (and vice versa). See `server/middleware/subdomain-redirect.ts`
+// for the full decision logic + truth table.
+app.use(subdomainRedirectMiddleware);
 
 type AutomationJobState = {
   isRunning: boolean;
