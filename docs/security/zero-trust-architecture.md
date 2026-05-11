@@ -103,7 +103,7 @@ This means: revoking an admin's access (or changing their scope) takes effect im
 
 ### §2.8 — Network is not a trust boundary
 
-YCM does not rely on private-network trust assumptions. All requests pass through the public internet (Replit-hosted) and are authenticated identically regardless of source. There is no admin endpoint on a "trusted internal port"; there is no IP allowlist (the architecture would require explicit allowlist code, which there is none). Cookies are `secure: true` in production (HTTPS-only) and `httpOnly: true` (no JavaScript access). `sameSite: lax` per environment default.
+YCM does not rely on private-network trust assumptions. All requests pass through the public internet (Fly.io-hosted at `app.yourcondomanager.org`) and are authenticated identically regardless of source. There is no admin endpoint on a "trusted internal port"; there is no IP allowlist (the architecture would require explicit allowlist code, which there is none). Cookies are `secure: true` in production (HTTPS-only) and `httpOnly: true` (no JavaScript access). `sameSite: lax` per environment default.
 
 **Evidence:** `server/index.ts` cookie config (lines ~101-106).
 

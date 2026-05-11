@@ -227,9 +227,13 @@ Out of scope for Wave 30 (5.9), filed as follow-ups when needed:
 - **Branch protection rules.** Manual repo setting; flip after
   the first green run on `main`. Settings → Branches → Add rule
   → require status checks: `check`, `test`, `build`, `playwright`.
-- **Deploy / CD step.** YCM deploys are manual (Replit preview,
-  Fly production). A future module can wire a `release` workflow
-  if/when there's a need for a tagged-version release pipeline.
+- **Deploy / CD step.** YCM deploys are manual (`flyctl deploy`
+  to the `yourcondomanager` Fly app, custom domain
+  `app.yourcondomanager.org`). A future module can wire a
+  `release` workflow if/when there's a need for a tagged-version
+  release pipeline. (Pre-2026-05-11 the deploy path was split
+  Replit-preview + Fly-production; the Replit half was
+  decommissioned per Issue #424.)
 - **Cross-browser Playwright.** Chromium-only today (Wave 25
   §123). Add Firefox / WebKit projects when there's evidence of
   browser-specific bugs.
