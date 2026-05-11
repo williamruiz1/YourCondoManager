@@ -254,6 +254,14 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         activePrefix: "/app/financial/reports",
         roles: FIVE_PERSONA_OPERATOR,
       },
+      {
+        title: "Payment Methods",
+        url: "/app/financial/bank-connections",
+        icon: Landmark,
+        materialIcon: "account_balance",
+        activePrefix: "/app/financial/bank-connections",
+        roles: FIVE_PERSONA_OPERATOR,
+      },
     ],
   },
   {

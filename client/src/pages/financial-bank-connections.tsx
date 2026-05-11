@@ -39,7 +39,7 @@ function formatMoney(cents: number | null | undefined) {
 }
 
 export default function FinancialBankConnectionsPage() {
-  useDocumentTitle("Bank Connections — YCM");
+  useDocumentTitle("Payment Methods — YCM");
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -144,7 +144,7 @@ export default function FinancialBankConnectionsPage() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6" data-testid="financial-bank-connections">
       <WorkspacePageHeader
-        title="Bank Connections"
+        title="Payment Methods"
         summary={activeAssociationName ? `Manage Plaid-linked bank accounts for ${activeAssociationName}.` : "Manage Plaid-linked bank accounts for the association."}
       />
 

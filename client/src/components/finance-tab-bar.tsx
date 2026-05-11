@@ -19,6 +19,7 @@ const TABS: FinanceTab[] = [
   { label: "Budgets", href: "/app/financial/budgets", prefix: "/app/financial/budgets" },
   { label: "Reports", href: "/app/financial/reports", prefix: "/app/financial/reports" },
   { label: "Reconciliation", href: "/app/financial/reconciliation", prefix: "/app/financial/reconciliation" },
+  { label: "Payment Methods", href: "/app/financial/bank-connections", prefix: "/app/financial/bank-connections" },
 ];
 
 export function FinanceTabBar() {
