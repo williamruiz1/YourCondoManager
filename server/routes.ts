@@ -270,6 +270,11 @@ import { updatePaymentTransactionStatus } from "./services/payment-service";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
 import { bankFeedProvider } from "./services/bank-feed";
+import {
+  reconcileBankTransactions,
+  manualMatchBankTransaction,
+  listPendingReconciliation,
+} from "./services/plaid-reconciliation";
 
 const uploadDir = path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -17376,6 +17381,68 @@ This is an automated demo request from the Your Condo Manager website.
     } catch (error: any) {
       debug("[plaid][sync] error", error);
       res.status(500).json({ error: error.message, code: "PLAID_SYNC_ERROR" });
+    }
+  });
+
+  // POST /api/plaid/reconcile
+  // Auto-reconcile unmatched bank credits with pending owner pay-intent ledger
+  // entries for the given association (Issue #448).
+  app.post("/api/plaid/reconcile", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const { associationId } = req.body as { associationId?: string };
+      if (!associationId) {
+        return res.status(400).json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+      }
+      assertAssociationScope(req, associationId);
+      const result = await reconcileBankTransactions(associationId);
+      res.json(result);
+    } catch (error: any) {
+      debug("[plaid][reconcile] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_RECONCILE_ERROR" });
+    }
+  });
+
+  // GET /api/plaid/reconcile/pending?associationId=...
+  // List unmatched credits + their candidate pending ledger entries (±$1).
+  app.get("/api/plaid/reconcile/pending", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const associationId = typeof req.query.associationId === "string" ? req.query.associationId : "";
+      if (!associationId) {
+        return res.status(400).json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+      }
+      assertAssociationScope(req, associationId);
+      const pending = await listPendingReconciliation(associationId);
+      res.json(pending);
+    } catch (error: any) {
+      debug("[plaid][reconcile][pending] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_RECONCILE_PENDING_ERROR" });
+    }
+  });
+
+  // POST /api/plaid/reconcile/manual
+  // Admin explicitly pairs a bank credit with a pending ledger entry (±$1).
+  app.post("/api/plaid/reconcile/manual", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const { associationId, bankTransactionId, ledgerEntryId } = req.body as {
+        associationId?: string;
+        bankTransactionId?: string;
+        ledgerEntryId?: string;
+      };
+      if (!associationId || !bankTransactionId || !ledgerEntryId) {
+        return res.status(400).json({
+          error: "associationId, bankTransactionId, and ledgerEntryId are required",
+          code: "MISSING_FIELDS",
+        });
+      }
+      assertAssociationScope(req, associationId);
+      const result = await manualMatchBankTransaction({ associationId, bankTransactionId, ledgerEntryId });
+      if (!result.ok) {
+        return res.status(400).json({ error: result.reason, code: result.code });
+      }
+      res.json(result.outcome);
+    } catch (error: any) {
+      debug("[plaid][reconcile][manual] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_RECONCILE_MANUAL_ERROR" });
     }
   });
 

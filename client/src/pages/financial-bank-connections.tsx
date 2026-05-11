@@ -20,11 +20,35 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/empty-state";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { Landmark, Receipt } from "lucide-react";
+import { Landmark, Receipt, AlertTriangle } from "lucide-react";
 import type { BankAccount, BankTransaction } from "@shared/schema";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type ConnectedAccount = BankAccount & { lastSyncedAt: string | null };
 type ConnectedTransaction = BankTransaction & { date: string };
+
+type ReconciliationCandidate = {
+  id: string;
+  amount: number;
+  description: string | null;
+  createdAt: string;
+};
+
+type UnmatchedCredit = BankTransaction & {
+  date: string;
+  candidates: ReconciliationCandidate[];
+};
+
+type PendingReconciliationPayload = {
+  unmatchedCredits: UnmatchedCredit[];
+  pendingEntryCount: number;
+};
 
 function formatDate(value: string | Date | null | undefined) {
   if (!value) return "—";
@@ -118,6 +142,55 @@ export default function FinancialBankConnectionsPage() {
     onError: (err: Error) => toast({ title: "Disconnect failed", description: err.message, variant: "destructive" }),
   });
 
+  // Issue #448 — bank-tx ↔ owner-ledger reconciliation.
+  const { data: pendingRecon } = useQuery<PendingReconciliationPayload>({
+    queryKey: ["/api/plaid/reconcile/pending", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) return { unmatchedCredits: [], pendingEntryCount: 0 };
+      const res = await apiRequest(
+        "GET",
+        `/api/plaid/reconcile/pending?associationId=${encodeURIComponent(activeAssociationId)}`,
+      );
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+
+  const reconcileAuto = useMutation({
+    mutationFn: async () => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const res = await apiRequest("POST", "/api/plaid/reconcile", { associationId: activeAssociationId });
+      return res.json() as Promise<{ matched: Array<{ bankTransactionId: string; ledgerEntryId: string }> }>;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Auto-reconcile complete",
+        description: `${data.matched.length} match(es) applied.`,
+      });
+      qc.invalidateQueries({ queryKey: ["/api/plaid/reconcile/pending", activeAssociationId] });
+      qc.invalidateQueries({ queryKey: ["/api/plaid/transactions", activeAssociationId] });
+    },
+    onError: (err: Error) => toast({ title: "Reconcile failed", description: err.message, variant: "destructive" }),
+  });
+
+  const manualMatch = useMutation({
+    mutationFn: async (input: { bankTransactionId: string; ledgerEntryId: string }) => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const res = await apiRequest("POST", "/api/plaid/reconcile/manual", {
+        associationId: activeAssociationId,
+        ...input,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Match applied" });
+      qc.invalidateQueries({ queryKey: ["/api/plaid/reconcile/pending", activeAssociationId] });
+      qc.invalidateQueries({ queryKey: ["/api/plaid/transactions", activeAssociationId] });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Match failed", description: err.message, variant: "destructive" }),
+  });
+
   const onPlaidSuccess = useCallback<PlaidLinkOnSuccess>(
     (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
       exchangeToken.mutate({
@@ -147,6 +220,81 @@ export default function FinancialBankConnectionsPage() {
         title="Payment Methods"
         summary={activeAssociationName ? `Manage Plaid-linked bank accounts for ${activeAssociationName}.` : "Manage Plaid-linked bank accounts for the association."}
       />
+
+      {pendingRecon && pendingRecon.unmatchedCredits.length > 0 ? (
+        <Card data-testid="pending-reconciliation-callout" className="border-warning">
+          <CardHeader className="flex flex-row items-start gap-3">
+            <AlertTriangle className="mt-1 h-5 w-5 text-warning" aria-hidden />
+            <div className="flex-1">
+              <CardTitle className="text-base">Pending reconciliation</CardTitle>
+              <CardDescription>
+                {pendingRecon.unmatchedCredits.length} unmatched bank credit(s) — pair them with pending owner payment intents below, or run auto-reconcile.
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => reconcileAuto.mutate()}
+              disabled={reconcileAuto.isPending}
+              data-testid="btn-auto-reconcile"
+            >
+              {reconcileAuto.isPending ? "Matching…" : "Auto-reconcile"}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Match to invoice</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingRecon.unmatchedCredits.map((credit) => (
+                  <TableRow key={credit.id} data-testid={`unmatched-credit-${credit.id}`}>
+                    <TableCell>{formatDate(credit.date)}</TableCell>
+                    <TableCell>{credit.merchantName ?? credit.name}</TableCell>
+                    <TableCell className="text-right">
+                      {formatMoney(Math.abs(credit.amountCents))}
+                    </TableCell>
+                    <TableCell>
+                      {credit.candidates.length === 0 ? (
+                        <span className="text-xs text-on-surface-variant">No candidates within ±$1</span>
+                      ) : (
+                        <Select
+                          onValueChange={(ledgerEntryId) =>
+                            manualMatch.mutate({
+                              bankTransactionId: credit.id,
+                              ledgerEntryId,
+                            })
+                          }
+                        >
+                          <SelectTrigger
+                            className="w-full"
+                            data-testid={`select-match-${credit.id}`}
+                            disabled={manualMatch.isPending}
+                          >
+                            <SelectValue placeholder="Choose pending entry…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {credit.candidates.map((cand) => (
+                              <SelectItem key={cand.id} value={cand.id}>
+                                {`$${Math.abs(cand.amount).toFixed(2)} — ${cand.description ?? "(no description)"} — ${formatDate(cand.createdAt)}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
