@@ -631,6 +631,9 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   description: text("description"),
   referenceType: text("reference_type"),
   referenceId: text("reference_id"),
+  // Issue #448: Plaid bank-tx reconciliation. NULL = pending; populated on match.
+  bankTransactionId: varchar("bank_transaction_id"),
+  settledAt: timestamp("settled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
