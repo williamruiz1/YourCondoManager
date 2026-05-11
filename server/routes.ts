@@ -17255,6 +17255,30 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
+  // GET /api/plaid/transactions?associationId=...
+  // Lists bankTransactions for an association (most recent first, capped at 250).
+  app.get("/api/plaid/transactions", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.query.associationId as string | undefined);
+      if (!associationId) {
+        return res.status(400).json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+      }
+      assertAssociationScope(req, associationId);
+
+      const txns = await db
+        .select()
+        .from(bankTransactions)
+        .where(eq(bankTransactions.associationId, associationId))
+        .orderBy(desc(bankTransactions.date))
+        .limit(250);
+
+      res.json(txns);
+    } catch (error: any) {
+      debug("[plaid][transactions] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_TRANSACTIONS_ERROR" });
+    }
+  });
+
   // POST /api/plaid/sync
   // Fetches transactions from Plaid for all active connections and upserts to bankTransactions.
   app.post("/api/plaid/sync", requireAdmin, async (req: AdminRequest, res) => {
@@ -17394,6 +17418,209 @@ This is an automated demo request from the Your Condo Manager website.
       debug("[plaid][webhook] error", error);
       // Return 200 so Plaid does not retry on our internal errors.
       res.status(200).json({ received: false, error: error.message });
+    }
+  });
+
+  // DELETE /api/plaid/connections/:id
+  // Disconnect (revoke) an admin/association-scoped Plaid bank connection.
+  // Marks status=revoked rather than hard-deleting so historical
+  // transactions remain attributed.
+  app.delete("/api/plaid/connections/:id", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : "";
+      if (!id) {
+        return res.status(400).json({ error: "connection id is required", code: "MISSING_CONNECTION_ID" });
+      }
+      const [conn] = await db
+        .select()
+        .from(bankConnections)
+        .where(eq(bankConnections.id, id))
+        .limit(1);
+      if (!conn) {
+        return res.status(404).json({ error: "Connection not found", code: "CONNECTION_NOT_FOUND" });
+      }
+      assertAssociationScope(req, conn.associationId);
+      await db
+        .update(bankConnections)
+        .set({ status: "revoked", updatedAt: new Date() })
+        .where(eq(bankConnections.id, id));
+      res.json({ ok: true });
+    } catch (error: any) {
+      debug("[plaid][disconnect] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_DISCONNECT_ERROR" });
+    }
+  });
+
+  // POST /api/portal/plaid/create-link-token
+  // Portal-scoped Plaid Link token for owner payment flow.
+  app.post("/api/portal/plaid/create-link-token", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const associationId = req.portalAssociationId;
+      const portalAccessId = req.portalAccessId;
+      if (!associationId || !portalAccessId) {
+        return res.status(403).json({ error: "Portal access required", code: "PORTAL_REQUIRED" });
+      }
+      const { linkToken } = await bankFeedProvider.createLinkToken({
+        associationId,
+        userId: portalAccessId,
+      });
+      res.json({ linkToken });
+    } catch (error: any) {
+      debug("[plaid][portal][create-link-token] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_LINK_TOKEN_ERROR" });
+    }
+  });
+
+  // POST /api/portal/plaid/exchange-token
+  // Exchanges public_token from portal Plaid Link onSuccess into a
+  // portal-scoped bank connection (portalAccessId set; associationId still
+  // populated from the portal session for tenant isolation).
+  app.post("/api/portal/plaid/exchange-token", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const { publicToken, institutionName } = req.body as {
+        publicToken?: string;
+        institutionName?: string;
+      };
+      if (!publicToken) {
+        return res.status(400).json({ error: "publicToken is required", code: "MISSING_PUBLIC_TOKEN" });
+      }
+      const associationId = req.portalAssociationId;
+      const portalAccessId = req.portalAccessId;
+      if (!associationId || !portalAccessId) {
+        return res.status(403).json({ error: "Portal access required", code: "PORTAL_REQUIRED" });
+      }
+
+      const { accessToken, itemId } = await bankFeedProvider.exchangePublicToken(publicToken);
+      const accessTokenEncrypted = encryptPlaidToken(accessToken);
+
+      const [connection] = await db
+        .insert(bankConnections)
+        .values({
+          associationId,
+          portalAccessId,
+          provider: "plaid",
+          providerItemId: itemId,
+          accessTokenEncrypted,
+          institutionName: institutionName ?? null,
+          status: "active",
+        })
+        .returning();
+
+      const accounts = await bankFeedProvider.getAccounts(accessToken);
+      if (accounts.length > 0) {
+        await db.insert(bankAccounts).values(
+          accounts.map((acct) => ({
+            bankConnectionId: connection.id,
+            associationId,
+            portalAccessId,
+            providerAccountId: acct.providerAccountId,
+            name: acct.name,
+            mask: acct.mask,
+            type: acct.type,
+            subtype: acct.subtype,
+            currentBalanceCents: acct.currentBalanceCents,
+            availableBalanceCents: acct.availableBalanceCents,
+            lastSyncedAt: new Date(),
+          })),
+        ).onConflictDoNothing();
+      }
+
+      res.status(201).json({ connectionId: connection.id, accountCount: accounts.length });
+    } catch (error: any) {
+      debug("[plaid][portal][exchange-token] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_EXCHANGE_ERROR" });
+    }
+  });
+
+  // POST /api/portal/plaid/pay
+  // Records a portal payment intent against the owner's ledger. ACH transfer
+  // execution is deferred to the Plaid Auth product and a follow-up
+  // background job; here we record the intent so the owner sees their
+  // payment as pending. Body: { amount: number, description?: string }.
+  app.post("/api/portal/plaid/pay", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const { amount, description } = req.body as { amount?: number; description?: string };
+      if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ error: "amount must be a positive number", code: "INVALID_AMOUNT" });
+      }
+      const associationId = req.portalAssociationId;
+      const portalAccessId = req.portalAccessId;
+      const personId = req.portalPersonId;
+      const unitId = req.portalUnitId;
+      if (!associationId || !portalAccessId || !personId || !unitId) {
+        return res.status(403).json({ error: "Portal access required", code: "PORTAL_REQUIRED" });
+      }
+
+      // Confirm the owner has a portal-scoped active bank connection before
+      // recording the intent — we do not want to create pending ledger
+      // entries for owners who never finished the Link flow.
+      const [conn] = await db
+        .select()
+        .from(bankConnections)
+        .where(
+          and(
+            eq(bankConnections.portalAccessId, portalAccessId),
+            eq(bankConnections.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!conn) {
+        return res.status(409).json({
+          error: "Connect a bank account before paying",
+          code: "NO_BANK_CONNECTED",
+        });
+      }
+
+      const [entry] = await db.insert(ownerLedgerEntries).values({
+        associationId,
+        personId,
+        unitId,
+        entryType: "payment",
+        amount: -Math.abs(amount),
+        description: description ?? "Bank payment (pending)",
+        postedAt: new Date(),
+        referenceType: "plaid-pay-intent",
+        referenceId: conn.id,
+      }).returning();
+
+      res.status(201).json({
+        status: "pending",
+        message: "Payment submitted — processing in 1-3 business days.",
+        ledgerEntryId: entry.id,
+      });
+    } catch (error: any) {
+      debug("[plaid][portal][pay] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_PAY_ERROR" });
+    }
+  });
+
+  // GET /api/portal/plaid/connection
+  // Returns the active portal-scoped bank connection (or null).
+  app.get("/api/portal/plaid/connection", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const portalAccessId = req.portalAccessId;
+      if (!portalAccessId) {
+        return res.status(403).json({ error: "Portal access required", code: "PORTAL_REQUIRED" });
+      }
+      const [conn] = await db
+        .select({
+          id: bankConnections.id,
+          institutionName: bankConnections.institutionName,
+          status: bankConnections.status,
+          createdAt: bankConnections.createdAt,
+        })
+        .from(bankConnections)
+        .where(
+          and(
+            eq(bankConnections.portalAccessId, portalAccessId),
+            eq(bankConnections.status, "active"),
+          ),
+        )
+        .limit(1);
+      res.json(conn ?? null);
+    } catch (error: any) {
+      debug("[plaid][portal][connection] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_CONNECTION_ERROR" });
     }
   });
 
