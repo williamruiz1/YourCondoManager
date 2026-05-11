@@ -23,6 +23,7 @@ import { log } from "./logger";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
 import { createRateLimiter } from "./rate-limit";
+import { subdomainRedirect } from "./middleware/subdomain-redirect";
 
 // Wave 33 (5.4 Part B): seed.ts is ~120 KB of static demo-data tables. It
 // only runs once at boot, after the HTTP server has already started
@@ -69,6 +70,14 @@ if (isProduction) {
   // Trust forwarded proto/host so secure session cookies are issued reliably.
   app.set("trust proxy", true);
 }
+
+// Subdomain-aware redirect middleware (Issue #434). Must run AFTER
+// `trust proxy = true` (so `req.hostname` reflects the original Host
+// header behind Fly's proxy) and BEFORE session / body-parsing /
+// route handlers (so we don't waste cycles on a request we're about
+// to redirect). It bypasses /api/*, /api/auth/google/callback, /api/
+// webhooks/*, /portal/login, /portal/verify — host-agnostic surfaces.
+app.use(subdomainRedirect);
 
 const sessionSecret = process.env.SESSION_SECRET?.trim();
 if (!sessionSecret) {
