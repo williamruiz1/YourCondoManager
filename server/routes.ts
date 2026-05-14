@@ -261,6 +261,7 @@ import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
 import { normalizeHubVisibility } from "@shared/hub-visibility";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
+import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import {
   getEffectivePortalRole,
   requireBoardAccess,
@@ -1291,6 +1292,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     requireAdmin,
     requireAdminRole,
     requirePortal,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // Stripe Connect (Standard) — platform onboarding for HOA sub-merchants.
+  // Issue #968 / founder-os/wiki/products/ycm/stripe-connect-spec.md §6 dispatch #1.
+  registerStripeConnectRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
     getAssociationIdQuery,
     assertAssociationScope,
   });
