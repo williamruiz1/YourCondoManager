@@ -262,7 +262,7 @@ describe("POST /api/financial/stripe-connect/onboarding-link", () => {
       };
       expect(body.url).toBe("https://connect.stripe.com/setup/s/test-link");
       expect(body.accountId).toBe("acct_test_001");
-      expect(body.statementDescriptor).toBe("CHRY HILL HOA");
+      expect(body.statementDescriptor).toBe("YCM-CHRY HILL HOA");
     });
     // First-time path: account create + onboarding link
     expect(stripeFetchCalls.map((c) => c.path)).toContain("/accounts");

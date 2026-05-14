@@ -58,21 +58,37 @@ export interface ConnectMetadataState {
 }
 
 /**
- * Truncate an HOA name to the spec §2.2 pattern: ≤17 chars to leave room
- * for a 4-5 char suffix (e.g., " DUES") within Stripe's 22-char hard limit.
+ * Build the connected-account `statement_descriptor` per spec §2.1 + §2.2:
+ * `YCM-<HOA-13-char-truncated>` — total ≤17 chars (including the platform
+ * `YCM-` prefix) to leave room for a 4-5 char suffix (e.g., " DUES") within
+ * Stripe's 22-char hard limit.
+ *
+ * Why the `YCM-` prefix is load-bearing (do NOT drop it):
+ * Per spec §2.1 (William-ratified 2026-05-14) + §2.4, the `YCM-` prefix is
+ * constant on every charge across the entire platform and is the
+ * platform-brand-recognition mechanic surfaced on every owner's bank
+ * statement. PR #121 Stage 2 FAIL iteration 1 (Issue #968) was caused by
+ * dropping the prefix because the dispatch's parenthetical example
+ * paraphrased it away — the spec, not the example, is canonical.
  *
  * Strategy:
  *   1. Uppercase, strip non-ASCII, collapse whitespace.
  *   2. Drop common suffix noise words: "CONDOMINIUMS", "CONDOMINIUM",
  *      "ASSOCIATION", "HOMEOWNERS", "COURT", "INC", "LLC" — but always
  *      keep "HOA" if present (signals to owners on bank statement).
- *   3. If still >17 chars, hard-truncate at 17.
+ *   3. Cap the HOA segment at 13 chars (so `YCM-` + segment ≤ 17).
+ *   4. Prepend `YCM-`.
  *
- * Examples (per spec §2.2):
- *   "Cherry Hill Court Condominiums" → "CHRY HILL HOA"
- *   "Wawaset"                        → "WAWASET HOA"
+ * Examples (per spec §2.2 + §2.4):
+ *   "Cherry Hill Court Condominiums" → "YCM-CHRY HILL HOA"  (17 chars)
+ *   "Wawaset"                        → "YCM-WAWASET HOA"    (15 chars)
  */
 export function buildStatementDescriptorPrefix(hoaName: string): string {
+  // Platform-wide constant prefix per spec §2.1 (ratified by William 2026-05-14).
+  // 4 chars; consumes part of the 17-char total budget, leaving 13 for the HOA segment.
+  const PLATFORM_PREFIX = "YCM-";
+  const HOA_SEGMENT_BUDGET = 13; // 17 total - 4 for "YCM-" per spec §2.2
+
   const NOISE_WORDS = new Set([
     "CONDOMINIUMS",
     "CONDOMINIUM",
@@ -103,10 +119,9 @@ export function buildStatementDescriptorPrefix(hoaName: string): string {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!cleaned) return "HOA";
+  if (!cleaned) return `${PLATFORM_PREFIX}HOA`;
 
   const tokensRaw = cleaned.split(" ");
-  const hadHoa = tokensRaw.includes("HOA");
 
   let tokens = tokensRaw
     .filter((t) => !NOISE_WORDS.has(t))
@@ -115,14 +130,16 @@ export function buildStatementDescriptorPrefix(hoaName: string): string {
 
   let result = tokens.join(" ");
   if (!result.includes("HOA")) result = `${result} HOA`;
-  if (result.length <= 17) return result;
+  if (result.length <= HOA_SEGMENT_BUDGET) return `${PLATFORM_PREFIX}${result}`;
 
-  // Hard truncate, preserve trailing "HOA" if it fits.
+  // Hard truncate the HOA segment to fit the 13-char budget, preserving trailing "HOA".
   const HOA_SUFFIX = " HOA";
-  const head = result.replace(/\s*HOA$/, "").slice(0, 17 - HOA_SUFFIX.length).trim();
+  const head = result
+    .replace(/\s*HOA$/, "")
+    .slice(0, HOA_SEGMENT_BUDGET - HOA_SUFFIX.length)
+    .trim();
   result = head ? `${head}${HOA_SUFFIX}` : "HOA";
-  void hadHoa;
-  return result.slice(0, 17);
+  return `${PLATFORM_PREFIX}${result.slice(0, HOA_SEGMENT_BUDGET)}`;
 }
 
 /**

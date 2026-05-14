@@ -24,18 +24,21 @@ import {
   type StripeAccountSnapshot,
 } from "../stripe-connect";
 
-describe("buildStatementDescriptorPrefix (spec §2.2)", () => {
+describe("buildStatementDescriptorPrefix (spec §2.1 + §2.2 — `YCM-` platform prefix)", () => {
   it("matches the spec's Cherry Hill example", () => {
-    expect(buildStatementDescriptorPrefix("Cherry Hill Court Condominiums")).toBe("CHRY HILL HOA");
+    expect(buildStatementDescriptorPrefix("Cherry Hill Court Condominiums")).toBe(
+      "YCM-CHRY HILL HOA",
+    );
   });
 
   it("appends HOA when name lacks it", () => {
-    expect(buildStatementDescriptorPrefix("Wawaset")).toBe("WAWASET HOA");
+    expect(buildStatementDescriptorPrefix("Wawaset")).toBe("YCM-WAWASET HOA");
   });
 
-  it("stays at or under 17 chars (leaves room for 4-5 char suffix in Stripe's 22 budget)", () => {
+  it("stays at or under 17 chars total (leaves room for 4-5 char suffix in Stripe's 22 budget)", () => {
     const long = buildStatementDescriptorPrefix("North Hills Square Garden Homeowners Association");
     expect(long.length).toBeLessThanOrEqual(17);
+    expect(long.startsWith("YCM-")).toBe(true);
   });
 
   it("preserves explicit HOA token in input without doubling", () => {
@@ -43,17 +46,32 @@ describe("buildStatementDescriptorPrefix (spec §2.2)", () => {
     expect(out).toContain("HOA");
     // No duplicate HOA token.
     expect(out.match(/HOA/g)!.length).toBe(1);
+    expect(out.startsWith("YCM-")).toBe(true);
   });
 
   it("strips punctuation and lowercase artifacts", () => {
     const out = buildStatementDescriptorPrefix("st. mary's pl, llc.");
-    expect(out).toMatch(/^[A-Z0-9 ]+$/);
+    // Allow the canonical `YCM-` prefix's hyphen alongside alphanumerics + space.
+    expect(out).toMatch(/^YCM-[A-Z0-9 ]+$/);
     expect(out.length).toBeLessThanOrEqual(17);
   });
 
-  it("returns a non-empty fallback when input is empty", () => {
-    expect(buildStatementDescriptorPrefix("")).toBe("HOA");
-    expect(buildStatementDescriptorPrefix("    ")).toBe("HOA");
+  it("returns a non-empty fallback (with `YCM-` prefix) when input is empty", () => {
+    expect(buildStatementDescriptorPrefix("")).toBe("YCM-HOA");
+    expect(buildStatementDescriptorPrefix("    ")).toBe("YCM-HOA");
+  });
+
+  it("always starts with the platform `YCM-` prefix (spec §2.1)", () => {
+    for (const name of [
+      "Cherry Hill Court Condominiums",
+      "Wawaset",
+      "Maple Grove HOA",
+      "",
+      "st. mary's pl, llc.",
+      "North Hills Square Garden Homeowners Association",
+    ]) {
+      expect(buildStatementDescriptorPrefix(name).startsWith("YCM-")).toBe(true);
+    }
   });
 });
 
@@ -139,12 +157,12 @@ describe("buildConnectMetadataState", () => {
       details_submitted: true,
       charges_enabled: true,
       payouts_enabled: true,
-      settings: { payments: { statement_descriptor: "CHRY HILL HOA" } },
+      settings: { payments: { statement_descriptor: "YCM-CHRY HILL HOA" } },
     });
     const state = buildConnectMetadataState(acct, new Date("2026-05-14T12:00:00Z"));
     expect(state.mode).toBe("connect");
     expect(state.status).toBe("active");
-    expect(state.statementDescriptor).toBe("CHRY HILL HOA");
+    expect(state.statementDescriptor).toBe("YCM-CHRY HILL HOA");
     expect(state.lastSyncedAt).toBe("2026-05-14T12:00:00.000Z");
   });
 
