@@ -4,39 +4,28 @@
 //
 // Spec: docs/projects/platform-overhaul/decisions/5.2-error-states.md (AC #4)
 //
-// Single seam for future observability integration (Sentry / Datadog /
-// OpenTelemetry). For Wave 14 this is a console-log shim + a TODO. No
-// external dependency is introduced.
+// Single seam for observability integration. As of Issue founder-os#1030
+// this routes to Sentry (when `VITE_SENTRY_DSN` is set at build time) via
+// the `captureClientError` helper in `./observability.ts`. Local dev with
+// no DSN still gets the `console.error` shim that originally lived here.
 //
 // Call from: ErrorBoundary.componentDidCatch, mutation onError handlers,
 // async worker failure paths — anywhere you'd otherwise drop a silent
 // console.error.
 
+import { captureClientError } from "./observability";
+
 /**
- * Report an error with optional context. Wave 14 implementation writes
- * to `console.error` with a `[reportError]` prefix so it's greppable in
- * logs but does not ship elsewhere.
+ * Report an error with optional context. Routes to Sentry when configured,
+ * always also writes to console.error for local-dev visibility.
  *
- * TODO: wire a real transport (Sentry / Datadog RUM / custom endpoint)
- * once the observability workstream lands. When that happens, this
- * function is the only call site that needs to change.
+ * Per founder-os#1030: this used to be a console-only shim with a TODO to
+ * wire Sentry. The TODO is now closed — `captureClientError` is the real
+ * transport, conditional on `VITE_SENTRY_DSN` being set at build time.
  */
 export function reportError(
   error: unknown,
   context?: Record<string, unknown>,
 ): void {
-  // Normalize to an Error so consumers have a stable shape to inspect.
-  const normalized =
-    error instanceof Error
-      ? error
-      : new Error(
-          typeof error === "string" ? error : JSON.stringify(error ?? "unknown"),
-        );
-
-  // TODO(5.2): replace with real transport once observability workstream
-  // lands. Until then, console.error is the only destination.
-  console.error("[reportError]", normalized.message, {
-    stack: normalized.stack,
-    ...context,
-  });
+  captureClientError(error, context);
 }

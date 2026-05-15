@@ -1272,6 +1272,11 @@ async function getOwnedPortalUnitsForAssociation(input: {
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   registerAuthRoutes(app);
 
+  // Observability smoke-test (Issue founder-os#1030). Admin-gated;
+  // verifies Sentry + GA4 pipeline end-to-end post-deploy.
+  const { registerObservabilitySmokeTestRoutes } = await import("./routes/observability-smoke-test");
+  registerObservabilitySmokeTestRoutes(app, requireAdmin, requireAdminRole);
+
   // Amenity booking routes
   const { registerAmenityRoutes } = await import("./routes/amenities");
   registerAmenityRoutes(app, requireAdmin, requireAdminRole, requirePortal);
