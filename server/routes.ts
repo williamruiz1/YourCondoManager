@@ -268,6 +268,15 @@ import {
   requireBoardAccessReadOnly,
 } from "./portal-role-collapse";
 import { updatePaymentTransactionStatus } from "./services/payment-service";
+import {
+  buildSpecMetadata,
+  computeApplicationFeeCents,
+  descriptorSuffixForEntryType,
+  normalizeChargeType,
+  periodFromDate,
+  applyChargeMetadataToCheckoutSession,
+} from "./services/stripe-charge-metadata";
+import { getStripeApplicationFeeRate } from "./platform-settings-store";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
 import { bankFeedProvider } from "./services/bank-feed";
@@ -5323,7 +5332,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         db.select().from(associations).where(eq(associations.id, link.associationId)).then((rows) => rows[0] ?? null),
         db.select().from(units).where(eq(units.id, link.unitId)).then((rows) => rows[0] ?? null),
         db.select().from(persons).where(eq(persons.id, link.personId)).then((rows) => rows[0] ?? null),
-        db.select({ amount: ownerLedgerEntries.amount }).from(ownerLedgerEntries).where(and(
+        db.select({
+          id: ownerLedgerEntries.id,
+          amount: ownerLedgerEntries.amount,
+          entryType: ownerLedgerEntries.entryType,
+          postedAt: ownerLedgerEntries.postedAt,
+        }).from(ownerLedgerEntries).where(and(
           eq(ownerLedgerEntries.associationId, link.associationId),
           eq(ownerLedgerEntries.unitId, link.unitId),
           eq(ownerLedgerEntries.personId, link.personId),
@@ -5368,6 +5382,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const amountCents = Math.round(amount * 100);
       const currency = (link.currency || "USD").toLowerCase();
 
+      // Resolve the "primary" ledger entry being paid off — the largest
+      // outstanding charge, breaking ties by oldest. Owner-payment-link
+      // Checkout pays toward whatever's open; spec §3.1 metadata is anchored
+      // to one ledger_entry_id, so we pick the dominant one. Reconciliation
+      // (Dispatch #3 / #970) explodes the payout back across all relevant
+      // entries via the `payout.paid` webhook.
+      const primaryEntry = entries
+        .filter((e) => (Number(e.amount) || 0) > 0)
+        .sort((a, b) => {
+          const amtDiff = Number(b.amount) - Number(a.amount);
+          if (amtDiff !== 0) return amtDiff;
+          const aTs = a.postedAt instanceof Date ? a.postedAt.getTime() : 0;
+          const bTs = b.postedAt instanceof Date ? b.postedAt.getTime() : 0;
+          return aTs - bTs;
+        })[0];
+
+      const chargeType = normalizeChargeType(primaryEntry?.entryType ?? null);
+      const descriptorSuffix = descriptorSuffixForEntryType(primaryEntry?.entryType ?? null);
+
+      const specMetadata = buildSpecMetadata({
+        ownerName: `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim() || (person.email ?? "Owner"),
+        ownerId: person.id,
+        unitId: unit.id,
+        unitLabel: [unit.building ? `${unit.building}` : null, unit.unitNumber ? `#${unit.unitNumber}` : null].filter(Boolean).join(" ") || "Unit",
+        hoaId: association.id,
+        hoaName: association.name,
+        ledgerEntryId: primaryEntry?.id ?? "",
+        chargeType,
+        period: periodFromDate(),
+        environment: process.env.NODE_ENV ?? "development",
+        paymentLinkToken: link.token,
+      });
+
+      const applicationFeeRate = await getStripeApplicationFeeRate();
+      const applicationFeeCents = computeApplicationFeeCents(amountCents, applicationFeeRate);
+
       const sessionParams = new URLSearchParams();
       sessionParams.set("mode", "payment");
       sessionParams.set("success_url", successUrl);
@@ -5383,25 +5433,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       sessionParams.set("line_items[0][price_data][unit_amount]", String(amountCents));
       sessionParams.set("line_items[0][price_data][product_data][name]", description);
       sessionParams.set("payment_intent_data[description]", `${association.name} payment for ${unit.unitNumber}`);
-      sessionParams.set("payment_intent_data[metadata][associationId]", link.associationId);
-      sessionParams.set("payment_intent_data[metadata][unitId]", link.unitId);
-      sessionParams.set("payment_intent_data[metadata][personId]", link.personId);
-      sessionParams.set("payment_intent_data[metadata][paymentLinkToken]", link.token);
-      sessionParams.set("payment_intent_data[metadata][currency]", link.currency || "USD");
-      sessionParams.set("payment_intent_data[metadata][amount]", amount.toFixed(2));
-      sessionParams.set("metadata[associationId]", link.associationId);
-      sessionParams.set("metadata[unitId]", link.unitId);
-      sessionParams.set("metadata[personId]", link.personId);
-      sessionParams.set("metadata[paymentLinkToken]", link.token);
-      sessionParams.set("metadata[currency]", link.currency || "USD");
-      sessionParams.set("metadata[amount]", amount.toFixed(2));
+
+      // Spec §3.1 + §3.2 — canonical Stripe metadata schema. Sets the keys on
+      // BOTH the session and the underlying payment_intent so every Stripe
+      // resource (session, intent, charge) carries the full audit trail.
+      applyChargeMetadataToCheckoutSession(sessionParams, specMetadata);
+
+      // Spec §2.3 — statement_descriptor_suffix per entryType vocabulary.
+      // The per-HOA `YCM-…` prefix is set on the connected account at
+      // onboarding (see server/services/stripe-connect.ts buildStatementDescriptorPrefix).
+      sessionParams.set("payment_intent_data[statement_descriptor_suffix]", descriptorSuffix);
+
+      // Spec §1.2 — application fee on the direct charge. Only applies when
+      // the HOA has completed Stripe Connect onboarding and has a connected
+      // account ID on the gateway connection (per dispatch #968). For legacy
+      // platform-account flow (pre-Connect), the fee is omitted — payments
+      // there land directly on YCM's platform account.
+      const connectedAccountId = gateway.connection?.providerAccountId ?? null;
+      if (connectedAccountId && applicationFeeCents > 0) {
+        sessionParams.set("payment_intent_data[application_fee_amount]", String(applicationFeeCents));
+      }
+
+      // Stripe-Account header (spec §1.1) — direct charges on the connected
+      // HOA account when onboarding is complete. Without it, the charge lands
+      // on YCM's platform account (legacy pre-Connect behavior).
+      const stripeHeaders: Record<string, string> = {
+        Authorization: `Bearer ${gateway.secretKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      };
+      if (connectedAccountId) {
+        stripeHeaders["Stripe-Account"] = connectedAccountId;
+      }
 
       const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${gateway.secretKey}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+        headers: stripeHeaders,
         body: sessionParams.toString(),
       });
 

@@ -2805,6 +2805,22 @@ export const platformSecrets = pgTable("platform_secrets", {
 });
 export type PlatformSecret = typeof platformSecrets.$inferSelect;
 
+// ── Platform Settings ────────────────────────────────────────────────────────
+// Runtime-tunable non-secret platform configuration. Distinct from
+// `platform_secrets` (encrypted credentials) — these are admin-editable
+// knobs like the Stripe Connect application-fee rate.
+// Per Issue founder-os#969 (spec §1.2 — application fee rate stored in
+// `platform_settings` so future rate changes don't require a deploy).
+export const platformSettings = pgTable("platform_settings", {
+  key: varchar("key").primaryKey(),
+  value: text("value").notNull(),
+  description: text("description"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedBy: text("updated_by"),
+});
+export type PlatformSetting = typeof platformSettings.$inferSelect;
+export type InsertPlatformSetting = typeof platformSettings.$inferInsert;
+
 // ── Platform Subscription Billing ────────────────────────────────────────────
 
 export const platformSubscriptionStatusEnum = pgEnum("platform_subscription_status", [
