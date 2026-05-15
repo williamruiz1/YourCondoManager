@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  YCM brand v1 logo — Phase 1.A drafted placeholder.
+
+  Canonical reference: ~/.claude/projects/-Users-williamruiz/memory/project_ycm_brand_v1.md
+  Geometry locked per memory:
+    - 3 buildings, equal width
+    - Center building taller, with pitched teal roof
+    - Left building hosts the "Y" via lit-window (cool-white) pattern on cream base
+    - Center hosts the "C" on cool-white base
+    - Right building hosts the "M" via lit-window pattern on cream base
+    - Windows offset outward (left → left edge, right → right edge)
+    - Asymmetric vertical offset (left windows sit lower than right) — subtle motion
+    - Sky background slate blue
+    - Unlit windows: navy
+
+  This drafted SVG matches the geometry spec; Phase 1.B (founder-os#1024) swaps
+  for the canonical asset from Drive `YCM/Brand/ycm-logo-canonical.svg` once
+  Drive MCP transport is reachable from this session (currently blocked —
+  see Issue #1019 sibling permission-gap pattern; Drive-specific filed
+  separately as Phase 1.B prerequisite).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Your Condo Manager">
+  <title>Your Condo Manager</title>
+  <desc>Three buildings on a slate-blue sky: left cream with Y in lit windows, center cool-white with pitched teal roof and C, right cream with M.</desc>
+
+  <!-- Slate-blue sky background -->
+  <rect x="0" y="0" width="1024" height="1024" fill="#5B7DA3"/>
+
+  <!-- Ground band (slightly darker slate) -->
+  <rect x="0" y="900" width="1024" height="124" fill="#3F5876"/>
+
+  <!-- ── Left building (cream, hosts the "Y") ── -->
+  <!-- Body -->
+  <rect x="112" y="372" width="240" height="528" fill="#F0E5D2"/>
+  <!-- Flat roof line (teal accent) -->
+  <rect x="100" y="362" width="264" height="14" fill="#2DBDB0"/>
+
+  <!-- "Y" via lit-window pattern (cool-white) on cream — windows offset to left edge.
+       6 rows × 4 cols; lit windows trace a Y. Asymmetric vertical offset: starts lower. -->
+  <!-- Row 1 (top): two arms of Y -->
+  <rect x="138" y="436" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="284" y="436" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 2 -->
+  <rect x="174" y="492" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="248" y="492" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 3 (Y junction) -->
+  <rect x="211" y="548" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 4 (Y stem) -->
+  <rect x="211" y="604" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 5 (Y stem) -->
+  <rect x="211" y="660" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 6 (Y stem) -->
+  <rect x="211" y="716" width="38" height="38" fill="#F6F9FF"/>
+
+  <!-- Unlit windows (navy) — fill the rest of the 6×4 grid that the Y didn't claim -->
+  <!-- Row 1 -->
+  <rect x="174" y="436" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="248" y="436" width="38" height="38" fill="#0B1B3B"/>
+  <!-- Row 2 -->
+  <rect x="138" y="492" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="211" y="492" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="284" y="492" width="38" height="38" fill="#0B1B3B"/>
+  <!-- Row 3 -->
+  <rect x="138" y="548" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="174" y="548" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="248" y="548" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="284" y="548" width="38" height="38" fill="#0B1B3B"/>
+  <!-- Rows 4-6 (sides of stem) -->
+  <rect x="138" y="604" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="174" y="604" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="248" y="604" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="284" y="604" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="138" y="660" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="174" y="660" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="248" y="660" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="284" y="660" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="138" y="716" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="174" y="716" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="248" y="716" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="284" y="716" width="38" height="38" fill="#0B1B3B"/>
+
+  <!-- ── Center building (cool-white, hosts the "C", taller, pitched teal roof) ── -->
+  <!-- Body -->
+  <rect x="392" y="296" width="240" height="604" fill="#F6F9FF"/>
+  <!-- Pitched teal roof (triangle) -->
+  <polygon points="392,296 632,296 512,196" fill="#2DBDB0"/>
+
+  <!-- "C" pattern: top + left column + bottom of a 6×4 grid -->
+  <!-- Row 1: top of C (cols 1,2,3) -->
+  <rect x="418" y="356" width="38" height="38" fill="#F6F9FF" stroke="#2DBDB0" stroke-width="2"/>
+  <rect x="491" y="356" width="38" height="38" fill="#F6F9FF" stroke="#2DBDB0" stroke-width="2"/>
+  <rect x="564" y="356" width="38" height="38" fill="#F6F9FF" stroke="#2DBDB0" stroke-width="2"/>
+  <rect x="454" y="356" width="38" height="38" fill="#F6F9FF" stroke="#2DBDB0" stroke-width="2"/>
+  <!-- Filled top of C using teal-accented cool-white frames; the "C" is the negative space of the cool-white. -->
+  <!-- Simpler approach: render C as navy windows in the shape of a C -->
+
+  <!-- Reset: render C with navy windows tracing the letter on cool-white grid -->
+  <rect x="418" y="356" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="454" y="356" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="491" y="356" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="564" y="356" width="38" height="38" fill="#0B1B3B"/>
+
+  <rect x="418" y="412" width="38" height="38" fill="#0B1B3B"/>
+
+  <rect x="418" y="468" width="38" height="38" fill="#0B1B3B"/>
+
+  <rect x="418" y="524" width="38" height="38" fill="#0B1B3B"/>
+
+  <rect x="418" y="580" width="38" height="38" fill="#0B1B3B"/>
+
+  <rect x="418" y="636" width="38" height="38" fill="#0B1B3B"/>
+
+  <rect x="418" y="692" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="454" y="692" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="491" y="692" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="528" y="692" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="564" y="692" width="38" height="38" fill="#0B1B3B"/>
+
+  <!-- Door (teal lintel + navy door) -->
+  <rect x="491" y="788" width="50" height="112" fill="#0B1B3B"/>
+  <rect x="486" y="780" width="60" height="10" fill="#2DBDB0"/>
+
+  <!-- ── Right building (cream, hosts the "M") ── -->
+  <!-- Body -->
+  <rect x="672" y="372" width="240" height="528" fill="#F0E5D2"/>
+  <!-- Flat roof line (teal accent) -->
+  <rect x="660" y="362" width="264" height="14" fill="#2DBDB0"/>
+
+  <!-- "M" pattern: outside columns + zig-zag center. Windows offset to right edge.
+       Asymmetric vertical offset: starts higher than left building's "Y". -->
+  <!-- Row 1 (top of M — full row except center) -->
+  <rect x="698" y="418" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="734" y="418" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="808" y="418" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="845" y="418" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 2 (verticals of M) -->
+  <rect x="698" y="474" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="734" y="474" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="808" y="474" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="845" y="474" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 3 (V apex of M) -->
+  <rect x="698" y="530" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="772" y="530" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="845" y="530" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 4 (sides only) -->
+  <rect x="698" y="586" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="845" y="586" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 5 (sides only) -->
+  <rect x="698" y="642" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="845" y="642" width="38" height="38" fill="#F6F9FF"/>
+  <!-- Row 6 (sides only) -->
+  <rect x="698" y="698" width="38" height="38" fill="#F6F9FF"/>
+  <rect x="845" y="698" width="38" height="38" fill="#F6F9FF"/>
+
+  <!-- Unlit windows in M body (navy) -->
+  <!-- Row 1 (center gap) -->
+  <rect x="772" y="418" width="38" height="38" fill="#0B1B3B"/>
+  <!-- Row 2 (center) -->
+  <rect x="772" y="474" width="38" height="38" fill="#0B1B3B"/>
+  <!-- Row 3 (between verticals and apex) -->
+  <rect x="734" y="530" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="808" y="530" width="38" height="38" fill="#0B1B3B"/>
+  <!-- Rows 4-6 (interior of M) -->
+  <rect x="734" y="586" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="772" y="586" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="808" y="586" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="734" y="642" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="772" y="642" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="808" y="642" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="734" y="698" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="772" y="698" width="38" height="38" fill="#0B1B3B"/>
+  <rect x="808" y="698" width="38" height="38" fill="#0B1B3B"/>
+</svg>

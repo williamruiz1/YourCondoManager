@@ -15,6 +15,17 @@ export default {
         full: "9999px",
       },
       colors: {
+        // YCM brand v1 tokens — ratified 2026-05-11 (founder-os#1024 Phase 1.A).
+        // Use these on the marketing-apex surface (landing.tsx / OG image / public
+        // outreach materials). App-shell surfaces continue to use the existing
+        // palette below until Phase 2 decides on brand rollout into the app.
+        ycm: {
+          sky: "#5B7DA3",
+          teal: "#2DBDB0",
+          cream: "#F0E5D2",
+          "cool-white": "#F6F9FF",
+          navy: "#0B1B3B",
+        },
         // Flat / base colors (regular buttons)
         background: "hsl(var(--background) / <alpha-value>)",
         foreground: "hsl(var(--foreground) / <alpha-value>)",
