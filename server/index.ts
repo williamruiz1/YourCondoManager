@@ -36,6 +36,12 @@ import { resolveSessionCookieDomain } from "./session-cookie-domain";
 dotenv.config();
 dotenv.config({ path: ".env.local", override: true });
 
+// Observability bootstrap (Sentry) is initialized inside the async boot
+// block below so the CJS bundle target stays compatible. No-op when
+// `SENTRY_DSN` is unset (local dev). See INSTALL-OBSERVABILITY.md for the
+// production deploy steps (Issue founder-os#1030).
+import { initServerObservability } from "./observability";
+
 const app = express();
 const httpServer = createServer(app);
 const PgStore = connectPgSimple(session);
@@ -333,6 +339,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Init Sentry first inside the async boot so errors during the rest of
+  // boot are captured. Safe across hot-reload (idempotent init).
+  await initServerObservability();
+
   const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
   app.use("/api/public", publicRateLimiter);
 
