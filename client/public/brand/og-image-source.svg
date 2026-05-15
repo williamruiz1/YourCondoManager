@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!-- Brand slate-sky backdrop -->
+  <rect x="0" y="0" width="1200" height="630" fill="#5B7DA3"/>
+
+  <!-- Subtle gradient wash for depth -->
+  <defs>
+    <linearGradient id="wash" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5B7DA3" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#4A6889" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="630" fill="url(#wash)"/>
+
+  <!-- LEFT: canonical logo at 420x420, positioned y=105 (centered vertically), x=90 -->
+  <g transform="translate(90, 105) scale(0.41015625)">
+    <!-- Inline canonical logo geometry, scaled to fit 420px (1024 * 0.41015625 ≈ 420) -->
+    <rect x="0" y="0" width="1024" height="1024" rx="180" fill="#F6F9FF"/>
+    <rect x="149.00" y="490.00" width="230.00" height="284.00" rx="6.00" fill="#F0E5D2"/>
+    <rect x="171.00" y="554.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="223.00" y="554.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="275.00" y="554.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="171.00" y="606.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="223.00" y="606.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="275.00" y="606.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="171.00" y="658.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="223.00" y="658.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="275.00" y="658.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <polygon points="397.00,360.00 627.00,360.00 512.00,250.00" fill="#2DBDB0"/>
+    <rect x="397.00" y="360.00" width="230.00" height="414.00" rx="6.00" fill="#F6F9FF"/>
+    <rect x="439.00" y="432.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="491.00" y="432.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="543.00" y="432.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="439.00" y="484.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="491.00" y="484.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="543.00" y="484.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="439.00" y="536.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="491.00" y="536.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="543.00" y="536.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="439.00" y="588.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="491.00" y="588.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="543.00" y="588.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="439.00" y="640.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="491.00" y="640.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="543.00" y="640.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="645.00" y="490.00" width="230.00" height="284.00" rx="6.00" fill="#F0E5D2"/>
+    <rect x="707.00" y="542.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="759.00" y="542.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="811.00" y="542.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="707.00" y="594.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="759.00" y="594.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="811.00" y="594.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="707.00" y="646.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="759.00" y="646.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
+    <rect x="811.00" y="646.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
+    <rect x="141.00" y="774.00" width="742.00" height="6.00" rx="3.00" fill="#2DBDB0"/>
+  </g>
+
+  <!-- RIGHT: wordmark + tagline -->
+  <g transform="translate(580, 230)">
+    <text x="0" y="0" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-style="italic" font-weight="600" fill="#F6F9FF">Your Condo Manager</text>
+    <text x="0" y="56" font-family="-apple-system, system-ui, sans-serif" font-size="22" font-weight="400" fill="#F0E5D2" opacity="0.92">Condo property management,</text>
+    <text x="0" y="86" font-family="-apple-system, system-ui, sans-serif" font-size="22" font-weight="400" fill="#F0E5D2" opacity="0.92">handled in one platform.</text>
+
+    <!-- Teal accent bar -->
+    <rect x="0" y="120" width="120" height="4" rx="2" fill="#2DBDB0"/>
+  </g>
+</svg>

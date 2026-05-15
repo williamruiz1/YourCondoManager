@@ -122,11 +122,18 @@ function PlanPanel({ planKey, resolvedPrice }: { planKey: PlanKey; resolvedPrice
   const plan = PLANS[planKey];
 
   return (
-    <div className="bg-primary text-on-primary flex flex-col justify-between px-10 py-12 min-h-full">
+    <div className="bg-ycm-sky text-white flex flex-col justify-between px-10 py-12 min-h-full">
       {/* Logo */}
       <div>
-        <a href="/" className="font-headline text-2xl font-semibold italic tracking-tight hover:opacity-80 transition-opacity">
-          Your Condo Manager
+        <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <img
+            src="/brand/ycm-logo-canonical.svg"
+            alt="Your Condo Manager"
+            className="h-11 w-11 rounded-lg"
+          />
+          <span className="font-headline text-2xl font-semibold italic tracking-tight">
+            Your Condo Manager
+          </span>
         </a>
       </div>
 
