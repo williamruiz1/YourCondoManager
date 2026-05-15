@@ -76,7 +76,15 @@ function loadGA4(measurementId: string, environment: string): void {
  */
 async function initSentryReact(dsn: string, environment: string): Promise<void> {
   try {
-    const Sentry = (await import(/* @vite-ignore */ "@sentry/react" as string)) as SentryReactModule;
+    // Indirect through a runtime variable so Vite's static import-analysis
+    // cannot resolve the specifier at build / test-runner scan time. The
+    // `/* @vite-ignore */` annotation alone is not enough — Vite still
+    // attempts resolution when the literal string is right at the call
+    // site, breaking vitest in CI before the package is installed.
+    // The `import()` falls through to the catch block at runtime when
+    // `@sentry/react` isn't installed yet (the documented intent here).
+    const sentryReactSpecifier = "@sentry/react";
+    const Sentry = (await import(/* @vite-ignore */ sentryReactSpecifier)) as SentryReactModule;
     Sentry.init({
       dsn,
       environment,
