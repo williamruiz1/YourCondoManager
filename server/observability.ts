@@ -60,9 +60,14 @@ export async function initServerObservability(
     return;
   }
   try {
+    // Indirect specifier through a runtime variable so static import
+    // analysis (Vite / vitest scan) can't resolve the package before
+    // William's install runbook adds it. See client-side observability.ts
+    // for the same pattern + rationale.
+    const sentryNodeSpecifier = "@sentry/node";
     const Sentry = cfg.loader
       ? await cfg.loader()
-      : ((await import(/* @vite-ignore */ "@sentry/node" as string)) as SentryModule);
+      : ((await import(/* @vite-ignore */ sentryNodeSpecifier)) as SentryModule);
     Sentry.init({
       dsn: cfg.dsn,
       environment: cfg.environment,

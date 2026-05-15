@@ -81,9 +81,11 @@ describe("ErrorBoundary", () => {
         <BoomOnce shouldThrow={true} />
       </ErrorBoundary>,
     );
-    // reportError uses console.error with the [reportError] prefix.
+    // `reportError` routes through `captureClientError` (per founder-os#1030
+    // observability wiring) — which logs with the `[captureClientError]`
+    // marker. Test asserts the side-effect path stayed reachable.
     const matched = consoleError.mock.calls.some((args) =>
-      args.some((a) => typeof a === "string" && a.includes("[reportError]")),
+      args.some((a) => typeof a === "string" && a.includes("[captureClientError]")),
     );
     expect(matched).toBe(true);
   });
