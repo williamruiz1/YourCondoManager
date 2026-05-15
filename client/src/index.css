@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * YCM brand v1 tokens — ratified 2026-05-11 (founder-os#1024 Phase 1.A).
+ * Canonical reference: ~/.claude/projects/-Users-williamruiz/memory/project_ycm_brand_v1.md
+ *
+ * Logo variant locked: v16-05 "Cream + cool white" — slate blue sky, cream side
+ * buildings, cool white center, navy unlit windows, teal accents.
+ *
+ * Token names mirror the memory entry (slate, teal, cream, cool-white, navy).
+ * Use these for marketing-surface design (landing page, OG image, favicon, public
+ * outreach materials). App-surface (dashboard / admin / forms) continues to use
+ * the existing Tailwind palette until Phase 2 brand rollout decides whether to
+ * extend the brand into the app shell.
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --ycm-sky: #5B7DA3;         /* slate blue sky — background, primary brand presence */
+  --ycm-teal: #2DBDB0;        /* roof + lit-window accents — primary CTA + active state */
+  --ycm-cream: #F0E5D2;       /* side-building warm tone — secondary surface */
+  --ycm-cool-white: #F6F9FF;  /* center-building cool tone — primary content surface */
+  --ycm-navy: #0B1B3B;        /* unlit windows — high-contrast text, footer */
+}
+
 /* Material Symbols Outlined — with system symbol fallback when CDN is blocked */
 .material-symbols-outlined {
   font-family: 'Material Symbols Outlined', 'Apple Color Emoji', 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
