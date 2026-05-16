@@ -310,7 +310,13 @@ export default function CommunityHubPublicPage() {
 
       {/* Footer */}
       <footer className="border-t bg-white py-6 mt-8">
-        <div className="max-w-4xl mx-auto px-4 text-center text-sm text-muted-foreground">
+        <div className="max-w-4xl mx-auto px-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <img
+            src="/brand/ycm-logo-canonical.svg"
+            alt=""
+            aria-hidden="true"
+            className="h-5 w-5 rounded"
+          />
           <p>Powered by Your Condo Manager</p>
         </div>
       </footer>

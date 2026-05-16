@@ -24,8 +24,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "Your Condo Manager";
   const options = {
     body: payload.body || "",
-    icon: payload.icon || "/favicon.png",
-    badge: "/favicon.png",
+    icon: payload.icon || "/brand/icon-192.png",
+    badge: "/brand/favicon-32.png",
     tag: payload.tag || "condomanager-notification",
     data: { url: payload.url || "/" },
     requireInteraction: false,

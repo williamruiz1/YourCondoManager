@@ -205,13 +205,20 @@ function ShellSidebar({ items, pathname, associationId }: ShellSidebarProps) {
       className="hidden w-60 shrink-0 flex-col border-r border-outline-variant/15 bg-surface px-4 py-8 md:flex"
       data-testid="portal-sidebar"
     >
-      <div className="mb-10 px-2">
-        {/* Wave 25 — `/60` opacity dropped contrast below WCAG AA on the
-            light surface (axe color-contrast). Use full token opacity
-            and rely on the small uppercase tracking for visual de-
-            emphasis instead of opacity. */}
-        <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">YCM</p>
-        <p className="mt-1 font-serif text-lg italic text-primary">Owner Portal</p>
+      <div className="mb-10 px-2 flex items-center gap-3">
+        <img
+          src="/brand/ycm-logo-canonical.svg"
+          alt="Your Condo Manager"
+          className="h-9 w-9 rounded-md shrink-0"
+        />
+        <div className="min-w-0">
+          {/* Wave 25 — `/60` opacity dropped contrast below WCAG AA on the
+              light surface (axe color-contrast). Use full token opacity
+              and rely on the small uppercase tracking for visual de-
+              emphasis instead of opacity. */}
+          <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">YCM</p>
+          <p className="font-serif text-lg italic text-primary leading-tight">Owner Portal</p>
+        </div>
       </div>
       <nav className="flex-1 space-y-1" aria-label="Portal navigation">
         {items.map((item) => {

@@ -47,23 +47,15 @@ export function OwnerPortalLogin({
     <div className="light min-h-screen bg-surface-container-low text-on-surface flex items-center justify-center p-6 selection:bg-primary-fixed selection:text-on-primary-fixed">
       <main className="grid lg:grid-cols-2 w-full max-w-6xl bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden min-h-[700px]">
         {/* Left Section: Visual & Brand */}
-        <section className="hidden lg:flex flex-col justify-between p-12 bg-primary relative overflow-hidden text-white">
-          {/* Background Image with Overlay */}
-          <div className="absolute inset-0 z-0">
-            <img
-              alt="Luxury property interior"
-              className="w-full h-full object-cover opacity-30 grayscale brightness-75"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuA2BLw-TttK5VxTnDAyMwev1sYA0kiMf8jRqLVI-CvELihFDW4nnwtgiXJGUDJNh2gJK-T1e7QyHRzaf1mzPcKPNnVfwMehVNlDRsv_OX-F9HO8OugrVn7m8OQKkAjWOOqmMD07RK8FbVvqKn6EOjiQoIvizS0qRD807NZn7vMMewxIvdb2O6buFuKKRuj30kAYD6tQt3WOARW6g1x-u3ac0axjfB-K3a5AQG_yVqjqFaaRuUHXAHFWVVyWofkfx90MHvIk54MWcRU"
-            />
-            <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/80 to-transparent"></div>
-          </div>
-
+        <section className="hidden lg:flex flex-col justify-between p-12 bg-ycm-sky relative overflow-hidden text-white">
           {/* Content */}
           <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-12">
-              <span className="material-symbols-outlined text-3xl" style={{fontVariationSettings: "'FILL' 1"}}>
-                domain
-              </span>
+            <div className="flex items-center gap-3 mb-12">
+              <img
+                src="/brand/ycm-logo-canonical.svg"
+                alt="Your Condo Manager"
+                className="h-12 w-12 rounded-lg"
+              />
               <h1 className="text-2xl font-serif italic tracking-tight">Your Condo Manager</h1>
             </div>
             <div className="max-w-md">
@@ -94,9 +86,11 @@ export function OwnerPortalLogin({
           <div className="w-full max-w-sm">
             {/* Mobile Branding */}
             <div className="lg:hidden flex flex-col items-center mb-12 text-center">
-              <span className="material-symbols-outlined text-primary text-4xl mb-2" style={{fontVariationSettings: "'FILL' 1"}}>
-                domain
-              </span>
+              <img
+                src="/brand/ycm-logo-canonical.svg"
+                alt="Your Condo Manager"
+                className="h-16 w-16 rounded-xl mb-3"
+              />
               <h1 className="text-2xl font-serif italic text-on-surface">Your Condo Manager</h1>
             </div>
 

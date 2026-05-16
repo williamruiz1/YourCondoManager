@@ -190,9 +190,11 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
           href="/"
           className="px-4 pt-4 pb-3 flex items-center gap-2.5 hover:opacity-80 transition-opacity"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm flex-shrink-0">
-            <span className="material-symbols-outlined text-[18px]">apartment</span>
-          </div>
+          <img
+            src="/brand/ycm-logo-canonical.svg"
+            alt="Your Condo Manager"
+            className="h-8 w-8 rounded-lg shadow-sm flex-shrink-0"
+          />
           <div className="group-data-[collapsible=icon]:hidden">
             <h2
               className="font-headline italic font-semibold text-lg tracking-tight text-slate-900 dark:text-slate-100"
