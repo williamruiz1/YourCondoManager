@@ -52,7 +52,10 @@ export function OwnerPortalLogin({
           {/* Content */}
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-12">
-              <BrandMark className="h-14 w-14" />
+              {/* Slate-sky surface ⇒ V9 dark variant for contrast (deeper slate
+                  sides + slate-sky center pop on bg-ycm-sky) regardless of
+                  the app's light/dark mode. */}
+              <BrandMark forceTheme="dark" className="h-14 w-14" />
               <h1 className="text-2xl font-serif italic tracking-tight">Your Condo Manager</h1>
             </div>
             <div className="max-w-md">
