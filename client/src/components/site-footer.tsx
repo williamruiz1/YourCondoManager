@@ -104,6 +104,25 @@ export function SiteFooter() {
           Cookie Settings
         </a>
       </div>
+      {/* Marginalia Partners attribution — per founder-os D72 + spec
+          `the-practice/00-strategy-and-positioning/attribution-standard-spec-v1.0.md`
+          §2 Variant A. v1 text-only treatment (no logo) per §4; one
+          typographic step smaller than primary footer copy; deliberate
+          signoff spacing above. */}
+      <div className="px-12 py-6 border-t border-slate-200/50 dark:border-slate-800/50">
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+          Built in partnership with{" "}
+          <a
+            href="https://marginaliapartners.com/case-studies/your-condo-manager"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-slate-500 dark:text-slate-400 hover:text-primary dark:hover:text-blue-400 transition-colors underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-primary rounded"
+          >
+            Marginalia Partners
+          </a>{" "}
+          → marginaliapartners.com/case-studies/your-condo-manager
+        </p>
+      </div>
     </footer>
   );
 }
