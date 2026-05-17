@@ -276,6 +276,186 @@ function PaymentMethodsTab({
   );
 }
 
+// ── Stripe Connect (Standard) onboarding section ─────────────────────────────
+// Implements founder-os Issue #968 / stripe-connect-spec.md §6 dispatch #1.
+// Standard Connect uses YCM's platform keys + each HOA's `acct_...` connected
+// account; no per-HOA pk_/sk_/whsec_ needed. The legacy manual-keys form
+// remains below (kept for non-platform / non-Stripe gateways).
+
+interface StripeConnectConnectionView {
+  id: string;
+  associationId: string;
+  associationName: string | null;
+  providerAccountId: string | null;
+  isActive: number;
+  connectState: {
+    mode: "connect";
+    status: "pending" | "active" | "restricted" | "disabled";
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    detailsSubmitted: boolean;
+    statementDescriptor: string | null;
+    disabledReason: string | null;
+    lastSyncedAt: string;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+
+function statusBadgeVariant(
+  status: StripeConnectConnectionView["connectState"]["status"],
+): "default" | "secondary" | "destructive" {
+  if (status === "active") return "default";
+  if (status === "disabled" || status === "restricted") return "destructive";
+  return "secondary";
+}
+
+function StripeConnectSection({ associationId }: { associationId: string | null }) {
+  const { toast } = useToast();
+
+  const { data: connections = [], isLoading } = useQuery<StripeConnectConnectionView[]>({
+    queryKey: [associationId
+      ? `/api/financial/stripe-connect/connections?associationId=${associationId}`
+      : "/api/financial/stripe-connect/connections"],
+  });
+
+  const onboardMutation = useMutation({
+    mutationFn: async () => {
+      if (!associationId) throw new Error("Select an association first");
+      const res = await apiRequest("POST", "/api/financial/stripe-connect/onboarding-link", {
+        associationId,
+      });
+      return res.json() as Promise<{ url: string; accountId: string; statementDescriptor: string }>;
+    },
+    onSuccess: (data) => {
+      // Redirect the admin to Stripe's hosted onboarding flow.
+      if (data?.url) {
+        window.location.href = data.url;
+        return;
+      }
+      toast({
+        title: "Connect onboarding started",
+        description: `Account ${data.accountId} (statement descriptor: ${data.statementDescriptor}).`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Could not start Stripe onboarding",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const associationConnection = associationId
+    ? connections.find((c) => c.associationId === associationId)
+    : null;
+
+  return (
+    <div className="space-y-4">
+      <Card data-testid="card-stripe-connect">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Connect this HOA to Stripe</CardTitle>
+          <CardDescription>
+            This is the recommended path for accepting owner payments. Each HOA becomes a sub-merchant
+            under the YCM platform — owners see the HOA name on their bank statement, payouts route
+            directly to the HOA's bank account, and Stripe issues a 1099-K to the HOA at year-end.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {associationConnection && (
+            <div className="rounded-lg border p-3 space-y-2" data-testid="row-stripe-connect-status">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Current status</p>
+                <Badge variant={statusBadgeVariant(associationConnection.connectState.status)}>
+                  {associationConnection.connectState.status}
+                </Badge>
+              </div>
+              {associationConnection.providerAccountId && (
+                <p className="text-xs text-muted-foreground">
+                  Stripe account: <code>{associationConnection.providerAccountId}</code>
+                </p>
+              )}
+              {associationConnection.connectState.statementDescriptor && (
+                <p className="text-xs text-muted-foreground">
+                  Statement descriptor: <code>{associationConnection.connectState.statementDescriptor}</code>
+                </p>
+              )}
+              {associationConnection.connectState.disabledReason && (
+                <p className="text-xs text-destructive">
+                  Disabled reason: {associationConnection.connectState.disabledReason}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Charges: {associationConnection.connectState.chargesEnabled ? "enabled" : "disabled"} ·
+                Payouts: {associationConnection.connectState.payoutsEnabled ? "enabled" : "disabled"} ·
+                Details submitted: {associationConnection.connectState.detailsSubmitted ? "yes" : "no"}
+              </p>
+            </div>
+          )}
+
+          <Button
+            onClick={() => onboardMutation.mutate()}
+            disabled={onboardMutation.isPending || !associationId}
+            data-testid="button-connect-stripe"
+          >
+            {onboardMutation.isPending
+              ? "Starting onboarding…"
+              : associationConnection?.connectState.status === "active"
+                ? "Re-run Stripe onboarding"
+                : associationConnection
+                  ? "Continue Stripe onboarding"
+                  : "Connect with Stripe"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {connections.length > 0 && (
+        <Card data-testid="card-stripe-connect-list">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Connected HOAs ({connections.length})</CardTitle>
+            <CardDescription>Stripe Connect status across the portfolio.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 2 }).map((_, index) => (
+                  <div key={index} className="h-10 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+                ))}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>HOA</TableHead>
+                    <TableHead>Stripe account</TableHead>
+                    <TableHead>Statement descriptor</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {connections.map((c) => (
+                    <TableRow key={c.id} data-testid={`row-stripe-connect-${c.id}`}>
+                      <TableCell className="font-medium">{c.associationName ?? c.associationId}</TableCell>
+                      <TableCell><code className="text-xs">{c.providerAccountId ?? "—"}</code></TableCell>
+                      <TableCell><code className="text-xs">{c.connectState.statementDescriptor ?? "—"}</code></TableCell>
+                      <TableCell>
+                        <Badge variant={statusBadgeVariant(c.connectState.status)}>
+                          {c.connectState.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ── Gateway Tab ───────────────────────────────────────────────────────────────
 
 function GatewayTab({
@@ -325,16 +505,19 @@ function GatewayTab({
 
   return (
     <div className="space-y-6">
+      <StripeConnectSection associationId={associationId} />
+
       <div className="rounded-lg border bg-muted/20 p-4 flex gap-3">
         <Info className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
         <div className="text-sm text-muted-foreground space-y-2">
+          <p className="font-medium text-foreground">Advanced: Bring your own gateway keys</p>
           <p>
-            A gateway connection is <strong>optional</strong> and only required if you want owners to pay
-            online via ACH bank debit. Most self-managed associations use bank transfer or Zelle instead —
-            configure those in the Payment Methods tab.
+            The recommended path is to use the Stripe Connect onboarding above — most HOAs do not need to
+            paste raw keys. This form is here for HOAs with a pre-existing direct Stripe account or for
+            non-Stripe gateways.
           </p>
           <p>
-            To connect Stripe: log in to your Stripe Dashboard, go to{" "}
+            To connect Stripe manually: log in to your Stripe Dashboard, go to{" "}
             <strong>Developers → API keys</strong>, and copy your publishable and secret keys.
             The webhook secret is found under <strong>Developers → Webhooks</strong> after creating an endpoint.
           </p>

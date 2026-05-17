@@ -17,6 +17,13 @@ import {
   savedPaymentMethods,
   type PaymentTransaction,
 } from "@shared/schema";
+import {
+  applyChargeMetadataToPaymentIntent,
+  buildSpecMetadata,
+  computeApplicationFeeCents,
+  descriptorSuffixForEntryType,
+  type ChargeMetadataContext,
+} from "./stripe-charge-metadata";
 
 // ── Receipt Reference ────────────────────────────────────────────────────────
 
@@ -49,8 +56,18 @@ export async function createPaymentTransaction(params: {
   paymentMethodId?: string | null;
   autopayEnrollmentId?: string | null;
   isOffSession?: boolean;
+  /**
+   * Spec §3.1 metadata mirrored locally so YCM can search payment_transactions
+   * without round-tripping Stripe. Stored under `metadataJson.spec` so the
+   * column can also carry future non-spec annotations without collision.
+   * Per Issue founder-os#969 dispatch §Scope.
+   */
+  chargeMetadata?: Record<string, string> | null;
 }): Promise<PaymentTransaction> {
   const receiptReference = generateReceiptReference();
+  const metadataJson = params.chargeMetadata
+    ? { spec: params.chargeMetadata }
+    : null;
   const [txn] = await db
     .insert(paymentTransactions)
     .values({
@@ -67,6 +84,7 @@ export async function createPaymentTransaction(params: {
       paymentMethodId: params.paymentMethodId ?? null,
       autopayEnrollmentId: params.autopayEnrollmentId ?? null,
       isOffSession: params.isOffSession ? 1 : 0,
+      metadataJson,
     })
     .returning();
   return txn;
@@ -485,6 +503,32 @@ export async function chargeOffSession(params: {
   unitId: string;
   transactionId: string;
   enrollmentId: string;
+  /**
+   * Spec §3.1 metadata context. When provided, the off-session intent sets
+   * the full spec metadata schema (preferred). When omitted (legacy callers),
+   * the intent falls back to the legacy associationId/unitId/personId set.
+   * Per Issue founder-os#969.
+   */
+  metadataContext?: ChargeMetadataContext | null;
+  /**
+   * Spec §2.3 statement_descriptor_suffix (e.g., "DUES"). When provided,
+   * attached to the intent so the owner's bank statement shows the right
+   * payment-type vocabulary. Per Issue founder-os#969 + §2 of the spec.
+   */
+  statementDescriptorSuffix?: string | null;
+  /**
+   * Spec §1.2 application_fee_amount in cents. When set AND the gateway is
+   * routing to a connected account (`stripeAccountHeader` provided), the
+   * direct charge takes this fee to the platform balance. Per Issue
+   * founder-os#969 + §1.2 of the spec.
+   */
+  applicationFeeCents?: number | null;
+  /**
+   * Stripe-Account header value (the connected HOA's `acct_…` ID). Required
+   * to make this a direct charge on the HOA's account. Without it, charges
+   * land on YCM's platform account (legacy pre-Connect behavior).
+   */
+  stripeAccountHeader?: string | null;
 }): Promise<{
   intentId: string;
   status: "succeeded" | "pending" | "failed";
@@ -500,18 +544,48 @@ export async function chargeOffSession(params: {
   intentParams.set("off_session", "true");
   intentParams.set("confirm", "true");
   intentParams.set("description", params.description);
-  intentParams.set("metadata[associationId]", params.associationId);
-  intentParams.set("metadata[personId]", params.personId);
-  intentParams.set("metadata[unitId]", params.unitId);
-  intentParams.set("metadata[transactionId]", params.transactionId);
-  intentParams.set("metadata[enrollmentId]", params.enrollmentId);
+
+  // Spec §3.1 — canonical metadata. If a caller passes the full context, we
+  // set every required key. Otherwise we keep the legacy keys so existing
+  // autopay callers still work pre-#969 cutover.
+  if (params.metadataContext) {
+    applyChargeMetadataToPaymentIntent(intentParams, buildSpecMetadata(params.metadataContext));
+    // Also include the legacy keys so reconciliation code that hasn't
+    // migrated to the new vocab still finds its fields.
+    intentParams.set("metadata[transactionId]", params.transactionId);
+    intentParams.set("metadata[enrollmentId]", params.enrollmentId);
+  } else {
+    intentParams.set("metadata[associationId]", params.associationId);
+    intentParams.set("metadata[personId]", params.personId);
+    intentParams.set("metadata[unitId]", params.unitId);
+    intentParams.set("metadata[transactionId]", params.transactionId);
+    intentParams.set("metadata[enrollmentId]", params.enrollmentId);
+  }
+
+  // Spec §2.3 — statement_descriptor_suffix per entryType.
+  if (params.statementDescriptorSuffix) {
+    intentParams.set("statement_descriptor_suffix", params.statementDescriptorSuffix);
+  }
+
+  // Spec §1.2 — application fee on direct charges (connected account only).
+  if (params.stripeAccountHeader && params.applicationFeeCents && params.applicationFeeCents > 0) {
+    intentParams.set("application_fee_amount", String(params.applicationFeeCents));
+  }
+
+  const intentHeaders: Record<string, string> = {
+    Authorization: `Bearer ${params.secretKey}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  // Stripe-Account header makes this a direct charge on the connected HOA
+  // account (per spec §1.1). Required for application_fee_amount to route
+  // back to the platform; required for per-HOA payouts.
+  if (params.stripeAccountHeader) {
+    intentHeaders["Stripe-Account"] = params.stripeAccountHeader;
+  }
 
   const res = await fetch("https://api.stripe.com/v1/payment_intents", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.secretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: intentHeaders,
     body: intentParams.toString(),
   });
 
