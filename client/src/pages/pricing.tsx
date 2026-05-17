@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { SiteFooter } from "@/components/site-footer";
+import { BrandMark } from "@/components/brand-mark";
 import { useStrings } from "@/i18n/use-strings";
 
 type PricingPageProps = {
@@ -209,11 +210,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
       <header className="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm dark:shadow-none">
         <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 h-16 flex items-center justify-between gap-6">
           <Link href="/" className="shrink-0 flex items-center gap-3">
-            <img
-              src="/brand/ycm-logo-canonical.svg"
-              alt={t("marketing.brand")}
-              className="h-9 w-9 rounded-md"
-            />
+            <BrandMark className="h-10 w-10" />
             <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">{t("marketing.brand")}</span>
           </Link>
 

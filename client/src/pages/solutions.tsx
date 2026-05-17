@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { BrandMark } from "@/components/brand-mark";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -105,11 +106,7 @@ export default function SolutionsPage({
         <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 h-16 flex items-center justify-between gap-6">
           {/* Logo */}
           <Link href="/" className="shrink-0 flex items-center gap-3">
-            <img
-              src="/brand/ycm-logo-canonical.svg"
-              alt={t("marketing.brand")}
-              className="h-9 w-9 rounded-md"
-            />
+            <BrandMark className="h-10 w-10" />
             <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">{t("marketing.brand")}</span>
           </Link>
 
