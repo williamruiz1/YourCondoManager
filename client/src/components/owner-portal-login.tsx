@@ -1,3 +1,4 @@
+import { BrandMark } from "@/components/brand-mark";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -51,11 +52,10 @@ export function OwnerPortalLogin({
           {/* Content */}
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-12">
-              <img
-                src="/brand/ycm-logo-canonical.svg"
-                alt="Your Condo Manager"
-                className="h-12 w-12 rounded-lg"
-              />
+              {/* Slate-sky surface ⇒ V9 dark variant for contrast (deeper slate
+                  sides + slate-sky center pop on bg-ycm-sky) regardless of
+                  the app's light/dark mode. */}
+              <BrandMark forceTheme="dark" className="h-14 w-14" />
               <h1 className="text-2xl font-serif italic tracking-tight">Your Condo Manager</h1>
             </div>
             <div className="max-w-md">
@@ -86,11 +86,7 @@ export function OwnerPortalLogin({
           <div className="w-full max-w-sm">
             {/* Mobile Branding */}
             <div className="lg:hidden flex flex-col items-center mb-12 text-center">
-              <img
-                src="/brand/ycm-logo-canonical.svg"
-                alt="Your Condo Manager"
-                className="h-16 w-16 rounded-xl mb-3"
-              />
+              <BrandMark className="h-20 w-20 mb-3" />
               <h1 className="text-2xl font-serif italic text-on-surface">Your Condo Manager</h1>
             </div>
 

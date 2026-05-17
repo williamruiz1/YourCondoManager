@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { BrandMark } from "@/components/brand-mark";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -126,11 +127,7 @@ function PlanPanel({ planKey, resolvedPrice }: { planKey: PlanKey; resolvedPrice
       {/* Logo */}
       <div>
         <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-          <img
-            src="/brand/ycm-logo-canonical.svg"
-            alt="Your Condo Manager"
-            className="h-11 w-11 rounded-lg"
-          />
+          <BrandMark className="h-12 w-12" />
           <span className="font-headline text-2xl font-semibold italic tracking-tight">
             Your Condo Manager
           </span>

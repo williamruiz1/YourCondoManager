@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BrandMark } from "@/components/brand-mark";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -118,8 +119,11 @@ export default function PlanSignupSuccessPage() {
     return (
       <div className="min-h-screen bg-surface-container-lowest flex flex-col px-6">
         <div className="py-6 px-2">
-          <a href="/" className="font-headline text-xl font-semibold italic tracking-tight text-primary hover:opacity-80 transition-opacity">
-            Your Condo Manager
+          <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <BrandMark decorative className="h-9 w-9" />
+            <span className="font-headline text-xl font-semibold italic tracking-tight text-primary">
+              Your Condo Manager
+            </span>
           </a>
         </div>
         <div className="flex-1 flex items-center justify-center">
@@ -146,8 +150,11 @@ export default function PlanSignupSuccessPage() {
     return (
       <div className="min-h-screen bg-surface-container-lowest flex flex-col px-6">
         <div className="py-6 px-2">
-          <a href="/" className="font-headline text-xl font-semibold italic tracking-tight text-primary hover:opacity-80 transition-opacity">
-            Your Condo Manager
+          <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <BrandMark decorative className="h-9 w-9" />
+            <span className="font-headline text-xl font-semibold italic tracking-tight text-primary">
+              Your Condo Manager
+            </span>
           </a>
         </div>
         <div className="flex-1 flex items-center justify-center">
@@ -170,8 +177,11 @@ export default function PlanSignupSuccessPage() {
   return (
     <div className="min-h-screen bg-surface-container-lowest flex flex-col px-6">
       <div className="py-6 px-2">
-        <a href="/" className="font-headline text-xl font-semibold italic tracking-tight text-primary hover:opacity-80 transition-opacity">
-          Your Condo Manager
+        <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <BrandMark decorative className="h-9 w-9" />
+          <span className="font-headline text-xl font-semibold italic tracking-tight text-primary">
+            Your Condo Manager
+          </span>
         </a>
       </div>
       <div className="flex-1 flex items-center justify-center">

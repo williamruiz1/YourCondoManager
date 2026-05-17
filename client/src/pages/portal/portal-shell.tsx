@@ -14,6 +14,7 @@
 //  - docs/projects/platform-overhaul/decisions/4.2-owner-portal-gaps.md
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { BrandMark } from "@/components/brand-mark";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { PortalAccess } from "@shared/schema";
@@ -206,11 +207,7 @@ function ShellSidebar({ items, pathname, associationId }: ShellSidebarProps) {
       data-testid="portal-sidebar"
     >
       <div className="mb-10 px-2 flex items-center gap-3">
-        <img
-          src="/brand/ycm-logo-canonical.svg"
-          alt="Your Condo Manager"
-          className="h-9 w-9 rounded-md shrink-0"
-        />
+        <BrandMark className="h-10 w-10 shrink-0" />
         <div className="min-w-0">
           {/* Wave 25 — `/60` opacity dropped contrast below WCAG AA on the
               light surface (axe color-contrast). Use full token opacity

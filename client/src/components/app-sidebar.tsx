@@ -28,6 +28,7 @@
 // Association switcher lives in the top app-bar only per 3.1 Q10.
 
 import { useLocation, Link } from "wouter";
+import { BrandMark } from "@/components/brand-mark";
 import {
   Sidebar,
   SidebarContent,
@@ -190,11 +191,7 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
           href="/"
           className="px-4 pt-4 pb-3 flex items-center gap-2.5 hover:opacity-80 transition-opacity"
         >
-          <img
-            src="/brand/ycm-logo-canonical.svg"
-            alt="Your Condo Manager"
-            className="h-8 w-8 rounded-lg shadow-sm flex-shrink-0"
-          />
+          <BrandMark className="h-9 w-9 flex-shrink-0" />
           <div className="group-data-[collapsible=icon]:hidden">
             <h2
               className="font-headline italic font-semibold text-lg tracking-tight text-slate-900 dark:text-slate-100"

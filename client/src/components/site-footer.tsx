@@ -1,11 +1,15 @@
 import { Link } from "wouter";
+import { BrandMark } from "@/components/brand-mark";
 
 export function SiteFooter() {
   return (
     <footer className="bg-slate-50 dark:bg-slate-900 w-full border-t border-slate-200 dark:border-slate-800" role="contentinfo">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-12 px-12 py-16 w-full max-w-screen-2xl mx-auto">
         <div className="space-y-6">
-          <div className="text-xl font-serif text-slate-900 dark:text-slate-100">Your Condo Manager</div>
+          <div className="flex items-center gap-3">
+            <BrandMark decorative className="h-9 w-9" />
+            <div className="text-xl font-serif text-slate-900 dark:text-slate-100">Your Condo Manager</div>
+          </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed">
             Setting the standard for architectural excellence in property management software.
             Trusted by over 5,000 associations globally.
