@@ -12,6 +12,7 @@ import {
   adminUserPreferences,
   associationMemberships,
   adminUsers,
+  consentRecords,
   onboardingProgress,
   authUsers,
   authExternalAccounts,
@@ -3730,6 +3731,15 @@ export interface IStorage {
     dismissedAt: string | null;
   }>;
   dismissSignupOnboardingBanner(adminUserId: string): Promise<void>;
+  // #342 (WS3) — consent capture for GDPR/CCPA evidence.
+  recordConsent(input: {
+    userId: string;
+    userEmail: string;
+    policyVersion: string;
+    ipAddress: string | null;
+    userAgent: string | null;
+  }): Promise<{ id: string; consentedAt: Date }>;
+  hasConsented(userId: string, policyVersion: string): Promise<boolean>;
   // #1327 — self-managed Day-0-14 onboarding wizard state machine.
   getOnboardingWizardProgress(adminUserId: string): Promise<OnboardingWizardSnapshot>;
   startOnboardingWizard(adminUserId: string): Promise<OnboardingWizardSnapshot>;
@@ -6632,6 +6642,40 @@ export class DatabaseStorage implements IStorage {
       .update(adminUsers)
       .set({ onboardingDismissedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(adminUsers.id, adminUserId), isNull(adminUsers.onboardingDismissedAt)));
+  }
+
+  // #342 (WS3) — consent audit trail. Idempotency note: a second call at
+  // the same (user_id, policy_version) inserts a new row rather than
+  // upserting. That's by design — multiple consents at the same version
+  // (e.g., user logs in from a new device + accepts again) are valid
+  // audit signal. hasConsented only cares whether ANY row exists.
+  async recordConsent(input: {
+    userId: string;
+    userEmail: string;
+    policyVersion: string;
+    ipAddress: string | null;
+    userAgent: string | null;
+  }): Promise<{ id: string; consentedAt: Date }> {
+    const [row] = await db
+      .insert(consentRecords)
+      .values({
+        userId: input.userId,
+        userEmail: input.userEmail,
+        policyVersion: input.policyVersion,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      })
+      .returning({ id: consentRecords.id, consentedAt: consentRecords.consentedAt });
+    return row;
+  }
+
+  async hasConsented(userId: string, policyVersion: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: consentRecords.id })
+      .from(consentRecords)
+      .where(and(eq(consentRecords.userId, userId), eq(consentRecords.policyVersion, policyVersion)))
+      .limit(1);
+    return rows.length > 0;
   }
 
   // #1327 — onboarding wizard state machine. The 7-step Day-0-14 flow per
