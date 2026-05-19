@@ -83,6 +83,7 @@ export const onboardingReminderTemplate: TemplateModule<OnboardingReminderData> 
         : ["Everything looks resolved — click below to wrap up onboarding.", ``]),
       `Open the wizard: ${data.wizardUrl}`,
       ``,
+      `— The YourCondoManager team`,
       `Replies to this email reach contact@yourcondomanager.org.`,
     ].join("\n");
   },

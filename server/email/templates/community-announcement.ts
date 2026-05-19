@@ -51,7 +51,7 @@ export const communityAnnouncementTemplate: TemplateModule<CommunityAnnouncement
       ``,
       `Set up your owner portal access: ${data.portalUrl}`,
       ``,
-      `Replies to this email reach ${data.replyToLabel}.`,
+      `Sent via YourCondoManager — replies reach ${data.replyToLabel}.`,
     ].join("\n");
   },
 };
