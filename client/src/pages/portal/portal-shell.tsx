@@ -19,6 +19,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { PortalAccess } from "@shared/schema";
 import { OwnerPortalLoginContainer } from "@/components/owner-portal-login-container";
+import { AiChatWidget } from "@/components/ai-chat/AiChatWidget";
 
 // Session shape returned by /api/portal/me, post Phase 8a role collapse
 // (portalAccess.role is now "owner" | "board-member" per 2.2 / Phase 8a).
@@ -520,6 +521,9 @@ export function PortalShell({ children }: PortalShellProps) {
             {children}
           </main>
         </div>
+        {/* Resident-chat widget — renders nothing unless AI_ASSISTANT_ENABLED
+            is ON for this community (founder-os#1318, Phase 0). */}
+        <AiChatWidget associationId={associationId} />
       </div>
     </PortalContext.Provider>
   );

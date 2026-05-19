@@ -261,6 +261,7 @@ import {
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
 import { normalizeHubVisibility } from "@shared/hub-visibility";
+import { registerAiAssistantRoutes } from "./routes/ai-assistant";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
@@ -1320,6 +1321,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     getAssociationIdQuery,
     assertAssociationScope,
   });
+
+  // AI Assistant Phase 0 — resident chat scaffolding behind feature flag.
+  // founder-os#1318. Default OFF; per-community opt-in via
+  // FEATURE_FLAG_AI_ASSISTANT_ENABLED_<association_id>. Phase 1 wiring
+  // (real LLM via founder-os#1244) lands as a one-line rebind in
+  // server/services/ai-assistant/index.ts.
+  registerAiAssistantRoutes(app, { requirePortal });
 
   // Lightweight public health check for monitors, load balancers, and liveness probes
   app.get("/api/health", async (_req, res) => {
