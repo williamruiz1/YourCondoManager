@@ -60,3 +60,29 @@ export type PasswordResetData = {
   resetUrl: string;
   expiresInMinutes: number; // e.g., 60
 };
+
+// #1617 — onboarding wizard reminder cadence.
+export type OnboardingReminderData = {
+  recipientName: string;
+  /** 7 | 10 | 12 | 13 | 14 — drives the tone block selection. */
+  dayNumber: number;
+  /** Plain-English labels of the wizard steps still open (e.g., ["Connect your bank", "Upload your owner roster"]). */
+  openSteps: string[];
+  /** Deep-link back to /app/onboarding. */
+  wizardUrl: string;
+};
+
+// #1617 — wizard Step 5 community-wide announcement.
+export type CommunityAnnouncementData = {
+  /** May be null when sending a no-personalization batch fallback. */
+  recipientName: string | null;
+  communityName: string;
+  /** Plain-text message authored by the board; rendered as paragraphs (no HTML pass-through). */
+  bodyText: string;
+  /** Override the default subject; falsy = use the template default. */
+  subjectOverride?: string;
+  /** Deep-link to the owner portal. */
+  portalUrl: string;
+  /** Displayed as the reply-to address in the plain-text footer. */
+  replyToLabel: string;
+};

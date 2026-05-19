@@ -8,6 +8,7 @@ import { createHmac, timingSafeEqual, createHash as cryptoHash, createCipheriv a
 import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
+import { sendEmail } from "./email/send";
 import { invalidateAlertCache } from "./alerts";
 
 /**
@@ -9647,6 +9648,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
       const snapshot = await storage.completeOnboardingWizard(req.adminUserId);
       res.json(snapshot);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // #1617 — Step 5 mass communication send. POST body:
+  //   { associationId, communityName, bodyText, subjectOverride? }
+  // Server pulls the owner roster, fires bulk Resend via the template,
+  // returns counts. Step completion is recorded by the client after the
+  // user clicks send, via the existing step/:n/complete endpoint.
+  app.post("/api/onboarding/wizard/announce", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const associationId = String(req.body?.associationId ?? "");
+      const communityName = String(req.body?.communityName ?? "").trim();
+      const bodyText = String(req.body?.bodyText ?? "").trim();
+      const subjectOverride = req.body?.subjectOverride ? String(req.body.subjectOverride).trim() : undefined;
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      if (!communityName) return res.status(400).json({ message: "communityName is required" });
+      if (bodyText.length < 20) return res.status(400).json({ message: "bodyText must be at least 20 characters" });
+      assertAssociationInputScope(req, associationId);
+
+      const recipients = await storage.getCommunityOwnerRecipients(associationId);
+      if (recipients.length === 0) {
+        return res.status(200).json({ recipients: 0, sent: 0, failed: 0, message: "No owner emails on file yet — the announcement was not sent. Add owners in Step 3 first." });
+      }
+
+      const portalUrl = (process.env.PUBLIC_APP_URL?.trim() || "https://yourcondomanager.fly.dev").replace(/\/$/, "") + "/portal";
+      const replyToLabel = process.env.EMAIL_REPLY_TO?.trim() || "contact@yourcondomanager.org";
+
+      let sent = 0;
+      let failed = 0;
+      for (const r of recipients) {
+        const name = [r.firstName, r.lastName].filter(Boolean).join(" ").trim() || null;
+        const result = await sendEmail({
+          to: r.email,
+          template: "community-announcement",
+          data: {
+            recipientName: name,
+            communityName,
+            bodyText,
+            subjectOverride,
+            portalUrl,
+            replyToLabel,
+          },
+          tags: [
+            { name: "campaign", value: "wizard-step-5-announcement" },
+            { name: "association_id", value: associationId },
+          ],
+          associationId,
+        });
+        if (result.status === "sent") sent += 1;
+        else failed += 1;
+      }
+
+      res.json({ recipients: recipients.length, sent, failed });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }

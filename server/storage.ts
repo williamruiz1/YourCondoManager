@@ -3576,6 +3576,17 @@ function buildFallbackIngestionExtraction(
   };
 }
 
+// #1617 — one row per (admin_user_id, day-N) the reminder sweep needs to
+// fire. Stripped to the minimum fields the cadence email template needs.
+export type OnboardingReminderTarget = {
+  adminUserId: string;
+  associationId: string | null;
+  recipientName: string;
+  recipientEmail: string;
+  dayNumber: number;
+  openSteps: number[];
+};
+
 // #1327 — wire-format snapshot returned from every wizard storage method.
 // Single shape simplifies the React Query cache: callers always get the same
 // fields back regardless of which mutation just fired.
@@ -3726,6 +3737,10 @@ export interface IStorage {
   markOnboardingStepComplete(adminUserId: string, step: number): Promise<OnboardingWizardSnapshot>;
   markOnboardingStepSkipped(adminUserId: string, step: number): Promise<OnboardingWizardSnapshot>;
   completeOnboardingWizard(adminUserId: string): Promise<OnboardingWizardSnapshot>;
+  // #1617 — owner-roster fan-out + reminder cadence support.
+  getCommunityOwnerRecipients(associationId: string): Promise<Array<{ personId: string; email: string; firstName: string | null; lastName: string | null }>>;
+  listOnboardingRemindersDue(now: Date): Promise<OnboardingReminderTarget[]>;
+  markOnboardingReminderSent(adminUserId: string, dayNumber: number, sentAt: Date): Promise<void>;
   getAssociationOverview(associationId: string): Promise<{
     associationId: string;
     units: number;
@@ -6748,6 +6763,117 @@ export class DatabaseStorage implements IStorage {
       .where(eq(onboardingProgress.adminUserId, adminUserId))
       .returning();
     return rowToSnapshot(row);
+  }
+
+  // #1617 — owner-roster pull for Step 5 fan-out. Drives the
+  // /api/onboarding/wizard/announce send. Filters to ownerships that are
+  // still active (no end_date set) and to persons with a usable email.
+  async getCommunityOwnerRecipients(associationId: string): Promise<Array<{ personId: string; email: string; firstName: string | null; lastName: string | null }>> {
+    const rows = await db
+      .selectDistinct({
+        personId: persons.id,
+        email: persons.email,
+        firstName: persons.firstName,
+        lastName: persons.lastName,
+      })
+      .from(persons)
+      .innerJoin(ownerships, eq(ownerships.personId, persons.id))
+      .innerJoin(units, eq(units.id, ownerships.unitId))
+      .where(
+        and(
+          eq(units.associationId, associationId),
+          isNotNull(persons.email),
+          isNull(ownerships.endDate),
+        ),
+      );
+    return rows
+      .filter((r) => Boolean(r.email))
+      .map((r) => ({
+        personId: r.personId,
+        email: r.email as string,
+        firstName: r.firstName,
+        lastName: r.lastName,
+      }));
+  }
+
+  // #1617 — cadence sweep picks the wizards eligible for each day-N
+  // reminder. A row is eligible when:
+  //   - wizard_completed_at IS NULL
+  //   - wizard_started_at <= now - dayN days
+  //   - dayN_reminder_sent_at IS NULL
+  // We emit one OnboardingReminderTarget per (admin, day) hit so the
+  // sweep caller can fire individual sends + idempotency marks.
+  async listOnboardingRemindersDue(now: Date): Promise<OnboardingReminderTarget[]> {
+    const out: OnboardingReminderTarget[] = [];
+    const collect = async (
+      dayNumber: number,
+      sentCol:
+        | typeof onboardingProgress.day7ReminderSentAt
+        | typeof onboardingProgress.day10ReminderSentAt
+        | typeof onboardingProgress.day12ReminderSentAt
+        | typeof onboardingProgress.day13ReminderSentAt
+        | typeof onboardingProgress.day14ReminderSentAt,
+    ) => {
+      const threshold = new Date(now.getTime() - dayNumber * 24 * 60 * 60 * 1000);
+      const rows = await db
+        .select({
+          adminUserId: onboardingProgress.adminUserId,
+          associationId: onboardingProgress.associationId,
+          stepsCompleted: onboardingProgress.stepsCompleted,
+          stepsSkipped: onboardingProgress.stepsSkipped,
+          email: adminUsers.email,
+        })
+        .from(onboardingProgress)
+        .innerJoin(adminUsers, eq(adminUsers.id, onboardingProgress.adminUserId))
+        .where(
+          and(
+            isNull(onboardingProgress.wizardCompletedAt),
+            lte(onboardingProgress.wizardStartedAt, threshold),
+            isNull(sentCol),
+          ),
+        );
+      for (const row of rows) {
+        const done = new Set((row.stepsCompleted as number[]) ?? []);
+        const skipped = new Set((row.stepsSkipped as number[]) ?? []);
+        const openSteps: number[] = [];
+        for (let s = 1; s <= 7; s++) {
+          if (!done.has(s) && !skipped.has(s)) openSteps.push(s);
+        }
+        out.push({
+          adminUserId: row.adminUserId,
+          associationId: row.associationId,
+          recipientName: row.email.split("@")[0],
+          recipientEmail: row.email,
+          dayNumber,
+          openSteps,
+        });
+      }
+    };
+
+    await collect(7,  onboardingProgress.day7ReminderSentAt);
+    await collect(10, onboardingProgress.day10ReminderSentAt);
+    await collect(12, onboardingProgress.day12ReminderSentAt);
+    await collect(13, onboardingProgress.day13ReminderSentAt);
+    await collect(14, onboardingProgress.day14ReminderSentAt);
+    return out;
+  }
+
+  async markOnboardingReminderSent(adminUserId: string, dayNumber: number, sentAt: Date): Promise<void> {
+    // Drizzle wants the schema-property key in `.set()`, so map day-N to
+    // the explicit property name rather than a column object reference.
+    const patch: Partial<typeof onboardingProgress.$inferInsert> = { updatedAt: sentAt };
+    switch (dayNumber) {
+      case 7: patch.day7ReminderSentAt = sentAt; break;
+      case 10: patch.day10ReminderSentAt = sentAt; break;
+      case 12: patch.day12ReminderSentAt = sentAt; break;
+      case 13: patch.day13ReminderSentAt = sentAt; break;
+      case 14: patch.day14ReminderSentAt = sentAt; break;
+      default: throw new Error(`unsupported reminder day: ${dayNumber}`);
+    }
+    await db
+      .update(onboardingProgress)
+      .set(patch)
+      .where(eq(onboardingProgress.adminUserId, adminUserId));
   }
 
   async getAssociationOverview(associationId: string): Promise<{
