@@ -239,6 +239,14 @@ export const onboardingProgress = pgTable("onboarding_progress", {
   wizardTargetCompletionAt: timestamp("wizard_target_completion_at").notNull(),
   wizardCompletedAt: timestamp("wizard_completed_at"),
   lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+  // #1617 (Child C) — per-day reminder-sent tracking. NULL = not yet sent.
+  // The automation sweep filters on NULL + day-N threshold to keep sends
+  // idempotent across restarts and slow ticks.
+  day7ReminderSentAt: timestamp("day7_reminder_sent_at"),
+  day10ReminderSentAt: timestamp("day10_reminder_sent_at"),
+  day12ReminderSentAt: timestamp("day12_reminder_sent_at"),
+  day13ReminderSentAt: timestamp("day13_reminder_sent_at"),
+  day14ReminderSentAt: timestamp("day14_reminder_sent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({

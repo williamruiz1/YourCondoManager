@@ -52,6 +52,19 @@ const SAMPLE = {
     resetUrl: "https://app.yourcondomanager.org/reset/sample",
     expiresInMinutes: 60,
   },
+  "onboarding-reminder": {
+    recipientName: "Jane Doe",
+    dayNumber: 10,
+    openSteps: ["Connect your bank", "Upload your owner roster", "Set up recurring assessments"],
+    wizardUrl: "https://app.yourcondomanager.org/app/onboarding",
+  },
+  "community-announcement": {
+    recipientName: "Jane Doe",
+    communityName: "Cherry Hill Court Condominiums",
+    bodyText: "We've started using YourCondoManager to handle dues, communications, and our community calendar.\n\nYou'll receive a portal invite in a separate email — click through to set your password.\n\nQuestions go to the board's email below.",
+    portalUrl: "https://app.yourcondomanager.org/portal/sample",
+    replyToLabel: "board@cherryhillcourt.example",
+  },
 } as const;
 
 async function main(): Promise<void> {

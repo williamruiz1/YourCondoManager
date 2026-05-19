@@ -9,7 +9,7 @@
 // Wizard shell scope (Child A of the #1327 build): step routing + persistence +
 // Steps 1, 6, 7. Steps 2–5 surface as "coming soon" placeholders that the user
 // can skip; Child B + Child C dispatches add the real implementations.
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -17,9 +17,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { trackEvent } from "@/lib/tracking";
+import { reportError } from "@/lib/error-reporting";
 import { ArrowRight, PartyPopper } from "lucide-react";
 import { StepIndicator } from "./StepIndicator";
 import { Step1CommunityDetails } from "./Step1CommunityDetails";
+import { Step5MassCommunication } from "./Step5MassCommunication";
 import { Step6InviteBoard } from "./Step6InviteBoard";
 import { Step7TrialPreview } from "./Step7TrialPreview";
 import { StepComingSoon } from "./StepComingSoon";
@@ -27,12 +31,57 @@ import { WIZARD_STEPS, type OnboardingWizardSnapshot, type WizardStepNumber } fr
 
 const QUERY_KEY = ["/api/onboarding/wizard"] as const;
 
-export function OnboardingWizard() {
+function OnboardingWizardInner() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
   const { data, isLoading } = useQuery<OnboardingWizardSnapshot>({ queryKey: QUERY_KEY });
+
+  // #1617 — GA4 step-entered: fire once per step transition (not on every
+  // re-render). Captures step-enter time so a follow-on dispatch can derive
+  // per-step duration when the next step's enter event fires.
+  const lastStepEnteredRef = useRef<number | null>(null);
+  const stepEnterTimestampRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!data || data.wizardCompletedAt) return;
+    const current = data.currentStep;
+    if (lastStepEnteredRef.current === current) return;
+    const now = Date.now();
+    const previousStep = lastStepEnteredRef.current;
+    const previousEnteredAt = stepEnterTimestampRef.current;
+    if (previousStep !== null && previousEnteredAt !== null) {
+      const durationMs = now - previousEnteredAt;
+      const resolution = data.stepsCompleted.includes(previousStep)
+        ? "onboarding_step_completed"
+        : data.stepsSkipped.includes(previousStep)
+          ? "onboarding_step_skipped"
+          : null;
+      if (resolution) {
+        trackEvent(resolution, { step: previousStep, duration_ms: durationMs });
+      }
+    }
+    trackEvent("onboarding_step_entered", { step: current });
+    lastStepEnteredRef.current = current;
+    stepEnterTimestampRef.current = now;
+  }, [data]);
+
+  // #1617 — emit wizard_completed once on finalization. Pulls the wizard
+  // duration from start → completion so the activation dashboard can
+  // chart time-to-onboard distributions.
+  const completionEmittedRef = useRef(false);
+  useEffect(() => {
+    if (!data?.wizardCompletedAt) return;
+    if (completionEmittedRef.current) return;
+    completionEmittedRef.current = true;
+    const startedAt = data.wizardStartedAt ? new Date(data.wizardStartedAt).getTime() : null;
+    const completedAt = new Date(data.wizardCompletedAt).getTime();
+    trackEvent("onboarding_wizard_completed", {
+      duration_ms: startedAt ? completedAt - startedAt : null,
+      steps_completed: data.stepsCompleted.length,
+      steps_skipped: data.stepsSkipped.length,
+    });
+  }, [data]);
 
   // Bootstrap a wizard row the first time the page loads. The endpoint is
   // idempotent, so re-fires from React's strict-mode double-effect are safe.
@@ -56,7 +105,10 @@ export function OnboardingWizard() {
       return (await res.json()) as OnboardingWizardSnapshot;
     },
     onSuccess: (snapshot) => queryClient.setQueryData<OnboardingWizardSnapshot>(QUERY_KEY, snapshot),
-    onError: (err: Error) => toast({ title: "Couldn't skip step", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => {
+      reportError(err, { feature: "onboarding-wizard", action: "skip-step" });
+      toast({ title: "Couldn't skip step", description: err.message, variant: "destructive" });
+    },
   });
 
   const completeMutation = useMutation({
@@ -65,7 +117,10 @@ export function OnboardingWizard() {
       return (await res.json()) as OnboardingWizardSnapshot;
     },
     onSuccess: (snapshot) => queryClient.setQueryData<OnboardingWizardSnapshot>(QUERY_KEY, snapshot),
-    onError: (err: Error) => toast({ title: "Couldn't save step", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => {
+      reportError(err, { feature: "onboarding-wizard", action: "complete-step" });
+      toast({ title: "Couldn't save step", description: err.message, variant: "destructive" });
+    },
   });
 
   const finalizeMutation = useMutation({
@@ -78,7 +133,10 @@ export function OnboardingWizard() {
       toast({ title: "Onboarding complete", description: "Welcome to YCM. You can revisit any step from Settings." });
       setLocation("/app");
     },
-    onError: (err: Error) => toast({ title: "Couldn't finish", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => {
+      reportError(err, { feature: "onboarding-wizard", action: "finalize" });
+      toast({ title: "Couldn't finish", description: err.message, variant: "destructive" });
+    },
   });
 
   const activeStepDef = useMemo(() => {
@@ -131,6 +189,16 @@ export function OnboardingWizard() {
           onComplete={() => handleComplete(1)}
           isSaving={completeMutation.isPending}
           onSnapshotUpdate={(snapshot) => queryClient.setQueryData<OnboardingWizardSnapshot>(QUERY_KEY, snapshot)}
+        />
+      );
+      break;
+    case 5:
+      stepBody = (
+        <Step5MassCommunication
+          snapshot={data}
+          onComplete={() => handleComplete(5)}
+          onSkip={() => handleSkip(5)}
+          isSaving={completeMutation.isPending || skipMutation.isPending}
         />
       );
       break;
@@ -200,5 +268,16 @@ export function OnboardingWizard() {
         </div>
       )}
     </div>
+  );
+}
+
+// #1617 — Outer wrapper. Catches render-time crashes in any step
+// component and routes them through `reportError` (Sentry-or-console)
+// instead of dropping the user on a blank screen mid-onboarding.
+export function OnboardingWizard() {
+  return (
+    <ErrorBoundary>
+      <OnboardingWizardInner />
+    </ErrorBoundary>
   );
 }

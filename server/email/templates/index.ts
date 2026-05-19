@@ -11,6 +11,8 @@ import { welcomeOwnerTemplate } from "./welcome-owner.js";
 import { invoiceAssessmentTemplate } from "./invoice-assessment.js";
 import { receiptPaymentTemplate } from "./receipt-payment.js";
 import { passwordResetTemplate } from "./password-reset.js";
+import { onboardingReminderTemplate } from "./onboarding-reminder.js";
+import { communityAnnouncementTemplate } from "./community-announcement.js";
 
 import type {
   TemplateModule,
@@ -19,6 +21,8 @@ import type {
   InvoiceAssessmentData,
   ReceiptPaymentData,
   PasswordResetData,
+  OnboardingReminderData,
+  CommunityAnnouncementData,
 } from "./types.js";
 
 export const TEMPLATES = {
@@ -27,6 +31,8 @@ export const TEMPLATES = {
   "invoice-assessment": invoiceAssessmentTemplate,
   "receipt-payment": receiptPaymentTemplate,
   "password-reset": passwordResetTemplate,
+  "onboarding-reminder": onboardingReminderTemplate,
+  "community-announcement": communityAnnouncementTemplate,
 } as const;
 
 export type TemplateKey = keyof typeof TEMPLATES;
@@ -42,6 +48,8 @@ export type TemplateDataMap = {
   "invoice-assessment": InvoiceAssessmentData;
   "receipt-payment": ReceiptPaymentData;
   "password-reset": PasswordResetData;
+  "onboarding-reminder": OnboardingReminderData;
+  "community-announcement": CommunityAnnouncementData;
 };
 
 // Compile-time guard: every key in TEMPLATES must have a matching data type.
