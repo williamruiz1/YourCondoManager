@@ -1,0 +1,30 @@
+# Canonical Dependabot config — Trust WS1 (founder-os#1586)
+# Edit cadence: weekly. Patch-version security PRs are eligible for auto-merge
+# per OP #25 auto-merge default. Major-version bumps surface as drill-down PRs
+# for William review.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "dependabot"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(actions)"
+    labels:
+      - "dependencies"
+      - "github-actions"
