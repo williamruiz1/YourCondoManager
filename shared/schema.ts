@@ -224,6 +224,27 @@ export const userSessions = pgTable("user_sessions", {
   expire: timestamp("expire").notNull(),
 });
 
+// #1327 — self-managed onboarding wizard state machine. One row per admin user
+// who lands on the Day-0-14 wizard. Step state persists across logout/login;
+// reminder cadence sweeps incomplete wizards at Day 7/10/12/13/14. See
+// migrations/0027_onboarding_progress.sql for the step-number mapping.
+export const onboardingProgress = pgTable("onboarding_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  adminUserId: varchar("admin_user_id").notNull().references(() => adminUsers.id, { onDelete: "cascade" }),
+  associationId: varchar("association_id").references(() => associations.id, { onDelete: "set null" }),
+  currentStep: integer("current_step").notNull().default(1),
+  stepsCompleted: jsonb("steps_completed").notNull().default(sql`'[]'::jsonb`),
+  stepsSkipped: jsonb("steps_skipped").notNull().default(sql`'[]'::jsonb`),
+  wizardStartedAt: timestamp("wizard_started_at").defaultNow().notNull(),
+  wizardTargetCompletionAt: timestamp("wizard_target_completion_at").notNull(),
+  wizardCompletedAt: timestamp("wizard_completed_at"),
+  lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAdminUser: uniqueIndex("onboarding_progress_admin_user_uq").on(table.adminUserId),
+}));
+
 export const oauthProviderEnum = pgEnum("oauth_provider", ["google"]);
 export const authUsers = pgTable("auth_users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1969,6 +1990,12 @@ export const insertDocumentSchema = createInsertSchema(documents).omit({ id: tru
 export const insertDocumentTagSchema = createInsertSchema(documentTags).omit({ id: true, createdAt: true });
 export const insertDocumentVersionSchema = createInsertSchema(documentVersions).omit({ id: true, createdAt: true });
 export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress, {
+  stepsCompleted: z.array(z.number().int().min(1).max(7)).default([]),
+  stepsSkipped: z.array(z.number().int().min(1).max(7)).default([]),
+}).omit({ id: true, createdAt: true, updatedAt: true, lastActivityAt: true });
+export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
+export type InsertOnboardingProgress = z.infer<typeof insertOnboardingProgressSchema>;
 export const insertAuthUserSchema = createInsertSchema(authUsers).omit({ id: true, createdAt: true, updatedAt: true, lastLoginAt: true });
 export const insertAuthExternalAccountSchema = createInsertSchema(authExternalAccounts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
