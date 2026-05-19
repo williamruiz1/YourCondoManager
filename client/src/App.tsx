@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut } from "lucide-react";
 import { Link, Route, Switch, useLocation } from "wouter";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -32,6 +32,7 @@ import { TrialBanner } from "@/components/trial-banner";
 import { SubscriptionLockScreen } from "@/components/subscription-lock-screen";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { RouteGuard } from "@/components/RouteGuard";
+import { ConsentModal } from "@/components/ConsentModal";
 import type { AdminRole } from "@shared/schema";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
@@ -260,6 +261,34 @@ function RouteRedirect({ to }: { to: string }) {
   }, [navigate, to]);
 
   return <RouteFallback />;
+}
+
+// #342 (WS3) — Consent audit gate. Renders the consent modal in front of
+// the rest of the app until the current admin has agreed to the current
+// policy version. Re-prompts automatically when CURRENT_POLICY_VERSION is
+// bumped because hasConsented() is per-(user, version). The /api/consent/
+// current endpoint returns { consented: boolean, policyVersion: string }.
+function ConsentGate({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery<{ consented: boolean; policyVersion: string }>({
+    queryKey: ["/api/consent/current"],
+    staleTime: 60_000,
+  });
+
+  if (isLoading) return <RouteFallback />;
+  if (data && !data.consented) {
+    return (
+      <ConsentModal
+        onConsented={() => {
+          queryClient.setQueryData(["/api/consent/current"], {
+            consented: true,
+            policyVersion: data.policyVersion,
+          });
+        }}
+      />
+    );
+  }
+  return <>{children}</>;
 }
 
 // #1327 — Resume-on-login: when /app loads, check whether the user has a
@@ -1042,10 +1071,12 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
         tabIndex={-1}
       >
         <div className="pb-[max(env(safe-area-inset-bottom),1rem)]">
-          <WorkspaceRouter
-            adminRole={adminRole}
-            singleAssociationBoardExperience={singleAssociationBoardExperience}
-          />
+          <ConsentGate>
+            <WorkspaceRouter
+              adminRole={adminRole}
+              singleAssociationBoardExperience={singleAssociationBoardExperience}
+            />
+          </ConsentGate>
         </div>
         <SiteFooter />
       </main>

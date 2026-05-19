@@ -224,6 +224,22 @@ export const userSessions = pgTable("user_sessions", {
   expire: timestamp("expire").notNull(),
 });
 
+// #342 (WS3) — consent audit trail. One row per (user, policy_version) the
+// user has agreed to. Re-consent at version bump is implemented by the
+// (user_id, policy_version) lookup missing in this table.
+export const consentRecords = pgTable("consent_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id").notNull(),
+  userEmail: text("user_email").notNull(),
+  policyVersion: text("policy_version").notNull(),
+  consentedAt: timestamp("consented_at").defaultNow().notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+}, (table) => ({
+  userIdx: index("consent_records_user_id_idx").on(table.userId),
+  userVersionIdx: index("consent_records_user_version_idx").on(table.userId, table.policyVersion),
+}));
+
 // #1327 — self-managed onboarding wizard state machine. One row per admin user
 // who lands on the Day-0-14 wizard. Step state persists across logout/login;
 // reminder cadence sweeps incomplete wizards at Day 7/10/12/13/14. See
@@ -1998,6 +2014,10 @@ export const insertDocumentSchema = createInsertSchema(documents).omit({ id: tru
 export const insertDocumentTagSchema = createInsertSchema(documentTags).omit({ id: true, createdAt: true });
 export const insertDocumentVersionSchema = createInsertSchema(documentVersions).omit({ id: true, createdAt: true });
 export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertConsentRecordSchema = createInsertSchema(consentRecords).omit({ id: true, consentedAt: true });
+export type ConsentRecord = typeof consentRecords.$inferSelect;
+export type InsertConsentRecord = z.infer<typeof insertConsentRecordSchema>;
+
 export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress, {
   stepsCompleted: z.array(z.number().int().min(1).max(7)).default([]),
   stepsSkipped: z.array(z.number().int().min(1).max(7)).default([]),

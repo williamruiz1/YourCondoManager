@@ -9,6 +9,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
 import { sendEmail } from "./email/send";
+import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
 import { invalidateAlertCache } from "./alerts";
 
 /**
@@ -9648,6 +9649,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
       const snapshot = await storage.completeOnboardingWizard(req.adminUserId);
       res.json(snapshot);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // #342 (WS3) — consent audit trail. The consent gate runs after auth
+  // but before the user reaches the dashboard; client-side App.tsx
+  // queries /api/consent/current and renders <ConsentModal> if the
+  // current admin hasn't yet consented to CURRENT_POLICY_VERSION. The
+  // POST endpoint captures IP + UA from the request so the audit row
+  // includes forensic context.
+  //
+  // Both admin + portal user surfaces are HARD ACs of the dispatch.
+  // This first slice wires admin (the primary surface used by every
+  // board treasurer + platform admin). The portal-user surface is a
+  // sibling follow-on — see PR description for the scope cut.
+  app.get("/api/consent/current", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const consented = await storage.hasConsented(req.adminUserId, CURRENT_POLICY_VERSION);
+      res.json({ consented, policyVersion: CURRENT_POLICY_VERSION });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/consent", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      if (!req.adminUserEmail) return res.status(401).json({ message: "admin email missing" });
+      const ip = (req.headers["x-forwarded-for"]?.toString().split(",")[0].trim()) || req.socket.remoteAddress || null;
+      const ua = req.headers["user-agent"]?.toString().slice(0, 1024) ?? null;
+      const row = await storage.recordConsent({
+        userId: req.adminUserId,
+        userEmail: req.adminUserEmail,
+        policyVersion: CURRENT_POLICY_VERSION,
+        ipAddress: ip,
+        userAgent: ua,
+      });
+      res.status(201).json({ id: row.id, consentedAt: row.consentedAt.toISOString(), policyVersion: CURRENT_POLICY_VERSION });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
