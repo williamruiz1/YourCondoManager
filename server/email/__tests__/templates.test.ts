@@ -17,6 +17,8 @@ import type {
   InvoiceAssessmentData,
   ReceiptPaymentData,
   PasswordResetData,
+  OnboardingReminderData,
+  CommunityAnnouncementData,
 } from "../templates/types";
 
 const SAMPLE_DATA: {
@@ -25,6 +27,8 @@ const SAMPLE_DATA: {
   "invoice-assessment": InvoiceAssessmentData;
   "receipt-payment": ReceiptPaymentData;
   "password-reset": PasswordResetData;
+  "onboarding-reminder": OnboardingReminderData;
+  "community-announcement": CommunityAnnouncementData;
 } = {
   "welcome-board-member": {
     recipientName: "Jane Doe",
@@ -61,13 +65,30 @@ const SAMPLE_DATA: {
     resetUrl: "https://app.yourcondomanager.org/reset/abc123",
     expiresInMinutes: 60,
   },
+  // #1617 — onboarding wizard reminder cadence (Day 7/10/12/13/14).
+  "onboarding-reminder": {
+    recipientName: "Jane Doe",
+    dayNumber: 10,
+    openSteps: ["Connect your bank", "Upload your owner roster"],
+    wizardUrl: "https://app.yourcondomanager.org/app/onboarding",
+  },
+  // #1617 — wizard Step 5 community-wide announcement.
+  "community-announcement": {
+    recipientName: "Jane Doe",
+    communityName: "Cherry Hill Court Condominiums",
+    bodyText: "Hi neighbor — the board has started using YourCondoManager.\n\nYou'll get a portal invite in a separate email.",
+    portalUrl: "https://app.yourcondomanager.org/portal/abc123",
+    replyToLabel: "board@cherryhill.example",
+  },
 };
 
-describe("template registry — all 5 baseline templates present", () => {
-  it("has all 5 keys from dispatch §Scope", () => {
+describe("template registry — baseline templates present", () => {
+  it("has all registered template keys", () => {
     const keys = Object.keys(TEMPLATES).sort();
     expect(keys).toEqual([
+      "community-announcement",
       "invoice-assessment",
+      "onboarding-reminder",
       "password-reset",
       "receipt-payment",
       "welcome-board-member",
