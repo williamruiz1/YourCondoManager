@@ -66,7 +66,14 @@ export type FeatureFlagKey =
   // Wave 12 (Phase 5.1 cleanup) flipped the default to ON and deleted the
   // legacy posters. Per-association override still supported via
   // getFeatureFlagForAssociation().
-  | "ASSESSMENT_EXECUTION_UNIFIED";
+  | "ASSESSMENT_EXECUTION_UNIFIED"
+  // founder-os#1318 (Phase 0) — Resident-portal AI chat. Default OFF in
+  // production; opt-in per-community via FEATURE_FLAG_AI_ASSISTANT_ENABLED_<id>.
+  // Cherry Hill Court (#971 go-live) is the first community to enable.
+  // Removal scheduled with the Phase 1 LLM-conversational-primitive wiring
+  // (founder-os#1244) once both phases ship and any community can opt in
+  // without further gating.
+  | "AI_ASSISTANT_ENABLED";
 
 /**
  * Compile-time defaults. Used when no env override is present.
@@ -74,6 +81,7 @@ export type FeatureFlagKey =
 const DEFAULTS: Record<FeatureFlagKey, boolean> = {
   BOARD_SHUNT_ACTIVE: true,
   ASSESSMENT_EXECUTION_UNIFIED: true,
+  AI_ASSISTANT_ENABLED: false,
 };
 
 /**

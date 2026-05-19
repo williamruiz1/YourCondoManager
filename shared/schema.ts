@@ -3543,3 +3543,35 @@ export const bankTransactions = pgTable("bank_transactions", {
 
 export type BankTransaction = typeof bankTransactions.$inferSelect;
 export type InsertBankTransaction = typeof bankTransactions.$inferInsert;
+
+// ── AI Assistant interactions (founder-os#1318, Phase 0) ─────────────────────
+//
+// Audit-log table for every resident-chat turn. Captures prompt + response
+// + tool calls + token/cost telemetry so the cost-economics dashboard
+// (founder-os#1261) can read against a real schema in Phase 1.
+//
+// Phase 0 (mock adapter) writes mock cost ($0) and rough token counts;
+// the Phase 1 LLM adapter writes real values via the same row shape.
+export const aiAssistantInteractions = pgTable("ai_assistant_interactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull(),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  turnIndex: integer("turn_index").notNull(),
+  prompt: text("prompt").notNull(),
+  response: text("response").notNull(),
+  toolCalls: jsonb("tool_calls").notNull().default(sql`'[]'::jsonb`),
+  tokensIn: integer("tokens_in").notNull().default(0),
+  tokensOut: integer("tokens_out").notNull().default(0),
+  latencyMs: integer("latency_ms").notNull().default(0),
+  costEstimate: real("cost_estimate").notNull().default(0),
+  model: text("model").notNull().default("mock-phase-0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  byConversation: index("ai_assistant_interactions_by_conversation").on(table.conversationId, table.turnIndex),
+  byOwner: index("ai_assistant_interactions_by_owner").on(table.associationId, table.personId, table.createdAt),
+}));
+
+export type AiAssistantInteraction = typeof aiAssistantInteractions.$inferSelect;
+export type InsertAiAssistantInteraction = typeof aiAssistantInteractions.$inferInsert;
+export const insertAiAssistantInteractionSchema = createInsertSchema(aiAssistantInteractions);
