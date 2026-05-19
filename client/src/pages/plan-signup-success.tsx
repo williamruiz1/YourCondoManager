@@ -222,9 +222,13 @@ export default function PlanSignupSuccessPage() {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          {/* #1327 — post-signup landing target is the onboarding wizard,
+              not the dashboard, so first-payment-by-Day-14 has a chance.
+              Users who pause and come back are routed by their session
+              state once they re-authenticate. */}
           <Button size="lg" asChild className="gap-2">
-            <Link href="/app">
-              Go to Workspace
+            <Link href="/app/onboarding">
+              Start setup
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>

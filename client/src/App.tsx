@@ -42,6 +42,8 @@ const OperationsDashboardPage = lazy(() => import("@/pages/operations-dashboard"
 const AssociationsPage = lazy(() => import("@/pages/associations"));
 const AssociationContextPage = lazy(() => import("@/pages/association-context"));
 const NewAssociationPage = lazy(() => import("@/pages/new-association"));
+// #1327 — self-managed Day-0-14 onboarding wizard (post-signup landing).
+const OnboardingPage = lazy(() => import("@/pages/onboarding"));
 const UnitsPage = lazy(() => import("@/pages/units"));
 const PersonsPage = lazy(() => import("@/pages/persons"));
 const BoardPage = lazy(() => import("@/pages/board"));
@@ -260,6 +262,34 @@ function RouteRedirect({ to }: { to: string }) {
   return <RouteFallback />;
 }
 
+// #1327 — Resume-on-login: when /app loads, check whether the user has a
+// wizard row in flight. If yes and not yet completed, bounce them back to
+// /app/onboarding so the seven-step flow remains the single way to "done".
+// Users who never started a wizard fall through to the dashboard normally.
+function OnboardingResumeGuard({ children }: { children: React.ReactNode }) {
+  const [, navigate] = useLocation();
+  const { data, isLoading } = useQuery<{
+    started: boolean;
+    wizardCompletedAt: string | null;
+  }>({
+    queryKey: ["/api/onboarding/wizard"],
+    // The dashboard is the most-loaded view; keep this snapshot cached for
+    // the session so we don't re-hit the API on every nav.
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    if (data.started && !data.wizardCompletedAt) {
+      navigate("/app/onboarding");
+    }
+  }, [data, navigate]);
+
+  if (isLoading) return <RouteFallback />;
+  if (data?.started && !data.wizardCompletedAt) return <RouteFallback />;
+  return <>{children}</>;
+}
+
 function WorkspaceRouter({
   adminRole,
   singleAssociationBoardExperience,
@@ -270,7 +300,17 @@ function WorkspaceRouter({
   return (
     <Suspense fallback={<RouteFallback />}>
       <Switch>
-        <Route path="/app" component={DashboardPage} />
+        <Route path="/app">
+          <OnboardingResumeGuard>
+            <DashboardPage />
+          </OnboardingResumeGuard>
+        </Route>
+
+        {/* #1327 — Self-managed onboarding wizard. Sits alongside /app so
+         * post-signup redirects can land here without disturbing the rest
+         * of the route tree. Not gated through RouteGuard — every
+         * authenticated admin role is allowed to walk their own wizard. */}
+        <Route path="/app/onboarding" component={OnboardingPage} />
 
         {/* ---------------------------------------------------------------
          * Phase 11 (3.2 — 61-route canonical table)

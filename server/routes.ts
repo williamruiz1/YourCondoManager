@@ -9575,6 +9575,83 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // #1327 — self-managed Day-0-14 onboarding wizard state machine. Persistent
+  // across logout/login; resume-on-login is enforced client-side by reading
+  // GET /api/onboarding/wizard and redirecting to /app/onboarding when
+  // started && !completed.
+  const WIZARD_ROLES: AdminRole[] = ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"];
+
+  app.get("/api/onboarding/wizard", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const snapshot = await storage.getOnboardingWizardProgress(req.adminUserId);
+      res.json(snapshot);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/wizard/start", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const snapshot = await storage.startOnboardingWizard(req.adminUserId);
+      res.json(snapshot);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/wizard/association", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const associationId = String(req.body?.associationId ?? "");
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationInputScope(req, associationId);
+      const snapshot = await storage.setOnboardingWizardAssociation(req.adminUserId, associationId);
+      res.json(snapshot);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/wizard/step/:step/complete", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const step = Number(req.params.step);
+      if (!Number.isInteger(step) || step < 1 || step > 7) {
+        return res.status(400).json({ message: "step must be an integer 1-7" });
+      }
+      const snapshot = await storage.markOnboardingStepComplete(req.adminUserId, step);
+      res.json(snapshot);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/wizard/step/:step/skip", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const step = Number(req.params.step);
+      if (!Number.isInteger(step) || step < 1 || step > 7) {
+        return res.status(400).json({ message: "step must be an integer 1-7" });
+      }
+      const snapshot = await storage.markOnboardingStepSkipped(req.adminUserId, step);
+      res.json(snapshot);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/wizard/complete", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const snapshot = await storage.completeOnboardingWizard(req.adminUserId);
+      res.json(snapshot);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.get("/api/onboarding/invites", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);

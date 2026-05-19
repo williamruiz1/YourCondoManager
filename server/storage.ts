@@ -12,6 +12,7 @@ import {
   adminUserPreferences,
   associationMemberships,
   adminUsers,
+  onboardingProgress,
   authUsers,
   authExternalAccounts,
   auditLogs,
@@ -3575,6 +3576,22 @@ function buildFallbackIngestionExtraction(
   };
 }
 
+// #1327 — wire-format snapshot returned from every wizard storage method.
+// Single shape simplifies the React Query cache: callers always get the same
+// fields back regardless of which mutation just fired.
+export type OnboardingWizardSnapshot = {
+  started: boolean;
+  associationId: string | null;
+  currentStep: number;
+  stepsCompleted: number[];
+  stepsSkipped: number[];
+  totalSteps: 7;
+  wizardStartedAt: string | null;
+  wizardTargetCompletionAt: string | null;
+  wizardCompletedAt: string | null;
+  lastActivityAt: string | null;
+};
+
 export interface IStorage {
   getAssociations(options?: { includeArchived?: boolean }): Promise<Association[]>;
   createAssociation(data: InsertAssociation, actorEmail?: string): Promise<Association>;
@@ -3702,6 +3719,13 @@ export interface IStorage {
     dismissedAt: string | null;
   }>;
   dismissSignupOnboardingBanner(adminUserId: string): Promise<void>;
+  // #1327 — self-managed Day-0-14 onboarding wizard state machine.
+  getOnboardingWizardProgress(adminUserId: string): Promise<OnboardingWizardSnapshot>;
+  startOnboardingWizard(adminUserId: string): Promise<OnboardingWizardSnapshot>;
+  setOnboardingWizardAssociation(adminUserId: string, associationId: string): Promise<OnboardingWizardSnapshot>;
+  markOnboardingStepComplete(adminUserId: string, step: number): Promise<OnboardingWizardSnapshot>;
+  markOnboardingStepSkipped(adminUserId: string, step: number): Promise<OnboardingWizardSnapshot>;
+  completeOnboardingWizard(adminUserId: string): Promise<OnboardingWizardSnapshot>;
   getAssociationOverview(associationId: string): Promise<{
     associationId: string;
     units: number;
@@ -4533,6 +4557,24 @@ export interface IStorage {
     byType: Record<string, number>;
     byStatus: Record<string, number>;
   }>;
+}
+
+// #1327 — wire-format adapter for onboarding_progress rows. Centralizes
+// Date → ISO-string + jsonb → number[] coercion so storage methods return
+// snapshots that round-trip cleanly through the JSON response.
+function rowToSnapshot(row: typeof onboardingProgress.$inferSelect): OnboardingWizardSnapshot {
+  return {
+    started: true,
+    associationId: row.associationId,
+    currentStep: row.currentStep,
+    stepsCompleted: ((row.stepsCompleted as number[]) ?? []).slice().sort((a, b) => a - b),
+    stepsSkipped: ((row.stepsSkipped as number[]) ?? []).slice().sort((a, b) => a - b),
+    totalSteps: 7,
+    wizardStartedAt: row.wizardStartedAt ? row.wizardStartedAt.toISOString() : null,
+    wizardTargetCompletionAt: row.wizardTargetCompletionAt ? row.wizardTargetCompletionAt.toISOString() : null,
+    wizardCompletedAt: row.wizardCompletedAt ? row.wizardCompletedAt.toISOString() : null,
+    lastActivityAt: row.lastActivityAt ? row.lastActivityAt.toISOString() : null,
+  };
 }
 
 export class DatabaseStorage implements IStorage {
@@ -6575,6 +6617,137 @@ export class DatabaseStorage implements IStorage {
       .update(adminUsers)
       .set({ onboardingDismissedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(adminUsers.id, adminUserId), isNull(adminUsers.onboardingDismissedAt)));
+  }
+
+  // #1327 — onboarding wizard state machine. The 7-step Day-0-14 flow per
+  // wiki/products/ycm/strategy/06-ONBOARDING-FLOWS.md Flow 1.
+  async getOnboardingWizardProgress(adminUserId: string): Promise<OnboardingWizardSnapshot> {
+    const [row] = await db
+      .select()
+      .from(onboardingProgress)
+      .where(eq(onboardingProgress.adminUserId, adminUserId))
+      .limit(1);
+    if (!row) {
+      return {
+        started: false,
+        associationId: null,
+        currentStep: 1,
+        stepsCompleted: [],
+        stepsSkipped: [],
+        totalSteps: 7,
+        wizardStartedAt: null,
+        wizardTargetCompletionAt: null,
+        wizardCompletedAt: null,
+        lastActivityAt: null,
+      };
+    }
+    return rowToSnapshot(row);
+  }
+
+  async startOnboardingWizard(adminUserId: string): Promise<OnboardingWizardSnapshot> {
+    const existing = await this.getOnboardingWizardProgress(adminUserId);
+    if (existing.started) return existing;
+
+    const now = new Date();
+    const target = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const [inserted] = await db
+      .insert(onboardingProgress)
+      .values({
+        adminUserId,
+        currentStep: 1,
+        stepsCompleted: [],
+        stepsSkipped: [],
+        wizardStartedAt: now,
+        wizardTargetCompletionAt: target,
+        lastActivityAt: now,
+      })
+      .onConflictDoNothing({ target: onboardingProgress.adminUserId })
+      .returning();
+    if (inserted) return rowToSnapshot(inserted);
+    // Concurrent insert raced past — re-fetch.
+    return this.getOnboardingWizardProgress(adminUserId);
+  }
+
+  async setOnboardingWizardAssociation(adminUserId: string, associationId: string): Promise<OnboardingWizardSnapshot> {
+    await this.startOnboardingWizard(adminUserId);
+    const [row] = await db
+      .update(onboardingProgress)
+      .set({ associationId, lastActivityAt: new Date(), updatedAt: new Date() })
+      .where(eq(onboardingProgress.adminUserId, adminUserId))
+      .returning();
+    return rowToSnapshot(row);
+  }
+
+  async markOnboardingStepComplete(adminUserId: string, step: number): Promise<OnboardingWizardSnapshot> {
+    return this.transitionStep(adminUserId, step, "completed");
+  }
+
+  async markOnboardingStepSkipped(adminUserId: string, step: number): Promise<OnboardingWizardSnapshot> {
+    return this.transitionStep(adminUserId, step, "skipped");
+  }
+
+  // Shared step-transition: idempotent dedupe of step-number into the right
+  // jsonb array, advance current_step to the next-unresolved step, touch
+  // last_activity_at (used by the reminder-cadence sweep).
+  private async transitionStep(
+    adminUserId: string,
+    step: number,
+    outcome: "completed" | "skipped",
+  ): Promise<OnboardingWizardSnapshot> {
+    if (step < 1 || step > 7) throw new Error(`step must be 1-7, got ${step}`);
+    await this.startOnboardingWizard(adminUserId);
+    const [row] = await db
+      .select()
+      .from(onboardingProgress)
+      .where(eq(onboardingProgress.adminUserId, adminUserId))
+      .limit(1);
+    if (!row) throw new Error("onboarding_progress row missing after startOnboardingWizard");
+
+    const completedSet = new Set((row.stepsCompleted as number[]) ?? []);
+    const skippedSet = new Set((row.stepsSkipped as number[]) ?? []);
+    if (outcome === "completed") {
+      completedSet.add(step);
+      skippedSet.delete(step);
+    } else {
+      skippedSet.add(step);
+      completedSet.delete(step);
+    }
+    const completed = Array.from(completedSet).sort((a, b) => a - b);
+    const skipped = Array.from(skippedSet).sort((a, b) => a - b);
+
+    // Advance current_step to the lowest 1..7 not yet completed or skipped.
+    let next = row.currentStep;
+    for (let candidate = 1; candidate <= 7; candidate++) {
+      if (!completedSet.has(candidate) && !skippedSet.has(candidate)) {
+        next = candidate;
+        break;
+      }
+      if (candidate === 7) next = 7;
+    }
+
+    const [updated] = await db
+      .update(onboardingProgress)
+      .set({
+        stepsCompleted: completed,
+        stepsSkipped: skipped,
+        currentStep: next,
+        lastActivityAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(onboardingProgress.adminUserId, adminUserId))
+      .returning();
+    return rowToSnapshot(updated);
+  }
+
+  async completeOnboardingWizard(adminUserId: string): Promise<OnboardingWizardSnapshot> {
+    await this.startOnboardingWizard(adminUserId);
+    const now = new Date();
+    const [row] = await db
+      .update(onboardingProgress)
+      .set({ wizardCompletedAt: now, lastActivityAt: now, updatedAt: now })
+      .where(eq(onboardingProgress.adminUserId, adminUserId))
+      .returning();
+    return rowToSnapshot(row);
   }
 
   async getAssociationOverview(associationId: string): Promise<{
