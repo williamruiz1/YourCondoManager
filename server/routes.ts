@@ -246,6 +246,7 @@ import {
   bankConnections,
   bankAccounts,
   bankTransactions,
+  goLiveGateAttestations,
 } from "@shared/schema";
 import type { AdminRole } from "@shared/schema";
 import {
@@ -288,6 +289,8 @@ import {
   manualMatchBankTransaction,
   listPendingReconciliation,
 } from "./services/plaid-reconciliation";
+// #1340 — go-live readiness dashboard (admin /go-live-readiness).
+import { computeReadinessSnapshot, GATES } from "./services/go-live-checks";
 
 const uploadDir = path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -9780,6 +9783,120 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(400).json({ message: error.message });
     }
   });
+
+  // #1340 — Go-live readiness dashboard. Renders the 7-tier checklist with
+  // per-gate auto-check status + manual attestations. Source-of-truth for
+  // gate inventory: wiki/products/ycm/cherry-hill-go-live-checklist-v1.md
+  //
+  // Three endpoints:
+  //   GET  /api/admin/go-live-readiness/:association_id   — snapshot
+  //   POST /api/admin/go-live-readiness/:association_id/attest  — mark gate verified
+  //   GET  /api/admin/go-live-readiness/gates              — static gate catalog
+  //
+  // Cached for 60s per association to avoid hammering downstream services
+  // (GitHub PR-status checks, HTTP-200 pings, Stripe API). Admin can force
+  // re-run by passing ?refresh=1 (any truthy value).
+  const goLiveSnapshotCache = new Map<
+    string,
+    { computedAt: number; snapshot: Awaited<ReturnType<typeof computeReadinessSnapshot>> }
+  >();
+  const GO_LIVE_CACHE_TTL_MS = 60_000;
+
+  app.get(
+    "/api/admin/go-live-readiness/gates",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (_req: AdminRequest, res) => {
+      try {
+        res.json({
+          gates: GATES.map(({ id, tier, name, hardSoft, verifyMethod, owningDispatch }) => ({
+            id,
+            tier,
+            name,
+            hardSoft,
+            verifyMethod,
+            owningDispatch,
+            hasAutoCheck: Boolean(GATES.find((g) => g.id === id)?.autoCheck),
+          })),
+        });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/admin/go-live-readiness/:association_id",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const associationId = String(req.params.association_id ?? "");
+        if (!associationId) return res.status(400).json({ message: "association_id missing" });
+        const refresh = req.query.refresh && String(req.query.refresh) !== "0";
+        const now = Date.now();
+        const cached = goLiveSnapshotCache.get(associationId);
+        if (!refresh && cached && now - cached.computedAt < GO_LIVE_CACHE_TTL_MS) {
+          return res.json({ snapshot: cached.snapshot, cached: true });
+        }
+        const snapshot = await computeReadinessSnapshot(associationId);
+        goLiveSnapshotCache.set(associationId, { computedAt: now, snapshot });
+        res.json({ snapshot, cached: false });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/go-live-readiness/:association_id/attest",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req: AdminRequest, res) => {
+      try {
+        if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+        if (!req.adminUserEmail) return res.status(401).json({ message: "admin email missing" });
+        const associationId = String(req.params.association_id ?? "");
+        const gateId = String(req.body?.gateId ?? "").trim();
+        const notes = req.body?.notes ? String(req.body.notes).trim() : null;
+        if (!associationId) return res.status(400).json({ message: "association_id missing" });
+        if (!gateId) return res.status(400).json({ message: "gateId missing" });
+        if (!GATES.find((g) => g.id === gateId)) {
+          return res.status(400).json({ message: `unknown gate id: ${gateId}` });
+        }
+        // Upsert: if (association, gate, attester) already exists, refresh timestamp.
+        const upsertRow = await db
+          .insert(goLiveGateAttestations)
+          .values({
+            associationId,
+            gateId,
+            attestedByUserId: req.adminUserId,
+            attestedByEmail: req.adminUserEmail,
+            notes: notes ?? undefined,
+          })
+          .onConflictDoUpdate({
+            target: [
+              goLiveGateAttestations.associationId,
+              goLiveGateAttestations.gateId,
+              goLiveGateAttestations.attestedByUserId,
+            ],
+            set: {
+              attestedAt: new Date(),
+              attestedByEmail: req.adminUserEmail,
+              notes: notes ?? undefined,
+            },
+          })
+          .returning();
+        // Bust the snapshot cache so the next GET reflects the new state.
+        goLiveSnapshotCache.delete(associationId);
+        res.status(201).json({
+          attestation: upsertRow[0],
+        });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
 
   // #1617 — Step 5 mass communication send. POST body:
   //   { associationId, communityName, bodyText, subjectOverride? }
