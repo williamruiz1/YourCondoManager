@@ -291,6 +291,18 @@ import {
 } from "./services/plaid-reconciliation";
 // #1340 — go-live readiness dashboard (admin /go-live-readiness).
 import { computeReadinessSnapshot, GATES } from "./services/go-live-checks";
+// #1783 — Security & Compliance Baseline public routes (/privacy, /security, /.well-known/security.txt).
+// Policy files live at docs/policies/ in the repo; the route handlers below
+// read them at request time (small files, 1-300 lines each — fine to read
+// from disk; can be memoized in a Phase 1 follow-on if traffic warrants).
+const POLICY_FILE_ROOT = path.resolve(process.cwd(), "docs", "policies");
+function readPolicyFile(filename: string): string | null {
+  try {
+    return fs.readFileSync(path.join(POLICY_FILE_ROOT, filename), "utf-8");
+  } catch {
+    return null;
+  }
+}
 
 const uploadDir = path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -1331,6 +1343,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // (real LLM via founder-os#1244) lands as a one-line rebind in
   // server/services/ai-assistant/index.ts.
   registerAiAssistantRoutes(app, { requirePortal });
+
+  // #1783 — Security & Compliance Baseline public routes. These MUST be
+  // registered before the SPA catch-all (which lives in server/static.ts +
+  // is invoked from server/index.ts after registerRoutes returns).
+  //
+  // /privacy + /security serve their respective policy markdown files
+  // verbatim with Content-Type: text/plain; charset=utf-8. Auditors and
+  // partner questionnaires consume markdown directly. A Phase 1 follow-on
+  // can layer markdown → HTML rendering for human polish.
+  //
+  // /.well-known/security.txt is also shipped as a static asset at
+  // client/public/.well-known/security.txt (picked up by express.static
+  // in production via Vite's public-dir copy). The route below is the
+  // belt-and-suspenders fallback that guarantees the correct text/plain
+  // Content-Type per RFC 9116 §3 if the static-asset path misses for any
+  // reason (e.g., a misconfigured deploy or path-collision regression).
+  app.get("/privacy", (_req, res) => {
+    const md = readPolicyFile("privacy-policy-v1.md");
+    if (!md) {
+      return res.status(404).type("text/plain").send("Privacy policy not found");
+    }
+    res.type("text/plain; charset=utf-8").send(md);
+  });
+  app.get("/security", (_req, res) => {
+    const md = readPolicyFile("information-security-policy-v1.md");
+    if (!md) {
+      return res.status(404).type("text/plain").send("Information security policy not found");
+    }
+    res.type("text/plain; charset=utf-8").send(md);
+  });
+  app.get("/.well-known/security.txt", (_req, res) => {
+    res.type("text/plain; charset=utf-8").send(
+      [
+        "Contact: mailto:security@yourcondomanager.org",
+        "Expires: 2027-05-20T00:00:00.000Z",
+        "Preferred-Languages: en",
+        "Canonical: https://yourcondomanager.org/.well-known/security.txt",
+        "Policy: https://yourcondomanager.org/privacy",
+        "",
+      ].join("\n"),
+    );
+  });
 
   // Lightweight public health check for monitors, load balancers, and liveness probes
   app.get("/api/health", async (_req, res) => {
