@@ -9702,6 +9702,85 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // #1522 (WS4) — deletion request flow (right-to-erasure / 30-day window).
+  // Portal POST creates a pending request; admin GET lists pending; admin
+  // POST /:id/approve runs the anonymization. Portal UI button + admin
+  // dashboard page + confirmation email + 48h-pre-expiry sweep are
+  // follow-on dispatches (see #1522 closure comment for the deferral list).
+  app.post("/api/deletion-requests", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAccessId) return res.status(401).json({ message: "portal context missing" });
+      if (!req.portalEmail) return res.status(401).json({ message: "portal email missing" });
+      const result = await storage.createDeletionRequest({
+        userId: req.portalAccessId,
+        userEmail: req.portalEmail,
+      });
+      if ("existingId" in result) {
+        return res.status(409).json({
+          message: "deletion request already pending",
+          existingRequestId: result.existingId,
+        });
+      }
+      res.status(201).json({
+        id: result.id,
+        requestedAt: result.requestedAt.toISOString(),
+        status: "pending",
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Admin-only list view. Returns all deletion requests sorted newest first;
+  // ?status= filter narrows to pending/approved/cancelled.
+  app.get("/api/admin/deletion-requests", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const allowedStatuses = new Set(["pending", "approved", "cancelled"]);
+      const filter = status && allowedStatuses.has(status)
+        ? { status: status as "pending" | "approved" | "cancelled" }
+        : undefined;
+      const rows = await storage.listDeletionRequests(filter);
+      res.json({ requests: rows });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Admin-only approve action. Triggers anonymization on the user's
+  // auth_users record. Per dispatch §Scope, the admin role check is
+  // platform-admin (not WIZARD_ROLES) — this is a privileged operation
+  // outside the wizard-flow scope. Until the platform-admin role-bucket
+  // is canonical, requireAdmin is the bar; tighten later via a separate
+  // PR if/when a `requirePlatformAdmin` middleware lands.
+  app.post("/api/admin/deletion-requests/:id/approve", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      if (!req.adminUserEmail) return res.status(401).json({ message: "admin email missing" });
+      const requestId = String(req.params.id ?? "");
+      if (!requestId) return res.status(400).json({ message: "request id missing" });
+      const result = await storage.approveDeletionRequest({
+        requestId,
+        approvedBy: req.adminUserEmail,
+      });
+      if (!result.approved) {
+        if (result.reason === "not_found") {
+          return res.status(404).json({ message: "deletion request not found" });
+        }
+        return res.status(409).json({ message: "deletion request already processed" });
+      }
+      res.json({
+        id: requestId,
+        status: "approved",
+        approvedAt: result.approvedAt.toISOString(),
+        approvedBy: req.adminUserEmail,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   // #1617 — Step 5 mass communication send. POST body:
   //   { associationId, communityName, bodyText, subjectOverride? }
   // Server pulls the owner roster, fires bulk Resend via the template,
