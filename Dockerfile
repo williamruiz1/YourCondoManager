@@ -21,7 +21,7 @@ ENV NODE_ENV=production
 
 # Only copy production deps
 COPY package*.json ./
-RUN npm ci --omit=dev --legacy-peer-deps --legacy-peer-deps
+RUN npm ci --omit=dev --legacy-peer-deps
 
 # Copy built artifacts (public/ is inside dist/ per vite outDir config)
 COPY --from=builder /app/dist ./dist
