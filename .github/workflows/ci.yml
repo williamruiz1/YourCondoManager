@@ -37,7 +37,7 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
       - run: npm run check
       - run: npm run lint
 
@@ -50,7 +50,7 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
       - run: npx vitest run
 
   build:
@@ -62,7 +62,7 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
       - run: npm run build
 
   playwright:
@@ -75,7 +75,7 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
       - run: npx playwright install --with-deps chromium firefox webkit
       - name: Playwright (route-mock — excludes @visual)
         run: npx playwright test --grep-invert @visual
