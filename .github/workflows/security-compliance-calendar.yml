@@ -1,0 +1,199 @@
+name: Security Compliance Calendar
+
+# Operationalizes the quarterly and annual security activities mandated by
+# YourCondoManager's policy stack (Information Security Policy, VMP,
+# Data Retention, Incident Response Runbook — DRAFT as of 2026-05-20;
+# Phase 1 honest-claims rewrite outstanding per founder-os#1783).
+#
+# Each scheduled cron auto-files a GitHub Issue for the relevant activity.
+# Issue bodies are inlined in this workflow (single template, parameterized
+# by activity slug) to keep the workflow self-contained. A Phase 1 follow-on
+# can lift bodies into separate templates if per-activity customization grows.
+#
+# Cross-product source: plinthkeep/.github/workflows/security-compliance-calendar.yml
+# (filed against PlinthKeep first; this is the YCM counterpart per founder-os#1783).
+#
+# Does NOT collide with the existing additive PR-gate `security.yml` workflow
+# (Workstream 1 of docs/specs/security-maturity-roadmap-2026-05-10.md) — that
+# fires on push/PR events, this fires on schedule.
+
+on:
+  # Quarterly: 1st of Jan/Apr/Jul/Oct @ 09:00 UTC — OWASP ZAP + secrets rotation
+  # Quarterly: 8th of Jan/Apr/Jul/Oct @ 09:00 UTC — IR tabletop
+  # Quarterly: 15th of Jan/Apr/Jul/Oct @ 09:00 UTC — admin account review
+  # Annual:    Jan 1 @ 09:00 UTC — Info Sec policy review (overlaps quarterly day-1)
+  # Annual:    Jan 15 @ 09:00 UTC — VMP review (overlaps quarterly day-15)
+  # Annual:    Feb 1 @ 09:00 UTC — Data Retention policy review
+  # Annual:    Mar 1 @ 09:00 UTC — Pen test assessment
+  schedule:
+    - cron: '0 9 1 1,4,7,10 *'
+    - cron: '0 9 8 1,4,7,10 *'
+    - cron: '0 9 15 1,4,7,10 *'
+    - cron: '0 9 1 2 *'
+    - cron: '0 9 1 3 *'
+
+  # Manual trigger — pick any activity from the Actions UI.
+  workflow_dispatch:
+    inputs:
+      activity:
+        description: 'Which compliance activity to file an Issue for'
+        required: true
+        type: choice
+        options:
+          - quarterly_owasp_zap_scan
+          - quarterly_admin_account_review
+          - quarterly_rotate_fly_secrets
+          - quarterly_ir_tabletop
+          - annual_info_sec_policy_review
+          - annual_vmp_review
+          - annual_data_retention_review
+          - annual_pen_test_assessment
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  file-compliance-issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Determine which activities fire this run
+        id: which
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CRON: ${{ github.event.schedule }}
+          MANUAL_ACTIVITY: ${{ github.event.inputs.activity }}
+        run: |
+          set -euo pipefail
+          TODAY="$(date -u +%Y-%m-%d)"
+          MONTH="$(date -u +%m)"
+          echo "today=${TODAY}" >> "$GITHUB_OUTPUT"
+
+          ACTIVITIES=""
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            ACTIVITIES="${MANUAL_ACTIVITY}"
+          elif [ "${EVENT_NAME}" = "schedule" ]; then
+            case "${CRON}" in
+              "0 9 1 1,4,7,10 *")
+                # Day-1 quarterly: ZAP scan + secrets rotation always fire
+                ACTIVITIES="quarterly_owasp_zap_scan quarterly_rotate_fly_secrets"
+                # Jan 1 also triggers annual Info Sec policy review
+                if [ "${MONTH}" = "01" ]; then
+                  ACTIVITIES="${ACTIVITIES} annual_info_sec_policy_review"
+                fi
+                ;;
+              "0 9 8 1,4,7,10 *")
+                ACTIVITIES="quarterly_ir_tabletop"
+                ;;
+              "0 9 15 1,4,7,10 *")
+                ACTIVITIES="quarterly_admin_account_review"
+                # Jan 15 also triggers annual VMP review
+                if [ "${MONTH}" = "01" ]; then
+                  ACTIVITIES="${ACTIVITIES} annual_vmp_review"
+                fi
+                ;;
+              "0 9 1 2 *")
+                ACTIVITIES="annual_data_retention_review"
+                ;;
+              "0 9 1 3 *")
+                ACTIVITIES="annual_pen_test_assessment"
+                ;;
+              *)
+                echo "::error::Unknown cron schedule: ${CRON}"
+                exit 1
+                ;;
+            esac
+          fi
+
+          echo "activities=${ACTIVITIES}" >> "$GITHUB_OUTPUT"
+          echo "Will file Issues for: ${ACTIVITIES}"
+
+      - name: File compliance Issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ACTIVITIES: ${{ steps.which.outputs.activities }}
+          TODAY: ${{ steps.which.outputs.today }}
+        run: |
+          set -euo pipefail
+
+          declare -A TITLES=(
+            [quarterly_owasp_zap_scan]="Quarterly OWASP ZAP scan"
+            [quarterly_admin_account_review]="Quarterly admin account review"
+            [quarterly_rotate_fly_secrets]="Quarterly Fly secrets rotation"
+            [quarterly_ir_tabletop]="Quarterly incident response tabletop"
+            [annual_info_sec_policy_review]="Annual Information Security Policy review"
+            [annual_vmp_review]="Annual Vulnerability Management Program review"
+            [annual_data_retention_review]="Annual Data Retention Policy review"
+            [annual_pen_test_assessment]="Annual penetration testing assessment"
+          )
+
+          declare -A POLICIES=(
+            [quarterly_owasp_zap_scan]="docs/policies/vulnerability-management-program-v1.md"
+            [quarterly_admin_account_review]="docs/policies/information-security-policy-v1.md"
+            [quarterly_rotate_fly_secrets]="docs/policies/information-security-policy-v1.md"
+            [quarterly_ir_tabletop]="toolbox/runbooks/incident-response-runbook.md"
+            [annual_info_sec_policy_review]="docs/policies/information-security-policy-v1.md"
+            [annual_vmp_review]="docs/policies/vulnerability-management-program-v1.md"
+            [annual_data_retention_review]="docs/policies/data-retention-policy-v1.md"
+            [annual_pen_test_assessment]="docs/policies/vulnerability-management-program-v1.md"
+          )
+
+          declare -A LABELS=(
+            [quarterly_owasp_zap_scan]="kind:security,kind:compliance-review,priority:p2"
+            [quarterly_admin_account_review]="kind:security,kind:compliance-review,priority:p2"
+            [quarterly_rotate_fly_secrets]="kind:security,kind:compliance-review,priority:p1"
+            [quarterly_ir_tabletop]="kind:security,kind:compliance-review,priority:p2"
+            [annual_info_sec_policy_review]="kind:security,kind:compliance-review,priority:p1"
+            [annual_vmp_review]="kind:security,kind:compliance-review,priority:p1"
+            [annual_data_retention_review]="kind:security,kind:compliance-review,priority:p2"
+            [annual_pen_test_assessment]="kind:security,kind:compliance-review,priority:p1"
+          )
+
+          for activity in ${ACTIVITIES}; do
+            title="${TITLES[$activity]:-}"
+            labels="${LABELS[$activity]:-}"
+            policy_ref="${POLICIES[$activity]:-}"
+
+            if [ -z "${title}" ] || [ -z "${labels}" ]; then
+              echo "::error::Missing config for activity ${activity} (title=${title}, labels=${labels})"
+              exit 1
+            fi
+
+            full_title="[compliance] ${title} — ${TODAY}"
+            echo "Filing Issue: ${full_title}"
+
+            body=$(cat <<EOF
+## Recurring compliance review
+
+**Activity:** ${title}
+**Policy reference:** \`${policy_ref}\`
+**Filed:** ${TODAY}
+
+This Issue was auto-filed by \`.github/workflows/security-compliance-calendar.yml\` per founder-os#1783. Complete the review per the linked policy doc and close the Issue when done. Record completion notes in this Issue for the next quarterly/annual audit trail.
+
+### Checklist
+
+- [ ] Read the policy section relevant to this activity (link above)
+- [ ] Execute the review/runbook steps
+- [ ] Record findings + remediation as comments on this Issue
+- [ ] Update the policy doc if procedural details changed
+- [ ] Close this Issue with a one-line completion summary
+
+### Audit trail
+
+Each completion comment on this Issue is the evidence-of-execution for the next cycle's review. Partner questionnaires (Stripe, Plaid, etc.) may request these trails — keep notes specific enough that an external auditor can verify the activity actually happened.
+EOF
+)
+
+            gh issue create \
+              --repo "${GH_REPO}" \
+              --title "${full_title}" \
+              --label "${labels}" \
+              --body "${body}"
+          done

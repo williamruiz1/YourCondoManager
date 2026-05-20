@@ -1,0 +1,5 @@
+Contact: mailto:security@yourcondomanager.org
+Expires: 2027-05-20T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://yourcondomanager.org/.well-known/security.txt
+Policy: https://yourcondomanager.org/privacy
