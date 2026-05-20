@@ -52,6 +52,8 @@ const DocumentsPage = lazy(() => import("@/pages/documents"));
 const RoadmapPage = lazy(() => import("@/pages/roadmap"));
 const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
 const AdminAccessReviewPage = lazy(() => import("@/pages/admin-access-review"));
+// #1340 — Cherry Hill go-live readiness dashboard (and future-HOA n=1 reference for #1307).
+const GoLiveReadinessPage = lazy(() => import("@/pages/go-live-readiness"));
 const ExecutivePage = lazy(() => import("@/pages/executive"));
 const FinancialFoundationPage = lazy(() => import("@/pages/financial-foundation"));
 const FinancialRulesPage = lazy(() => import("@/pages/financial-rules"));
@@ -406,6 +408,8 @@ function WorkspaceRouter({
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
         <Route path="/app/admin/access-review" component={AdminAccessReviewPage} />
+        {/* #1340 — Cherry Hill go-live readiness dashboard. Platform-admin only. */}
+        <Route path="/app/admin/go-live-readiness" component={GoLiveReadinessPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
         {/* Finance — consolidated routes (Wave 18: each wrapped in zone-scoped ErrorBoundary;
             Phase 12: wrapped in <RouteGuard> per ADR 0b — role list lives in ROUTE_MANIFEST). */}

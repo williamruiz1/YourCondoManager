@@ -258,6 +258,33 @@ export const deletionRequests = pgTable("deletion_requests", {
   statusRequestedIdx: index("deletion_requests_status_requested_at_idx").on(table.status, table.requestedAt),
 }));
 
+// #1340 — go-live readiness gate attestations. Each row is one admin marking
+// one gate (e.g. 'A.6', 'B.3') as verified for one association. Used by the
+// /admin/go-live-readiness dashboard to render "Verified by X on Y" for the
+// 👤-manual gates from wiki/products/ycm/cherry-hill-go-live-checklist-v1.md.
+// Note: YCM canonically uses `associations`/`associationId`; the founder-os
+// dispatch text said `community_id` but we align to YCM convention per OP #20.
+export const goLiveGateAttestations = pgTable("go_live_gate_attestations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  gateId: text("gate_id").notNull(),
+  attestedByUserId: text("attested_by_user_id").notNull(),
+  attestedByEmail: text("attested_by_email").notNull(),
+  attestedAt: timestamp("attested_at").defaultNow().notNull(),
+  notes: text("notes"),
+}, (table) => ({
+  assocGateLookupIdx: index("go_live_gate_attestations_assoc_gate_idx").on(
+    table.associationId,
+    table.gateId,
+    table.attestedAt,
+  ),
+  assocGateUserUniq: uniqueIndex("go_live_gate_attestations_assoc_gate_user_uniq").on(
+    table.associationId,
+    table.gateId,
+    table.attestedByUserId,
+  ),
+}));
+
 // #1327 — self-managed onboarding wizard state machine. One row per admin user
 // who lands on the Day-0-14 wizard. Step state persists across logout/login;
 // reminder cadence sweeps incomplete wizards at Day 7/10/12/13/14. See
@@ -2049,6 +2076,16 @@ export const insertDeletionRequestSchema = createInsertSchema(deletionRequests).
 });
 export type DeletionRequest = typeof deletionRequests.$inferSelect;
 export type InsertDeletionRequest = z.infer<typeof insertDeletionRequestSchema>;
+
+// #1340 — go-live readiness gate attestations. Insert schema omits
+// server-managed fields. Only association, gate, attester identity, and
+// optional notes come from the admin POST body.
+export const insertGoLiveGateAttestationSchema = createInsertSchema(goLiveGateAttestations).omit({
+  id: true,
+  attestedAt: true,
+});
+export type GoLiveGateAttestation = typeof goLiveGateAttestations.$inferSelect;
+export type InsertGoLiveGateAttestation = z.infer<typeof insertGoLiveGateAttestationSchema>;
 
 export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress, {
   stepsCompleted: z.array(z.number().int().min(1).max(7)).default([]),
