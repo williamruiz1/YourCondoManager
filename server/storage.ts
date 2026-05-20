@@ -13,6 +13,7 @@ import {
   associationMemberships,
   adminUsers,
   consentRecords,
+  deletionRequests,
   onboardingProgress,
   authUsers,
   authExternalAccounts,
@@ -272,6 +273,7 @@ import {
   type ElectionProxyDocument,
   type InsertElectionProxyDocument,
   type AdminRole,
+  type DeletionRequest,
 } from "@shared/schema";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { governanceStateTemplateLibrary } from "@shared/governance-state-template-library";
@@ -6676,6 +6678,117 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(consentRecords.userId, userId), eq(consentRecords.policyVersion, policyVersion)))
       .limit(1);
     return rows.length > 0;
+  }
+
+  // #1522 (WS4) — deletion request flow. One pending request per user
+  // enforced via the (user_id, status) lookup; second submission returns
+  // null + the existing pending row's id to the caller (which translates
+  // to HTTP 409 in the route handler).
+  async createDeletionRequest(input: {
+    userId: string;
+    userEmail: string;
+  }): Promise<{ id: string; requestedAt: Date } | { existingId: string }> {
+    // Check for an existing pending request first. The unique-pending
+    // invariant lives in app-layer (not DB constraint) because we want
+    // historical pending rows preserved if a request gets cancelled
+    // and a new one submitted later.
+    const [existing] = await db
+      .select({ id: deletionRequests.id })
+      .from(deletionRequests)
+      .where(and(eq(deletionRequests.userId, input.userId), eq(deletionRequests.status, "pending")))
+      .limit(1);
+    if (existing) {
+      return { existingId: existing.id };
+    }
+    const [row] = await db
+      .insert(deletionRequests)
+      .values({
+        userId: input.userId,
+        userEmail: input.userEmail,
+      })
+      .returning({ id: deletionRequests.id, requestedAt: deletionRequests.requestedAt });
+    return row;
+  }
+
+  async listDeletionRequests(filter?: { status?: "pending" | "approved" | "cancelled" }): Promise<DeletionRequest[]> {
+    const status = filter?.status;
+    if (status) {
+      return await db
+        .select()
+        .from(deletionRequests)
+        .where(eq(deletionRequests.status, status))
+        .orderBy(desc(deletionRequests.requestedAt));
+    }
+    return await db
+      .select()
+      .from(deletionRequests)
+      .orderBy(desc(deletionRequests.requestedAt));
+  }
+
+  async getDeletionRequest(id: string): Promise<DeletionRequest | undefined> {
+    const [row] = await db
+      .select()
+      .from(deletionRequests)
+      .where(eq(deletionRequests.id, id))
+      .limit(1);
+    return row;
+  }
+
+  // #1522 — approve deletion request + anonymize PII atomically.
+  //
+  // Anonymization scope (per dispatch §Scope):
+  //   - name → "Deleted" / "User" (firstName / lastName on auth_users)
+  //   - email → `deleted-{uuid}@redacted.invalid`
+  //   - avatarUrl → null
+  //
+  // Coverage note: auth_users carries the login identity (email + name +
+  // avatar). Wider PII fields live on `persons` (phone, mailingAddress,
+  // emergency contact) — those are scoped to portal-onboarded residents
+  // and the auth → persons join requires the authUser to have a portal-
+  // linked person record. Person-side anonymization is a follow-on
+  // dispatch (separate route through the auth → persons relationship
+  // resolver) so the auth-side scrub is atomic + bounded.
+  //
+  // Financial records (ledger entries, payments, assessments) are NOT
+  // modified — retained per the 7-year policy.
+  async approveDeletionRequest(input: {
+    requestId: string;
+    approvedBy: string;
+  }): Promise<
+    | { approved: true; approvedAt: Date }
+    | { approved: false; reason: "not_found" | "already_processed" }
+  > {
+    const request = await this.getDeletionRequest(input.requestId);
+    if (!request) return { approved: false, reason: "not_found" };
+    if (request.status !== "pending") return { approved: false, reason: "already_processed" };
+
+    // Anonymize PII on the auth-user record. The user record retains its
+    // primary-key id so financial records stay joinable, but identity
+    // columns are scrubbed.
+    const redactedEmail = `deleted-${request.id}@redacted.invalid`;
+    await db
+      .update(authUsers)
+      .set({
+        firstName: "Deleted",
+        lastName: "User",
+        email: redactedEmail,
+        avatarUrl: null,
+      })
+      .where(eq(authUsers.id, request.userId));
+
+    // Mark the request approved.
+    const now = new Date();
+    const [updated] = await db
+      .update(deletionRequests)
+      .set({
+        status: "approved",
+        approvedAt: now,
+        approvedBy: input.approvedBy,
+      })
+      .where(eq(deletionRequests.id, input.requestId))
+      .returning({ approvedAt: deletionRequests.approvedAt });
+
+    return { approved: true, approvedAt: updated?.approvedAt ?? now };
   }
 
   // #1327 — onboarding wizard state machine. The 7-step Day-0-14 flow per

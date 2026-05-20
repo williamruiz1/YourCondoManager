@@ -240,6 +240,24 @@ export const consentRecords = pgTable("consent_records", {
   userVersionIdx: index("consent_records_user_version_idx").on(table.userId, table.policyVersion),
 }));
 
+// #1522 (WS4) — deletion request flow. Owners submit a request via the
+// portal; a platform-admin approves it; approval anonymizes PII on the
+// user's records (financial records retained per 7-year policy). See
+// migrations/0031_deletion_requests.sql for the schema spec.
+export const deletionRequests = pgTable("deletion_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id").notNull(),
+  userEmail: text("user_email").notNull(),
+  status: text("status").notNull().default("pending"),
+  requestedAt: timestamp("requested_at").defaultNow().notNull(),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: text("approved_by"),
+  cancelledAt: timestamp("cancelled_at"),
+}, (table) => ({
+  userStatusIdx: index("deletion_requests_user_id_status_idx").on(table.userId, table.status),
+  statusRequestedIdx: index("deletion_requests_status_requested_at_idx").on(table.status, table.requestedAt),
+}));
+
 // #1327 — self-managed onboarding wizard state machine. One row per admin user
 // who lands on the Day-0-14 wizard. Step state persists across logout/login;
 // reminder cadence sweeps incomplete wizards at Day 7/10/12/13/14. See
@@ -2017,6 +2035,20 @@ export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({ id: t
 export const insertConsentRecordSchema = createInsertSchema(consentRecords).omit({ id: true, consentedAt: true });
 export type ConsentRecord = typeof consentRecords.$inferSelect;
 export type InsertConsentRecord = z.infer<typeof insertConsentRecordSchema>;
+
+// #1522 (WS4) — deletion request types. Insert schema omits server-managed
+// fields (id, timestamps, approval audit) — only userId + userEmail come
+// from the portal POST body.
+export const insertDeletionRequestSchema = createInsertSchema(deletionRequests).omit({
+  id: true,
+  requestedAt: true,
+  approvedAt: true,
+  approvedBy: true,
+  cancelledAt: true,
+  status: true,
+});
+export type DeletionRequest = typeof deletionRequests.$inferSelect;
+export type InsertDeletionRequest = z.infer<typeof insertDeletionRequestSchema>;
 
 export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress, {
   stepsCompleted: z.array(z.number().int().min(1).max(7)).default([]),
