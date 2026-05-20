@@ -362,24 +362,53 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
   const trackingToken = trackingEnabled ? crypto.randomUUID() : null;
   const emailLog = await createEmailLog(payload, trackingToken);
 
-  // Append owner portal link to all outbound emails, but only when a real URL is configured
+  // founder-os#1141 — brand v1 applied to outbound transactional emails.
+  // Header bg is brand slate (#5B7DA3); footer uses cool-white (#F6F9FF) with
+  // navy (#0B1B3B) text. Logo loads from an absolute URL on the deployed app
+  // (NOT inline base64) so it survives email-client image proxying (per
+  // email-deliverability best practice in dispatch §2).
   const appBaseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
   const isRealUrl = appBaseUrl && !appBaseUrl.includes("localhost") && !appBaseUrl.includes("127.0.0.1");
   const portalUrl = isRealUrl ? `${appBaseUrl}/portal` : null;
+  const logoUrl = isRealUrl ? `${appBaseUrl}/brand/ycm-logo-canonical.png` : null;
   if (!isRealUrl && process.env.APP_BASE_URL) {
-    console.warn("[email] APP_BASE_URL looks like a local address — portal link omitted from email footer");
+    console.warn("[email] APP_BASE_URL looks like a local address — portal link + brand logo omitted from email footer");
   }
+
+  // Brand header — slate-sky bar with the canonical logo + wordmark. Logo
+  // loads via absolute URL (per dispatch best-practice note) so Gmail/Apple
+  // Mail/Outlook image proxies can fetch it without inline-attachment churn.
+  // When APP_BASE_URL isn't a real URL (local dev / test), header degrades
+  // gracefully to a wordmark-only band so the test fixtures still get a
+  // deterministic, branded shape.
+  const brandHeaderHtml = logoUrl
+    ? `<div style="background:#5B7DA3;padding:20px 24px;text-align:left">`
+      + `<img src="${logoUrl}" alt="Your Condo Manager" width="40" height="40" style="vertical-align:middle;border:0;display:inline-block;margin-right:12px"/>`
+      + `<span style="color:#F6F9FF;font-family:Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;vertical-align:middle;letter-spacing:0.2px">Your Condo Manager</span>`
+      + `</div>`
+    : `<div style="background:#5B7DA3;padding:20px 24px;text-align:left">`
+      + `<span style="color:#F6F9FF;font-family:Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;letter-spacing:0.2px">Your Condo Manager</span>`
+      + `</div>`;
+  const brandHeaderText = "Your Condo Manager\n\n";
+
+  // Portal footer — cool-white bg, navy text, brand wordmark.
+  // Pattern mirrors the in-app community-hub-public.tsx footer per PR #128.
   const portalFooterHtml = portalUrl
-    ? `<hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb"/><p style="font-size:12px;color:#6b7280;margin:0">Access your owner portal anytime at <a href="${portalUrl}" style="color:#4f46e5">${portalUrl}</a></p>`
-    : "";
-  const portalFooterText = portalUrl ? `\n\n---\nAccess your owner portal: ${portalUrl}` : "";
+    ? `<div style="background:#F6F9FF;padding:24px;border-top:1px solid #d8e1ee;color:#0B1B3B;font-family:Helvetica,Arial,sans-serif">`
+      + `<p style="font-size:13px;margin:0 0 8px 0">Access your owner portal anytime at <a href="${portalUrl}" style="color:#0B1B3B;font-weight:600">${portalUrl}</a></p>`
+      + `<p style="font-size:11px;margin:0;color:#5B7DA3">Powered by Your Condo Manager</p>`
+      + `</div>`
+    : `<div style="background:#F6F9FF;padding:24px;border-top:1px solid #d8e1ee;color:#0B1B3B;font-family:Helvetica,Arial,sans-serif">`
+      + `<p style="font-size:11px;margin:0;color:#5B7DA3">Powered by Your Condo Manager</p>`
+      + `</div>`;
+  const portalFooterText = portalUrl ? `\n\n---\nAccess your owner portal: ${portalUrl}\n\nPowered by Your Condo Manager` : "\n\nPowered by Your Condo Manager";
 
   let html = payload.disableHtml
     ? ""
     : (payload.html?.trim() || (payload.text?.trim() ? textToHtml(payload.text.trim()) : ""));
   const text = payload.disableHtml
     ? (payload.text?.trim() || "")
-    : ((payload.text?.trim() || "") + (payload.text?.trim() ? portalFooterText : ""));
+    : ((payload.text?.trim() ? brandHeaderText : "") + (payload.text?.trim() || "") + (payload.text?.trim() ? portalFooterText : ""));
   if (!html && !text) {
     await updateEmailLog(emailLog.id, { status: "failed", errorMessage: "Email body is required" });
     return {
@@ -391,7 +420,7 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
     };
   }
 
-  if (html) html = html + portalFooterHtml;
+  if (html) html = brandHeaderHtml + html + portalFooterHtml;
 
   if (trackingEnabled && html) {
     html = appendTrackingPixel(rewriteTrackedLinks(html, emailLog.id, config), emailLog.id, config);
