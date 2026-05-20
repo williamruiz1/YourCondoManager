@@ -23,7 +23,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy app to Fly
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 20
     concurrency: deploy-group
     steps:
