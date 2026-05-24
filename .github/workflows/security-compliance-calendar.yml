@@ -55,7 +55,9 @@ permissions:
 
 jobs:
   file-compliance-issue:
-    runs-on: ubuntu-latest
+    # Migrated 2026-05-24 to self-hosted runner. No metered services without
+    # William's authorization (perseverance-protocol.md Hard Boundary).
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 5
     steps:
       - name: Checkout
