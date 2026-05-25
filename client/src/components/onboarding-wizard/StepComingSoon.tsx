@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Wrench } from "lucide-react";
 import { WIZARD_STEPS } from "./types";
 
+// Steps 2, 3, 4 are now fully implemented (founder-os#1616 Child B).
+// Step 5 is still routed through here while Child C is in flight.
 const FOLLOW_ON: Record<number, { childDispatch: string; reason: string }> = {
-  2: { childDispatch: "Child B", reason: "Plaid bank-link integration is being rolled out in a follow-on build." },
-  3: { childDispatch: "Child B", reason: "CSV roster importer is being rolled out in a follow-on build." },
-  4: { childDispatch: "Child B", reason: "Recurring assessment setup is being rolled out in a follow-on build." },
   5: { childDispatch: "Child C", reason: "Bulk announcement to owners is being rolled out in a follow-on build." },
 };
 
