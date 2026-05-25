@@ -274,6 +274,7 @@ import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
+import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import {
   getEffectivePortalRole,
   requireBoardAccess,
@@ -1383,6 +1384,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // match,audit-log}. Wraps services/reconciliation/{auto-matcher,report}.ts
   // and services/plaid-reconciliation.ts.
   registerAdminReconciliationRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // Admin manual payment recording (founder-os#2479). Surfaces typed entry
+  // for cash / check / Zelle / external-ACH / Venmo / other payments that
+  // arrive outside the YCM portal. Endpoint set: /api/admin/payments/{record,
+  // record-bulk,recent}. UI page: /app/admin/payments/record.
+  registerAdminPaymentsRoutes(app, {
     requireAdmin,
     requireAdminRole,
     getAssociationIdQuery,
