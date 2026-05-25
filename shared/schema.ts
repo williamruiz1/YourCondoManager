@@ -3613,6 +3613,40 @@ export const bankTransactions = pgTable("bank_transactions", {
 export type BankTransaction = typeof bankTransactions.$inferSelect;
 export type InsertBankTransaction = typeof bankTransactions.$inferInsert;
 
+// ── bank_feed_sync_runs — per-run audit log for the automated bank-feed sync
+// engine (founder-os#2478). Every tick of the automation sweep AND every
+// webhook-triggered immediate sync writes one row here. Drives observability
+// ("did the sync engine actually run?") + post-hoc reconciliation analysis.
+//
+// Trigger taxonomy:
+//   - 'sweep'   = the 5-min automation sweep picked this connection up
+//   - 'webhook' = Plaid SYNC_UPDATES_AVAILABLE webhook triggered immediate sync
+//   - 'manual'  = admin clicked POST /api/plaid/sync (the existing button path)
+//
+// Each row captures connection + timing + counts + error. `error` is NULL on
+// success; populated with a short message on failure (advisory-lock collision,
+// Plaid 5xx, etc.). Successful runs always update bank_connections.last_synced_at.
+export const bankFeedSyncRuns = pgTable("bank_feed_sync_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  connectionId: varchar("connection_id")
+    .notNull()
+    .references(() => bankConnections.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  trigger: text("trigger").notNull(), // 'sweep' | 'webhook' | 'manual'
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  transactionsImported: integer("transactions_imported").notNull().default(0),
+  matchesMade: integer("matches_made").notNull().default(0),
+  unmatchedCount: integer("unmatched_count").notNull().default(0),
+  error: text("error"),
+}, (table) => ({
+  byConnection: index("bank_feed_sync_runs_by_connection").on(table.connectionId, table.startedAt),
+  byAssociation: index("bank_feed_sync_runs_by_association").on(table.associationId, table.startedAt),
+}));
+
+export type BankFeedSyncRun = typeof bankFeedSyncRuns.$inferSelect;
+export type InsertBankFeedSyncRun = typeof bankFeedSyncRuns.$inferInsert;
+
 // ── AI Assistant interactions (founder-os#1318, Phase 0) ─────────────────────
 //
 // Audit-log table for every resident-chat turn. Captures prompt + response
