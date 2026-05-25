@@ -15153,6 +15153,231 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Platform Subscription Management (founder-os#1147)
+  //
+  // These endpoints expose programmatic create / read / cancel operations
+  // on platform_subscriptions for ops + portfolio-view use cases. The
+  // owner-facing self-service path remains the Stripe Customer Portal
+  // (POST /api/admin/billing/portal-session above). These endpoints exist
+  // for: (a) one-shot backfills (e.g. Cherry Hill), (b) the founder
+  // portfolio view at /app/admin/platform/subscriptions, (c) ops fixes
+  // when self-service can't reach a customer.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // GET /api/platform/subscriptions — founder portfolio listing.
+  // Joins platform_subscriptions to associations and returns the
+  // per-association subscription row (or null if no subscription).
+  app.get("/api/platform/subscriptions", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
+    try {
+      const allAssocs = await db.select().from(associations);
+      const subs = await storage.listPlatformSubscriptions();
+      const subByAssoc = new Map(subs.map((s) => [s.associationId, s]));
+      const rows = allAssocs
+        .filter((a) => !a.isArchived)
+        .map((a) => {
+          const sub = subByAssoc.get(a.id);
+          return {
+            associationId: a.id,
+            associationName: a.name,
+            city: a.city,
+            state: a.state,
+            subscriptionId: sub?.id ?? null,
+            stripeCustomerId: sub?.stripeCustomerId ?? null,
+            stripeSubscriptionId: sub?.stripeSubscriptionId ?? null,
+            plan: sub?.plan ?? null,
+            status: sub?.status ?? "none",
+            currentPeriodEnd: sub?.currentPeriodEnd ?? null,
+            trialEndsAt: sub?.trialEndsAt ?? null,
+            cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? 0,
+            unitTier: sub?.unitTier ?? null,
+            unitCount: sub?.unitCount ?? null,
+            adminEmail: sub?.adminEmail ?? null,
+            createdAt: sub?.createdAt ?? null,
+            updatedAt: sub?.updatedAt ?? null,
+          };
+        });
+      res.json({ subscriptions: rows });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // POST /api/admin/platform/subscriptions — create a Stripe customer +
+  // subscription for an existing association. Used by ops + the backfill
+  // script. Does NOT replace the self-service signup flow.
+  //
+  // Body: { associationId, plan, adminEmail, priceId?, unitCount?, trialDays? }
+  // Default plan: "self-managed". Resolves priceId from STRIPE_PLAN_PRICE_IDS
+  // secret unless an explicit priceId is provided.
+  const createPlatformSubSchema = z.object({
+    associationId: z.string().min(1),
+    plan: z.enum(["self-managed", "property-manager", "enterprise"]).default("self-managed"),
+    adminEmail: z.string().email(),
+    priceId: z.string().optional(),
+    unitCount: z.number().int().positive().optional(),
+    trialDays: z.number().int().min(0).max(365).optional(),
+  });
+
+  app.post(
+    "/api/admin/platform/subscriptions",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req, res) => {
+      try {
+        const parsed = createPlatformSubSchema.parse(req.body);
+
+        // Validate association exists.
+        const [assoc] = await db.select().from(associations).where(eq(associations.id, parsed.associationId));
+        if (!assoc) return res.status(404).json({ message: "Association not found" });
+
+        // Prevent duplicates — the unique index on associationId would
+        // throw, but a clean 409 is better DX for the founder UI.
+        const existing = await storage.getPlatformSubscription(parsed.associationId);
+        if (existing && existing.status !== "canceled") {
+          return res.status(409).json({
+            message: "Association already has an active subscription",
+            code: "SUBSCRIPTION_EXISTS",
+            subscriptionId: existing.id,
+          });
+        }
+
+        // Resolve price ID.
+        let priceId = parsed.priceId;
+        if (!priceId) {
+          const priceIdsRaw = await getSecret("STRIPE_PLAN_PRICE_IDS", "stripe_plan_price_ids");
+          const priceIds = priceIdsRaw ? (JSON.parse(priceIdsRaw) as Record<string, string>) : {};
+          if (parsed.plan === "self-managed") {
+            const tierKey = (parsed.unitCount ?? 0) >= 30 ? "self-managed-large" : "self-managed-small";
+            priceId = priceIds[tierKey] ?? priceIds["self-managed"];
+          } else {
+            priceId = priceIds[parsed.plan];
+          }
+        }
+        if (!priceId) {
+          return res.status(503).json({ message: `No Stripe price ID configured for plan ${parsed.plan}` });
+        }
+
+        // Create / reuse Stripe Customer. If an existing canceled subscription
+        // row carries a customerId, reuse it so ops doesn't fork the customer.
+        let customerId = existing?.stripeCustomerId ?? null;
+        if (!customerId) {
+          const customerParams = new URLSearchParams({ email: parsed.adminEmail, name: assoc.name });
+          customerParams.set("metadata[associationId]", assoc.id);
+          customerParams.set("metadata[plan]", parsed.plan);
+          customerParams.set("metadata[source]", "admin-platform-billing-create");
+          const customer = await stripeRequest("POST", "/customers", customerParams);
+          customerId = customer.id as string;
+        }
+
+        // Create Stripe Subscription.
+        const subParams = new URLSearchParams();
+        subParams.set("customer", customerId);
+        subParams.set("items[0][price]", priceId);
+        if (parsed.trialDays && parsed.trialDays > 0) {
+          subParams.set("trial_period_days", String(parsed.trialDays));
+        }
+        subParams.set("metadata[associationId]", assoc.id);
+        subParams.set("metadata[plan]", parsed.plan);
+        subParams.set("metadata[source]", "admin-platform-billing-create");
+        subParams.set("payment_behavior", "default_incomplete");
+        subParams.set("expand[]", "latest_invoice.payment_intent");
+        const stripeSub = await stripeRequest("POST", "/subscriptions", subParams);
+
+        // Map Stripe status → local enum.
+        const statusMap: Record<string, "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete"> = {
+          trialing: "trialing",
+          active: "active",
+          past_due: "past_due",
+          canceled: "canceled",
+          unpaid: "unpaid",
+          incomplete: "incomplete",
+          incomplete_expired: "canceled",
+        };
+        const localStatus = statusMap[stripeSub.status as string] ?? "incomplete";
+        const periodEnd = typeof stripeSub.current_period_end === "number"
+          ? new Date((stripeSub.current_period_end as number) * 1000) : null;
+        const periodStart = typeof stripeSub.current_period_start === "number"
+          ? new Date((stripeSub.current_period_start as number) * 1000) : null;
+        const trialEnd = typeof stripeSub.trial_end === "number"
+          ? new Date((stripeSub.trial_end as number) * 1000) : null;
+
+        let subRow;
+        if (existing) {
+          // Reactivate a previously-canceled row.
+          subRow = await storage.updatePlatformSubscription(existing.id, {
+            plan: parsed.plan,
+            status: localStatus,
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: stripeSub.id as string,
+            currentPeriodStart: periodStart ?? undefined,
+            currentPeriodEnd: periodEnd ?? undefined,
+            trialEndsAt: trialEnd ?? undefined,
+            cancelAtPeriodEnd: 0,
+            unitCount: parsed.unitCount ?? null,
+            adminEmail: parsed.adminEmail,
+          });
+        } else {
+          subRow = await storage.createPlatformSubscription({
+            associationId: assoc.id,
+            plan: parsed.plan,
+            status: localStatus,
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: stripeSub.id as string,
+            currentPeriodStart: periodStart ?? undefined,
+            currentPeriodEnd: periodEnd ?? undefined,
+            trialEndsAt: trialEnd ?? undefined,
+            cancelAtPeriodEnd: 0,
+            unitCount: parsed.unitCount ?? null,
+            adminEmail: parsed.adminEmail,
+          });
+        }
+
+        res.status(201).json({ subscription: subRow, stripeSubscriptionId: stripeSub.id });
+      } catch (e: any) {
+        if (e?.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid input", issues: e.issues });
+        }
+        res.status(500).json({ message: e.message });
+      }
+    },
+  );
+
+  // POST /api/admin/platform/subscriptions/:id/cancel — cancel via Stripe.
+  // Body: { atPeriodEnd?: boolean }  // default true
+  app.post(
+    "/api/admin/platform/subscriptions/:id/cancel",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req, res) => {
+      try {
+        const id = req.params.id;
+        const atPeriodEnd = (req.body?.atPeriodEnd as boolean | undefined) ?? true;
+        const all = await storage.listPlatformSubscriptions();
+        const sub = all.find((s) => s.id === id);
+        if (!sub) return res.status(404).json({ message: "Subscription not found" });
+        if (!sub.stripeSubscriptionId) {
+          // No Stripe sub to cancel — just mark canceled locally.
+          const updated = await storage.updatePlatformSubscription(sub.id, { status: "canceled" });
+          return res.json({ subscription: updated });
+        }
+
+        if (atPeriodEnd) {
+          const params = new URLSearchParams({ cancel_at_period_end: "true" });
+          await stripeRequest("POST", `/subscriptions/${sub.stripeSubscriptionId}`, params);
+          const updated = await storage.updatePlatformSubscription(sub.id, { cancelAtPeriodEnd: 1 });
+          return res.json({ subscription: updated });
+        }
+        // Immediate cancel.
+        await stripeRequest("DELETE", `/subscriptions/${sub.stripeSubscriptionId}`);
+        const updated = await storage.updatePlatformSubscription(sub.id, { status: "canceled" });
+        res.json({ subscription: updated });
+      } catch (e: any) {
+        res.status(500).json({ message: e.message });
+      }
+    },
+  );
+
   // POST /api/public/signup/start — create Stripe customer + checkout session
   app.post("/api/public/signup/start", async (req, res) => {
     try {
@@ -15573,7 +15798,11 @@ This is an automated demo request from the Your Condo Manager website.
           await storage.updatePlatformSubscription(sub.id, { status: newStatus as any, currentPeriodEnd: periodEnd, trialEndsAt: trialEnd, cancelAtPeriodEnd: cancelAtEnd });
         }
         processed = true;
-      } else if (eventType === "invoice.payment_succeeded") {
+      } else if (eventType === "invoice.payment_succeeded" || eventType === "invoice.paid") {
+        // founder-os#1147 — handle both legacy `invoice.payment_succeeded`
+        // and current `invoice.paid` event names. Stripe sends both for
+        // most subscription invoices; either should flip the local row to
+        // `active`.
         const subId = (eventObj.subscription as string) ?? null;
         if (subId) {
           const sub = await storage.getPlatformSubscriptionByStripeId(subId);
