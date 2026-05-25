@@ -21,6 +21,7 @@ import { runOnboardingReminderSweep } from "./services/onboarding-reminder-sweep
 import { sendPlatformAdminEmailNotification } from "./admin-notification-service";
 import { recoverInFlightJobs } from "./job-queue";
 import { log } from "./logger";
+import { runMigrationHealthCheck } from "./migration-health";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
 import { createRateLimiter } from "./rate-limit";
@@ -395,6 +396,15 @@ app.use((req, res, next) => {
     log(`db state :: associations=${associations} units=${units} buildings=${buildings} host=${process.env.PGHOST ?? "?"} db=${process.env.PGDATABASE ?? "?"}`, "startup");
   }).catch((err) => {
     log(`db state check failed: ${err.message}`, "startup");
+  });
+
+  // founder-os #2476 — boot-time migration health check. Defense-in-depth
+  // backstop: if Fly's release_command somehow failed to run (or a machine
+  // was restarted directly without going through the deploy pipeline), the
+  // check flips /api/health to 503 + logs loudly so the situation is
+  // visible. Does NOT crash the server — we want diagnostics reachable.
+  void runMigrationHealthCheck(pool).catch((err) => {
+    log(`migration health check uncaught error: ${err?.message ?? err}`, "startup");
   });
 
   // Wave 33 (5.4 Part B): seedDatabase ships ~120 KB of static demo data
