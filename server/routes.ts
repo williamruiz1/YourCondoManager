@@ -11,6 +11,7 @@ import { debug } from "./logger";
 import { sendEmail } from "./email/send";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
 import { invalidateAlertCache } from "./alerts";
+import { getMigrationHealth } from "./migration-health";
 
 /**
  * 4.1 Wave 15a — real-time alert cache invalidation wiring.
@@ -1386,14 +1387,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     );
   });
 
-  // Lightweight public health check for monitors, load balancers, and liveness probes
+  // Lightweight public health check for monitors, load balancers, and liveness probes.
+  //
+  // founder-os #2476 — also surfaces migration health. If the boot-time
+  // migration check flagged stale migrations, we return 503 so Fly's HTTP
+  // checks treat the machine as unhealthy and the monitoring stack alerts.
+  // The migration state is set at boot by runMigrationHealthCheck() in
+  // server/index.ts.
   app.get("/api/health", async (_req, res) => {
     try {
       await db.execute(sql`SELECT 1`);
-      res.json({ status: "ok" });
     } catch (err: any) {
-      res.status(500).json({ status: "error", message: "Database unreachable" });
+      return res.status(503).json({ status: "error", message: "Database unreachable" });
     }
+    const migrations = getMigrationHealth();
+    if (migrations.status === "stale") {
+      return res.status(503).json({
+        status: "error",
+        message: "Database migrations stale — release_command did not apply pending migrations",
+        migrations: {
+          status: migrations.status,
+          journalEntries: migrations.journalEntries,
+          trackedHashes: migrations.trackedHashes,
+          missing: migrations.missing,
+          checkedAt: migrations.checkedAt,
+        },
+      });
+    }
+    res.json({
+      status: "ok",
+      migrations: {
+        status: migrations.status,
+        journalEntries: migrations.journalEntries,
+        trackedHashes: migrations.trackedHashes,
+        checkedAt: migrations.checkedAt,
+      },
+    });
   });
 
   // Detailed diagnostics endpoint — admin-only, shows DB state for deployment verification

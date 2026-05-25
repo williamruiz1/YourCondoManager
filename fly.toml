@@ -1,6 +1,32 @@
 app = "yourcondomanager"
 primary_region = "ewr"
 
+# founder-os #2476 — Drizzle migration runner.
+#
+# Fly's `release_command` runs once per deploy on a dedicated short-lived
+# machine BEFORE the app machines come up. If it exits non-zero the entire
+# deploy aborts (the app machines never roll forward). This is the canonical
+# fix for the silent-skip class of failure where `drizzle-kit push` was only
+# ever invoked by hand (SIX migrations missed production over several deploys
+# before this landed).
+#
+# scripts/migrate.cjs is CommonJS so it runs on the slimmed production image
+# (the runner Dockerfile stage does `npm ci --omit=dev`, which removes tsx /
+# drizzle-kit / typescript — but drizzle-orm and pg are runtime deps and stay
+# in the image). The Dockerfile also copies `migrations/` and `scripts/` into
+# the runner stage so the journal + SQL files are available at deploy time.
+#
+# To run by hand:
+#   flyctl ssh console -a yourcondomanager -C 'cd /app && npm run migrate'
+#
+# To run the one-shot backfill (ONCE, before first auto-run after merge):
+#   flyctl ssh console -a yourcondomanager \
+#     -C 'cd /app && node scripts/backfill-migration-journal.cjs'
+#
+# See scripts/migrate.cjs and scripts/backfill-migration-journal.cjs.
+[deploy]
+  release_command = "node scripts/migrate.cjs"
+
 [build]
   [build.args]
     VITE_GOOGLE_MAPS_API_KEY = "AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8"

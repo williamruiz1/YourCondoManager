@@ -26,6 +26,14 @@ RUN npm ci --omit=dev --legacy-peer-deps
 # Copy built artifacts (public/ is inside dist/ per vite outDir config)
 COPY --from=builder /app/dist ./dist
 
+# founder-os #2476 — migration runner needs the migrations folder AND the
+# `scripts/migrate.cjs` + `scripts/backfill-migration-journal.cjs` runner
+# scripts at runtime so Fly's `release_command` can invoke them. Copy
+# explicitly so we don't drag in dev-only roadmap-seed scripts.
+COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/scripts/migrate.cjs ./scripts/migrate.cjs
+COPY --from=builder /app/scripts/backfill-migration-journal.cjs ./scripts/backfill-migration-journal.cjs
+
 EXPOSE 5000
 
 CMD ["node", "dist/index.cjs"]
