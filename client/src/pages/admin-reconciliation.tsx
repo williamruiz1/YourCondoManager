@@ -21,7 +21,7 @@
 // Cross-link: server/services/reconciliation/auto-matcher.ts (algorithm) +
 // server/routes/admin-reconciliation.ts (endpoint wiring).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -120,6 +120,29 @@ interface ManualQueueResponse {
   autoMatcherReview: ManualQueueRow[];
 }
 
+interface OwnerSuggestionCandidate {
+  personId: string;
+  personName: string;
+  unitId: string;
+  unitNumber: string | null;
+  openBalanceCents: number;
+  payorMatch: "exact" | "partial" | "none";
+  amountDeltaCents: number;
+  confidence: number;
+}
+interface OwnerSuggestion {
+  bankTransactionId: string;
+  bankAmountCents: number;
+  bankDate: string;
+  bankDescription: string;
+  ownerCandidates: OwnerSuggestionCandidate[];
+  tier: "auto-create" | "review" | "ambiguous";
+  topConfidence: number;
+}
+interface SuggestionsResponse {
+  suggestions: OwnerSuggestion[];
+}
+
 interface AuditLogEntry {
   id: string;
   actorEmail: string;
@@ -155,6 +178,35 @@ export default function AdminReconciliationPage() {
   const thirty = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
   const [periodStart, setPeriodStart] = useState(thirty.toISOString().slice(0, 10));
   const [periodEnd, setPeriodEnd] = useState(today.toISOString().slice(0, 10));
+
+  // ── Suggestions queue (Tab "suggestions") ──────────────────────────────────
+  const suggestionsQuery = useQuery<SuggestionsResponse>({
+    queryKey: ["/api/admin/reconciliation/suggestions", activeAssociationId],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/admin/reconciliation/suggestions?associationId=${activeAssociationId}`,
+      );
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+  const suggestions = suggestionsQuery.data?.suggestions ?? [];
+  const pendingSuggestionCount = suggestions.length;
+
+  // Auto-dismissed locally (kept client-side; on Dismiss the row simply hides
+  // until the next refetch, when the server-side query re-derives the list).
+  const [dismissedBtxIds, setDismissedBtxIds] = useState<Set<string>>(new Set());
+  const visibleSuggestions = suggestions.filter((s) => !dismissedBtxIds.has(s.bankTransactionId));
+
+  // Suggestions tab becomes the landing default when there's at least one
+  // pending suggestion AND the user hasn't yet selected another tab.
+  const [hasUserSelectedTab, setHasUserSelectedTab] = useState(false);
+  useEffect(() => {
+    if (!hasUserSelectedTab && pendingSuggestionCount > 0) {
+      setTab("suggestions");
+    }
+  }, [pendingSuggestionCount, hasUserSelectedTab]);
 
   // ── Manual queue (Tab 1) ───────────────────────────────────────────────────
   const queueQuery = useQuery<ManualQueueResponse>({
@@ -225,6 +277,40 @@ export default function AdminReconciliationPage() {
     onError: (err: any) => {
       toast({
         title: "Auto-match failed",
+        description: err.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createSuggestionMutation = useMutation({
+    mutationFn: async (input: {
+      bankTransactionId: string;
+      personId: string;
+      unitId: string;
+    }) => {
+      const res = await apiRequest(
+        "POST",
+        "/api/admin/reconciliation/suggestions/create",
+        {
+          associationId: activeAssociationId,
+          bankTransactionId: input.bankTransactionId,
+          personId: input.personId,
+          unitId: input.unitId,
+        },
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Payment entry created and matched" });
+      qc.invalidateQueries({ queryKey: ["/api/admin/reconciliation/suggestions"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/reconciliation/manual-queue"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/reconciliation/report"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/reconciliation/audit-log"] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Create-from-suggestion failed",
         description: err.message ?? "Unknown error",
         variant: "destructive",
       });
@@ -700,6 +786,144 @@ export default function AdminReconciliationPage() {
     );
   }
 
+  // ── Tab 4: Suggestions — descriptor-to-owner proposals ─────────────────────
+
+  function renderSuggestionsTab() {
+    if (suggestionsQuery.isLoading) {
+      return (
+        <div className="space-y-3">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      );
+    }
+    if (visibleSuggestions.length === 0) {
+      return (
+        <Card>
+          <CardContent className="py-10 text-center">
+            <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-green-600" />
+            <p className="text-sm text-muted-foreground">
+              No descriptor-based suggestions pending. Every unmatched deposit
+              either has a clear ledger candidate (see Unmatched tab) or
+              doesn't fingerprint to any owner by name.
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Owner-attribution suggestions</CardTitle>
+            <CardDescription>
+              Bank deposits with no matching ledger entry, but whose descriptor
+              fingerprints to an owner via first or last name + open-balance
+              match. Click <strong>Create</strong> to materialize a payment
+              ledger entry and auto-match it in one step.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Bank descriptor</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Tier</TableHead>
+                  <TableHead>Proposed owner(s)</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleSuggestions.map((s) => (
+                  <TableRow
+                    key={s.bankTransactionId}
+                    data-testid={`row-suggestion-${s.bankTransactionId}`}
+                  >
+                    <TableCell className="text-xs">{s.bankDate}</TableCell>
+                    <TableCell className="max-w-xs truncate" title={s.bankDescription}>
+                      {s.bankDescription}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {dollarFromCents(s.bankAmountCents)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          s.tier === "auto-create"
+                            ? "default"
+                            : s.tier === "ambiguous"
+                              ? "destructive"
+                              : "secondary"
+                        }
+                      >
+                        {s.tier}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        {s.ownerCandidates.map((c) => (
+                          <div key={c.personId} className="text-xs">
+                            <span className="font-medium">{c.personName}</span>
+                            {c.unitNumber && (
+                              <span className="text-muted-foreground"> · #{c.unitNumber}</span>
+                            )}
+                            <span className="text-muted-foreground">
+                              {" · bal "}
+                              {dollarFromCents(c.openBalanceCents)}
+                              {" · payor "}
+                              {c.payorMatch}
+                              {" · conf "}
+                              <strong>{(c.confidence * 100).toFixed(0)}%</strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-col items-end gap-1">
+                        {s.tier !== "ambiguous" && s.ownerCandidates[0] && (
+                          <Button
+                            size="sm"
+                            disabled={createSuggestionMutation.isPending}
+                            onClick={() =>
+                              createSuggestionMutation.mutate({
+                                bankTransactionId: s.bankTransactionId,
+                                personId: s.ownerCandidates[0].personId,
+                                unitId: s.ownerCandidates[0].unitId,
+                              })
+                            }
+                            data-testid={`button-suggestion-create-${s.bankTransactionId}`}
+                          >
+                            Create
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setDismissedBtxIds(
+                              (prev) => new Set([...prev, s.bankTransactionId]),
+                            )
+                          }
+                          data-testid={`button-suggestion-dismiss-${s.bankTransactionId}`}
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // ── Tab 3: Audit log ───────────────────────────────────────────────────────
 
   function renderAuditTab() {
@@ -771,8 +995,26 @@ export default function AdminReconciliationPage() {
         {activeAssociationName ?? "Active association"}
       </div>
 
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          setHasUserSelectedTab(true);
+          setTab(value);
+        }}
+      >
         <TabsList>
+          <TabsTrigger value="suggestions" data-testid="tab-suggestions">
+            Suggestions
+            {pendingSuggestionCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="ml-2"
+                data-testid="badge-suggestions-count"
+              >
+                {pendingSuggestionCount}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="unmatched" data-testid="tab-unmatched">
             Unmatched
           </TabsTrigger>
@@ -783,6 +1025,9 @@ export default function AdminReconciliationPage() {
             Match history
           </TabsTrigger>
         </TabsList>
+        <TabsContent value="suggestions" className="mt-4">
+          {renderSuggestionsTab()}
+        </TabsContent>
         <TabsContent value="unmatched" className="mt-4">
           {renderUnmatchedTab()}
         </TabsContent>
