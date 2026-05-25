@@ -22,6 +22,8 @@ import { auditLogs, type AdminRole } from "@shared/schema";
 import {
   runAutoMatch,
   listManualReviewCandidates,
+  findOwnerSuggestionsForUnmatchedCredits,
+  createPaymentFromSuggestion,
 } from "../services/reconciliation/auto-matcher";
 import { buildReconciliationReport } from "../services/reconciliation/report";
 import {
@@ -253,6 +255,95 @@ export function registerAdminReconciliationRoutes(
         res
           .status(500)
           .json({ error: error.message, code: "RECONCILIATION_MATCH_ERROR" });
+      }
+    },
+  );
+
+  // ── Tab 4: Suggestions — descriptor-to-owner heuristic (founder-os#2480) ───
+  //
+  // Surfaces unmatched bank credits with proposed owner attributions inferred
+  // from the descriptor. Read-only — the actual ledger entry is created via
+  // POST /api/admin/reconciliation/suggestions/create.
+  app.get(
+    "/api/admin/reconciliation/suggestions",
+    requireAdmin,
+    requireAdminRole(RECON_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const suggestions = await findOwnerSuggestionsForUnmatchedCredits(associationId);
+        res.json({ suggestions });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message, code: "RECONCILIATION_SUGGESTIONS_ERROR" });
+      }
+    },
+  );
+
+  // ── Tab 4: Create-from-suggestion — one-click materialize + auto-match ─────
+  app.post(
+    "/api/admin/reconciliation/suggestions/create",
+    requireAdmin,
+    requireAdminRole(RECON_WRITE_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const { associationId, bankTransactionId, personId, unitId, description } =
+          req.body as {
+            associationId?: string;
+            bankTransactionId?: string;
+            personId?: string;
+            unitId?: string;
+            description?: string;
+          };
+        if (!associationId || !bankTransactionId || !personId || !unitId) {
+          return res.status(400).json({
+            error:
+              "associationId, bankTransactionId, personId, and unitId are required",
+            code: "MISSING_FIELDS",
+          });
+        }
+        assertAssociationScope(req, associationId);
+
+        const result = await createPaymentFromSuggestion({
+          associationId,
+          bankTransactionId,
+          personId,
+          unitId,
+          description,
+        });
+        if (!result.ok) {
+          return res.status(400).json({ error: result.reason, code: result.code });
+        }
+
+        // Audit-trail
+        await db.insert(auditLogs).values({
+          actorEmail: req.adminUserEmail ?? "unknown",
+          action: "reconciliation.suggestion.create",
+          entityType: "owner_ledger_entry",
+          entityId: result.ledgerEntryId,
+          associationId,
+          afterJson: {
+            bankTransactionId: result.bankTransactionId,
+            ledgerEntryId: result.ledgerEntryId,
+            personId,
+            unitId,
+          },
+        });
+
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({
+          error: error.message,
+          code: "RECONCILIATION_SUGGESTION_CREATE_ERROR",
+        });
       }
     },
   );

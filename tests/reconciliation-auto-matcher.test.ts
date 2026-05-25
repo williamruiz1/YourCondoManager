@@ -194,53 +194,58 @@ const state = vi.hoisted(() => ({
   entries: [] as any[],
   ownerships: [] as any[],
   persons: [] as any[],
+  units: [] as any[],
+  insertedEntries: [] as any[],
   updates: [] as UpdateCall[],
 }));
 
 vi.mock("../server/db", () => {
-  let pending: "credits" | "entries" | "persons" | "ownerships" | "ledgerLinks" =
-    "credits";
-  let filters: Array<(row: any) => boolean> = [];
+  const select = (cols?: any) => {
+    let pending: "credits" | "entries" | "persons" | "ownerships" | "units" | "ledgerLinks" =
+      "credits";
+    const filters: Array<(row: any) => boolean> = [];
 
-  const select = (cols?: any) => ({
-    from: (tableRef: any) => {
-      const id = tableRef.__testTableId;
-      if (id === "bank_transactions") pending = "credits";
-      else if (id === "owner_ledger_entries") {
-        // If cols includes only `bankTransactionId`, that's the linked-check
-        // query; otherwise it's the full pending-entries pull.
-        if (cols && Object.keys(cols).length === 1 && cols.bankTransactionId) {
-          pending = "ledgerLinks";
-        } else {
-          pending = "entries";
-        }
-      } else if (id === "persons") pending = "persons";
-      else if (id === "ownerships") pending = "ownerships";
-      filters = [];
+    const exec = () => {
+      let rows: any[];
+      if (pending === "credits") rows = state.credits;
+      else if (pending === "ledgerLinks") rows = state.entries;
+      else if (pending === "persons") rows = state.persons;
+      else if (pending === "ownerships") rows = state.ownerships;
+      else if (pending === "units") rows = state.units;
+      else rows = state.entries;
+      return rows.filter((r) => filters.every((f) => f(r)));
+    };
 
-      const exec = () => {
-        let rows: any[];
-        if (pending === "credits") rows = state.credits;
-        else if (pending === "ledgerLinks") rows = state.entries;
-        else if (pending === "persons") rows = state.persons;
-        else if (pending === "ownerships") rows = state.ownerships;
-        else rows = state.entries;
-        return rows.filter((r) => filters.every((f) => f(r)));
-      };
+    return {
+      from: (tableRef: any) => {
+        const id = tableRef.__testTableId;
+        if (id === "bank_transactions") pending = "credits";
+        else if (id === "owner_ledger_entries") {
+          // If cols is exactly `{ bankTransactionId }`, that's the linked-check
+          // query; otherwise it's the full pending-entries pull.
+          if (cols && Object.keys(cols).length === 1 && cols.bankTransactionId) {
+            pending = "ledgerLinks";
+          } else {
+            pending = "entries";
+          }
+        } else if (id === "persons") pending = "persons";
+        else if (id === "ownerships") pending = "ownerships";
+        else if (id === "units") pending = "units";
 
-      const chain: any = {
-        where: (f: any) => {
-          filters.push(f);
-          return chain;
-        },
-        innerJoin: (_t: any, _on: any) => chain,
-        orderBy: (_o: unknown) => Promise.resolve(exec()),
-        then: (resolve: any, reject?: any) =>
-          Promise.resolve(exec()).then(resolve, reject),
-      };
-      return chain;
-    },
-  });
+        const chain: any = {
+          where: (f: any) => {
+            filters.push(f);
+            return chain;
+          },
+          innerJoin: (_t: any, _on: any) => chain,
+          orderBy: (_o: unknown) => Promise.resolve(exec()),
+          then: (resolve: any, reject?: any) =>
+            Promise.resolve(exec()).then(resolve, reject),
+        };
+        return chain;
+      },
+    };
+  };
 
   return {
     db: {
@@ -261,6 +266,16 @@ vi.mock("../server/db", () => {
           },
         }),
       }),
+      insert: (_t: any) => ({
+        values: (row: any) => ({
+          returning: (_cols?: any) => {
+            const inserted = { ...row, id: `auto-${state.insertedEntries.length + 1}` };
+            state.insertedEntries.push(inserted);
+            state.entries.push(inserted);
+            return Promise.resolve([inserted]);
+          },
+        }),
+      }),
     },
   };
 });
@@ -272,9 +287,21 @@ vi.mock("drizzle-orm", async (orig) => {
     eq: (col: any, v: any) => (row: any) => row[col.__testCol] === v,
     isNull: (col: any) => (row: any) =>
       row[col.__testCol] === null || row[col.__testCol] === undefined,
+    isNotNull: (col: any) => (row: any) =>
+      row[col.__testCol] !== null && row[col.__testCol] !== undefined,
+    gte: (col: any, v: any) => (row: any) => row[col.__testCol] >= v,
+    lte: (col: any, v: any) => (row: any) => row[col.__testCol] <= v,
+    inArray: (col: any, vs: any[]) => (row: any) =>
+      vs.includes(row[col.__testCol]),
+    or: (...preds: any[]) => (row: any) => preds.some((p) => p(row)),
     and: (...preds: any[]) => (row: any) => preds.every((p) => p(row)),
     asc: (_c: any) => null,
     desc: (_c: any) => null,
+    sql: (() => {
+      const fn: any = () => null;
+      fn.raw = () => null;
+      return fn;
+    })(),
   };
 });
 
@@ -287,6 +314,9 @@ vi.mock("@shared/schema", () => {
       associationId: col("associationId"),
       reconciledToPaymentTransactionId: col("reconciledToPaymentTransactionId"),
       date: col("date"),
+      amountCents: col("amountCents"),
+      name: col("name"),
+      merchantName: col("merchantName"),
     },
     ownerLedgerEntries: {
       __testTableId: "owner_ledger_entries",
@@ -305,17 +335,31 @@ vi.mock("@shared/schema", () => {
       __testTableId: "persons",
       id: col("id"),
       associationId: col("associationId"),
+      firstName: col("firstName"),
+      lastName: col("lastName"),
     },
     ownerships: {
       __testTableId: "ownerships",
       personId: col("personId"),
+      unitId: col("unitId"),
     },
-    units: { __testTableId: "units" },
+    units: {
+      __testTableId: "units",
+      id: col("id"),
+      unitNumber: col("unitNumber"),
+      associationId: col("associationId"),
+    },
   };
 });
 
 // Now import the SUT.
-import { runAutoMatch } from "../server/services/reconciliation/auto-matcher";
+import {
+  runAutoMatch,
+  scoreSuggestion,
+  findOwnerSuggestionsForUnmatchedCredits,
+  SUGGEST_AUTO_CREATE_THRESHOLD,
+  SUGGEST_REVIEW_MIN_THRESHOLD,
+} from "../server/services/reconciliation/auto-matcher";
 
 const ASSOC = "assoc-test";
 
@@ -324,6 +368,8 @@ beforeEach(() => {
   state.entries = [];
   state.ownerships = [];
   state.persons = [];
+  state.units = [];
+  state.insertedEntries = [];
   state.updates = [];
 });
 
@@ -551,5 +597,406 @@ describe("runAutoMatch — integration", () => {
     const r = await runAutoMatch(ASSOC);
     // The credit is already linked; no fresh match should occur on it
     expect(r.matched).toHaveLength(0);
+  });
+
+  // ── founder-os#2480 — expanded candidate set ─────────────────────────────
+  // The auto-matcher now considers entry_type IN ('payment', 'credit'), not
+  // just 'payment'. A bank credit matching an owner-credit ledger entry
+  // (e.g. a refund recorded in the ledger) should auto-apply.
+  it("auto-applies against an entry_type='credit' ledger entry (broadened candidate set)", async () => {
+    state.credits = [
+      {
+        id: "btx-credit",
+        associationId: ASSOC,
+        amountCents: -25000,
+        date: "2026-05-10",
+        name: "REFUND TO WILLIAM RUIZ",
+        merchantName: null,
+        reconciledToPaymentTransactionId: null,
+      },
+    ];
+    state.entries = [
+      {
+        id: "ole-credit",
+        associationId: ASSOC,
+        personId: "p-1",
+        unitId: "u-1",
+        entryType: "credit", // ← not 'payment'
+        amount: -250,
+        postedAt: new Date("2026-05-10"),
+        description: null,
+        bankTransactionId: null,
+        settledAt: null,
+        referenceType: null,
+      },
+    ];
+    state.persons = [
+      { id: "p-1", firstName: "William", lastName: "Ruiz", associationId: ASSOC },
+    ];
+    state.ownerships = [{ personId: "p-1", unitId: "u-1" }];
+    state.units = [{ id: "u-1", unitNumber: "101", associationId: ASSOC }];
+
+    const r = await runAutoMatch(ASSOC);
+
+    expect(r.matched).toHaveLength(1);
+    expect(r.matched[0]).toMatchObject({
+      bankTransactionId: "btx-credit",
+      ledgerEntryId: "ole-credit",
+    });
+  });
+});
+
+// ── founder-os#2480 — descriptor-to-owner suggestions ───────────────────────
+
+describe("scoreSuggestion — confidence thresholds", () => {
+  it("clears auto-create at exact-name + exact-balance (0.96)", () => {
+    const r = scoreSuggestion({
+      bankAmountAbsCents: 25000,
+      bankDescription: "ZELLE FROM WILLIAM RUIZ",
+      ownerFirstName: "William",
+      ownerLastName: "Ruiz",
+      ownerOpenBalanceCents: 25000, // exact
+    });
+    // exact name 0.60 + within $1 0.36 = 0.96
+    expect(r.confidence).toBeCloseTo(0.96, 5);
+    expect(r.confidence).toBeGreaterThanOrEqual(SUGGEST_AUTO_CREATE_THRESHOLD);
+    expect(r.payorMatch).toBe("exact");
+  });
+
+  it("hits review band at exact-name + near-balance (0.90; below auto-create)", () => {
+    const r = scoreSuggestion({
+      bankAmountAbsCents: 25400, // off by $4
+      bankDescription: "ZELLE FROM WILLIAM RUIZ",
+      ownerFirstName: "William",
+      ownerLastName: "Ruiz",
+      ownerOpenBalanceCents: 25000,
+    });
+    // exact 0.60 + within $5 0.30 = 0.90 — review band (≥0.80, <0.95)
+    expect(r.confidence).toBeCloseTo(0.90, 5);
+    expect(r.confidence).toBeGreaterThanOrEqual(SUGGEST_REVIEW_MIN_THRESHOLD);
+    expect(r.confidence).toBeLessThan(SUGGEST_AUTO_CREATE_THRESHOLD);
+  });
+
+  it("hits review-edge at exact-name + window-balance (0.80; bottom of review band)", () => {
+    const r = scoreSuggestion({
+      bankAmountAbsCents: 27000, // off by $20 — within $50 window
+      bankDescription: "ZELLE FROM WILLIAM RUIZ",
+      ownerFirstName: "William",
+      ownerLastName: "Ruiz",
+      ownerOpenBalanceCents: 25000,
+    });
+    // exact 0.60 + window 0.20 = 0.80
+    expect(r.confidence).toBeCloseTo(0.80, 5);
+    expect(r.confidence).toBeGreaterThanOrEqual(SUGGEST_REVIEW_MIN_THRESHOLD);
+  });
+
+  it("falls below review threshold for amount outside $50 window even with exact name", () => {
+    const r = scoreSuggestion({
+      bankAmountAbsCents: 31000, // off by $60 — outside window
+      bankDescription: "ZELLE FROM WILLIAM RUIZ",
+      ownerFirstName: "William",
+      ownerLastName: "Ruiz",
+      ownerOpenBalanceCents: 25000,
+    });
+    // exact 0.60 + 0 amount = 0.60 — below review
+    expect(r.confidence).toBeCloseTo(0.60, 5);
+    expect(r.confidence).toBeLessThan(SUGGEST_REVIEW_MIN_THRESHOLD);
+  });
+
+  it("falls below review threshold for partial-name match", () => {
+    const r = scoreSuggestion({
+      bankAmountAbsCents: 25000,
+      bankDescription: "WIRE FROM RUIZ", // only last name
+      ownerFirstName: "William",
+      ownerLastName: "Ruiz",
+      ownerOpenBalanceCents: 25000,
+    });
+    // partial 0.30 + exact $0 0.36 = 0.66
+    expect(r.confidence).toBeCloseTo(0.66, 5);
+    expect(r.confidence).toBeLessThan(SUGGEST_REVIEW_MIN_THRESHOLD);
+    expect(r.payorMatch).toBe("partial");
+  });
+
+  it("descriptor format: 'WILLIAM RUIZ' → exact (full first+last)", () => {
+    const r = scoreSuggestion({
+      bankAmountAbsCents: 25000,
+      bankDescription: "WILLIAM RUIZ",
+      ownerFirstName: "William",
+      ownerLastName: "Ruiz",
+      ownerOpenBalanceCents: 25000,
+    });
+    expect(r.payorMatch).toBe("exact");
+    expect(r.confidence).toBeGreaterThanOrEqual(SUGGEST_AUTO_CREATE_THRESHOLD);
+  });
+
+  it("descriptor format: 'RUIZ, W' → partial (only last name matches as token)", () => {
+    const r = scoreSuggestion({
+      bankAmountAbsCents: 25000,
+      bankDescription: "RUIZ, W",
+      ownerFirstName: "William",
+      ownerLastName: "Ruiz",
+      ownerOpenBalanceCents: 25000,
+    });
+    // Single-letter "W" token doesn't satisfy the >=2 char gate in
+    // payorNameMatch, so only "ruiz" matches → partial.
+    expect(r.payorMatch).toBe("partial");
+  });
+
+  it("descriptor format: 'william ruiz @ chase' → exact (lowercase, separators stripped)", () => {
+    const r = scoreSuggestion({
+      bankAmountAbsCents: 25000,
+      bankDescription: "william ruiz @ chase",
+      ownerFirstName: "William",
+      ownerLastName: "Ruiz",
+      ownerOpenBalanceCents: 25000,
+    });
+    expect(r.payorMatch).toBe("exact");
+  });
+
+  it("descriptor format: 'Wm Ruiz - PAYMENT' → partial (abbreviated first name doesn't match)", () => {
+    const r = scoreSuggestion({
+      bankAmountAbsCents: 25000,
+      bankDescription: "Wm Ruiz - PAYMENT",
+      ownerFirstName: "William",
+      ownerLastName: "Ruiz",
+      ownerOpenBalanceCents: 25000,
+    });
+    // "Wm" doesn't equal "william" — only "ruiz" matches as a whole token.
+    expect(r.payorMatch).toBe("partial");
+  });
+});
+
+describe("findOwnerSuggestionsForUnmatchedCredits — integration", () => {
+  const recentDate = new Date(Date.now() - 5 * 86400 * 1000).toISOString().slice(0, 10);
+
+  it("emits an 'auto-create' tier for exact name + exact balance, single owner", async () => {
+    state.credits = [
+      {
+        id: "btx-suggest-A",
+        associationId: ASSOC,
+        amountCents: -25000,
+        date: recentDate,
+        name: "ZELLE FROM WILLIAM RUIZ",
+        merchantName: null,
+        reconciledToPaymentTransactionId: null,
+      },
+    ];
+    // One outstanding charge of $250 → open balance = $250 = bank amount
+    state.entries = [
+      {
+        id: "ole-charge",
+        associationId: ASSOC,
+        personId: "p-1",
+        unitId: "u-1",
+        entryType: "charge",
+        amount: 250,
+        postedAt: new Date(recentDate),
+        description: null,
+        bankTransactionId: null,
+        settledAt: null,
+        referenceType: null,
+      },
+    ];
+    state.persons = [
+      { id: "p-1", firstName: "William", lastName: "Ruiz", associationId: ASSOC },
+    ];
+    state.ownerships = [{ personId: "p-1", unitId: "u-1" }];
+    state.units = [{ id: "u-1", unitNumber: "101", associationId: ASSOC }];
+
+    const suggestions = await findOwnerSuggestionsForUnmatchedCredits(ASSOC);
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].tier).toBe("auto-create");
+    expect(suggestions[0].ownerCandidates).toHaveLength(1);
+    expect(suggestions[0].ownerCandidates[0].personId).toBe("p-1");
+    expect(suggestions[0].topConfidence).toBeGreaterThanOrEqual(
+      SUGGEST_AUTO_CREATE_THRESHOLD,
+    );
+  });
+
+  it("emits a 'review' tier when confidence sits between review and auto-create", async () => {
+    state.credits = [
+      {
+        id: "btx-suggest-B",
+        associationId: ASSOC,
+        amountCents: -25400, // off by $4
+        date: recentDate,
+        name: "ZELLE FROM WILLIAM RUIZ",
+        merchantName: null,
+        reconciledToPaymentTransactionId: null,
+      },
+    ];
+    state.entries = [
+      {
+        id: "ole-charge",
+        associationId: ASSOC,
+        personId: "p-1",
+        unitId: "u-1",
+        entryType: "charge",
+        amount: 250,
+        postedAt: new Date(recentDate),
+        description: null,
+        bankTransactionId: null,
+        settledAt: null,
+        referenceType: null,
+      },
+    ];
+    state.persons = [
+      { id: "p-1", firstName: "William", lastName: "Ruiz", associationId: ASSOC },
+    ];
+    state.ownerships = [{ personId: "p-1", unitId: "u-1" }];
+    state.units = [{ id: "u-1", unitNumber: "101", associationId: ASSOC }];
+
+    const suggestions = await findOwnerSuggestionsForUnmatchedCredits(ASSOC);
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].tier).toBe("review");
+    expect(suggestions[0].topConfidence).toBeLessThan(SUGGEST_AUTO_CREATE_THRESHOLD);
+    expect(suggestions[0].topConfidence).toBeGreaterThanOrEqual(
+      SUGGEST_REVIEW_MIN_THRESHOLD,
+    );
+  });
+
+  it("emits 'ambiguous' tier with TWO same-last-name owners both above review — never auto-creates", async () => {
+    // Both owners share last name "Ruiz" AND the descriptor includes a first
+    // name that also matches BOTH (deliberately constructed to make both
+    // owners clear the review threshold). The ambiguity gate must prevent
+    // auto-creation even when individual scores are high.
+    state.credits = [
+      {
+        id: "btx-ambig",
+        associationId: ASSOC,
+        amountCents: -25000,
+        date: recentDate,
+        // "Alex" full-name matches BOTH p-A (Alex Ruiz) and p-B (Alex Ruiz Jr.) —
+        // we model this as two distinct persons with the same first+last name.
+        name: "ZELLE FROM ALEX RUIZ",
+        merchantName: null,
+        reconciledToPaymentTransactionId: null,
+      },
+    ];
+    // Both owners have $250 outstanding — balance equality alone can't disambiguate.
+    state.entries = [
+      {
+        id: "ch-1",
+        associationId: ASSOC,
+        personId: "p-A",
+        unitId: "u-1",
+        entryType: "charge",
+        amount: 250,
+        postedAt: new Date(recentDate),
+        description: null,
+        bankTransactionId: null,
+        settledAt: null,
+        referenceType: null,
+      },
+      {
+        id: "ch-2",
+        associationId: ASSOC,
+        personId: "p-B",
+        unitId: "u-2",
+        entryType: "charge",
+        amount: 250,
+        postedAt: new Date(recentDate),
+        description: null,
+        bankTransactionId: null,
+        settledAt: null,
+        referenceType: null,
+      },
+    ];
+    state.persons = [
+      { id: "p-A", firstName: "Alex", lastName: "Ruiz", associationId: ASSOC },
+      { id: "p-B", firstName: "Alex", lastName: "Ruiz", associationId: ASSOC },
+    ];
+    state.ownerships = [
+      { personId: "p-A", unitId: "u-1" },
+      { personId: "p-B", unitId: "u-2" },
+    ];
+    state.units = [
+      { id: "u-1", unitNumber: "101", associationId: ASSOC },
+      { id: "u-2", unitNumber: "102", associationId: ASSOC },
+    ];
+
+    const suggestions = await findOwnerSuggestionsForUnmatchedCredits(ASSOC);
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].tier).toBe("ambiguous");
+    expect(suggestions[0].ownerCandidates.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("skips credits already linked to a ledger entry (no double-suggest)", async () => {
+    state.credits = [
+      {
+        id: "btx-linked",
+        associationId: ASSOC,
+        amountCents: -25000,
+        date: recentDate,
+        name: "ZELLE FROM WILLIAM RUIZ",
+        merchantName: null,
+        reconciledToPaymentTransactionId: null,
+      },
+    ];
+    state.entries = [
+      {
+        id: "ole-linked",
+        associationId: ASSOC,
+        personId: "p-1",
+        unitId: "u-1",
+        entryType: "payment",
+        amount: -250,
+        postedAt: new Date(recentDate),
+        description: null,
+        bankTransactionId: "btx-linked", // already linked
+        settledAt: new Date(recentDate),
+        referenceType: null,
+      },
+    ];
+    state.persons = [
+      { id: "p-1", firstName: "William", lastName: "Ruiz", associationId: ASSOC },
+    ];
+    state.ownerships = [{ personId: "p-1", unitId: "u-1" }];
+    state.units = [{ id: "u-1", unitNumber: "101", associationId: ASSOC }];
+
+    const suggestions = await findOwnerSuggestionsForUnmatchedCredits(ASSOC);
+
+    expect(suggestions).toHaveLength(0);
+  });
+
+  it("does not surface when no name token appears in descriptor (no fingerprint)", async () => {
+    state.credits = [
+      {
+        id: "btx-anon",
+        associationId: ASSOC,
+        amountCents: -25000,
+        date: recentDate,
+        name: "ACH DEPOSIT 1234567",
+        merchantName: null,
+        reconciledToPaymentTransactionId: null,
+      },
+    ];
+    state.entries = [
+      {
+        id: "ole-charge",
+        associationId: ASSOC,
+        personId: "p-1",
+        unitId: "u-1",
+        entryType: "charge",
+        amount: 250,
+        postedAt: new Date(recentDate),
+        description: null,
+        bankTransactionId: null,
+        settledAt: null,
+        referenceType: null,
+      },
+    ];
+    state.persons = [
+      { id: "p-1", firstName: "William", lastName: "Ruiz", associationId: ASSOC },
+    ];
+    state.ownerships = [{ personId: "p-1", unitId: "u-1" }];
+    state.units = [{ id: "u-1", unitNumber: "101", associationId: ASSOC }];
+
+    const suggestions = await findOwnerSuggestionsForUnmatchedCredits(ASSOC);
+
+    expect(suggestions).toHaveLength(0);
   });
 });

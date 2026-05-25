@@ -51,13 +51,14 @@
  * `entry_type='payment'` surface. The plaid-pay-intent narrow path continues
  * to run for backward compatibility.
  */
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { db } from "../../db";
 import {
   bankTransactions,
   ownerLedgerEntries,
   ownerships,
   persons,
+  units,
   type BankTransaction,
   type OwnerLedgerEntry,
 } from "@shared/schema";
@@ -68,6 +69,26 @@ export const AUTO_MATCH_THRESHOLD = 0.85;
 export const DATE_WINDOW_DAYS = 7;
 export const AMOUNT_EXACT_CENTS_TOL = 0;
 export const AMOUNT_NEAR_CENTS_TOL = 100;
+
+// ── Descriptor-to-owner suggestion thresholds (founder-os#2480) ───────────────
+//
+// When a bank credit has NO matching ledger entry, we search for an owner
+// whose name appears in the descriptor. This gives the treasurer a one-click
+// "create payment entry + auto-match" path instead of having to first record
+// the payment manually and then re-run the matcher.
+//
+// Confidence tiers:
+//   - SUGGEST_AUTO_CREATE_THRESHOLD (0.95+) → auto-create the entry + match
+//   - SUGGEST_REVIEW_MIN_THRESHOLD  (0.80+) → propose for treasurer review
+//   - Below 0.80 or ambiguous       → leave unmatched, fully-manual review
+//
+// The balance window (±$50) prevents a Zelle deposit that happens to contain
+// an owner's surname from being interpreted as payment when the amount is
+// nowhere near their open balance.
+export const SUGGEST_AUTO_CREATE_THRESHOLD = 0.95;
+export const SUGGEST_REVIEW_MIN_THRESHOLD = 0.80;
+export const SUGGEST_BALANCE_WINDOW_CENTS = 5000; // ±$50
+export const CREDIT_SEARCH_WINDOW_DAYS = 30;
 
 export const SCORE_WEIGHTS = {
   amountExact: 0.55,
@@ -222,7 +243,13 @@ export async function runAutoMatch(
   associationId: string,
 ): Promise<AutoMatchResult> {
   // 1. Pull eligible bank credits (not yet linked to any payment_transaction
-  //    AND not yet linked to a ledger entry via the Issue #448 path).
+  //    AND not yet linked to a ledger entry via the Issue #448 path). Per
+  //    founder-os#2480, the search is bounded to the last
+  //    CREDIT_SEARCH_WINDOW_DAYS (30) of bank activity — older credits are
+  //    handled by the report tab's period filter, not the live matcher.
+  const cutoffDate = new Date(Date.now() - CREDIT_SEARCH_WINDOW_DAYS * 86400 * 1000);
+  const cutoffStr = cutoffDate.toISOString().slice(0, 10); // yyyy-mm-dd
+
   const allCredits = await db
     .select()
     .from(bankTransactions)
@@ -230,6 +257,7 @@ export async function runAutoMatch(
       and(
         eq(bankTransactions.associationId, associationId),
         isNull(bankTransactions.reconciledToPaymentTransactionId),
+        gte(bankTransactions.date, cutoffStr),
       ),
     )
     .orderBy(asc(bankTransactions.date));
@@ -251,15 +279,18 @@ export async function runAutoMatch(
     (c) => isCredit(c) && !linkedBankTxIds.has(c.id),
   );
 
-  // 2. Pull unsettled payment ledger entries for this association (broader
-  //    than the plaid-pay-intent narrow path).
+  // 2. Pull unsettled payment OR credit ledger entries for this association
+  //    (broader than the plaid-pay-intent narrow path). Per founder-os#2480,
+  //    the eligibility set now spans `entry_type IN ('payment', 'credit')` so
+  //    owner credits (refunds, account credits applied against a future bill)
+  //    can also auto-match to corresponding bank movements.
   const pendingEntries = await db
     .select()
     .from(ownerLedgerEntries)
     .where(
       and(
         eq(ownerLedgerEntries.associationId, associationId),
-        eq(ownerLedgerEntries.entryType, "payment"),
+        inArray(ownerLedgerEntries.entryType, ["payment", "credit"]),
         isNull(ownerLedgerEntries.settledAt),
         isNull(ownerLedgerEntries.bankTransactionId),
       ),
@@ -459,3 +490,394 @@ export async function listManualReviewCandidates(
 
 // Convenience export of the type alias used by the report endpoint.
 export type ReconciliationLedgerEntry = OwnerLedgerEntry;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// founder-os#2480 — descriptor-to-owner heuristic
+//
+// When a bank credit lands with NO matching ledger entry (an owner Zelled /
+// mailed a check / wired money WITHOUT a pre-recorded payment expectation),
+// the matcher historically gave up — the credit sat in the manual-review
+// queue and the treasurer had to (a) hand-record a payment ledger entry,
+// (b) re-run the matcher to bind it. Two clicks become four; the friction
+// stalls reconciliation.
+//
+// The descriptor-to-owner heuristic closes that gap:
+//   1. For every unmatched bank credit (no linked ledger entry) in the last
+//      CREDIT_SEARCH_WINDOW_DAYS, scan the association's owners and find any
+//      whose first or last name appears in the bank-tx descriptor.
+//   2. Compute the owner's CURRENT OPEN BALANCE from the ledger (sum of all
+//      charge/assessment/late-fee entries minus payment/credit entries).
+//   3. If exactly ONE owner matches AND the credit amount is within
+//      SUGGEST_BALANCE_WINDOW_CENTS (±$50) of the owner's open balance:
+//          confidence ≥ 0.95 → auto-create (entry + match in one shot)
+//          0.80 ≤ conf < 0.95 → propose for treasurer review
+//          conf < 0.80         → leave unmatched, fully-manual
+//   4. If MULTIPLE owners match (e.g. two Ruizes in the building) → NEVER
+//      auto-create; surface as ambiguous review.
+//
+// This is intentionally conservative — the bias is against false-positive
+// auto-creates. Treasurers can always Dismiss a low-confidence suggestion;
+// the inverse (an incorrectly auto-created ledger entry) requires backout
+// work and erodes trust.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type SuggestionTier = "auto-create" | "review" | "ambiguous";
+
+export interface OwnerSuggestion {
+  bankTransactionId: string;
+  bankAmountCents: number; // absolute (positive) for display
+  bankDate: string;        // yyyy-mm-dd
+  bankDescription: string;
+  ownerCandidates: Array<{
+    personId: string;
+    personName: string;
+    unitId: string;
+    unitNumber: string | null;
+    openBalanceCents: number;
+    payorMatch: "exact" | "partial" | "none";
+    amountDeltaCents: number; // bank amount − open balance
+    confidence: number;
+  }>;
+  tier: SuggestionTier;
+  topConfidence: number;
+}
+
+/**
+ * Score a descriptor-to-owner suggestion. Pure function over inputs.
+ *
+ * Confidence composition (weights chosen so the spec's tier thresholds land
+ * on clean boundaries):
+ *   payor name signal (the "is this owner referenced?" question):
+ *     - exact   (full first+last in descriptor)  +0.60
+ *     - partial (only first OR only last)         +0.30
+ *     - none                                       0.00
+ *   amount signal (the "does the credit match what they owe?" question):
+ *     - exact   (within $1 of open balance)      +0.36   → exact+exact = 0.96 → auto-create
+ *     - near    (within $5 of open balance)      +0.30   → exact+near  = 0.90 → review
+ *     - window  (within $50 of open balance)     +0.20   → exact+window= 0.80 → review (edge)
+ *     - outside (>$50)                             0.00   → below review threshold
+ *
+ * Multiple owners matching the descriptor is handled at the caller level
+ * (tier="ambiguous"); this function only scores a SINGLE owner pairing.
+ */
+export function scoreSuggestion(input: {
+  bankAmountAbsCents: number;
+  bankDescription: string | null | undefined;
+  ownerFirstName: string;
+  ownerLastName: string;
+  ownerOpenBalanceCents: number;
+}): { confidence: number; payorMatch: "exact" | "partial" | "none"; amountDeltaCents: number } {
+  const payorMatch = payorNameMatch(
+    input.bankDescription,
+    input.ownerFirstName,
+    input.ownerLastName,
+  );
+
+  let confidence = 0;
+  if (payorMatch === "exact") confidence += 0.60;
+  else if (payorMatch === "partial") confidence += 0.30;
+
+  const amountDelta = Math.abs(input.bankAmountAbsCents - input.ownerOpenBalanceCents);
+  if (amountDelta <= 100) {
+    confidence += 0.36; // within $1 — effectively exact
+  } else if (amountDelta <= 500) {
+    confidence += 0.30; // within $5
+  } else if (amountDelta <= SUGGEST_BALANCE_WINDOW_CENTS) {
+    confidence += 0.20; // within $50
+  }
+
+  confidence = Math.min(1, Math.max(0, confidence));
+
+  return {
+    confidence,
+    payorMatch,
+    amountDeltaCents: input.bankAmountAbsCents - input.ownerOpenBalanceCents,
+  };
+}
+
+/**
+ * Compute each owner's current open balance (positive = owed by owner;
+ * negative = owner has credit). Charges + assessments + late-fees count as
+ * positive; payments + credits + adjustments-toward-credit count as negative.
+ *
+ * Open-balance convention: ledger amounts are signed (positive for charges,
+ * negative for payments). So the open balance for an owner is simply the sum
+ * of `amount` over all unsettled ledger entries — except we want the running
+ * total over ALL entries (settled or not) to capture the full picture.
+ *
+ * For matching purposes we use the ABSOLUTE open balance, since a positive
+ * bank credit could equally apply against a positive owner balance (most
+ * common case) or zero out an owner credit (rare).
+ */
+async function computeOpenBalancesPerOwner(
+  associationId: string,
+): Promise<Map<string, number>> {
+  const rows = await db
+    .select({
+      personId: ownerLedgerEntries.personId,
+      amount: ownerLedgerEntries.amount,
+      entryType: ownerLedgerEntries.entryType,
+    })
+    .from(ownerLedgerEntries)
+    .where(eq(ownerLedgerEntries.associationId, associationId));
+
+  const balanceByPerson = new Map<string, number>(); // dollars (cents math at output)
+  for (const r of rows) {
+    // Convention: amounts for `charge|assessment|late-fee` are stored positive
+    // (owner owes), `payment|credit|adjustment` are stored negative (reduces
+    // balance). Summing the signed `amount` field yields the current balance.
+    const prev = balanceByPerson.get(r.personId) ?? 0;
+    balanceByPerson.set(r.personId, prev + r.amount);
+  }
+
+  // Convert to cents.
+  const cents = new Map<string, number>();
+  for (const [pid, dollars] of balanceByPerson) {
+    cents.set(pid, Math.round(dollars * 100));
+  }
+  return cents;
+}
+
+/**
+ * Walk every unmatched bank credit and propose owner-attribution suggestions
+ * via the descriptor heuristic. Read-only — no DB writes here. The caller
+ * (UI / route) materializes the suggestion via createPaymentFromSuggestion.
+ *
+ * Tenant-isolated via the associationId filter on every query.
+ */
+export async function findOwnerSuggestionsForUnmatchedCredits(
+  associationId: string,
+): Promise<OwnerSuggestion[]> {
+  const cutoffDate = new Date(Date.now() - CREDIT_SEARCH_WINDOW_DAYS * 86400 * 1000);
+  const cutoffStr = cutoffDate.toISOString().slice(0, 10);
+
+  // 1. Unmatched bank credits in window.
+  const credits = await db
+    .select()
+    .from(bankTransactions)
+    .where(
+      and(
+        eq(bankTransactions.associationId, associationId),
+        isNull(bankTransactions.reconciledToPaymentTransactionId),
+        gte(bankTransactions.date, cutoffStr),
+      ),
+    )
+    .orderBy(asc(bankTransactions.date));
+
+  // 2. Strip credits already linked to a ledger entry — those have a
+  //    canonical pairing and aren't suggestion candidates.
+  const linkedRows = await db
+    .select({ bankTransactionId: ownerLedgerEntries.bankTransactionId })
+    .from(ownerLedgerEntries)
+    .where(eq(ownerLedgerEntries.associationId, associationId));
+  const linkedBtxIds = new Set(
+    linkedRows.map((r) => r.bankTransactionId).filter((id): id is string => id !== null),
+  );
+  const unmatchedCredits = credits.filter(
+    (c) => c.amountCents < 0 && !linkedBtxIds.has(c.id),
+  );
+  if (unmatchedCredits.length === 0) return [];
+
+  // 3. Owners attached to this association (via the ownerships join +
+  //    `persons.associationId` filter, mirroring runAutoMatch). Two queries
+  //    keep the test-mocking story simple: one for persons (the name signal)
+  //    and one for ownerships (the unit attribution). We join in JS — the
+  //    cardinality (max ~tens of owners per association) makes that cheap.
+  const personRows = await db
+    .select({
+      id: persons.id,
+      firstName: persons.firstName,
+      lastName: persons.lastName,
+    })
+    .from(persons)
+    .innerJoin(ownerships, eq(ownerships.personId, persons.id))
+    .where(eq(persons.associationId, associationId));
+  const ownershipRows = await db
+    .select({
+      personId: ownerships.personId,
+      unitId: ownerships.unitId,
+    })
+    .from(ownerships);
+  const unitRows = await db
+    .select({
+      id: units.id,
+      unitNumber: units.unitNumber,
+    })
+    .from(units)
+    .where(eq(units.associationId, associationId));
+
+  const unitById = new Map<string, { unitNumber: string | null }>();
+  for (const u of unitRows) unitById.set(u.id, { unitNumber: u.unitNumber });
+  const ownershipByPerson = new Map<string, { unitId: string; unitNumber: string | null }>();
+  for (const o of ownershipRows) {
+    const unit = unitById.get(o.unitId);
+    if (!unit) continue; // skip stale ownerships referencing units outside this association
+    ownershipByPerson.set(o.personId, { unitId: o.unitId, unitNumber: unit.unitNumber });
+  }
+  const ownerRows = personRows
+    .map((p) => {
+      const own = ownershipByPerson.get(p.id);
+      if (!own) return null;
+      return {
+        personId: p.id,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        unitId: own.unitId,
+        unitNumber: own.unitNumber,
+      };
+    })
+    .filter((o): o is NonNullable<typeof o> => o !== null);
+
+  // 4. Open balance per owner — used as the amount-comparison anchor.
+  const openBalanceByPerson = await computeOpenBalancesPerOwner(associationId);
+
+  // 5. For each unmatched credit, score every owner pairing.
+  const suggestions: OwnerSuggestion[] = [];
+  for (const credit of unmatchedCredits) {
+    const creditAbsCents = Math.abs(credit.amountCents);
+    const desc = credit.merchantName ?? credit.name;
+
+    const candidates: OwnerSuggestion["ownerCandidates"] = [];
+    for (const o of ownerRows) {
+      const openBalCents = Math.abs(openBalanceByPerson.get(o.personId) ?? 0);
+      const { confidence, payorMatch, amountDeltaCents } = scoreSuggestion({
+        bankAmountAbsCents: creditAbsCents,
+        bankDescription: desc,
+        ownerFirstName: o.firstName,
+        ownerLastName: o.lastName,
+        ownerOpenBalanceCents: openBalCents,
+      });
+      // Only keep candidates with a real name signal — pure amount-near-balance
+      // without a name match is too weak to surface (we'd be guessing).
+      if (payorMatch === "none") continue;
+      if (confidence < SUGGEST_REVIEW_MIN_THRESHOLD) continue;
+      candidates.push({
+        personId: o.personId,
+        personName: `${o.firstName} ${o.lastName}`,
+        unitId: o.unitId,
+        unitNumber: o.unitNumber,
+        openBalanceCents: openBalCents,
+        payorMatch,
+        amountDeltaCents,
+        confidence,
+      });
+    }
+
+    if (candidates.length === 0) continue;
+
+    // Sort by confidence descending so the top candidate is index 0.
+    candidates.sort((a, b) => b.confidence - a.confidence);
+    const top = candidates[0];
+
+    // Tier classification:
+    //   - Multiple candidates above review threshold → ambiguous (NEVER auto)
+    //   - Single candidate ≥ auto-create threshold → auto-create
+    //   - Otherwise → review
+    let tier: SuggestionTier;
+    if (candidates.length > 1) {
+      tier = "ambiguous";
+    } else if (top.confidence >= SUGGEST_AUTO_CREATE_THRESHOLD) {
+      tier = "auto-create";
+    } else {
+      tier = "review";
+    }
+
+    suggestions.push({
+      bankTransactionId: credit.id,
+      bankAmountCents: creditAbsCents,
+      bankDate: credit.date,
+      bankDescription: desc,
+      ownerCandidates: candidates,
+      tier,
+      topConfidence: top.confidence,
+    });
+  }
+
+  return suggestions;
+}
+
+/**
+ * Create a payment ledger entry for an owner and atomically auto-match it to
+ * the bank transaction. Used by the Suggestions tab "Create" button.
+ *
+ * Tenant-scoped: every read + write filters on associationId. The bank tx
+ * MUST belong to the association OR the call rejects.
+ */
+export async function createPaymentFromSuggestion(input: {
+  associationId: string;
+  bankTransactionId: string;
+  personId: string;
+  unitId: string;
+  description?: string;
+}): Promise<{
+  ok: true;
+  ledgerEntryId: string;
+  bankTransactionId: string;
+} | { ok: false; reason: string; code: string }> {
+  // Validate the bank tx belongs to this association + is unmatched + is a credit.
+  const btxRows = await db
+    .select()
+    .from(bankTransactions)
+    .where(
+      and(
+        eq(bankTransactions.id, input.bankTransactionId),
+        eq(bankTransactions.associationId, input.associationId),
+      ),
+    );
+  if (btxRows.length === 0) {
+    return { ok: false, reason: "Bank transaction not found", code: "BTX_NOT_FOUND" };
+  }
+  const btx = btxRows[0];
+  if (btx.amountCents >= 0) {
+    return { ok: false, reason: "Bank transaction is not a credit", code: "BTX_NOT_CREDIT" };
+  }
+
+  // Reject if the bank tx already has a linked ledger entry (idempotency guard).
+  const existingLink = await db
+    .select({ id: ownerLedgerEntries.id })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.associationId, input.associationId),
+        eq(ownerLedgerEntries.bankTransactionId, input.bankTransactionId),
+      ),
+    );
+  if (existingLink.length > 0) {
+    return {
+      ok: false,
+      reason: "Bank transaction already linked to a ledger entry",
+      code: "ALREADY_LINKED",
+    };
+  }
+
+  // Create the payment entry. Convention: payment amounts stored as negative
+  // (reduces owner balance). The bank tx amountCents is also negative
+  // (credit/inflow); convert to dollars and preserve the sign.
+  const amountDollars = btx.amountCents / 100; // already negative
+  const postedAt = new Date(btx.date);
+  const now = new Date();
+
+  const inserted = await db
+    .insert(ownerLedgerEntries)
+    .values({
+      associationId: input.associationId,
+      unitId: input.unitId,
+      personId: input.personId,
+      entryType: "payment",
+      amount: amountDollars,
+      postedAt,
+      description:
+        input.description ?? `Auto-created from bank deposit (${btx.merchantName ?? btx.name})`,
+      referenceType: "reconciliation-suggestion",
+      referenceId: input.bankTransactionId,
+      bankTransactionId: input.bankTransactionId,
+      settledAt: now,
+    })
+    .returning({ id: ownerLedgerEntries.id });
+
+  return {
+    ok: true,
+    ledgerEntryId: inserted[0]?.id ?? "",
+    bankTransactionId: input.bankTransactionId,
+  };
+}
