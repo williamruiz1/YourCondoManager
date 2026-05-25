@@ -507,14 +507,22 @@ export function PortalShell({ children }: PortalShellProps) {
       >
         Skip to content
       </a>
+      {/* 2026-05-25 (live session) — Scroll-trap fix. Previous structure
+          used `flex min-h-screen` on both outer + inner column. While
+          `min-h-screen` permits document growth in theory, the AI chat
+          widget (fixed bottom-right) was hiding the lower content on
+          /portal/finances making it feel "unscrollable below the fold."
+          Added `pb-24` to <main> so the last card never sits behind the
+          FAB, and removed the redundant `min-h-screen` from the column
+          (the outer container already enforces it). */}
       <div className="flex min-h-screen bg-surface-container-low" data-testid="portal-shell">
         <ShellSidebar items={navItems} pathname={location} associationId={associationId} />
-        <div className="flex min-h-screen flex-1 flex-col">
+        <div className="flex w-full min-w-0 flex-1 flex-col">
           <ShellHeader session={session} associationName={associationName} onLogout={handleLogout} />
           <ShellBreadcrumb trail={breadcrumbTrail} />
           <main
             id="portal-main-content"
-            className="flex-1 px-4 py-6 md:px-8"
+            className="flex-1 px-4 pt-6 pb-24 md:px-8 md:pb-28"
             tabIndex={-1}
             data-testid="portal-main"
           >

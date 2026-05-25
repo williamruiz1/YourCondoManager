@@ -119,6 +119,17 @@ type FinancialDashboard = {
   // 2026-05-25 — additive, server-side per-unit grouping.
   byUnit?: FinanceUnitBreakdown[];
   grandTotal?: number;
+  // 2026-05-25 (live session) — plan-aware "Amount due this period".
+  // null when no active payment plan, or when on a quarterly plan and
+  // the current quarter isn't closing. The UI uses this to drive the
+  // primary CTA distinct from the total balance.
+  amountDueThisPeriod?: {
+    amount: number;
+    periodLabel: string;
+    periodEnd: string;
+    frequency: "monthly" | "quarterly" | "annual" | string;
+    reason: string;
+  } | null;
 };
 
 type PaymentMethod = {
@@ -160,13 +171,30 @@ type PortalBankConnection = {
   createdAt: string | Date;
 };
 
-function PortalBankPaymentCard({ balance }: { balance: number }) {
+/**
+ * 2026-05-25 (live session) — restructured to express the balance-vs-
+ * amount-due distinction. The primary CTA is "Pay $X due this period"
+ * when an active plan resolves a due amount; otherwise the legacy
+ * "Pay full balance from bank" CTA is the primary. A secondary path
+ * lets the owner pay any other amount (e.g. full balance early).
+ */
+function PortalBankPaymentCard({
+  balance,
+  amountDueThisPeriod,
+}: {
+  balance: number;
+  amountDueThisPeriod: FinancialDashboard["amountDueThisPeriod"];
+}) {
   const { portalFetch } = usePortalContext();
   const qc = useQueryClient();
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [confirmAmount, setConfirmAmount] = useState<string>("");
   const [confirming, setConfirming] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  // 2026-05-25 — explicit mode tracking so the owner knows what they're
+  // paying. "due" = the plan-resolved installment; "balance" = the lifetime
+  // balance; "custom" = owner-typed amount.
+  const [payMode, setPayMode] = useState<"due" | "balance" | "custom">("due");
 
   const { data: connection } = useQuery<PortalBankConnection | null>({
     queryKey: ["portal/plaid/connection"],
@@ -204,10 +232,18 @@ function PortalBankPaymentCard({ balance }: { balance: number }) {
 
   const submitPayment = useMutation({
     mutationFn: async (amount: number) => {
+      // 2026-05-25 (live session) — William's $1 payment showed up labeled
+      // "HOA dues — bank payment" but was applied against a DRIVEWAY
+      // ASSESSMENT, not HOA dues. The description was hardcoded. Use a
+      // neutral phrase here; the server applies the entry against the
+      // owner-personId ledger and the operator-side category attribution
+      // is what determines what the payment paid down. Owners who want
+      // category attribution can use the legacy /api/portal/pay flow
+      // which passes the category as `description`.
       const res = await portalFetch("/api/portal/plaid/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, description: "HOA dues — bank payment" }),
+        body: JSON.stringify({ amount, description: "Bank payment" }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json() as Promise<{ status: string; message: string }>;
@@ -241,9 +277,27 @@ function PortalBankPaymentCard({ balance }: { balance: number }) {
     setTimeout(() => openPlaid(), 0);
   }
 
-  const handlePayClick = () => {
+  const dueAmount = amountDueThisPeriod?.amount ?? 0;
+  const hasDue = !!amountDueThisPeriod && dueAmount > 0;
+
+  const handlePayDueClick = () => {
     setSubmitMessage(null);
+    setPayMode("due");
+    setConfirmAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "");
+    setConfirming(true);
+  };
+
+  const handlePayBalanceClick = () => {
+    setSubmitMessage(null);
+    setPayMode("balance");
     setConfirmAmount(balance > 0 ? balance.toFixed(2) : "");
+    setConfirming(true);
+  };
+
+  const handlePayCustomClick = () => {
+    setSubmitMessage(null);
+    setPayMode("custom");
+    setConfirmAmount("");
     setConfirming(true);
   };
 
@@ -273,17 +327,62 @@ function PortalBankPaymentCard({ balance }: { balance: number }) {
             <p className="text-sm text-on-surface-variant" data-testid="portal-bank-connected">
               Connected: <strong>{connection.institutionName ?? "Bank"}</strong>
             </p>
-            <Button
-              onClick={handlePayClick}
-              disabled={balance <= 0}
-              data-testid="portal-bank-pay-now"
-            >
-              {balance > 0 ? `Pay $${balance.toFixed(2)} from bank` : "No balance due"}
-            </Button>
+            {/* 2026-05-25 (live session) — Primary CTA is the plan-resolved
+                "Amount due this period" when present; otherwise it's the
+                legacy "Pay full balance" path. Secondary actions let the
+                owner pay the full balance or a custom amount when on a plan.
+                William verbatim: "pay the whole balance" is distinct from
+                "amount due this period" — both surface, the latter is primary. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              {hasDue ? (
+                <Button
+                  onClick={handlePayDueClick}
+                  data-testid="portal-bank-pay-due"
+                  aria-label={`Pay $${dueAmount.toFixed(2)} due for ${amountDueThisPeriod?.periodLabel ?? "this period"}`}
+                >
+                  Pay ${dueAmount.toFixed(2)} due {amountDueThisPeriod?.periodLabel
+                    ? `for ${amountDueThisPeriod.periodLabel}`
+                    : "this period"}
+                </Button>
+              ) : null}
+              <Button
+                onClick={handlePayBalanceClick}
+                disabled={balance <= 0}
+                variant={hasDue ? "outline" : "default"}
+                data-testid="portal-bank-pay-now"
+              >
+                {balance > 0
+                  ? hasDue
+                    ? `Pay full balance ($${balance.toFixed(2)})`
+                    : `Pay $${balance.toFixed(2)} from bank`
+                  : "No balance due"}
+              </Button>
+              {balance > 0 ? (
+                <Button
+                  onClick={handlePayCustomClick}
+                  variant="ghost"
+                  data-testid="portal-bank-pay-custom"
+                >
+                  Pay another amount
+                </Button>
+              ) : null}
+            </div>
+            {hasDue ? (
+              <p className="text-xs text-on-surface-variant" data-testid="portal-bank-due-context">
+                You can pay the installment for this period, the full lifetime
+                balance, or any other amount.
+              </p>
+            ) : null}
           </>
         ) : (
           <div className="space-y-2">
-            <p className="text-xs text-on-surface-variant">Confirm amount to pay</p>
+            <p className="text-xs text-on-surface-variant" data-testid="portal-bank-confirm-mode">
+              {payMode === "due"
+                ? `Confirm installment for ${amountDueThisPeriod?.periodLabel ?? "this period"}`
+                : payMode === "balance"
+                  ? "Confirm full-balance payment"
+                  : "Enter the amount you want to pay"}
+            </p>
             <Input
               type="number"
               min="0"
@@ -538,10 +637,13 @@ function FinancesHubContent() {
 
   const startCheckout = useMutation({
     mutationFn: async (amount: number) => {
+      // 2026-05-25 (live session) — same labeling bug as above. Use a
+      // neutral "Online payment" phrase rather than asserting a category
+      // the owner didn't pick.
       const res = await portalFetch("/api/portal/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, description: "HOA dues payment" }),
+        body: JSON.stringify({ amount, description: "Online payment" }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json() as Promise<{ url?: string }>;
@@ -555,6 +657,11 @@ function FinancesHubContent() {
   const balance = dashboard?.balance ?? 0;
   const upcoming = dashboard?.specialAssessmentUpcomingInstallments ?? [];
   const byUnit = dashboard?.byUnit ?? [];
+  // 2026-05-25 (live session) — server-resolved "Amount due this period".
+  // null when no active plan OR mid-quarter on a quarterly plan.
+  const amountDueThisPeriod = dashboard?.amountDueThisPeriod ?? null;
+  const hasAmountDue =
+    amountDueThisPeriod != null && (amountDueThisPeriod.amount ?? 0) > 0;
   // Default-expand the first unit (or all units if there are <= 3) so the
   // owner sees the breakdown without having to click. Per the wireframe.
   const defaultOpenUnits = useMemo(
@@ -573,24 +680,76 @@ function FinancesHubContent() {
         </p>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        {/* Cream balance hero per the wireframe — anchors the page so the
-            owner sees Total balance + unit count without scrolling. */}
+      {/* 2026-05-25 (live session) — Balance vs Amount-due distinction.
+          William verbatim: the $5,618.61 figure is the TOTAL balance (lifetime),
+          NOT what's due right now if the owner is on a payment plan. The
+          primary CTA below is "Pay $X due this period"; the total balance
+          is shown alongside as a reference. When no plan is active, only
+          the total balance is rendered (legacy behavior preserved). */}
+      <section className="grid gap-4 md:grid-cols-2">
+        {/* Card 1 — Amount Due This Period (PRIMARY when a plan exists) */}
+        {hasAmountDue ? (
+          <Card
+            className="border-destructive/30 bg-destructive/[0.04]"
+            data-testid="portal-finances-amount-due-hero"
+          >
+            <CardContent className="py-5">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-destructive">
+                Amount due this period
+              </p>
+              <p
+                className="mt-1 font-headline text-4xl md:text-5xl tabular-nums text-destructive"
+                data-testid="portal-finances-amount-due"
+              >
+                ${formatCurrency(amountDueThisPeriod!.amount)}
+              </p>
+              <p className="mt-2 text-xs text-on-surface-variant" data-testid="portal-finances-amount-due-context">
+                Installment for {amountDueThisPeriod!.periodLabel}
+                {amountDueThisPeriod!.periodEnd ? (
+                  <>
+                    {" · due by "}
+                    {new Date(amountDueThisPeriod!.periodEnd).toLocaleDateString()}
+                  </>
+                ) : null}
+                {amountDueThisPeriod!.frequency ? (
+                  <> · {String(amountDueThisPeriod!.frequency)} plan</>
+                ) : null}
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {/* Card 2 — Total Balance (reference; primary when no plan).
+            When a plan IS active, this is secondary — the cream tone
+            (vs the destructive tone above) communicates "reference". */}
         <Card
-          className="border-primary/15 bg-primary/[0.06] md:col-span-1"
+          className={
+            hasAmountDue
+              ? "border-outline-variant/15 bg-surface"
+              : "border-primary/15 bg-primary/[0.06]"
+          }
           data-testid="portal-finances-balance-hero"
         >
           <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">
+            <p
+              className={`text-[10px] font-semibold uppercase tracking-widest ${
+                hasAmountDue ? "text-on-surface-variant" : "text-primary"
+              }`}
+            >
               {byUnit.length > 1 ? "Total balance" : t("portal.finances.cards.balanceDue")}
             </p>
             {/* Wave 25 — `text-secondary` resolves to a near-white tone in
-                light mode and fails WCAG AA color contrast (axe). Use the
-                standard on-surface foreground when there is no balance
-                due; the destructive tone stays for non-zero balance. */}
+                light mode and fails WCAG AA color contrast (axe). When a
+                plan is active, this card is secondary; use neutral tone.
+                Without a plan, fall back to destructive for non-zero
+                balance to keep "you owe money" visible. */}
             <p
               className={`mt-1 font-headline text-4xl md:text-5xl tabular-nums ${
-                balance > 0 ? "text-destructive" : "text-on-surface"
+                hasAmountDue
+                  ? "text-on-surface"
+                  : balance > 0
+                    ? "text-destructive"
+                    : "text-on-surface"
               }`}
               data-testid="portal-finances-balance"
             >
@@ -606,9 +765,18 @@ function FinancesHubContent() {
                   Next due {new Date(dashboard.nextDueDate).toLocaleDateString()}
                 </>
               ) : null}
+              {hasAmountDue ? (
+                <>
+                  {(byUnit.length > 0 || dashboard?.nextDueDate) ? " · " : null}
+                  Lifetime total across all open charges
+                </>
+              ) : null}
             </p>
           </CardContent>
         </Card>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="py-5">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalPaidYtd")}</p>
@@ -621,9 +789,21 @@ function FinancesHubContent() {
             <p className="mt-1 font-headline text-3xl tabular-nums">${formatCurrency(dashboard?.totalCharges ?? 0)}</p>
           </CardContent>
         </Card>
+        {/* 2026-05-25 (live session) — surface a visible link to the full
+            ledger so the owner doesn't have to scroll past the bank-payment
+            card to find it. Mirrors the existing quick-link in the section
+            below; this is the eye-level version. */}
+        <Link
+          href="/portal/finances/ledger"
+          className="flex items-center justify-center rounded-xl border border-dashed border-outline-variant/30 px-4 py-5 text-sm font-semibold text-primary hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          data-testid="portal-finances-hero-ledger-link"
+        >
+          <Receipt className="mr-2 h-4 w-4" aria-hidden="true" />
+          View full ledger
+        </Link>
       </section>
 
-      <PortalBankPaymentCard balance={balance} />
+      <PortalBankPaymentCard balance={balance} amountDueThisPeriod={amountDueThisPeriod} />
 
       <section className="grid gap-4 md:grid-cols-2">
         <Card>

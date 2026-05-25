@@ -262,6 +262,11 @@ import {
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
 import { normalizeHubVisibility } from "@shared/hub-visibility";
+import {
+  resolveAmountDue,
+  toAmountDueThisPeriod,
+  type PaymentPlanInput,
+} from "@shared/payment-period";
 import { registerAiAssistantRoutes } from "./routes/ai-assistant";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
@@ -13349,6 +13354,25 @@ This is an automated demo request from the Your Condo Manager website.
         })
         .sort((a, b) => (b.total - a.total) || a.unitLabel.localeCompare(b.unitLabel));
 
+      // 2026-05-25 (live session followup) — Plan-aware "Amount due this
+      // period". William verbatim: "if it's on the quarterly plan, then it
+      // shouldn't show due until that quarter is up." The resolver is a
+      // pure function in `shared/payment-period.ts` so behavior is shared
+      // between the server (this endpoint) and any client-side preview.
+      // When no active plan exists, `amountDueThisPeriod` is null — the UI
+      // falls back to "Pay full balance" as the primary CTA.
+      const planInput: PaymentPlanInput | null = activePlan
+        ? {
+            status: activePlan.status,
+            installmentAmount: activePlan.installmentAmount,
+            installmentFrequency: activePlan.installmentFrequency,
+            nextDueDate: activePlan.nextDueDate ?? null,
+            startDate: activePlan.startDate ?? null,
+          }
+        : null;
+      const amountDueResolution = resolveAmountDue(planInput, new Date());
+      const amountDueThisPeriod = toAmountDueThisPeriod(amountDueResolution);
+
       res.json({
         balance,
         totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
@@ -13369,6 +13393,11 @@ This is an automated demo request from the Your Condo Manager website.
         // 2026-05-25 — per-unit hierarchical breakdown (additive).
         byUnit,
         grandTotal: balance,
+        // 2026-05-25 — plan-aware "Amount due this period" (additive).
+        // null when no active plan, or when the plan is quarterly and we
+        // are mid-quarter (per William's "shouldn't show due until that
+        // quarter is up").
+        amountDueThisPeriod,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
