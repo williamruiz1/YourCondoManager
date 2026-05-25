@@ -54,6 +54,8 @@ const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
 const AdminAccessReviewPage = lazy(() => import("@/pages/admin-access-review"));
 // #1340 — Cherry Hill go-live readiness dashboard (and future-HOA n=1 reference for #1307).
 const GoLiveReadinessPage = lazy(() => import("@/pages/go-live-readiness"));
+// founder-os#970 Gap C — reconciliation admin: auto-match + manual-match + report.
+const AdminReconciliationPage = lazy(() => import("@/pages/admin-reconciliation"));
 const ExecutivePage = lazy(() => import("@/pages/executive"));
 const FinancialFoundationPage = lazy(() => import("@/pages/financial-foundation"));
 const FinancialRulesPage = lazy(() => import("@/pages/financial-rules"));
@@ -202,6 +204,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Executive", href: "/app/admin/executive", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant"] },
       { label: "Admin Users", href: "/app/admin/users", roles: ["platform-admin"] },
       { label: "Access Review", href: "/app/admin/access-review", roles: ["platform-admin"] },
+      { label: "Reconciliation", href: "/app/admin/reconciliation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
     ],
   },
@@ -410,6 +413,8 @@ function WorkspaceRouter({
         <Route path="/app/admin/access-review" component={AdminAccessReviewPage} />
         {/* #1340 — Cherry Hill go-live readiness dashboard. Platform-admin only. */}
         <Route path="/app/admin/go-live-readiness" component={GoLiveReadinessPage} />
+        {/* founder-os#970 Gap C — reconciliation auto-match + manual-match + report. */}
+        <Route path="/app/admin/reconciliation" component={AdminReconciliationPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
         {/* Finance — consolidated routes (Wave 18: each wrapped in zone-scoped ErrorBoundary;
             Phase 12: wrapped in <RouteGuard> per ADR 0b — role list lives in ROUTE_MANIFEST). */}
@@ -655,6 +660,9 @@ function PublicRouter({
         </Route>
         <Route path="/admin/executive">
           <RouteRedirect to="/app/admin/executive" />
+        </Route>
+        <Route path="/admin/reconciliation">
+          <RouteRedirect to="/app/admin/reconciliation" />
         </Route>
         <Route path="/financial/fees">
           <RouteRedirect to="/app/financial/foundation" />

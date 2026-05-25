@@ -266,6 +266,7 @@ import { registerAiAssistantRoutes } from "./routes/ai-assistant";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
+import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import {
   getEffectivePortalRole,
   requireBoardAccess,
@@ -1343,6 +1344,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // (real LLM via founder-os#1244) lands as a one-line rebind in
   // server/services/ai-assistant/index.ts.
   registerAiAssistantRoutes(app, { requirePortal });
+
+  // Reconciliation auto-match + manual-match + report (founder-os#970 Gap C).
+  // Surfaces at /api/admin/reconciliation/{report,auto-match,manual-queue,
+  // match,audit-log}. Wraps services/reconciliation/{auto-matcher,report}.ts
+  // and services/plaid-reconciliation.ts.
+  registerAdminReconciliationRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
 
   // #1783 — Security & Compliance Baseline public routes. These MUST be
   // registered before the SPA catch-all (which lives in server/static.ts +
