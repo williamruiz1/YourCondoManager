@@ -400,12 +400,29 @@ app.use((req, res, next) => {
   // Wave 33 (5.4 Part B): seedDatabase ships ~120 KB of static demo data
   // and runs once at boot. Lazy-import keeps it out of the cold-start
   // bundle and out of dist/index.cjs's main chunk.
+  //
+  // founder-os#2472: the dynamic import specifier MUST include the `.js`
+  // extension. The production runtime is `node dist/index.cjs` (CJS), but
+  // `package.json` declares `"type": "module"` and `await import()` invokes
+  // Node's ESM resolver. ESM resolution requires explicit file extensions
+  // for relative paths — `await import("./seed")` throws
+  // ERR_MODULE_NOT_FOUND at boot, the error was being logged but silently
+  // swallowed, and the app continued serving empty tables. Cherry Hill data
+  // never landed in production as a direct consequence.
   void (async () => {
     try {
-      const { seedDatabase } = await import("./seed");
+      log("[boot] seed :: starting lazy import of ./seed.js", "startup");
+      const { seedDatabase } = await import("./seed.js");
       await seedDatabase();
+      log("[boot] seed :: completed", "startup");
     } catch (err) {
-      console.error("Seed failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : undefined;
+      log(`[boot] seed FAILED to run: ${message}`, "startup");
+      console.error("[boot] Seed failed to run:", err);
+      if (stack) {
+        console.error("[boot] Seed failure stack:", stack);
+      }
     }
   })();
 
