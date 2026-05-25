@@ -52,6 +52,8 @@ const DocumentsPage = lazy(() => import("@/pages/documents"));
 const RoadmapPage = lazy(() => import("@/pages/roadmap"));
 const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
 const AdminAccessReviewPage = lazy(() => import("@/pages/admin-access-review"));
+// #342 (WS3) — consent audit trail admin view.
+const AdminConsentAuditPage = lazy(() => import("@/pages/admin-consent-audit"));
 // #1340 — Cherry Hill go-live readiness dashboard (and future-HOA n=1 reference for #1307).
 const GoLiveReadinessPage = lazy(() => import("@/pages/go-live-readiness"));
 // founder-os#970 Gap C — reconciliation admin: auto-match + manual-match + report.
@@ -89,6 +91,8 @@ const PortalCommunityPage = lazy(() => import("@/pages/portal/portal-community")
 const PortalAmenitiesPage = lazy(() => import("@/pages/portal/portal-amenities"));
 const PortalDocumentsPage = lazy(() => import("@/pages/portal/portal-documents"));
 const PortalNoticesPage = lazy(() => import("@/pages/portal/portal-notices"));
+// #342 (WS3) — portal-side "My Consents" transparency view.
+const PortalMyConsentsPage = lazy(() => import("@/pages/portal/portal-my-consents"));
 const VendorPortalPage = lazy(() => import("@/pages/vendor-portal"));
 const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
 const InsurancePage = lazy(() => import("@/pages/insurance"));
@@ -413,6 +417,11 @@ function WorkspaceRouter({
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
         <Route path="/app/admin/access-review" component={AdminAccessReviewPage} />
+        {/* #342 (WS3) — consent audit trail admin view. */}
+        <Route path="/app/admin/consent-audit" component={AdminConsentAuditPage} />
+        <Route path="/admin/consent-audit">
+          <RouteRedirect to="/app/admin/consent-audit" />
+        </Route>
         {/* #1340 — Cherry Hill go-live readiness dashboard. Platform-admin only. */}
         <Route path="/app/admin/go-live-readiness" component={GoLiveReadinessPage} />
         {/* founder-os#970 Gap C — reconciliation auto-match + manual-match + report. */}
@@ -626,6 +635,10 @@ function PublicRouter({
         </Route>
         <Route path="/portal/notices">
           <ZoneBoundary zone="Portal"><PortalNoticesPage /></ZoneBoundary>
+        </Route>
+        {/* #342 (WS3) — owner consent transparency. */}
+        <Route path="/portal/privacy/my-consents">
+          <ZoneBoundary zone="Portal"><PortalMyConsentsPage /></ZoneBoundary>
         </Route>
         <Route path="/vendor-portal" component={VendorPortalPage} />
         <Route path="/vote/:token">

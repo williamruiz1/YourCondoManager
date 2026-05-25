@@ -812,6 +812,13 @@ function isNonEmptyText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+// #342 (WS3) — masking helpers extracted to ./consent-audit-masking so
+// that unit tests can import without pulling in the routes.ts → db.ts
+// chain (which requires DATABASE_URL at import time). Re-exported here
+// for backward compatibility with any caller that pre-existed the split.
+import { maskIpAddress, maskUserAgent } from "./consent-audit-masking";
+export { maskIpAddress, maskUserAgent };
+
 function validateExecutiveSlidePayload(payload: Record<string, unknown>, options: { partial: boolean }) {
   const sourceKey = typeof payload.sourceKey === "string" ? payload.sourceKey : "";
   const isSlide = sourceKey.startsWith("slide:");
@@ -10132,6 +10139,166 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         status: "approved",
         approvedAt: result.approvedAt.toISOString(),
         approvedBy: req.adminUserEmail,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ============================================================
+  // #342 (WS3) — Consent audit trail surfaces.
+  //
+  // The original wizard-admin consent route (POST /api/consent) captures
+  // platform-admin/board agreement to CURRENT_POLICY_VERSION. This block
+  // adds the four sibling surfaces required by the audit-trail dispatch:
+  //
+  //   POST  /api/portal/consent              — owner-side consent capture
+  //   GET   /api/portal/consent/history      — owner self-view
+  //   POST  /api/admin/consent/record        — admin records on user's behalf
+  //   GET   /api/admin/consent/audit         — admin compliance view
+  //
+  // IP + user-agent are captured server-side from the request envelope so
+  // the audit row contains forensic context the client can't forge.
+  //
+  // Sister feature: deletion_requests (#1522 / migration 0031) — together
+  // they form the GDPR/CCPA evidence floor.
+  // ============================================================
+
+  // Helper — extract canonical IP + UA from the request envelope.
+  function extractConsentEnvelope(req: Request): { ip: string | null; userAgent: string | null } {
+    const ip = (req.headers["x-forwarded-for"]?.toString().split(",")[0].trim()) || req.socket.remoteAddress || null;
+    const userAgent = req.headers["user-agent"]?.toString().slice(0, 1024) ?? null;
+    return { ip, userAgent };
+  }
+
+  // POST /api/portal/consent — capture consent from an owner portal session.
+  //
+  // Body: { policyVersion?: string } — defaults to CURRENT_POLICY_VERSION
+  // if omitted. The body is intentionally permissive: clients can pin a
+  // specific version (re-recording an older agreement) but the typical
+  // call sends nothing and accepts the server's current version.
+  app.post("/api/portal/consent", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAccessId) return res.status(401).json({ message: "portal context missing" });
+      if (!req.portalEmail) return res.status(401).json({ message: "portal email missing" });
+      const requestedVersion = typeof req.body?.policyVersion === "string" && req.body.policyVersion.trim()
+        ? String(req.body.policyVersion).trim()
+        : CURRENT_POLICY_VERSION;
+      const { ip, userAgent } = extractConsentEnvelope(req);
+      const row = await storage.recordConsent({
+        userId: req.portalAccessId,
+        userEmail: req.portalEmail,
+        policyVersion: requestedVersion,
+        ipAddress: ip,
+        userAgent,
+      });
+      res.status(201).json({
+        id: row.id,
+        consentedAt: row.consentedAt.toISOString(),
+        policyVersion: requestedVersion,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // GET /api/portal/consent/history — caller's own consent history.
+  //
+  // Returns rows newest-first. IP + UA are included so the owner sees the
+  // full audit context for transparency (their own data, no masking).
+  app.get("/api/portal/consent/history", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAccessId) return res.status(401).json({ message: "portal context missing" });
+      const rows = await storage.getConsentHistory(req.portalAccessId);
+      res.json({
+        currentPolicyVersion: CURRENT_POLICY_VERSION,
+        records: rows.map((r) => ({
+          id: r.id,
+          policyVersion: r.policyVersion,
+          consentedAt: r.consentedAt.toISOString(),
+          ipAddress: r.ipAddress,
+          userAgent: r.userAgent,
+        })),
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // POST /api/admin/consent/record — admin records consent on a user's
+  // behalf (e.g., in-person paper agreement digitized into the audit
+  // trail). Platform-admin only — this is a privileged operation since
+  // it asserts another party's agreement.
+  //
+  // Body: { userId, userEmail, policyVersion? }
+  app.post(
+    "/api/admin/consent/record",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req: AdminRequest, res) => {
+      try {
+        if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+        const userId = typeof req.body?.userId === "string" ? req.body.userId.trim() : "";
+        const userEmail = typeof req.body?.userEmail === "string" ? req.body.userEmail.trim() : "";
+        if (!userId) return res.status(400).json({ message: "userId required" });
+        if (!userEmail) return res.status(400).json({ message: "userEmail required" });
+        const policyVersion = typeof req.body?.policyVersion === "string" && req.body.policyVersion.trim()
+          ? String(req.body.policyVersion).trim()
+          : CURRENT_POLICY_VERSION;
+        const { ip, userAgent } = extractConsentEnvelope(req);
+        const row = await storage.recordConsent({
+          userId,
+          userEmail,
+          policyVersion,
+          ipAddress: ip,
+          userAgent,
+        });
+        res.status(201).json({
+          id: row.id,
+          consentedAt: row.consentedAt.toISOString(),
+          policyVersion,
+          recordedBy: req.adminUserEmail ?? null,
+        });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  // GET /api/admin/consent/audit — admin compliance view.
+  //
+  // Query params (all optional, composed via AND):
+  //   userId         — filter to one user's history
+  //   userEmail      — filter by email (exact match)
+  //   policyVersion  — filter by version
+  //   limit          — bound the result (default 500, max 1000)
+  //
+  // Masking: non-platform-admin viewers see IP + UA truncated to a coarse
+  // signal (first octet + UA family) so association-scoped board admins
+  // get a compliance signal without raw forensic data.
+  app.get("/api/admin/consent/audit", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const userId = typeof req.query.userId === "string" ? req.query.userId : undefined;
+      const userEmail = typeof req.query.userEmail === "string" ? req.query.userEmail : undefined;
+      const policyVersion = typeof req.query.policyVersion === "string" ? req.query.policyVersion : undefined;
+      const limitRaw = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : NaN;
+      const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+      const rows = await storage.listConsentAuditRecords({ userId, userEmail, policyVersion, limit });
+      const isPlatformAdmin = req.adminRole === "platform-admin";
+      const records = rows.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        userEmail: r.userEmail,
+        policyVersion: r.policyVersion,
+        consentedAt: r.consentedAt.toISOString(),
+        ipAddress: isPlatformAdmin ? r.ipAddress : maskIpAddress(r.ipAddress),
+        userAgent: isPlatformAdmin ? r.userAgent : maskUserAgent(r.userAgent),
+      }));
+      res.json({
+        currentPolicyVersion: CURRENT_POLICY_VERSION,
+        masked: !isPlatformAdmin,
+        records,
       });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
