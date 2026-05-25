@@ -23,6 +23,9 @@ import { reportError } from "@/lib/error-reporting";
 import { ArrowRight, PartyPopper } from "lucide-react";
 import { StepIndicator } from "./StepIndicator";
 import { Step1CommunityDetails } from "./Step1CommunityDetails";
+import { Step2ConnectBank } from "./Step2ConnectBank";
+import { Step3UploadRoster } from "./Step3UploadRoster";
+import { Step4RecurringAssessments } from "./Step4RecurringAssessments";
 import { Step5MassCommunication } from "./Step5MassCommunication";
 import { Step6InviteBoard } from "./Step6InviteBoard";
 import { Step7TrialPreview } from "./Step7TrialPreview";
@@ -189,6 +192,36 @@ function OnboardingWizardInner() {
           onComplete={() => handleComplete(1)}
           isSaving={completeMutation.isPending}
           onSnapshotUpdate={(snapshot) => queryClient.setQueryData<OnboardingWizardSnapshot>(QUERY_KEY, snapshot)}
+        />
+      );
+      break;
+    case 2:
+      stepBody = (
+        <Step2ConnectBank
+          snapshot={data}
+          onComplete={() => handleComplete(2)}
+          onSkip={() => handleSkip(2)}
+          isSaving={completeMutation.isPending || skipMutation.isPending}
+        />
+      );
+      break;
+    case 3:
+      stepBody = (
+        <Step3UploadRoster
+          snapshot={data}
+          onComplete={() => handleComplete(3)}
+          onSkip={() => handleSkip(3)}
+          isSaving={completeMutation.isPending || skipMutation.isPending}
+        />
+      );
+      break;
+    case 4:
+      stepBody = (
+        <Step4RecurringAssessments
+          snapshot={data}
+          onComplete={() => handleComplete(4)}
+          onSkip={() => handleSkip(4)}
+          isSaving={completeMutation.isPending || skipMutation.isPending}
         />
       );
       break;

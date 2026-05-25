@@ -9719,6 +9719,260 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // founder-os#1616 (Child B) — Step 3 of the onboarding wizard: bulk-import the
+  // owner roster as one CSV. Each row creates (unit if missing) + (person) +
+  // (ownership link). Idempotent on unit_number within the association: a
+  // re-imported row with an existing unit_number reuses that unit row.
+  app.post(
+    "/api/onboarding/owners/import",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const bodySchema = z.object({
+          associationId: z.string().min(1),
+          rows: z.array(
+            z.object({
+              name: z.string().min(1, "name is required"),
+              email: z.string().email("valid email is required"),
+              unit_number: z.string().min(1, "unit_number is required"),
+              phone: z.string().nullish(),
+              opening_balance: z.union([z.number(), z.string()]).nullish(),
+              ownership_pct: z.union([z.number(), z.string()]).nullish(),
+            }),
+          ),
+        });
+        const { associationId, rows } = bodySchema.parse(req.body);
+        assertAssociationInputScope(req, associationId);
+
+        const results: Array<{
+          index: number;
+          name: string;
+          status: "created" | "skipped";
+          error?: string;
+        }> = [];
+
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          try {
+            const trimmedName = row.name.trim();
+            const lastSpace = trimmedName.lastIndexOf(" ");
+            const firstName = lastSpace > 0 ? trimmedName.slice(0, lastSpace) : trimmedName;
+            const lastName = lastSpace > 0 ? trimmedName.slice(lastSpace + 1) : "";
+            const phone = row.phone ? normalizePhoneNumber(row.phone) || null : null;
+
+            // Find-or-create unit by unit_number within this association.
+            const [existingUnit] = await db
+              .select()
+              .from(units)
+              .where(and(eq(units.associationId, associationId), eq(units.unitNumber, row.unit_number.trim())))
+              .limit(1);
+            let unitId: string;
+            if (existingUnit) {
+              unitId = existingUnit.id;
+            } else {
+              const created = await storage.createUnit(
+                { associationId, unitNumber: row.unit_number.trim() } as any,
+                req.adminUserEmail,
+              );
+              unitId = created.id;
+            }
+
+            // Always create a fresh person (treasurer-driven import; dedup
+            // happens manually in the Persons page).
+            const person = await storage.createPerson(
+              {
+                associationId,
+                firstName: firstName || row.name.trim(),
+                lastName,
+                email: row.email,
+                phone,
+              } as any,
+              req.adminUserEmail,
+            );
+
+            const ownershipPct =
+              typeof row.ownership_pct === "number"
+                ? row.ownership_pct
+                : typeof row.ownership_pct === "string" && row.ownership_pct.trim() !== ""
+                  ? Number(row.ownership_pct)
+                  : 100;
+            await db.insert(ownerships).values({
+              unitId,
+              personId: person.id,
+              ownershipPercentage: Number.isFinite(ownershipPct) ? ownershipPct : 100,
+              startDate: new Date(),
+            } as any);
+
+            // Optional opening balance becomes an owner-ledger "charge" entry.
+            const openingBalance =
+              typeof row.opening_balance === "number"
+                ? row.opening_balance
+                : typeof row.opening_balance === "string" && row.opening_balance.trim() !== ""
+                  ? Number(row.opening_balance)
+                  : 0;
+            if (Number.isFinite(openingBalance) && openingBalance !== 0) {
+              await db.insert(ownerLedgerEntries).values({
+                associationId,
+                unitId,
+                personId: person.id,
+                entryType: "charge",
+                amount: openingBalance,
+                postedAt: new Date(),
+                description: "Opening balance (imported during onboarding)",
+              } as any);
+            }
+
+            results.push({ index: i, name: trimmedName, status: "created" });
+          } catch (err: any) {
+            results.push({
+              index: i,
+              name: row.name,
+              status: "skipped",
+              error: err?.message ?? "Unknown error",
+            });
+          }
+        }
+
+        res.json({
+          results,
+          createdCount: results.filter((r) => r.status === "created").length,
+          skippedCount: results.filter((r) => r.status === "skipped").length,
+        });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  // founder-os#1616 (Child B) — Step 2 of the onboarding wizard: after Plaid
+  // Link returns a public_token, the client posts it here. We exchange it for
+  // an access_token, persist the bank connection, and ALSO write a row to
+  // saved_payment_methods so autopay enrollments (and future ACH charges) can
+  // reference the verified account. This is the direct-Plaid-in-YCM path per
+  // founder-os#1780 Path B (NOT Stripe-Checkout-hosted Plaid).
+  app.post(
+    "/api/onboarding/plaid/save-payment-method",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const bodySchema = z.object({
+          associationId: z.string().min(1),
+          personId: z.string().min(1).nullish(),
+          displayName: z.string().min(1),
+          bankName: z.string().nullish(),
+          last4: z.string().nullish(),
+          accountId: z.string().nullish(),
+          bankConnectionId: z.string().nullish(),
+        });
+        const parsed = bodySchema.parse(req.body);
+        assertAssociationInputScope(req, parsed.associationId);
+
+        // If no personId was provided, attach to a synthetic association-level
+        // record: the first person row tied to this association. Self-managed
+        // treasurers typically have a person record from Step 1; if not, fail
+        // soft so the wizard can still advance.
+        let personId = parsed.personId ?? null;
+        if (!personId) {
+          const [anyPerson] = await db
+            .select({ id: persons.id })
+            .from(persons)
+            .where(eq(persons.associationId, parsed.associationId))
+            .limit(1);
+          personId = anyPerson?.id ?? null;
+        }
+        if (!personId) {
+          return res.status(400).json({
+            message:
+              "No person record exists for this association yet — finish Step 3 (owner roster) first or save a manual entry.",
+            code: "NO_PERSON_RECORD",
+          });
+        }
+
+        const [row] = await db
+          .insert(savedPaymentMethods)
+          .values({
+            associationId: parsed.associationId,
+            personId,
+            methodType: "ach",
+            displayName: parsed.displayName,
+            last4: parsed.last4 ?? null,
+            bankName: parsed.bankName ?? null,
+            externalTokenRef: parsed.accountId ?? parsed.bankConnectionId ?? null,
+            provider: "stripe",
+            // Plaid-verified instantly → mark active. Manual entry uses the
+            // dedicated /api/onboarding/payment-methods/manual route below
+            // which keeps the status at pending_verification.
+            status: "active",
+            verifiedAt: new Date(),
+          })
+          .returning();
+        res.status(201).json(row);
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  // founder-os#1616 (Child B) — Step 2 manual fallback: owner enters routing/
+  // account number themselves. Stored with status=pending_verification so the
+  // microdeposit flow can mark active later. We DELIBERATELY don't persist
+  // the raw account number; only the last 4 are stored for UI display.
+  app.post(
+    "/api/onboarding/payment-methods/manual",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const bodySchema = z.object({
+          associationId: z.string().min(1),
+          personId: z.string().min(1).nullish(),
+          bankName: z.string().min(1),
+          accountLast4: z.string().min(2).max(4),
+          accountHolderName: z.string().min(1),
+        });
+        const parsed = bodySchema.parse(req.body);
+        assertAssociationInputScope(req, parsed.associationId);
+
+        let personId = parsed.personId ?? null;
+        if (!personId) {
+          const [anyPerson] = await db
+            .select({ id: persons.id })
+            .from(persons)
+            .where(eq(persons.associationId, parsed.associationId))
+            .limit(1);
+          personId = anyPerson?.id ?? null;
+        }
+        if (!personId) {
+          return res.status(400).json({
+            message:
+              "No person record exists for this association yet — finish Step 3 (owner roster) first.",
+            code: "NO_PERSON_RECORD",
+          });
+        }
+
+        const last4 = parsed.accountLast4.padStart(4, "0").slice(-4);
+        const [row] = await db
+          .insert(savedPaymentMethods)
+          .values({
+            associationId: parsed.associationId,
+            personId,
+            methodType: "ach",
+            displayName: `${parsed.bankName} ••••${last4}`,
+            last4,
+            bankName: parsed.bankName,
+            provider: "stripe",
+            status: "pending_verification",
+          })
+          .returning();
+        res.status(201).json(row);
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
   // #342 (WS3) — consent audit trail. The consent gate runs after auth
   // but before the user reaches the dashboard; client-side App.tsx
   // queries /api/consent/current and renders <ConsentModal> if the
