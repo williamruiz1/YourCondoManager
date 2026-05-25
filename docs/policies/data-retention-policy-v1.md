@@ -1,16 +1,8 @@
-> **⚠️ STATUS: DRAFT — NOT YET PARTNER-READY**
->
-> This document was derived from PlinthKeep's canonical policy (PR #105) via placeholder substitution. Plinthkeep's domain is single-family-rental; YourCondoManager's domain is HOA management. The high-level structure transfers but **role taxonomy** (HOA boards / owners / occupancy-typed tenants / vendors / platform admins) and **feature claims** (HOA assessments, Stripe Connect Standard for HOA-as-merchant, Plaid bank-feed reconciliation, multi-tenant association isolation) need a YCM-specific honest-claims rewrite per founder-os#1783 Phase 1 follow-on.
->
-> The fully customized YCM-specific version is the **subprocessor-list-v1.md** file in this directory — that one is partner-questionnaire-ready and reflects YCM's actual stack as of 2026-05-20. The other policies follow once the Phase 1 honest-claims pass lands.
->
-> ---
-
 # Data Retention and Disposal Policy
 
 **YourCondoManager (YCM)**
-**Effective Date:** May 20, 2026
-**Version:** 1.2
+**Effective Date:** May 25, 2026
+**Version:** 2.0
 **Owner:** yourcondomanagement@gmail.com
 
 ---
@@ -19,25 +11,26 @@
 
 This Data Retention and Disposal Policy governs how YourCondoManager (YCM) retains, manages, and disposes of data throughout its lifecycle. It ensures that:
 
-- Data is retained for as long as needed to serve users and meet legal obligations
+- Data is retained for as long as needed to serve users, associations, and meet legal obligations
 - Data is not retained longer than necessary, reducing privacy risk
 - Data disposal is handled securely
 - Users' rights to data deletion are respected within legal constraints
 
-This policy applies to all data collected, processed, or stored by YourCondoManager (YCM), including data in application databases, file storage, backups, logs, and third-party systems.
+This policy applies to all data collected, processed, or stored by YCM, including data in application databases, file storage, backups, logs, and third-party systems.
 
 ---
 
 ## 2. Scope
 
-This policy covers data held by YourCondoManager (YCM) on behalf of landlords, property managers, tenants, and vendors, including:
+This policy covers data held by YCM on behalf of HOA associations, board members, owners, tenants of owner-rented units, vendors, and YCM platform admins, including:
 
 - Account and identity data
-- Property, lease, and rental data
-- Tenant personal information
-- Financial data (rent payments, Plaid-connected accounts)
-- Maintenance records
-- Technical and operational data (logs, session data)
+- Association governance and owner-roster data
+- Unit, ownership, and occupancy data
+- Financial data (assessment ledgers, Stripe payments, Plaid bank-feed reconciliation)
+- Maintenance, work-order, and vendor records
+- Board packages and community announcements
+- Technical and operational data (logs, session data, email engagement)
 
 ---
 
@@ -45,92 +38,93 @@ This policy covers data held by YourCondoManager (YCM) on behalf of landlords, p
 
 ### 3.1 Account and Identity Data
 
-| Data Type                                                     | Retention Period                                                                                                                                                  | Basis               |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| Account registration data (name, email, Google subject ID)    | Duration of active account + 30 days after deletion request                                                                                                       | Service delivery    |
-| Google OAuth tokens                                           | Duration of session; revoked on logout                                                                                                                            | Security            |
-| Session tokens (signed JWTs)                                  | Configurable `SESSION_TTL_DAYS` (default 7 days)                                                                                                                  | Security            |
-| Authentication logs (OAuth callback success, JWT validation)  | 1 year                                                                                                                                                            | Security monitoring |
-| OAuth callback failures and JWT validation failures           | 90 days                                                                                                                                                           | Fraud prevention    |
-| Account deletion records (tombstone: user ID + deletion date) | 7 years — **planned**; not yet implemented as of policy v1.1 (users hard-deleted at day 31 of grace window with no tombstone preserved). See §Pending follow-ups. | Legal compliance    |
+| Data Type | Retention Period | Basis |
+|---|---|---|
+| Admin user records (`admin_users`: name, email, Google subject ID, role) | Duration of active access + 30 days after deactivation | Service delivery |
+| Portal access records (`portal_access`: owner / board-member invites, activations, sessions) | Duration of active portal access + 30 days after revocation | Service delivery |
+| Google OAuth tokens | Duration of session; revoked on logout | Security |
+| Server-side session records (express-session via `connect-pg-simple`) | Until `SESSION_MAX_AGE_MS` expiry; rotated when `SESSION_SECRET` is rotated | Security |
+| Authentication logs (OAuth callback success, session creation) | 1 year | Security monitoring |
+| OAuth callback failures and portal-activation failures | 90 days | Fraud prevention |
 
-### 3.2 Property and Rental Data
+### 3.2 Association, Unit, and Ownership Data
 
-| Data Type                                              | Retention Period                                   | Basis                               |
-| ------------------------------------------------------ | -------------------------------------------------- | ----------------------------------- |
-| Property listing data (address, units, configurations) | Duration of account; deleted with account deletion | Service delivery                    |
-| Lease agreements                                       | 7 years after lease end date                       | Legal / tax compliance              |
-| Rent payment records                                   | 7 years from payment date                          | Financial record requirements (IRS) |
-| Late payment notices and rent demand records           | 7 years                                            | Legal compliance                    |
-| Security deposit records                               | 7 years after deposit return                       | Legal compliance                    |
-| Move-in / move-out inspection records                  | 7 years                                            | Legal compliance                    |
-| Eviction records (if applicable)                       | 7 years                                            | Legal compliance                    |
+| Data Type | Retention Period | Basis |
+|---|---|---|
+| Association records (`associations`: legal name, address, governing-document references, fiscal year) | Duration of association tenancy on the platform | Service delivery |
+| Buildings + units (`buildings`, `units`) | Duration of association tenancy | Service delivery |
+| Ownership records (`ownerships`: owner-to-unit mapping, ownership share, occupancy type) | Duration of ownership + 7 years after transfer of title | Legal / tax compliance |
+| Unit change history (`unit_change_history`) | 7 years from each change | Audit trail / dispute resolution |
+| Board roles (`board_roles`: president, treasurer, secretary, etc.) | Duration of board service + 7 years | Legal / governance audit |
+| Onboarding submissions (`onboarding_submissions`, `onboarding_invites`) | 7 years from submission | Audit + governance |
 
-### 3.3 Tenant Data
+### 3.3 Owner, Tenant, and Resident Data
 
-| Data Type                                       | Retention Period                                                          | Basis                                                         |
-| ----------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Tenant application data (accepted applicants)   | Duration of tenancy + 1 year post-tenancy end                             | Business records                                              |
-| Tenant application data (rejected applicants)   | 3 years from application date                                             | Fair Housing Act compliance                                   |
-| Tenant contact information (name, email, phone) | Duration of tenancy + 1 year post-tenancy end, then anonymized or deleted | Privacy best practice                                         |
-| Tenant addresses                                | Duration of tenancy + 1 year                                              | Business records                                              |
-| Tenant payment history (amounts, dates, status) | 7 years from payment date                                                 | Financial records (anonymized: payee becomes "Former Tenant") |
+| Data Type | Retention Period | Basis |
+|---|---|---|
+| Owner contact information (name, email, phone, mailing address) | Duration of ownership + 1 year after transfer of title, then anonymized | Privacy best practice |
+| Tenant contact information (board- or owner-recorded for `TENANT`-occupancy units) | Duration of recorded tenancy + 1 year, then anonymized or deleted | Privacy best practice |
+| Resident profile / preference data (`admin_user_preferences`) | Duration of active access | Service delivery |
+| Maintenance requests submitted by owners or tenants | 5 years after resolution | Business records |
+| Community-announcement read receipts (if recorded) | 1 year | Audit |
 
-**Anonymization after retention:** after the retention period for tenant PII ends, the record is anonymized: name, email, and phone number are replaced with anonymized identifiers. The financial and lease records (dates, amounts, property address) are retained for the financial record period separately.
+**Anonymization after retention:** after the retention period for owner / tenant PII ends, the record is anonymized: name, email, and phone number are replaced with anonymized identifiers. The financial and ownership records (dates, amounts, unit address) are retained for the financial / governance retention period separately.
 
-### 3.4 Financial Data (Stripe billing — live; Plaid aggregation — Sandbox active, Production gated)
+### 3.4 Financial Data
 
-**Status as of v1.2 (2026-05-20):** Stripe Phase A live (PR #58 + #59). Plaid Phase 1 scaffolded with Sandbox active; production application submitted; feature flag OFF in production until app-layer token encryption ships.
+**Status as of v2.0 (2026-05-25):** Stripe Connect Standard is live in production for HOA-as-merchant ACH; Stripe billing is live for YCM SaaS subscriptions. Plaid Sandbox is live for both association- and owner-side bank-feed reconciliation; application-layer Plaid token encryption is deployed (`PLAID_TOKEN_ENCRYPTION_KEY`). Plaid Production access is not yet provisioned.
 
-| Data Type                                                             | Retention Period                                                 | Basis                              |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------- |
-| Stripe customer ID / subscription ID                                  | Duration of active subscription + 7 years                        | Financial records / tax compliance |
-| Stripe webhook event log (`stripe_webhook_events`)                    | 90 days (replay-protection idempotency window) + 1 year archived | Audit + dispute resolution         |
-| Stripe credit-pack purchase records                                   | 7 years from purchase                                            | Financial records / tax compliance |
-| Plaid access tokens (DB at-rest + planned app-layer encryption)       | Active connection + 30 days after disconnection, then deleted    | Service delivery; Plaid compliance |
-| Plaid item metadata (institution name, account names, masks)          | Duration of active connection + 30 days                          | Service delivery                   |
-| Plaid transaction history (`plaid_transactions`)                      | 7 years from transaction date                                    | Tax / legal compliance             |
-| Bank-account metadata (last 4 digits, account type — not credentials) | Duration of active connection + 30 days                          | Service delivery                   |
-| Rent payment ledger records (manual or via future Stripe Connect)     | 7 years from transaction date                                    | Tax / legal compliance             |
-| Refund records                                                        | 7 years                                                          | Financial records                  |
-| Financial reports generated by the platform                           | 7 years if saved by user; 90 days if auto-generated              | Legal and tax compliance           |
+| Data Type | Retention Period | Basis |
+|---|---|---|
+| Stripe customer ID / subscription ID (YCM SaaS billing) | Duration of active subscription + 7 years | Financial records / tax compliance |
+| Stripe Connect account metadata (per-HOA sub-merchant records) | Duration of association tenancy + 7 years | Financial records / tax compliance |
+| Stripe charge IDs, payment intent IDs, statement descriptors (assessment collection) | 7 years from charge date | Financial records / tax compliance |
+| Stripe webhook event log | 90-day idempotency window + 1 year archived | Audit + dispute resolution |
+| Plaid access tokens (`bank_connections.access_token_encrypted`) | Active connection + 30 days after disconnection, then deleted | Service delivery; Plaid compliance |
+| Bank-connection metadata (`bank_connections`: institution name, provider_item_id, status) | Duration of active connection + 30 days | Service delivery |
+| Bank-account metadata (`bank_accounts`: name, mask, type, subtype) | Duration of active connection + 30 days | Service delivery |
+| Bank-feed transaction history (`bank_transactions`) | 7 years from transaction date | Tax / legal compliance |
+| Owner ledger entries (`owner_ledger_entries`: charges, assessments, payments, late-fees, credits, adjustments) | 7 years from posting date | Financial records / tax compliance |
+| Owner payment links (`owner_payment_links`) | 7 years from link creation | Audit + financial records |
+| Assessment runs and rules (`assessment_*`) | 7 years from run | Governance / tax records |
+| Refund records | 7 years | Financial records |
+| Financial reports generated by the platform | 7 years if saved by user; 90 days if auto-generated | Legal and tax compliance |
 
-**Note:** financial records required for IRS reporting or legal compliance are retained for the full statutory period regardless of account deletion requests. Users are notified of any data retained beyond their deletion request.
+**Note:** financial records required for IRS reporting or governance compliance are retained for the full statutory period regardless of account deletion requests. Users are notified of any data retained beyond their deletion request.
 
-### 3.5 Maintenance Data
+### 3.5 Maintenance and Vendor Data
 
-| Data Type                                           | Retention Period         | Basis            |
-| --------------------------------------------------- | ------------------------ | ---------------- |
-| Maintenance requests (description, status, dates)   | 5 years after resolution | Business records |
-| Work orders assigned to vendors                     | 5 years after completion | Business records |
-| Maintenance invoices and receipts                   | 7 years                  | Tax compliance   |
-| Property photos submitted with maintenance requests | 5 years after resolution | Business records |
-| Maintenance correspondence                          | 5 years after resolution | Business records |
+| Data Type | Retention Period | Basis |
+|---|---|---|
+| Maintenance requests (description, status, dates) | 5 years after resolution | Business records |
+| Work orders assigned to vendors | 5 years after completion | Business records |
+| Vendor invoices (`vendor_invoices`) | 7 years | Tax compliance |
+| Vendor contact information (`vendors`) | Duration of active relationship + 2 years | Business operations |
+| Property/unit photos submitted with maintenance requests | 5 years after resolution | Business records |
+| Maintenance correspondence | 5 years after resolution | Business records |
+| Inspection records (`inspection_*`) | 7 years | Governance / audit |
 
-### 3.6 Vendor Data
+### 3.6 Governance and Communication Data
 
-| Data Type                  | Retention Period                          | Basis               |
-| -------------------------- | ----------------------------------------- | ------------------- |
-| Vendor contact information | Duration of active relationship + 2 years | Business operations |
-| Vendor work order history  | 5 years after last work order             | Business records    |
+| Data Type | Retention Period | Basis |
+|---|---|---|
+| Board packages (`board_packages`) | 7 years from distribution | Governance audit |
+| Community announcements (`community_announcements`) | 5 years after publication | Governance audit |
+| Clause records (`clause_records` — governance document fragments) | Duration of association tenancy + 7 years | Governance audit |
+| Support emails and tickets | 3 years after resolution | Dispute resolution |
+| In-app notifications | 90 days | Service delivery |
+| System-generated transactional emails (`email_logs`, `email_events`) | 1 year | Audit trail + deliverability |
 
 ### 3.7 Technical and Operational Data
 
-| Data Type                                      | Retention Period | Basis                 |
-| ---------------------------------------------- | ---------------- | --------------------- |
-| Application error logs                         | 90 days          | Debugging             |
-| Access logs (web server)                       | 90 days          | Security monitoring   |
-| Audit logs (admin actions, data access events) | 1 year           | Security / compliance |
-| Database backups                               | 7 days (rolling) | Business continuity   |
-| Analytics and usage data (anonymized)          | 2 years          | Product improvement   |
-
-### 3.8 Communication Data
-
-| Data Type                                         | Retention Period         | Basis              |
-| ------------------------------------------------- | ------------------------ | ------------------ |
-| Support emails and tickets                        | 3 years after resolution | Dispute resolution |
-| In-app notifications                              | 90 days                  | Service delivery   |
-| System-generated emails (receipts, confirmations) | 1 year                   | Audit trail        |
+| Data Type | Retention Period | Basis |
+|---|---|---|
+| Application error logs | 90 days | Debugging |
+| Access logs (web server) | 90 days | Security monitoring |
+| Audit logs (admin actions, role-change events) | 1 year | Security / compliance |
+| Database backups (Neon automated) | 7 days (rolling) | Business continuity |
+| Analytics and usage data (anonymized) | 2 years | Product improvement |
+| AI Assistant interaction telemetry (`ai_assistant_interactions`) | 2 years | Cost / quality review |
 
 ---
 
@@ -141,7 +135,7 @@ This policy covers data held by YourCondoManager (YCM) on behalf of landlords, p
 When a user requests account deletion:
 
 1. **Acknowledgment:** confirm receipt within 5 business days
-2. **Immediate actions:** revoke all Plaid access tokens for connected accounts; invalidate all active sessions
+2. **Immediate actions:** revoke Plaid access tokens for connections owned by the user (call Plaid `/item/remove`, then mark `bank_connections` row as `revoked` and clear `access_token_encrypted`); invalidate all active sessions for the user
 3. **Personal data deletion:** within 30 days, delete or anonymize all personal data not subject to mandatory retention
 4. **Backup data:** database backups cycle on a 7-day rolling basis; deleted records naturally fall out within 7 days
 5. **Confirmation:** send confirmation email when deletion is complete
@@ -149,36 +143,52 @@ When a user requests account deletion:
 **Data exempt from deletion requests (legally required retention):**
 
 - Financial transaction records (7-year requirement)
-- Lease agreement records (7-year requirement)
+- Ownership and unit-transfer records (7-year requirement post-transfer)
+- Governance records subject to state HOA-record-keeping requirements
 - Legal hold data
 - Anonymized records that cannot be linked to the individual
 
-**Special case — landlord account deletion:**
+**Special case — board-member account deletion:**
 
-- Deleting a landlord account does not automatically delete tenant accounts. Tenant accounts have their own lifecycle.
-- Tenant data associated with the landlord's properties is retained per the tenant data retention schedule above.
-- William is notified when a landlord with active tenancies requests deletion.
+- Deleting a board member's individual YCM admin account does not delete the association. The association continues to exist; the board roster is updated to remove the departed member.
+- Historical board-action audit-log entries authored by the departed member are retained per the audit-log retention schedule (1 year) with their attribution preserved.
+
+**Special case — association deletion (board-initiated):**
+
+- An association is removed from the platform when its board terminates the YCM subscription
+- Owner records associated with the association are anonymized after the retention windows in §3.3
+- Financial records associated with the association are retained for 7 years per §3.4 regardless of subscription termination
+- Owners holding portal access tied solely to the deleted association have that portal access revoked
 
 ### 4.2 Plaid Access Token Revocation
 
-> **Status as of v1.2 (2026-05-20):** Plaid Phase 1 scaffolded with Sandbox active; production access submitted. Revocation flow below is implemented in `server/routes/plaid.ts` and exercised against Plaid Sandbox. The production `plaid-bank-aggregation` feature flag is OFF until app-layer token encryption ships.
+> **Status as of v2.0 (2026-05-25):** Plaid Sandbox is live for both association- and owner-side flows. Application-layer encryption of access tokens is deployed (`PLAID_TOKEN_ENCRYPTION_KEY` in Fly secrets, wired into `bank_connections.access_token_encrypted`). Plaid Production access is not yet provisioned.
 
-Upon account deletion or user-initiated bank account disconnection:
+Upon account deletion, association termination, or user-initiated bank-account disconnection:
 
 1. Call Plaid's `/item/remove` endpoint to revoke the access token server-side at Plaid
-2. Delete the access token from the `plaid_items` table
-3. Delete associated transaction data beyond the required financial record retention window (financial records subject to 7-year tax retention are anonymized rather than deleted: bank-account masks and institution names are dropped, transaction amount/date/categorization is retained for tax compliance)
+2. Update the `bank_connections` row: set `status = 'revoked'` and clear `access_token_encrypted`
+3. Retain associated transaction data per the financial-record retention window (7 years); bank-account masks and institution names may be retained or dropped per the disposal procedure in §5.2
 
-### 4.3 Automated Deletion (Scheduled Purges)
+### 4.3 Stripe Connect Account Deactivation
 
-| Purge Job                  | Frequency | Data Targeted                                         |
-| -------------------------- | --------- | ----------------------------------------------------- |
-| Session cleanup            | Daily     | Expired sessions older than 24 hours                  |
-| Log rotation               | Weekly    | Application error logs older than 90 days             |
-| Expired token cleanup      | Daily     | Password reset tokens, expired OAuth state parameters |
-| Soft-deleted account purge | Monthly   | Accounts soft-deleted more than 30 days ago           |
-| Archive pruning            | Quarterly | Records beyond retention schedule                     |
-| Tenant PII anonymization   | Quarterly | Tenant PII where tenancy ended > 1 year ago           |
+When an HOA association leaves the platform:
+
+1. The Stripe Connect sub-merchant account is left in a deactivated state on Stripe's side — YCM does not delete Connect accounts (Stripe retains them for their own compliance retention)
+2. The link between the YCM `associations` record and the Stripe Connect account ID is cleared after the financial-record retention window expires
+3. Historical charge IDs and statement descriptors are retained per §3.4
+
+### 4.4 Automated Deletion (Scheduled Purges)
+
+| Purge Job | Frequency | Data Targeted |
+|---|---|---|
+| Session cleanup | Daily | Expired sessions older than `SESSION_MAX_AGE_MS` |
+| Log rotation | Weekly | Application error logs older than 90 days |
+| Expired invite cleanup | Daily | Portal-access invites past `EXPIRED` state |
+| Soft-deleted account purge | Monthly | Accounts soft-deleted more than 30 days ago |
+| Archive pruning | Quarterly | Records beyond retention schedule |
+| Owner / tenant PII anonymization | Quarterly | PII where ownership or tenancy ended > 1 year ago |
+| Stripe webhook event archive | Monthly | Move events older than 90 days to archive tier |
 
 ---
 
@@ -186,30 +196,37 @@ Upon account deletion or user-initiated bank account disconnection:
 
 ### 5.1 Database Records
 
-- Standard deletion: SQL DELETE or UPDATE (soft-delete followed by hard delete after 30 days)
+- Standard deletion: SQL `DELETE` or `UPDATE` (soft-delete followed by hard delete after 30 days)
 - Anonymization: PII fields overwritten with anonymized placeholders; financial and date records preserved
 - Database backups cycle on a 7-day rolling basis; deleted records are excluded from new backups
 
 ### 5.2 Plaid Access Tokens
 
-- Plaid access tokens are deleted from the `plaid_items` table upon disconnection
-- Current protection: Postgres at-rest AES-256 (Neon default). Once application-layer encryption keyed by `PLAID_TOKEN_ENCRYPTION_KEY` ships (gating the production feature flag), database-record deletion will render the token unrecoverable even if traces persist in backups.
-- Backups are overwritten within 7 days regardless, naturally aging out deleted records
+- Plaid access tokens are stored in `bank_connections.access_token_encrypted` with application-layer AES-256 encryption (key `PLAID_TOKEN_ENCRYPTION_KEY` in Fly secrets) plus Postgres at-rest AES-256
+- On disconnection, the encrypted column is cleared and the row's `status` is set to `revoked`
+- Because the application-layer key is stored in Fly secrets (not in the database), clearing the encrypted column renders the token unrecoverable from any persisted backup — even if a backup contained an earlier copy of the row, the ciphertext is useless without the key
+- Backups themselves cycle on a 7-day rolling basis
 
-### 5.3 Development and Testing Environments
+### 5.3 Stripe Data
+
+- YCM does not hold bank-account or card numbers; Stripe holds them and disposes per their own retention policy
+- YCM-side Stripe identifiers (charge IDs, payment intent IDs, Connect account IDs) are subject to the financial-record retention schedule in §3.4 and the deletion procedures in §4
+
+### 5.4 Development and Testing Environments
 
 - Production data is never copied to development or testing environments without anonymization
 - Anonymized data in development environments is subject to the same disposal standards upon environment teardown
+- Stripe test mode and Plaid Sandbox are used in development; these never touch real bank or card data
 
 ---
 
 ## 6. Legal Holds
 
-A legal hold suspends normal retention and deletion schedules for data relevant to litigation or regulatory investigations.
+A legal hold suspends normal retention and deletion schedules for data relevant to litigation or regulatory investigations. This is particularly relevant for HOA contexts where governance disputes, election challenges, or financial-irregularity claims may arise.
 
 When a legal hold is initiated:
 
-1. Scope documented (users, date ranges, data types)
+1. Scope documented (associations, users, date ranges, data types)
 2. Automated deletion processes suspended for covered data
 3. Access to held data restricted and logged
 
@@ -219,32 +236,28 @@ Legal holds are released only when the matter is fully resolved. Upon release, n
 
 ## 7. Third-Party Data Retention
 
-| Provider      | Their Retention                                                                        | Our Obligation                                                                                                      |
-| ------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Fly.io / Neon | Infrastructure data per their terms; database data controlled by us                    | Delete data within our schedules; Fly/Neon manage underlying storage media                                          |
-| Stripe        | Per Stripe's privacy policy (transaction records typically 7 years for tax compliance) | We retain only Stripe identifiers + subscription state; payment-method data is Stripe-held                          |
-| Plaid         | Per Plaid's privacy policy                                                             | Revoke access tokens via `/item/remove` upon disconnection; Plaid retains its own transaction data per their policy |
-| Google        | Per Google's privacy policy for OAuth data                                             | Revoke OAuth tokens on account deletion                                                                             |
-| Cloudflare    | Email routing logs per Cloudflare's terms                                              | Emails forwarded to operator mailbox; routing logs retained per Cloudflare schedule                                 |
+| Provider | Their Retention | Our Obligation |
+|---|---|---|
+| Fly.io / Neon | Infrastructure data per their terms; database data controlled by us | Delete data within our schedules; Fly/Neon manage underlying storage media |
+| Stripe (Connect + billing) | Per Stripe's privacy policy (transaction records typically 7 years for tax compliance) | We retain only Stripe identifiers + subscription / Connect-account state; payment-method data is Stripe-held |
+| Plaid | Per Plaid's privacy policy | Revoke access tokens via `/item/remove` upon disconnection; Plaid retains its own transaction data per their policy |
+| Google | Per Google's privacy policy for OAuth data | Revoke OAuth tokens on account deletion |
+| Cloudflare | DNS + email routing logs per Cloudflare's terms | Emails forwarded to operator mailbox; routing logs retained per Cloudflare schedule |
+| Anthropic | Per Anthropic's privacy policy for API interactions | We retain per-interaction telemetry (token count, cost, success/failure) for 2 years; prompt content is not retained on our side beyond the active interaction window |
 
 ---
 
 ## 8. Policy Review
 
-This policy is reviewed annually as part of the Security Compliance Runbook annual review cycle, and after any significant changes to YourCondoManager (YCM)'s data model or regulatory environment.
+This policy is reviewed annually as part of the Security Compliance Calendar, and after any significant changes to YCM's data model or regulatory environment.
 
-Operational cadence is enforced by `.github/workflows/security-compliance-calendar.yml` which auto-files an Issue for each review. See `docs/policies/security-compliance-calendar-v1.md`.
+Operational cadence is enforced by `docs/policies/security-compliance-calendar-v1.md`.
 
 Questions: yourcondomanagement@gmail.com
 
-## §Pending follow-ups
-
-These items are surfaced by the 2026-05-11 policy-vs-system audit (Issue #429 Stream 4) and represent gaps between policy text and current implementation. Each will be closed by a code change OR a future policy amendment:
-
-- **Tombstone table for account deletion records (7-year retention).** Current `runDataRetentionCleanup` in `server/scheduled-tasks.ts` hard-deletes user rows at day 31 of the grace window without preserving a `(user_id, deletion_date)` tombstone. To honor the 7-year retention claim, a migration should add an `account_tombstones` table (or equivalent) and the cleanup task should INSERT into it before DELETE. Alternative: amend the retention table to drop the tombstone clause if 7-year retention isn't a business requirement pre-launch. — pending founder decision.
+---
 
 **Version history:**
 
-- v1.2 (2026-05-20): reflects Stripe Phase A live (PR #58 + #59), Plaid Phase 1 scaffolded with Sandbox active + production submitted (PR #104); §3.4 financial-data table expanded with Stripe + Plaid v1 rows; §7 third-party table now lists Stripe, Neon, Cloudflare alongside existing providers; §4.2 + §5.2 reflect honest current encryption posture (DB-layer live; app-layer required before flag enable).
-- v1.1 (2026-05-11): post-audit revisions (Issue #429 Stream 4) — re-scoped authentication-log rows for OAuth-only model; flagged tombstone clause as planned/not-yet-implemented; added §Pending follow-ups section.
-- v1.0 (2026-05-10): initial policy
+- **v2.0 (2026-05-25):** HOA-specific honest-claims rewrite per founder-os#2469. Replaced landlord/tenant taxonomy with HOA roles (board / owners / tenants / vendors / admins). Renamed table references to the live schema: `bank_connections` / `bank_accounts` / `bank_transactions` (not `plaid_items` / `plaid_transactions`). §3.2 added association + unit + ownership tables. §3.4 reflects Stripe Connect Standard live + Plaid Sandbox-only state + deployed app-layer token encryption. §4.3 added Stripe Connect deactivation procedure. §5.2 reflects deployed encryption with key-in-Fly-secrets posture. §7 added Anthropic.
+- v1.2 (2026-05-20): initial DRAFT derived from Plinthkeep skeleton; landed in PR #168 with DRAFT banner pending Phase 1 honest-claims pass.
