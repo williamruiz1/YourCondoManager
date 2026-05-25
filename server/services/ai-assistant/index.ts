@@ -1,21 +1,25 @@
 /**
- * AI Assistant — DI seam (founder-os#1318, Phase 0).
+ * AI Assistant — DI seam (founder-os#1318 Phase 0; founder-os#1256 Phase 1).
  *
- * One file, one line. This module exports `boundAdapter` — the concrete
- * `ConversationAdapter` implementation the route layer consumes. At Phase 1
- * (when founder-os#1244 ships) the rebind is a single edit here:
- *
- *   import { LLMConversationalAdapter } from "@founder-os/llm-conversational";
- *   export const boundAdapter: ConversationAdapter = new LLMConversationalAdapter({ ... });
- *
- * Everything else — types, route handlers, components, tests — stays the
- * same. That's the leverage Phase 0 is designed to capture.
+ * Phase 0 bound the `MockConversationAdapter`. Phase 1 (this rev) selects
+ * the `LLMConversationAdapter` when `ANTHROPIC_API_KEY` is set, falling
+ * back to the mock when it isn't. The fallback keeps local dev + CI
+ * working without a key while production gets the real Claude 3.5 Sonnet
+ * adapter.
  */
 
 import type { ConversationAdapter } from "./adapter";
 import { MockConversationAdapter } from "./mock-adapter";
+import { LLMConversationAdapter, isLLMAdapterReady } from "./llm-adapter";
 
-export const boundAdapter: ConversationAdapter = new MockConversationAdapter();
+function selectAdapter(): ConversationAdapter {
+  if (isLLMAdapterReady()) {
+    return new LLMConversationAdapter();
+  }
+  return new MockConversationAdapter();
+}
+
+export const boundAdapter: ConversationAdapter = selectAdapter();
 
 // Re-exports so consumers import from one place.
 export type { ConversationAdapter } from "./adapter";
@@ -30,5 +34,6 @@ export type {
   TrustTier,
 } from "./types";
 export { MockConversationAdapter } from "./mock-adapter";
+export { LLMConversationAdapter, isLLMAdapterReady } from "./llm-adapter";
 export { tools, TOOL_NAMES, IsolationViolationError } from "./tools";
 export type { ToolName } from "./tools";

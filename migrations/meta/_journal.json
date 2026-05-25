@@ -232,6 +232,34 @@
       "when": 1779000000000,
       "tag": "0032_go_live_gate_attestations",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1779050000000,
+      "tag": "0033_bank_feed_sync_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1779100000000,
+      "tag": "0034_pgvector_extension",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1779200000000,
+      "tag": "0035_document_embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1779300000000,
+      "tag": "0036_pressing_items",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import type { MaintenanceRequest } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PressingItemsWidget } from "@/components/pressing-items/PressingItemsWidget";
 import { PortalShell, usePortalContext, type PortalAssociationChoice } from "./portal-shell";
 import { t } from "@/i18n/use-strings";
 
@@ -114,6 +115,10 @@ function PortalHomeContent() {
         <h1 className="mt-1 font-headline text-3xl md:text-4xl" data-testid="portal-home-heading">
           {greeting}
         </h1>
+      </section>
+
+      <section data-testid="portal-home-pressing-items">
+        <PressingItemsWidget surface="portal" />
       </section>
 
       {activeElections.length > 0 ? (

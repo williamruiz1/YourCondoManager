@@ -269,6 +269,7 @@ import {
   type PaymentPlanInput,
 } from "@shared/payment-period";
 import { registerAiAssistantRoutes } from "./routes/ai-assistant";
+import { registerPressingItemsRoutes } from "./routes/pressing-items";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
@@ -1362,6 +1363,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // (real LLM via founder-os#1244) lands as a one-line rebind in
   // server/services/ai-assistant/index.ts.
   registerAiAssistantRoutes(app, { requirePortal });
+
+  // Pressing-Items widget (founder-os#1256, Phase 1). Portal + admin GET +
+  // snooze; platform-admin manual scan. The scanner itself runs from the
+  // automation tick in server/index.ts.
+  registerPressingItemsRoutes(app, {
+    requirePortal,
+    requireAdmin,
+    platformAdminOnly: (req: AdminRequest, res: Response, next: NextFunction) => {
+      if (req.adminRole !== "platform-admin") {
+        return res.status(403).json({ message: "Platform admin required" });
+      }
+      return next();
+    },
+  });
 
   // Reconciliation auto-match + manual-match + report (founder-os#970 Gap C).
   // Surfaces at /api/admin/reconciliation/{report,auto-match,manual-queue,
