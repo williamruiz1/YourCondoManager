@@ -9,19 +9,22 @@
 // Finance section later.
 //
 // Backend mapping:
-//   - POST /api/financial/fee-schedules         → create the recurring dues row
-//     (this is the same endpoint setup-wizard.tsx uses; the table is
-//      `hoa_fee_schedules`. The recurringChargeSchedules table is the
-//      execution engine downstream; the Finance section can spin up an
-//      explicit recurringChargeSchedule when the treasurer wants per-unit
-//      precision.)
-//   - POST /api/financial/late-fee-rules        → optional late-fee rule
+//   - POST /api/financial/fee-schedules                → create the
+//     Finance-UI row (table `hoa_fee_schedules`).
+//   - POST /api/financial/recurring-charges/schedules  → create the
+//     execution-engine row (table `recurring_charge_schedules`). This is
+//     what the 5-minute auto-billing sweep reads from to post monthly
+//     charges into each owner's ledger. Per founder-os#2477: without this
+//     row the sweep finds nothing to bill (dispatched=0 every tick), so
+//     the wizard MUST write here for dues to actually post.
+//   - POST /api/financial/late-fee-rules               → optional late-fee
+//     rule.
 //
 // Acceptance criteria from founder-os#1616: amount + frequency + due day
 // + late-fee policy fields, a plain-English preview line, and the form
-// must create a "recurring_assessment_schedule" visible in Finance. We
-// satisfy the latter via fee-schedules (the same row the Finance →
-// "Recurring assessments" panel renders).
+// must create a "recurring_assessment_schedule" visible in Finance.
+// founder-os#2477 extends that to also guarantee the schedule actually
+// runs against the billing engine — see the recurring-charges call below.
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -129,13 +132,10 @@ export function Step4RecurringAssessments({
       if (!snapshot.associationId) {
         throw new Error("Finish Step 1 (community details) first so we know which association this assessment belongs to.");
       }
-      // 1. Create the recurring fee schedule. The hoa_fee_schedules table
-      //    only stores name + amount + frequency + graceDays — there's no
-      //    `dueDay` column on it. The downstream recurring-charge runner
-      //    handles day-of-month scheduling via its own row; for the
-      //    onboarding spec the fee-schedule row is what makes the
-      //    assessment visible in Finance, which is the AC the dispatch
-      //    requires.
+      // 1. Create the Finance-UI fee schedule row. The hoa_fee_schedules
+      //    table only stores name + amount + frequency + graceDays — there's
+      //    no `dueDay` column on it. This row is what the Finance →
+      //    "Recurring assessments" panel renders.
       const feeRes = await apiRequest("POST", "/api/financial/fee-schedules", {
         associationId: snapshot.associationId,
         name: values.name,
@@ -148,7 +148,38 @@ export function Step4RecurringAssessments({
       });
       const feeSchedule = (await feeRes.json()) as { id: string };
 
-      // 2. Optional late-fee rule. We create one rule scoped to the
+      // 2. Create the execution-engine recurring charge schedule. This is
+      //    what server/assessment-execution.ts:recurringChargesLister reads
+      //    every 5 minutes to fan out per-unit owner_ledger_entries. Per
+      //    founder-os#2477: skipping this write means the wizard "completes"
+      //    but the automation sweep never posts a charge.
+      //
+      //    Frequency vocabulary differs slightly between the two tables:
+      //    hoa_fee_schedules uses {monthly,quarterly,annually,one-time};
+      //    recurring_charge_schedules uses {monthly,quarterly,annual} (no
+      //    trailing 'ly'). Map here.
+      const recurringFrequency =
+        values.frequency === "annually" ? "annual" : values.frequency;
+      const recurringRes = await apiRequest(
+        "POST",
+        "/api/financial/recurring-charges/schedules",
+        {
+          associationId: snapshot.associationId,
+          // unitId omitted (null) = applies to all units in the association.
+          chargeDescription: values.name,
+          entryType: "charge",
+          amount: values.amount,
+          frequency: recurringFrequency,
+          dayOfMonth: values.dueDay,
+          status: "active",
+          maxRetries: 3,
+          unitScopeMode: "all-units",
+          graceDays: values.graceDays,
+        },
+      );
+      const recurringSchedule = (await recurringRes.json()) as { id: string };
+
+      // 3. Optional late-fee rule. We create one rule scoped to the
       //    association so it applies to all assessments unless the
       //    treasurer overrides it later.
       let lateFeeRuleId: string | null = null;
@@ -174,7 +205,11 @@ export function Step4RecurringAssessments({
         }
       }
 
-      return { feeScheduleId: feeSchedule.id, lateFeeRuleId };
+      return {
+        feeScheduleId: feeSchedule.id,
+        recurringScheduleId: recurringSchedule.id,
+        lateFeeRuleId,
+      };
     },
     onSuccess: () => {
       toast({

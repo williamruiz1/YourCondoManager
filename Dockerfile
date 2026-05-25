@@ -28,11 +28,12 @@ COPY --from=builder /app/dist ./dist
 
 # founder-os #2476 — migration runner needs the migrations folder AND the
 # `scripts/migrate.cjs` + `scripts/backfill-migration-journal.cjs` runner
-# scripts at runtime so Fly's `release_command` can invoke them. Copy
-# explicitly so we don't drag in dev-only roadmap-seed scripts.
+# scripts at runtime so Fly's `release_command` can invoke them.
+# founder-os#2477 — also ship one-off operational scripts (e.g. the Cherry
+# Hill recurring-dues backfill) so they can be invoked via `flyctl ssh console`.
+# Copy the whole scripts/ folder (covers both); migrations/ is separate.
 COPY --from=builder /app/migrations ./migrations
-COPY --from=builder /app/scripts/migrate.cjs ./scripts/migrate.cjs
-COPY --from=builder /app/scripts/backfill-migration-journal.cjs ./scripts/backfill-migration-journal.cjs
+COPY --from=builder /app/scripts ./scripts
 
 EXPOSE 5000
 

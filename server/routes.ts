@@ -9785,6 +9785,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/onboarding/wizard/complete", requireAdmin, requireAdminRole(WIZARD_ROLES), async (req: AdminRequest, res) => {
     try {
       if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+
+      // founder-os#2477 — completion gate. The wizard can't be marked
+      // complete unless the association has at least one active recurring
+      // charge schedule. Without that row the 5-minute auto-billing sweep
+      // posts nothing (dispatched=0) and owners never see dues on their
+      // ledgers. We check the schedule, not hoa_fee_schedules, because the
+      // execution engine (server/assessment-execution.ts) reads exclusively
+      // from recurring_charge_schedules.
+      const currentSnapshot = await storage.getOnboardingWizardProgress(req.adminUserId);
+      if (!currentSnapshot.associationId) {
+        return res.status(400).json({
+          message:
+            "Cannot complete onboarding: no association linked. Finish Step 1 (community details) first.",
+          code: "missing_association",
+        });
+      }
+      const activeSchedules = await db
+        .select({ id: recurringChargeSchedules.id })
+        .from(recurringChargeSchedules)
+        .where(
+          and(
+            eq(recurringChargeSchedules.associationId, currentSnapshot.associationId),
+            eq(recurringChargeSchedules.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (activeSchedules.length === 0) {
+        return res.status(400).json({
+          message:
+            "Cannot complete onboarding: this association has no active recurring charge schedule. " +
+            "Go back to Step 4 and set up at least one assessment so monthly dues can post.",
+          code: "missing_recurring_schedule",
+        });
+      }
+
       const snapshot = await storage.completeOnboardingWizard(req.adminUserId);
       res.json(snapshot);
     } catch (error: any) {
