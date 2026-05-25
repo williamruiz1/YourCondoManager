@@ -4,7 +4,7 @@ import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { createHmac, timingSafeEqual, createHash as cryptoHash, createCipheriv as cryptoCipheriv, createDecipheriv as cryptoDecipheriv, randomBytes as cryptoRandomBytes } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
@@ -291,6 +291,11 @@ import { getStripeApplicationFeeRate } from "./platform-settings-store";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
 import { bankFeedProvider } from "./services/bank-feed";
+import { syncBankFeedForItemId } from "./services/bank-feed-sync";
+import {
+  encryptPlaidToken as encryptPlaidTokenShared,
+  decryptPlaidToken as decryptPlaidTokenShared,
+} from "./services/bank-feed/token-crypto";
 import {
   reconcileBankTransactions,
   manualMatchBankTransaction,
@@ -18408,56 +18413,12 @@ This is an automated demo request from the Your Condo Manager website.
   // if not set, so existing installs don't need a new env var for Sandbox).
   // The encrypted payload is stored as JSON in the access_token_encrypted column.
   //
-  // Encryption helpers are scoped to this block — they follow the same pattern
-  // as encryptGatewaySecret / decryptGatewaySecret in storage.ts.
-
-  function getPlaidTokenEncryptionKey(): Buffer {
-    const raw = (
-      process.env.PLAID_TOKEN_ENCRYPTION_KEY ??
-      process.env.PAYMENT_GATEWAY_ENCRYPTION_KEY
-    )?.trim();
-    if (!raw) {
-      throw new Error(
-        "PLAID_TOKEN_ENCRYPTION_KEY (or PAYMENT_GATEWAY_ENCRYPTION_KEY) must be set before storing Plaid access tokens",
-      );
-    }
-    // Re-use the same sha256 key-derivation pattern as gateway secrets in storage.ts.
-    return cryptoHash("sha256").update(raw).digest();
-  }
-
-  function encryptPlaidToken(token: string): string {
-    const key = getPlaidTokenEncryptionKey();
-    const iv = cryptoRandomBytes(12);
-    const cipher = cryptoCipheriv("aes-256-gcm", key, iv);
-    const ciphertext = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return JSON.stringify({
-      alg: "aes-256-gcm",
-      iv: iv.toString("base64"),
-      tag: tag.toString("base64"),
-      ciphertext: ciphertext.toString("base64"),
-    });
-  }
-
-  function decryptPlaidToken(encrypted: string): string {
-    const parsed = JSON.parse(encrypted) as {
-      alg: string;
-      iv: string;
-      tag: string;
-      ciphertext: string;
-    };
-    if (parsed.alg !== "aes-256-gcm") {
-      throw new Error("Unsupported Plaid token encryption algorithm");
-    }
-    const key = getPlaidTokenEncryptionKey();
-    const decipher = cryptoDecipheriv("aes-256-gcm", key, Buffer.from(parsed.iv, "base64"));
-    decipher.setAuthTag(Buffer.from(parsed.tag, "base64"));
-    const plaintext = Buffer.concat([
-      decipher.update(Buffer.from(parsed.ciphertext, "base64")),
-      decipher.final(),
-    ]);
-    return plaintext.toString("utf8");
-  }
+  // founder-os#2478: the helpers were extracted to
+  // `services/bank-feed/token-crypto.ts` so the new bank-feed-sync service can
+  // decrypt tokens too. The shape + algorithm + key derivation are unchanged
+  // — tokens encrypted before this refactor decrypt cleanly.
+  const encryptPlaidToken = encryptPlaidTokenShared;
+  const decryptPlaidToken = decryptPlaidTokenShared;
 
   // POST /api/plaid/create-link-token
   // Returns a link_token the frontend uses to launch Plaid Link UI.
@@ -18767,8 +18728,12 @@ This is an automated demo request from the Your Condo Manager website.
       });
 
       // TRANSACTIONS / SYNC_UPDATES_AVAILABLE — new transactions available.
-      // ITEM / ERROR                           — mark connection needs_reauth.
-      // ITEM / PENDING_EXPIRATION              — warn admin (future: push notification).
+      //   founder-os#2478: webhook now triggers an immediate sync (debounced
+      //   per-item_id to 1/min) instead of being dropped on the floor. The
+      //   5-min automation sweep still runs as a backstop.
+      // ITEM / ERROR              — mark connection needs_reauth.
+      // ITEM / USER_PERMISSION_REVOKED — mark connection revoked.
+      // ITEM / PENDING_EXPIRATION — warn admin (future: push notification).
       if (event.webhookType === "ITEM" && event.webhookCode === "ERROR") {
         await db
           .update(bankConnections)
@@ -18779,9 +18744,21 @@ This is an automated demo request from the Your Condo Manager website.
           .update(bankConnections)
           .set({ status: "revoked" })
           .where(eq(bankConnections.providerItemId, event.itemId));
+      } else if (
+        event.webhookType === "TRANSACTIONS" &&
+        (event.webhookCode === "SYNC_UPDATES_AVAILABLE" ||
+          event.webhookCode === "DEFAULT_UPDATE" ||
+          event.webhookCode === "INITIAL_UPDATE" ||
+          event.webhookCode === "HISTORICAL_UPDATE")
+      ) {
+        // Fire-and-forget: don't make Plaid wait for the sync to complete.
+        // The sync service writes its own bank_feed_sync_runs row + logs
+        // outcome, and the per-connection advisory lock + per-item_id
+        // debounce protect against bursts.
+        syncBankFeedForItemId(event.itemId).catch((err: unknown) => {
+          debug("[plaid][webhook] async sync failed", err);
+        });
       }
-      // TRANSACTIONS / SYNC_UPDATES_AVAILABLE is informational — a periodic
-      // sync job or admin-triggered POST /api/plaid/sync will consume it.
 
       res.json({ received: true });
     } catch (error: any) {
