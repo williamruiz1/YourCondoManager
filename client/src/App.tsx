@@ -99,6 +99,8 @@ const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
 const TermsOfServicePage = lazy(() => import("@/pages/terms-of-service"));
 const UserSettingsPage = lazy(() => import("@/pages/user-settings"));
 const SettingsBillingPage = lazy(() => import("@/pages/settings-billing"));
+// founder-os#1147 — founder portfolio subscription view (platform-admin only).
+const AdminPlatformSubscriptionsPage = lazy(() => import("@/pages/admin-platform-subscriptions"));
 const HelpCenterPage = lazy(() => import("@/pages/help-center"));
 const CommunityHubPage = lazy(() => import("@/pages/community-hub"));
 const CommunityHubPublicPage = lazy(() => import("@/pages/community-hub-public"));
@@ -462,6 +464,18 @@ function WorkspaceRouter({
         <Route path="/app/communications"><ZoneBoundary zone="Communications"><CommunicationsHubPage /></ZoneBoundary></Route>
         <Route path="/app/platform/controls">
           {adminRole === "platform-admin" ? <ZoneBoundary zone="Platform"><PlatformControlsPage /></ZoneBoundary> : <NotFound />}
+        </Route>
+        {/* founder-os#1147 — Founder portfolio subscription view. Platform-admin
+            only. Sibling to /app/platform/controls (aggregate MRR card lives
+            there); this page enumerates per-association sub state. */}
+        <Route path="/app/admin/platform/subscriptions">
+          {adminRole === "platform-admin" ? <ZoneBoundary zone="Platform"><AdminPlatformSubscriptionsPage /></ZoneBoundary> : <NotFound />}
+        </Route>
+        {/* founder-os#1147 — Association-scoped admin subscription view.
+            Aliases the existing /app/settings/billing surface to match the
+            dispatch spec path (/admin/platform-subscription). */}
+        <Route path="/app/admin/platform-subscription">
+          <RouteRedirect to="/app/settings/billing" />
         </Route>
         <Route path="/app/insurance" component={InsurancePage} />
         {/*
