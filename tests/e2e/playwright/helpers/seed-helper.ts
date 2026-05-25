@@ -484,6 +484,14 @@ export interface RealBackendHandle {
    * cookie path for owner-side auth in YCM.
    */
   installOwnerSession: (page: Page, options?: OwnerSessionOptions) => Promise<OwnerSessionDescriptor>;
+  /**
+   * Page-free variant of `installOwnerSession`: seeds a unit + person +
+   * active `portal_access` row and returns the descriptor. The
+   * `portalAccessId` is sent as the `x-portal-access-id` header to
+   * authenticate raw HTTP requests (no browser/cookie needed — owner-side
+   * auth is header-based). Used by the #2476 auth-surface smoke suite.
+   */
+  seedPortalAccess: (options?: OwnerSessionOptions) => Promise<OwnerSessionDescriptor>;
   /** Seed an association + admin scope row. */
   seedAssociation: (id: string, name: string, options?: SeedAssociationOptions) => Promise<void>;
   /**
@@ -711,8 +719,7 @@ export async function createRealBackend(options: RealBackendOptions): Promise<Re
     return { unitId, personId, ownershipId };
   }
 
-  async function installOwnerSession(
-    page: Page,
+  async function seedPortalAccess(
     overrides: OwnerSessionOptions = {},
   ): Promise<OwnerSessionDescriptor> {
     const associationId = overrides.associationId ?? "assoc-e2e-1";
@@ -745,13 +752,6 @@ export async function createRealBackend(options: RealBackendOptions): Promise<Re
       [portalAccessId, associationId, personId, unitId, email],
     );
 
-    // Inject the localStorage key BEFORE React mounts. The PortalShell
-    // reads this on first render to seed its `portalAccessId` state and
-    // includes it as the `x-portal-access-id` request header.
-    await page.addInitScript((id: string) => {
-      window.localStorage.setItem("portalAccessId", id);
-    }, portalAccessId);
-
     return {
       portalAccessId,
       associationId,
@@ -759,6 +759,22 @@ export async function createRealBackend(options: RealBackendOptions): Promise<Re
       personId: personId!,
       email,
     };
+  }
+
+  async function installOwnerSession(
+    page: Page,
+    overrides: OwnerSessionOptions = {},
+  ): Promise<OwnerSessionDescriptor> {
+    const descriptor = await seedPortalAccess(overrides);
+
+    // Inject the localStorage key BEFORE React mounts. The PortalShell
+    // reads this on first render to seed its `portalAccessId` state and
+    // includes it as the `x-portal-access-id` request header.
+    await page.addInitScript((id: string) => {
+      window.localStorage.setItem("portalAccessId", id);
+    }, descriptor.portalAccessId);
+
+    return descriptor;
   }
 
   async function seedRecurringChargeSchedule(
@@ -940,6 +956,7 @@ export async function createRealBackend(options: RealBackendOptions): Promise<Re
     reset,
     installManagerSession,
     installOwnerSession,
+    seedPortalAccess,
     seedAssociation,
     seedOverdueWorkOrder,
     seedUnitWithOwner,
