@@ -58,6 +58,8 @@ const AdminConsentAuditPage = lazy(() => import("@/pages/admin-consent-audit"));
 const GoLiveReadinessPage = lazy(() => import("@/pages/go-live-readiness"));
 // founder-os#970 Gap C — reconciliation admin: auto-match + manual-match + report.
 const AdminReconciliationPage = lazy(() => import("@/pages/admin-reconciliation"));
+// founder-os#2479 — admin manual payment recording surface.
+const AdminPaymentsRecordPage = lazy(() => import("@/pages/admin-payments-record"));
 const ExecutivePage = lazy(() => import("@/pages/executive"));
 const FinancialFoundationPage = lazy(() => import("@/pages/financial-foundation"));
 const FinancialRulesPage = lazy(() => import("@/pages/financial-rules"));
@@ -211,6 +213,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Admin Users", href: "/app/admin/users", roles: ["platform-admin"] },
       { label: "Access Review", href: "/app/admin/access-review", roles: ["platform-admin"] },
       { label: "Reconciliation", href: "/app/admin/reconciliation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { label: "Record Payment", href: "/app/admin/payments/record", roles: ["platform-admin", "board-officer"] },
       { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
     ],
   },
@@ -426,6 +429,12 @@ function WorkspaceRouter({
         <Route path="/app/admin/go-live-readiness" component={GoLiveReadinessPage} />
         {/* founder-os#970 Gap C — reconciliation auto-match + manual-match + report. */}
         <Route path="/app/admin/reconciliation" component={AdminReconciliationPage} />
+        {/* founder-os#2479 — admin manual payment recording. */}
+        <Route path="/app/admin/payments/record" component={AdminPaymentsRecordPage} />
+        {/* Legacy alias from the dispatch spec (/admin/payments/record). */}
+        <Route path="/admin/payments/record">
+          <RouteRedirect to="/app/admin/payments/record" />
+        </Route>
         <Route path="/app/admin/executive" component={ExecutivePage} />
         {/* Finance — consolidated routes (Wave 18: each wrapped in zone-scoped ErrorBoundary;
             Phase 12: wrapped in <RouteGuard> per ADR 0b — role list lives in ROUTE_MANIFEST). */}
