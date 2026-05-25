@@ -52,8 +52,12 @@ const DocumentsPage = lazy(() => import("@/pages/documents"));
 const RoadmapPage = lazy(() => import("@/pages/roadmap"));
 const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
 const AdminAccessReviewPage = lazy(() => import("@/pages/admin-access-review"));
+// #342 (WS3) — consent audit trail admin view.
+const AdminConsentAuditPage = lazy(() => import("@/pages/admin-consent-audit"));
 // #1340 — Cherry Hill go-live readiness dashboard (and future-HOA n=1 reference for #1307).
 const GoLiveReadinessPage = lazy(() => import("@/pages/go-live-readiness"));
+// founder-os#970 Gap C — reconciliation admin: auto-match + manual-match + report.
+const AdminReconciliationPage = lazy(() => import("@/pages/admin-reconciliation"));
 const ExecutivePage = lazy(() => import("@/pages/executive"));
 const FinancialFoundationPage = lazy(() => import("@/pages/financial-foundation"));
 const FinancialRulesPage = lazy(() => import("@/pages/financial-rules"));
@@ -87,6 +91,8 @@ const PortalCommunityPage = lazy(() => import("@/pages/portal/portal-community")
 const PortalAmenitiesPage = lazy(() => import("@/pages/portal/portal-amenities"));
 const PortalDocumentsPage = lazy(() => import("@/pages/portal/portal-documents"));
 const PortalNoticesPage = lazy(() => import("@/pages/portal/portal-notices"));
+// #342 (WS3) — portal-side "My Consents" transparency view.
+const PortalMyConsentsPage = lazy(() => import("@/pages/portal/portal-my-consents"));
 const VendorPortalPage = lazy(() => import("@/pages/vendor-portal"));
 const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
 const InsurancePage = lazy(() => import("@/pages/insurance"));
@@ -99,6 +105,8 @@ const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
 const TermsOfServicePage = lazy(() => import("@/pages/terms-of-service"));
 const UserSettingsPage = lazy(() => import("@/pages/user-settings"));
 const SettingsBillingPage = lazy(() => import("@/pages/settings-billing"));
+// founder-os#1147 — founder portfolio subscription view (platform-admin only).
+const AdminPlatformSubscriptionsPage = lazy(() => import("@/pages/admin-platform-subscriptions"));
 const HelpCenterPage = lazy(() => import("@/pages/help-center"));
 const CommunityHubPage = lazy(() => import("@/pages/community-hub"));
 const CommunityHubPublicPage = lazy(() => import("@/pages/community-hub-public"));
@@ -202,6 +210,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Executive", href: "/app/admin/executive", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant"] },
       { label: "Admin Users", href: "/app/admin/users", roles: ["platform-admin"] },
       { label: "Access Review", href: "/app/admin/access-review", roles: ["platform-admin"] },
+      { label: "Reconciliation", href: "/app/admin/reconciliation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
     ],
   },
@@ -408,8 +417,15 @@ function WorkspaceRouter({
         <Route path="/app/admin/roadmap" component={RoadmapPage} />
         <Route path="/app/admin/users" component={AdminUsersPage} />
         <Route path="/app/admin/access-review" component={AdminAccessReviewPage} />
+        {/* #342 (WS3) — consent audit trail admin view. */}
+        <Route path="/app/admin/consent-audit" component={AdminConsentAuditPage} />
+        <Route path="/admin/consent-audit">
+          <RouteRedirect to="/app/admin/consent-audit" />
+        </Route>
         {/* #1340 — Cherry Hill go-live readiness dashboard. Platform-admin only. */}
         <Route path="/app/admin/go-live-readiness" component={GoLiveReadinessPage} />
+        {/* founder-os#970 Gap C — reconciliation auto-match + manual-match + report. */}
+        <Route path="/app/admin/reconciliation" component={AdminReconciliationPage} />
         <Route path="/app/admin/executive" component={ExecutivePage} />
         {/* Finance — consolidated routes (Wave 18: each wrapped in zone-scoped ErrorBoundary;
             Phase 12: wrapped in <RouteGuard> per ADR 0b — role list lives in ROUTE_MANIFEST). */}
@@ -462,6 +478,18 @@ function WorkspaceRouter({
         <Route path="/app/communications"><ZoneBoundary zone="Communications"><CommunicationsHubPage /></ZoneBoundary></Route>
         <Route path="/app/platform/controls">
           {adminRole === "platform-admin" ? <ZoneBoundary zone="Platform"><PlatformControlsPage /></ZoneBoundary> : <NotFound />}
+        </Route>
+        {/* founder-os#1147 — Founder portfolio subscription view. Platform-admin
+            only. Sibling to /app/platform/controls (aggregate MRR card lives
+            there); this page enumerates per-association sub state. */}
+        <Route path="/app/admin/platform/subscriptions">
+          {adminRole === "platform-admin" ? <ZoneBoundary zone="Platform"><AdminPlatformSubscriptionsPage /></ZoneBoundary> : <NotFound />}
+        </Route>
+        {/* founder-os#1147 — Association-scoped admin subscription view.
+            Aliases the existing /app/settings/billing surface to match the
+            dispatch spec path (/admin/platform-subscription). */}
+        <Route path="/app/admin/platform-subscription">
+          <RouteRedirect to="/app/settings/billing" />
         </Route>
         <Route path="/app/insurance" component={InsurancePage} />
         {/*
@@ -608,6 +636,10 @@ function PublicRouter({
         <Route path="/portal/notices">
           <ZoneBoundary zone="Portal"><PortalNoticesPage /></ZoneBoundary>
         </Route>
+        {/* #342 (WS3) — owner consent transparency. */}
+        <Route path="/portal/privacy/my-consents">
+          <ZoneBoundary zone="Portal"><PortalMyConsentsPage /></ZoneBoundary>
+        </Route>
         <Route path="/vendor-portal" component={VendorPortalPage} />
         <Route path="/vote/:token">
           {(params) => <ElectionBallotPage token={params.token ?? ""} />}
@@ -655,6 +687,9 @@ function PublicRouter({
         </Route>
         <Route path="/admin/executive">
           <RouteRedirect to="/app/admin/executive" />
+        </Route>
+        <Route path="/admin/reconciliation">
+          <RouteRedirect to="/app/admin/reconciliation" />
         </Route>
         <Route path="/financial/fees">
           <RouteRedirect to="/app/financial/foundation" />

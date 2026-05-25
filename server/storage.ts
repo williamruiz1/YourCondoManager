@@ -274,6 +274,7 @@ import {
   type InsertElectionProxyDocument,
   type AdminRole,
   type DeletionRequest,
+  type ConsentRecord,
 } from "@shared/schema";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { governanceStateTemplateLibrary } from "@shared/governance-state-template-library";
@@ -3742,6 +3743,16 @@ export interface IStorage {
     userAgent: string | null;
   }): Promise<{ id: string; consentedAt: Date }>;
   hasConsented(userId: string, policyVersion: string): Promise<boolean>;
+  // #342 (WS3) — audit-trail retrieval. Per-user history for transparency
+  // (portal self-view + admin per-user view) + global filtered listing for
+  // platform-admin compliance review.
+  getConsentHistory(userId: string): Promise<ConsentRecord[]>;
+  listConsentAuditRecords(filter?: {
+    userId?: string;
+    userEmail?: string;
+    policyVersion?: string;
+    limit?: number;
+  }): Promise<ConsentRecord[]>;
   // #1327 — self-managed Day-0-14 onboarding wizard state machine.
   getOnboardingWizardProgress(adminUserId: string): Promise<OnboardingWizardSnapshot>;
   startOnboardingWizard(adminUserId: string): Promise<OnboardingWizardSnapshot>;
@@ -6678,6 +6689,53 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(consentRecords.userId, userId), eq(consentRecords.policyVersion, policyVersion)))
       .limit(1);
     return rows.length > 0;
+  }
+
+  // #342 (WS3) — per-user consent history. Returns newest-first so the
+  // portal "my consents" view and the admin per-user audit view both
+  // render the most recent agreement at the top. Bounded by `limit`
+  // when supplied (default unbounded since per-user histories stay
+  // small — one row per (user, policy_version) on the happy path,
+  // multi-device stacking adds rows but the order of magnitude is low).
+  async getConsentHistory(userId: string): Promise<ConsentRecord[]> {
+    return await db
+      .select()
+      .from(consentRecords)
+      .where(eq(consentRecords.userId, userId))
+      .orderBy(desc(consentRecords.consentedAt));
+  }
+
+  // #342 (WS3) — global audit listing with optional filters. Platform-admin
+  // surface (the `/admin/consent-audit` page) consumes this to render the
+  // association-scoped compliance view. Filters compose via AND.
+  //
+  // Limit defaults to 500 to keep payloads bounded; the admin UI paginates
+  // client-side. The (user_id, policy_version) composite index covers the
+  // most common filter pair.
+  async listConsentAuditRecords(filter?: {
+    userId?: string;
+    userEmail?: string;
+    policyVersion?: string;
+    limit?: number;
+  }): Promise<ConsentRecord[]> {
+    const conditions = [] as ReturnType<typeof eq>[];
+    if (filter?.userId) conditions.push(eq(consentRecords.userId, filter.userId));
+    if (filter?.userEmail) conditions.push(eq(consentRecords.userEmail, filter.userEmail));
+    if (filter?.policyVersion) conditions.push(eq(consentRecords.policyVersion, filter.policyVersion));
+    const limit = Math.min(Math.max(filter?.limit ?? 500, 1), 1000);
+    if (conditions.length === 0) {
+      return await db
+        .select()
+        .from(consentRecords)
+        .orderBy(desc(consentRecords.consentedAt))
+        .limit(limit);
+    }
+    return await db
+      .select()
+      .from(consentRecords)
+      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+      .orderBy(desc(consentRecords.consentedAt))
+      .limit(limit);
   }
 
   // #1522 (WS4) — deletion request flow. One pending request per user

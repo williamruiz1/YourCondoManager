@@ -20,6 +20,7 @@ import { ownerships, units } from "@shared/schema";
 import { getFeatureFlagForAssociation } from "@shared/feature-flags";
 import { boundAdapter } from "../services/ai-assistant";
 import { IsolationViolationError } from "../services/ai-assistant/tools";
+import { getRoleLensedPressingItems } from "../services/pressing-items/scanner";
 import type {
   AssistantMessage,
   AssistantSubMode,
@@ -160,4 +161,49 @@ export function registerAiAssistantRoutes(app: Express, helpers: AiAssistantRout
       res.end();
     }
   });
+
+  // ── GET /api/ai/chat-opener — pressing-items-primed greeting ────────────
+  //
+  // founder-os#1256 Phase 1: when the chat opens, the first AI message is
+  // generated from the top-3 pressing items + a greeting, NOT a blank
+  // "what can I help with?" prompt. The client renders this as the
+  // assistant's opening turn before the user has typed anything.
+  //
+  // This is a cheap synchronous endpoint — no LLM call yet. It returns the
+  // raw pressing items + a deterministic opener template; if the client
+  // wants a more natural-language opener, it can pass them into a turn
+  // with `subMode=resident` and ask "summarize what I should look at today".
+  app.get("/api/ai/chat-opener", requirePortal, async (req: PortalRequest, res: Response) => {
+    const gate = await gateFeatureFlag(req, res);
+    if (!gate) return;
+
+    try {
+      const items = await getRoleLensedPressingItems({
+        associationId: gate.caller.associationId,
+        actorRole: "board",
+        limit: 3,
+      });
+      const opener = renderOpener(items);
+      res.json({ opener, items });
+    } catch (err: any) {
+      console.error("[ai-assistant] chat-opener failed", err);
+      res.status(500).json({ message: err?.message ?? "Failed to load chat opener" });
+    }
+  });
+}
+
+function renderOpener(
+  items: Array<{ title: string }>,
+): string {
+  if (items.length === 0) {
+    return "Hi — nothing urgent on my radar for you today. What can I help with?";
+  }
+  const titles = items.map((i) => i.title);
+  const list =
+    titles.length === 1
+      ? `[${titles[0]}]`
+      : titles.length === 2
+      ? `[${titles[0]}] and [${titles[1]}]`
+      : `[${titles[0]}], [${titles[1]}], and [${titles[2]}]`;
+  return `Here's what I'd look at first today: ${list}. Want me to help with any of these?`;
 }

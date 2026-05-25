@@ -4,13 +4,14 @@ import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { createHmac, timingSafeEqual, createHash as cryptoHash, createCipheriv as cryptoCipheriv, createDecipheriv as cryptoDecipheriv, randomBytes as cryptoRandomBytes } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
 import { sendEmail } from "./email/send";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
 import { invalidateAlertCache } from "./alerts";
+import { getMigrationHealth } from "./migration-health";
 
 /**
  * 4.1 Wave 15a — real-time alert cache invalidation wiring.
@@ -262,10 +263,17 @@ import {
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
 import { normalizeHubVisibility } from "@shared/hub-visibility";
+import {
+  resolveAmountDue,
+  toAmountDueThisPeriod,
+  type PaymentPlanInput,
+} from "@shared/payment-period";
 import { registerAiAssistantRoutes } from "./routes/ai-assistant";
+import { registerPressingItemsRoutes } from "./routes/pressing-items";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
+import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import {
   getEffectivePortalRole,
   requireBoardAccess,
@@ -284,6 +292,11 @@ import { getStripeApplicationFeeRate } from "./platform-settings-store";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
 import { bankFeedProvider } from "./services/bank-feed";
+import { syncBankFeedForItemId } from "./services/bank-feed-sync";
+import {
+  encryptPlaidToken as encryptPlaidTokenShared,
+  decryptPlaidToken as decryptPlaidTokenShared,
+} from "./services/bank-feed/token-crypto";
 import {
   reconcileBankTransactions,
   manualMatchBankTransaction,
@@ -804,6 +817,13 @@ function normalizeAssociationSearchResult(item: any): AssociationSearchResult {
 function isNonEmptyText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
+
+// #342 (WS3) — masking helpers extracted to ./consent-audit-masking so
+// that unit tests can import without pulling in the routes.ts → db.ts
+// chain (which requires DATABASE_URL at import time). Re-exported here
+// for backward compatibility with any caller that pre-existed the split.
+import { maskIpAddress, maskUserAgent } from "./consent-audit-masking";
+export { maskIpAddress, maskUserAgent };
 
 function validateExecutiveSlidePayload(payload: Record<string, unknown>, options: { partial: boolean }) {
   const sourceKey = typeof payload.sourceKey === "string" ? payload.sourceKey : "";
@@ -1344,6 +1364,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // server/services/ai-assistant/index.ts.
   registerAiAssistantRoutes(app, { requirePortal });
 
+  // Pressing-Items widget (founder-os#1256, Phase 1). Portal + admin GET +
+  // snooze; platform-admin manual scan. The scanner itself runs from the
+  // automation tick in server/index.ts.
+  registerPressingItemsRoutes(app, {
+    requirePortal,
+    requireAdmin,
+    platformAdminOnly: (req: AdminRequest, res: Response, next: NextFunction) => {
+      if (req.adminRole !== "platform-admin") {
+        return res.status(403).json({ message: "Platform admin required" });
+      }
+      return next();
+    },
+  });
+
+  // Reconciliation auto-match + manual-match + report (founder-os#970 Gap C).
+  // Surfaces at /api/admin/reconciliation/{report,auto-match,manual-queue,
+  // match,audit-log}. Wraps services/reconciliation/{auto-matcher,report}.ts
+  // and services/plaid-reconciliation.ts.
+  registerAdminReconciliationRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
   // #1783 — Security & Compliance Baseline public routes. These MUST be
   // registered before the SPA catch-all (which lives in server/static.ts +
   // is invoked from server/index.ts after registerRoutes returns).
@@ -1386,14 +1431,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     );
   });
 
-  // Lightweight public health check for monitors, load balancers, and liveness probes
+  // Lightweight public health check for monitors, load balancers, and liveness probes.
+  //
+  // founder-os #2476 — also surfaces migration health. If the boot-time
+  // migration check flagged stale migrations, we return 503 so Fly's HTTP
+  // checks treat the machine as unhealthy and the monitoring stack alerts.
+  // The migration state is set at boot by runMigrationHealthCheck() in
+  // server/index.ts.
   app.get("/api/health", async (_req, res) => {
     try {
       await db.execute(sql`SELECT 1`);
-      res.json({ status: "ok" });
     } catch (err: any) {
-      res.status(500).json({ status: "error", message: "Database unreachable" });
+      return res.status(503).json({ status: "error", message: "Database unreachable" });
     }
+    const migrations = getMigrationHealth();
+    if (migrations.status === "stale") {
+      return res.status(503).json({
+        status: "error",
+        message: "Database migrations stale — release_command did not apply pending migrations",
+        migrations: {
+          status: migrations.status,
+          journalEntries: migrations.journalEntries,
+          trackedHashes: migrations.trackedHashes,
+          missing: migrations.missing,
+          checkedAt: migrations.checkedAt,
+        },
+      });
+    }
+    res.json({
+      status: "ok",
+      migrations: {
+        status: migrations.status,
+        journalEntries: migrations.journalEntries,
+        trackedHashes: migrations.trackedHashes,
+        checkedAt: migrations.checkedAt,
+      },
+    });
   });
 
   // Detailed diagnostics endpoint — admin-only, shows DB state for deployment verification
@@ -10127,6 +10200,166 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ============================================================
+  // #342 (WS3) — Consent audit trail surfaces.
+  //
+  // The original wizard-admin consent route (POST /api/consent) captures
+  // platform-admin/board agreement to CURRENT_POLICY_VERSION. This block
+  // adds the four sibling surfaces required by the audit-trail dispatch:
+  //
+  //   POST  /api/portal/consent              — owner-side consent capture
+  //   GET   /api/portal/consent/history      — owner self-view
+  //   POST  /api/admin/consent/record        — admin records on user's behalf
+  //   GET   /api/admin/consent/audit         — admin compliance view
+  //
+  // IP + user-agent are captured server-side from the request envelope so
+  // the audit row contains forensic context the client can't forge.
+  //
+  // Sister feature: deletion_requests (#1522 / migration 0031) — together
+  // they form the GDPR/CCPA evidence floor.
+  // ============================================================
+
+  // Helper — extract canonical IP + UA from the request envelope.
+  function extractConsentEnvelope(req: Request): { ip: string | null; userAgent: string | null } {
+    const ip = (req.headers["x-forwarded-for"]?.toString().split(",")[0].trim()) || req.socket.remoteAddress || null;
+    const userAgent = req.headers["user-agent"]?.toString().slice(0, 1024) ?? null;
+    return { ip, userAgent };
+  }
+
+  // POST /api/portal/consent — capture consent from an owner portal session.
+  //
+  // Body: { policyVersion?: string } — defaults to CURRENT_POLICY_VERSION
+  // if omitted. The body is intentionally permissive: clients can pin a
+  // specific version (re-recording an older agreement) but the typical
+  // call sends nothing and accepts the server's current version.
+  app.post("/api/portal/consent", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAccessId) return res.status(401).json({ message: "portal context missing" });
+      if (!req.portalEmail) return res.status(401).json({ message: "portal email missing" });
+      const requestedVersion = typeof req.body?.policyVersion === "string" && req.body.policyVersion.trim()
+        ? String(req.body.policyVersion).trim()
+        : CURRENT_POLICY_VERSION;
+      const { ip, userAgent } = extractConsentEnvelope(req);
+      const row = await storage.recordConsent({
+        userId: req.portalAccessId,
+        userEmail: req.portalEmail,
+        policyVersion: requestedVersion,
+        ipAddress: ip,
+        userAgent,
+      });
+      res.status(201).json({
+        id: row.id,
+        consentedAt: row.consentedAt.toISOString(),
+        policyVersion: requestedVersion,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // GET /api/portal/consent/history — caller's own consent history.
+  //
+  // Returns rows newest-first. IP + UA are included so the owner sees the
+  // full audit context for transparency (their own data, no masking).
+  app.get("/api/portal/consent/history", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAccessId) return res.status(401).json({ message: "portal context missing" });
+      const rows = await storage.getConsentHistory(req.portalAccessId);
+      res.json({
+        currentPolicyVersion: CURRENT_POLICY_VERSION,
+        records: rows.map((r) => ({
+          id: r.id,
+          policyVersion: r.policyVersion,
+          consentedAt: r.consentedAt.toISOString(),
+          ipAddress: r.ipAddress,
+          userAgent: r.userAgent,
+        })),
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // POST /api/admin/consent/record — admin records consent on a user's
+  // behalf (e.g., in-person paper agreement digitized into the audit
+  // trail). Platform-admin only — this is a privileged operation since
+  // it asserts another party's agreement.
+  //
+  // Body: { userId, userEmail, policyVersion? }
+  app.post(
+    "/api/admin/consent/record",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req: AdminRequest, res) => {
+      try {
+        if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+        const userId = typeof req.body?.userId === "string" ? req.body.userId.trim() : "";
+        const userEmail = typeof req.body?.userEmail === "string" ? req.body.userEmail.trim() : "";
+        if (!userId) return res.status(400).json({ message: "userId required" });
+        if (!userEmail) return res.status(400).json({ message: "userEmail required" });
+        const policyVersion = typeof req.body?.policyVersion === "string" && req.body.policyVersion.trim()
+          ? String(req.body.policyVersion).trim()
+          : CURRENT_POLICY_VERSION;
+        const { ip, userAgent } = extractConsentEnvelope(req);
+        const row = await storage.recordConsent({
+          userId,
+          userEmail,
+          policyVersion,
+          ipAddress: ip,
+          userAgent,
+        });
+        res.status(201).json({
+          id: row.id,
+          consentedAt: row.consentedAt.toISOString(),
+          policyVersion,
+          recordedBy: req.adminUserEmail ?? null,
+        });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  // GET /api/admin/consent/audit — admin compliance view.
+  //
+  // Query params (all optional, composed via AND):
+  //   userId         — filter to one user's history
+  //   userEmail      — filter by email (exact match)
+  //   policyVersion  — filter by version
+  //   limit          — bound the result (default 500, max 1000)
+  //
+  // Masking: non-platform-admin viewers see IP + UA truncated to a coarse
+  // signal (first octet + UA family) so association-scoped board admins
+  // get a compliance signal without raw forensic data.
+  app.get("/api/admin/consent/audit", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      if (!req.adminUserId) return res.status(401).json({ message: "admin context missing" });
+      const userId = typeof req.query.userId === "string" ? req.query.userId : undefined;
+      const userEmail = typeof req.query.userEmail === "string" ? req.query.userEmail : undefined;
+      const policyVersion = typeof req.query.policyVersion === "string" ? req.query.policyVersion : undefined;
+      const limitRaw = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : NaN;
+      const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+      const rows = await storage.listConsentAuditRecords({ userId, userEmail, policyVersion, limit });
+      const isPlatformAdmin = req.adminRole === "platform-admin";
+      const records = rows.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        userEmail: r.userEmail,
+        policyVersion: r.policyVersion,
+        consentedAt: r.consentedAt.toISOString(),
+        ipAddress: isPlatformAdmin ? r.ipAddress : maskIpAddress(r.ipAddress),
+        userAgent: isPlatformAdmin ? r.userAgent : maskUserAgent(r.userAgent),
+      }));
+      res.json({
+        currentPolicyVersion: CURRENT_POLICY_VERSION,
+        masked: !isPlatformAdmin,
+        records,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   // #1340 — Go-live readiness dashboard. Renders the 7-tier checklist with
   // per-gate auto-check status + manual attestations. Source-of-truth for
   // gate inventory: wiki/products/ycm/cherry-hill-go-live-checklist-v1.md
@@ -13384,6 +13617,25 @@ This is an automated demo request from the Your Condo Manager website.
         })
         .sort((a, b) => (b.total - a.total) || a.unitLabel.localeCompare(b.unitLabel));
 
+      // 2026-05-25 (live session followup) — Plan-aware "Amount due this
+      // period". William verbatim: "if it's on the quarterly plan, then it
+      // shouldn't show due until that quarter is up." The resolver is a
+      // pure function in `shared/payment-period.ts` so behavior is shared
+      // between the server (this endpoint) and any client-side preview.
+      // When no active plan exists, `amountDueThisPeriod` is null — the UI
+      // falls back to "Pay full balance" as the primary CTA.
+      const planInput: PaymentPlanInput | null = activePlan
+        ? {
+            status: activePlan.status,
+            installmentAmount: activePlan.installmentAmount,
+            installmentFrequency: activePlan.installmentFrequency,
+            nextDueDate: activePlan.nextDueDate ?? null,
+            startDate: activePlan.startDate ?? null,
+          }
+        : null;
+      const amountDueResolution = resolveAmountDue(planInput, new Date());
+      const amountDueThisPeriod = toAmountDueThisPeriod(amountDueResolution);
+
       res.json({
         balance,
         totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
@@ -13404,6 +13656,11 @@ This is an automated demo request from the Your Condo Manager website.
         // 2026-05-25 — per-unit hierarchical breakdown (additive).
         byUnit,
         grandTotal: balance,
+        // 2026-05-25 — plan-aware "Amount due this period" (additive).
+        // null when no active plan, or when the plan is quarterly and we
+        // are mid-quarter (per William's "shouldn't show due until that
+        // quarter is up").
+        amountDueThisPeriod,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -15118,6 +15375,231 @@ This is an automated demo request from the Your Condo Manager website.
     }
   });
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Platform Subscription Management (founder-os#1147)
+  //
+  // These endpoints expose programmatic create / read / cancel operations
+  // on platform_subscriptions for ops + portfolio-view use cases. The
+  // owner-facing self-service path remains the Stripe Customer Portal
+  // (POST /api/admin/billing/portal-session above). These endpoints exist
+  // for: (a) one-shot backfills (e.g. Cherry Hill), (b) the founder
+  // portfolio view at /app/admin/platform/subscriptions, (c) ops fixes
+  // when self-service can't reach a customer.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // GET /api/platform/subscriptions — founder portfolio listing.
+  // Joins platform_subscriptions to associations and returns the
+  // per-association subscription row (or null if no subscription).
+  app.get("/api/platform/subscriptions", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
+    try {
+      const allAssocs = await db.select().from(associations);
+      const subs = await storage.listPlatformSubscriptions();
+      const subByAssoc = new Map(subs.map((s) => [s.associationId, s]));
+      const rows = allAssocs
+        .filter((a) => !a.isArchived)
+        .map((a) => {
+          const sub = subByAssoc.get(a.id);
+          return {
+            associationId: a.id,
+            associationName: a.name,
+            city: a.city,
+            state: a.state,
+            subscriptionId: sub?.id ?? null,
+            stripeCustomerId: sub?.stripeCustomerId ?? null,
+            stripeSubscriptionId: sub?.stripeSubscriptionId ?? null,
+            plan: sub?.plan ?? null,
+            status: sub?.status ?? "none",
+            currentPeriodEnd: sub?.currentPeriodEnd ?? null,
+            trialEndsAt: sub?.trialEndsAt ?? null,
+            cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? 0,
+            unitTier: sub?.unitTier ?? null,
+            unitCount: sub?.unitCount ?? null,
+            adminEmail: sub?.adminEmail ?? null,
+            createdAt: sub?.createdAt ?? null,
+            updatedAt: sub?.updatedAt ?? null,
+          };
+        });
+      res.json({ subscriptions: rows });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // POST /api/admin/platform/subscriptions — create a Stripe customer +
+  // subscription for an existing association. Used by ops + the backfill
+  // script. Does NOT replace the self-service signup flow.
+  //
+  // Body: { associationId, plan, adminEmail, priceId?, unitCount?, trialDays? }
+  // Default plan: "self-managed". Resolves priceId from STRIPE_PLAN_PRICE_IDS
+  // secret unless an explicit priceId is provided.
+  const createPlatformSubSchema = z.object({
+    associationId: z.string().min(1),
+    plan: z.enum(["self-managed", "property-manager", "enterprise"]).default("self-managed"),
+    adminEmail: z.string().email(),
+    priceId: z.string().optional(),
+    unitCount: z.number().int().positive().optional(),
+    trialDays: z.number().int().min(0).max(365).optional(),
+  });
+
+  app.post(
+    "/api/admin/platform/subscriptions",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req, res) => {
+      try {
+        const parsed = createPlatformSubSchema.parse(req.body);
+
+        // Validate association exists.
+        const [assoc] = await db.select().from(associations).where(eq(associations.id, parsed.associationId));
+        if (!assoc) return res.status(404).json({ message: "Association not found" });
+
+        // Prevent duplicates — the unique index on associationId would
+        // throw, but a clean 409 is better DX for the founder UI.
+        const existing = await storage.getPlatformSubscription(parsed.associationId);
+        if (existing && existing.status !== "canceled") {
+          return res.status(409).json({
+            message: "Association already has an active subscription",
+            code: "SUBSCRIPTION_EXISTS",
+            subscriptionId: existing.id,
+          });
+        }
+
+        // Resolve price ID.
+        let priceId = parsed.priceId;
+        if (!priceId) {
+          const priceIdsRaw = await getSecret("STRIPE_PLAN_PRICE_IDS", "stripe_plan_price_ids");
+          const priceIds = priceIdsRaw ? (JSON.parse(priceIdsRaw) as Record<string, string>) : {};
+          if (parsed.plan === "self-managed") {
+            const tierKey = (parsed.unitCount ?? 0) >= 30 ? "self-managed-large" : "self-managed-small";
+            priceId = priceIds[tierKey] ?? priceIds["self-managed"];
+          } else {
+            priceId = priceIds[parsed.plan];
+          }
+        }
+        if (!priceId) {
+          return res.status(503).json({ message: `No Stripe price ID configured for plan ${parsed.plan}` });
+        }
+
+        // Create / reuse Stripe Customer. If an existing canceled subscription
+        // row carries a customerId, reuse it so ops doesn't fork the customer.
+        let customerId = existing?.stripeCustomerId ?? null;
+        if (!customerId) {
+          const customerParams = new URLSearchParams({ email: parsed.adminEmail, name: assoc.name });
+          customerParams.set("metadata[associationId]", assoc.id);
+          customerParams.set("metadata[plan]", parsed.plan);
+          customerParams.set("metadata[source]", "admin-platform-billing-create");
+          const customer = await stripeRequest("POST", "/customers", customerParams);
+          customerId = customer.id as string;
+        }
+
+        // Create Stripe Subscription.
+        const subParams = new URLSearchParams();
+        subParams.set("customer", customerId);
+        subParams.set("items[0][price]", priceId);
+        if (parsed.trialDays && parsed.trialDays > 0) {
+          subParams.set("trial_period_days", String(parsed.trialDays));
+        }
+        subParams.set("metadata[associationId]", assoc.id);
+        subParams.set("metadata[plan]", parsed.plan);
+        subParams.set("metadata[source]", "admin-platform-billing-create");
+        subParams.set("payment_behavior", "default_incomplete");
+        subParams.set("expand[]", "latest_invoice.payment_intent");
+        const stripeSub = await stripeRequest("POST", "/subscriptions", subParams);
+
+        // Map Stripe status → local enum.
+        const statusMap: Record<string, "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete"> = {
+          trialing: "trialing",
+          active: "active",
+          past_due: "past_due",
+          canceled: "canceled",
+          unpaid: "unpaid",
+          incomplete: "incomplete",
+          incomplete_expired: "canceled",
+        };
+        const localStatus = statusMap[stripeSub.status as string] ?? "incomplete";
+        const periodEnd = typeof stripeSub.current_period_end === "number"
+          ? new Date((stripeSub.current_period_end as number) * 1000) : null;
+        const periodStart = typeof stripeSub.current_period_start === "number"
+          ? new Date((stripeSub.current_period_start as number) * 1000) : null;
+        const trialEnd = typeof stripeSub.trial_end === "number"
+          ? new Date((stripeSub.trial_end as number) * 1000) : null;
+
+        let subRow;
+        if (existing) {
+          // Reactivate a previously-canceled row.
+          subRow = await storage.updatePlatformSubscription(existing.id, {
+            plan: parsed.plan,
+            status: localStatus,
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: stripeSub.id as string,
+            currentPeriodStart: periodStart ?? undefined,
+            currentPeriodEnd: periodEnd ?? undefined,
+            trialEndsAt: trialEnd ?? undefined,
+            cancelAtPeriodEnd: 0,
+            unitCount: parsed.unitCount ?? null,
+            adminEmail: parsed.adminEmail,
+          });
+        } else {
+          subRow = await storage.createPlatformSubscription({
+            associationId: assoc.id,
+            plan: parsed.plan,
+            status: localStatus,
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: stripeSub.id as string,
+            currentPeriodStart: periodStart ?? undefined,
+            currentPeriodEnd: periodEnd ?? undefined,
+            trialEndsAt: trialEnd ?? undefined,
+            cancelAtPeriodEnd: 0,
+            unitCount: parsed.unitCount ?? null,
+            adminEmail: parsed.adminEmail,
+          });
+        }
+
+        res.status(201).json({ subscription: subRow, stripeSubscriptionId: stripeSub.id });
+      } catch (e: any) {
+        if (e?.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid input", issues: e.issues });
+        }
+        res.status(500).json({ message: e.message });
+      }
+    },
+  );
+
+  // POST /api/admin/platform/subscriptions/:id/cancel — cancel via Stripe.
+  // Body: { atPeriodEnd?: boolean }  // default true
+  app.post(
+    "/api/admin/platform/subscriptions/:id/cancel",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req, res) => {
+      try {
+        const id = req.params.id;
+        const atPeriodEnd = (req.body?.atPeriodEnd as boolean | undefined) ?? true;
+        const all = await storage.listPlatformSubscriptions();
+        const sub = all.find((s) => s.id === id);
+        if (!sub) return res.status(404).json({ message: "Subscription not found" });
+        if (!sub.stripeSubscriptionId) {
+          // No Stripe sub to cancel — just mark canceled locally.
+          const updated = await storage.updatePlatformSubscription(sub.id, { status: "canceled" });
+          return res.json({ subscription: updated });
+        }
+
+        if (atPeriodEnd) {
+          const params = new URLSearchParams({ cancel_at_period_end: "true" });
+          await stripeRequest("POST", `/subscriptions/${sub.stripeSubscriptionId}`, params);
+          const updated = await storage.updatePlatformSubscription(sub.id, { cancelAtPeriodEnd: 1 });
+          return res.json({ subscription: updated });
+        }
+        // Immediate cancel.
+        await stripeRequest("DELETE", `/subscriptions/${sub.stripeSubscriptionId}`);
+        const updated = await storage.updatePlatformSubscription(sub.id, { status: "canceled" });
+        res.json({ subscription: updated });
+      } catch (e: any) {
+        res.status(500).json({ message: e.message });
+      }
+    },
+  );
+
   // POST /api/public/signup/start — create Stripe customer + checkout session
   app.post("/api/public/signup/start", async (req, res) => {
     try {
@@ -15538,7 +16020,11 @@ This is an automated demo request from the Your Condo Manager website.
           await storage.updatePlatformSubscription(sub.id, { status: newStatus as any, currentPeriodEnd: periodEnd, trialEndsAt: trialEnd, cancelAtPeriodEnd: cancelAtEnd });
         }
         processed = true;
-      } else if (eventType === "invoice.payment_succeeded") {
+      } else if (eventType === "invoice.payment_succeeded" || eventType === "invoice.paid") {
+        // founder-os#1147 — handle both legacy `invoice.payment_succeeded`
+        // and current `invoice.paid` event names. Stripe sends both for
+        // most subscription invoices; either should flip the local row to
+        // `active`.
         const subId = (eventObj.subscription as string) ?? null;
         if (subId) {
           const sub = await storage.getPlatformSubscriptionByStripeId(subId);
@@ -17977,56 +18463,12 @@ This is an automated demo request from the Your Condo Manager website.
   // if not set, so existing installs don't need a new env var for Sandbox).
   // The encrypted payload is stored as JSON in the access_token_encrypted column.
   //
-  // Encryption helpers are scoped to this block — they follow the same pattern
-  // as encryptGatewaySecret / decryptGatewaySecret in storage.ts.
-
-  function getPlaidTokenEncryptionKey(): Buffer {
-    const raw = (
-      process.env.PLAID_TOKEN_ENCRYPTION_KEY ??
-      process.env.PAYMENT_GATEWAY_ENCRYPTION_KEY
-    )?.trim();
-    if (!raw) {
-      throw new Error(
-        "PLAID_TOKEN_ENCRYPTION_KEY (or PAYMENT_GATEWAY_ENCRYPTION_KEY) must be set before storing Plaid access tokens",
-      );
-    }
-    // Re-use the same sha256 key-derivation pattern as gateway secrets in storage.ts.
-    return cryptoHash("sha256").update(raw).digest();
-  }
-
-  function encryptPlaidToken(token: string): string {
-    const key = getPlaidTokenEncryptionKey();
-    const iv = cryptoRandomBytes(12);
-    const cipher = cryptoCipheriv("aes-256-gcm", key, iv);
-    const ciphertext = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return JSON.stringify({
-      alg: "aes-256-gcm",
-      iv: iv.toString("base64"),
-      tag: tag.toString("base64"),
-      ciphertext: ciphertext.toString("base64"),
-    });
-  }
-
-  function decryptPlaidToken(encrypted: string): string {
-    const parsed = JSON.parse(encrypted) as {
-      alg: string;
-      iv: string;
-      tag: string;
-      ciphertext: string;
-    };
-    if (parsed.alg !== "aes-256-gcm") {
-      throw new Error("Unsupported Plaid token encryption algorithm");
-    }
-    const key = getPlaidTokenEncryptionKey();
-    const decipher = cryptoDecipheriv("aes-256-gcm", key, Buffer.from(parsed.iv, "base64"));
-    decipher.setAuthTag(Buffer.from(parsed.tag, "base64"));
-    const plaintext = Buffer.concat([
-      decipher.update(Buffer.from(parsed.ciphertext, "base64")),
-      decipher.final(),
-    ]);
-    return plaintext.toString("utf8");
-  }
+  // founder-os#2478: the helpers were extracted to
+  // `services/bank-feed/token-crypto.ts` so the new bank-feed-sync service can
+  // decrypt tokens too. The shape + algorithm + key derivation are unchanged
+  // — tokens encrypted before this refactor decrypt cleanly.
+  const encryptPlaidToken = encryptPlaidTokenShared;
+  const decryptPlaidToken = decryptPlaidTokenShared;
 
   // POST /api/plaid/create-link-token
   // Returns a link_token the frontend uses to launch Plaid Link UI.
@@ -18336,8 +18778,12 @@ This is an automated demo request from the Your Condo Manager website.
       });
 
       // TRANSACTIONS / SYNC_UPDATES_AVAILABLE — new transactions available.
-      // ITEM / ERROR                           — mark connection needs_reauth.
-      // ITEM / PENDING_EXPIRATION              — warn admin (future: push notification).
+      //   founder-os#2478: webhook now triggers an immediate sync (debounced
+      //   per-item_id to 1/min) instead of being dropped on the floor. The
+      //   5-min automation sweep still runs as a backstop.
+      // ITEM / ERROR              — mark connection needs_reauth.
+      // ITEM / USER_PERMISSION_REVOKED — mark connection revoked.
+      // ITEM / PENDING_EXPIRATION — warn admin (future: push notification).
       if (event.webhookType === "ITEM" && event.webhookCode === "ERROR") {
         await db
           .update(bankConnections)
@@ -18348,9 +18794,21 @@ This is an automated demo request from the Your Condo Manager website.
           .update(bankConnections)
           .set({ status: "revoked" })
           .where(eq(bankConnections.providerItemId, event.itemId));
+      } else if (
+        event.webhookType === "TRANSACTIONS" &&
+        (event.webhookCode === "SYNC_UPDATES_AVAILABLE" ||
+          event.webhookCode === "DEFAULT_UPDATE" ||
+          event.webhookCode === "INITIAL_UPDATE" ||
+          event.webhookCode === "HISTORICAL_UPDATE")
+      ) {
+        // Fire-and-forget: don't make Plaid wait for the sync to complete.
+        // The sync service writes its own bank_feed_sync_runs row + logs
+        // outcome, and the per-connection advisory lock + per-item_id
+        // debounce protect against bursts.
+        syncBankFeedForItemId(event.itemId).catch((err: unknown) => {
+          debug("[plaid][webhook] async sync failed", err);
+        });
       }
-      // TRANSACTIONS / SYNC_UPDATES_AVAILABLE is informational — a periodic
-      // sync job or admin-triggered POST /api/plaid/sync will consume it.
 
       res.json({ received: true });
     } catch (error: any) {

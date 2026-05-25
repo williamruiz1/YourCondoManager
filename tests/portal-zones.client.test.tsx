@@ -286,6 +286,104 @@ describe("Portal Finances — per-unit hierarchical breakdown (2026-05-25)", () 
   });
 });
 
+describe("Portal Finances — plan-aware Amount Due This Period (2026-05-25 live)", () => {
+  // William verbatim: "if it's on the quarterly plan, then it shouldn't show
+  // due until that quarter is up". The server is the source of truth for
+  // whether `amountDueThisPeriod` is populated; the client renders the hero
+  // card based on its presence. These tests cover the three branches.
+
+  it("NO PLAN: amount-due hero is hidden; total balance is the primary CTA", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 5618.61,
+        totalCharges: 5618.61,
+        totalPayments: 0,
+        amountDueThisPeriod: null,
+        byUnit: [],
+      },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
+    // Wait for the dashboard query to resolve and the balance to render.
+    await waitFor(() =>
+      expect(screen.getByTestId("portal-finances-balance")).toHaveTextContent("5,618.61"),
+    );
+    expect(screen.queryByTestId("portal-finances-amount-due-hero")).not.toBeInTheDocument();
+  });
+
+  it("MONTHLY PLAN: amount-due hero is visible with the installment", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 5618.61,
+        totalCharges: 5618.61,
+        totalPayments: 0,
+        amountDueThisPeriod: {
+          amount: 250,
+          periodLabel: "May 2026",
+          periodEnd: "2026-05-31T23:59:59.999Z",
+          frequency: "monthly",
+          reason: "due",
+        },
+        byUnit: [],
+      },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("portal-finances-amount-due-hero")).toBeInTheDocument());
+    expect(screen.getByTestId("portal-finances-amount-due")).toHaveTextContent("250");
+    expect(screen.getByTestId("portal-finances-amount-due-context")).toHaveTextContent(/May 2026/);
+    // Total balance is also rendered (as the secondary card).
+    expect(screen.getByTestId("portal-finances-balance")).toHaveTextContent("5,618.61");
+  });
+
+  it("QUARTERLY PLAN MID-QUARTER: amount-due hero is HIDDEN (server returns null)", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 5618.61,
+        totalCharges: 5618.61,
+        totalPayments: 0,
+        // The server's resolver returns null when on a quarterly plan and
+        // current date is outside the grace window. The UI must respect
+        // that — do NOT show the "amount due" CTA between quarters.
+        amountDueThisPeriod: null,
+        // The plan IS active but the resolver said "not due right now."
+        paymentPlan: {
+          id: "pp-1",
+          installmentAmount: 750,
+          installmentFrequency: "quarterly",
+          status: "active",
+        },
+        byUnit: [],
+      },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
+    // Wait for the dashboard to resolve so the assertion isn't trivially
+    // true while the query is still loading.
+    await waitFor(() =>
+      expect(screen.getByTestId("portal-finances-balance")).toHaveTextContent("5,618.61"),
+    );
+    expect(screen.queryByTestId("portal-finances-amount-due-hero")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portal-finances-amount-due")).not.toBeInTheDocument();
+  });
+
+  it("visible 'View full ledger' link is rendered above the fold", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 100,
+        totalCharges: 100,
+        totalPayments: 0,
+        byUnit: [],
+      },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
+    const ledgerLink = screen.getByTestId("portal-finances-hero-ledger-link");
+    expect(ledgerLink).toBeInTheDocument();
+    expect(ledgerLink).toHaveAttribute("href", "/portal/finances/ledger");
+  });
+});
+
 describe("Portal zones — session gate behavior (Q4 shell-owned)", () => {
   it("redirects to login container when portalAccessId is missing at any /portal/* route", async () => {
     window.localStorage.removeItem("portalAccessId");

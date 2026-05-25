@@ -148,6 +148,118 @@
       "when": 1777800000000,
       "tag": "0021_amenity_approved_by_drop_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1777900000000,
+      "tag": "0007_onboarding_dismissed_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1778000000000,
+      "tag": "0022_plaid_bank_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1778100000000,
+      "tag": "0023_association_lat_lng",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1778200000000,
+      "tag": "0024_auth_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1778300000000,
+      "tag": "0025_plaid_portal_scoped_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1778400000000,
+      "tag": "0026_ledger_bank_tx_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1778500000000,
+      "tag": "0027_onboarding_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1778600000000,
+      "tag": "0028_onboarding_reminder_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1778700000000,
+      "tag": "0029_consent_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1778800000000,
+      "tag": "0030_ai_assistant_interactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1778900000000,
+      "tag": "0031_deletion_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1779000000000,
+      "tag": "0032_go_live_gate_attestations",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1779050000000,
+      "tag": "0033_bank_feed_sync_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1779100000000,
+      "tag": "0034_pgvector_extension",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1779200000000,
+      "tag": "0035_document_embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1779300000000,
+      "tag": "0036_pressing_items",
+      "breakpoints": true
     }
   ]
 }

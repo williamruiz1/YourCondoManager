@@ -3613,6 +3613,40 @@ export const bankTransactions = pgTable("bank_transactions", {
 export type BankTransaction = typeof bankTransactions.$inferSelect;
 export type InsertBankTransaction = typeof bankTransactions.$inferInsert;
 
+// ── bank_feed_sync_runs — per-run audit log for the automated bank-feed sync
+// engine (founder-os#2478). Every tick of the automation sweep AND every
+// webhook-triggered immediate sync writes one row here. Drives observability
+// ("did the sync engine actually run?") + post-hoc reconciliation analysis.
+//
+// Trigger taxonomy:
+//   - 'sweep'   = the 5-min automation sweep picked this connection up
+//   - 'webhook' = Plaid SYNC_UPDATES_AVAILABLE webhook triggered immediate sync
+//   - 'manual'  = admin clicked POST /api/plaid/sync (the existing button path)
+//
+// Each row captures connection + timing + counts + error. `error` is NULL on
+// success; populated with a short message on failure (advisory-lock collision,
+// Plaid 5xx, etc.). Successful runs always update bank_connections.last_synced_at.
+export const bankFeedSyncRuns = pgTable("bank_feed_sync_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  connectionId: varchar("connection_id")
+    .notNull()
+    .references(() => bankConnections.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  trigger: text("trigger").notNull(), // 'sweep' | 'webhook' | 'manual'
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  transactionsImported: integer("transactions_imported").notNull().default(0),
+  matchesMade: integer("matches_made").notNull().default(0),
+  unmatchedCount: integer("unmatched_count").notNull().default(0),
+  error: text("error"),
+}, (table) => ({
+  byConnection: index("bank_feed_sync_runs_by_connection").on(table.connectionId, table.startedAt),
+  byAssociation: index("bank_feed_sync_runs_by_association").on(table.associationId, table.startedAt),
+}));
+
+export type BankFeedSyncRun = typeof bankFeedSyncRuns.$inferSelect;
+export type InsertBankFeedSyncRun = typeof bankFeedSyncRuns.$inferInsert;
+
 // ── AI Assistant interactions (founder-os#1318, Phase 0) ─────────────────────
 //
 // Audit-log table for every resident-chat turn. Captures prompt + response
@@ -3644,3 +3678,81 @@ export const aiAssistantInteractions = pgTable("ai_assistant_interactions", {
 export type AiAssistantInteraction = typeof aiAssistantInteractions.$inferSelect;
 export type InsertAiAssistantInteraction = typeof aiAssistantInteractions.$inferInsert;
 export const insertAiAssistantInteractionSchema = createInsertSchema(aiAssistantInteractions);
+
+// ── Document embeddings (founder-os#1256, Phase 1 RAG) ───────────────────────
+//
+// 1024-dim chunk store for owner-portal + admin RAG retrieval. The embedding
+// column is `vector(1024)` in Postgres (pgvector); Drizzle doesn't ship a
+// first-class type for that yet, so we declare it as `text` here and use raw
+// SQL for the writes/reads. The runtime is unaffected — pgvector silently
+// accepts the `'[0.1, 0.2, …]'` text literal form on INSERT.
+export const documentEmbeddings = pgTable("document_embeddings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  documentId: varchar("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+  chunkIndex: integer("chunk_index").notNull(),
+  content: text("content").notNull(),
+  // Held as text for Drizzle's sake — pgvector accepts the bracketed-array
+  // literal form. Reads in retriever.ts use raw SQL.
+  embedding: text("embedding"),
+  metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+  model: text("model").notNull().default("voyage-3-lite"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueChunk: uniqueIndex("document_embeddings_document_chunk_uq").on(table.documentId, table.chunkIndex),
+  byAssoc: index("document_embeddings_assoc_idx").on(table.associationId),
+}));
+
+export type DocumentEmbedding = typeof documentEmbeddings.$inferSelect;
+export type InsertDocumentEmbedding = typeof documentEmbeddings.$inferInsert;
+
+// ── Pressing items widget (founder-os#1256, Phase 1) ─────────────────────────
+//
+// Proactive surface — role-lensed feed of items requiring board attention.
+// Populated by the pressing-items scanner (server/services/pressing-items/
+// scanner.ts), refreshed every 15 min via the automation tick.
+export const pressingItems = pgTable("pressing_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  itemClass: text("item_class").notNull(),
+  severity: text("severity").notNull().default("medium"),
+  title: text("title").notNull(),
+  description: text("description"),
+  actorRole: text("actor_role").notNull().default("board"),
+  relatedRecordType: text("related_record_type"),
+  relatedRecordId: varchar("related_record_id"),
+  dedupeKey: text("dedupe_key"),
+  snoozedUntil: timestamp("snoozed_until"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueDedupe: uniqueIndex("pressing_items_assoc_dedupe_uq").on(table.associationId, table.dedupeKey),
+  byAssocRole: index("pressing_items_assoc_role_idx").on(table.associationId, table.actorRole),
+}));
+
+export type PressingItem = typeof pressingItems.$inferSelect;
+export type InsertPressingItem = typeof pressingItems.$inferInsert;
+export const insertPressingItemSchema = createInsertSchema(pressingItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type PressingItemClass =
+  | "unidentified_txn"
+  | "delinquency_rising"
+  | "document_attention"
+  | "compliance_deadline";
+
+export type PressingItemSeverity = "low" | "medium" | "high" | "critical";
+
+export type PressingItemActorRole = "treasurer" | "secretary" | "president" | "board";
+
+/** Per-role lens. `board` sees everything. */
+export const PRESSING_ITEM_ROLE_LENS: Record<PressingItemActorRole, PressingItemClass[]> = {
+  treasurer: ["unidentified_txn", "delinquency_rising"],
+  secretary: ["document_attention", "compliance_deadline"],
+  president: ["compliance_deadline", "delinquency_rising"],
+  board: ["unidentified_txn", "delinquency_rising", "document_attention", "compliance_deadline"],
+};
