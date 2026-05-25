@@ -70,11 +70,17 @@ async function buildAll() {
     },
     minify: true,
     // Wave 33 (5.4 Part B): mark `./seed` external so the dynamic
-    // `await import("./seed")` in server/index.ts resolves to a sibling
-    // CJS file at runtime instead of inlining ~120 KB of seed data into
-    // the main bundle. We compile that sibling as a second esbuild pass
-    // below.
-    external: [...externals, ...heavyTransitives, "./seed"],
+    // `await import("./seed.js")` in server/index.ts resolves to a
+    // sibling CJS file at runtime instead of inlining ~120 KB of seed
+    // data into the main bundle. We compile that sibling as a second
+    // esbuild pass below.
+    //
+    // founder-os#2472: the runtime specifier MUST be `./seed.js` (with
+    // extension). package.json has `"type": "module"`, so `await import()`
+    // invokes Node's ESM resolver, which requires explicit file extensions
+    // for relative paths. The previous bare `./seed` specifier threw
+    // ERR_MODULE_NOT_FOUND on every production boot — the seed never ran.
+    external: [...externals, ...heavyTransitives, "./seed", "./seed.js"],
     logLevel: "info",
   });
 
