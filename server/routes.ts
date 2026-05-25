@@ -13029,6 +13029,72 @@ This is an automated demo request from the Your Condo Manager website.
         .map((s) => s.nextRunDate ? new Date(s.nextRunDate) : null)
         .filter(Boolean)
         .sort((a, b) => a!.getTime() - b!.getTime())[0] ?? null;
+
+      // 2026-05-25 — Per-unit hierarchy for the My Finances page. Owners
+      // with multiple units saw three line items labeled "assessment"
+      // with no unit attribution; this groups entries by unitId + entry
+      // category so the portal can render a hierarchical breakdown. We
+      // resolve unit labels (`<building>-<unit>` format) by joining the
+      // owner's units in this association via `ownerships`. Categories
+      // mirror `ownerLedgerEntryTypeEnum`; absent categories are kept in
+      // the response with $0 so the UI can show "no HOA dues" rather
+      // than hide the line.
+      const unitIdsInLedger = Array.from(new Set(myEntries.map((e) => e.unitId)));
+      const ownerUnitRows = unitIdsInLedger.length > 0
+        ? await db
+            .select({
+              unitId: units.id,
+              unitNumber: units.unitNumber,
+              building: units.building,
+            })
+            .from(units)
+            .where(and(eq(units.associationId, req.portalAssociationId), inArray(units.id, unitIdsInLedger)))
+        : [];
+      const unitLabelMap = new Map(
+        ownerUnitRows.map((u) => [
+          u.unitId,
+          {
+            unitNumber: u.unitNumber ?? null,
+            building: u.building ?? null,
+            label: [u.building, u.unitNumber].filter(Boolean).join("-") || (u.unitNumber ?? "Unit"),
+          },
+        ]),
+      );
+      const CATEGORIES = ["charge", "assessment", "payment", "late-fee", "credit", "adjustment"] as const;
+      const byUnit = unitIdsInLedger
+        .map((unitId) => {
+          const unitEntries = myEntries.filter((e) => e.unitId === unitId);
+          const byCategory: Record<string, number> = {};
+          for (const cat of CATEGORIES) byCategory[cat] = 0;
+          for (const entry of unitEntries) {
+            byCategory[entry.entryType] = (byCategory[entry.entryType] ?? 0) + entry.amount;
+          }
+          const unitMeta = unitLabelMap.get(unitId);
+          return {
+            unitId,
+            unitLabel: unitMeta?.label ?? "Unit",
+            unitNumber: unitMeta?.unitNumber ?? null,
+            building: unitMeta?.building ?? null,
+            total: unitEntries.reduce((s, e) => s + e.amount, 0),
+            byCategory,
+            entries: unitEntries
+              .slice()
+              .sort((a, b) => {
+                const at = a.postedAt ? new Date(a.postedAt).getTime() : 0;
+                const bt = b.postedAt ? new Date(b.postedAt).getTime() : 0;
+                return bt - at;
+              })
+              .map((e) => ({
+                id: e.id,
+                entryType: e.entryType,
+                amount: e.amount,
+                postedAt: e.postedAt,
+                description: e.description,
+              })),
+          };
+        })
+        .sort((a, b) => (b.total - a.total) || a.unitLabel.localeCompare(b.unitLabel));
+
       res.json({
         balance,
         totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
@@ -13046,6 +13112,9 @@ This is an automated demo request from the Your Condo Manager website.
         } : null,
         recentEntries: myEntries.slice(-10),
         specialAssessmentUpcomingInstallments,
+        // 2026-05-25 — per-unit hierarchical breakdown (additive).
+        byUnit,
+        grandTotal: balance,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });

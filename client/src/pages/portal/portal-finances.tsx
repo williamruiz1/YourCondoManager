@@ -22,12 +22,77 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/empty-state";
 import { PortalAssessmentDetailDialog } from "@/components/portal-assessment-detail-dialog";
 import { VirtualizedLedgerTable } from "@/components/virtualized-ledger-table";
 import { PortalShell, usePortalContext } from "./portal-shell";
 import { t } from "@/i18n/use-strings";
+
+// 2026-05-25 — Per-unit hierarchical finances breakdown (William ratification
+// 2026-05-25). Owners with multiple units were seeing three line items all
+// labeled "assessment" with no unit attribution. The server now returns
+// `byUnit` on /api/portal/financial-dashboard; the hub renders a collapsible
+// card per unit with category split and entry detail.
+
+type FinanceCategoryKey = "charge" | "assessment" | "payment" | "late-fee" | "credit" | "adjustment";
+
+// 2026-05-25 — per coordinator correction: do not surface "late fees" yet.
+// All other categories stay visible (incl. $0) so the owner can see that
+// nothing is hidden. Late-fee data still flows through the server response;
+// it's just not rendered in the per-unit category split until enabled.
+const FINANCE_CATEGORY_ORDER: FinanceCategoryKey[] = [
+  "assessment",
+  "charge",
+  "payment",
+  "credit",
+  "adjustment",
+];
+
+const FINANCE_CATEGORY_LABEL: Record<FinanceCategoryKey, string> = {
+  assessment: "Assessment",
+  charge: "HOA dues",
+  "late-fee": "Late fee",
+  payment: "Payment",
+  credit: "Credit",
+  adjustment: "Adjustment",
+};
+
+// Stacked-bar segment colors — restrained palette per the wireframe.
+// Teal accent for the active "assessment" category; cooler tones for
+// regular charges; on-surface-variant for inactive categories.
+const FINANCE_CATEGORY_BAR_COLOR: Record<FinanceCategoryKey, string> = {
+  assessment: "bg-primary",
+  charge: "bg-primary/60",
+  "late-fee": "bg-destructive/70",
+  payment: "bg-emerald-500/70",
+  credit: "bg-emerald-400/60",
+  adjustment: "bg-on-surface-variant/40",
+};
+
+type FinanceUnitEntry = {
+  id: string;
+  entryType: FinanceCategoryKey | string;
+  amount: number;
+  postedAt: string | Date | null;
+  description: string | null;
+};
+
+type FinanceUnitBreakdown = {
+  unitId: string;
+  unitLabel: string;
+  unitNumber: string | null;
+  building: string | null;
+  total: number;
+  byCategory: Partial<Record<FinanceCategoryKey, number>>;
+  entries: FinanceUnitEntry[];
+};
 
 // 5.4-F7 (Wave 16b) — when a ledger has more than this many rows, use
 // `@tanstack/react-virtual` to keep only the visible window in the DOM.
@@ -51,6 +116,9 @@ type FinancialDashboard = {
     allocationMethod: string;
     allocationReason: string;
   }>;
+  // 2026-05-25 — additive, server-side per-unit grouping.
+  byUnit?: FinanceUnitBreakdown[];
+  grandTotal?: number;
 };
 
 type PaymentMethod = {
@@ -249,6 +317,192 @@ function PortalBankPaymentCard({ balance }: { balance: number }) {
   );
 }
 
+// ---------- Per-unit hierarchical breakdown (2026-05-25) ----------
+
+function formatCurrency(amount: number): string {
+  const abs = Math.abs(amount);
+  return abs.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Stacked horizontal bar showing how a unit's balance breaks down across
+ * categories. Renders even when only one category is present so the visual
+ * vocabulary stays consistent. Uses `aria-label` for screen-reader summary;
+ * the legend below the bar carries the keyed amounts.
+ */
+function CategoryStackedBar({
+  byCategory,
+  total,
+}: {
+  byCategory: Partial<Record<FinanceCategoryKey, number>>;
+  total: number;
+}) {
+  const totalForBar = FINANCE_CATEGORY_ORDER.reduce(
+    (sum, cat) => sum + Math.max(0, byCategory[cat] ?? 0),
+    0,
+  );
+  if (totalForBar <= 0) {
+    return (
+      <div
+        className="h-2 w-full rounded-full bg-surface-container"
+        aria-label="No outstanding categories"
+        data-testid="unit-category-bar-empty"
+      />
+    );
+  }
+  return (
+    <div
+      className="flex h-2 w-full overflow-hidden rounded-full bg-surface-container"
+      role="img"
+      aria-label={`Category split for ${formatCurrency(total)}`}
+      data-testid="unit-category-bar"
+    >
+      {FINANCE_CATEGORY_ORDER.map((cat) => {
+        const value = Math.max(0, byCategory[cat] ?? 0);
+        if (value <= 0) return null;
+        const pct = (value / totalForBar) * 100;
+        return (
+          <div
+            key={cat}
+            className={`${FINANCE_CATEGORY_BAR_COLOR[cat]} h-full`}
+            style={{ width: `${pct}%` }}
+            aria-label={`${FINANCE_CATEGORY_LABEL[cat]} ${formatCurrency(value)}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Per-unit collapsible card. Header always shows: unit label + total due.
+ * Expanded body shows the category breakdown (rendered for ALL categories,
+ * even those at $0 — per William's "where is HOA dues" question, make
+ * absence visible) plus the ledger entries scoped to this unit.
+ */
+function PerUnitFinanceCard({ unit }: { unit: FinanceUnitBreakdown }) {
+  const headerTotal = unit.total;
+  return (
+    <AccordionItem
+      value={unit.unitId}
+      className="overflow-hidden rounded-2xl border border-outline-variant/15 bg-surface !border-b"
+      data-testid={`portal-finances-unit-${unit.unitId}`}
+    >
+      <AccordionTrigger
+        className="px-5 py-4 hover:no-underline"
+        data-testid={`portal-finances-unit-${unit.unitId}-trigger`}
+      >
+        <div className="flex flex-1 items-center justify-between gap-4">
+          <div className="text-left">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+              Unit
+            </p>
+            <p className="font-headline text-xl text-on-surface" data-testid={`portal-finances-unit-${unit.unitId}-label`}>
+              {unit.unitLabel}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+              {headerTotal > 0 ? "Balance due" : "Balance"}
+            </p>
+            <p
+              className={`font-headline text-2xl ${headerTotal > 0 ? "text-destructive" : "text-on-surface"}`}
+              data-testid={`portal-finances-unit-${unit.unitId}-total`}
+            >
+              ${formatCurrency(headerTotal)}
+            </p>
+          </div>
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="px-5">
+        {/* Category split (stacked bar + legend) */}
+        <div className="space-y-3 border-t border-outline-variant/10 pt-4">
+          <CategoryStackedBar byCategory={unit.byCategory} total={headerTotal} />
+          <ul
+            className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2"
+            data-testid={`portal-finances-unit-${unit.unitId}-categories`}
+          >
+            {FINANCE_CATEGORY_ORDER.map((cat) => {
+              const value = unit.byCategory[cat] ?? 0;
+              return (
+                <li
+                  key={cat}
+                  className="flex items-center justify-between gap-3 text-sm"
+                  data-testid={`portal-finances-unit-${unit.unitId}-category-${cat}`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className={`inline-block h-2 w-2 rounded-full ${FINANCE_CATEGORY_BAR_COLOR[cat]} ${
+                        value <= 0 ? "opacity-30" : ""
+                      }`}
+                    />
+                    <span className={value > 0 ? "text-on-surface" : "text-on-surface-variant"}>
+                      {FINANCE_CATEGORY_LABEL[cat]}
+                    </span>
+                  </span>
+                  <span
+                    className={`font-medium tabular-nums ${value > 0 ? "text-on-surface" : "text-on-surface-variant"}`}
+                  >
+                    ${formatCurrency(value)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* Entry detail — the rows that produce the per-category totals. */}
+        {unit.entries.length > 0 ? (
+          <div className="mt-5">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+              Recent entries
+            </p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-24">Date</TableHead>
+                  <TableHead className="w-28">Type</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-28 text-right">Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unit.entries.slice(0, 8).map((entry) => (
+                  <TableRow key={entry.id} data-testid={`portal-finances-unit-${unit.unitId}-entry-${entry.id}`}>
+                    <TableCell className="text-xs text-on-surface-variant">
+                      {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <Badge variant="outline" className="capitalize">
+                        {String(entry.entryType).replace(/-/g, " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      ${formatCurrency(Number(entry.amount))}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <p
+            className="mt-5 text-xs text-on-surface-variant"
+            data-testid={`portal-finances-unit-${unit.unitId}-no-entries`}
+          >
+            No ledger entries for this unit.
+          </p>
+        )}
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
+
 // ---------- Hub surface (/portal/finances) ----------
 
 function FinancesHubContent() {
@@ -300,6 +554,13 @@ function FinancesHubContent() {
 
   const balance = dashboard?.balance ?? 0;
   const upcoming = dashboard?.specialAssessmentUpcomingInstallments ?? [];
+  const byUnit = dashboard?.byUnit ?? [];
+  // Default-expand the first unit (or all units if there are <= 3) so the
+  // owner sees the breakdown without having to click. Per the wireframe.
+  const defaultOpenUnits = useMemo(
+    () => (byUnit.length <= 3 ? byUnit.map((u) => u.unitId) : byUnit.slice(0, 1).map((u) => u.unitId)),
+    [byUnit],
+  );
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6" data-testid="portal-finances">
@@ -313,33 +574,51 @@ function FinancesHubContent() {
       </div>
 
       <section className="grid gap-4 md:grid-cols-3">
-        <Card>
+        {/* Cream balance hero per the wireframe — anchors the page so the
+            owner sees Total balance + unit count without scrolling. */}
+        <Card
+          className="border-primary/15 bg-primary/[0.06] md:col-span-1"
+          data-testid="portal-finances-balance-hero"
+        >
           <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.balanceDue")}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">
+              {byUnit.length > 1 ? "Total balance" : t("portal.finances.cards.balanceDue")}
+            </p>
             {/* Wave 25 — `text-secondary` resolves to a near-white tone in
                 light mode and fails WCAG AA color contrast (axe). Use the
                 standard on-surface foreground when there is no balance
                 due; the destructive tone stays for non-zero balance. */}
-            <p className={`mt-1 font-headline text-3xl ${balance > 0 ? "text-destructive" : "text-on-surface"}`} data-testid="portal-finances-balance">
-              ${Math.abs(balance).toFixed(2)}
+            <p
+              className={`mt-1 font-headline text-4xl md:text-5xl tabular-nums ${
+                balance > 0 ? "text-destructive" : "text-on-surface"
+              }`}
+              data-testid="portal-finances-balance"
+            >
+              ${formatCurrency(balance)}
             </p>
-            {dashboard?.nextDueDate ? (
-              <p className="mt-1 text-xs text-on-surface-variant">
-                Next due {new Date(dashboard.nextDueDate).toLocaleDateString()}
-              </p>
-            ) : null}
+            <p className="mt-2 text-xs text-on-surface-variant">
+              {byUnit.length > 0
+                ? `Across ${byUnit.length} ${byUnit.length === 1 ? "unit" : "units"}`
+                : null}
+              {dashboard?.nextDueDate ? (
+                <>
+                  {byUnit.length > 0 ? " · " : null}
+                  Next due {new Date(dashboard.nextDueDate).toLocaleDateString()}
+                </>
+              ) : null}
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-5">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalPaidYtd")}</p>
-            <p className="mt-1 font-headline text-3xl">${(dashboard?.totalPayments ?? 0).toFixed(2)}</p>
+            <p className="mt-1 font-headline text-3xl tabular-nums">${formatCurrency(dashboard?.totalPayments ?? 0)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-5">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalChargesYtd")}</p>
-            <p className="mt-1 font-headline text-3xl">${(dashboard?.totalCharges ?? 0).toFixed(2)}</p>
+            <p className="mt-1 font-headline text-3xl tabular-nums">${formatCurrency(dashboard?.totalCharges ?? 0)}</p>
           </CardContent>
         </Card>
       </section>
@@ -402,6 +681,42 @@ function FinancesHubContent() {
           </CardContent>
         </Card>
       </section>
+
+      {byUnit.length > 0 ? (
+        <section
+          data-testid="portal-finances-by-unit"
+          aria-labelledby="portal-finances-by-unit-heading"
+        >
+          <div className="mb-3 flex items-end justify-between gap-4">
+            <div>
+              <h2 id="portal-finances-by-unit-heading" className="font-headline text-lg">
+                By unit
+              </h2>
+              <p className="text-xs text-on-surface-variant">
+                {byUnit.length === 1
+                  ? "Breakdown for your unit."
+                  : `Breakdown across your ${byUnit.length} units.`}
+              </p>
+            </div>
+            <p
+              className="font-headline text-xl text-on-surface tabular-nums"
+              data-testid="portal-finances-by-unit-grand-total"
+            >
+              ${formatCurrency(dashboard?.grandTotal ?? balance)}
+            </p>
+          </div>
+          <Accordion
+            type="multiple"
+            defaultValue={defaultOpenUnits}
+            className="flex flex-col gap-3"
+            data-testid="portal-finances-by-unit-accordion"
+          >
+            {byUnit.map((unit) => (
+              <PerUnitFinanceCard key={unit.unitId} unit={unit} />
+            ))}
+          </Accordion>
+        </section>
+      ) : null}
 
       {upcoming.length > 0 ? (
         <section data-testid="portal-finances-upcoming-assessments" aria-labelledby="portal-finances-upcoming-heading">

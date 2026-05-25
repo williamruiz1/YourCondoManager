@@ -64,7 +64,14 @@ function installFetchStub(overrides: Record<string, unknown> = {}, handlers: Rec
     "/api/portal/maintenance-requests": [],
     "/api/portal/notices": [],
     "/api/portal/my-units": [{ unitId: "u-1", building: "A", unitNumber: "101", balance: 0 }],
-    "/api/portal/financial-dashboard": { balance: 0, totalCharges: 0, totalPayments: 0 },
+    "/api/portal/financial-dashboard": {
+      balance: 0,
+      totalCharges: 0,
+      totalPayments: 0,
+      // 2026-05-25 — per-unit hierarchical breakdown (additive).
+      byUnit: [],
+      grandTotal: 0,
+    },
     "/api/portal/elections": [],
     "/api/portal/elections/active": [],
     "/api/portal/amenities/settings": { amenitiesEnabled: true },
@@ -178,6 +185,104 @@ describe("Portal zone files — render under session + heading per 1.1 Q5", () =
     installFetchStub();
     renderAt("/portal/notices", <PortalNoticesPage />);
     await waitFor(() => expect(screen.getByTestId("portal-notices-heading")).toBeInTheDocument());
+  });
+});
+
+describe("Portal Finances — per-unit hierarchical breakdown (2026-05-25)", () => {
+  it("renders one collapsible card per unit with category split and entry detail", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 5618.61,
+        totalCharges: 5618.61,
+        totalPayments: 0,
+        grandTotal: 5618.61,
+        byUnit: [
+          {
+            unitId: "u-1417F",
+            unitLabel: "1417-F",
+            unitNumber: "F",
+            building: "1417",
+            total: 1525.42,
+            byCategory: { assessment: 1525.42, charge: 0, "late-fee": 0, payment: 0, credit: 0, adjustment: 0 },
+            entries: [
+              {
+                id: "e1",
+                entryType: "assessment",
+                amount: 1525.42,
+                postedAt: "2026-05-08T00:00:00.000Z",
+                description: "Imported balance — driveway assessment as of 2026-05-08 (overdue)",
+              },
+            ],
+          },
+          {
+            unitId: "u-1421B",
+            unitLabel: "1421-B",
+            unitNumber: "B",
+            building: "1421",
+            total: 2121.77,
+            byCategory: { assessment: 2121.77, charge: 0, "late-fee": 0, payment: 0, credit: 0, adjustment: 0 },
+            entries: [
+              {
+                id: "e2",
+                entryType: "assessment",
+                amount: 2121.77,
+                postedAt: "2026-05-08T00:00:00.000Z",
+                description: "Imported balance — driveway assessment as of 2026-05-08 (overdue)",
+              },
+            ],
+          },
+          {
+            unitId: "u-1421C",
+            unitLabel: "1421-C",
+            unitNumber: "C",
+            building: "1421",
+            total: 1971.42,
+            byCategory: { assessment: 1971.42, charge: 0, "late-fee": 0, payment: 0, credit: 0, adjustment: 0 },
+            entries: [
+              {
+                id: "e3",
+                entryType: "assessment",
+                amount: 1971.42,
+                postedAt: "2026-05-08T00:00:00.000Z",
+                description: "Imported balance — driveway assessment as of 2026-05-08 (overdue)",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
+
+    // Per-unit section is rendered with one card per unit (financial-dashboard
+    // resolves on a subsequent tick after the page mounts).
+    await waitFor(() => expect(screen.getByTestId("portal-finances-by-unit")).toBeInTheDocument());
+    expect(screen.getByTestId("portal-finances-unit-u-1417F-label")).toHaveTextContent("1417-F");
+    expect(screen.getByTestId("portal-finances-unit-u-1421B-label")).toHaveTextContent("1421-B");
+    expect(screen.getByTestId("portal-finances-unit-u-1421C-label")).toHaveTextContent("1421-C");
+
+    // Each unit shows its own total.
+    expect(screen.getByTestId("portal-finances-unit-u-1417F-total")).toHaveTextContent("1,525.42");
+    expect(screen.getByTestId("portal-finances-unit-u-1421B-total")).toHaveTextContent("2,121.77");
+    expect(screen.getByTestId("portal-finances-unit-u-1421C-total")).toHaveTextContent("1,971.42");
+
+    // Grand total is surfaced at the section header.
+    expect(screen.getByTestId("portal-finances-by-unit-grand-total")).toHaveTextContent("5,618.61");
+
+    // Category split visible even for $0 categories (e.g. HOA dues = charge).
+    // Per the coordinator update we do NOT surface late-fees yet.
+    expect(screen.getByTestId("portal-finances-unit-u-1417F-category-charge")).toBeInTheDocument();
+    expect(screen.queryByTestId("portal-finances-unit-u-1417F-category-late-fee")).not.toBeInTheDocument();
+  });
+
+  it("falls back gracefully when the server omits byUnit (legacy clients)", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": { balance: 0, totalCharges: 0, totalPayments: 0 },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
+    // The by-unit section should be absent when there are no units to show.
+    expect(screen.queryByTestId("portal-finances-by-unit")).not.toBeInTheDocument();
   });
 });
 
