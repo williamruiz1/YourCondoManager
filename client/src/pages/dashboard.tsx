@@ -33,6 +33,7 @@ import { Progress } from "@/components/ui/progress";
 import { useAssociationContext } from "@/context/association-context";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
+import { PressingItemsWidget } from "@/components/pressing-items/PressingItemsWidget";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
@@ -650,6 +651,14 @@ export default function DashboardPage() {
             : "Select an association to move from portfolio oversight into a scoped operating workspace."
         }
       />
+
+      {/* Pressing Items widget (founder-os#1256 Phase 1). Surfaces role-lensed
+          board-attention feed: unidentified txns, rising delinquency, vendor
+          insurance lapses, compliance deadlines. Snooze (no dismiss-forever)
+          per the locked Phase 1 picks. Scoped to the active association. */}
+      {activeAssociationId ? (
+        <PressingItemsWidget surface="admin" associationId={activeAssociationId} />
+      ) : null}
 
       {/* [4.4 Q2 AC 1-5] Post-signup onboarding banner — 4-item locked
           checklist, dismissible per admin user, no new /app/onboarding

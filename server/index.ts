@@ -19,6 +19,7 @@ import { runSweep as runUnifiedAssessmentSweep } from "./assessment-execution";
 import { fanOutCriticalAlerts } from "./alerts/notifications";
 import { runOnboardingReminderSweep } from "./services/onboarding-reminder-sweep";
 import { runBankFeedSweep } from "./services/bank-feed-sync";
+import { runPressingItemsSweep } from "./services/pressing-items/scanner";
 import { sendPlatformAdminEmailNotification } from "./admin-notification-service";
 import { recoverInFlightJobs } from "./job-queue";
 import { log } from "./logger";
@@ -220,7 +221,7 @@ async function runAutomationSweep() {
   // per-subsystem functions (runDueRecurringCharges,
   // runAutomaticSpecialAssessmentInstallments) were retired alongside the
   // Q8 run-endpoint shims and no longer exist in the bundle.
-  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut, accessReviewReminder, onboardingReminderResult, bankFeedSweepResult] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut, accessReviewReminder, onboardingReminderResult, bankFeedSweepResult, pressingItemsResult] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
     storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
@@ -270,10 +271,18 @@ async function runAutomationSweep() {
       console.error("[bank-feed-sync] sweep failed:", error);
       return { scanned: 0, synced: 0, skipped: 0, failed: 0, totalTransactions: 0, totalMatches: 0 };
     }),
+    // founder-os#1256 Phase 1 — Pressing Items scanner. Refreshes the
+    // role-lensed board-attention feed. Per-association failures are
+    // logged inside `scanAssociation`; this outer catch handles a
+    // catastrophic failure (e.g. DB outage) without jamming the sweep.
+    runPressingItemsSweep().catch((error: unknown) => {
+      console.error("[pressing-items] sweep failed:", error);
+      return { associationsScanned: 0, totalInserted: 0, totalUpdated: 0, totalResolved: 0 };
+    }),
   ]);
 
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}, access-review-reminder fired=${accessReviewReminder.fired} (${accessReviewReminder.reason}), onboarding-reminders scanned=${onboardingReminderResult.scanned} sent=${onboardingReminderResult.sent} failed=${onboardingReminderResult.failed} skipped=${onboardingReminderResult.skipped}, bank-feed-sync scanned=${bankFeedSweepResult.scanned} synced=${bankFeedSweepResult.synced} skipped=${bankFeedSweepResult.skipped} failed=${bankFeedSweepResult.failed} txns=${bankFeedSweepResult.totalTransactions} matches=${bankFeedSweepResult.totalMatches}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}, access-review-reminder fired=${accessReviewReminder.fired} (${accessReviewReminder.reason}), onboarding-reminders scanned=${onboardingReminderResult.scanned} sent=${onboardingReminderResult.sent} failed=${onboardingReminderResult.failed} skipped=${onboardingReminderResult.skipped}, bank-feed-sync scanned=${bankFeedSweepResult.scanned} synced=${bankFeedSweepResult.synced} skipped=${bankFeedSweepResult.skipped} failed=${bankFeedSweepResult.failed} txns=${bankFeedSweepResult.totalTransactions} matches=${bankFeedSweepResult.totalMatches}, pressing-items assoc=${pressingItemsResult.associationsScanned} inserted=${pressingItemsResult.totalInserted} updated=${pressingItemsResult.totalUpdated} resolved=${pressingItemsResult.totalResolved}`,
     "automation",
   );
 
