@@ -9,13 +9,16 @@ type DemoRequestModalProps = {
   onClose: () => void;
 };
 
+const EMPTY_FORM = {
+  name: "",
+  email: "",
+  association: "",
+  unitCount: "",
+  message: "",
+};
+
 export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalProps) {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    company: "",
-    message: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -49,7 +52,7 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
       }
 
       setSubmitted(true);
-      setFormData({ name: "", email: "", company: "", message: "" });
+      setFormData(EMPTY_FORM);
       setTimeout(onClose, 2000);
     } catch (err) {
       if (err instanceof TypeError && err.message === "Failed to fetch") {
@@ -65,10 +68,10 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-lg shadow-xl max-w-md w-full">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="talk-to-us-title">
+      <div className="bg-white dark:bg-slate-900 rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Schedule a Demo</h2>
+          <h2 id="talk-to-us-title" className="text-2xl font-bold text-ycm-navy dark:text-white">Talk to us</h2>
           <button
             onClick={onClose}
             className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
@@ -81,19 +84,20 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
         <div className="p-6">
           {submitted ? (
             <div className="text-center space-y-4">
-              <div className="text-4xl">✓</div>
-              <h3 className="font-semibold text-lg text-slate-900 dark:text-white">Thank you!</h3>
+              <div className="text-4xl" aria-hidden="true">✓</div>
+              <h3 className="font-semibold text-lg text-ycm-navy dark:text-white">Thank you!</h3>
               <p className="text-slate-600 dark:text-slate-400">
-                We'll be in touch soon to schedule your demo.
+                We've got your message and will be in touch shortly.
               </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="ttu-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Name *
                 </label>
                 <Input
+                  id="ttu-name"
                   type="text"
                   name="name"
                   value={formData.name}
@@ -105,10 +109,11 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="ttu-email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Email *
                 </label>
                 <Input
+                  id="ttu-email"
                   type="email"
                   name="email"
                   value={formData.email}
@@ -120,41 +125,60 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Company
+                <label htmlFor="ttu-association" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Association name
                 </label>
                 <Input
+                  id="ttu-association"
                   type="text"
-                  name="company"
-                  value={formData.company}
+                  name="association"
+                  value={formData.association}
                   onChange={handleChange}
-                  placeholder="Your association or company"
+                  placeholder="e.g. Cherry Hill Court Condominium"
                   disabled={loading}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="ttu-unitCount" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Number of units
+                </label>
+                <Input
+                  id="ttu-unitCount"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  name="unitCount"
+                  value={formData.unitCount}
+                  onChange={handleChange}
+                  placeholder="e.g. 24"
+                  disabled={loading}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="ttu-message" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Message
                 </label>
                 <Textarea
+                  id="ttu-message"
                   name="message"
                   value={formData.message}
                   onChange={handleChange}
-                  placeholder="Tell us about your needs..."
+                  placeholder="Tell us about your association and what you're looking for..."
                   className="h-20"
                   disabled={loading}
                 />
               </div>
 
-              {error && <p className="text-red-600 text-sm">{error}</p>}
+              {error && <p className="text-red-600 text-sm" role="alert">{error}</p>}
 
               <Button
                 type="submit"
                 className="w-full"
                 disabled={loading}
               >
-                {loading ? "Sending..." : "Request Demo"}
+                {loading ? "Sending..." : "Send message"}
               </Button>
             </form>
           )}

@@ -984,9 +984,21 @@ export const strings = {
   "landing.hero.subhead":
     "The definitive platform for modern property governance. Streamline operations, empower boards, and engage residents with structural clarity.",
   "landing.hero.cta.primary": "Get Started Free",
-  "landing.hero.cta.secondary": "Schedule Demo",
-  "landing.hero.image.alt":
-    "Modern architectural glass facade reflecting a clear blue sky with sophisticated structural lines and high-end professional aesthetic",
+  "landing.hero.cta.secondary": "Talk to us",
+  "landing.hero.image.alt": "Your Condo Manager logo — three stylized condo buildings in the brand slate-blue, teal, and navy palette",
+  "landing.hero.panel.tagline": "Built for self-managed condo boards",
+
+  // 3-feature value prop (brand v1 — founder-os#1024)
+  "landing.valueProp.heading": "What Your Condo Manager does for your association",
+  "landing.valueProp.financial.title": "Financials & banking",
+  "landing.valueProp.financial.body":
+    "Connect your association's accounts with Plaid, track dues and reserves, and reconcile every transaction — no spreadsheets, no surprises at audit time.",
+  "landing.valueProp.workflow.title": "Board & owner workflow",
+  "landing.valueProp.workflow.body":
+    "Run meetings, votes, maintenance requests, and document sharing in one place. Boards stay organized; owners always know what's happening.",
+  "landing.valueProp.ai.title": "AI-assisted operations",
+  "landing.valueProp.ai.body":
+    "Ask anything — current balance, bylaws, payment history, amenity bookings — and get an instant answer. Your association's AI assistant, built in.",
 
   "landing.persona.toggleLabel": "Tailored for you:",
   "landing.persona.whyPrefix": "Why",
@@ -1109,7 +1121,7 @@ export const strings = {
     "The modern platform for condo and HOA associations — built to handle finances, governance, residents, and maintenance in one place.",
   "landing.finalCta.viewPricing": "View pricing",
   "landing.finalCta.startTrial": "Start Your Free Trial",
-  "landing.finalCta.speakExpert": "Speak with an Expert",
+  "landing.finalCta.speakExpert": "Talk to us",
 
   // ---------------------------------------------------------------------
   // 39. Pricing (`/pricing`)

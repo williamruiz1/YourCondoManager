@@ -39,13 +39,18 @@ export function SiteFooter() {
             Company
           </h3>
           <ul className="space-y-4 text-sm">
-            {["About Us", "Careers", "Legal Resources", "Contact Us"].map((item, idx) => (
-              <li key={idx}>
+            {[
+              { label: "About Us", href: "#" },
+              { label: "Careers", href: "#" },
+              { label: "Legal Resources", href: "#" },
+              { label: "Contact Us", href: "mailto:contact@yourcondomanager.org" },
+            ].map((item) => (
+              <li key={item.label}>
                 <a
-                  href="#"
+                  href={item.href}
                   className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
                 >
-                  {item}
+                  {item.label}
                 </a>
               </li>
             ))}
@@ -58,14 +63,14 @@ export function SiteFooter() {
             </h3>
             <div className="flex gap-4">
               {[
-                { icon: "share", label: "Share" },
-                { icon: "podcasts", label: "Podcasts" },
-                { icon: "alternate_email", label: "Email" },
-              ].map((item, idx) => (
+                { icon: "share", label: "Share", href: "#" },
+                { icon: "podcasts", label: "Podcasts", href: "#" },
+                { icon: "alternate_email", label: "Email", href: "mailto:contact@yourcondomanager.org" },
+              ].map((item) => (
                 <a
-                  key={idx}
-                  href="#"
-                  aria-label={`Visit us on ${item.label}`}
+                  key={item.label}
+                  href={item.href}
+                  aria-label={item.href.startsWith("mailto:") ? "Email us at contact@yourcondomanager.org" : `Visit us on ${item.label}`}
                   className="w-8 h-8 rounded bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:bg-primary dark:hover:bg-primary hover:text-white transition-all focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <span className="material-symbols-outlined text-sm" aria-hidden="true">
