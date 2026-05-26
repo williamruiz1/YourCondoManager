@@ -1627,10 +1627,18 @@ export async function seedDatabase() {
         )
       : [];
 
-    // Build a unit-to-owner map for ballot tokens
-    const unitOwnerMap: { unitId: string; personId: string }[] = stOwnerships.map(o => ({
-      unitId: o.unitId, personId: o.personId,
-    }));
+    // Build a unit-to-owner map for ballot tokens — filtered to FK-valid entries only.
+    // stPersons may be a subset of stOwnerships if persons were deleted after ownerships
+    // were created (partial DB state). Including orphaned personIds here causes FK
+    // violations on electionBallotTokens.person_id → persons.id.
+    const stPersonIdSet = new Set(stPersons.map(p => String(p.id)));
+    const stUnitIdSet = new Set(stUnits.map(u => String(u.id)));
+    const unitOwnerMap: { unitId: string; personId: string }[] = stOwnerships
+      .map(o => ({ unitId: String(o.unitId), personId: String(o.personId) }))
+      .filter(o => stPersonIdSet.has(o.personId) && stUnitIdSet.has(o.unitId));
+    if (unitOwnerMap.length < stOwnerships.length) {
+      log(`[seed] elections :: ${stOwnerships.length - unitOwnerMap.length} ownership(s) skipped — FK parents (persons/units) not present`, "seed");
+    }
 
     // ── 4.1: Certified Board Election ──
     const [existingBoardElection] = await db.select().from(elections)
@@ -1680,7 +1688,12 @@ export async function seedDatabase() {
           status: "pending",
         });
       }
-      const insertedBoardTokens = await db.insert(electionBallotTokens).values(boardTokens).returning();
+      if (boardTokens.length === 0) {
+        log("[seed] elections :: board election — no FK-valid token owners, skipping ballot tokens", "seed");
+      }
+      const insertedBoardTokens = boardTokens.length > 0
+        ? await db.insert(electionBallotTokens).values(boardTokens).onConflictDoNothing().returning()
+        : [];
 
       // Cast ~70% of ballots with realistic vote distribution
       const castCount = Math.max(1, Math.round(insertedBoardTokens.length * 0.7));
@@ -1808,7 +1821,12 @@ export async function seedDatabase() {
           status: "pending",
         });
       }
-      const insertedRefTokens = await db.insert(electionBallotTokens).values(refTokens).returning();
+      if (refTokens.length === 0) {
+        log("[seed] elections :: referendum — no FK-valid token owners, skipping ballot tokens", "seed");
+      }
+      const insertedRefTokens = refTokens.length > 0
+        ? await db.insert(electionBallotTokens).values(refTokens).onConflictDoNothing().returning()
+        : [];
 
       // ~40% cast
       const refCastCount = Math.max(1, Math.round(insertedRefTokens.length * 0.4));
