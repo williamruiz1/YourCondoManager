@@ -171,6 +171,48 @@ vi.mock("../../services/stripe-connect-storage", () => ({
     }
     return rows;
   }),
+  findAssociationIdByConnectedAccount: vi.fn(async (accountId: string) => {
+    const connId = connectionByAccountId.get(accountId);
+    if (!connId) return null;
+    const conn = connectionsById.get(connId);
+    if (!conn) return null;
+    return { associationId: conn.associationId, connectionId: conn.id };
+  }),
+}));
+
+// founder-os#970 — reconciliation service is mocked at the route layer so no
+// real DB is touched; the service's own behavior is unit-tested separately in
+// server/services/__tests__/stripe-reconciliation.test.ts.
+const reconcileCalls: Array<Record<string, unknown>> = [];
+const chargeWriteCalls: Array<Record<string, unknown>> = [];
+let reconciliationReportFixture: unknown[] = [];
+vi.mock("../../services/stripe-reconciliation", () => ({
+  writeLedgerEntryForCharge: vi.fn(async (input: Record<string, unknown>) => {
+    chargeWriteCalls.push(input);
+    // Simulate idempotency: first time a charge id is seen → created; repeat → skipped.
+    const seen = chargeWriteCalls.filter((c) => c.chargeId === input.chargeId).length > 1;
+    if (!input.metadata || !(input.metadata as Record<string, string>).hoa_id) {
+      return { created: false, ledgerEntryId: null, skipped: "missing_metadata" };
+    }
+    return seen
+      ? { created: false, ledgerEntryId: `led_${input.chargeId}`, skipped: "already_exists" }
+      : { created: true, ledgerEntryId: `led_${input.chargeId}`, skipped: undefined };
+  }),
+  reconcilePayout: vi.fn(async (input: Record<string, unknown>) => {
+    reconcileCalls.push(input);
+    return {
+      payoutReconId: "rec_1",
+      payoutId: input.payoutId,
+      status: "paid",
+      chargeCount: 2,
+      grossAmountCents: 50000,
+      feeAmountCents: 2265,
+      netAmountCents: 47735,
+      varianceCents: 0,
+      ledgerEntriesCreated: 2,
+    };
+  }),
+  getReconciliationReport: vi.fn(async () => reconciliationReportFixture),
 }));
 
 // Now import the route registrar (mocks above must be set first).
@@ -233,6 +275,9 @@ beforeEach(() => {
   connectionsById.clear();
   connectionByAccountId.clear();
   stripeFetchCalls = [];
+  reconcileCalls.length = 0;
+  chargeWriteCalls.length = 0;
+  reconciliationReportFixture = [];
   stripeMockAccount = {
     id: "acct_test_001",
     charges_enabled: false,
@@ -393,9 +438,9 @@ describe("POST /api/webhooks/stripe-connect/account-updated", () => {
     });
   });
 
-  it("ignores non-account.updated event types", async () => {
+  it("ignores out-of-scope event types (e.g. payout.failed)", async () => {
     await withApp(async (url) => {
-      const event = { type: "charge.succeeded", data: { object: { id: "ch_x" } } };
+      const event = { type: "payout.failed", data: { object: { id: "po_x" } } };
       const rawBody = JSON.stringify(event);
       const sig = signEventBody(rawBody);
       const res = await fetch(`${url}/api/webhooks/stripe-connect/account-updated`, {
@@ -409,6 +454,209 @@ describe("POST /api/webhooks/stripe-connect/account-updated", () => {
       expect(res.status).toBe(200);
       const payload = (await res.json()) as { action: string };
       expect(payload.action).toBe("ignored");
+    });
+  });
+});
+
+// ── founder-os#970 / dispatch #3 — Gap C + payout reconciliation webhooks ─────
+describe("platform Connect webhook — charge.succeeded (Gap C)", () => {
+  function signEventBody(rawBody: string): string {
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = createHmac("sha256", PLATFORM_WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest("hex");
+    return `t=${ts},v1=${sig}`;
+  }
+  const fullMeta = { hoa_id: "assoc-1", owner_id: "per_1", unit_id: "unt_1", charge_type: "dues" };
+
+  it("writes a ledger entry immediately on charge.succeeded", async () => {
+    await withApp(async (url) => {
+      const event = {
+        id: "evt_1",
+        type: "charge.succeeded",
+        account: "acct_test_001",
+        data: { object: { id: "ch_1", amount: 35000, metadata: fullMeta } },
+      };
+      const rawBody = JSON.stringify(event);
+      const res = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+        body: rawBody,
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as { type: string; action: string; ledgerEntryId: string };
+      expect(payload.type).toBe("charge.succeeded");
+      expect(payload.action).toBe("ledger-written");
+      expect(chargeWriteCalls).toHaveLength(1);
+      expect(chargeWriteCalls[0].chargeId).toBe("ch_1");
+      expect(chargeWriteCalls[0].source).toBe("charge.succeeded");
+    });
+  });
+
+  it("does not double-write on webhook retry (idempotent)", async () => {
+    await withApp(async (url) => {
+      const event = {
+        id: "evt_2",
+        type: "charge.succeeded",
+        account: "acct_test_001",
+        data: { object: { id: "ch_retry", amount: 35000, metadata: fullMeta } },
+      };
+      const rawBody = JSON.stringify(event);
+      const post = () =>
+        fetch(`${url}/api/webhooks/stripe-connect/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+          body: rawBody,
+        });
+      const first = (await (await post()).json()) as { action: string };
+      const second = (await (await post()).json()) as { action: string };
+      expect(first.action).toBe("ledger-written");
+      expect(second.action).toBe("skipped:already_exists");
+    });
+  });
+
+  it("rejects an unsigned charge.succeeded event", async () => {
+    await withApp(async (url) => {
+      const res = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "charge.succeeded", data: { object: { id: "ch_z" } } }),
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+});
+
+describe("platform Connect webhook — payout.paid (reconciliation)", () => {
+  function signEventBody(rawBody: string): string {
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = createHmac("sha256", PLATFORM_WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest("hex");
+    return `t=${ts},v1=${sig}`;
+  }
+
+  async function seedActiveConnection(url: string) {
+    associationsById.set("assoc-1", { id: "assoc-1", name: "Cherry Hill Court Condominiums" });
+    await fetch(`${url}/api/financial/stripe-connect/onboarding-link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ associationId: "assoc-1" }),
+    });
+  }
+
+  it("reconciles a payout into the owning HOA", async () => {
+    await withApp(async (url) => {
+      await seedActiveConnection(url);
+      const event = {
+        id: "evt_po",
+        type: "payout.paid",
+        account: "acct_test_001",
+        data: { object: { id: "po_1", amount: 47735, currency: "usd", status: "paid", arrival_date: 1779400000 } },
+      };
+      const rawBody = JSON.stringify(event);
+      const res = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+        body: rawBody,
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as { action: string; summary: { varianceCents: number } };
+      expect(payload.action).toBe("reconciled");
+      expect(payload.summary.varianceCents).toBe(0);
+      expect(reconcileCalls).toHaveLength(1);
+      expect(reconcileCalls[0].connectedAccountId).toBe("acct_test_001");
+      expect(reconcileCalls[0].associationId).toBe("assoc-1");
+      expect(reconcileCalls[0].payoutId).toBe("po_1");
+    });
+  });
+
+  it("returns not-tracked when the connected account is unknown", async () => {
+    await withApp(async (url) => {
+      const event = {
+        id: "evt_po2",
+        type: "payout.paid",
+        account: "acct_unknown",
+        data: { object: { id: "po_2", amount: 1000, currency: "usd", status: "paid" } },
+      };
+      const rawBody = JSON.stringify(event);
+      const res = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+        body: rawBody,
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as { action: string };
+      expect(payload.action).toBe("not-tracked");
+      expect(reconcileCalls).toHaveLength(0);
+    });
+  });
+
+  it("400s a payout.paid event missing the connected account header", async () => {
+    await withApp(async (url) => {
+      const event = { id: "evt_po3", type: "payout.paid", data: { object: { id: "po_3", amount: 1000 } } };
+      const rawBody = JSON.stringify(event);
+      const res = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+        body: rawBody,
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+});
+
+describe("GET /api/financial/stripe-connect/reconciliation", () => {
+  it("returns payouts + portfolio totals + keyMode", async () => {
+    reconciliationReportFixture = [
+      {
+        id: "rec_1",
+        payoutId: "po_1",
+        associationId: "assoc-1",
+        connectedAccountId: "acct_test_001",
+        keyMode: "test",
+        status: "paid",
+        currency: "usd",
+        payoutAmountCents: 47735,
+        grossAmountCents: 50000,
+        feeAmountCents: 2265,
+        reconciledNetCents: 47735,
+        varianceCents: 0,
+        chargeCount: 2,
+        arrivalDate: null,
+        reconciledAt: null,
+        owners: [],
+      },
+    ];
+    await withApp(async (url) => {
+      const res = await fetch(`${url}/api/financial/stripe-connect/reconciliation?associationId=assoc-1`);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        keyMode: string;
+        payoutCount: number;
+        totals: { payoutAmountCents: number; varianceCents: number };
+        payouts: unknown[];
+      };
+      expect(body.payoutCount).toBe(1);
+      expect(body.totals.payoutAmountCents).toBe(47735);
+      expect(body.totals.varianceCents).toBe(0);
+      expect(body.keyMode).toBe("test");
+      expect(body.payouts).toHaveLength(1);
+    });
+  });
+});
+
+describe("GET /api/financial/stripe-connect/connections — keyMode (Gap D)", () => {
+  it("attaches the platform key mode to every connection row", async () => {
+    associationsById.set("assoc-1", { id: "assoc-1", name: "Cherry Hill" });
+    await withApp(async (url) => {
+      await fetch(`${url}/api/financial/stripe-connect/onboarding-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ associationId: "assoc-1" }),
+      });
+      const res = await fetch(`${url}/api/financial/stripe-connect/connections`);
+      expect(res.status).toBe(200);
+      const rows = (await res.json()) as Array<{ associationId: string; keyMode: string }>;
+      expect(rows).toHaveLength(1);
+      // PLATFORM_STRIPE_SECRET_KEY mock returns "sk_test_platform" → test mode.
+      expect(rows[0].keyMode).toBe("test");
     });
   });
 });

@@ -26,12 +26,20 @@ import {
 } from "../services/stripe-connect";
 import {
   applyAccountUpdated,
+  findAssociationIdByConnectedAccount,
   findConnectConnection,
   getAssociationById,
   listConnectConnections,
   upsertConnectConnection,
 } from "../services/stripe-connect-storage";
+import {
+  getReconciliationReport,
+  reconcilePayout,
+  writeLedgerEntryForCharge,
+} from "../services/stripe-reconciliation";
+import { getPlatformKeyMode } from "../services/stripe-connect";
 import { getSecret } from "../platform-secrets-store";
+import { log } from "../logger";
 
 export type AdminRequest = Request & {
   adminUserId?: string;
@@ -230,6 +238,10 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
 
   // ── GET /api/financial/stripe-connect/connections ─────────────────────────
   // Admin listing — Connect-mode connections with status at-a-glance.
+  // Per audit Gap D: each row carries `keyMode` (test/live) so an operator can
+  // tell a sandbox connection from a production one at a glance. keyMode is
+  // platform-wide (derived from the platform secret key) so it's attached at
+  // the response envelope AND mirrored onto each row for table rendering.
   app.get(
     "/api/financial/stripe-connect/connections",
     requireAdmin,
@@ -238,8 +250,11 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
       try {
         const associationId = getAssociationIdQuery(req) ?? null;
         if (associationId) assertAssociationScope(req, associationId);
-        const rows = await listConnectConnections(associationId);
-        return res.json(rows);
+        const [rows, keyMode] = await Promise.all([
+          listConnectConnections(associationId),
+          getPlatformKeyMode(),
+        ]);
+        return res.json(rows.map((row) => ({ ...row, keyMode })));
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         return res.status(500).json({ message: msg });
@@ -247,56 +262,163 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
     },
   );
 
-  // ── POST /api/webhooks/stripe-connect/account-updated ─────────────────────
-  // Platform-level Stripe Connect webhook. Fires whenever ANY connected
-  // account's state changes (charges_enabled, payouts_enabled, requirements).
-  // Separate from per-HOA webhooks at /api/webhooks/payments — those use
-  // each HOA's whsec; this one uses a single PLATFORM webhook secret.
-  app.post(
-    "/api/webhooks/stripe-connect/account-updated",
-    async (req: Request, res: Response) => {
+  // ── GET /api/financial/stripe-connect/reconciliation ──────────────────────
+  // Admin reconciliation report (spec §4.1 step 6): payouts per HOA, each
+  // expanded to a per-owner breakdown whose net total matches the bank deposit
+  // exactly (varianceCents == 0). Optional `?associationId=` scopes to one HOA;
+  // omitted = portfolio-wide (platform-admin only via scope assertion).
+  app.get(
+    "/api/financial/stripe-connect/reconciliation",
+    requireAdmin,
+    requireAdminRole(ADMIN_ROLES_READ),
+    async (req: AdminRequest, res: Response) => {
       try {
-        const signature = req.header("stripe-signature");
-        if (!signature) {
-          return res.status(400).json({ message: "Missing Stripe-Signature header" });
-        }
-        const secret =
-          (await getSecret("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET", "platform_stripe_connect_webhook_secret")) || "";
-        if (!secret) {
-          return res.status(503).json({ message: "Platform Stripe Connect webhook secret not configured" });
-        }
-        const rawBody = Buffer.isBuffer((req as Request & { rawBody?: Buffer }).rawBody)
-          ? (req as Request & { rawBody?: Buffer }).rawBody!.toString("utf8")
-          : JSON.stringify(req.body);
-        if (!verifyStripeWebhookSignature(rawBody, signature, secret)) {
-          return res.status(403).json({ message: "Invalid Stripe webhook signature" });
-        }
-
-        const event = req.body as { type?: string; data?: { object?: StripeAccountSnapshot } };
-        if (!event?.type) {
-          return res.status(400).json({ message: "Malformed Stripe event" });
-        }
-
-        // Only act on account.updated for Connect onboarding. Other Connect
-        // event types (capability.updated, etc.) are out of scope here.
-        if (event.type !== "account.updated") {
-          return res.status(200).json({ received: true, action: "ignored" });
-        }
-
-        const account = event.data?.object;
-        if (!account?.id) {
-          return res.status(400).json({ message: "Event missing account payload" });
-        }
-
-        const updated = await applyAccountUpdated(account);
-        return res.status(200).json({
-          received: true,
-          action: updated ? "applied" : "not-tracked",
-        });
+        const associationId = getAssociationIdQuery(req) ?? null;
+        if (associationId) assertAssociationScope(req, associationId);
+        const [payouts, keyMode] = await Promise.all([
+          getReconciliationReport(associationId),
+          getPlatformKeyMode(),
+        ]);
+        const totals = payouts.reduce(
+          (acc, p) => {
+            acc.payoutAmountCents += p.payoutAmountCents;
+            acc.reconciledNetCents += p.reconciledNetCents;
+            acc.varianceCents += p.varianceCents;
+            return acc;
+          },
+          { payoutAmountCents: 0, reconciledNetCents: 0, varianceCents: 0 },
+        );
+        return res.json({ keyMode, payoutCount: payouts.length, totals, payouts });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         return res.status(500).json({ message: msg });
       }
     },
   );
+
+  // ── Platform-level Stripe Connect webhook ─────────────────────────────────
+  // Fires for events on ANY connected account (event.account = acct_…).
+  // Verified with a single PLATFORM webhook secret — distinct from per-HOA
+  // webhooks at /api/webhooks/payments (those use each HOA's whsec).
+  //
+  // Handled event types:
+  //   account.updated  — onboarding KYC/payout/charges state (dispatch #1)
+  //   charge.succeeded — Gap C: write the owner ledger entry immediately so
+  //                      balances don't go stale waiting for the daily payout
+  //   payout.paid      — explode the payout into per-owner ledger entries +
+  //                      persist the reconciliation breakdown (spec §4.1)
+  //
+  // Registered at two paths: the original `/account-updated` (backward compat
+  // with the dispatch-#1 webhook config) and the general `/events` path. Both
+  // dispatch identically, so the Stripe dashboard may point at either.
+  const handlePlatformConnectWebhook = async (req: Request, res: Response) => {
+    try {
+      const signature = req.header("stripe-signature");
+      if (!signature) {
+        return res.status(400).json({ message: "Missing Stripe-Signature header" });
+      }
+      const secret =
+        (await getSecret("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET", "platform_stripe_connect_webhook_secret")) || "";
+      if (!secret) {
+        return res.status(503).json({ message: "Platform Stripe Connect webhook secret not configured" });
+      }
+      const rawBody = Buffer.isBuffer((req as Request & { rawBody?: Buffer }).rawBody)
+        ? (req as Request & { rawBody?: Buffer }).rawBody!.toString("utf8")
+        : JSON.stringify(req.body);
+      if (!verifyStripeWebhookSignature(rawBody, signature, secret)) {
+        return res.status(403).json({ message: "Invalid Stripe webhook signature" });
+      }
+
+      const event = req.body as {
+        id?: string;
+        type?: string;
+        account?: string; // the connected account the event belongs to
+        data?: { object?: Record<string, unknown> };
+      };
+      if (!event?.type) {
+        return res.status(400).json({ message: "Malformed Stripe event" });
+      }
+      const connectedAccountId = typeof event.account === "string" ? event.account : null;
+
+      switch (event.type) {
+        case "account.updated": {
+          const account = event.data?.object as StripeAccountSnapshot | undefined;
+          if (!account?.id) {
+            return res.status(400).json({ message: "Event missing account payload" });
+          }
+          const updated = await applyAccountUpdated(account);
+          return res.status(200).json({
+            received: true,
+            type: event.type,
+            action: updated ? "applied" : "not-tracked",
+          });
+        }
+
+        case "charge.succeeded": {
+          // Gap C — write the ledger entry immediately (don't wait for payout).
+          const charge = event.data?.object as
+            | { id?: string; amount?: number; metadata?: Record<string, string> | null }
+            | undefined;
+          if (!charge?.id) {
+            return res.status(400).json({ message: "Event missing charge payload" });
+          }
+          const result = await writeLedgerEntryForCharge({
+            chargeId: charge.id,
+            amountCents: typeof charge.amount === "number" ? charge.amount : 0,
+            metadata: charge.metadata,
+            source: "charge.succeeded",
+          });
+          return res.status(200).json({
+            received: true,
+            type: event.type,
+            action: result.created ? "ledger-written" : `skipped:${result.skipped ?? "unknown"}`,
+            ledgerEntryId: result.ledgerEntryId,
+          });
+        }
+
+        case "payout.paid": {
+          const payout = event.data?.object as
+            | { id?: string; amount?: number; currency?: string; status?: string; arrival_date?: number }
+            | undefined;
+          if (!payout?.id) {
+            return res.status(400).json({ message: "Event missing payout payload" });
+          }
+          if (!connectedAccountId) {
+            // payout.paid is always a connected-account event; without the
+            // account header we cannot attribute it to a HOA.
+            return res.status(400).json({ message: "payout.paid event missing connected account" });
+          }
+          const resolved = await findAssociationIdByConnectedAccount(connectedAccountId);
+          if (!resolved) {
+            log(`[payout.paid] no association for connected account ${connectedAccountId}`, "stripe-recon");
+            return res.status(200).json({ received: true, type: event.type, action: "not-tracked" });
+          }
+          const summary = await reconcilePayout({
+            connectedAccountId,
+            payoutId: payout.id,
+            associationId: resolved.associationId,
+            payout: {
+              id: payout.id,
+              amount: typeof payout.amount === "number" ? payout.amount : 0,
+              currency: payout.currency ?? "usd",
+              status: payout.status,
+              arrival_date: payout.arrival_date,
+            },
+          });
+          return res.status(200).json({ received: true, type: event.type, action: "reconciled", summary });
+        }
+
+        default:
+          // Other Connect event types (capability.updated, payout.failed, etc.)
+          // are out of scope for this dispatch.
+          return res.status(200).json({ received: true, type: event.type, action: "ignored" });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      return res.status(500).json({ message: msg });
+    }
+  };
+
+  app.post("/api/webhooks/stripe-connect/account-updated", handlePlatformConnectWebhook);
+  app.post("/api/webhooks/stripe-connect/events", handlePlatformConnectWebhook);
 }
