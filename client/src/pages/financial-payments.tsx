@@ -288,6 +288,8 @@ interface StripeConnectConnectionView {
   associationName: string | null;
   providerAccountId: string | null;
   isActive: number;
+  // Gap D — platform key mode (test/live) surfaced at-a-glance per the audit.
+  keyMode?: "test" | "live" | "unknown";
   connectState: {
     mode: "connect";
     status: "pending" | "active" | "restricted" | "disabled";
@@ -308,6 +310,19 @@ function statusBadgeVariant(
   if (status === "active") return "default";
   if (status === "disabled" || status === "restricted") return "destructive";
   return "secondary";
+}
+
+// Gap D — visually distinguish a sandbox connection from a production one.
+// Live = neutral/default; Test = amber "secondary" so a test connection in a
+// production-looking screen is impossible to mistake for live.
+function KeyModeBadge({ keyMode }: { keyMode?: "test" | "live" | "unknown" }) {
+  if (!keyMode || keyMode === "unknown") {
+    return <Badge variant="outline" data-testid="badge-key-mode-unknown">unknown</Badge>;
+  }
+  if (keyMode === "live") {
+    return <Badge variant="default" data-testid="badge-key-mode-live">LIVE</Badge>;
+  }
+  return <Badge variant="secondary" data-testid="badge-key-mode-test">TEST</Badge>;
 }
 
 function StripeConnectSection({ associationId }: { associationId: string | null }) {
@@ -367,9 +382,12 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
             <div className="rounded-lg border p-3 space-y-2" data-testid="row-stripe-connect-status">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Current status</p>
-                <Badge variant={statusBadgeVariant(associationConnection.connectState.status)}>
-                  {associationConnection.connectState.status}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <KeyModeBadge keyMode={associationConnection.keyMode} />
+                  <Badge variant={statusBadgeVariant(associationConnection.connectState.status)}>
+                    {associationConnection.connectState.status}
+                  </Badge>
+                </div>
               </div>
               {associationConnection.providerAccountId && (
                 <p className="text-xs text-muted-foreground">
@@ -430,6 +448,7 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
                     <TableHead>HOA</TableHead>
                     <TableHead>Stripe account</TableHead>
                     <TableHead>Statement descriptor</TableHead>
+                    <TableHead>Mode</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -439,6 +458,7 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
                       <TableCell className="font-medium">{c.associationName ?? c.associationId}</TableCell>
                       <TableCell><code className="text-xs">{c.providerAccountId ?? "—"}</code></TableCell>
                       <TableCell><code className="text-xs">{c.connectState.statementDescriptor ?? "—"}</code></TableCell>
+                      <TableCell><KeyModeBadge keyMode={c.keyMode} /></TableCell>
                       <TableCell>
                         <Badge variant={statusBadgeVariant(c.connectState.status)}>
                           {c.connectState.status}
@@ -452,7 +472,206 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
           </CardContent>
         </Card>
       )}
+
+      <PayoutReconciliationSection associationId={associationId} />
     </div>
+  );
+}
+
+// ── Stripe payout reconciliation report (founder-os#970 / spec §4.1) ─────────
+// Per HOA → per payout → owner-level breakdown. The headline metric is
+// VARIANCE: when reconciledNet == payoutAmount the per-owner ledger entries
+// match the bank deposit exactly (zero variance). A non-zero variance flags a
+// payout whose books don't tie out — the operator's signal to investigate.
+
+interface ReconciliationOwnerRow {
+  ownerId: string | null;
+  ownerName: string | null;
+  unitLabel: string | null;
+  chargeType: string | null;
+  chargeId: string;
+  grossAmountCents: number;
+  feeAmountCents: number;
+  netAmountCents: number;
+  ledgerEntryId: string | null;
+  reconciled: boolean;
+}
+
+interface ReconciliationPayout {
+  id: string;
+  payoutId: string;
+  associationId: string;
+  connectedAccountId: string | null;
+  keyMode: string | null;
+  status: string;
+  currency: string;
+  payoutAmountCents: number;
+  grossAmountCents: number;
+  feeAmountCents: number;
+  reconciledNetCents: number;
+  varianceCents: number;
+  chargeCount: number;
+  arrivalDate: string | null;
+  reconciledAt: string | null;
+  owners: ReconciliationOwnerRow[];
+}
+
+interface ReconciliationResponse {
+  keyMode: "test" | "live" | "unknown";
+  payoutCount: number;
+  totals: { payoutAmountCents: number; reconciledNetCents: number; varianceCents: number };
+  payouts: ReconciliationPayout[];
+}
+
+function centsToUsd(cents: number): string {
+  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function PayoutReconciliationSection({ associationId }: { associationId: string | null }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<"all" | "reconciled" | "unreconciled">("all");
+
+  const { data, isLoading } = useQuery<ReconciliationResponse>({
+    queryKey: [associationId
+      ? `/api/financial/stripe-connect/reconciliation?associationId=${associationId}`
+      : "/api/financial/stripe-connect/reconciliation"],
+  });
+
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const payouts = (data?.payouts ?? []).filter((p) => {
+    if (filter === "reconciled") return p.varianceCents === 0;
+    if (filter === "unreconciled") return p.varianceCents !== 0;
+    return true;
+  });
+
+  return (
+    <Card data-testid="card-payout-reconciliation">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <CardTitle className="text-sm">Payout reconciliation</CardTitle>
+            <CardDescription>
+              When a Stripe payout lands in the HOA's bank, YCM explodes it back into one ledger entry per
+              owner. The per-owner net totals should match the bank deposit exactly.
+            </CardDescription>
+          </div>
+          {data && (
+            <div className="flex items-center gap-2">
+              <KeyModeBadge keyMode={data.keyMode} />
+              <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+                <SelectTrigger className="h-8 w-[170px]" data-testid="select-reconciliation-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All payouts</SelectItem>
+                  <SelectItem value="reconciled">Reconciled (variance 0)</SelectItem>
+                  <SelectItem value="unreconciled">Unreconciled (variance ≠ 0)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="h-10 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+            ))}
+          </div>
+        ) : payouts.length === 0 ? (
+          <EmptyState
+            icon={RefreshCw}
+            title="No payouts to reconcile yet"
+            description="Once Stripe sends the first payout to a connected HOA's bank, its owner-level breakdown appears here."
+            testId="empty-state-reconciliation"
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Payout</TableHead>
+                <TableHead>Arrived</TableHead>
+                <TableHead className="text-right">Owners</TableHead>
+                <TableHead className="text-right">Bank deposit</TableHead>
+                <TableHead className="text-right">Reconciled net</TableHead>
+                <TableHead className="text-right">Variance</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {payouts.map((p) => (
+                <Fragment key={p.id}>
+                  <TableRow
+                    className="cursor-pointer"
+                    onClick={() => toggle(p.id)}
+                    data-testid={`row-payout-${p.id}`}
+                  >
+                    <TableCell className="font-medium">
+                      <code className="text-xs">{p.payoutId}</code>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {p.arrivalDate ? new Date(p.arrivalDate).toLocaleDateString() : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">{p.chargeCount}</TableCell>
+                    <TableCell className="text-right">{centsToUsd(p.payoutAmountCents)}</TableCell>
+                    <TableCell className="text-right">{centsToUsd(p.reconciledNetCents)}</TableCell>
+                    <TableCell className="text-right">
+                      <Badge
+                        variant={p.varianceCents === 0 ? "default" : "destructive"}
+                        data-testid={`badge-variance-${p.id}`}
+                      >
+                        {centsToUsd(p.varianceCents)}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                  {expanded.has(p.id) && (
+                    <TableRow data-testid={`row-payout-detail-${p.id}`}>
+                      <TableCell colSpan={6} className="bg-muted/30 p-0">
+                        <div className="p-3">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Owner</TableHead>
+                                <TableHead>Unit</TableHead>
+                                <TableHead>Type</TableHead>
+                                <TableHead className="text-right">Gross</TableHead>
+                                <TableHead className="text-right">Fees</TableHead>
+                                <TableHead className="text-right">Net</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {p.owners.map((o) => (
+                                <TableRow key={o.chargeId} data-testid={`row-owner-${o.chargeId}`}>
+                                  <TableCell className="font-medium">{o.ownerName ?? o.ownerId ?? "—"}</TableCell>
+                                  <TableCell>{o.unitLabel ?? "—"}</TableCell>
+                                  <TableCell>{o.chargeType ?? "—"}</TableCell>
+                                  <TableCell className="text-right">{centsToUsd(o.grossAmountCents)}</TableCell>
+                                  <TableCell className="text-right text-muted-foreground">
+                                    {centsToUsd(o.feeAmountCents)}
+                                  </TableCell>
+                                  <TableCell className="text-right">{centsToUsd(o.netAmountCents)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
