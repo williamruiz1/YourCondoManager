@@ -54,6 +54,10 @@ CREATE INDEX IF NOT EXISTS pressing_items_assoc_role_idx
     ON pressing_items (association_id, actor_role)
     WHERE resolved_at IS NULL;
 
+-- Note: original predicate included `snoozed_until < NOW()` but Postgres
+-- requires functions in index predicates to be IMMUTABLE; NOW() is STABLE.
+-- The snoozed-until filter is applied at query time instead. Index narrows
+-- to non-resolved rows; query-time filter on snoozed_until covers the rest.
 CREATE INDEX IF NOT EXISTS pressing_items_assoc_visible_idx
     ON pressing_items (association_id, severity, created_at DESC)
-    WHERE resolved_at IS NULL AND (snoozed_until IS NULL OR snoozed_until < NOW());
+    WHERE resolved_at IS NULL;
