@@ -37,6 +37,8 @@ import type { AdminRole } from "@shared/schema";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const SolutionsPage = lazy(() => import("@/pages/solutions"));
+// founder-os#1025 — printable sales one-pager (PDF + web), CT/DE board outreach.
+const SalesOnepagerPage = lazy(() => import("@/pages/sales-onepager"));
 const WorkspacePreviewPage = lazy(() => import("@/pages/workspace-preview"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const OperationsDashboardPage = lazy(() => import("@/pages/operations-dashboard"));
@@ -569,6 +571,15 @@ function PublicRouter({
         </Route>
         <Route path="/solutions">
           <SolutionsPage
+            hasWorkspaceAccess={hasWorkspaceAccess}
+            onStartGoogleSignIn={onStartGoogleSignIn}
+          />
+        </Route>
+        {/* founder-os#1025 — sales one-pager (public; no auth gate, same as
+            /pricing and /solutions). Renders the same copy as the downloadable
+            PDF from docs/sales/onepager.md. */}
+        <Route path="/sales-onepager">
+          <SalesOnepagerPage
             hasWorkspaceAccess={hasWorkspaceAccess}
             onStartGoogleSignIn={onStartGoogleSignIn}
           />
