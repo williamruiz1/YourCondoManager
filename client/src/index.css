@@ -208,6 +208,30 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+/*
+ * YCM brand v1 marketing scope (founder-os#1024 Phase 1.B).
+ *
+ * The public marketing surface (landing.tsx) opts into the ratified brand v1
+ * palette by wrapping its root in `.ycm-marketing`. We override only the
+ * CSS-variable-backed semantic tokens that the marketing page consumes via
+ * `*-primary` / `*-ring` utilities — the app shell (which renders OUTSIDE this
+ * scope) keeps the existing blue palette untouched. Brand rollout into the app
+ * is a Phase 2 decision (per the ycm.* token comment in tailwind.config.ts).
+ *
+ * Token → brand mapping (HSL channels matching index.css token format):
+ *   --primary             → navy #0B1B3B  (220 69% 14%) — AA-safe white-on-navy
+ *                            buttons + readable navy text-primary on white
+ *   --primary-foreground  → cool-white #F6F9FF (220 100% 98%)
+ *   --ring                → teal #2DBDB0  (175 62% 46%) — brand focus ring
+ * Sky / teal / cream accents are applied directly in landing.tsx via the
+ * `ycm.*` tailwind utilities (bg-ycm-sky, text-ycm-teal, etc.).
+ */
+.ycm-marketing {
+  --primary: 220 69% 14%;
+  --primary-foreground: 220 100% 98%;
+  --ring: 175 62% 46%;
+}
+
 @layer base {
   * {
     @apply border-border;

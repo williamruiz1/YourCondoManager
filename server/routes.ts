@@ -10821,7 +10821,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
       const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+      // "Talk to us" marketing form (founder-os#1024) sends `association` +
+      // `unitCount`; older callers may still send `company`. Accept both so the
+      // endpoint is backward-compatible.
+      const association = typeof req.body?.association === "string" ? req.body.association.trim() : "";
       const company = typeof req.body?.company === "string" ? req.body.company.trim() : "";
+      const associationName = association || company;
+      const unitCount = (typeof req.body?.unitCount === "string" || typeof req.body?.unitCount === "number")
+        ? String(req.body.unitCount).trim()
+        : "";
       const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
 
       if (!name || !email) {
@@ -10835,24 +10843,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Send email to admin
       const emailBody = `
-Demo Request from Your Condo Manager Website
+New "Talk to us" enquiry from the Your Condo Manager website
 
 Name: ${name}
 Email: ${email}
-Company: ${company || "Not provided"}
+Association: ${associationName || "Not provided"}
+Units: ${unitCount || "Not provided"}
 
 Message:
 ${message || "No message provided"}
 
 ---
-This is an automated demo request from the Your Condo Manager website.
+This is an automated enquiry from the Your Condo Manager marketing site.
       `.trim();
 
       const notification = await sendPlatformAdminEmailNotification({
         category: "platformOps",
         priority: "realtime",
         email: {
-          subject: `New Demo Request: ${name}`,
+          subject: `New enquiry: ${name}${associationName ? ` — ${associationName}` : ""}`,
           text: emailBody,
           replyTo: email,
         },
@@ -10861,13 +10870,13 @@ This is an automated demo request from the Your Condo Manager website.
       if (notification.recipients.length === 0) {
         await sendPlatformEmail({
           to: "contact@yourcondomanager.org",
-          subject: `New Demo Request: ${name}`,
+          subject: `New enquiry: ${name}${associationName ? ` — ${associationName}` : ""}`,
           text: emailBody,
           replyTo: email,
         });
       }
 
-      res.json({ success: true, message: "Demo request submitted successfully" });
+      res.json({ success: true, message: "Enquiry submitted successfully" });
     } catch (error: any) {
       console.error("Demo request error:", error);
       res.status(500).json({ message: error.message || "Failed to submit demo request" });

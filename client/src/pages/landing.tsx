@@ -6,8 +6,10 @@ import {
   DollarSign,
   FileArchive,
   FileText,
+  Landmark,
   Menu,
   MessageSquare,
+  Sparkles,
   Users,
   Wrench,
   X,
@@ -18,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { SiteFooter } from "@/components/site-footer";
+import { BrandMark } from "@/components/brand-mark";
 import DemoRequestModal from "@/components/demo-request-modal";
 import { useStrings } from "@/i18n/use-strings";
 
@@ -203,7 +206,7 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950">
+    <div className="ycm-marketing min-h-screen bg-white dark:bg-slate-950">
 
       {/* Skip to main content */}
       <a
@@ -216,9 +219,10 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
       {/* ── NAVIGATION ── */}
       <header className="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm dark:shadow-none">
         <div className="mx-auto max-w-7xl px-6 md:px-10 lg:px-12 h-16 flex items-center justify-between gap-6">
-          {/* Logo */}
-          <Link href="/" className="shrink-0">
-            <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 font-serif italic">{t("marketing.brand")}</span>
+          {/* Logo — brand v1 mark + wordmark (founder-os#1024) */}
+          <Link href="/" className="shrink-0 flex items-center gap-2.5" aria-label={t("marketing.brand")}>
+            <BrandMark decorative className="h-9 w-9" />
+            <span className="text-xl font-semibold tracking-tight text-ycm-navy dark:text-slate-100">{t("marketing.brand")}</span>
           </Link>
 
           {/* Nav links — desktop */}
@@ -226,19 +230,19 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
             <Link
               href="/"
               aria-current="page"
-              className="text-blue-700 dark:text-blue-400 font-bold border-b-2 border-blue-700 dark:border-blue-400 pb-1"
+              className="text-ycm-navy dark:text-slate-100 font-bold border-b-2 border-ycm-teal pb-1"
             >
               {t("marketing.nav.platform")}
             </Link>
             <Link
               href="/solutions"
-              className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
+              className="text-slate-600 dark:text-slate-400 font-medium hover:text-ycm-navy dark:hover:text-slate-100 transition-colors duration-300"
             >
               {t("marketing.nav.solutions")}
             </Link>
             <Link
               href="/pricing"
-              className="text-slate-600 dark:text-slate-400 font-medium hover:text-blue-600 transition-colors duration-300"
+              className="text-slate-600 dark:text-slate-400 font-medium hover:text-ycm-navy dark:hover:text-slate-100 transition-colors duration-300"
             >
               {t("marketing.nav.pricing")}
             </Link>
@@ -320,7 +324,7 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
       <section className="relative px-8 py-12 md:py-20 max-w-7xl mx-auto overflow-hidden pt-24 md:pt-28">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div className="z-10">
-            <span className="inline-block px-3 py-1 bg-secondary-container text-on-secondary-container rounded-full text-xs font-bold tracking-widest uppercase mb-4">{t("landing.hero.eyebrow")}</span>
+            <span className="inline-block px-3 py-1 bg-ycm-sky/15 text-ycm-navy rounded-full text-xs font-bold tracking-widest uppercase mb-4">{t("landing.hero.eyebrow")}</span>
             <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-bold leading-tight text-on-surface mb-6">
               {t("landing.hero.headlineLead")} <span className="text-primary italic">{t("landing.hero.headlineEmphasis")}</span>
             </h1>
@@ -336,7 +340,7 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
                 </Button>
               ) : (
                 <>
-                  <button className="bg-gradient-to-r from-primary to-primary-container text-white px-8 py-4 rounded-lg font-bold flex items-center gap-2 hover:opacity-90 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={onStartGoogleSignIn} data-testid="button-landing-google-signin">
+                  <button className="bg-gradient-to-r from-ycm-navy to-ycm-sky text-white px-8 py-4 rounded-lg font-bold flex items-center gap-2 hover:opacity-90 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ycm-teal" onClick={onStartGoogleSignIn} data-testid="button-landing-google-signin">
                     {t("landing.hero.cta.primary")}
                     <span className="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
                   </button>
@@ -347,12 +351,38 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
               )}
             </div>
           </div>
+          {/* Brand v1 hero panel — logo mark on slate-sky gradient (no stock imagery, founder-os#1024) */}
           <div className="relative lg:block hidden">
-            <div className="absolute -inset-4 bg-primary-container/5 rounded-xl blur-3xl"></div>
-            <div className="relative bg-surface-container-lowest rounded-xl overflow-hidden shadow-lg border border-outline-variant/20">
-              <img className="w-full h-[400px] object-cover opacity-90" alt={t("landing.hero.image.alt")} src="https://lh3.googleusercontent.com/aida-public/AB6AXuDORRxFHQEQQgLB-LIhVTxXwSjX3PFwaeqJK47VYkPcV7-8kExURnYNhcett0B3XsY4Furz0oLDNIL-hv5Gb-CtAJH4O1AQTQEiZegVanQLHzPcE9R5gOcmtSizhcBoPPEw0nyDF5-NDpn_MBo8VnLFFGCe_W0Hr6ohoNeQqB_gs0bschoj3OyC0Ky9FESgTtEANJ0OMhmC_OsDwF8NH4wwFLcjU8Nvh5tQ7evgrRtIJUHxITX__w9M_c4mPyGx2b123CkVsDXtk84" />
+            <div className="absolute -inset-4 bg-ycm-sky/10 rounded-2xl blur-3xl" aria-hidden="true"></div>
+            <div className="relative rounded-2xl overflow-hidden shadow-lg border border-ycm-sky/20 bg-gradient-to-br from-ycm-sky to-ycm-navy p-10 h-[400px] flex flex-col items-center justify-center text-center">
+              <BrandMark forceTheme="light" decorative className="h-44 w-44 drop-shadow-md" />
+              <p className="mt-6 text-ycm-cool-white text-xl font-serif font-semibold tracking-tight">{t("marketing.brand")}</p>
+              <p className="mt-1 text-ycm-cream/90 text-sm font-medium">{t("landing.hero.panel.tagline")}</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── 3-FEATURE VALUE PROP (brand v1, founder-os#1024) ── */}
+      <section aria-labelledby="value-prop-heading" className="max-w-7xl mx-auto px-8 pb-8 md:pb-12">
+        <h2 id="value-prop-heading" className="sr-only">{t("landing.valueProp.heading")}</h2>
+        <div className="grid md:grid-cols-3 gap-6">
+          {[
+            { icon: Landmark, title: t("landing.valueProp.financial.title"), body: t("landing.valueProp.financial.body") },
+            { icon: Users, title: t("landing.valueProp.workflow.title"), body: t("landing.valueProp.workflow.body") },
+            { icon: Sparkles, title: t("landing.valueProp.ai.title"), body: t("landing.valueProp.ai.body") },
+          ].map((f) => {
+            const Icon = f.icon;
+            return (
+              <div key={f.title} className="rounded-2xl border border-ycm-sky/15 bg-ycm-cool-white p-6 shadow-sm">
+                <div className="w-12 h-12 rounded-xl bg-ycm-teal/15 text-ycm-navy flex items-center justify-center mb-4" aria-hidden="true">
+                  <Icon className="h-6 w-6" />
+                </div>
+                <h3 className="font-bold text-lg text-ycm-navy mb-1.5">{f.title}</h3>
+                <p className="text-sm text-slate-600 leading-relaxed">{f.body}</p>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -361,18 +391,18 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
 
         {/* ── PERSONA TOGGLE ── */}
         <section className="bg-surface-container py-8 border-y border-outline-variant/10">
-          <div className="max-w-7xl mx-auto px-8 flex flex-col md:flex-row items-center justify-center gap-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-8 flex flex-col md:flex-row items-center justify-center gap-6">
             <span id="persona-toggle-label" className="font-label text-sm font-bold text-on-surface-variant uppercase tracking-widest">{t("landing.persona.toggleLabel")}</span>
-            <div role="group" aria-labelledby="persona-toggle-label" className="flex p-1 bg-surface-container-high rounded-lg border border-outline-variant/20">
+            <div role="group" aria-labelledby="persona-toggle-label" className="flex flex-wrap justify-center max-w-full p-1 bg-surface-container-high rounded-lg border border-outline-variant/20">
               {(["board", "manager", "resident"] as Persona[]).map((p) => (
                 <button
                   key={p}
                   onClick={() => switchPersona(p)}
                   aria-pressed={persona === p}
                   className={cn(
-                    "px-6 py-2 font-bold rounded transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
+                    "px-3 sm:px-6 py-2 text-sm sm:text-base font-bold rounded transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
                     persona === p
-                      ? "bg-white text-blue-700 shadow-sm"
+                      ? "bg-white text-ycm-navy shadow-sm"
                       : "text-slate-500 hover:text-slate-700"
                   )}
                 >
@@ -480,10 +510,10 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
             </div>
 
             {/* Card 5 - Span 2 */}
-            <div className="md:col-span-2 bg-gradient-to-br from-primary to-primary-container p-8 rounded-xl shadow-lg text-white relative overflow-hidden group">
+            <div className="md:col-span-2 bg-gradient-to-br from-ycm-navy to-ycm-sky p-8 rounded-xl shadow-lg text-white relative overflow-hidden group">
               <div className="relative z-10">
                 <h3 className="font-headline text-2xl font-bold mb-4">{t("landing.bento.reporting.title")}</h3>
-                <p className="max-w-md mb-6 text-on-primary-container">{t("landing.bento.reporting.body")}</p>
+                <p className="max-w-md mb-6 text-ycm-cool-white/90">{t("landing.bento.reporting.body")}</p>
                 <button className="bg-white text-primary px-6 py-2 rounded font-bold text-sm hover:opacity-90 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={() => setDemoModalOpen(true)}>{t("landing.bento.reporting.cta")}</button>
               </div>
               <span className="material-symbols-outlined absolute -bottom-4 -right-4 text-9xl opacity-10 group-hover:scale-110 transition-transform" aria-hidden="true">monitoring</span>
@@ -559,14 +589,12 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
           </div>
         </section>
 
-        {/* ── DARK CTA CANVAS ── */}
-        <section className="relative rounded-3xl overflow-hidden py-20 px-8 text-center bg-slate-900 max-w-7xl mx-auto mb-32">
-          <div className="absolute inset-0 opacity-20">
-            <img className="w-full h-full object-cover" alt="" aria-hidden="true" loading="lazy" decoding="async" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGylkVvJ6DR43ZSa3V5HhWYa4Tm_rV6NrxTJw7NwAHUssjyQI9IHIa5AtnSzWE4jalnOoKDh2PG82f2JXxDelDB9MraXOmdzj6Z3kAjShgD8G4Es537T5X_SqzvnFFjqgxLddQCR-aIR_-rTSWLC6Y3zAUVcdNFriTJRpEGXHl7xP0TnLB24YApCP8hIhS8U343a-5Q7cuVa-poEXGGv13F2V9xRt-XbskyOJKdcVLCJ7MbSGzlViwO5Y20scclZcr2JFpv6FYuvA" />
-          </div>
+        {/* ── DARK CTA CANVAS — brand navy (no stock imagery, founder-os#1024) ── */}
+        <section className="relative rounded-3xl overflow-hidden py-20 px-8 text-center bg-ycm-navy max-w-7xl mx-auto mb-32">
+          <div className="absolute inset-0 bg-gradient-to-br from-ycm-navy via-ycm-navy to-ycm-sky/40" aria-hidden="true"></div>
           <div className="relative z-10 max-w-2xl mx-auto">
             <h2 className="font-headline text-4xl md:text-5xl text-white font-bold mb-6">{t("landing.finalCta.title")}</h2>
-            <p className="text-slate-300 text-lg mb-10">{t("landing.finalCta.body")}</p>
+            <p className="text-ycm-cream/90 text-lg mb-10">{t("landing.finalCta.body")}</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               {hasWorkspaceAccess ? (
                 <Button
