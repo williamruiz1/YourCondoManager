@@ -1,0 +1,49 @@
+# Uptime monitor for yourcondomanager.fly.dev/api/health
+#
+# Runs every 5 minutes. Fails the workflow (triggering a GitHub
+# notification email) when the endpoint returns non-200 or times out.
+#
+# Added per founder-os#2470 — post-Fly-Postgres-outage remediation.
+# The 2026-05-25 outage went undetected for ~3 hours; this workflow
+# closes that gap without requiring a third-party account.
+#
+# Alert recipients: GitHub notifies all watchers of this repo on
+# repeated workflow failures. Point yourcondomanagement@gmail.com
+# at the repo's "Watching" setting to receive email alerts.
+
+name: uptime-monitor
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub's minimum is 5 min; cron syntax is UTC.
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}   # allow manual trigger from Actions tab
+
+jobs:
+  ping:
+    name: ping /api/health
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Check /api/health
+        run: |
+          set -euo pipefail
+          URL="https://yourcondomanager.fly.dev/api/health"
+          HTTP_CODE=$(curl -sS --max-time 15 -o /tmp/body.json -w "%{http_code}" "$URL" || echo "000")
+          BODY=$(cat /tmp/body.json 2>/dev/null || echo "(no body)")
+          echo "HTTP status: $HTTP_CODE"
+          echo "Body: $BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Health check FAILED — HTTP $HTTP_CODE from $URL"
+            echo "::error::Response body: $BODY"
+            exit 1
+          fi
+          # Also guard against a degraded 200 (e.g. {"status":"error"})
+          STATUS=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','unknown'))" 2>/dev/null || echo "parse-error")
+          if [ "$STATUS" != "ok" ]; then
+            echo "::error::Health check returned HTTP 200 but status='$STATUS'"
+            echo "::error::Full body: $BODY"
+            exit 1
+          fi
+          echo "OK — status=$STATUS"
