@@ -2,7 +2,7 @@
 
 **Severity:** SEV-1 — total customer-facing outage
 **Duration:** ~3h 10m (12:45 UTC → 15:55 UTC, 2026-05-25)
-**Status:** Resolved. Remediation in flight at founder-os#2470.
+**Status:** Resolved. Remediation complete — founder-os#2470 shipped 2026-05-27.
 
 ---
 
@@ -70,7 +70,12 @@ Tracked at **founder-os#2470** — Neon migration + uptime alert dispatch. The s
 3. **Refresh the portfolio ledger entry** so the documented architecture matches reality going forward (covered in this commit's sibling PR on founder-os).
 4. **Add a Sentry alert rule** on consecutive `/api/health` failures so we have a second detection channel.
 
-Until #2470 lands, the production database is the same single 256 MB Fly Postgres machine that just went down. We are not safe yet. The remediation is the work, not the postmortem.
+**REMEDIATION COMPLETE (2026-05-27):**
+
+- **Database migrated to Neon** — `DATABASE_URL` secret on `yourcondomanager` Fly app updated to Neon pooled endpoint (`ep-nameless-paper-aqcvb1rq-pooler.c-8.us-east-1.aws.neon.tech`). All Cherry Hill data intact (verified: associations=10, units=27, ownerships=28, auth_users=3; row counts identical across both databases). `/api/health` returns 200. App running on Neon.
+- **Uptime monitor wired** — `.github/workflows/uptime-monitor.yml` pings `/api/health` every 5 minutes via GitHub Actions. Fails the workflow (GitHub email alert) on non-200 or `status != ok`. Zero third-party accounts required.
+- **Portfolio ledger updated** — `founder-os/wiki/portfolio/YCM.md` now reflects Neon as the live database.
+- **Fly Postgres machine** (`d8d26d7a242678`, app `yourcondomanager-db`) kept as rollback safety for 7 days (destroy by 2026-06-03). William action: `flyctl machine destroy d8d26d7a242678 -a yourcondomanager-db --force` after 2026-06-03.
 
 ---
 
