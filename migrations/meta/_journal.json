@@ -265,7 +265,14 @@
       "idx": 37,
       "version": "7",
       "when": 1779400000000,
-      "tag": "0037_bank_descriptor_aliases",
+      "tag": "0037_stripe_payout_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1779450000000,
+      "tag": "0038_bank_descriptor_aliases",
       "breakpoints": true
     }
   ]

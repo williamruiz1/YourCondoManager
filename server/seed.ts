@@ -162,10 +162,10 @@ export async function seedDatabase() {
     // hoisted to function scope at top of seedDatabase — see comment above:
     // const CHERRY_HILL_CONDO_ID = "f301d073-ed84-4d73-84ce-3ef28af66f7a";
     const CHERRY_HILL_BUILDINGS = [
-      { id: "b11ea5a8-d907-4063-a0ed-640874159f61", associationId: CHERRY_HILL_CONDO_ID, name: "1415", address: "Quinnipiac Ave., New Haven, CT 06513", totalUnits: 1 },
+      { id: "b11ea5a8-d907-4063-a0ed-640874159f61", associationId: CHERRY_HILL_CONDO_ID, name: "1415", address: "Quinnipiac Ave., New Haven, CT 06513", totalUnits: 3 },
       { id: "f249583c-5d75-4865-a6ca-d01f0b4dd3a6", associationId: CHERRY_HILL_CONDO_ID, name: "1417", address: "Quinnipiac Ave., New Haven, CT 06513", totalUnits: 7 },
       { id: "8a0fafb2-cc66-400f-a3dc-74617e39eefc", associationId: CHERRY_HILL_CONDO_ID, name: "1419", address: "Quinnipiac Ave., New Haven, CT 06513", totalUnits: 1 },
-      { id: "e4f64f48-6136-457c-af87-20223cfc81ef", associationId: CHERRY_HILL_CONDO_ID, name: "1421", address: "1421 Quinnipiac Ave.", totalUnits: 4, notes: "Backfilled from legacy unit building labels." },
+      { id: "e4f64f48-6136-457c-af87-20223cfc81ef", associationId: CHERRY_HILL_CONDO_ID, name: "1421", address: "1421 Quinnipiac Ave.", totalUnits: 7, notes: "Backfilled from legacy unit building labels (corrected 1→3 / 4→7 to match 18 actual unit records; founder-os#971 §5.1 / YCM#122)." },
     ] as const;
     for (const b of CHERRY_HILL_BUILDINGS) {
       await db.insert(buildings).values(b).onConflictDoNothing();
@@ -1627,10 +1627,18 @@ export async function seedDatabase() {
         )
       : [];
 
-    // Build a unit-to-owner map for ballot tokens
-    const unitOwnerMap: { unitId: string; personId: string }[] = stOwnerships.map(o => ({
-      unitId: o.unitId, personId: o.personId,
-    }));
+    // Build a unit-to-owner map for ballot tokens — filtered to FK-valid entries only.
+    // stPersons may be a subset of stOwnerships if persons were deleted after ownerships
+    // were created (partial DB state). Including orphaned personIds here causes FK
+    // violations on electionBallotTokens.person_id → persons.id.
+    const stPersonIdSet = new Set(stPersons.map(p => String(p.id)));
+    const stUnitIdSet = new Set(stUnits.map(u => String(u.id)));
+    const unitOwnerMap: { unitId: string; personId: string }[] = stOwnerships
+      .map(o => ({ unitId: String(o.unitId), personId: String(o.personId) }))
+      .filter(o => stPersonIdSet.has(o.personId) && stUnitIdSet.has(o.unitId));
+    if (unitOwnerMap.length < stOwnerships.length) {
+      log(`[seed] elections :: ${stOwnerships.length - unitOwnerMap.length} ownership(s) skipped — FK parents (persons/units) not present`, "seed");
+    }
 
     // ── 4.1: Certified Board Election ──
     const [existingBoardElection] = await db.select().from(elections)
@@ -1680,7 +1688,12 @@ export async function seedDatabase() {
           status: "pending",
         });
       }
-      const insertedBoardTokens = await db.insert(electionBallotTokens).values(boardTokens).returning();
+      if (boardTokens.length === 0) {
+        log("[seed] elections :: board election — no FK-valid token owners, skipping ballot tokens", "seed");
+      }
+      const insertedBoardTokens = boardTokens.length > 0
+        ? await db.insert(electionBallotTokens).values(boardTokens).onConflictDoNothing().returning()
+        : [];
 
       // Cast ~70% of ballots with realistic vote distribution
       const castCount = Math.max(1, Math.round(insertedBoardTokens.length * 0.7));
@@ -1808,7 +1821,12 @@ export async function seedDatabase() {
           status: "pending",
         });
       }
-      const insertedRefTokens = await db.insert(electionBallotTokens).values(refTokens).returning();
+      if (refTokens.length === 0) {
+        log("[seed] elections :: referendum — no FK-valid token owners, skipping ballot tokens", "seed");
+      }
+      const insertedRefTokens = refTokens.length > 0
+        ? await db.insert(electionBallotTokens).values(refTokens).onConflictDoNothing().returning()
+        : [];
 
       // ~40% cast
       const refCastCount = Math.max(1, Math.round(insertedRefTokens.length * 0.4));

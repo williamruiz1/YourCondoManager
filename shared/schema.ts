@@ -3385,6 +3385,79 @@ export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
 export type InsertPaymentTransaction = typeof paymentTransactions.$inferInsert;
 export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions);
 
+// ── Stripe Connect payout reconciliation (founder-os#970 / dispatch #3) ──────
+// Canonical spec: wiki/products/ycm/stripe-connect-spec.md §4 (reconciliation
+// flow) + §7.3. When a daily Stripe payout lands on a HOA's bank, the
+// `payout.paid` webhook explodes the batch back into per-owner ledger entries
+// so the HOA's books match the bank deposit exactly. These two tables persist
+// the payout↔charge↔ledger linkage that powers the admin reconciliation report
+// and the AR-aging reconciled/unreconciled filter. The core `owner_ledger_entries`
+// table is intentionally untouched (reconciled-status is derived via join).
+
+// One row per Stripe payout (the reconciliation "header"). `amountCents` is the
+// NET amount that hits the HOA's bank; `grossAmountCents` is the sum of owner
+// charge gross; `feeAmountCents` = Stripe processing + YCM application fees +
+// refunds/adjustments. gross - fee == net (zero variance, spec §4.1).
+export const stripePayoutStatusEnum = pgEnum("stripe_payout_status", [
+  "pending",
+  "in_transit",
+  "paid",
+  "failed",
+  "canceled",
+]);
+export const stripePayouts = pgTable("stripe_payouts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  connectedAccountId: text("connected_account_id"), // acct_…
+  payoutId: text("payout_id").notNull(), // po_…
+  keyMode: text("key_mode"), // 'test' | 'live' (Gap D auditability)
+  status: stripePayoutStatusEnum("status").notNull().default("paid"),
+  amountCents: integer("amount_cents").notNull().default(0), // NET — hits the bank
+  grossAmountCents: integer("gross_amount_cents").notNull().default(0), // sum of charge gross
+  feeAmountCents: integer("fee_amount_cents").notNull().default(0), // stripe + app fees + adjustments
+  currency: text("currency").notNull().default("usd"),
+  chargeCount: integer("charge_count").notNull().default(0),
+  arrivalDate: timestamp("arrival_date"),
+  reconciledAt: timestamp("reconciled_at"),
+  rawPayloadJson: jsonb("raw_payload_json"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniquePayoutPerAccount: uniqueIndex("stripe_payouts_account_payout_uq").on(table.connectedAccountId, table.payoutId),
+  payoutAssociationIdx: index("stripe_payouts_association_idx").on(table.associationId, table.arrivalDate),
+}));
+export type StripePayout = typeof stripePayouts.$inferSelect;
+export type InsertStripePayout = typeof stripePayouts.$inferInsert;
+
+// One row per charge included in a payout. Links the charge to the owner ledger
+// entry that records the payment, with the per-owner gross/fee/net breakdown the
+// reconciliation report renders. `ownerLedgerEntryId` is nullable because a
+// charge may be reconciled before its Gap-C ledger entry resolves (defensive),
+// but in practice the charge.succeeded handler writes the ledger entry first.
+export const stripePayoutItems = pgTable("stripe_payout_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  payoutReconId: varchar("payout_recon_id").notNull().references(() => stripePayouts.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  chargeId: text("charge_id").notNull(), // ch_… (balance-transaction source)
+  paymentIntentId: text("payment_intent_id"),
+  ownerLedgerEntryId: varchar("owner_ledger_entry_id").references(() => ownerLedgerEntries.id),
+  ownerId: varchar("owner_id"),
+  unitId: varchar("unit_id"),
+  ownerName: text("owner_name"),
+  unitLabel: text("unit_label"),
+  chargeType: text("charge_type"),
+  grossAmountCents: integer("gross_amount_cents").notNull().default(0),
+  feeAmountCents: integer("fee_amount_cents").notNull().default(0),
+  netAmountCents: integer("net_amount_cents").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueChargePerPayout: uniqueIndex("stripe_payout_items_payout_charge_uq").on(table.payoutReconId, table.chargeId),
+  itemChargeIdx: index("stripe_payout_items_charge_idx").on(table.chargeId),
+  itemLedgerIdx: index("stripe_payout_items_ledger_idx").on(table.ownerLedgerEntryId),
+}));
+export type StripePayoutItem = typeof stripePayoutItems.$inferSelect;
+export type InsertStripePayoutItem = typeof stripePayoutItems.$inferInsert;
+
 // ── Phase 3: Delinquency Settings & Notices ─────────────────────────────────
 
 export const delinquencySettings = pgTable("delinquency_settings", {

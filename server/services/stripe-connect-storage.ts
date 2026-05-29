@@ -153,6 +153,33 @@ export async function upsertConnectConnection(input: {
   return created;
 }
 
+/**
+ * Resolve the association that owns a connected Stripe account. Used by the
+ * platform Connect webhook to attribute `payout.paid` / `charge.succeeded`
+ * events (which carry `event.account = acct_…`) to a HOA.
+ */
+export async function findAssociationIdByConnectedAccount(
+  connectedAccountId: string,
+): Promise<{ associationId: string; connectionId: string } | null> {
+  if (!connectedAccountId) return null;
+  const rows = await db
+    .select({
+      id: paymentGatewayConnections.id,
+      associationId: paymentGatewayConnections.associationId,
+    })
+    .from(paymentGatewayConnections)
+    .where(
+      and(
+        eq(paymentGatewayConnections.providerAccountId, connectedAccountId),
+        eq(paymentGatewayConnections.provider, "stripe"),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  return { associationId: row.associationId, connectionId: row.id };
+}
+
 /** Apply a webhook-derived account.updated event to the connection row. */
 export async function applyAccountUpdated(
   account: StripeAccountSnapshot,

@@ -182,7 +182,7 @@ interface StripeApiCallOptions {
   stripeAccount?: string;
 }
 
-async function callPlatformStripe<T = Record<string, unknown>>(
+export async function callPlatformStripe<T = Record<string, unknown>>(
   opts: StripeApiCallOptions,
 ): Promise<T> {
   const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
@@ -287,4 +287,115 @@ export async function retrieveConnectedAccount(accountId: string): Promise<Strip
  */
 export function getYcmBaseUrl(): string {
   return (process.env.APP_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+}
+
+// ── Payout reconciliation (founder-os#970 / dispatch #3, spec §4) ────────────
+
+/**
+ * Detect whether the platform Stripe key is operating in test or live mode.
+ * Per audit Gap D — the admin gateway listing surfaces this at-a-glance so an
+ * operator never confuses a test connection for a live one. Derived from the
+ * `sk_test_` / `sk_live_` secret-key prefix (Stripe's own convention).
+ * Returns "test" | "live" | "unknown" (unknown = key not configured).
+ */
+export async function getPlatformKeyMode(): Promise<"test" | "live" | "unknown"> {
+  const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+  if (!secretKey) return "unknown";
+  if (secretKey.startsWith("sk_live_") || secretKey.startsWith("rk_live_")) return "live";
+  if (secretKey.startsWith("sk_test_") || secretKey.startsWith("rk_test_")) return "test";
+  return "unknown";
+}
+
+/** A Stripe charge as surfaced via an expanded balance-transaction source. */
+export interface StripeChargeObject {
+  id: string;
+  object?: string;
+  amount?: number;
+  currency?: string;
+  payment_intent?: string | null;
+  metadata?: Record<string, string> | null;
+  billing_details?: { name?: string | null } | null;
+  livemode?: boolean;
+}
+
+/** A Stripe balance transaction (a line within a payout). */
+export interface StripeBalanceTransaction {
+  id: string;
+  type: string; // "charge" | "payment" | "refund" | "application_fee" | "stripe_fee" | "payout" | …
+  amount: number; // gross contribution to balance (cents); negative for refunds
+  fee: number; // Stripe fee + (for direct charges) application fee, cents
+  net: number; // amount - fee
+  currency: string;
+  source?: StripeChargeObject | string | null; // expanded charge when type=charge/payment
+}
+
+export interface StripePayoutObject {
+  id: string;
+  object?: string;
+  amount: number; // NET amount paid to the bank (cents)
+  currency: string;
+  status?: string; // "paid" | "pending" | "in_transit" | "failed" | "canceled"
+  arrival_date?: number; // unix seconds
+  livemode?: boolean;
+}
+
+/**
+ * Fetch ALL balance transactions belonging to a payout on a connected account,
+ * expanding each transaction's `source` to the underlying charge (so we can
+ * read the spec §3.1 metadata). Handles Stripe cursor pagination (100/page).
+ *
+ * Per spec §4.1 step 5 — `payout.paid` → "loads all charges in the batch".
+ */
+export async function listPayoutBalanceTransactions(
+  connectedAccountId: string,
+  payoutId: string,
+): Promise<StripeBalanceTransaction[]> {
+  const out: StripeBalanceTransaction[] = [];
+  let startingAfter: string | null = null;
+  // Bound the loop defensively — a single daily HOA payout will never exceed
+  // a handful of pages, but never spin forever on an unexpected response.
+  for (let page = 0; page < 50; page += 1) {
+    const qs = new URLSearchParams();
+    qs.set("payout", payoutId);
+    qs.set("limit", "100");
+    qs.set("expand[]", "data.source");
+    if (startingAfter) qs.set("starting_after", startingAfter);
+    const resp = await callPlatformStripe<{
+      data?: StripeBalanceTransaction[];
+      has_more?: boolean;
+    }>({
+      method: "GET",
+      path: `/balance_transactions?${qs.toString()}`,
+      stripeAccount: connectedAccountId,
+    });
+    const batch = Array.isArray(resp.data) ? resp.data : [];
+    out.push(...batch);
+    if (!resp.has_more || batch.length === 0) break;
+    startingAfter = batch[batch.length - 1].id;
+  }
+  return out;
+}
+
+/** Retrieve a single payout on a connected account (for the report header). */
+export async function retrievePayout(
+  connectedAccountId: string,
+  payoutId: string,
+): Promise<StripePayoutObject> {
+  return callPlatformStripe<StripePayoutObject>({
+    method: "GET",
+    path: `/payouts/${encodeURIComponent(payoutId)}`,
+    stripeAccount: connectedAccountId,
+  });
+}
+
+/** Retrieve a single charge on a connected account (Gap C metadata fallback). */
+export async function retrieveCharge(
+  connectedAccountId: string,
+  chargeId: string,
+): Promise<StripeChargeObject> {
+  return callPlatformStripe<StripeChargeObject>({
+    method: "GET",
+    path: `/charges/${encodeURIComponent(chargeId)}`,
+    stripeAccount: connectedAccountId,
+  });
 }
