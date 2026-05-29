@@ -35,6 +35,11 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/scripts ./scripts
 
+# founder-os #1783 — policy files served by /privacy + /security routes at runtime.
+# readPolicyFile() resolves against process.cwd()/docs/policies; include the full
+# docs/ tree so the handler finds its files in production.
+COPY --from=builder /app/docs ./docs
+
 EXPOSE 5000
 
 CMD ["node", "dist/index.cjs"]
