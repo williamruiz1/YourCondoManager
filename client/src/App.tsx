@@ -67,6 +67,7 @@ const FinancialFoundationPage = lazy(() => import("@/pages/financial-foundation"
 const FinancialRulesPage = lazy(() => import("@/pages/financial-rules"));
 const FinancialPaymentsPage = lazy(() => import("@/pages/financial-payments"));
 const FinancialReportsPage = lazy(() => import("@/pages/financial-reports"));
+const FinancialStatementPage = lazy(() => import("@/pages/financial-statement"));
 const FinancialBillingPage = lazy(() => import("@/pages/financial-billing"));
 const FinancialExpensesPage = lazy(() => import("@/pages/financial-expenses"));
 const FinancialBankConnectionsPage = lazy(() => import("@/pages/financial-bank-connections"));
@@ -171,7 +172,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
   },
   {
     id: "finance",
-    matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/rules", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports", "/app/financial/bank-connections"],
+    matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/rules", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports", "/app/financial/statement", "/app/financial/bank-connections"],
     testId: "tabs-finance-inpage",
     tabs: [
       { label: "Chart of Accounts", href: "/app/financial/foundation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
@@ -181,6 +182,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Bank Connections", href: "/app/financial/bank-connections", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Expenses", href: "/app/financial/expenses", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Reports", href: "/app/financial/reports", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Statement", href: "/app/financial/statement", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
     ],
   },
   {
@@ -446,6 +448,7 @@ function WorkspaceRouter({
         <Route path="/app/financial/payments"><RouteGuard route="/app/financial/payments"><ZoneBoundary zone="Financials"><FinancialPaymentsPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/expenses"><RouteGuard route="/app/financial/expenses"><ZoneBoundary zone="Financials"><FinancialExpensesPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/reports"><RouteGuard route="/app/financial/reports"><ZoneBoundary zone="Financials"><FinancialReportsPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/statement"><RouteGuard route="/app/financial/statement"><ZoneBoundary zone="Financials"><FinancialStatementPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/bank-connections"><RouteGuard route="/app/financial/bank-connections"><ZoneBoundary zone="Financials"><FinancialBankConnectionsPage /></ZoneBoundary></RouteGuard></Route>
         {/* Finance — legacy redirects (3.2 Q4 archive — preserved verbatim;
             Phase 12: wrapped in <RouteGuard> so unauthorized personas don't
@@ -630,6 +633,9 @@ function PublicRouter({
         </Route>
         <Route path="/portal/finances/ledger">
           <ZoneBoundary zone="Portal"><PortalFinancesPage subPath="ledger" /></ZoneBoundary>
+        </Route>
+        <Route path="/portal/finances/statement">
+          <ZoneBoundary zone="Portal"><PortalFinancesPage subPath="statement" /></ZoneBoundary>
         </Route>
         <Route path="/portal/finances/assessments/:assessmentId">
           {(params) => (

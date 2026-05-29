@@ -32,8 +32,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { EmptyState } from "@/components/empty-state";
 import { PortalAssessmentDetailDialog } from "@/components/portal-assessment-detail-dialog";
 import { VirtualizedLedgerTable } from "@/components/virtualized-ledger-table";
+import {
+  AccountStatementView,
+  type AccountStatementResponse,
+} from "@/components/account-statement-view";
 import { PortalShell, usePortalContext } from "./portal-shell";
 import { t } from "@/i18n/use-strings";
+
+// Default statement period helpers — last full calendar month.
+function defaultStatementPeriod(): { from: string; to: string } {
+  const now = new Date();
+  const firstOfThisMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const lastMonthEnd = new Date(firstOfThisMonth.getTime() - 24 * 60 * 60 * 1000);
+  const lastMonthStart = new Date(
+    Date.UTC(lastMonthEnd.getUTCFullYear(), lastMonthEnd.getUTCMonth(), 1),
+  );
+  return {
+    from: lastMonthStart.toISOString().slice(0, 10),
+    to: lastMonthEnd.toISOString().slice(0, 10),
+  };
+}
 
 // 2026-05-25 — Per-unit hierarchical finances breakdown (William ratification
 // 2026-05-25). Owners with multiple units were seeing three line items all
@@ -151,6 +169,7 @@ type AutopayEnrollment = {
 function getTitleForPath(path: string): string {
   if (path === "/portal/finances/payment-methods") return t("portal.finances.paymentMethods.title");
   if (path === "/portal/finances/ledger") return "Ledger";
+  if (path === "/portal/finances/statement") return "Account Statement";
   if (path.startsWith("/portal/finances/assessments/")) return t("portal.finances.assessment.title");
   return t("portal.finances.title");
 }
@@ -857,6 +876,14 @@ function FinancesHubContent() {
                 {t("portal.finances.quickLinks.fullLedger")}
                 <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
               </Link>
+              <Link
+                href="/portal/finances/statement"
+                className="flex items-center justify-between rounded-lg border border-outline-variant/10 px-4 py-3 text-sm font-semibold hover:bg-surface-container focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                data-testid="portal-finances-link-statement"
+              >
+                Account statement
+                <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
+              </Link>
             </div>
           </CardContent>
         </Card>
@@ -1251,6 +1278,110 @@ function LedgerContent() {
   );
 }
 
+// ---------- Sub-page: account statement (P0-3 / #206) ----------
+//
+// The owner picks a period (defaults to last full calendar month) and gets a
+// printable statement: opening balance → in-period activity → closing balance.
+// Server scopes to the portal session's personId, so an owner can only ever
+// see their OWN statement.
+
+function StatementContent() {
+  const { portalFetch, session } = usePortalContext();
+  const initial = useMemo(() => defaultStatementPeriod(), []);
+  const [from, setFrom] = useState(initial.from);
+  const [to, setTo] = useState(initial.to);
+  // The applied period drives the query; editing the inputs doesn't refetch
+  // until "Generate" is clicked (avoids a request per keystroke).
+  const [applied, setApplied] = useState<{ from: string; to: string }>(initial);
+
+  const { data: statement, isLoading, isError } = useQuery<AccountStatementResponse>({
+    queryKey: ["portal/statement", session.id, applied.from, applied.to],
+    queryFn: async () => {
+      const res = await portalFetch(
+        `/api/portal/statement?from=${encodeURIComponent(applied.from)}&to=${encodeURIComponent(applied.to)}`,
+      );
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    enabled: Boolean(applied.from && applied.to),
+  });
+
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-finances-statement">
+      <div>
+        <Link
+          href="/portal/finances"
+          className="rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          ← Back to My Finances
+        </Link>
+      </div>
+      <div>
+        <h1 className="font-headline text-3xl" data-testid="portal-finances-statement-heading">
+          Account Statement
+        </h1>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Generate a printable statement for any period — opening balance,
+          activity, and closing balance.
+        </p>
+      </div>
+
+      {/* Period picker */}
+      <Card className="no-print">
+        <CardContent className="flex flex-col gap-3 py-5 sm:flex-row sm:items-end">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="statement-from" className="text-xs font-semibold text-on-surface-variant">
+              From
+            </label>
+            <Input
+              id="statement-from"
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              data-testid="portal-statement-from"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="statement-to" className="text-xs font-semibold text-on-surface-variant">
+              To
+            </label>
+            <Input
+              id="statement-to"
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              data-testid="portal-statement-to"
+            />
+          </div>
+          <Button
+            onClick={() => setApplied({ from, to })}
+            disabled={!from || !to || from > to}
+            data-testid="portal-statement-generate"
+          >
+            Generate
+          </Button>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <Card>
+          <CardContent className="py-6 text-sm text-on-surface-variant" role="status">
+            Generating statement…
+          </CardContent>
+        </Card>
+      ) : isError ? (
+        <Card>
+          <CardContent className="py-6 text-sm text-destructive" role="alert">
+            Could not generate the statement. Check the dates and try again.
+          </CardContent>
+        </Card>
+      ) : statement ? (
+        <AccountStatementView statement={statement} />
+      ) : null}
+    </div>
+  );
+}
+
 // ---------- 5.4-F7: Virtualized portal ledger ---------------------------
 //
 // When `filtered.length > LEDGER_VIRTUALIZE_THRESHOLD`, the LedgerContent
@@ -1342,7 +1473,7 @@ export default function PortalFinancesPage({
   subPath,
   assessmentId,
 }: {
-  subPath?: "hub" | "payment-methods" | "ledger" | "assessment";
+  subPath?: "hub" | "payment-methods" | "ledger" | "statement" | "assessment";
   assessmentId?: string;
 } = {}) {
   const [location] = useLocation();
@@ -1355,6 +1486,8 @@ export default function PortalFinancesPage({
     body = <PaymentMethodsContent />;
   } else if (subPath === "ledger") {
     body = <LedgerContent />;
+  } else if (subPath === "statement") {
+    body = <StatementContent />;
   } else if (subPath === "assessment" && assessmentId) {
     body = <AssessmentDetailContent assessmentId={assessmentId} />;
   } else {
@@ -1364,4 +1497,10 @@ export default function PortalFinancesPage({
   return <PortalShell>{body}</PortalShell>;
 }
 
-export { FinancesHubContent, PaymentMethodsContent, LedgerContent, AssessmentDetailContent };
+export {
+  FinancesHubContent,
+  PaymentMethodsContent,
+  LedgerContent,
+  StatementContent,
+  AssessmentDetailContent,
+};

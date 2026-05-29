@@ -125,6 +125,8 @@ export const ROUTE_MANIFEST: RouteManifest = {
   "/app/financial/rules": FIVE_PERSONA_OPERATOR,
   // Plaid-backed bank-feed admin surface (Issue #333).
   "/app/financial/bank-connections": FIVE_PERSONA_OPERATOR,
+  // Owner account-statement generator (readiness P0-3 / Issue #206).
+  "/app/financial/statement": FIVE_PERSONA_OPERATOR,
 
   // ---- Financials zone legacy singular-prefix redirects (3.2 Q4 archive) ----
   "/app/financial/fees": FIVE_PERSONA_OPERATOR,

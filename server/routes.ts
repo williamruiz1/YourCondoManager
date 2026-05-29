@@ -275,6 +275,7 @@ import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
+import { registerAccountStatementRoutes } from "./routes/account-statement";
 import {
   getEffectivePortalRole,
   requireBoardAccess,
@@ -1397,6 +1398,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerAdminPaymentsRoutes(app, {
     requireAdmin,
     requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // Owner account statement (readiness P0-3 / Issue #206). Opening balance,
+  // in-period line items, closing balance for a date range — the document a
+  // treasurer hands an owner. Two surfaces:
+  //   GET /api/portal/statement (owner, own statement)
+  //   GET /api/financial/owner-ledger/statement (admin, any owner)
+  registerAccountStatementRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    requirePortal,
     getAssociationIdQuery,
     assertAssociationScope,
   });
