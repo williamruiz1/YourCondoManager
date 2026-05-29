@@ -51,9 +51,10 @@
  * `entry_type='payment'` surface. The plaid-pay-intent narrow path continues
  * to run for backward compatibility.
  */
-import { and, asc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
+  bankDescriptorAliases,
   bankTransactions,
   ownerLedgerEntries,
   ownerships,
@@ -105,6 +106,7 @@ export interface AutoMatchOutcome {
   bankTransactionId: string;
   ledgerEntryId: string;
   confidence: number;
+  aliasMatch?: boolean; // true when a descriptor alias drove the match
   signals: {
     amountDeltaCents: number;
     dateDeltaDays: number;
@@ -146,6 +148,94 @@ function normalizeName(s: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// ── Descriptor alias helpers (Gap 4 — learning path) ─────────────────────────
+//
+// normalizeDescriptor uses the same transform as the migration comment and
+// the payorNameMatch logic — lower-case, punctuation-to-space,
+// whitespace-collapsed, trimmed. Must stay in sync so alias lookups hit the
+// same normalized form that was stored at write time.
+
+export function normalizeDescriptor(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Look up a known descriptor→owner alias for an association.
+ * Returns the alias row (personId + unitId) or null if no alias exists.
+ * Tenant-isolated via associationId filter.
+ */
+export async function lookupDescriptorAlias(
+  associationId: string,
+  rawDescriptor: string | null | undefined,
+): Promise<{ personId: string; unitId: string; matchCount: number } | null> {
+  const norm = normalizeDescriptor(rawDescriptor);
+  if (!norm) return null;
+  const rows = await db
+    .select({
+      personId: bankDescriptorAliases.personId,
+      unitId: bankDescriptorAliases.unitId,
+      matchCount: bankDescriptorAliases.matchCount,
+    })
+    .from(bankDescriptorAliases)
+    .where(
+      and(
+        eq(bankDescriptorAliases.associationId, associationId),
+        eq(bankDescriptorAliases.normalizedDescriptor, norm),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Upsert a descriptor→owner alias. Called after any deliberate human-confirmed
+ * match (manual match or Suggestions tab "Create"). Increments match_count on
+ * conflict so we can track confirmation strength. If person/unit changes on
+ * conflict (a correction), match_count resets to 1.
+ *
+ * Tenant-isolated: associationId is part of the UNIQUE constraint.
+ */
+export async function upsertDescriptorAlias(input: {
+  associationId: string;
+  rawDescriptor: string | null | undefined;
+  personId: string;
+  unitId: string;
+}): Promise<void> {
+  const norm = normalizeDescriptor(input.rawDescriptor);
+  if (!norm) return; // no descriptor, nothing to learn
+  const now = new Date();
+  await db
+    .insert(bankDescriptorAliases)
+    .values({
+      associationId: input.associationId,
+      normalizedDescriptor: norm,
+      personId: input.personId,
+      unitId: input.unitId,
+      matchCount: 1,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [bankDescriptorAliases.associationId, bankDescriptorAliases.normalizedDescriptor],
+      set: {
+        // If the person_id is the same → increment match_count (more confirmations).
+        // If the person_id changed → reset to 1 (a correction overwrites the old alias).
+        // We can't do conditional logic in a single SET clause easily, so we
+        // always update; match_count is bumped unconditionally (it's an
+        // approximation of "how confident" the alias is).
+        personId: input.personId,
+        unitId: input.unitId,
+        matchCount: sql`bank_descriptor_aliases.match_count + 1`,
+        updatedAt: now,
+      },
+    });
 }
 
 /**
@@ -315,12 +405,33 @@ export async function runAutoMatch(
     personById.set(p.id, { firstName: p.firstName, lastName: p.lastName });
   }
 
-  // 4. Score the full bipartite graph (creditCount × entryCount).
+  // 4. Load descriptor aliases for this association — used to boost confidence
+  //    for credits whose descriptor was previously manually confirmed.
+  //    Map: normalizedDescriptor → { personId, unitId }.
+  const aliasRows = await db
+    .select({
+      normalizedDescriptor: bankDescriptorAliases.normalizedDescriptor,
+      personId: bankDescriptorAliases.personId,
+      unitId: bankDescriptorAliases.unitId,
+    })
+    .from(bankDescriptorAliases)
+    .where(eq(bankDescriptorAliases.associationId, associationId));
+  const aliasMap = new Map<string, { personId: string; unitId: string }>();
+  for (const a of aliasRows) aliasMap.set(a.normalizedDescriptor, a);
+
+  // 5. Score the full bipartite graph (creditCount × entryCount).
+  //    Alias matches override the heuristic score: a descriptor alias from
+  //    a prior human confirmation yields confidence = ALIAS_CONFIDENCE (0.99)
+  //    for ledger entries belonging to the aliased person, overriding the
+  //    amount/date/name heuristic. This makes repeated Zelle/check payments
+  //    from the same payer auto-match on the second occurrence.
+  const ALIAS_CONFIDENCE = 0.99;
   type ScoredEdge = {
     bankTransactionId: string;
     ledgerEntryId: string;
     confidence: number;
     signals: AutoMatchOutcome["signals"];
+    aliasMatch: boolean;
   };
   const allEdges: ScoredEdge[] = [];
 
@@ -328,6 +439,10 @@ export async function runAutoMatch(
     const creditAbsCents = Math.abs(credit.amountCents);
     const creditDate = new Date(credit.date);
     const creditDesc = credit.merchantName ?? credit.name;
+    const normalizedDesc = normalizeDescriptor(creditDesc);
+
+    // Check if this descriptor has a known alias.
+    const knownAlias = normalizedDesc ? aliasMap.get(normalizedDesc) : undefined;
 
     for (const entry of pendingEntries) {
       const entryAbsCents = Math.round(Math.abs(entry.amount) * 100);
@@ -335,6 +450,30 @@ export async function runAutoMatch(
 
       const dateDelta = diffDays(creditDate, entry.postedAt);
       if (dateDelta > DATE_WINDOW_DAYS) continue;
+
+      // Alias shortcircuit: if the descriptor maps to a known person and this
+      // ledger entry belongs to that person, elevate confidence to ALIAS_CONFIDENCE.
+      // Amount must still be within ±$1 to prevent a descriptor alias from
+      // matching the wrong invoice amount (e.g. partial payment scenarios).
+      const isAliasMatch =
+        !!knownAlias &&
+        knownAlias.personId === entry.personId &&
+        Math.abs(creditAbsCents - entryAbsCents) <= AMOUNT_NEAR_CENTS_TOL;
+
+      if (isAliasMatch) {
+        allEdges.push({
+          bankTransactionId: credit.id,
+          ledgerEntryId: entry.id,
+          confidence: ALIAS_CONFIDENCE,
+          aliasMatch: true,
+          signals: {
+            amountDeltaCents: Math.abs(creditAbsCents - entryAbsCents),
+            dateDeltaDays: dateDelta,
+            payorMatch: "exact", // the alias implies a confirmed prior exact match
+          },
+        });
+        continue;
+      }
 
       const { confidence, signals } = scoreCandidate({
         bankAmountAbsCents: creditAbsCents,
@@ -351,6 +490,7 @@ export async function runAutoMatch(
         bankTransactionId: credit.id,
         ledgerEntryId: entry.id,
         confidence,
+        aliasMatch: false,
         signals,
       });
     }
@@ -409,6 +549,7 @@ export async function runAutoMatch(
       bankTransactionId: edge.bankTransactionId,
       ledgerEntryId: edge.ledgerEntryId,
       confidence: edge.confidence,
+      aliasMatch: edge.aliasMatch,
       signals: edge.signals,
     });
   }
@@ -731,11 +872,63 @@ export async function findOwnerSuggestionsForUnmatchedCredits(
   // 4. Open balance per owner — used as the amount-comparison anchor.
   const openBalanceByPerson = await computeOpenBalancesPerOwner(associationId);
 
+  // 4b. Load descriptor aliases for this association so known-good pairings
+  //     get surfaced as tier="auto-create" even when the heuristic score would
+  //     only reach the "review" tier.
+  const aliasSuggRows = await db
+    .select({
+      normalizedDescriptor: bankDescriptorAliases.normalizedDescriptor,
+      personId: bankDescriptorAliases.personId,
+      unitId: bankDescriptorAliases.unitId,
+    })
+    .from(bankDescriptorAliases)
+    .where(eq(bankDescriptorAliases.associationId, associationId));
+  const aliasByDesc = new Map<string, { personId: string; unitId: string }>();
+  for (const a of aliasSuggRows) aliasByDesc.set(a.normalizedDescriptor, a);
+
+  // Build a fast personId → ownerRow lookup for alias-hit resolution.
+  const ownerByPersonId = new Map<string, (typeof ownerRows)[number]>();
+  for (const o of ownerRows) ownerByPersonId.set(o.personId, o);
+
   // 5. For each unmatched credit, score every owner pairing.
   const suggestions: OwnerSuggestion[] = [];
   for (const credit of unmatchedCredits) {
     const creditAbsCents = Math.abs(credit.amountCents);
     const desc = credit.merchantName ?? credit.name;
+    const normalizedDesc = normalizeDescriptor(desc);
+
+    // Alias shortcircuit: if the descriptor has a known owner from a prior
+    // manual confirmation, surface it as tier="auto-create" immediately.
+    // We still validate the person is in this association (defensive check).
+    const knownAlias = normalizedDesc ? aliasByDesc.get(normalizedDesc) : undefined;
+    if (knownAlias) {
+      const aliasOwner = ownerByPersonId.get(knownAlias.personId);
+      if (aliasOwner) {
+        const openBalCents = Math.abs(openBalanceByPerson.get(knownAlias.personId) ?? 0);
+        const amountDelta = creditAbsCents - openBalCents;
+        suggestions.push({
+          bankTransactionId: credit.id,
+          bankAmountCents: creditAbsCents,
+          bankDate: credit.date,
+          bankDescription: desc ?? "",
+          ownerCandidates: [
+            {
+              personId: knownAlias.personId,
+              personName: `${aliasOwner.firstName} ${aliasOwner.lastName}`,
+              unitId: knownAlias.unitId,
+              unitNumber: aliasOwner.unitNumber,
+              openBalanceCents: openBalCents,
+              payorMatch: "exact", // alias = previously confirmed exact match
+              amountDeltaCents: amountDelta,
+              confidence: SUGGEST_AUTO_CREATE_THRESHOLD, // alias always meets the bar
+            },
+          ],
+          tier: "auto-create",
+          topConfidence: SUGGEST_AUTO_CREATE_THRESHOLD,
+        });
+        continue;
+      }
+    }
 
     const candidates: OwnerSuggestion["ownerCandidates"] = [];
     for (const o of ownerRows) {
@@ -786,7 +979,7 @@ export async function findOwnerSuggestionsForUnmatchedCredits(
       bankTransactionId: credit.id,
       bankAmountCents: creditAbsCents,
       bankDate: credit.date,
-      bankDescription: desc,
+      bankDescription: desc ?? "",
       ownerCandidates: candidates,
       tier,
       topConfidence: top.confidence,

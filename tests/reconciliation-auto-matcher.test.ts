@@ -195,14 +195,21 @@ const state = vi.hoisted(() => ({
   ownerships: [] as any[],
   persons: [] as any[],
   units: [] as any[],
+  aliases: [] as any[], // bank_descriptor_aliases (empty = no aliases in legacy tests)
   insertedEntries: [] as any[],
   updates: [] as UpdateCall[],
 }));
 
 vi.mock("../server/db", () => {
   const select = (cols?: any) => {
-    let pending: "credits" | "entries" | "persons" | "ownerships" | "units" | "ledgerLinks" =
-      "credits";
+    let pending:
+      | "credits"
+      | "entries"
+      | "persons"
+      | "ownerships"
+      | "units"
+      | "ledgerLinks"
+      | "aliases" = "credits";
     const filters: Array<(row: any) => boolean> = [];
 
     const exec = () => {
@@ -212,6 +219,7 @@ vi.mock("../server/db", () => {
       else if (pending === "persons") rows = state.persons;
       else if (pending === "ownerships") rows = state.ownerships;
       else if (pending === "units") rows = state.units;
+      else if (pending === "aliases") rows = state.aliases;
       else rows = state.entries;
       return rows.filter((r) => filters.every((f) => f(r)));
     };
@@ -231,6 +239,7 @@ vi.mock("../server/db", () => {
         } else if (id === "persons") pending = "persons";
         else if (id === "ownerships") pending = "ownerships";
         else if (id === "units") pending = "units";
+        else if (id === "bank_descriptor_aliases") pending = "aliases";
 
         const chain: any = {
           where: (f: any) => {
@@ -274,6 +283,8 @@ vi.mock("../server/db", () => {
             state.entries.push(inserted);
             return Promise.resolve([inserted]);
           },
+          // Support onConflictDoUpdate (used by upsertDescriptorAlias).
+          onConflictDoUpdate: (_opts: any) => Promise.resolve(),
         }),
       }),
     },
@@ -349,6 +360,17 @@ vi.mock("@shared/schema", () => {
       unitNumber: col("unitNumber"),
       associationId: col("associationId"),
     },
+    bankDescriptorAliases: {
+      __testTableId: "bank_descriptor_aliases",
+      id: col("id"),
+      associationId: col("associationId"),
+      normalizedDescriptor: col("normalizedDescriptor"),
+      personId: col("personId"),
+      unitId: col("unitId"),
+      matchCount: col("matchCount"),
+      createdAt: col("createdAt"),
+      updatedAt: col("updatedAt"),
+    },
   };
 });
 
@@ -369,6 +391,7 @@ beforeEach(() => {
   state.ownerships = [];
   state.persons = [];
   state.units = [];
+  state.aliases = []; // ensure no alias state bleeds between tests
   state.insertedEntries = [];
   state.updates = [];
 });
