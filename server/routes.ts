@@ -1484,7 +1484,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Detailed diagnostics endpoint — admin-only, shows DB state for deployment verification
   app.get("/api/health/details", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
     try {
-      const [countsResult, assocListResult, authResult] = await Promise.all([
+      const [countsResult, assocListResult, authResult, missingSched] = await Promise.all([
         db.execute(sql`
           SELECT
             (SELECT COUNT(*)::int FROM associations) AS associations,
@@ -1509,15 +1509,51 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ORDER BY last_login_at DESC NULLS LAST
           LIMIT 10
         `),
+        // gap-1 health check (founder-os#2477): associations that have posted
+        // assessment ledger entries but have no active recurring_charge_schedules.
+        // These will NEVER auto-bill until a schedule is created. Surfaced as
+        // warnings so a platform-admin can take corrective action (run the
+        // backfill script or create a schedule via the admin UI).
+        db.execute(sql`
+          SELECT DISTINCT a.id, a.name
+          FROM associations a
+          INNER JOIN owner_ledger_entries ole
+            ON ole.association_id = a.id AND ole.entry_type = 'assessment'
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM recurring_charge_schedules rcs
+            WHERE rcs.association_id = a.id
+              AND rcs.status = 'active'
+          )
+          ORDER BY a.name
+          LIMIT 20
+        `),
       ]);
       const c = countsResult.rows[0] as any;
       const dbHost = process.env.PGHOST ?? "unknown";
       const dbName = process.env.PGDATABASE ?? "unknown";
+
+      // Build warnings array — non-fatal signals that require ops attention.
+      const warnings: Array<{ code: string; message: string; data?: unknown }> = [];
+      if (missingSched.rows.length > 0) {
+        warnings.push({
+          code: "missing_recurring_schedule",
+          message:
+            `${missingSched.rows.length} association(s) have assessment ledger entries ` +
+            `but no active recurring_charge_schedules. The automation sweep will never ` +
+            `post dues for these associations until a schedule is created. ` +
+            `For Cherry Hill: run scripts/backfill-chc-recurring-dues.cjs or use the ` +
+            `admin Financial → Recurring Charges UI to add a schedule.`,
+          data: missingSched.rows,
+        });
+      }
+
       res.json({
         status: "ok",
         env: process.env.NODE_ENV ?? "development",
         db: { host: dbHost, name: dbName },
         emailProviderConfigured: isEmailProviderConfigured(),
+        warnings,
         counts: {
           associations: c.associations,
           units: c.units,
