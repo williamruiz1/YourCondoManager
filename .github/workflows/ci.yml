@@ -90,6 +90,25 @@ jobs:
       # `--with-deps` is Debian/Ubuntu only (uses apt-get). macOS has the
       # system libs already; install browsers only.
       - run: npx playwright install chromium firefox webkit
+      # Self-hosted-runner hygiene (fix/ci-greenup): the Playwright webServer
+      # binds PLAYWRIGHT_PORT (default 5000), and `reuseExistingServer` is
+      # FALSE in CI — so a stale process left on port 5000 by a previously
+      # CANCELLED run (the workflow uses `cancel-in-progress: true`) makes
+      # Playwright fail with "http://localhost:5000 is already used". Free the
+      # port before starting. Idempotent + never fails the job (no listener =
+      # lsof prints nothing → the `|| true` no-ops).
+      - name: Free port 5000 (stale webServer from a cancelled run)
+        run: |
+          PORT="${PLAYWRIGHT_PORT:-5000}"
+          PIDS="$(lsof -ti tcp:"$PORT" || true)"
+          if [ -n "$PIDS" ]; then
+            echo "Killing stale process(es) on port $PORT: $PIDS"
+            # shellcheck disable=SC2086
+            kill -9 $PIDS || true
+            sleep 1
+          else
+            echo "Port $PORT is free."
+          fi
       - name: Playwright (route-mock — excludes @visual)
         run: npx playwright test --grep-invert @visual
         env:
