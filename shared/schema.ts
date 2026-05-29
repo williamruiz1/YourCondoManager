@@ -3756,3 +3756,25 @@ export const PRESSING_ITEM_ROLE_LENS: Record<PressingItemActorRole, PressingItem
   president: ["compliance_deadline", "delinquency_rising"],
   board: ["unidentified_txn", "delinquency_rising", "document_attention", "compliance_deadline"],
 };
+
+// ── bank_descriptor_aliases — descriptor→owner learning table ─────────────────
+//
+// When a treasurer manually matches a bank-tx descriptor to a specific owner,
+// the normalized descriptor is stored here so future credits with the same
+// descriptor auto-match without human intervention (founder-os#2480 tail /
+// Gap 4 learning path). See migrations/0037_bank_descriptor_aliases.sql.
+export const bankDescriptorAliases = pgTable("bank_descriptor_aliases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  /** Lowercased, punctuation → space, whitespace-collapsed, trimmed. */
+  normalizedDescriptor: text("normalized_descriptor").notNull(),
+  personId: varchar("person_id").notNull().references(() => persons.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  /** Number of times this alias has been confirmed by a human match. */
+  matchCount: integer("match_count").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type BankDescriptorAlias = typeof bankDescriptorAliases.$inferSelect;
+export type InsertBankDescriptorAlias = typeof bankDescriptorAliases.$inferInsert;

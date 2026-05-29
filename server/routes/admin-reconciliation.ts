@@ -18,12 +18,13 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
-import { auditLogs, type AdminRole } from "@shared/schema";
+import { auditLogs, bankTransactions, ownerLedgerEntries, type AdminRole } from "@shared/schema";
 import {
   runAutoMatch,
   listManualReviewCandidates,
   findOwnerSuggestionsForUnmatchedCredits,
   createPaymentFromSuggestion,
+  upsertDescriptorAlias,
 } from "../services/reconciliation/auto-matcher";
 import { buildReconciliationReport } from "../services/reconciliation/report";
 import {
@@ -250,6 +251,35 @@ export function registerAdminReconciliationRoutes(
           },
         });
 
+        // Gap 4 (learning): upsert descriptor alias so future credits from
+        // the same sender auto-match without treasurer intervention. Fire-and-
+        // forget — a failure here must not fail the match response.
+        void (async () => {
+          try {
+            // Fetch the bank tx descriptor and ledger entry person/unit.
+            const [btx] = await db
+              .select({ name: bankTransactions.name, merchantName: bankTransactions.merchantName })
+              .from(bankTransactions)
+              .where(eq(bankTransactions.id, bankTransactionId))
+              .limit(1);
+            const [entry] = await db
+              .select({ personId: ownerLedgerEntries.personId, unitId: ownerLedgerEntries.unitId })
+              .from(ownerLedgerEntries)
+              .where(and(eq(ownerLedgerEntries.id, ledgerEntryId), eq(ownerLedgerEntries.associationId, associationId)))
+              .limit(1);
+            if (btx && entry) {
+              await upsertDescriptorAlias({
+                associationId,
+                rawDescriptor: btx.merchantName ?? btx.name,
+                personId: entry.personId,
+                unitId: entry.unitId,
+              });
+            }
+          } catch {
+            // Non-fatal — alias learning is best-effort.
+          }
+        })();
+
         res.json(result.outcome);
       } catch (error: any) {
         res
@@ -337,6 +367,28 @@ export function registerAdminReconciliationRoutes(
             unitId,
           },
         });
+
+        // Gap 4 (learning): upsert descriptor alias so future credits from
+        // the same sender auto-match. Fire-and-forget — must not fail the response.
+        void (async () => {
+          try {
+            const [btx] = await db
+              .select({ name: bankTransactions.name, merchantName: bankTransactions.merchantName })
+              .from(bankTransactions)
+              .where(eq(bankTransactions.id, bankTransactionId))
+              .limit(1);
+            if (btx) {
+              await upsertDescriptorAlias({
+                associationId,
+                rawDescriptor: btx.merchantName ?? btx.name,
+                personId,
+                unitId,
+              });
+            }
+          } catch {
+            // Non-fatal.
+          }
+        })();
 
         res.json(result);
       } catch (error: any) {

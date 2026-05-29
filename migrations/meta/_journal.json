@@ -260,6 +260,13 @@
       "when": 1779300000000,
       "tag": "0036_pressing_items",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1779400000000,
+      "tag": "0037_bank_descriptor_aliases",
+      "breakpoints": true
     }
   ]
 }
