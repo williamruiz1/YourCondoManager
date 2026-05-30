@@ -248,6 +248,7 @@ import {
   bankAccounts,
   bankTransactions,
   goLiveGateAttestations,
+  paymentTransactions,
 } from "@shared/schema";
 import type { AdminRole } from "@shared/schema";
 import {
@@ -282,6 +283,7 @@ import {
   requireBoardAccessReadOnly,
 } from "./portal-role-collapse";
 import { updatePaymentTransactionStatus } from "./services/payment-service";
+import { sendPaymentReceiptEmail, getPortalReceiptList, getPaymentReceiptData } from "./services/payment-receipt-email";
 import {
   buildSpecMetadata,
   computeApplicationFeeCents,
@@ -5890,6 +5892,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                   referenceId: updatedTxn.id,
                 });
               }
+            }
+
+            // P0-2: Send receipt email on succeeded transactions.
+            // Fire-and-forget: email failure must not fail the webhook 200.
+            // Idempotent via receipt_email_sent_at on the transaction row.
+            if (updatedTxn && txnStatus === "succeeded") {
+              sendPaymentReceiptEmail({ transactionId: updatedTxn.id }).catch((emailErr: unknown) => {
+                const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+                console.error("[webhook] receipt email failed:", msg);
+              });
             }
           } catch (txnUpdateErr) {
             console.error("[webhook] payment_transactions update failed:", txnUpdateErr);
@@ -13837,6 +13849,69 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         },
       };
       res.status(201).json(receiptData);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // P0-2: Portal receipt list — GET /api/portal/receipts
+  // Returns settled payment_transactions for the logged-in owner, most recent first.
+  app.get("/api/portal/receipts", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAssociationId || !req.portalPersonId || !req.portalUnitId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const limit = Math.min(
+        50,
+        parseInt(typeof req.query.limit === "string" ? req.query.limit : "20", 10) || 20,
+      );
+      const receipts = await getPortalReceiptList({
+        associationId: req.portalAssociationId,
+        personId: req.portalPersonId,
+        unitId: req.portalUnitId,
+        limit,
+      });
+      res.json({ receipts });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // P0-2: Portal receipt detail — GET /api/portal/receipts/:id
+  // Returns the full receipt context for a single payment_transaction (used
+  // by the printable receipt view).
+  app.get("/api/portal/receipts/:id", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAssociationId || !req.portalPersonId || !req.portalUnitId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const id = getParam(req.params.id);
+      const [txn] = await db
+        .select()
+        .from(paymentTransactions)
+        .where(
+          and(
+            eq(paymentTransactions.id, id),
+            // Tenant isolation: must belong to this owner's association.
+            eq(paymentTransactions.associationId, req.portalAssociationId ?? ""),
+            // Must belong to this owner.
+            eq(paymentTransactions.personId, req.portalPersonId ?? ""),
+            eq(paymentTransactions.unitId, req.portalUnitId ?? ""),
+            eq(paymentTransactions.status, "succeeded"),
+          ),
+        )
+        .limit(1);
+
+      if (!txn) {
+        return res.status(404).json({ message: "Receipt not found" });
+      }
+
+      const ctx = await getPaymentReceiptData(txn);
+      if (!ctx) {
+        return res.status(404).json({ message: "Receipt data unavailable" });
+      }
+
+      res.json(ctx);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
