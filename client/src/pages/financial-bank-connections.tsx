@@ -218,7 +218,11 @@ export default function FinancialBankConnectionsPage() {
     <div className="mx-auto flex max-w-6xl flex-col gap-6" data-testid="financial-bank-connections">
       <WorkspacePageHeader
         title="Payment Methods"
-        summary={activeAssociationName ? `Manage Plaid-linked bank accounts for ${activeAssociationName}.` : "Manage Plaid-linked bank accounts for the association."}
+        summary={
+          activeAssociationName
+            ? `Manage Plaid-linked bank accounts for ${activeAssociationName}. This is the canonical reconciliation surface for HOAs with a connected bank.`
+            : "Manage Plaid-linked bank accounts for the association. This is the canonical reconciliation surface for HOAs with a connected bank."
+        }
       />
 
       {pendingRecon && pendingRecon.unmatchedCredits.length > 0 ? (
