@@ -31,10 +31,12 @@
  * instance for the cross-product launch-readiness template.
  */
 
-import { and, count, desc, eq, gte, isNotNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNotNull } from "drizzle-orm";
 import { db } from "../db";
 import {
   aiAssistantInteractions,
+  ownerLedgerEntries,
+  portalAccess,
   units,
   paymentGatewayConnections,
   goLiveGateAttestations,
@@ -221,6 +223,62 @@ const checkB1_ownersHaveAccounts: GateCheck = async (associationId: string) => {
 };
 
 /**
+ * B.2 — Owner portal shows correct balance per owner (DB-state check).
+ * Checks two things:
+ *   1. At least one active portal_access row exists for the association
+ *      (owners have accounts that can log in).
+ *   2. At least one owner_ledger_entries row exists for the association
+ *      (there is something to show in the balance — either a charge or
+ *      an imported assessment). An empty ledger would mean the portal
+ *      shows $0 for every owner, which is technically "correct" but
+ *      not meaningful for go-live.
+ * This gate is verifyMethod:"auto" but had no autoCheck wired. Adding it
+ * here per P0-1 trace (Issue #204, 2026-05-30).
+ */
+const checkB2_ownerPortalBalance: GateCheck = async (associationId: string) => {
+  try {
+    const [portalRows, ledgerRows] = await Promise.all([
+      db
+        .select({ n: count() })
+        .from(portalAccess)
+        .where(
+          and(
+            eq(portalAccess.associationId, associationId),
+            eq(portalAccess.status, "active"),
+          ),
+        ),
+      db
+        .select({ n: count() })
+        .from(ownerLedgerEntries)
+        .where(eq(ownerLedgerEntries.associationId, associationId)),
+    ]);
+    const portalN = Number(portalRows[0]?.n ?? 0);
+    const ledgerN = Number(ledgerRows[0]?.n ?? 0);
+    if (portalN > 0 && ledgerN > 0) {
+      return {
+        status: "pass",
+        evidence: `${portalN} active portal_access rows; ${ledgerN} owner_ledger_entries — balance API has data to display`,
+        last_checked: isoNow(),
+      };
+    }
+    const missing: string[] = [];
+    if (portalN === 0) missing.push("no active portal_access rows (owners cannot log in)");
+    if (ledgerN === 0) missing.push("no owner_ledger_entries (portal would show $0 for all owners)");
+    return {
+      status: "pending",
+      evidence: missing.join("; "),
+      last_checked: isoNow(),
+    };
+  } catch (err) {
+    return {
+      status: "pending",
+      evidence: `DB query error: ${(err as Error).message}`,
+      last_checked: isoNow(),
+    };
+  }
+};
+
+/**
  * B.5 — Transactional email infrastructure (env-presence check).
  * Check: EMAIL_FROM + RESEND_API_KEY environment variables set.
  */
@@ -387,7 +445,7 @@ export const GATES: GateMeta[] = [
 
   // ---- Tier B — Owner experience (HARD) ----
   { id: "B.1", tier: "B", name: "All owners have YCM account", hardSoft: "HARD", verifyMethod: "auto", owningDispatch: "seed.ts", autoCheck: checkB1_ownersHaveAccounts },
-  { id: "B.2", tier: "B", name: "Owner portal shows correct balance per owner", hardSoft: "HARD", verifyMethod: "auto", owningDispatch: "—" },
+  { id: "B.2", tier: "B", name: "Owner portal shows correct balance per owner", hardSoft: "HARD", verifyMethod: "auto", owningDispatch: "—", autoCheck: checkB2_ownerPortalBalance },
   { id: "B.3", tier: "B", name: "Owner can log in + see ledger + pay", hardSoft: "HARD", verifyMethod: "manual", owningDispatch: "A.1-A.5+B.1" },
   { id: "B.4", tier: "B", name: "AI Phase 0 chat answers balance / payment questions", hardSoft: "HARD", verifyMethod: "auto", owningDispatch: "#1153" },
   { id: "B.5", tier: "B", name: "Transactional email infra (EMAIL_FROM + RESEND_API_KEY)", hardSoft: "HARD", verifyMethod: "auto", owningDispatch: "PR #126 / #1042", autoCheck: checkB5_emailInfra },
