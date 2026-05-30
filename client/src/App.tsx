@@ -637,6 +637,9 @@ function PublicRouter({
         <Route path="/portal/finances/statement">
           <ZoneBoundary zone="Portal"><PortalFinancesPage subPath="statement" /></ZoneBoundary>
         </Route>
+        <Route path="/portal/finances/receipts">
+          <ZoneBoundary zone="Portal"><PortalFinancesPage subPath="receipts" /></ZoneBoundary>
+        </Route>
         <Route path="/portal/finances/assessments/:assessmentId">
           {(params) => (
             <ZoneBoundary zone="Portal">

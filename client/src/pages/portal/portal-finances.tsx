@@ -36,6 +36,10 @@ import {
   AccountStatementView,
   type AccountStatementResponse,
 } from "@/components/account-statement-view";
+import {
+  PaymentReceiptView,
+  type PaymentReceiptData,
+} from "@/components/payment-receipt-view";
 import { PortalShell, usePortalContext } from "./portal-shell";
 import { t } from "@/i18n/use-strings";
 
@@ -170,6 +174,7 @@ function getTitleForPath(path: string): string {
   if (path === "/portal/finances/payment-methods") return t("portal.finances.paymentMethods.title");
   if (path === "/portal/finances/ledger") return "Ledger";
   if (path === "/portal/finances/statement") return "Account Statement";
+  if (path === "/portal/finances/receipts") return "Payment Receipts";
   if (path.startsWith("/portal/finances/assessments/")) return t("portal.finances.assessment.title");
   return t("portal.finances.title");
 }
@@ -884,6 +889,14 @@ function FinancesHubContent() {
                 Account statement
                 <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
               </Link>
+              <Link
+                href="/portal/finances/receipts"
+                className="flex items-center justify-between rounded-lg border border-outline-variant/10 px-4 py-3 text-sm font-semibold hover:bg-surface-container focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                data-testid="portal-finances-link-receipts"
+              >
+                Payment receipts
+                <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
+              </Link>
             </div>
           </CardContent>
         </Card>
@@ -1467,13 +1480,132 @@ function AssessmentDetailContent({ assessmentId }: { assessmentId: string }) {
   );
 }
 
+// ---------- Sub-page: payment receipts list (P0-2 / #205) ----------
+
+interface ReceiptSummary {
+  id: string;
+  receiptReference: string;
+  amountFormatted: string;
+  description: string;
+  paidAtFormatted: string;
+  confirmedAt: string;
+}
+
+function ReceiptsContent() {
+  const { portalFetch } = usePortalContext();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const { data, isLoading, isError } = useQuery<{ receipts: ReceiptSummary[] }>({
+    queryKey: ["portal/receipts"],
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/receipts");
+      if (!res.ok) return { receipts: [] };
+      return res.json() as Promise<{ receipts: ReceiptSummary[] }>;
+    },
+  });
+
+  const { data: receiptDetail, isLoading: detailLoading } = useQuery<PaymentReceiptData>({
+    queryKey: ["portal/receipts", selectedId],
+    queryFn: async () => {
+      const res = await portalFetch(`/api/portal/receipts/${selectedId}`);
+      if (!res.ok) throw new Error("Receipt not found");
+      return res.json() as Promise<PaymentReceiptData>;
+    },
+    enabled: selectedId != null,
+  });
+
+  if (selectedId) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col gap-4" data-testid="portal-finances-receipt-detail">
+        <div>
+          <button
+            type="button"
+            onClick={() => setSelectedId(null)}
+            className="rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            data-testid="portal-receipt-back"
+          >
+            ← Back to receipts
+          </button>
+        </div>
+        {detailLoading || receiptDetail == null ? (
+          <p className="text-sm text-on-surface-variant">Loading receipt…</p>
+        ) : (
+          <PaymentReceiptView receipt={receiptDetail as PaymentReceiptData} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col gap-6" data-testid="portal-finances-receipts">
+      <div className="flex items-center gap-3">
+        <Receipt className="h-6 w-6 text-primary" aria-hidden="true" />
+        <h1 className="font-headline text-3xl" data-testid="portal-finances-receipts-heading">
+          Payment Receipts
+        </h1>
+      </div>
+      <p className="text-sm text-on-surface-variant">
+        Downloadable and printable receipts for all your settled HOA payments.
+      </p>
+
+      {isLoading ? (
+        <p className="text-sm text-on-surface-variant">Loading receipts…</p>
+      ) : isError ? (
+        <p className="text-sm text-destructive">Failed to load receipts.</p>
+      ) : !data?.receipts.length ? (
+        <EmptyState
+          icon={Receipt}
+          title="No receipts yet"
+          description="Receipts will appear here once you have settled payments."
+        />
+      ) : (
+        <Card>
+          <CardContent className="py-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Receipt #</TableHead>
+                  <TableHead className="text-right no-print">Download</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data?.receipts ?? []).map((r: ReceiptSummary) => (
+                  <TableRow key={r.id} data-testid={`portal-receipt-row-${r.id}`}>
+                    <TableCell>{r.paidAtFormatted}</TableCell>
+                    <TableCell className="tabular-nums">{r.amountFormatted}</TableCell>
+                    <TableCell>{r.description}</TableCell>
+                    <TableCell className="font-mono text-xs">{r.receiptReference}</TableCell>
+                    <TableCell className="text-right no-print">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedId(r.id)}
+                        data-testid={`portal-receipt-view-${r.id}`}
+                      >
+                        View / Print
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ---------- Router entry point ----------
 
 export default function PortalFinancesPage({
   subPath,
   assessmentId,
 }: {
-  subPath?: "hub" | "payment-methods" | "ledger" | "statement" | "assessment";
+  subPath?: "hub" | "payment-methods" | "ledger" | "statement" | "assessment" | "receipts";
   assessmentId?: string;
 } = {}) {
   const [location] = useLocation();
@@ -1488,6 +1620,8 @@ export default function PortalFinancesPage({
     body = <LedgerContent />;
   } else if (subPath === "statement") {
     body = <StatementContent />;
+  } else if (subPath === "receipts") {
+    body = <ReceiptsContent />;
   } else if (subPath === "assessment" && assessmentId) {
     body = <AssessmentDetailContent assessmentId={assessmentId} />;
   } else {
@@ -1502,5 +1636,6 @@ export {
   PaymentMethodsContent,
   LedgerContent,
   StatementContent,
+  ReceiptsContent,
   AssessmentDetailContent,
 };

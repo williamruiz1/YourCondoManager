@@ -3375,6 +3375,13 @@ export const paymentTransactions = pgTable("payment_transactions", {
   failureCategory: failureCategoryEnum("failure_category"),
   retryEligible: integer("retry_eligible").notNull().default(0),
   nextRetryAt: timestamp("next_retry_at"),
+  /**
+   * Set when a receipt email is successfully dispatched after
+   * payment_intent.succeeded.  NULL means not yet sent.  Used as an
+   * idempotency guard — Stripe can re-deliver webhooks; if this is
+   * already set we skip re-sending (P0-2 / Issue #205).
+   */
+  receiptEmailSentAt: timestamp("receipt_email_sent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
