@@ -18697,6 +18697,33 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
   });
 
+  // GET /api/plaid/has-connection?associationId=...
+  // Returns {hasConnection: boolean} — canonical signal for whether this HOA has an
+  // active Plaid bank link. Used by the Reconciliation page to gate the CSV import
+  // path. Intentionally lightweight: no full account fetch needed.
+  // Decision: Plaid is canonical for HOAs with a bank connection; CSV is scoped to
+  // HOAs without one. See docs/specs/reconciliation-source-of-truth-2026-05-30.md.
+  app.get("/api/plaid/has-connection", requireAdmin, async (req: AdminRequest, res) => {
+    try {
+      const associationId = getParam(req.query.associationId as string | undefined);
+      if (!associationId) {
+        return res.status(400).json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+      }
+      assertAssociationScope(req, associationId);
+
+      const [account] = await db
+        .select({ id: bankAccounts.id })
+        .from(bankAccounts)
+        .where(eq(bankAccounts.associationId, associationId))
+        .limit(1);
+
+      res.json({ hasConnection: Boolean(account) });
+    } catch (error: any) {
+      debug("[plaid][has-connection] error", error);
+      res.status(500).json({ error: error.message, code: "PLAID_HAS_CONNECTION_ERROR" });
+    }
+  });
+
   // GET /api/plaid/accounts?associationId=...
   // Lists bankAccounts for an association.
   app.get("/api/plaid/accounts", requireAdmin, async (req: AdminRequest, res) => {

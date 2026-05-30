@@ -1,7 +1,15 @@
 // zone: Financials
 // persona: Manager, Board Officer, Assisted Board, PM Assistant
+//
+// Reconciliation source-of-truth decision (P0-4):
+//   • Plaid is CANONICAL for HOAs with an active bank connection.
+//     Use the Payment Methods page → run auto-reconcile from there.
+//   • CSV import is scoped to HOAs that have NO Plaid connection
+//     (e.g., small HOAs whose bank is not Plaid-supported).
+//   See docs/specs/reconciliation-source-of-truth-2026-05-30.md.
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveAssociation } from "@/hooks/use-active-association";
@@ -16,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, CheckCircle2, RefreshCw, Plus, GitMerge, Lock, LockOpen, CheckSquare, FileUp } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCw, Plus, GitMerge, Lock, LockOpen, CheckSquare, FileUp, Landmark } from "lucide-react";
 import type { BankStatementImport, BankStatementTransaction, OwnerLedgerEntry, ReconciliationPeriod } from "@shared/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -58,6 +66,20 @@ export function FinancialReconciliationContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
+
+  // P0-4: Plaid-connection check — determines which reconciliation path to surface.
+  const { data: plaidStatus } = useQuery<{ hasConnection: boolean }>({
+    queryKey: ["/api/plaid/has-connection", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) return { hasConnection: false };
+      const res = await apiRequest("GET", `/api/plaid/has-connection?associationId=${encodeURIComponent(activeAssociationId)}`);
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+    // Stale-while-revalidate: this rarely changes mid-session, 5-min cache is fine.
+    staleTime: 5 * 60 * 1000,
+  });
+  const hasPlaidConnection = plaidStatus?.hasConnection ?? false;
 
   const [selectedImportId, setSelectedImportId] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -263,6 +285,40 @@ export function FinancialReconciliationContent() {
 
   return (
     <div className="space-y-6">
+      {/* P0-4: Canonical-path banner — surfaces the right workflow for this HOA */}
+      {hasPlaidConnection ? (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-4 py-3 flex items-start gap-3">
+          <Landmark className="mt-0.5 h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" aria-hidden />
+          <div className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+            <p className="font-medium">This HOA has a connected bank account — use Plaid reconciliation.</p>
+            <p className="text-blue-600 dark:text-blue-400">
+              Your canonical workflow is on the{" "}
+              <Link href="/app/financial/bank-connections" className="underline hover:no-underline font-medium">
+                Payment Methods
+              </Link>{" "}
+              page: sync transactions, run auto-reconcile, and manually match any unmatched credits there.
+              The CSV import below is available as a fallback for edge cases (e.g., importing a prior period
+              before your Plaid connection was set up), but Plaid is the source of truth going forward.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 flex items-start gap-3">
+          <Landmark className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden />
+          <div className="text-sm text-amber-800 dark:text-amber-200 space-y-1">
+            <p className="font-medium">No connected bank account — using CSV import as the reconciliation path.</p>
+            <p className="text-amber-600 dark:text-amber-400">
+              To switch to automatic bank-sync reconciliation,{" "}
+              <Link href="/app/financial/bank-connections" className="underline hover:no-underline font-medium">
+                connect a bank account via Plaid
+              </Link>
+              . Once connected, Plaid becomes the canonical source of truth and this CSV workflow is no
+              longer the primary path.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Workflow Step Indicator */}
       <div className={`rounded-lg border bg-muted/30 overflow-hidden ${isMobile ? "grid grid-cols-1" : "flex items-center gap-0"}`}>
         {[
