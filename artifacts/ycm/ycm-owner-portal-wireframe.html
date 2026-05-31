@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>YCM Owner Portal — Wireframe v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --slate:    #5B7DA3;
+  --teal:     #2DBDB0;
+  --cream:    #F0E5D2;
+  --cool:     #F6F9FF;
+  --navy:     #0B1B3B;
+  --navy-70:  rgba(11, 27, 59, 0.70);
+  --navy-50:  rgba(11, 27, 59, 0.50);
+  --navy-15:  rgba(11, 27, 59, 0.15);
+  --navy-08:  rgba(11, 27, 59, 0.08);
+  --paper:    #FBFCFE;
+  --ink-soft: #4A5878;
+  --line:     rgba(11, 27, 59, 0.10);
+  --shadow-card: 0 1px 0 rgba(11, 27, 59, 0.04), 0 12px 32px -16px rgba(11, 27, 59, 0.16);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--paper); }
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--navy);
+  font-feature-settings: 'ss01', 'cv11';
+  -webkit-font-smoothing: antialiased;
+}
+.headline { font-family: 'Fraunces', 'Times New Roman', serif; letter-spacing: -0.02em; font-weight: 500; }
+.eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ----- Wireframe chrome ----- */
+.wf-toolbar {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--navy);
+  color: var(--cool);
+  padding: 14px 28px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.wf-toolbar-left { display: flex; align-items: center; gap: 14px; }
+.wf-toolbar-title { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; }
+.wf-toolbar-meta { font-size: 12px; color: rgba(246, 249, 255, 0.55); }
+.wf-tabs { display: flex; gap: 6px; background: rgba(255,255,255,0.06); padding: 4px; border-radius: 999px; }
+.wf-tab {
+  padding: 7px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(246, 249, 255, 0.65);
+  border-radius: 999px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+}
+.wf-tab.is-active { background: var(--teal); color: var(--navy); }
+
+/* ----- Portal Shell ----- */
+.shell {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  min-height: calc(100vh - 56px);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.sidebar {
+  background: var(--cool);
+  border-right: 1px solid var(--line);
+  padding: 24px 16px 32px;
+  display: flex;
+  flex-direction: column;
+}
+.brand-row { display: flex; align-items: center; gap: 12px; padding: 4px 12px 24px; }
+.brand-logo {
+  width: 44px; height: 44px; border-radius: 10px;
+  box-shadow: 0 6px 16px -8px rgba(91, 125, 163, 0.55);
+}
+.brand-wordmark { display: flex; flex-direction: column; line-height: 1.05; }
+.brand-wordmark .lockup { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; color: var(--navy); letter-spacing: -0.01em; }
+.brand-wordmark .sub { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); margin-top: 2px; }
+
+.nav-section-label {
+  font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 700;
+  color: var(--navy-50);
+  padding: 16px 14px 8px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-size: 14px; font-weight: 500; color: var(--ink-soft);
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+.nav-item:hover { background: rgba(91, 125, 163, 0.06); color: var(--navy); }
+.nav-item.is-active {
+  background: var(--navy);
+  color: var(--cool);
+  border-color: var(--navy);
+}
+.nav-item .ic {
+  width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.nav-badge {
+  margin-left: auto;
+  background: var(--teal); color: var(--navy);
+  font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px;
+  min-width: 22px; text-align: center;
+}
+.nav-item.is-active .nav-badge { background: var(--cream); }
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 16px 14px;
+  border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px;
+}
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--slate), var(--teal));
+  color: white; display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+}
+.sidebar-foot .who { display: flex; flex-direction: column; font-size: 12px; }
+.sidebar-foot .who b { font-weight: 600; color: var(--navy); }
+.sidebar-foot .who span { color: var(--navy-50); }
+
+/* ----- Main column ----- */
+.main {
+  padding: 32px 48px 64px;
+  background: var(--paper);
+  overflow-x: hidden;
+}
+.breadcrumbs {
+  font-size: 12px; color: var(--ink-soft);
+  letter-spacing: 0.02em;
+  display: flex; gap: 8px; align-items: center;
+  margin-bottom: 4px;
+}
+.breadcrumbs a { color: var(--ink-soft); text-decoration: none; }
+.breadcrumbs a:hover { color: var(--navy); }
+.breadcrumbs .sep { opacity: 0.4; }
+
+/* ----- Home: Hero panel ----- */
+.hero {
+  margin-top: 22px;
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(45, 189, 176, 0.18), transparent 60%),
+    radial-gradient(80% 60% at 0% 100%, rgba(240, 229, 210, 0.5), transparent 60%),
+    linear-gradient(135deg, #112245 0%, #0B1B3B 60%, #0E2B57 100%);
+  color: var(--cool);
+  border-radius: 28px;
+  padding: 40px 44px 36px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.hero::before {
+  /* abstract roofline echo of the logo */
+  content: ""; position: absolute; right: 0; bottom: 0;
+  width: 360px; height: 200px;
+  background-image:
+    linear-gradient(135deg, transparent 49.5%, rgba(45,189,176,0.18) 50%, transparent 50.5%),
+    linear-gradient(45deg, transparent 49.5%, rgba(45,189,176,0.10) 50%, transparent 50.5%);
+  background-size: 32px 32px;
+  opacity: 0.6;
+  mask-image: linear-gradient(to top left, black, transparent 60%);
+}
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(240, 229, 210, 0.85);
+  font-weight: 600;
+}
+.hero-eyebrow .dot { width: 6px; height: 6px; background: var(--teal); border-radius: 50%; box-shadow: 0 0 0 4px rgba(45,189,176,0.18); }
+.hero h1 {
+  font-family: 'Fraunces', serif;
+  font-size: 44px;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  margin: 14px 0 6px;
+  line-height: 1.05;
+}
+.hero h1 em {
+  font-style: italic;
+  color: var(--teal);
+  font-weight: 400;
+}
+.hero p.lede {
+  margin: 0;
+  font-size: 15px;
+  max-width: 540px;
+  color: rgba(246, 249, 255, 0.78);
+  line-height: 1.55;
+}
+.hero-grid {
+  margin-top: 28px;
+  display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 14px;
+  position: relative; z-index: 2;
+}
+.hero-stat {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(246, 249, 255, 0.10);
+  backdrop-filter: blur(6px);
+  border-radius: 18px;
+  padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.hero-stat.is-balance { background: rgba(45, 189, 176, 0.10); border-color: rgba(45, 189, 176, 0.30); }
+.hero-stat .eyebrow { color: rgba(246, 249, 255, 0.62); }
+.hero-stat .value {
+  font-family: 'Fraunces', serif;
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--cool);
+}
+.hero-stat.is-balance .value { color: white; }
+.hero-stat .foot { font-size: 12px; color: rgba(246, 249, 255, 0.55); }
+.hero-stat .cta {
+  margin-top: 4px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600;
+  color: var(--teal); text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.hero-stat .cta:hover { color: white; }
+.hero-stat .cta .arrow { transition: transform 0.2s; }
+.hero-stat .cta:hover .arrow { transform: translateX(2px); }
+
+/* ----- Sections under hero ----- */
+.row { display: grid; gap: 24px; margin-top: 32px; }
+.row.two { grid-template-columns: 1.4fr 1fr; }
+.row.three { grid-template-columns: repeat(3, 1fr); }
+
+.panel {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 26px 28px;
+  box-shadow: var(--shadow-card);
+}
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 18px; }
+.panel-head h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 22px; font-weight: 500;
+  margin: 0;
+  letter-spacing: -0.015em;
+}
+.panel-head .view-all {
+  font-size: 12px; font-weight: 600;
+  color: var(--slate); text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.panel-head .view-all:hover { color: var(--navy); text-decoration: underline; }
+
+.unit-list { display: flex; flex-direction: column; gap: 1px; background: var(--line); border-radius: 14px; overflow: hidden; }
+.unit-row {
+  background: white;
+  padding: 16px 18px;
+  display: grid; grid-template-columns: 56px 1fr auto auto; gap: 16px; align-items: center;
+}
+.unit-marker {
+  width: 56px; height: 56px;
+  background: var(--cool);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-family: 'Fraunces', serif;
+}
+.unit-marker .bldg { font-size: 10px; letter-spacing: 0.1em; color: var(--ink-soft); text-transform: uppercase; }
+.unit-marker .num { font-size: 18px; font-weight: 600; color: var(--navy); margin-top: -2px; }
+.unit-body .addr { font-size: 14px; font-weight: 600; color: var(--navy); }
+.unit-body .meta { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.unit-balance { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; color: var(--navy); }
+.unit-arrow { color: var(--navy-50); }
+
+.notice-list { display: flex; flex-direction: column; gap: 14px; }
+.notice {
+  border-left: 3px solid var(--teal);
+  padding: 4px 0 4px 14px;
+}
+.notice .when { font-size: 11px; color: var(--ink-soft); letter-spacing: 0.04em; }
+.notice .subj { font-size: 14px; font-weight: 600; color: var(--navy); margin-top: 2px; }
+.notice .snip { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; line-height: 1.5; }
+
+.shortcuts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
+.shortcut {
+  background: var(--cool);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 22px 22px 24px;
+  display: flex; flex-direction: column; gap: 6px;
+  text-decoration: none; color: inherit;
+  transition: border-color 0.15s, transform 0.15s;
+  cursor: pointer;
+}
+.shortcut:hover { border-color: var(--slate); transform: translateY(-1px); }
+.shortcut .ic {
+  width: 38px; height: 38px;
+  background: white;
+  border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--slate);
+  border: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.shortcut h3 { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; margin: 0; }
+.shortcut p { font-size: 12.5px; color: var(--ink-soft); margin: 0; line-height: 1.5; }
+
+/* ----- Finances ----- */
+.finances-header {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-top: 22px;
+}
+.finances-header h1 {
+  font-family: 'Fraunces', serif;
+  font-size: 40px; font-weight: 400;
+  margin: 0 0 4px;
+  letter-spacing: -0.025em;
+}
+.finances-header p { margin: 0; font-size: 14px; color: var(--ink-soft); }
+.finances-header .actions { display: flex; gap: 10px; }
+.btn {
+  font-family: inherit;
+  font-size: 13px; font-weight: 600;
+  padding: 11px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn.primary { background: var(--navy); color: var(--cool); }
+.btn.primary:hover { background: #142555; }
+.btn.ghost { background: transparent; color: var(--navy); border-color: var(--line); }
+.btn.ghost:hover { border-color: var(--navy); background: var(--cool); }
+
+/* The "balance hero" card on Finances */
+.balance-card {
+  margin-top: 24px;
+  background: linear-gradient(135deg, var(--cream) 0%, #F6EFDF 100%);
+  border-radius: 24px;
+  padding: 32px 36px;
+  display: grid; grid-template-columns: 1.3fr 1fr; gap: 36px;
+  position: relative; overflow: hidden;
+  border: 1px solid rgba(11, 27, 59, 0.06);
+}
+.balance-card::after {
+  content: ""; position: absolute; right: -40px; top: -40px;
+  width: 320px; height: 320px;
+  background: radial-gradient(circle, rgba(91, 125, 163, 0.20), transparent 65%);
+  pointer-events: none;
+}
+.balance-card .label {
+  font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-soft); font-weight: 600;
+}
+.balance-card .amount {
+  font-family: 'Fraunces', serif;
+  font-size: 72px; font-weight: 400;
+  letter-spacing: -0.04em;
+  color: var(--navy);
+  line-height: 1;
+  margin-top: 12px;
+}
+.balance-card .amount .cents { font-size: 36px; opacity: 0.6; vertical-align: top; margin-left: 2px; }
+.balance-card .breakdown-line {
+  margin-top: 18px; font-size: 13px; color: var(--ink-soft);
+  display: flex; gap: 18px; align-items: center;
+}
+.balance-card .breakdown-line .pip { width: 9px; height: 9px; border-radius: 2px; }
+.balance-card .actions { display: flex; gap: 10px; margin-top: 24px; }
+.balance-card .actions .btn.primary { background: var(--navy); }
+.balance-card .actions .btn.accent { background: var(--teal); color: var(--navy); }
+.balance-card .actions .btn.accent:hover { background: #1FA89C; }
+
+.balance-card .side {
+  display: flex; flex-direction: column; gap: 14px;
+  position: relative; z-index: 2;
+}
+.balance-card .side-stat {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(2px);
+  border-radius: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(11, 27, 59, 0.05);
+}
+.balance-card .side-stat .k { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+.balance-card .side-stat .v { font-family: 'Fraunces', serif; font-size: 22px; color: var(--navy); margin-top: 4px; }
+.balance-card .side-stat .sub { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
+
+/* Category bar split */
+.cat-bar {
+  margin-top: 32px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 26px 28px;
+  box-shadow: var(--shadow-card);
+}
+.cat-bar h3 { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 500; margin: 0 0 16px; }
+.cat-stack {
+  display: flex; height: 14px; border-radius: 999px; overflow: hidden;
+  background: var(--cool);
+  border: 1px solid var(--line);
+}
+.cat-stack .seg-driveway { background: var(--slate); }
+.cat-stack .seg-hoa { background: var(--teal); }
+.cat-legend { display: flex; gap: 28px; margin-top: 16px; }
+.cat-legend .item { display: flex; flex-direction: column; gap: 4px; }
+.cat-legend .item .lab { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-soft); font-weight: 600; letter-spacing: 0.02em; }
+.cat-legend .item .lab .pip { width: 10px; height: 10px; border-radius: 3px; }
+.cat-legend .item .amt { font-family: 'Fraunces', serif; font-size: 22px; color: var(--navy); }
+.cat-legend .item .sub { font-size: 11.5px; color: var(--ink-soft); }
+
+/* Per-unit finance table */
+.unit-finance-table {
+  margin-top: 32px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.uft-head { display: grid; grid-template-columns: 1fr 0.8fr 0.8fr 0.8fr 60px; gap: 16px; padding: 16px 28px; background: var(--cool); border-bottom: 1px solid var(--line); }
+.uft-head .h { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+.uft-row { display: grid; grid-template-columns: 1fr 0.8fr 0.8fr 0.8fr 60px; gap: 16px; padding: 22px 28px; border-bottom: 1px solid var(--line); align-items: center; }
+.uft-row:last-child { border-bottom: 0; }
+.uft-row .unit-cell { display: flex; align-items: center; gap: 14px; }
+.uft-row .unit-cell .marker {
+  width: 44px; height: 44px;
+  background: var(--cool); border-radius: 10px; border: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-family: 'Fraunces', serif;
+}
+.uft-row .unit-cell .marker .b { font-size: 9px; letter-spacing: 0.08em; color: var(--ink-soft); text-transform: uppercase; }
+.uft-row .unit-cell .marker .n { font-size: 15px; font-weight: 600; color: var(--navy); margin-top: -2px; }
+.uft-row .unit-cell .nm { font-size: 13.5px; font-weight: 600; color: var(--navy); }
+.uft-row .unit-cell .nm-sub { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
+.uft-row .num { font-family: 'Fraunces', serif; font-size: 16px; color: var(--navy); }
+.uft-row .num.muted { color: var(--navy-50); }
+.uft-row .arrow { color: var(--navy-50); text-align: right; }
+.uft-foot {
+  display: grid; grid-template-columns: 1fr 0.8fr 0.8fr 0.8fr 60px; gap: 16px;
+  padding: 18px 28px;
+  background: var(--cool);
+  border-top: 1px solid var(--line);
+}
+.uft-foot .label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; align-self: center; }
+.uft-foot .total { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; color: var(--navy); }
+
+/* Two-column footer on Finances */
+.fin-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; margin-top: 32px; }
+
+.pay-panel { padding: 28px; }
+.pay-panel h3 { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; margin: 0 0 6px; }
+.pay-panel .lede { font-size: 13px; color: var(--ink-soft); margin: 0 0 18px; line-height: 1.55; }
+.pay-row { display: flex; gap: 10px; }
+.input {
+  flex: 1;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--navy);
+}
+.input:focus { outline: 2px solid var(--teal); outline-offset: 1px; border-color: var(--teal); }
+.bank-status {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: rgba(45, 189, 176, 0.10);
+  border: 1px solid rgba(45, 189, 176, 0.30);
+  border-radius: 12px;
+  font-size: 13px; color: var(--navy);
+  display: flex; align-items: center; gap: 10px;
+}
+.bank-status .dot { width: 8px; height: 8px; background: var(--teal); border-radius: 50%; }
+
+.quick-links { display: flex; flex-direction: column; gap: 1px; background: var(--line); border-radius: 14px; overflow: hidden; margin-top: 6px; }
+.ql-row { background: white; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; font-size: 13.5px; font-weight: 600; color: var(--navy); text-decoration: none; cursor: pointer; }
+.ql-row:hover { background: var(--cool); }
+.ql-row .arr { color: var(--navy-50); }
+
+/* Tabs */
+.screen { display: none; }
+.screen.is-active { display: block; }
+
+/* Annotation footer */
+.wf-foot {
+  max-width: 1400px; margin: 28px auto 56px;
+  padding: 0 48px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+.wf-foot h4 { font-family: 'Fraunces', serif; color: var(--navy); font-size: 16px; margin: 0 0 8px; font-weight: 500; }
+.wf-foot .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 8px; }
+.wf-foot ul { margin: 0; padding-left: 18px; }
+.wf-foot li { margin-bottom: 6px; }
+
+@media (max-width: 1100px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .row.two, .row.three, .balance-card, .fin-row, .hero-grid { grid-template-columns: 1fr; }
+  .main { padding: 24px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Wireframe toolbar (not part of the actual portal) -->
+<div class="wf-toolbar">
+  <div class="wf-toolbar-left">
+    <span class="wf-toolbar-title">YCM Owner Portal — Wireframe v1</span>
+    <span class="wf-toolbar-meta">Brand v1 · William's data · 2026-05-25</span>
+  </div>
+  <div class="wf-tabs">
+    <button class="wf-tab is-active" data-screen="home">Home /portal</button>
+    <button class="wf-tab" data-screen="finances">My Finances /portal/finances</button>
+  </div>
+</div>
+
+<!-- ====================================================== -->
+<!-- SCREEN 1 — HOME                                          -->
+<!-- ====================================================== -->
+<div class="screen is-active" id="screen-home">
+<div class="shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand-row">
+      <!-- Canonical YCM logo SVG inlined -->
+      <svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+        <rect x="0" y="0" width="1024" height="1024" rx="180" fill="#5B7DA3"/>
+        <rect x="149" y="490" width="230" height="284" rx="6" fill="#F0E5D2"/>
+        <rect x="171" y="554" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="223" y="554" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="275" y="554" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="171" y="606" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="223" y="606" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="275" y="606" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="171" y="658" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="223" y="658" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="275" y="658" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <polygon points="397,360 627,360 512,250" fill="#2DBDB0"/>
+        <rect x="397" y="360" width="230" height="414" rx="6" fill="#F6F9FF"/>
+        <rect x="439" y="432" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="432" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="543" y="432" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="439" y="484" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="484" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="543" y="484" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="439" y="536" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="536" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="543" y="536" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="439" y="588" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="588" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="543" y="588" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="439" y="640" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="640" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="543" y="640" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="645" y="490" width="230" height="284" rx="6" fill="#F0E5D2"/>
+        <rect x="707" y="542" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="759" y="542" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="811" y="542" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="707" y="594" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="759" y="594" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="811" y="594" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="707" y="646" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="759" y="646" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="811" y="646" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="141" y="774" width="742" height="6" rx="3" fill="#2DBDB0"/>
+      </svg>
+      <div class="brand-wordmark">
+        <span class="lockup">YourCondoManager</span>
+        <span class="sub">Owner Portal</span>
+      </div>
+    </div>
+
+    <div class="nav-section-label">Association</div>
+    <div class="nav-item is-active">
+      <span class="ic">⌂</span>
+      Home
+    </div>
+    <div class="nav-item">
+      <span class="ic">$</span>
+      My Finances
+    </div>
+    <div class="nav-item">
+      <span class="ic">⚒</span>
+      My Requests
+      <span class="nav-badge">2</span>
+    </div>
+    <div class="nav-item">
+      <span class="ic">▦</span>
+      My Community
+      <span class="nav-badge">3</span>
+    </div>
+
+    <div class="nav-section-label">Shortcuts</div>
+    <div class="nav-item">
+      <span class="ic">📄</span>
+      Documents
+    </div>
+    <div class="nav-item">
+      <span class="ic">📣</span>
+      Notices
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="avatar">WR</div>
+      <div class="who">
+        <b>William Ruiz</b>
+        <span>Owner · 3 units</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="breadcrumbs">
+      <a>YCM</a>
+      <span class="sep">›</span>
+      <span style="color: var(--navy); font-weight: 600;">Home</span>
+    </div>
+
+    <!-- HERO -->
+    <section class="hero">
+      <span class="hero-eyebrow"><span class="dot"></span> Cherry Hill Court HOA · New Haven, CT</span>
+      <h1>Good morning, <em>William</em>.</h1>
+      <p class="lede">Three units to keep tabs on. A balance due on the driveway assessment. No payments on record yet — connect your bank when you're ready.</p>
+
+      <div class="hero-grid">
+        <div class="hero-stat is-balance">
+          <span class="eyebrow">Balance due across all units</span>
+          <div class="value">$5,618.61</div>
+          <span class="foot">Next installment due Jun 1, 2026</span>
+          <a class="cta" href="#">Review and pay <span class="arrow">→</span></a>
+        </div>
+        <div class="hero-stat">
+          <span class="eyebrow">Open requests</span>
+          <div class="value">2</div>
+          <span class="foot">1 in progress · 1 awaiting board</span>
+        </div>
+        <div class="hero-stat">
+          <span class="eyebrow">Unread notices</span>
+          <div class="value">3</div>
+          <span class="foot">Latest: driveway resurface schedule</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- TWO-COL: Units + Notices -->
+    <div class="row two">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Your units</h2>
+          <a class="view-all" href="#">View finances →</a>
+        </div>
+        <div class="unit-list">
+          <div class="unit-row">
+            <div class="unit-marker">
+              <span class="bldg">Bldg 1417</span>
+              <span class="num">F</span>
+            </div>
+            <div class="unit-body">
+              <div class="addr">1417 Cherry Hill Court, Unit F</div>
+              <div class="meta">New Haven, CT · Quinnipiac Ave</div>
+            </div>
+            <div class="unit-balance tabular">$1,525.42</div>
+            <div class="unit-arrow">›</div>
+          </div>
+          <div class="unit-row">
+            <div class="unit-marker">
+              <span class="bldg">Bldg 1421</span>
+              <span class="num">B</span>
+            </div>
+            <div class="unit-body">
+              <div class="addr">1421 Cherry Hill Court, Unit B</div>
+              <div class="meta">New Haven, CT · Quinnipiac Ave</div>
+            </div>
+            <div class="unit-balance tabular">$2,121.77</div>
+            <div class="unit-arrow">›</div>
+          </div>
+          <div class="unit-row">
+            <div class="unit-marker">
+              <span class="bldg">Bldg 1421</span>
+              <span class="num">C</span>
+            </div>
+            <div class="unit-body">
+              <div class="addr">1421 Cherry Hill Court, Unit C</div>
+              <div class="meta">New Haven, CT · Quinnipiac Ave</div>
+            </div>
+            <div class="unit-balance tabular">$1,971.42</div>
+            <div class="unit-arrow">›</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>What's new</h2>
+          <a class="view-all" href="#">All notices →</a>
+        </div>
+        <div class="notice-list">
+          <div class="notice">
+            <div class="when">May 22, 2026</div>
+            <div class="subj">Driveway resurfacing — schedule confirmed</div>
+            <div class="snip">Crew arrives Jun 3. Vehicles must be moved by 6am. Resident lot will be marked.</div>
+          </div>
+          <div class="notice">
+            <div class="when">May 18, 2026</div>
+            <div class="subj">Q2 financial statement available</div>
+            <div class="snip">The board's Q2 statement is posted under Documents. Surplus carried forward.</div>
+          </div>
+          <div class="notice">
+            <div class="when">May 12, 2026</div>
+            <div class="subj">Roof inspection — completed</div>
+            <div class="snip">All three buildings cleared. No findings requiring follow-up action.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SHORTCUTS -->
+    <div class="shortcuts">
+      <a class="shortcut">
+        <div class="ic">⚒</div>
+        <h3>Submit a request</h3>
+        <p>Report a maintenance issue, common-area concern, or board question. Goes to the right party automatically.</p>
+      </a>
+      <a class="shortcut">
+        <div class="ic">📄</div>
+        <h3>Documents</h3>
+        <p>Bylaws, financial statements, meeting minutes, insurance certificates — current and archived.</p>
+      </a>
+      <a class="shortcut">
+        <div class="ic">$</div>
+        <h3>Payment methods</h3>
+        <p>Manage your linked bank account, set up autopay, or update where statements go.</p>
+      </a>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ====================================================== -->
+<!-- SCREEN 2 — FINANCES                                     -->
+<!-- ====================================================== -->
+<div class="screen" id="screen-finances">
+<div class="shell">
+
+  <!-- Sidebar (same shell, Finances active) -->
+  <aside class="sidebar">
+    <div class="brand-row">
+      <svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+        <rect x="0" y="0" width="1024" height="1024" rx="180" fill="#5B7DA3"/>
+        <rect x="149" y="490" width="230" height="284" rx="6" fill="#F0E5D2"/>
+        <rect x="171" y="554" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="223" y="554" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="275" y="554" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="171" y="606" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="223" y="606" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="275" y="606" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="171" y="658" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="223" y="658" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="275" y="658" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <polygon points="397,360 627,360 512,250" fill="#2DBDB0"/>
+        <rect x="397" y="360" width="230" height="414" rx="6" fill="#F6F9FF"/>
+        <rect x="439" y="432" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="432" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="543" y="432" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="439" y="484" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="484" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="543" y="484" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="439" y="536" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="536" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="543" y="536" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="439" y="588" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="588" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="543" y="588" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="439" y="640" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="491" y="640" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="543" y="640" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="645" y="490" width="230" height="284" rx="6" fill="#F0E5D2"/>
+        <rect x="707" y="542" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="759" y="542" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="811" y="542" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="707" y="594" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="759" y="594" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="811" y="594" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="707" y="646" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="759" y="646" width="42" height="42" rx="4" fill="#0B1B3B"/>
+        <rect x="811" y="646" width="42" height="42" rx="4" fill="#2DBDB0"/>
+        <rect x="141" y="774" width="742" height="6" rx="3" fill="#2DBDB0"/>
+      </svg>
+      <div class="brand-wordmark">
+        <span class="lockup">YourCondoManager</span>
+        <span class="sub">Owner Portal</span>
+      </div>
+    </div>
+
+    <div class="nav-section-label">Association</div>
+    <div class="nav-item">
+      <span class="ic">⌂</span>
+      Home
+    </div>
+    <div class="nav-item is-active">
+      <span class="ic">$</span>
+      My Finances
+    </div>
+    <div class="nav-item">
+      <span class="ic">⚒</span>
+      My Requests
+      <span class="nav-badge">2</span>
+    </div>
+    <div class="nav-item">
+      <span class="ic">▦</span>
+      My Community
+      <span class="nav-badge">3</span>
+    </div>
+
+    <div class="nav-section-label">Shortcuts</div>
+    <div class="nav-item"><span class="ic">📄</span>Documents</div>
+    <div class="nav-item"><span class="ic">📣</span>Notices</div>
+
+    <div class="sidebar-foot">
+      <div class="avatar">WR</div>
+      <div class="who">
+        <b>William Ruiz</b>
+        <span>Owner · 3 units</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="breadcrumbs">
+      <a>YCM</a>
+      <span class="sep">›</span>
+      <a>Home</a>
+      <span class="sep">›</span>
+      <span style="color: var(--navy); font-weight: 600;">My Finances</span>
+    </div>
+
+    <div class="finances-header">
+      <div>
+        <h1>My Finances</h1>
+        <p>Balance, payments, and assessments across your three units at Cherry Hill Court.</p>
+      </div>
+      <div class="actions">
+        <button class="btn ghost">View full ledger</button>
+        <button class="btn primary">Pay balance →</button>
+      </div>
+    </div>
+
+    <!-- BALANCE HERO CARD -->
+    <section class="balance-card">
+      <div>
+        <span class="label">Total balance due</span>
+        <div class="amount tabular">$5,618<span class="cents">.61</span></div>
+        <div class="breakdown-line">
+          <span><span class="pip" style="background: var(--slate);"></span>&nbsp; Driveway assessment</span>
+          <span><span class="pip" style="background: var(--teal);"></span>&nbsp; HOA dues</span>
+        </div>
+        <div class="actions">
+          <button class="btn primary">Pay $5,618.61 from bank</button>
+          <button class="btn ghost">Pay another amount</button>
+        </div>
+      </div>
+      <div class="side">
+        <div class="side-stat">
+          <div class="k">Status</div>
+          <div class="v">Overdue</div>
+          <div class="sub">Imported as of May 8, 2026 — driveway assessment</div>
+        </div>
+        <div class="side-stat">
+          <div class="k">Last payment</div>
+          <div class="v tabular">—</div>
+          <div class="sub">No payments on record yet</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CATEGORY SPLIT -->
+    <section class="cat-bar">
+      <h3>Where your balance sits</h3>
+      <div class="cat-stack">
+        <!-- 100% driveway assessment (no HOA dues owed by these units) -->
+        <div class="seg-driveway" style="flex: 5618.61;"></div>
+      </div>
+      <div class="cat-legend">
+        <div class="item">
+          <div class="lab"><span class="pip" style="background: var(--slate);"></span>Driveway resurfacing assessment</div>
+          <div class="amt tabular">$5,618.61</div>
+          <div class="sub">Imported balance as of May 8, 2026 — overdue across all 3 units</div>
+        </div>
+        <div class="item">
+          <div class="lab"><span class="pip" style="background: var(--teal);"></span>HOA dues</div>
+          <div class="amt tabular">$0.00</div>
+          <div class="sub">No HOA dues owed by your units — all current</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PER-UNIT BREAKDOWN -->
+    <section class="unit-finance-table">
+      <div class="uft-head">
+        <div class="h">Unit</div>
+        <div class="h">Driveway</div>
+        <div class="h">HOA dues</div>
+        <div class="h" style="text-align: right;">Balance</div>
+        <div></div>
+      </div>
+      <div class="uft-row">
+        <div class="unit-cell">
+          <div class="marker"><span class="b">Bldg 1417</span><span class="n">F</span></div>
+          <div>
+            <div class="nm">1417 Quinnipiac Ave., F</div>
+            <div class="nm-sub">Driveway assessment · overdue</div>
+          </div>
+        </div>
+        <div class="num tabular">$1,525.42</div>
+        <div class="num tabular">$0.00</div>
+        <div class="num tabular" style="text-align: right;">$1,525.42</div>
+        <div class="arrow">›</div>
+      </div>
+      <div class="uft-row">
+        <div class="unit-cell">
+          <div class="marker"><span class="b">Bldg 1421</span><span class="n">B</span></div>
+          <div>
+            <div class="nm">1421 Quinnipiac Ave., B</div>
+            <div class="nm-sub">Driveway assessment · overdue</div>
+          </div>
+        </div>
+        <div class="num tabular">$2,121.77</div>
+        <div class="num tabular">$0.00</div>
+        <div class="num tabular" style="text-align: right;">$2,121.77</div>
+        <div class="arrow">›</div>
+      </div>
+      <div class="uft-row">
+        <div class="unit-cell">
+          <div class="marker"><span class="b">Bldg 1421</span><span class="n">C</span></div>
+          <div>
+            <div class="nm">1421 Quinnipiac Ave., C</div>
+            <div class="nm-sub">Driveway assessment · overdue</div>
+          </div>
+        </div>
+        <div class="num tabular">$1,971.42</div>
+        <div class="num tabular">$0.00</div>
+        <div class="num tabular" style="text-align: right;">$1,971.42</div>
+        <div class="arrow">›</div>
+      </div>
+      <div class="uft-foot">
+        <div class="label">Total across all units</div>
+        <div class="total tabular">$5,618.61</div>
+        <div class="total tabular">$0.00</div>
+        <div class="total tabular" style="text-align: right;">$5,618.61</div>
+        <div></div>
+      </div>
+    </section>
+
+    <!-- TWO-COL FOOTER -->
+    <div class="fin-row">
+      <div class="panel pay-panel">
+        <h3>Pay with bank</h3>
+        <p class="lede">Connect your bank account. ACH transfers settle in 1–3 business days. No card fees.</p>
+        <div class="bank-status" style="opacity: 0.7;"><span class="dot" style="background: #C0392B;"></span> No bank connected yet — set up takes ~2 min</div>
+        <div class="pay-row" style="margin-top: 18px;">
+          <input class="input" placeholder="Enter custom amount" value="$5,618.61" />
+          <button class="btn primary">Confirm payment</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Quick links</h2>
+        </div>
+        <div class="quick-links">
+          <a class="ql-row">Payment methods <span class="arr">›</span></a>
+          <a class="ql-row">Full ledger (all units) <span class="arr">›</span></a>
+          <a class="ql-row">Driveway assessment detail <span class="arr">›</span></a>
+          <a class="ql-row">Autopay settings <span class="arr">›</span></a>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+</div>
+
+<!-- Annotation footer -->
+<div class="wf-foot">
+  <h4>Wireframe notes</h4>
+  <div class="grid">
+    <div>
+      <ul>
+        <li><b>Brand v1 palette only.</b> Slate sky, teal, cream, cool white, navy — pulled from the canonical YCM SVG, not invented.</li>
+        <li><b>Logo is the real canonical SVG</b> (inlined). Matches /client/public/brand/ycm-logo-canonical.svg exactly.</li>
+        <li><b>Real balance data.</b> William's three units, real per-unit amounts, real category split.</li>
+      </ul>
+    </div>
+    <div>
+      <ul>
+        <li><b>Aesthetic choice 1 — Editorial serif.</b> Fraunces for headlines + balance amounts. Calm, not fintech. Reads like a quarterly report, not a Stripe dashboard.</li>
+        <li><b>Aesthetic choice 2 — Cream is the warm anchor.</b> The balance card uses cream as primary surface (per logo's left/right buildings). Teal stays as accent only — CTA highlights, status dots, the lit-roof segment.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('.wf-tab');
+  const screens = document.querySelectorAll('.screen');
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('is-active'));
+    t.classList.add('is-active');
+    const target = t.dataset.screen;
+    screens.forEach(s => s.classList.toggle('is-active', s.id === 'screen-' + target));
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }));
+</script>
+
+</body>
+</html>

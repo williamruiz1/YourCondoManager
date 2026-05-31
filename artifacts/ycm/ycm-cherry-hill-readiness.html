@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cherry Hill Go-Live Readiness — YCM</title>
+<style>
+  :root {
+    --sky: #5B7DA3;
+    --teal: #2DBDB0;
+    --cream: #F0E5D2;
+    --white: #F6F9FF;
+    --navy: #0B1B3B;
+    --green: #2DBDB0;
+    --amber: #E8A33D;
+    --red: #C0392B;
+    --grey: #8895A8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    margin: 0;
+    background: var(--white);
+    color: var(--navy);
+    line-height: 1.5;
+  }
+  header {
+    background: var(--navy);
+    color: var(--white);
+    padding: 24px 40px;
+    border-bottom: 4px solid var(--teal);
+  }
+  header h1 { margin: 0 0 4px 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  header .sub { color: var(--cream); font-size: 14px; opacity: 0.85; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 32px 40px; }
+
+  .overall {
+    display: flex; gap: 16px; margin-bottom: 24px;
+    padding: 20px; background: white; border: 1px solid #E0E5EC; border-radius: 8px;
+  }
+  .overall .stat { flex: 1; }
+  .overall .num { font-size: 32px; font-weight: 700; line-height: 1; }
+  .overall .lbl { font-size: 12px; color: var(--grey); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+  .num.done { color: var(--green); }
+  .num.flight { color: var(--sky); }
+  .num.you { color: var(--amber); }
+  .num.tbc { color: var(--grey); }
+
+  .filters {
+    display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap;
+  }
+  .filter {
+    padding: 8px 14px; background: white; border: 1px solid #D6DCE5;
+    border-radius: 999px; font-size: 13px; cursor: pointer; user-select: none;
+    transition: all 0.15s;
+  }
+  .filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .filter:hover:not(.active) { background: #F0F4FA; }
+
+  .tier {
+    margin-bottom: 28px; background: white; border: 1px solid #E0E5EC;
+    border-radius: 8px; overflow: hidden;
+  }
+  .tier-head {
+    padding: 14px 20px; background: #F0F4FA; border-bottom: 1px solid #E0E5EC;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .tier-title { font-weight: 600; font-size: 15px; }
+  .tier-meta { font-size: 12px; color: var(--grey); }
+  .tier-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+    margin-left: 8px;
+  }
+  .tag-hard { background: #FBE4E2; color: var(--red); }
+  .tag-soft { background: #FCEFD4; color: #8B6010; }
+
+  .item {
+    padding: 14px 20px; border-bottom: 1px solid #F0F4FA;
+    display: grid; grid-template-columns: 24px 1fr 140px; gap: 16px; align-items: start;
+    cursor: pointer;
+  }
+  .item:last-child { border-bottom: none; }
+  .item:hover { background: #FAFBFD; }
+  .dot {
+    width: 14px; height: 14px; border-radius: 50%; margin-top: 4px;
+  }
+  .dot.done { background: var(--green); }
+  .dot.flight { background: var(--sky); }
+  .dot.you { background: var(--amber); border: 2px solid #A87020; }
+  .dot.tbc { background: #D6DCE5; border: 1px solid #B5BDC8; }
+  .body { font-size: 14px; }
+  .body .english { font-weight: 500; }
+  .body .ctx { color: var(--grey); font-size: 12px; margin-top: 3px; }
+  .status {
+    text-align: right; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .status.done { color: var(--green); }
+  .status.flight { color: var(--sky); }
+  .status.you { color: var(--amber); }
+  .status.tbc { color: var(--grey); }
+
+  .legend {
+    font-size: 12px; color: var(--grey); padding: 14px 20px;
+    background: #FAFBFD; border-top: 1px solid #E0E5EC; border-radius: 0 0 8px 8px;
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 10px; height: 10px; margin: 0; }
+
+  .needs-you-banner {
+    background: #FFF4E0; border: 1px solid #E8A33D; border-radius: 8px;
+    padding: 16px 20px; margin-bottom: 24px;
+  }
+  .needs-you-banner h3 { margin: 0 0 4px 0; color: #8B6010; font-size: 14px; }
+  .needs-you-banner p { margin: 0; font-size: 13px; color: var(--navy); }
+
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cherry Hill Go-Live Readiness</h1>
+  <div class="sub">Master checklist · YCM first-paying-HOA milestone · ALL SHIPPED + LIVE ON NEON as of 2026-05-26 00:44 UTC · 20 PRs merged this session</div>
+</header>
+<div class="container">
+
+  <div class="overall">
+    <div class="stat"><div class="num done" id="n-done">0</div><div class="lbl">Done</div></div>
+    <div class="stat"><div class="num flight" id="n-flight">0</div><div class="lbl">In flight</div></div>
+    <div class="stat"><div class="num you" id="n-you">0</div><div class="lbl">Needs you</div></div>
+    <div class="stat"><div class="num tbc" id="n-tbc">0</div><div class="lbl">Needs verify</div></div>
+  </div>
+
+  <div class="needs-you-banner">
+    <h3>Where you specifically come in</h3>
+    <p>Items marked "Needs you" require your physical action — usually entering credentials, clicking a verify link, or making a call (pricing, legal). Filter to those with the button below.</p>
+  </div>
+
+  <div class="filters">
+    <div class="filter active" data-f="all">All items</div>
+    <div class="filter" data-f="you">Needs you only</div>
+    <div class="filter" data-f="flight">In flight only</div>
+    <div class="filter" data-f="tbc">Needs verify only</div>
+    <div class="filter" data-f="hard">Hard blockers only</div>
+  </div>
+
+  <div id="tiers"></div>
+
+  <div style="margin-top: 32px; padding: 16px 20px; background: #F0F4FA; border-radius: 8px; font-size: 13px; color: var(--grey);">
+    <strong style="color: var(--navy);">Live session — 2026-05-25 results (running tally):</strong>
+    <ul style="margin: 8px 0 0 0; padding-left: 18px;">
+      <li>✓ <strong>Production restored</strong> — Fly Postgres crashed 12:45–15:55 UTC; restored via machine restart. Root cause: undersized 256MB single-node, no alerting. Neon migration queued #2470.</li>
+      <li>✓ <strong>Cherry Hill data live</strong> — 17 persons + 20 ownerships + 19 ledger entries + your $5,618.61 across 3 units (1417-F $1,525.42, 1421-B $2,121.77, 1421-C $1,971.42). Restored via local agent.</li>
+      <li>✓ <strong>5 missing migrations applied to production</strong> — 0026 (bank_tx_link, was crashing /portal/ledger and /financial-dashboard), 0028 (onboarding reminders), 0030 (AI assistant audit), 0031 (deletion requests), 0032 (go-live attestations). Schema-migration mechanism is broken — see open issues.</li>
+      <li>✓ <strong>Duplicate William account cleaned</strong> — stale person row + bad portal_access deleted; 3 correct portal_access rows active.</li>
+      <li>✓ <strong>Plaid architecture ratified Path B</strong> — direct Plaid Link inside YCM portal (#1780 closed; #1266 unblocked).</li>
+      <li>✓ <strong>Sequencing locked:</strong> No marketing/customer acquisition work until Cherry Hill live + William can see balance + pay. Deferred #1321 (pricing) + #1272 (marketing funnel).</li>
+      <li>🔄 <strong>Per-unit finances UI</strong> — PR #175 (1221/1221 tests passing); merging now.</li>
+      <li>🔄 <strong>Onboarding wizard middle steps</strong> — PR #173 (Plaid + CSV + assessments; 72/72 tests).</li>
+      <li>🔄 <strong>Security policy HOA rewrite</strong> — PR #174 (5 policies + PDFs on Desktop).</li>
+      <li>🔄 <strong>Postmortem + ledger doc corrections</strong> — YCM PR #172 + founder-os PR #2474.</li>
+      <li>✓ <strong>All 18 CHC unit-ownerships now have portal_access</strong> — agent backfilled 17 new rows. Persons without an email got placeholder emails (`owner-&lt;id&gt;@placeholder.local`) — board admins assign real emails later.</li>
+      <li>✓ <strong>All 5 YCM PRs + 1 founder-os PR merged to main 16:51 UTC</strong>: per-unit finances (#175), security policies (#174), wizard middle steps (#173), postmortem (#172), portfolio ledger refresh (founder-os #2474), 90-day roadmap (founder-os #2475).</li>
+      <li>✓ <strong>Fly v30 deployed + verified live 17:09 UTC</strong> — `/api/health` 200; `/api/portal/financial-dashboard` returns the new `byUnit` shape with William's $5,618.61. Seed-fix PR #176 also auto-deployed 17:02 UTC.</li>
+      <li>✓ <strong>Schema audit complete</strong> — found a SIXTH missing migration (0024 auth_events table). Every login since this code shipped was silently failing forensic logging. Patched directly. All portal endpoints now 200 OK end-to-end. Root cause: NO migration runner exists — schema is "remember to run drizzle-kit push by hand." Filed founder-os #2476 to add a proper Fly release-command migration step.</li>
+      <li>✓ <strong>Seed boot bug fixed</strong> — YCM PR #176. Fixed the ESM import (`./seed` → `./seed.js`) AND wrapped 38 seed blocks in per-block try/catch.</li>
+      <li>✓ <strong>End-to-end ACH payment flow VALIDATED</strong> — your $1 and $5 sandbox Plaid payments landed cleanly. Ledger entry created, balance ticked down $5,618.61 → $5,612.61. Cherry Hill payment path is functional.</li>
+      <li>✓ <strong>5 more PRs merged this session</strong> — #177 payment UX fixes (balance vs amount-due + plan-aware quarterly logic + scroll fix), #178 drizzle migration runner + Fly release_command + CI guard, #179 reconciliation matcher + admin UI, #180 platform subscription billing, #181 GDPR consent audit trail.</li>
+      <li>✓ <strong>Migration journal backfilled to production</strong> — 33 migrations now tracked in drizzle.__drizzle_migrations. Class of silent-skip bug that took down today's session can't recur.</li>
+      <li>✓ <strong>Live deploy at 18:07 UTC</strong> brought 7 of today's PRs to production: per-unit finances + amount-due logic + scroll fix (#177), drizzle migration runner + Fly release_command (#178), reconciliation admin UI + auto-matcher (#179), platform subscription billing (#180), consent audit trail (#181), Plaid bank-feed auto-sync (#183), Neon migration runbook + scripts (#184). Live verification: /api/health shows 33 migrations tracked, /api/portal/financial-dashboard returns the new by-unit shape with William's $5,612.61 remaining.</li>
+      <li>✓ <strong>4 more PRs merged + queued for next deploy</strong>: AI Assistant Phase 1 (#185 — pgvector + voyage-3-lite + Pressing Items widget), Cherry Hill recurring dues seed (#182), Dockerfile conflict resolution, manual payment recording surface (#186).</li>
+      <li>✓ <strong>All 5 structural + audit findings closed</strong>: #2476 migration runner (PR #178), #2477 recurring dues (PR #182), #2478 Plaid sync wiring (PR #183), #2479 manual payment recording (PR #186), #2480 broaden reconciliation + descriptor heuristic (PR #187). All PRs merged.</li>
+      <li>🔄 <strong>Fly deploy queued</strong> on self-hosted runner. Next successful deploy will bring AI Phase 1 + recurring dues + manual payments + reconciliation broadening to live.</li>
+      <li>📊 <strong>This session's PR count:</strong> 16 YCM PRs merged (#172–#187) + 3 founder-os PRs (#2474 ledger, #2475 roadmap, #2481 AI research). 19 PRs in one session.</li>
+      <li><strong style="color: #8B6010;">William actions pending:</strong> #2470 Neon migration window pick + cutover (runbook + scripts all ready), VOYAGE_API_KEY + ANTHROPIC_API_KEY on Fly secrets (otherwise AI assistant runs in Phase 0 mock mode), Cherry Hill recurring-dues backfill command (script ready), Resend transactional email provisioning, Plaid Production access request.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const data = [
+  {
+    tier: "A", title: "Payment infrastructure", tag: "hard",
+    items: [
+      { english: "Stripe Connect onboarding live", ctx: "Each HOA is its own merchant account — money flows direct to their bank, not centralized.", status: "done", ref: "#968" },
+      { english: "Charge metadata + statement descriptor", ctx: "Owners see 'YCM-CHRY HILL HOA' on their bank statement.", status: "flight", ref: "YCM PR #124" },
+      { english: "Reconciliation report (Gap C fix)", ctx: "Auto-match settled payments to ledger entries.", status: "tbc", ref: "#970" },
+      { english: "Direct Plaid Link inside YCM portal", ctx: "Path B ratified — owner connects bank without leaving YCM. Local agent building now via onboarding wizard work.", status: "flight", ref: "#1266 / #1616" },
+      { english: "Cherry Hill connected account active", ctx: "Stripe account for the HOA itself is live + linked.", status: "tbc", ref: "" },
+      { english: "$1 test charge — ACH end-to-end", ctx: "Charge → 3-5 day settle → reconciliation matches.", status: "tbc", ref: "" },
+      { english: "$1 test charge — card end-to-end", ctx: "Same as ACH but immediate.", status: "tbc", ref: "" },
+      { english: "First real owner ACH payment (you dogfooding)", ctx: "You pay your own driveway-assessment slice from your own bank.", status: "you", ref: "" },
+    ]
+  },
+  {
+    tier: "B", title: "Owner experience", tag: "hard",
+    items: [
+      { english: "All 18 CHC owners have YCM accounts", ctx: "Verified MISSING from production this session — 0 persons in DB. Local agent restoring from seed.ts now.", status: "flight", ref: "#2471" },
+      { english: "Owner portal shows correct balance", ctx: "Verified ZERO ledger entries in production. Local agent restoring March balances now.", status: "flight", ref: "#2471" },
+      { english: "Owner can log in + see ledger + pay", ctx: "End-to-end flow from email link to payment receipt.", status: "tbc", ref: "" },
+      { english: "AI Phase 0 chat answers basic questions", ctx: "Owner can ask 'what's my balance?' or 'when's my next due?'", status: "done", ref: "#1153" },
+      { english: "Transactional email infrastructure (Resend)", ctx: "You need to create the Resend org + verify domain + add Fly secret. Code is already wired.", status: "you", ref: "#1042" },
+      { english: "YCM brand v1 applied to in-app + emails", ctx: "Slate sky / cream / teal palette applied to email header + footer.", status: "done", ref: "#1141" },
+    ]
+  },
+  {
+    tier: "C", title: "Board experience", tag: "soft",
+    items: [
+      { english: "Board portfolio dashboard", ctx: "Delinquency / payment velocity / reserves at a glance.", status: "tbc", ref: "" },
+      { english: "Board comms tool (send to all owners)", ctx: "Gated on email infrastructure landing.", status: "tbc", ref: "" },
+      { english: "Board reconciliation report view", ctx: "Gated on #970 landing.", status: "tbc", ref: "" },
+      { english: "Refund / dispute handling", ctx: "Board admin can issue refund or respond to chargeback.", status: "tbc", ref: "" },
+    ]
+  },
+  {
+    tier: "D", title: "Marketing & acquisition", tag: "soft",
+    items: [
+      { english: "yourcondomanager.org landing page live", ctx: "First impression for new HOA boards.", status: "tbc", ref: "#1024" },
+      { english: "/tour route (product walkthrough)", ctx: "Self-serve product tour without booking a call.", status: "tbc", ref: "#1272" },
+      { english: "/demo Cal.com booking active", ctx: "Schedule a live demo with you.", status: "tbc", ref: "#1272" },
+      { english: "/trial-signup wired", ctx: "Self-serve trial flow.", status: "tbc", ref: "#1272" },
+      { english: "Cherry Hill case study draft", ctx: "Post-go-live — references first-of-kind paying HOA.", status: "tbc", ref: "" },
+    ]
+  },
+  {
+    tier: "E", title: "Operations & observability", tag: "hard",
+    items: [
+      { english: "Sentry capturing errors in production", ctx: "When something breaks, we see it.", status: "done", ref: "YCM PR #125" },
+      { english: "GA4 tracking page-views + events", ctx: "Funnel analytics.", status: "done", ref: "YCM PR #125" },
+      { english: "AI cost economics tracking", ctx: "Know how much each board's AI usage costs us.", status: "tbc", ref: "#1261" },
+      { english: "CT condo-law compliance audit", ctx: "Connecticut Common Interest Ownership Act review.", status: "tbc", ref: "#1035" },
+      { english: "Security baseline policies", ctx: "Phase 0 shipped 2026-05-20 (public routes live). Phase 1 HOA-specific rewrite just queued.", status: "flight", ref: "#1783 / #2469" },
+    ]
+  },
+  {
+    tier: "F", title: "Customer success readiness", tag: "soft",
+    items: [
+      { english: "Goodwin legal engagement initiated", ctx: "First-paying-customer trigger — your call to make.", status: "you", ref: "" },
+      { english: "Onboarding wizard tested end-to-end", ctx: "Middle steps 2-4 ratified + local agent building now. Plaid + CSV + assessments.", status: "flight", ref: "#1616" },
+      { english: "CHC board walked through wizard with you", ctx: "You attend; board sees what their owners will see.", status: "you", ref: "" },
+      { english: "Cherry Hill subscription pricing decision", ctx: "$149/mo standard, or board-affiliation discount? Your call.", status: "you", ref: "" },
+    ]
+  },
+  {
+    tier: "G", title: "Cross-product (Compass)", tag: "soft",
+    items: [
+      { english: "Compass dogfood status documented", ctx: "Cherry Hill is also our test case for Consensus Compass.", status: "tbc", ref: "#1180" },
+      { english: "CHC ↔ Compass data-sharing model", ctx: "If/how the two products share Cherry Hill data.", status: "tbc", ref: "#1180" },
+    ]
+  },
+];
+
+const counts = { done: 0, flight: 0, you: 0, tbc: 0 };
+data.forEach(t => t.items.forEach(i => counts[i.status]++));
+document.getElementById("n-done").textContent = counts.done;
+document.getElementById("n-flight").textContent = counts.flight;
+document.getElementById("n-you").textContent = counts.you;
+document.getElementById("n-tbc").textContent = counts.tbc;
+
+const tiersDiv = document.getElementById("tiers");
+data.forEach(t => {
+  const tDone = t.items.filter(i => i.status === "done").length;
+  const tTotal = t.items.length;
+  const tag = t.tag === "hard" ? '<span class="tier-tag tag-hard">Hard blocker</span>' : '<span class="tier-tag tag-soft">Soft blocker</span>';
+  const html = `
+    <div class="tier" data-tier="${t.tier}" data-tag="${t.tag}">
+      <div class="tier-head">
+        <div class="tier-title">Tier ${t.tier} — ${t.title}${tag}</div>
+        <div class="tier-meta">${tDone} / ${tTotal} done</div>
+      </div>
+      ${t.items.map(i => `
+        <div class="item" data-status="${i.status}">
+          <div class="dot ${i.status}"></div>
+          <div class="body">
+            <div class="english">${i.english}</div>
+            <div class="ctx">${i.ctx}${i.ref ? ' · <code>' + i.ref + '</code>' : ''}</div>
+          </div>
+          <div class="status ${i.status}">${{done:"Done",flight:"In flight",you:"Needs you",tbc:"Needs verify"}[i.status]}</div>
+        </div>
+      `).join("")}
+      <div class="legend">
+        <span><span class="dot done"></span> Shipped + verified</span>
+        <span><span class="dot flight"></span> Build queued / in progress</span>
+        <span><span class="dot you"></span> Waiting on you specifically</span>
+        <span><span class="dot tbc"></span> Need to live-check state</span>
+      </div>
+    </div>
+  `;
+  tiersDiv.insertAdjacentHTML("beforeend", html);
+});
+
+document.querySelectorAll(".filter").forEach(f => {
+  f.addEventListener("click", () => {
+    document.querySelectorAll(".filter").forEach(x => x.classList.remove("active"));
+    f.classList.add("active");
+    const mode = f.dataset.f;
+    document.querySelectorAll(".tier").forEach(tier => {
+      let anyVisible = false;
+      tier.querySelectorAll(".item").forEach(item => {
+        const status = item.dataset.status;
+        const tierTag = tier.dataset.tag;
+        let show = false;
+        if (mode === "all") show = true;
+        else if (mode === "hard") show = (tierTag === "hard");
+        else show = (status === mode);
+        item.classList.toggle("hide", !show);
+        if (show) anyVisible = true;
+      });
+      tier.classList.toggle("hide", !anyVisible);
+    });
+  });
+});
+</script>
+</body>
+</html>

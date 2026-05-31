@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YCM Live Test Checklist — Cherry Hill Court</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f7; color: #1d1d1f; padding: 32px; }
+  .container { max-width: 800px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+  .subtitle { color: #6e6e73; font-size: 14px; margin-bottom: 32px; }
+  .blocker-banner { background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 16px 20px; margin-bottom: 28px; }
+  .blocker-banner h2 { font-size: 15px; font-weight: 600; color: #664d03; margin-bottom: 6px; }
+  .blocker-banner p { font-size: 14px; color: #664d03; line-height: 1.5; }
+  .blocker-banner code { background: rgba(0,0,0,0.08); padding: 1px 5px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+  .phase { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .phase-header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .phase-num { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+  .phase-num.prereq { background: #ffeeba; color: #856404; }
+  .phase-num.active { background: #d1ecf1; color: #0c5460; }
+  .phase-num.blocked { background: #f8d7da; color: #721c24; }
+  .phase-title { font-size: 17px; font-weight: 600; }
+  .phase-badge { margin-left: auto; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+  .badge-prereq { background: #fff3cd; color: #664d03; }
+  .badge-ready { background: #d4edda; color: #155724; }
+  .badge-blocked { background: #f8d7da; color: #721c24; }
+  ol { padding-left: 0; list-style: none; counter-reset: step; }
+  li { counter-increment: step; display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
+  li::before { content: counter(step); min-width: 24px; height: 24px; border-radius: 50%; background: #f0f0f5; color: #6e6e73; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-content { flex: 1; }
+  .step-action { font-size: 14px; font-weight: 500; line-height: 1.4; margin-bottom: 4px; }
+  .step-expect { font-size: 13px; color: #6e6e73; line-height: 1.4; }
+  .step-expect strong { color: #1d1d1f; font-weight: 600; }
+  .step-url { font-size: 12px; margin-top: 4px; }
+  .step-url a { color: #0071e3; text-decoration: none; }
+  .step-url a:hover { text-decoration: underline; }
+  code { background: #f0f0f5; padding: 1px 5px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+  .attest-box { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 12px 16px; margin-top: 16px; font-size: 13px; color: #155724; }
+  .attest-box strong { font-weight: 600; }
+  .plaid-section { background: #f0f0f5; border-radius: 8px; padding: 14px 16px; margin-top: 14px; font-size: 13px; }
+  .plaid-section h4 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .plaid-section ul { padding-left: 16px; list-style: disc; }
+  .plaid-section ul li { display: list-item; counter-increment: none; margin-bottom: 4px; }
+  .plaid-section ul li::before { display: none; }
+  .env-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  .env-table th { text-align: left; padding: 6px 10px; background: #f0f0f5; font-weight: 600; }
+  .env-table td { padding: 6px 10px; border-top: 1px solid #e5e5ea; }
+  .ok { color: #155724; font-weight: 600; }
+  .missing { color: #721c24; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>YCM Live Test Checklist</h1>
+<p class="subtitle">Cherry Hill Court Condominiums &middot; Go-live gate P0-1 &middot; Generated 2026-05-30</p>
+
+<div class="blocker-banner">
+  <h2>One prerequisite before the money loop can run</h2>
+  <p>There is no Stripe Connect account for Cherry Hill Court in the database
+  (<code>payment_gateway_connections</code> has 0 rows for CHC).
+  Complete Phase 0 (Stripe Connect onboarding) first &mdash; the pay button will be blocked until that row exists.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <div class="phase-num prereq">0</div>
+    <div class="phase-title">Stripe Connect Onboarding &mdash; CHC HOA Account</div>
+    <span class="phase-badge badge-prereq">PREREQUISITE</span>
+  </div>
+  <ol>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Log into YCM as platform admin</div>
+        <div class="step-url"><a href="https://app.yourcondomanager.org" target="_blank">https://app.yourcondomanager.org</a> &rarr; sign in with yourcondomanagement@gmail.com</div>
+        <div class="step-expect">You land on the admin dashboard.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Navigate to Cherry Hill Court &rarr; Settings &rarr; Payment Setup</div>
+        <div class="step-expect">Find the "Connect Stripe" or "Payment Gateway" section. Click to start the Stripe Express onboarding flow.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Complete the Stripe Express onboarding for Cherry Hill Court Condominiums</div>
+        <div class="step-expect">Stripe asks for business info, bank account, tax ID. Use CHC's HOA details. This creates a Stripe Connected Account (<code>acct_...</code> ID).</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Return to YCM admin dashboard and verify the connection</div>
+        <div class="step-expect"><strong>Expected:</strong> Payment gateway section shows "Connected." The <code>payment_gateway_connections</code> row now exists for CHC.</div>
+      </div>
+    </li>
+  </ol>
+  <div class="attest-box">
+    After this step, go-live gates <strong>A.1 and A.5</strong> are auto-verified. Gates A.6, A.7, A.8 can then be tested.
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <div class="phase-num active">1</div>
+    <div class="phase-title">Owner Portal Login + Balance Check</div>
+    <span class="phase-badge badge-ready">READY NOW</span>
+  </div>
+  <ol>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Open the owner portal in a private/incognito window</div>
+        <div class="step-url"><a href="https://app.yourcondomanager.org/portal" target="_blank">https://app.yourcondomanager.org/portal</a></div>
+        <div class="step-expect">You see the YCM portal login page.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Log in as William Ruiz (Unit 1421-B) using <code>williamruiz11@gmail.com</code></div>
+        <div class="step-expect">You land on the owner dashboard. William Ruiz and Unit 1421-B are listed.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Check the balance display</div>
+        <div class="step-expect"><strong>Expected balance: $2,121.77</strong> for Unit 1421-B (imported driveway assessment charges from May 2026).</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Verify the ledger entries appear</div>
+        <div class="step-expect">You should see imported driveway assessment charges posted 2026-05-08, plus 2 small test payments (-$1 and -$5) from 2026-05-25.</div>
+      </div>
+    </li>
+  </ol>
+  <div class="attest-box">
+    <strong>Gate B.2 can be attested right now</strong> &mdash; "Owner portal shows correct balance per owner." Go to the go-live readiness dashboard and mark B.2 verified.
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <div class="phase-num blocked">2</div>
+    <div class="phase-title">$1 ACH Test Charge + Reconciliation</div>
+    <span class="phase-badge badge-blocked">NEEDS PHASE 0 FIRST</span>
+  </div>
+  <ol>
+    <li>
+      <div class="step-content">
+        <div class="step-action">After Stripe Connect is done &mdash; go to owner portal and click "Pay Now"</div>
+        <div class="step-expect">A payment form appears. Enter amount = <strong>$1.00</strong>.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">On the Stripe Checkout page, use the test bank account</div>
+        <div class="step-expect">Routing: <code>110000000</code> &nbsp; Account: <code>000123456789</code> (Stripe sandbox success). Select "Instant verification."</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Complete payment and watch for success redirect</div>
+        <div class="step-expect">You're redirected to <code>/portal?payment=success</code>. Portal shows the $1 payment in pending/processing state.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Check admin payments view</div>
+        <div class="step-url"><a href="https://app.yourcondomanager.org/admin" target="_blank">Admin Dashboard</a> &rarr; Payments</div>
+        <div class="step-expect"><strong>Expected:</strong> $1 transaction appears, status "initiated" or "pending."</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Wait for Stripe webhook to fire, then reload owner portal</div>
+        <div class="step-expect">In sandbox, webhook fires within seconds to minutes. Transaction status becomes "succeeded." Balance drops by $1 (from $2,121.77 to $2,120.77).</div>
+      </div>
+    </li>
+  </ol>
+  <div class="attest-box">
+    After successful $1 ACH run: attest gates <strong>A.6</strong> (ACH end-to-end) and <strong>B.3</strong> (owner can log in + see ledger + pay).
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <div class="phase-num blocked">3</div>
+    <div class="phase-title">$1 Card Test Charge</div>
+    <span class="phase-badge badge-blocked">NEEDS PHASE 0 FIRST</span>
+  </div>
+  <ol>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Same flow as Phase 2, but choose card payment on Stripe Checkout</div>
+        <div class="step-expect">Test card: <code>4242 4242 4242 4242</code>, any future expiry, any CVC.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Complete payment and verify webhook fires immediately</div>
+        <div class="step-expect">Card settles instantly in test mode. Transaction flips to "succeeded" within seconds.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Verify balance update in owner portal</div>
+        <div class="step-expect">Balance drops by $1. Check williamruiz11@gmail.com for a receipt email (Gmail SMTP is the current fallback).</div>
+      </div>
+    </li>
+  </ol>
+  <div class="attest-box">
+    After successful $1 card run: attest gate <strong>A.7</strong> (card end-to-end).
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <div class="phase-num active">4</div>
+    <div class="phase-title">Check Recurring Schedule &mdash; June 1 Assessment</div>
+    <span class="phase-badge badge-ready">VERIFY BEFORE JUNE 1</span>
+  </div>
+  <ol>
+    <li>
+      <div class="step-content">
+        <div class="step-action">In admin dashboard, verify the $330/mo recurring schedule for CHC is active</div>
+        <div class="step-expect">Schedule: "Monthly HOA Dues," $330, all 18 units, runs on day 1 of each month. Next run: June 1, 2026.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">On or after June 1 &mdash; verify charge ran automatically</div>
+        <div class="step-expect"><strong>Expected:</strong> 18 new charge entries in the ledger, $330 each, posted June 1. Each owner's balance increases by $330.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-action">Spot-check Unit 1421-B balance in owner portal</div>
+        <div class="step-expect">Was $2,121.77 &rarr; should be $2,451.77 after the June 1 charge (before any June payments).</div>
+      </div>
+    </li>
+  </ol>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <div class="phase-num active" style="background:#e8e8ed;color:#3a3a3c;">P</div>
+    <div class="phase-title">Plaid Production Access &mdash; What It Changes</div>
+    <span class="phase-badge" style="background:#e8e8ed;color:#3a3a3c;">REFERENCE</span>
+  </div>
+  <div class="plaid-section">
+    <h4>Currently works in Plaid sandbox (no action needed to test the loop):</h4>
+    <ul>
+      <li>CHC has an active Chase bank connection (sandbox mode)</li>
+      <li>Bank transaction sync works (sandbox test transactions)</li>
+      <li>Plaid reconciliation code is deployed and ready</li>
+      <li>ACH payments go through Stripe, NOT Plaid &mdash; the payment loop does not require Plaid production</li>
+    </ul>
+    <h4 style="margin-top:12px;">After Plaid production credentials:</h4>
+    <ul>
+      <li>Real CHC Chase account transactions flow in automatically</li>
+      <li>Owners can link their actual bank accounts (not just sandbox test ones)</li>
+      <li>Plaid reconciliation runs against real bank data for a real audit trail</li>
+    </ul>
+    <p style="margin-top:10px;color:#6e6e73;">
+      <strong>Bottom line:</strong> Stripe Connect is the blocker for the payment loop test.
+      Plaid production is needed for real bank reconciliation, but not for the sandbox end-to-end test.
+    </p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <div class="phase-num active" style="background:#e8e8ed;color:#3a3a3c;">E</div>
+    <div class="phase-title">Environment Status Reference</div>
+    <span class="phase-badge" style="background:#e8e8ed;color:#3a3a3c;">REFERENCE</span>
+  </div>
+  <table class="env-table">
+    <tr><th>Secret</th><th>Status</th><th>Notes</th></tr>
+    <tr><td>PLAID_ENV</td><td class="ok">&check; sandbox</td><td>Ready for testing</td></tr>
+    <tr><td>PLAID_CLIENT_ID + PLAID_SECRET_SANDBOX</td><td class="ok">&check; set</td><td>Ready</td></tr>
+    <tr><td>PLATFORM_STRIPE_SECRET_KEY</td><td class="ok">&check; set</td><td>Platform key for Stripe Connect onboarding</td></tr>
+    <tr><td>PLATFORM_STRIPE_PUBLISHABLE_KEY</td><td class="ok">&check; set</td><td>Ready</td></tr>
+    <tr><td>PLATFORM_STRIPE_WEBHOOK_SECRET</td><td class="ok">&check; set</td><td>Platform webhook ready</td></tr>
+    <tr><td>RESEND_API_KEY</td><td class="missing">&cross; missing</td><td>Receipt emails use Gmail SMTP fallback &mdash; works but not production-grade. Gate B.5 not fully met.</td></tr>
+    <tr><td>SENTRY_DSN</td><td class="missing">&cross; missing</td><td>Gate E.1 blocked &mdash; error monitoring not connected</td></tr>
+    <tr><td>GMAIL_SENDER_EMAIL + GMAIL_APP_PASSWORD</td><td class="ok">&check; set</td><td>Email fallback working</td></tr>
+  </table>
+</div>
+
+<p style="text-align:center;color:#8e8e93;font-size:12px;margin-top:24px;">
+  Generated by agent feat/e2e-money-loop-test &middot; 2026-05-30 &middot; P0-1 Issue #204
+</p>
+
+</div>
+</body>
+</html>
