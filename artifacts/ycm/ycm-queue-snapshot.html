@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>YCM Queue Snapshot — 2026-05-25</title>
+<style>
+  :root {
+    --sky: #5B7DA3; --teal: #2DBDB0; --cream: #F0E5D2;
+    --white: #F6F9FF; --navy: #0B1B3B;
+    --green: #2DBDB0; --amber: #E8A33D; --red: #C0392B; --grey: #8895A8;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    margin: 0; background: var(--white); color: var(--navy); line-height: 1.45; }
+  header { background: var(--navy); color: var(--white); padding: 22px 36px;
+    border-bottom: 4px solid var(--teal); }
+  header h1 { margin: 0 0 4px 0; font-size: 22px; font-weight: 600; }
+  header .sub { color: var(--cream); font-size: 13px; opacity: 0.85; }
+  .container { max-width: 1280px; margin: 0 auto; padding: 28px 36px; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 28px; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  .bucket { background: white; border: 1px solid #E0E5EC; border-radius: 10px; overflow: hidden; }
+  .bucket-head { padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #E0E5EC; }
+  .bucket-title { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+  .bucket-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .running { background: var(--sky); }
+  .done { background: var(--green); }
+  .deferred { background: var(--grey); }
+  .needs-you { background: var(--amber); }
+  .hold { background: #C3CCD8; }
+  .audit { background: var(--red); }
+  .bucket-count { font-size: 12px; color: var(--grey); font-weight: 500; }
+  .item { padding: 11px 20px; border-bottom: 1px solid #F0F4FA;
+    display: grid; grid-template-columns: 64px 1fr 90px; gap: 12px; align-items: start; font-size: 13px; }
+  .item:last-child { border-bottom: none; }
+  .item .num { color: var(--sky); font-weight: 600; font-family: ui-monospace, SF Mono, monospace; }
+  .item .desc { color: var(--navy); }
+  .item .desc .lead { font-weight: 500; }
+  .item .desc .sub { color: var(--grey); margin-top: 2px; font-size: 12px; }
+  .item .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+    text-align: right; color: var(--grey); font-weight: 600; }
+  .bucket-head.running-h { background: linear-gradient(to right, rgba(91,125,163,0.10), white); }
+  .bucket-head.done-h { background: linear-gradient(to right, rgba(45,189,176,0.10), white); }
+  .bucket-head.deferred-h { background: linear-gradient(to right, rgba(136,149,168,0.10), white); }
+  .bucket-head.needs-you-h { background: linear-gradient(to right, rgba(232,163,61,0.12), white); }
+  .bucket-head.hold-h { background: linear-gradient(to right, rgba(195,204,216,0.18), white); }
+  .bucket-head.audit-h { background: linear-gradient(to right, rgba(192,57,43,0.10), white); }
+  .footer-note { padding: 18px 22px; background: #F0F4FA; border-radius: 8px;
+    font-size: 13px; color: var(--grey); }
+  .footer-note strong { color: var(--navy); }
+</style>
+</head>
+<body>
+<header>
+  <h1>YCM Queue Snapshot</h1>
+  <div class="sub">Live session strategist read · 2026-05-25 · ~30 open items mapped into 6 buckets</div>
+</header>
+<div class="container">
+
+  <div class="grid">
+
+    <!-- A — Running now -->
+    <div class="bucket">
+      <div class="bucket-head running-h">
+        <div class="bucket-title"><span class="bucket-dot running"></span>A · In flight (local agents)</div>
+        <div class="bucket-count">5 active</div>
+      </div>
+      <div class="item">
+        <div class="num">#1782</div>
+        <div class="desc"><div class="lead">AI Assistant research — vector store + embedding picks</div>
+          <div class="sub">Including proactive-surfacing scope add</div></div>
+        <div class="tag">research</div>
+      </div>
+      <div class="item">
+        <div class="num">live</div>
+        <div class="desc"><div class="lead">Payment UX fixes — balance vs amount-due + scroll + plan-aware</div>
+          <div class="sub">From your post-test feedback</div></div>
+        <div class="tag">ui</div>
+      </div>
+      <div class="item">
+        <div class="num">audit</div>
+        <div class="desc"><div class="lead">Billing/reconciliation audit — done; filed 4 new issues</div>
+          <div class="sub">#2477, #2478, #2479, #2480 — see bucket F</div></div>
+        <div class="tag">complete</div>
+      </div>
+      <div class="item">
+        <div class="num">#2476</div>
+        <div class="desc"><div class="lead">Schema-migration runner — building Fly release_command + CI guard</div>
+          <div class="sub">Root cause of today's 6-migration drift</div></div>
+        <div class="tag">build</div>
+      </div>
+      <div class="item">
+        <div class="num">#970</div>
+        <div class="desc"><div class="lead">Reconciliation report + Gap C fix — auto-match + admin UI</div>
+          <div class="sub">Cherry Hill readiness item</div></div>
+        <div class="tag">build</div>
+      </div>
+    </div>
+
+    <!-- B — Done this session -->
+    <div class="bucket">
+      <div class="bucket-head done-h">
+        <div class="bucket-title"><span class="bucket-dot done"></span>B · Done this session</div>
+        <div class="bucket-count">7 shipped</div>
+      </div>
+      <div class="item"><div class="num">#1783</div><div class="desc"><div class="lead">Security baseline Phase 0 + Phase 1</div><div class="sub">PR #174 merged · partner-ready policies + PDFs</div></div><div class="tag">merged</div></div>
+      <div class="item"><div class="num">#2469</div><div class="desc"><div class="lead">HOA-specific policy rewrite</div><div class="sub">PR #174 covers this too</div></div><div class="tag">merged</div></div>
+      <div class="item"><div class="num">#1616</div><div class="desc"><div class="lead">Onboarding wizard middle steps (Plaid + CSV + assessments)</div><div class="sub">PR #173 · 72/72 tests</div></div><div class="tag">merged</div></div>
+      <div class="item"><div class="num">#2471</div><div class="desc"><div class="lead">CHC data restore — your $5,618.61 live in production</div><div class="sub">17 owners + 20 ownerships + 19 ledger entries</div></div><div class="tag">live</div></div>
+      <div class="item"><div class="num">#2020</div><div class="desc"><div class="lead">90-day Cherry-Hill-first roadmap</div><div class="sub">PR #2475 merged</div></div><div class="tag">merged</div></div>
+      <div class="item"><div class="num">#1153</div><div class="desc"><div class="lead">AI Phase 0 chat (basic Q&A)</div><div class="sub">Already merged before this session</div></div><div class="tag">merged</div></div>
+      <div class="item"><div class="num">live</div><div class="desc"><div class="lead">5 missing schema migrations applied to production</div><div class="sub">0024, 0026, 0028, 0030, 0031, 0032</div></div><div class="tag">applied</div></div>
+    </div>
+
+    <!-- D — Needs you -->
+    <div class="bucket">
+      <div class="bucket-head needs-you-h">
+        <div class="bucket-title"><span class="bucket-dot needs-you"></span>D · Needs you (founder action)</div>
+        <div class="bucket-count">4 items</div>
+      </div>
+      <div class="item"><div class="num">#2470</div><div class="desc"><div class="lead">Neon migration — pick a cutover window</div><div class="sub">Database swap; brief downtime. I'll execute when scheduled.</div></div><div class="tag">timing</div></div>
+      <div class="item"><div class="num">plaid</div><div class="desc"><div class="lead">Plaid Production access request</div><div class="sub">Required for real Chase / real banks; 1-2 days underwriting</div></div><div class="tag">submit</div></div>
+      <div class="item"><div class="num">#1276</div><div class="desc"><div class="lead">Cherry Hill go-live ceremony (ring the bell)</div><div class="sub">When all Tier A+B+E gates green</div></div><div class="tag">decision</div></div>
+      <div class="item"><div class="num">resend</div><div class="desc"><div class="lead">Resend transactional email — create org + verify domain</div><div class="sub">Code is wired; just needs RESEND_API_KEY on Fly</div></div><div class="tag">setup</div></div>
+    </div>
+
+    <!-- C — Deferred -->
+    <div class="bucket">
+      <div class="bucket-head deferred-h">
+        <div class="bucket-title"><span class="bucket-dot deferred"></span>C · Deferred until CHC live</div>
+        <div class="bucket-count">10 paused</div>
+      </div>
+      <div class="item"><div class="num">#1321</div><div class="desc"><div class="lead">Pricing page v3 build</div><div class="sub">Marked deferred-post-chc</div></div><div class="tag">paused</div></div>
+      <div class="item"><div class="num">#1272</div><div class="desc"><div class="lead">Marketing conversion funnel</div><div class="sub">Marked deferred-post-chc</div></div><div class="tag">paused</div></div>
+      <div class="item"><div class="num">#1162</div><div class="desc"><div class="lead">CAM outreach assets (5-25 community ICP)</div></div><div class="tag">paused</div></div>
+      <div class="item"><div class="num">#1025</div><div class="desc"><div class="lead">CT condo sales one-pager</div></div><div class="tag">paused</div></div>
+      <div class="item"><div class="num">#977</div><div class="desc"><div class="lead">Track 1 outreach — 3 CT design-partner candidates</div></div><div class="tag">paused</div></div>
+      <div class="item"><div class="num">#1024</div><div class="desc"><div class="lead">yourcondomanager.org marketing landing</div></div><div class="tag">paused</div></div>
+      <div class="item"><div class="num">#1150</div><div class="desc"><div class="lead">Pricing page v3 (duplicate scope of #1321)</div></div><div class="tag">paused</div></div>
+      <div class="item"><div class="num">#831</div><div class="desc"><div class="lead">CAM market research ratification brief</div></div><div class="tag">paused</div></div>
+      <div class="item"><div class="num">#835</div><div class="desc"><div class="lead">Pricing tiers + à-la-carte design research</div></div><div class="tag">paused</div></div>
+      <div class="item"><div class="num">#833</div><div class="desc"><div class="lead">PM responsibilities matrix + platform fit</div></div><div class="tag">paused</div></div>
+    </div>
+
+    <!-- E — Hold (lower priority) -->
+    <div class="bucket">
+      <div class="bucket-head hold-h">
+        <div class="bucket-title"><span class="bucket-dot hold"></span>E · Hold / lower priority</div>
+        <div class="bucket-count">6 items</div>
+      </div>
+      <div class="item"><div class="num">#1276</div><div class="desc"><div class="lead">Cherry Hill go-live readiness gate (master tracker)</div><div class="sub">Stays open until ceremony</div></div><div class="tag">tracker</div></div>
+      <div class="item"><div class="num">#1256</div><div class="desc"><div class="lead">AI Assistant Phase 1 build</div><div class="sub">Gated on #1782 research landing</div></div><div class="tag">blocked</div></div>
+      <div class="item"><div class="num">#988</div><div class="desc"><div class="lead">AI Assistant universal-purpose (meta parent)</div></div><div class="tag">meta</div></div>
+      <div class="item"><div class="num">#342</div><div class="desc"><div class="lead">Security WS3 — Consent audit trail</div><div class="sub">Lower priority post-Phase 1</div></div><div class="tag">queued</div></div>
+      <div class="item"><div class="num">#1035</div><div class="desc"><div class="lead">CT Common Interest Ownership Act compliance audit</div></div><div class="tag">queued</div></div>
+      <div class="item"><div class="num">#1147</div><div class="desc"><div class="lead">Platform subscription billing (charge HOAs the YCM fee)</div></div><div class="tag">queued</div></div>
+    </div>
+
+    <!-- F — Audit findings (just landed) -->
+    <div class="bucket">
+      <div class="bucket-head audit-h">
+        <div class="bucket-title"><span class="bucket-dot audit"></span>F · Audit findings (new — just filed)</div>
+        <div class="bucket-count">4 issues</div>
+      </div>
+      <div class="item"><div class="num">#2477</div><div class="desc"><div class="lead">Cherry Hill has 0 recurring charge schedules</div><div class="sub">That's why nothing's racking up — schema exists, data missing</div></div><div class="tag">P1</div></div>
+      <div class="item"><div class="num">#2478</div><div class="desc"><div class="lead">Plaid sync + reconcile never auto-run</div><div class="sub">Webhook fires, sync endpoint exists, no scheduler calls it</div></div><div class="tag">P1</div></div>
+      <div class="item"><div class="num">#2479</div><div class="desc"><div class="lead">No "Record incoming payment" admin surface for cash/check/Zelle</div><div class="sub">Generic ledger endpoint exists, no method-aware UI</div></div><div class="tag">P1</div></div>
+      <div class="item"><div class="num">#2480</div><div class="desc"><div class="lead">Two parallel reconciliation systems (Plaid + CSV) — no unified UX</div><div class="sub">Different tolerances, different surfaces, gaps for ambiguous matches</div></div><div class="tag">P1</div></div>
+    </div>
+
+  </div>
+
+  <div class="footer-note">
+    <strong>What this means.</strong> Bucket A is the work that's happening right now without your input. Bucket B is what shipped this session. Bucket D is where you specifically come in. Bucket C is on hold until Cherry Hill is fully live. Bucket E is queued for after the critical path clears. Bucket F is what the audit just uncovered — gaps in the automation pipeline we'll fix before more owners use the platform.
+    <br><br>
+    The most consequential bucket-A item is the schema-migration runner (#2476) — that's what closes the door on silent migration drift for good. Once that lands, the same class of "production missing schema columns" bug can't recur.
+  </div>
+</div>
+</body>
+</html>

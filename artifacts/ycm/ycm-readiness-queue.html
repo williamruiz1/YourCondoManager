@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YCM Production-Readiness Queue — live</title>
+<style>
+  :root{
+    --bg:#0e1116; --card:#171c24; --card2:#1d242e; --line:#2a323d;
+    --ink:#e8edf3; --dim:#9aa6b2; --faint:#6b7682;
+    --p0:#ff5d5d; --p1:#ffb443; --p2:#5db0ff;
+    --done:#3ddc84; --flight:#c69bff; --queued:#7e8b99;
+    --you:#ffd84d; --me:#5db0ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:32px 28px 80px;max-width:1080px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 4px}
+  .sub{color:var(--dim);margin:0 0 4px}
+  .stamp{color:var(--faint);font-size:12px;margin:0 0 24px}
+  .gate{background:var(--card);border-left:3px solid var(--you);padding:12px 16px;
+    border-radius:8px;margin:0 0 28px;color:var(--ink);font-style:italic}
+  .gate b{font-style:normal;color:var(--you)}
+
+  .youbox{background:linear-gradient(135deg,#2a2410,#1d1a0c);border:1px solid #5c4d18;
+    border-radius:12px;padding:18px 20px;margin:0 0 32px}
+  .youbox h2{margin:0 0 10px;font-size:18px;color:var(--you)}
+  .youbox ol{margin:0;padding-left:20px}
+  .youbox li{margin:7px 0}
+  .youbox .mut{color:var(--dim);font-size:13px}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin:0 0 26px;font-size:12px;color:var(--dim)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+
+  h2.tier{font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:30px 0 12px;
+    padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .tier.t0{color:var(--p0)} .tier.t1{color:var(--p1)} .tier.t2{color:var(--p2)}
+
+  .item{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;margin:0 0 10px;display:grid;grid-template-columns:1fr auto;gap:6px 14px}
+  .item .id{font-weight:700;font-size:14px}
+  .item .why{grid-column:1/2;color:var(--dim);font-size:13.5px;margin-top:2px}
+  .item .your{grid-column:1/3;margin-top:6px;font-size:13px;background:#221d08;
+    border-radius:6px;padding:6px 10px;color:var(--you)}
+  .badges{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-self:end}
+  .b{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;white-space:nowrap}
+  .b.done{background:rgba(61,220,132,.15);color:var(--done);border:1px solid rgba(61,220,132,.4)}
+  .b.flight{background:rgba(198,155,255,.15);color:var(--flight);border:1px solid rgba(198,155,255,.4)}
+  .b.queued{background:rgba(126,139,153,.12);color:var(--queued);border:1px solid rgba(126,139,153,.35)}
+  .b.me{background:rgba(93,176,255,.12);color:var(--me);border:1px solid rgba(93,176,255,.35)}
+  .b.you{background:rgba(255,216,77,.13);color:var(--you);border:1px solid rgba(255,216,77,.4)}
+
+  .shipped{background:var(--card2);border:1px solid #1f3a2a;border-radius:10px;padding:14px 18px;margin:0 0 8px}
+  .shipped h3{margin:0 0 8px;color:var(--done);font-size:14px}
+  .shipped div{font-size:13.5px;color:var(--dim);margin:4px 0}
+  .shipped code{color:var(--ink)}
+  .note{color:var(--faint);font-size:12.5px;margin:18px 0 0;font-style:italic}
+</style>
+</head>
+<body>
+  <h1>YCM Production-Readiness Queue</h1>
+  <p class="sub">Cherry Hill Court pilot · 18-unit HOA · path to "know my balance + pay it on the platform"</p>
+  <p class="stamp">Updated 2026-05-29 this session · supersedes the 14:41 snapshot · 22 issues #204–#225</p>
+
+  <div class="gate">
+    Your go-live gate: <b>"I need to know my balance and be able to pay it on the platform."</b>
+    Every P0 below exists to make that one sentence true.
+  </div>
+
+  <div class="youbox">
+    <h2>👤 What's actually yours — just 2 things</h2>
+    <ol>
+      <li><b>Confirm Cherry Hill dues = $280 / month / unit</b> (or correct it) → I switch billing on and you get a live balance. <span class="mut">Unblocks P0-1.</span></li>
+      <li><b>Apply for Plaid production access</b> <span class="mut">— the one multi-day external thing only you can start. Real bank data instead of sandbox.</span></li>
+    </ol>
+    <p class="mut" style="margin:12px 0 0">Everything tagged <b style="color:var(--me)">🤖 Claude builds</b> below is mine — you don't do those. A few small <b>👤 You</b> verify/credential items (Sentry DSN, kill old DB, Stripe check) can wait; I've teed them up.</p>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--done)"></span>shipped / merged</span>
+    <span><span class="dot" style="background:var(--flight)"></span>in flight</span>
+    <span><span class="dot" style="background:var(--queued)"></span>queued</span>
+    <span><span class="dot" style="background:var(--me)"></span>🤖 Claude builds</span>
+    <span><span class="dot" style="background:var(--you)"></span>👤 needs you</span>
+  </div>
+
+  <div class="shipped">
+    <h3>✓ Already shipped to main this session</h3>
+    <div>The four original 2026-05-25 gap audits — all merged (<code>#182 #183 #186 #187</code>): recurring schedule, automated Plaid sync, manual-payment recording, broadened auto-match.</div>
+    <div><code>#203</code> — bank-feed health-check (warns on missing recurring schedule)</div>
+    <div><code>#226</code> — reconciliation learning layer (descriptor→owner aliases; stops asking after first confirm)</div>
+    <div><code>#227</code> — <b style="color:var(--done)">P0-3 owner account statement</b> (opening/closing balance, period line items, printable)</div>
+    <div><code>#228</code> — CI greenup (tsc 274→0, tests 39-dead→1431 passing) — <span style="color:var(--flight)">CI verifying, merge pending</span></div>
+  </div>
+
+  <h2 class="tier t0">P0 — blocks the balance / pay / reconcile loop</h2>
+
+  <div class="item">
+    <span class="id">P0-1 · End-to-end money-loop test on real Cherry Hill data</span>
+    <span class="badges"><span class="b queued">QUEUED</span><span class="b you">👤+🤖</span></span>
+    <div class="why">Every piece is merged but the whole loop was never tested together: schedule fires → owner sees balance → pays → auto-reconciles to zero.</div>
+    <div class="your">Your part: (1) confirm the $280 dues so billing turns on, then (2) the human acceptance — log in as an owner, confirm you see your balance, make a sandbox payment. I set up + drive the rest.</div>
+  </div>
+  <div class="item">
+    <span class="id">P0-2 · Payment receipt + confirmation email</span>
+    <span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖 Claude builds</span></span>
+    <div class="why">After an owner pays there's no receipt. Email transport is already wired (Gmail SMTP) — just needs building. Nothing from you.</div>
+  </div>
+  <div class="item">
+    <span class="id">P0-3 · Owner-facing account statement</span>
+    <span class="badges"><span class="b done">DONE · #227</span></span>
+    <div class="why">Shipped. Opening balance → charges/payments/late-fees → ending balance, owner + treasurer views, printable.</div>
+  </div>
+  <div class="item">
+    <span class="id">P0-4 · Consolidate reconciliation source-of-truth (Plaid vs CSV)</span>
+    <span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖 Claude builds</span></span>
+    <div class="why">Two parallel reconcile pipelines with no canonical workflow — a correctness/trust risk. Pick Plaid as canonical, scope CSV to "no bank connection." Nothing from you.</div>
+  </div>
+
+  <h2 class="tier t1">P1 — blocks daily owner / treasurer use</h2>
+  <div class="item"><span class="id">P1-1 · Production error tracking (Sentry) live</span><span class="badges"><span class="b queued">QUEUED</span><span class="b you">👤 DSN</span><span class="b me">🤖</span></span><div class="why">Code wired; needs the Sentry DSN secret set (W-4), then I verify. An unobserved 500 on a payment is unacceptable with real owners.</div></div>
+  <div class="item"><span class="id">P1-2 · Uptime monitoring + downtime alert</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖 builds</span><span class="b you">👤 alert dest</span></span><div class="why">Single Fly machine; prod DB crashed once. External uptime check so you don't find out when an owner can't pay.</div></div>
+  <div class="item"><span class="id">P1-3 · DB backup + tested restore runbook</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖 Claude builds</span></span><div class="why">Neon has PITR but no tested restore path for the money data. Table stakes before real records live here.</div></div>
+  <div class="item"><span class="id">P1-4 · Rate-limiting on financial / admin endpoints</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖 Claude builds</span></span><div class="why">Limiter applied to only 3 of 612 routes; payment/ledger writes unthrottled.</div></div>
+  <div class="item"><span class="id">P1-5 · Automated late-fee assessment in the sweep</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖 Claude builds</span></span><div class="why">Notices auto-generate but late-fee charges don't post automatically per the association's rules.</div></div>
+  <div class="item"><span class="id">P1-6 · All 18 units have working login → balance → pay</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖 verifies</span><span class="b you">👤 emails</span></span><div class="why">Every CHC owner needs a verified login + portal balance for pilot day one. I verify; you may supply real owner emails.</div></div>
+  <div class="item"><span class="id">P1-7 · Board roles/permissions audit on money routes</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖 Claude builds</span></span><div class="why">Confirm a non-treasurer board member can't post payments or alter ledgers; tenant isolation holds.</div></div>
+  <div class="item"><span class="id">P1-8 · Email deliverability (SPF/DKIM/DMARC + test send)</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖 tests</span><span class="b you">👤 DNS</span></span><div class="why">Receipts/OTPs/notices must land in inbox not spam. I test; you (or I via your registrar) set DNS records.</div></div>
+
+  <h2 class="tier t2">P2 — polish / post-pilot</h2>
+  <div class="item"><span class="id">P2-1 · Partial / overpayment / refund edge cases</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖</span></span><div class="why">Underpay → remaining due; overpay → credit; refund → reversing entry. No orphaned amounts.</div></div>
+  <div class="item"><span class="id">P2-2 · Mobile/responsive pass on money screens</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖</span></span><div class="why">Owners pay from their phone; verify balance/pay/statement screens on small viewports.</div></div>
+  <div class="item"><span class="id">P2-3 · Governing-doc storage (bylaws, CC&Rs, minutes)</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖</span></span><div class="why">Page exists; confirm owner-accessible + access-controlled for the day-one doc set.</div></div>
+  <div class="item"><span class="id">P2-4 · All-owners announcements / dues reminders verified</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖</span></span><div class="why">Core treasurer job; confirm bulk send delivers + respects opt-out.</div></div>
+  <div class="item"><span class="id">P2-5 · Treasurer month-close workflow</span><span class="badges"><span class="b queued">QUEUED</span><span class="b me">🤖</span></span><div class="why">"Close month" view: unmatched count + one-action attestation the period is reconciled.</div></div>
+
+  <h2 class="tier" style="color:var(--you)">👤 YOUR ITEMS (credential / external / decision)</h2>
+  <div class="item"><span class="id">W-1 · Plaid PRODUCTION access</span><span class="badges"><span class="b you">👤 DO — top priority</span></span><div class="why">Sandbox → production approval. Multi-day external lead time — the one thing only you can start, so start it.</div></div>
+  <div class="item"><span class="id">W-5 · Destroy old single-node Fly Postgres</span><span class="badges"><span class="b you">👤 yes/no</span></span><div class="why">Still running + idle since before the Neon cutover (~95% safe to kill). I'll take a final backup then destroy — just say go.</div></div>
+  <div class="item"><span class="id">W-4 · Set Sentry DSN (+ GA4) as Fly secrets</span><span class="badges"><span class="b you">👤 quick</span></span><div class="why">Unblocks P1-1 error tracking. Needs a Sentry project + DSN.</div></div>
+  <div class="item"><span class="id">W-3 · Stripe Connect / CHC connected account — verify</span><span class="badges"><span class="b me">🤖 mostly done</span></span><div class="why">Platform Stripe keys confirmed present. CHC connected-account I'll verify inside P0-1. Likely no action from you.</div></div>
+  <div class="item"><span class="id">W-2 · Transactional email setup — verify</span><span class="badges"><span class="b me">🤖 mostly done</span></span><div class="why">Gmail SMTP already wired. Resend NOT needed for pilot. Only DNS records (P1-8) may need you.</div></div>
+  <div class="item"><span class="id">W-6 · CT CIOA compliance / security attestation</span><span class="badges"><span class="b you">👤 later</span></span><div class="why">Legal sign-off you own. Low urgency for a pilot-of-one.</div></div>
+
+  <p class="note">The queue is a build plan for me, not a chore list for you. Your real to-do is the yellow box at the top: the dues number + Plaid. Talk to me to reprioritize, cut, or add — I edit the live GitHub issues as you react.</p>
+</body>
+</html>
