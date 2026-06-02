@@ -26,7 +26,7 @@ import { log } from "./logger";
 import { runMigrationHealthCheck } from "./migration-health";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
-import { createRateLimiter } from "./rate-limit";
+import { createRateLimiter, onWriteOnly } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
 import { resolveSessionCookieDomain } from "./session-cookie-domain";
 
@@ -390,6 +390,38 @@ app.use((req, res, next) => {
     message: "Too many verification attempts, please try again later.",
   });
   app.use("/api/portal/verify-login", portalVerifyLoginLimiter);
+
+  // P1-4 — financial-mutation + admin write rate limiting.
+  //
+  // The existing limiters above cover public surfaces and auth brute-force.
+  // Financial write routes (/api/financial/* POST/PATCH/DELETE) and general
+  // admin write routes (/api/admin/* POST/PATCH/DELETE) were previously
+  // unthrottled. Both require a valid admin session (requireAdmin middleware)
+  // so the attack surface is narrower than public, but an authenticated
+  // attacker or a runaway automated process could still generate large write
+  // volumes. These limits protect against that without impeding normal use
+  // (a treasurer recording dozens of payments in a session won't hit 60/min).
+  //
+  // Limits chosen per OWASP API Security Top 10 guidance for authenticated
+  // write surfaces: 60 requests/minute is permissive for human operators yet
+  // blocks automated write floods. The `onWriteOnly` wrapper leaves GET
+  // requests (financial dashboards, reports) unaffected.
+  //
+  // Multi-instance note: see rate-limit.ts — swap to Redis when YCM scales
+  // beyond a single Fly machine.
+  const financialWriteLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 60,
+    message: "Too many financial write requests, please slow down.",
+  });
+  app.use("/api/financial", onWriteOnly(financialWriteLimiter));
+
+  const adminWriteLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 60,
+    message: "Too many admin write requests, please slow down.",
+  });
+  app.use("/api/admin", onWriteOnly(adminWriteLimiter));
 
   await registerRoutes(httpServer, app);
 
