@@ -8,6 +8,7 @@ import { authEvents } from "../shared/schema";
 import { storage } from "./storage";
 import { log } from "./logger";
 import { sendPlatformEmail } from "./email-provider";
+import { geoResolver, formatGeoLocation } from "./geo-resolver";
 
 type SessionWithOAuth = {
   oauthReturnTo?: string;
@@ -622,17 +623,57 @@ export function registerAuthRoutes(app: Express) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Resolve the source IP for an inbound request, honoring a single layer of
- * X-Forwarded-For when present (production deploys behind Replit/CF/etc.).
+ * Resolve the real client IP for an inbound request.
  *
- * The first segment of XFF is the originating client per spec; later segments
- * are intermediary hops we don't log here.
+ * Priority order (highest trust first):
+ *  1. `Fly-Client-IP` — set by Fly.io's edge proxy and reflects the actual
+ *     end-user IP even when the request passes through Google's network (which
+ *     is why a raw `req.ip` or first-XFF hop can show a Google IP range like
+ *     216.239.165.26 instead of the real user address).
+ *  2. First *public* IP in `X-Forwarded-For` — works for non-Fly proxies such
+ *     as Cloudflare or Replit.  We skip RFC-1918 / link-local hops that are
+ *     just internal network nodes.
+ *  3. `req.ip` / `req.socket.remoteAddress` fallback.
+ *
+ * Returns null only when no IP can be determined at all.
  */
 function resolveSourceIp(req: Request): string | null {
-  const xff = (req.header("x-forwarded-for") || "").split(",")[0]?.trim();
-  if (xff) return xff;
+  // 1. Fly-Client-IP (most authoritative on Fly.io deployments)
+  const flyClientIp = req.header("fly-client-ip")?.trim();
+  if (flyClientIp) return flyClientIp;
+
+  // 2. First public hop in X-Forwarded-For
+  const xffHeader = req.header("x-forwarded-for") || "";
+  if (xffHeader) {
+    const hops = xffHeader.split(",").map((h) => h.trim()).filter(Boolean);
+    for (const hop of hops) {
+      if (!isRfc1918OrLoopback(hop)) return hop;
+    }
+  }
+
+  // 3. Socket-level fallback
   const remote = req.ip || req.socket?.remoteAddress || null;
-  return remote;
+  return remote ?? null;
+}
+
+/**
+ * Quick check for addresses that should be skipped when scanning XFF hops.
+ * Deliberately permissive — we only exclude the most obvious private ranges.
+ * The geo-resolver's `isPrivateIp` function handles the detailed check later.
+ */
+function isRfc1918OrLoopback(ip: string): boolean {
+  if (!ip) return true;
+  if (ip === "::1" || ip === "127.0.0.1") return true;
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some(isNaN)) return false;
+  const [a, b] = parts;
+  return (
+    a === 127 ||
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
 }
 
 /**
@@ -736,13 +777,24 @@ export async function checkNewIpAndAlert(input: {
     // Familiar-IP guard: matched a recent IP → no alert.
     if (seenSet.has(input.ipAddress)) return;
 
+    // Best-effort geo lookup — wrapped in its own try/catch so a geo failure
+    // never prevents the security email from being sent.
+    let locationLine = "Location unavailable";
+    try {
+      const geo = await geoResolver.resolve(input.ipAddress);
+      locationLine = formatGeoLocation(geo);
+    } catch {
+      // geo lookup failed — use the fallback string, do not re-throw
+    }
+
     const subject = "New location login to your YCM account";
     const body = [
       "We noticed a sign-in to your YourCondoManager account from a location we haven't seen recently.",
       "",
-      `Time: ${input.loginAt.toISOString()}`,
+      `Time:     ${input.loginAt.toISOString()}`,
       `IP address: ${input.ipAddress}`,
-      `Device: ${input.userAgent ?? "(unknown)"}`,
+      `Location: ${locationLine}`,
+      `Device:   ${input.userAgent ?? "(unknown)"}`,
       "",
       "If this was you, no action is needed. If you did not sign in, please:",
       "  1. Sign out of all sessions immediately",
