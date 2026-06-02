@@ -23,10 +23,11 @@
  * - Source of role lists: 0.2 Persona Boundary Matrix (LOCKED, amended
  *   `f8dbf76`). `/app/financial/*` row = Manager + Board Officer +
  *   Assisted Board (read-only via `useIsReadOnly()` hook) + PM Assistant +
- *   Viewer. Platform Admin is ❌ on the customer-tenant-scoped Financials
- *   zone per the 0.2 matrix and Persona 6 definition (Platform Admin
- *   manages YCM-internal operator tooling, not customer association
- *   day-to-day work). `/app/settings/billing` is Manager-only per 4.4 Q6.
+ *   Viewer. Platform Admin is now granted financials access per William's
+ *   2026-06-02 pilot decision (owner is also the board member; resolves the
+ *   front/back drift where the backend already permitted platform-admin on
+ *   all financial API routes). `/app/settings/billing` is Manager-only per
+ *   4.4 Q6.
  *
  * --- Phase 9 / Phases 13–16 scope (NOT THIS FILE TODAY) ---
  * - Populates remaining zones (Operations, Governance, Communications,
@@ -66,18 +67,28 @@ export type RouteManifest = Readonly<Record<string, readonly AdminRole[]>>;
 // consolidate the two source-of-truth files; for now the duplication is
 // intentional — the sidebar tree is per-zone, the manifest is per-route.
 
-/** Manager-equivalent operator personas. Used for `/app/financial/*` per
- * 0.2 matrix (Platform Admin is `❌` on customer-tenant Financials per
- * Persona 6 definition). Assisted Board is `read-only` — read-only is
- * enforced at the action level via `useIsReadOnly()` per 2.3 Q7, not
- * by exclusion from this list (the manifest is visibility, not
- * write-action gating). */
+/** Manager-equivalent operator personas (excludes platform-admin).
+ * Assisted Board is `read-only` — read-only is enforced at the action
+ * level via `useIsReadOnly()` per 2.3 Q7, not by exclusion from this list
+ * (the manifest is visibility, not write-action gating). */
 const FIVE_PERSONA_OPERATOR: readonly AdminRole[] = [
   "manager",
   "board-officer",
   "assisted-board",
   "pm-assistant",
   "viewer",
+];
+
+/**
+ * Financials zone access list — the five operator personas plus
+ * platform-admin. Platform Admin was granted financials access per
+ * William's 2026-06-02 pilot decision (owner is also the board; resolves
+ * the front/back drift where the backend already permitted platform-admin
+ * on all financial API routes).
+ */
+const FINANCIALS_ACCESS: readonly AdminRole[] = [
+  "platform-admin",
+  ...FIVE_PERSONA_OPERATOR,
 ];
 
 /**
@@ -104,40 +115,40 @@ const SETTINGS_BILLING_ROLES: readonly AdminRole[] = [
  */
 export const ROUTE_MANIFEST: RouteManifest = {
   // ---- Financials zone hub (3.2 Q1, Phase 11) ----
-  "/app/financials": FIVE_PERSONA_OPERATOR,
+  "/app/financials": FINANCIALS_ACCESS,
 
   // ---- Financials zone plural-to-singular redirects (3.2 Q1, Phase 11) ----
   // Same persona list as the destination so a permitted persona reaches
   // the redirect, navigates, and reaches the destination uninterrupted.
-  "/app/financials/foundation": FIVE_PERSONA_OPERATOR,
-  "/app/financials/billing": FIVE_PERSONA_OPERATOR,
-  "/app/financials/payments": FIVE_PERSONA_OPERATOR,
-  "/app/financials/expenses": FIVE_PERSONA_OPERATOR,
-  "/app/financials/reports": FIVE_PERSONA_OPERATOR,
+  "/app/financials/foundation": FINANCIALS_ACCESS,
+  "/app/financials/billing": FINANCIALS_ACCESS,
+  "/app/financials/payments": FINANCIALS_ACCESS,
+  "/app/financials/expenses": FINANCIALS_ACCESS,
+  "/app/financials/reports": FINANCIALS_ACCESS,
 
   // ---- Financials zone canonical sub-pages (3.2 — preserved from current) ----
-  "/app/financial/foundation": FIVE_PERSONA_OPERATOR,
-  "/app/financial/billing": FIVE_PERSONA_OPERATOR,
-  "/app/financial/payments": FIVE_PERSONA_OPERATOR,
-  "/app/financial/expenses": FIVE_PERSONA_OPERATOR,
-  "/app/financial/reports": FIVE_PERSONA_OPERATOR,
+  "/app/financial/foundation": FINANCIALS_ACCESS,
+  "/app/financial/billing": FINANCIALS_ACCESS,
+  "/app/financial/payments": FINANCIALS_ACCESS,
+  "/app/financial/expenses": FINANCIALS_ACCESS,
+  "/app/financial/reports": FINANCIALS_ACCESS,
   // 4.3 Q9 consolidated assessment-rules surface.
-  "/app/financial/rules": FIVE_PERSONA_OPERATOR,
+  "/app/financial/rules": FINANCIALS_ACCESS,
   // Plaid-backed bank-feed admin surface (Issue #333).
-  "/app/financial/bank-connections": FIVE_PERSONA_OPERATOR,
+  "/app/financial/bank-connections": FINANCIALS_ACCESS,
   // Owner account-statement generator (readiness P0-3 / Issue #206).
-  "/app/financial/statement": FIVE_PERSONA_OPERATOR,
+  "/app/financial/statement": FINANCIALS_ACCESS,
 
   // ---- Financials zone legacy singular-prefix redirects (3.2 Q4 archive) ----
-  "/app/financial/fees": FIVE_PERSONA_OPERATOR,
-  "/app/financial/recurring-charges": FIVE_PERSONA_OPERATOR,
-  "/app/financial/ledger": FIVE_PERSONA_OPERATOR,
-  "/app/financial/assessments": FIVE_PERSONA_OPERATOR,
-  "/app/financial/late-fees": FIVE_PERSONA_OPERATOR,
-  "/app/financial/invoices": FIVE_PERSONA_OPERATOR,
-  "/app/financial/utilities": FIVE_PERSONA_OPERATOR,
-  "/app/financial/budgets": FIVE_PERSONA_OPERATOR,
-  "/app/financial/reconciliation": FIVE_PERSONA_OPERATOR,
+  "/app/financial/fees": FINANCIALS_ACCESS,
+  "/app/financial/recurring-charges": FINANCIALS_ACCESS,
+  "/app/financial/ledger": FINANCIALS_ACCESS,
+  "/app/financial/assessments": FINANCIALS_ACCESS,
+  "/app/financial/late-fees": FINANCIALS_ACCESS,
+  "/app/financial/invoices": FINANCIALS_ACCESS,
+  "/app/financial/utilities": FINANCIALS_ACCESS,
+  "/app/financial/budgets": FINANCIALS_ACCESS,
+  "/app/financial/reconciliation": FINANCIALS_ACCESS,
 
   // ---- Owner-billing surface (3.2 amendment 2026-04-21 / 4.4 Q6) ----
   // Sub-route of /app/settings but logically Financials-zone (Stripe
