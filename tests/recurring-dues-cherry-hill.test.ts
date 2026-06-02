@@ -77,6 +77,13 @@ vi.mock("../server/db", async () => {
               },
             };
           }
+          if (table === schema.ownerLedgerEntries) {
+            // Idempotency-guard dedup query — no prior charge in these tests,
+            // so resolve empty and let the handler proceed to the post path.
+            return {
+              limit: (_n: number) => Promise.resolve([]),
+            };
+          }
           return Promise.resolve([]);
         },
       }),

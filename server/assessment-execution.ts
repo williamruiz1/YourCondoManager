@@ -38,7 +38,7 @@
  *   debugging.
  */
 
-import { and, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
 
 import {
   assessmentRunLog,
@@ -174,6 +174,78 @@ export function __resetHandlerRegistryForTests__(): void {
 // Recurring charges handler (refactored from server/index.ts:runDueRecurringCharges)
 // ---------------------------------------------------------------------------
 
+export const RECURRING_CHARGE_REFERENCE_TYPE = "recurring_charge_schedule";
+
+/** Number of months between two consecutive runs for each frequency. */
+function recurringFrequencyMonths(
+  frequency: RecurringChargeSchedule["frequency"],
+): number {
+  switch (frequency) {
+    case "monthly":
+      return 1;
+    case "quarterly":
+      return 3;
+    case "annual":
+      return 12;
+    default:
+      // Exhaustiveness guard — defaults to monthly if the enum ever widens.
+      return 1;
+  }
+}
+
+/**
+ * Compute the run date for a given period anchored on `dayOfMonth`, advancing
+ * `monthOffset` months from `base`. `dayOfMonth` is clamped to the last day of
+ * the target month (e.g. day 31 in February → Feb 28/29). Uses UTC so the
+ * boundary is stable across server timezones — matches the addUtcMonths
+ * convention used by the special-assessment handler.
+ */
+function recurringRunDate(base: Date, monthOffset: number, dayOfMonth: number): Date {
+  const year = base.getUTCFullYear();
+  const month = base.getUTCMonth();
+  const target = new Date(Date.UTC(year, month + monthOffset, 1, 0, 0, 0, 0));
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0, 0, 0, 0, 0),
+  ).getUTCDate();
+  const clampedDay = Math.min(Math.max(dayOfMonth, 1), lastDay);
+  target.setUTCDate(clampedDay);
+  return target;
+}
+
+/**
+ * Given a schedule firing at `dueDate`, compute the period window for
+ * idempotency + the `nextRunDate` the schedule must advance to.
+ *
+ * - `periodStart`: the run date for the period containing `dueDate`. This is
+ *   the most recent `dayOfMonth` occurrence at or before `dueDate`. Any ledger
+ *   row already posted at or after `periodStart` (and before `nextRunDate`)
+ *   means this period was already charged.
+ * - `nextRunDate`: `periodStart` advanced by one frequency interval. After a
+ *   successful run the schedule waits until this date before firing again —
+ *   this is the fix for the runaway loop.
+ */
+export function computeRecurringPeriod(
+  schedule: Pick<RecurringChargeSchedule, "frequency" | "dayOfMonth">,
+  dueDate: Date,
+): { periodStart: Date; nextRunDate: Date } {
+  const stepMonths = recurringFrequencyMonths(schedule.frequency);
+  const dayOfMonth = schedule.dayOfMonth ?? 1;
+
+  // Walk back from the dueDate's month to find the most recent occurrence at
+  // or before dueDate. We only need to look back up to `stepMonths` months.
+  let periodStart = recurringRunDate(dueDate, 0, dayOfMonth);
+  let offset = 0;
+  while (periodStart > dueDate) {
+    offset -= 1;
+    periodStart = recurringRunDate(dueDate, offset, dayOfMonth);
+    // Safety bound: never walk back further than one full interval + 1.
+    if (offset < -(stepMonths + 1)) break;
+  }
+
+  const nextRunDate = recurringRunDate(periodStart, stepMonths, dayOfMonth);
+  return { periodStart, nextRunDate };
+}
+
 /**
  * Lists eligible recurring-charge rules. This mirrors the selection logic in
  * `server/index.ts:runDueRecurringCharges` — active schedules whose
@@ -250,6 +322,39 @@ export const recurringChargesLister: RuleExecutionLister = async ({
  */
 export const recurringChargesHandler: RuleExecutionHandler = async (ctx) => {
   const schedule = ctx.rule as RecurringChargeSchedule;
+
+  // Idempotency guard (defense in depth #2): do NOT post a second charge for
+  // the same (schedule, unit) within the current run period. Even if the sweep
+  // runs twice before `nextRunDate` advances — or two sweeps race — this guard
+  // prevents a duplicate post. The period window is [periodStart, nextRunDate):
+  // any existing recurring-charge ledger row for this unit posted at or after
+  // the period start means this period was already charged.
+  const { periodStart, nextRunDate } = computeRecurringPeriod(
+    schedule,
+    ctx.dueDate,
+  );
+  const [alreadyPosted] = await db
+    .select({ id: ownerLedgerEntries.id })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.associationId, schedule.associationId),
+        eq(ownerLedgerEntries.unitId, ctx.unit.id),
+        eq(ownerLedgerEntries.referenceType, RECURRING_CHARGE_REFERENCE_TYPE),
+        eq(ownerLedgerEntries.referenceId, schedule.id),
+        gte(ownerLedgerEntries.postedAt, periodStart),
+        lt(ownerLedgerEntries.postedAt, nextRunDate),
+      ),
+    )
+    .limit(1);
+  if (alreadyPosted) {
+    return {
+      status: "skipped",
+      amount: schedule.amount,
+      errorCode: "already_posted",
+      errorMessage: "Recurring charge already posted for this period",
+    };
+  }
 
   // Resolve active ownership for the unit. If none, skip.
   const [ownership] = await db
@@ -555,6 +660,60 @@ function emptyStatusMap(): Record<AssessmentRunStatus, number> {
 }
 
 /**
+ * Advance `nextRunDate` for every distinct recurring schedule that fired in
+ * this sweep (defense in depth #1 — the core fix for the runaway loop).
+ *
+ * A schedule "fires" once per period. After the orchestrator dispatches its
+ * units, the schedule MUST wait until the next period before the lister can
+ * re-select it — otherwise the lister keeps matching `nextRunDate <= now`
+ * every sweep and re-posts indefinitely (the Cherry Hill incident).
+ *
+ * Advancing is keyed on dispatch, not per-unit success: the schedule fired
+ * this period regardless of whether an individual unit skipped (e.g. no active
+ * ownership). The idempotency guard in the handler is the second line of
+ * defense against double-posting if advancement ever fails to persist.
+ *
+ * No-ops in dry-run (shadow-write must not mutate schedule state). Errors are
+ * swallowed per-schedule and surfaced via the catch so one bad row can't jam
+ * the sweep — but a failure to advance is exactly why the idempotency guard
+ * exists.
+ */
+async function advanceRecurringSchedules(
+  entries: Array<{ ruleId: string; rule: unknown; dueDate: Date }>,
+  dryRun: boolean,
+): Promise<void> {
+  if (dryRun || entries.length === 0) return;
+
+  // Collapse to one entry per schedule id (the first one carries the row +
+  // dueDate; all units of a schedule share the same dueDate in a sweep).
+  const bySchedule = new Map<string, { rule: RecurringChargeSchedule; dueDate: Date }>();
+  for (const entry of entries) {
+    const rule = entry.rule as RecurringChargeSchedule | undefined;
+    // Only recurring schedules carry frequency/dayOfMonth; guard defensively.
+    if (!rule || typeof rule.frequency !== "string") continue;
+    if (!bySchedule.has(entry.ruleId)) {
+      bySchedule.set(entry.ruleId, { rule, dueDate: entry.dueDate });
+    }
+  }
+
+  for (const [scheduleId, { rule, dueDate }] of bySchedule) {
+    const { nextRunDate } = computeRecurringPeriod(rule, dueDate);
+    try {
+      await db
+        .update(recurringChargeSchedules)
+        .set({ nextRunDate, updatedAt: new Date() })
+        .where(eq(recurringChargeSchedules.id, scheduleId));
+    } catch (err: unknown) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[assessment-execution] failed to advance nextRunDate for schedule ${scheduleId}:`,
+        err,
+      );
+    }
+  }
+}
+
+/**
  * Orchestrate execution of all registered rule types.
  *
  * In shadow-write mode (dryRun = true) the orchestrator writes `assessmentRunLog`
@@ -589,6 +748,12 @@ export async function runSweep(opts: SweepOptions = {}): Promise<SweepSummary> {
       summary.runLogRowIds.push(runRow.id);
       summary.perStatus[runRow.status] =
         (summary.perStatus[runRow.status] ?? 0) + 1;
+    }
+
+    // Defense in depth #1: advance nextRunDate for recurring schedules that
+    // fired this period so the lister can't re-select them until next period.
+    if (registered.ruleType === "recurring") {
+      await advanceRecurringSchedules(eligible, dryRun);
     }
   }
 
@@ -648,6 +813,13 @@ export async function runOnDemand(
     summary.runLogRowIds.push(runRow.id);
     summary.perStatus[runRow.status] =
       (summary.perStatus[runRow.status] ?? 0) + 1;
+  }
+
+  // Defense in depth #1: advance nextRunDate for recurring schedules that
+  // fired this period (mirrors runSweep) so an on-demand run also moves the
+  // schedule forward and can't be re-selected by the next sweep.
+  if (registered.ruleType === "recurring") {
+    await advanceRecurringSchedules(eligible, dryRun);
   }
 
   // 15a: on-demand rule runs that materialize ledger rows can flip
