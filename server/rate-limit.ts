@@ -4,7 +4,13 @@ type Bucket = { count: number; resetAt: number };
 
 /**
  * Simple in-memory rate limiter. Suitable for single-instance deployments.
- * For multi-instance setups, use a shared store (Redis) instead.
+ *
+ * Multi-instance note: each server process keeps an independent in-memory
+ * counter. When YCM scales beyond a single Fly machine, replace this with a
+ * shared store (Redis via `rate-limiter-flexible` or `ioredis`) so all
+ * instances enforce a unified window. The interface is identical — only the
+ * constructor changes. The call sites in `server/index.ts` are the canonical
+ * swap point.
  */
 export function createRateLimiter(options: {
   windowMs: number;
@@ -38,6 +44,25 @@ export function createRateLimiter(options: {
     }
 
     bucket.count++;
+    return next();
+  };
+}
+
+/**
+ * Returns an Express middleware that applies `limiter` only for
+ * state-mutating HTTP methods (POST, PUT, PATCH, DELETE).
+ *
+ * Use this when `app.use("/api/some-prefix", ...)` would also intercept
+ * read-only GET requests that you want to leave unthrottled.
+ */
+export function onWriteOnly(
+  limiter: (req: Request, res: Response, next: NextFunction) => void,
+): (req: Request, res: Response, next: NextFunction) => void {
+  const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (WRITE_METHODS.has(req.method)) {
+      return limiter(req, res, next);
+    }
     return next();
   };
 }
