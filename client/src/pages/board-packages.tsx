@@ -798,7 +798,7 @@ export function BoardPackagesContent() {
                         {lastDistributionResult.recipients.map((email) => {
                           const failed = lastDistributionResult.failedRecipients.includes(email);
                           return (
-                            <div key={email} className="flex items-center justify-between gap-3 rounded-md border bg-white px-3 py-2 text-xs">
+                            <div key={email} className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-xs">
                               <div className="flex items-center gap-2 min-w-0">
                               <span className={failed ? "text-destructive" : "text-green-700 dark:text-green-400"}>
                                 {failed ? "✕" : "✓"}

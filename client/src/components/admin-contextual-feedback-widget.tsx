@@ -936,7 +936,7 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
           ) : null}
 
           {mode === "inspect" ? (
-            <div className="absolute left-4 top-20 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-lg backdrop-blur">
+            <div className="absolute left-4 top-20 rounded-lg border border-border bg-background/95 px-3 py-2 text-xs text-foreground shadow-lg backdrop-blur">
               Hover and click to capture. Long-press on touch. Press Escape to exit.
             </div>
           ) : null}
@@ -945,7 +945,7 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
             <div
               ref={panelRef}
               data-admin-feedback-root="true"
-              className="pointer-events-auto absolute overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-2xl"
+              className="pointer-events-auto absolute overflow-y-auto rounded-xl border border-border bg-background p-4 shadow-2xl"
               style={{
                 top: panelLayout.top,
                 left: panelLayout.left,
@@ -954,14 +954,14 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
               }}
             >
               <div className="mb-3">
-                <div className="text-sm font-semibold text-slate-900">
+                <div className="text-sm font-semibold text-foreground">
                   {editingTaskId ? "Edit roadmap ticket" : "Create roadmap ticket"}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">{selectedSnapshot.selector}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{selectedSnapshot.selector}</div>
               </div>
               <div className="space-y-3">
                 <div className="grid gap-1.5">
-                  <label className="text-xs font-medium text-slate-700">Title</label>
+                  <label className="text-xs font-medium text-foreground">Title</label>
                   <Input
                     value={form.title}
                     onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
@@ -974,7 +974,7 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <label className="text-xs font-medium text-slate-700">Description</label>
+                  <label className="text-xs font-medium text-foreground">Description</label>
                   <Textarea
                     value={form.description}
                     rows={5}
@@ -989,9 +989,9 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
-                    <label className="text-xs font-medium text-slate-700">Type</label>
+                    <label className="text-xs font-medium text-foreground">Type</label>
                     <select
-                      className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
                       value={form.type}
                       onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as AdminContextualFeedbackType }))}
                     >
@@ -1000,9 +1000,9 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
                     </select>
                   </div>
                   <div className="grid gap-1.5">
-                    <label className="text-xs font-medium text-slate-700">Priority</label>
+                    <label className="text-xs font-medium text-foreground">Priority</label>
                     <select
-                      className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
                       value={form.priority}
                       onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value as FeedbackPriority }))}
                     >
@@ -1013,23 +1013,23 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
                     </select>
                   </div>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
                   <div>Route: {selectedSnapshot.route}</div>
                   <div>Bounds: {describeBounds(selectedSnapshot.bounds)}</div>
                   <div>Component: {selectedSnapshot.componentName || "unavailable"}</div>
                 </div>
                 {isCapturingScreenshot ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-500">
+                  <div className="rounded-lg border border-border bg-muted p-3 text-center text-xs text-muted-foreground">
                     Capturing screenshot...
                   </div>
                 ) : screenshotBase64 ? (
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">Screenshot</label>
-                    <div className="relative overflow-hidden rounded-lg border border-slate-200">
+                    <label className="text-xs font-medium text-foreground">Screenshot</label>
+                    <div className="relative overflow-hidden rounded-lg border border-border">
                       <img
                         src={screenshotBase64}
                         alt="Screenshot of selected element"
-                        className="max-h-40 w-full object-contain bg-slate-50"
+                        className="max-h-40 w-full object-contain bg-muted"
                         loading="lazy"
                         decoding="async"
                       />
@@ -1105,15 +1105,15 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
                     {cluster.markers.length}
                   </button>
                   {activeMarkerId && cluster.markers.some((m) => m.roadmapTaskId === activeMarkerId) ? (
-                    <div className="absolute left-10 top-0 z-10 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+                    <div className="absolute left-10 top-0 z-10 w-48 rounded-lg border border-border bg-background p-2 shadow-xl">
                       {cluster.markers.map((m) => (
                         <button
                           key={m.roadmapTaskId}
                           type="button"
                           className={`block w-full truncate rounded px-2 py-1 text-left text-xs ${
                             m.roadmapTaskId === activeMarkerId
-                              ? "bg-amber-100 font-semibold text-amber-900"
-                              : "text-slate-700 hover:bg-slate-50"
+                              ? "bg-amber-100 dark:bg-amber-900/40 font-semibold text-amber-900 dark:text-amber-300"
+                              : "text-foreground hover:bg-muted"
                           }`}
                           onClick={() => setActiveMarkerId(m.roadmapTaskId)}
                         >
@@ -1130,10 +1130,10 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
           {mode === "markers" && activeMarker ? (
             <div
               data-admin-feedback-root="true"
-              className="pointer-events-auto absolute right-4 top-20 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-2xl"
+              className="pointer-events-auto absolute right-4 top-20 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-border bg-background p-4 shadow-2xl"
             >
-              <div className="mb-2 text-sm font-semibold text-slate-900">{activeMarker.roadmapTaskTitle}</div>
-              <div className="space-y-1 text-xs text-slate-600">
+              <div className="mb-2 text-sm font-semibold text-foreground">{activeMarker.roadmapTaskTitle}</div>
+              <div className="space-y-1 text-xs text-muted-foreground">
                 <div>Task ID: {activeMarker.roadmapTaskId}</div>
                 <div>Type: {activeMarker.feedbackType}</div>
                 <div>Priority: {activeMarker.priority}</div>

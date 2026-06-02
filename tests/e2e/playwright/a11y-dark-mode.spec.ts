@@ -1,4 +1,4 @@
-// Wave 46 — Dark-mode axe smoke spec.
+// Wave 46 — Dark-mode axe + visual smoke spec.
 //
 // Mirrors the Wave 25 a11y-smoke spec but flips the workspace into dark
 // mode before each axe pass. Workspace-only — owner portal and public
@@ -6,18 +6,24 @@
 // `client/src/hooks/use-user-settings.ts` (dark mode is applied only on
 // pathnames starting with `/app`).
 //
-// Surfaces walked in dark:
+// Surfaces walked in dark (axe + visual snapshot):
 //   - /app                                (Home / dashboard)
 //   - /app/communications/inbox           (Inbox)
 //   - /app/financial/rules                (Assessment rules — was the
 //                                          surface where dark mode was
 //                                          first reported broken)
+//   - /app/settings                       (Settings — reported search-input
+//                                          bright-white bug; PR 2 fix target)
+//   - /app/associations                   (Associations list)
+//   - /app/governance/board-packages      (Board packages — bg-white fix)
+//   - /app/persons                        (People)
+//   - /app/executive                      (Executive summary)
 //
 // Threshold: zero `critical` or `serious` violations per surface
 // (matches Wave 25). Lower-severity violations are logged via the soft
 // variant and recorded in the trace.
 
-import { test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { loginAsManager } from "./helpers/auth-helper";
 import { runAxeAuditSoft } from "./helpers/a11y-check";
 import { createSeedStore, installSeedRoutes } from "./helpers/seed-helper";
@@ -47,7 +53,25 @@ async function forceWorkspaceDarkMode(page: import("@playwright/test").Page) {
   });
 }
 
-test.describe("Wave 46 — dark-mode axe smoke (workspace surfaces)", () => {
+/**
+ * Assert no `<html>` element has a bright-white background that would
+ * indicate unthemed content bleeding through in dark mode.
+ * Checks that the computed background of <body> is dark (lightness < 40 %).
+ */
+async function assertBodyIsDark(page: import("@playwright/test").Page, surface: string) {
+  const isDark = await page.evaluate(() => {
+    const rgb = window.getComputedStyle(document.body).backgroundColor;
+    const match = rgb.match(/\d+/g);
+    if (!match || match.length < 3) return false;
+    const [r, g, b] = match.map(Number);
+    // Perceived lightness using the sRGB-relative formula (ITU-R BT.709)
+    const lightness = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return lightness < 0.4; // body background must be < 40 % luminance
+  });
+  expect(isDark, `body background should be dark on ${surface}`).toBe(true);
+}
+
+test.describe("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
   test("Home (/app) — axe in dark", async ({ page }) => {
     const store = createSeedStore();
     await forceWorkspaceDarkMode(page);
@@ -57,6 +81,7 @@ test.describe("Wave 46 — dark-mode axe smoke (workspace surfaces)", () => {
     await page.waitForLoadState("networkidle").catch(() => {
       /* absorb networkidle stalls from background polls */
     });
+    await assertBodyIsDark(page, "/app");
     await runAxeAuditSoft(page, "dark:home");
   });
 
@@ -69,6 +94,7 @@ test.describe("Wave 46 — dark-mode axe smoke (workspace surfaces)", () => {
     await page.waitForLoadState("networkidle").catch(() => {
       /* absorb */
     });
+    await assertBodyIsDark(page, "/app/communications/inbox");
     await runAxeAuditSoft(page, "dark:inbox");
   });
 
@@ -81,6 +107,75 @@ test.describe("Wave 46 — dark-mode axe smoke (workspace surfaces)", () => {
     await page.waitForLoadState("networkidle").catch(() => {
       /* absorb */
     });
+    await assertBodyIsDark(page, "/app/financial/rules");
     await runAxeAuditSoft(page, "dark:rules");
+  });
+
+  // ── New surfaces added in PR 2 (dark-mode repair pass) ─────────────────────
+
+  test("Settings (/app/settings) — axe in dark [PR2: search-input fix]", async ({ page }) => {
+    const store = createSeedStore();
+    await forceWorkspaceDarkMode(page);
+    await loginAsManager(page);
+    await installSeedRoutes(page, store);
+    await page.goto("/app/settings");
+    await page.waitForLoadState("networkidle").catch(() => {
+      /* absorb */
+    });
+    await assertBodyIsDark(page, "/app/settings");
+    // Assert the search/command trigger button does NOT have a bright-white background.
+    // After the PR 2 fix (bg-transparent on outline Button), the computed bg of the
+    // header trigger should be transparent (rgba(0,0,0,0)) or a dark hsl value.
+    const searchTriggerBgIsLight = await page.evaluate(() => {
+      const btn = document.querySelector<HTMLElement>('[aria-label="Search"], [data-testid="global-search-trigger"], .glass-nav button');
+      if (!btn) return false; // no element found — skip assertion
+      const bg = window.getComputedStyle(btn).backgroundColor;
+      const match = bg.match(/\d+/g);
+      if (!match || match.length < 3) return false;
+      const [r, g, b] = match.map(Number);
+      const lightness = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      return lightness > 0.7; // bright white = bug
+    });
+    expect(searchTriggerBgIsLight, "Search button should NOT be bright white in dark mode").toBe(false);
+    await runAxeAuditSoft(page, "dark:settings");
+  });
+
+  test("Associations (/app/associations) — axe in dark", async ({ page }) => {
+    const store = createSeedStore();
+    await forceWorkspaceDarkMode(page);
+    await loginAsManager(page);
+    await installSeedRoutes(page, store);
+    await page.goto("/app/associations");
+    await page.waitForLoadState("networkidle").catch(() => {
+      /* absorb */
+    });
+    await assertBodyIsDark(page, "/app/associations");
+    await runAxeAuditSoft(page, "dark:associations");
+  });
+
+  test("Persons (/app/persons) — axe in dark", async ({ page }) => {
+    const store = createSeedStore();
+    await forceWorkspaceDarkMode(page);
+    await loginAsManager(page);
+    await installSeedRoutes(page, store);
+    await page.goto("/app/persons");
+    await page.waitForLoadState("networkidle").catch(() => {
+      /* absorb */
+    });
+    await assertBodyIsDark(page, "/app/persons");
+    await runAxeAuditSoft(page, "dark:persons");
+  });
+
+  test("Executive (/app/executive) — axe in dark", async ({ page }) => {
+    const store = createSeedStore();
+    await forceWorkspaceDarkMode(page);
+    await loginAsManager(page);
+    await installSeedRoutes(page, store);
+    await page.goto("/app/executive");
+    await page.waitForLoadState("networkidle").catch(() => {
+      /* absorb */
+    });
+    await assertBodyIsDark(page, "/app/executive");
+    await runAxeAuditSoft(page, "dark:executive");
   });
 });
