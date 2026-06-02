@@ -116,6 +116,68 @@ describe("canAccess — predicate shape (mocked manifest)", () => {
   });
 });
 
+describe("canAccess — platform-admin financials access (2026-06-02 pilot grant)", () => {
+  it("canAccess('platform-admin', '/app/financial/payments') === true", () => {
+    // Platform Admin was granted access to financial routes per William's
+    // 2026-06-02 pilot decision (owner is also the board; resolves the
+    // front/back drift where the backend already permitted platform-admin).
+    expect(canAccess("platform-admin", "/app/financial/payments")).toBe(true);
+  });
+
+  it("platform-admin can access all canonical financial sub-pages", () => {
+    const financialRoutes = [
+      "/app/financials",
+      "/app/financial/foundation",
+      "/app/financial/billing",
+      "/app/financial/payments",
+      "/app/financial/expenses",
+      "/app/financial/reports",
+      "/app/financial/rules",
+      "/app/financial/bank-connections",
+      "/app/financial/statement",
+    ];
+    for (const route of financialRoutes) {
+      expect(canAccess("platform-admin", route)).toBe(true);
+    }
+  });
+
+  it("platform-admin can access all legacy financial redirect routes", () => {
+    const legacyRoutes = [
+      "/app/financial/fees",
+      "/app/financial/recurring-charges",
+      "/app/financial/ledger",
+      "/app/financial/assessments",
+      "/app/financial/late-fees",
+      "/app/financial/invoices",
+      "/app/financial/utilities",
+      "/app/financial/budgets",
+      "/app/financial/reconciliation",
+    ];
+    for (const route of legacyRoutes) {
+      expect(canAccess("platform-admin", route)).toBe(true);
+    }
+  });
+
+  it("existing five-persona-operator roles still have financials access", () => {
+    const fivePersonaRoles: AdminRole[] = [
+      "manager",
+      "board-officer",
+      "assisted-board",
+      "pm-assistant",
+      "viewer",
+    ];
+    for (const role of fivePersonaRoles) {
+      expect(canAccess(role, "/app/financial/payments")).toBe(true);
+    }
+  });
+
+  it("platform-admin is still denied on unknown routes (OQ-3 Option A preserved)", () => {
+    expect(canAccess("platform-admin", "/app/any")).toBe(false);
+    expect(canAccess("platform-admin", "/app/governance/meetings")).toBe(false);
+    expect(canAccess("platform-admin", "/app/admin/users")).toBe(false);
+  });
+});
+
 describe("Module shape — Phase 0b.2 contract lock", () => {
   it("ROUTE_MANIFEST is an object", () => {
     expect(ROUTE_MANIFEST).toBeDefined();

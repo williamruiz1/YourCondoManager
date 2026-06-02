@@ -72,6 +72,18 @@ export const FIVE_PERSONA_OPERATOR: ReadonlyArray<AdminRole> = [
   "viewer",
 ];
 
+/**
+ * Financials zone access — the five operator personas plus platform-admin.
+ * Platform Admin was granted financials access per William's 2026-06-02
+ * pilot decision (owner is also the board; resolves the front/back drift
+ * where the backend already permitted platform-admin on all financial API
+ * routes). Mirrors `FINANCIALS_ACCESS` in `shared/persona-access.ts`.
+ */
+export const FINANCIALS_ACCESS: ReadonlyArray<AdminRole> = [
+  "platform-admin",
+  ...FIVE_PERSONA_OPERATOR,
+];
+
 /** Operator + Platform Admin — covers the universal Manager-equivalent surfaces
  *  (Settings, Home, Help) where Platform Admin also has access. */
 export const ALL_OPERATORS: ReadonlyArray<AdminRole> = [
@@ -204,7 +216,7 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
     hubUrl: "/app/financials",
     icon: Wallet,
     materialIcon: "payments",
-    roles: FIVE_PERSONA_OPERATOR,
+    roles: FINANCIALS_ACCESS,
     items: [
       {
         title: "Chart of Accounts",
@@ -212,7 +224,7 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         icon: Layers,
         materialIcon: "account_tree",
         activePrefix: "/app/financial/foundation",
-        roles: FIVE_PERSONA_OPERATOR,
+        roles: FINANCIALS_ACCESS,
       },
       {
         title: "Billing",
@@ -220,7 +232,7 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         icon: Receipt,
         materialIcon: "receipt_long",
         activePrefix: "/app/financial/billing",
-        roles: FIVE_PERSONA_OPERATOR,
+        roles: FINANCIALS_ACCESS,
       },
       {
         title: "Assessment Rules",
@@ -228,7 +240,7 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         icon: Gavel,
         materialIcon: "rule",
         activePrefix: "/app/financial/rules",
-        roles: FIVE_PERSONA_OPERATOR,
+        roles: FINANCIALS_ACCESS,
       },
       {
         title: "Payments",
@@ -236,7 +248,7 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         icon: CreditCard,
         materialIcon: "credit_card",
         activePrefix: "/app/financial/payments",
-        roles: FIVE_PERSONA_OPERATOR,
+        roles: FINANCIALS_ACCESS,
       },
       {
         title: "Expenses",
@@ -244,7 +256,7 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         icon: Banknote,
         materialIcon: "account_balance",
         activePrefix: "/app/financial/expenses",
-        roles: FIVE_PERSONA_OPERATOR,
+        roles: FINANCIALS_ACCESS,
       },
       {
         title: "Reports",
@@ -252,7 +264,7 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         icon: BarChart3,
         materialIcon: "summarize",
         activePrefix: "/app/financial/reports",
-        roles: FIVE_PERSONA_OPERATOR,
+        roles: FINANCIALS_ACCESS,
       },
       {
         title: "Payment Methods",
@@ -260,7 +272,7 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         icon: Landmark,
         materialIcon: "account_balance",
         activePrefix: "/app/financial/bank-connections",
-        roles: FIVE_PERSONA_OPERATOR,
+        roles: FINANCIALS_ACCESS,
       },
     ],
   },
