@@ -39,6 +39,10 @@
  */
 
 import { and, eq, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
+import {
+  lateFeeAssessmentHandler,
+  lateFeeAssessmentLister,
+} from "./services/late-fee-assessment-service";
 
 import {
   assessmentRunLog,
@@ -58,7 +62,7 @@ import { invalidateAlertCache } from "./alerts";
 // Public types
 // ---------------------------------------------------------------------------
 
-export type AssessmentRuleType = "recurring" | "special-assessment";
+export type AssessmentRuleType = "recurring" | "special-assessment" | "late-fee";
 
 export type AssessmentRunStatus =
   | "success"
@@ -164,10 +168,15 @@ export function getRegisteredRuleTypes(): AssessmentRuleType[] {
   return Array.from(handlerRegistry.keys());
 }
 
-/** Test helper. Not exported from an index — tests import it directly. */
+/** Test helper. Not exported from an index — tests import it directly.
+ *
+ * Clears the handler registry so individual tests can register only the
+ * rule types they care about. This prevents unregistered default handlers
+ * (whose listers require real-DB queries) from running inside mocked-DB
+ * test environments.
+ */
 export function __resetHandlerRegistryForTests__(): void {
   handlerRegistry.clear();
-  registerDefaultHandlers();
 }
 
 // ---------------------------------------------------------------------------
@@ -929,6 +938,8 @@ function registerDefaultHandlers(): void {
     specialAssessmentsHandler,
     specialAssessmentsLister,
   );
+  // P1-5 — automated late-fee assessment sweep.
+  registerRuleHandler("late-fee", lateFeeAssessmentHandler, lateFeeAssessmentLister);
 }
 
 registerDefaultHandlers();

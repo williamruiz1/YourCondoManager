@@ -34,7 +34,10 @@ import {
 } from "@shared/schema";
 
 import { db } from "./db";
-import { SPECIAL_ASSESSMENT_REFERENCE_TYPE } from "./assessment-execution";
+import {
+  SPECIAL_ASSESSMENT_REFERENCE_TYPE,
+  type AssessmentRuleType,
+} from "./assessment-execution";
 
 export interface ParityReport {
   associationId: string;
@@ -44,7 +47,7 @@ export interface ParityReport {
   shadowDeferredRowCount: number;
   /** Rows the legacy path posted that the orchestrator did not propose. */
   missingFromShadow: Array<{
-    ruleType: "recurring" | "special-assessment";
+    ruleType: AssessmentRuleType;
     ruleId: string | null;
     unitId: string | null;
     amount: number;
@@ -52,7 +55,7 @@ export interface ParityReport {
   }>;
   /** Rows the orchestrator proposed that the legacy path did not post. */
   missingFromLegacy: Array<{
-    ruleType: "recurring" | "special-assessment";
+    ruleType: AssessmentRuleType;
     ruleId: string;
     unitId: string | null;
     amount: number | null;
@@ -60,7 +63,7 @@ export interface ParityReport {
   }>;
   /** Paired rows whose amounts disagree outside tolerance. */
   amountMismatches: Array<{
-    ruleType: "recurring" | "special-assessment";
+    ruleType: AssessmentRuleType;
     ruleId: string;
     unitId: string | null;
     legacyAmount: number;
