@@ -815,6 +815,7 @@ export const insertRecurringChargeRunSchema = createInsertSchema(recurringCharge
 export const assessmentRuleTypeEnum = pgEnum("assessment_rule_type_enum", [
   "recurring",
   "special-assessment",
+  "late-fee",
 ]);
 export const assessmentRunStatusEnum = pgEnum("assessment_run_status_enum", [
   "success",
