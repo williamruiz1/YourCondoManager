@@ -163,7 +163,19 @@ function getEmailConfig(): SmtpConfig {
     secure: parseBoolean(process.env.EMAIL_TLS_IMPLICIT, port === 465),
     user,
     pass,
-    fromAddress: getOptionalEnv("EMAIL_FROM_ADDRESS") || legacyGmailUser,
+    // feat/noreply-domain-sender: prefer EMAIL_FROM_ADDRESS, then fall back
+    // to the legacy Gmail sender only if explicitly configured.  When neither
+    // is set, default to noreply@yourcondomanager.org.
+    //
+    // IMPORTANT: if the SMTP host remains smtp.gmail.com, sending FROM this
+    // address will fail SPF/DKIM (Gmail is not authorised to send for
+    // yourcondomanager.org).  The SMTP path should only be used with a
+    // domain-authenticated provider (e.g. Resend SMTP relay, SES, Postmark).
+    // See docs/operations/email-sender-setup.md for the full setup guide.
+    fromAddress:
+      getOptionalEnv("EMAIL_FROM_ADDRESS") ||
+      legacyGmailUser ||
+      "noreply@yourcondomanager.org",
     fromName: getOptionalEnv("EMAIL_FROM_NAME"),
     replyTo: getOptionalEnv("EMAIL_REPLY_TO"),
     trackingEnabled: parseBoolean(process.env.EMAIL_TRACKING_ENABLED, false),
