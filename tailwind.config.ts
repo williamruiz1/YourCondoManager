@@ -15,16 +15,36 @@ export default {
         full: "9999px",
       },
       colors: {
-        // YCM brand v1 tokens — ratified 2026-05-11 (founder-os#1024 Phase 1.A).
-        // Use these on the marketing-apex surface (landing.tsx / OG image / public
-        // outreach materials). App-shell surfaces continue to use the existing
-        // palette below until Phase 2 decides on brand rollout into the app.
+        // YCM brand v2 tokens — deep-teal identity (brand-identity-spec.md v1.0).
+        // Phase 0 brand migration: the v1 token NAMES are retained so existing
+        // `bg-ycm-*` / `text-ycm-*` / `border-ycm-*` call sites keep working, but
+        // their VALUES are ROLE-MAPPED onto brand v2 per spec §3.6 (map by role,
+        // never by hex-distance). Net effect: every marketing-surface utility
+        // inherits brand v2 without touching the ~80 call sites.
+        //   navy (was the dark "ink") → Deep Teal #014D4A  (brand/headings/dark surfaces)
+        //   teal (was the lively CTA) → Teal Accent #15A39C (links/active/accents)
+        //   sky  (was the slate-blue) → Deep Teal #014D4A  (consolidated brand surface)
+        //   cream (warm secondary)    → Light Teal #BFE8E4 (pale fills / soft tints)
+        //   cool-white (content bg)   → Off-White #F5F7F9  (page/section backgrounds)
+        // brand-v2 aliases are also provided for new code that wants role-named tokens.
         ycm: {
-          sky: "#5B7DA3",
-          teal: "#2DBDB0",
-          cream: "#F0E5D2",
-          "cool-white": "#F6F9FF",
-          navy: "#0B1B3B",
+          sky: "#014D4A",         // → Deep Teal (consolidated brand surface)
+          teal: "#15A39C",        // → Teal Accent (links / active / accents)
+          cream: "#BFE8E4",       // → Light Teal (pale fills / soft tints)
+          "cool-white": "#F5F7F9", // → Off-White (page / section backgrounds)
+          navy: "#014D4A",        // → Deep Teal (brand ink / headings / dark surfaces)
+        },
+        // Brand v2 role-named tokens (canonical names per brand-identity-spec §3).
+        // Prefer these in new code; the `ycm.*` aliases above stay for back-compat.
+        brand: {
+          DEFAULT: "#014D4A",      // Deep Teal — primary brand color
+          primary: "#014D4A",      // Deep Teal
+          accent: "#15A39C",       // Teal Accent
+          light: "#BFE8E4",        // Light Teal
+          "off-white": "#F5F7F9",  // Off-White page bg
+          gray: "#E5E7EB",         // borders / dividers / disabled
+          ink: "#0F2E2C",          // body text on light
+          muted: "#6B7280",        // secondary text / tagline
         },
         // Flat / base colors (regular buttons)
         background: "hsl(var(--background) / <alpha-value>)",

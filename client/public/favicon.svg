@@ -1,41 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-<rect x="0" y="0" width="1024" height="1024" rx="180" fill="#5B7DA3"/>
-<rect x="149.00" y="490.00" width="230.00" height="284.00" rx="6.00" fill="#F0E5D2"/>
-<rect x="171.00" y="554.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="223.00" y="554.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="275.00" y="554.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="171.00" y="606.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="223.00" y="606.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="275.00" y="606.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="171.00" y="658.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="223.00" y="658.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="275.00" y="658.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<polygon points="397.00,360.00 627.00,360.00 512.00,250.00" fill="#2DBDB0"/>
-<rect x="397.00" y="360.00" width="230.00" height="414.00" rx="6.00" fill="#F6F9FF"/>
-<rect x="439.00" y="432.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="491.00" y="432.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="543.00" y="432.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="439.00" y="484.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="491.00" y="484.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="543.00" y="484.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="439.00" y="536.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="491.00" y="536.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="543.00" y="536.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="439.00" y="588.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="491.00" y="588.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="543.00" y="588.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="439.00" y="640.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="491.00" y="640.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="543.00" y="640.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="645.00" y="490.00" width="230.00" height="284.00" rx="6.00" fill="#F0E5D2"/>
-<rect x="707.00" y="542.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="759.00" y="542.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="811.00" y="542.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="707.00" y="594.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="759.00" y="594.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="811.00" y="594.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="707.00" y="646.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="759.00" y="646.00" width="42.00" height="42.00" rx="4.00" fill="#0B1B3B"/>
-<rect x="811.00" y="646.00" width="42.00" height="42.00" rx="4.00" fill="#2DBDB0"/>
-<rect x="141.00" y="774.00" width="742.00" height="6.00" rx="3.00" fill="#2DBDB0"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Your Condo Manager">
+  <title>Your Condo Manager</title>
+  <rect x="0" y="0" width="1024" height="1024" rx="180" fill="#014D4A"/>
+  <polygon points="240,700 432,556 432,860 240,860" fill="#FFFFFF"/>
+  <polygon points="416,556 608,412 608,860 416,860" fill="#FFFFFF"/>
+  <polygon points="592,412 784,268 784,860 592,860" fill="#15A39C"/>
 </svg>

@@ -374,11 +374,11 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
   const trackingToken = trackingEnabled ? crypto.randomUUID() : null;
   const emailLog = await createEmailLog(payload, trackingToken);
 
-  // founder-os#1141 — brand v1 applied to outbound transactional emails.
-  // Header bg is brand slate (#5B7DA3); footer uses cool-white (#F6F9FF) with
-  // navy (#0B1B3B) text. Logo loads from an absolute URL on the deployed app
-  // (NOT inline base64) so it survives email-client image proxying (per
-  // email-deliverability best practice in dispatch §2).
+  // founder-os#1141 — brand v2 (deep teal) applied to outbound transactional emails.
+  // Header bg is Deep Teal (#014D4A) with white wordmark; footer uses Off-White
+  // (#F5F7F9) with Ink (#0F2E2C) text. Logo loads from an absolute URL on the
+  // deployed app (NOT inline base64) so it survives email-client image proxying
+  // (per email-deliverability best practice in dispatch §2).
   const appBaseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
   const isRealUrl = appBaseUrl && !appBaseUrl.includes("localhost") && !appBaseUrl.includes("127.0.0.1");
   const portalUrl = isRealUrl ? `${appBaseUrl}/portal` : null;
@@ -394,24 +394,26 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
   // gracefully to a wordmark-only band so the test fixtures still get a
   // deterministic, branded shape.
   const brandHeaderHtml = logoUrl
-    ? `<div style="background:#5B7DA3;padding:20px 24px;text-align:left">`
+    ? `<div style="background:#014D4A;padding:20px 24px;text-align:left">`
       + `<img src="${logoUrl}" alt="Your Condo Manager" width="40" height="40" style="vertical-align:middle;border:0;display:inline-block;margin-right:12px"/>`
-      + `<span style="color:#F6F9FF;font-family:Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;vertical-align:middle;letter-spacing:0.2px">Your Condo Manager</span>`
+      + `<span style="color:#FFFFFF;font-family:Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;vertical-align:middle;letter-spacing:0.2px">Your Condo Manager</span>`
       + `</div>`
-    : `<div style="background:#5B7DA3;padding:20px 24px;text-align:left">`
-      + `<span style="color:#F6F9FF;font-family:Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;letter-spacing:0.2px">Your Condo Manager</span>`
+    : `<div style="background:#014D4A;padding:20px 24px;text-align:left">`
+      + `<span style="color:#FFFFFF;font-family:Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;letter-spacing:0.2px">Your Condo Manager</span>`
       + `</div>`;
   const brandHeaderText = "Your Condo Manager\n\n";
 
-  // Portal footer — cool-white bg, navy text, brand wordmark.
+  // Portal footer — off-white bg, ink text, brand wordmark.
+  // "Powered by" uses Deep Teal (not the bright accent — accent fails contrast
+  // for small text on light per brand-identity-spec §3).
   // Pattern mirrors the in-app community-hub-public.tsx footer per PR #128.
   const portalFooterHtml = portalUrl
-    ? `<div style="background:#F6F9FF;padding:24px;border-top:1px solid #d8e1ee;color:#0B1B3B;font-family:Helvetica,Arial,sans-serif">`
-      + `<p style="font-size:13px;margin:0 0 8px 0">Access your owner portal anytime at <a href="${portalUrl}" style="color:#0B1B3B;font-weight:600">${portalUrl}</a></p>`
-      + `<p style="font-size:11px;margin:0;color:#5B7DA3">Powered by Your Condo Manager</p>`
+    ? `<div style="background:#F5F7F9;padding:24px;border-top:1px solid #BFE8E4;color:#0F2E2C;font-family:Helvetica,Arial,sans-serif">`
+      + `<p style="font-size:13px;margin:0 0 8px 0">Access your owner portal anytime at <a href="${portalUrl}" style="color:#014D4A;font-weight:600">${portalUrl}</a></p>`
+      + `<p style="font-size:11px;margin:0;color:#014D4A">Powered by Your Condo Manager</p>`
       + `</div>`
-    : `<div style="background:#F6F9FF;padding:24px;border-top:1px solid #d8e1ee;color:#0B1B3B;font-family:Helvetica,Arial,sans-serif">`
-      + `<p style="font-size:11px;margin:0;color:#5B7DA3">Powered by Your Condo Manager</p>`
+    : `<div style="background:#F5F7F9;padding:24px;border-top:1px solid #BFE8E4;color:#0F2E2C;font-family:Helvetica,Arial,sans-serif">`
+      + `<p style="font-size:11px;margin:0;color:#014D4A">Powered by Your Condo Manager</p>`
       + `</div>`;
   const portalFooterText = portalUrl ? `\n\n---\nAccess your owner portal: ${portalUrl}\n\nPowered by Your Condo Manager` : "\n\nPowered by Your Condo Manager";
 
