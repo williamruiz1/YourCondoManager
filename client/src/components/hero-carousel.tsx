@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 
 /**
- * Marketing hero carousel — full-bleed RIGHT-SIDE UNDERLAY on the landing page.
- * Fills its (absolutely-positioned) parent, rotating the 3 brand creatives behind
- * the hero copy. A left-edge gradient fades the image into the page background so
- * the headline stays readable. Auto-advances every 6s, pauses on hover, dot + arrow
- * controls, respects prefers-reduced-motion.
+ * Marketing hero carousel — rotates the 3 brand creatives on the landing page.
+ * Auto-advances every 6s, pauses on hover, dot controls + prev/next, respects
+ * prefers-reduced-motion. Creatives are shown in full (object-contain) on the
+ * deep-teal brand panel so the baked-in headlines are never cropped.
  */
 const SLIDES = [
   { src: "/hero/hero-overtime.png", alt: "Leadership shouldn't feel like overtime — simplify the work, strengthen your community." },
@@ -27,43 +26,58 @@ export function HeroCarousel() {
   }, [paused]);
 
   return (
-    <div
-      className="absolute inset-0 bg-primary"
-      role="group"
-      aria-roledescription="carousel"
-      aria-label="Your Condo Manager — what we solve"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-    >
-      {SLIDES.map((s, idx) => (
-        <img
-          key={s.src}
-          src={s.src}
-          alt={idx === i ? s.alt : ""}
-          aria-hidden={idx !== i}
-          loading={idx === 0 ? "eager" : "lazy"}
-          className={`absolute inset-0 h-full w-full object-cover object-[right_center] transition-opacity duration-700 ease-in-out ${idx === i ? "opacity-100" : "opacity-0"}`}
-        />
-      ))}
-
-      {/* left-edge fade into the page background so the headline stays legible */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background via-background/70 to-transparent" aria-hidden="true" />
-      {/* subtle top/bottom feathering for a clean bleed */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-background to-transparent" aria-hidden="true" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent" aria-hidden="true" />
-
-      {/* prev / next */}
-      <button type="button" onClick={() => go(i - 1)} aria-label="Previous slide"
-        className="absolute left-3 top-1/2 -translate-y-1/2 z-10 grid h-9 w-9 place-items-center rounded-full bg-black/25 text-white text-lg leading-none backdrop-blur-sm transition hover:bg-black/40">‹</button>
-      <button type="button" onClick={() => go(i + 1)} aria-label="Next slide"
-        className="absolute right-3 top-1/2 -translate-y-1/2 z-10 grid h-9 w-9 place-items-center rounded-full bg-black/25 text-white text-lg leading-none backdrop-blur-sm transition hover:bg-black/40">›</button>
-
-      {/* dots */}
-      <div className="absolute bottom-4 right-6 z-10 flex justify-center gap-2">
-        {SLIDES.map((_, idx) => (
-          <button type="button" key={idx} onClick={() => go(idx)} aria-label={`Go to slide ${idx + 1}`} aria-current={idx === i}
-            className={`h-2 rounded-full transition-all ${idx === i ? "w-6 bg-white" : "w-2 bg-white/60 hover:bg-white/90"}`} />
+    <div className="relative">
+      <div className="absolute -inset-4 bg-ycm-sky/10 rounded-2xl blur-3xl" aria-hidden="true" />
+      <div
+        className="relative rounded-2xl overflow-hidden shadow-lg border border-primary/15 bg-primary aspect-[5/4]"
+        role="group"
+        aria-roledescription="carousel"
+        aria-label="Your Condo Manager — what we solve"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
+        {SLIDES.map((s, idx) => (
+          <img
+            key={s.src}
+            src={s.src}
+            alt={idx === i ? s.alt : ""}
+            aria-hidden={idx !== i}
+            loading={idx === 0 ? "eager" : "lazy"}
+            className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-700 ease-in-out ${idx === i ? "opacity-100" : "opacity-0"}`}
+          />
         ))}
+
+        {/* prev / next */}
+        <button
+          type="button"
+          onClick={() => go(i - 1)}
+          aria-label="Previous slide"
+          className="absolute left-2 top-1/2 -translate-y-1/2 z-10 grid h-8 w-8 place-items-center rounded-full bg-black/25 text-white text-lg leading-none backdrop-blur-sm transition hover:bg-black/40"
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          onClick={() => go(i + 1)}
+          aria-label="Next slide"
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 grid h-8 w-8 place-items-center rounded-full bg-black/25 text-white text-lg leading-none backdrop-blur-sm transition hover:bg-black/40"
+        >
+          ›
+        </button>
+
+        {/* dots */}
+        <div className="absolute bottom-3 left-0 right-0 z-10 flex justify-center gap-2">
+          {SLIDES.map((_, idx) => (
+            <button
+              type="button"
+              key={idx}
+              onClick={() => go(idx)}
+              aria-label={`Go to slide ${idx + 1}`}
+              aria-current={idx === i}
+              className={`h-2 rounded-full transition-all ${idx === i ? "w-6 bg-white" : "w-2 bg-white/50 hover:bg-white/80"}`}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
