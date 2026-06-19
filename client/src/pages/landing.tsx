@@ -323,11 +323,7 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
       <main id="main-content" tabIndex={-1}>
       {/* ── HERO ── */}
       <section className="relative px-8 py-12 md:py-20 max-w-7xl mx-auto overflow-hidden pt-24 md:pt-28">
-        {/* full-bleed right-side carousel underlay (desktop) */}
-        <div className="hidden lg:block absolute inset-y-0 right-0 w-[58%] z-0">
-          <HeroCarousel />
-        </div>
-        <div className="relative z-10 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div className="z-10">
             <span className="inline-block px-3 py-1 bg-ycm-sky/15 text-ycm-navy rounded-full text-xs font-bold tracking-widest uppercase mb-4">{t("landing.hero.eyebrow")}</span>
             <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-bold leading-tight text-on-surface mb-6">
@@ -356,8 +352,10 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
               )}
             </div>
           </div>
-          {/* right column space reserved — the carousel renders as the underlay above */}
-          <div aria-hidden="true" className="hidden lg:block" />
+          {/* Brand hero — 3-creative carousel (replaces the static brand panel) */}
+          <div className="relative lg:block hidden">
+            <HeroCarousel />
+          </div>
         </div>
       </section>
 
