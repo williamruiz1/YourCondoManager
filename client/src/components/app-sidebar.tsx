@@ -191,10 +191,10 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
           href="/"
           className="px-4 pt-4 pb-3 flex items-center gap-2.5 hover:opacity-80 transition-opacity"
         >
-          <BrandMark className="h-9 w-9 flex-shrink-0" />
+          <BrandMark forceTheme="dark" className="h-9 w-9 flex-shrink-0" />
           <div className="group-data-[collapsible=icon]:hidden">
             <h2
-              className="font-headline italic font-semibold text-lg tracking-tight text-slate-900 dark:text-slate-100"
+              className="font-headline italic font-semibold text-lg tracking-tight text-sidebar-foreground"
               data-testid="text-app-title"
             >
               Your Condo Manager
