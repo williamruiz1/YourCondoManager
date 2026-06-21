@@ -42,6 +42,7 @@
     "verify:work-orders": "tsx script/verify-work-orders.ts",
     "verify:seed-integrity": "tsx script/verify-seed-integrity.ts",
     "verify:financial": "tsx script/verify-financial.ts",
+    "verify:gl-reconcile": "tsx script/verify-gl-reconcile.ts",
     "optimize:images": "tsx script/optimize-images.ts",
     "onepager:pdf": "tsx script/build-onepager-pdf.ts",
     "load-test": "tsx script/load-test.ts",
