@@ -3859,3 +3859,121 @@ export const bankDescriptorAliases = pgTable("bank_descriptor_aliases", {
 
 export type BankDescriptorAlias = typeof bankDescriptorAliases.$inferSelect;
 export type InsertBankDescriptorAlias = typeof bankDescriptorAliases.$inferInsert;
+
+// ── Fund-aware double-entry General Ledger (YCM Financial Core — Phase 1) ──────
+//
+// Audit anchor: audits/AUDIT-financial-reporting-orchestration.md Gap F1.
+// Build anchor: audits/YCM-financial-build-plan-2026-06-20.md Phase 1.
+//
+// FORWARD-ONLY / PARALLEL (per BLINDSPOT F4): this GL runs ALONGSIDE the existing
+// dues-only `owner_ledger_entries` subledger. The owner ledger STAYS the system
+// of record. These tables are ADDITIVE — no existing row is touched, no live
+// money path writes here automatically. GL postings are DERIVED from the owner
+// ledger by `server/services/gl/posting.ts`, gated behind the `GL_ENABLED`
+// feature flag (default OFF). The GL may NOT become source-of-truth until the
+// reconcile-to-the-cent gate (script/verify-gl-reconcile.ts) passes — that flip
+// is intentionally OUT of this phase's scope.
+//
+// Money is stored in INTEGER CENTS (debit/credit) — never floats — so the
+// double-entry invariant (Σdebits == Σcredits) is exact and cannot float-drift.
+
+/** GL account classification. `normalBalance` is derived from this. */
+export const glAccountTypeEnum = pgEnum("gl_account_type", [
+  "asset",
+  "liability",
+  "equity",
+  "income",
+  "expense",
+]);
+
+/** The fund dimension — operating vs. reserve segregation (CINC/CAMS-style). */
+export const glFundEnum = pgEnum("gl_fund", ["operating", "reserve"]);
+
+/** Side a posting lands on. Debit or credit. */
+export const glSideEnum = pgEnum("gl_side", ["debit", "credit"]);
+
+// gl_accounts — the chart of accounts. One row per account per association.
+// `accountCode` is the human GL number (e.g. "4000" Assessment Income, "1010"
+// Operating Cash, "1015" Interfund Receivable). `normalBalance` records whether
+// the account increases on the debit (asset/expense) or credit (liability/
+// equity/income) side — used to derive a signed balance from raw debit/credit.
+export const glAccounts = pgTable(
+  "gl_accounts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    associationId: varchar("association_id").notNull().references(() => associations.id),
+    accountCode: text("account_code").notNull(),
+    name: text("name").notNull(),
+    accountType: glAccountTypeEnum("account_type").notNull(),
+    /** Fail-safe: a missing fund tag degrades to 'operating', never crashes. */
+    fund: glFundEnum("fund").notNull().default("operating"),
+    /** 'debit' for asset/expense, 'credit' for liability/equity/income. */
+    normalBalance: glSideEnum("normal_balance").notNull(),
+    isActive: integer("is_active").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // One canonical account per (association, code, fund). Lets the same code
+    // exist once per fund (e.g. "1010" Operating Cash vs Reserve Cash).
+    uniqueCodePerAssocFund: uniqueIndex("gl_accounts_assoc_code_fund_uq").on(
+      table.associationId,
+      table.accountCode,
+      table.fund,
+    ),
+    byAssoc: index("gl_accounts_assoc_idx").on(table.associationId),
+  }),
+);
+
+// gl_entries — the journal. One row per debit-or-credit leg. A balanced
+// transaction shares a `journalId` and its legs sum to zero (Σdebit==Σcredit).
+//
+// `sourceType` + `sourceId` link a leg back to its originating fact
+// (owner_ledger_entry / vendor_invoice / bank_transaction / amenity_reservation),
+// making GL posting IDEMPOTENT: re-posting the same source produces no
+// duplicate legs (enforced by the unique index below).
+export const glEntries = pgTable(
+  "gl_entries",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    associationId: varchar("association_id").notNull().references(() => associations.id),
+    /** All legs of one balanced transaction share this id. */
+    journalId: varchar("journal_id").notNull(),
+    glAccountId: varchar("gl_account_id").notNull().references(() => glAccounts.id),
+    fund: glFundEnum("fund").notNull().default("operating"),
+    side: glSideEnum("side").notNull(),
+    /** Positive integer cents. The side (debit/credit) carries direction. */
+    amountCents: integer("amount_cents").notNull(),
+    postedAt: timestamp("posted_at").notNull(),
+    description: text("description"),
+    /** owner_ledger_entry | vendor_invoice | bank_transaction | amenity_reservation | opening_balance */
+    sourceType: text("source_type"),
+    sourceId: text("source_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    byAssoc: index("gl_entries_assoc_idx").on(table.associationId),
+    byJournal: index("gl_entries_journal_idx").on(table.journalId),
+    byAccount: index("gl_entries_account_idx").on(table.glAccountId),
+    // Idempotency: a given (source, account, side) posts at most once. Re-running
+    // the posting service is a safe no-op — it never double-posts a source fact.
+    uniqueSourceLeg: uniqueIndex("gl_entries_source_leg_uq").on(
+      table.sourceType,
+      table.sourceId,
+      table.glAccountId,
+      table.side,
+    ),
+  }),
+);
+
+export const insertGlAccountSchema = createInsertSchema(glAccounts).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertGlEntrySchema = createInsertSchema(glEntries).omit({ id: true, createdAt: true });
+
+export type GlAccount = typeof glAccounts.$inferSelect;
+export type InsertGlAccount = z.infer<typeof insertGlAccountSchema>;
+export type GlEntry = typeof glEntries.$inferSelect;
+export type InsertGlEntry = z.infer<typeof insertGlEntrySchema>;
+
+export type GlAccountType = (typeof glAccountTypeEnum.enumValues)[number];
+export type GlFund = (typeof glFundEnum.enumValues)[number];
+export type GlSide = (typeof glSideEnum.enumValues)[number];
