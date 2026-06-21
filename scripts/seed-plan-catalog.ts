@@ -19,7 +19,16 @@ if (!DATABASE_URL) {
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 
 const PLANS = [
-  // ── Self-Managed Tiers ───────────────────────────────────────────────────
+  // ── Self-Managed Tiers — DECLINING per-unit rate by community tier
+  //    (William-ratified 2026-06-21). The per-unit rate FALLS as the community
+  //    grows; Small is a flat $129/mo floor (the only minimum). Mid/Large are
+  //    pure per-unit — at each tier's entry the per-unit bill naturally exceeds
+  //    the floor (41×$3.75=$153.75; 101×$3.50=$353.50), so they carry NO
+  //    separate minimum. Enterprise Concierge (251+) is custom / manual billing.
+  //
+  //    For per_door (per-unit) tiers, `monthly_amount_cents` holds the per-UNIT
+  //    rate (375 / 350 ¢) — exactly mirroring how the PM per-door tiers store the
+  //    per-DOOR rate there; the app's pricing-service computes units × that rate.
   {
     plan_key: "small_community",
     account_type: "self_managed",
@@ -27,14 +36,15 @@ const PLANS = [
     status: "active",
     pricing_model: "flat_per_association",
     unit_min: 1,
-    unit_max: 30,
+    unit_max: 40,
     currency: "USD",
     billing_frequency_supported: JSON.stringify(["monthly", "annual"]),
-    monthly_amount_cents: 8900,
-    annual_effective_monthly_cents: 7900,
-    annual_billed_amount_cents: 94800,
-    recommended_in_signup: 1,
-    version: 1,
+    monthly_amount_cents: 12900, // $129/mo flat (the floor / only minimum)
+    minimum_amount_cents: 12900, // $129/mo floor
+    annual_effective_monthly_cents: 11610, // ~10% off → $116.10/mo equivalent
+    annual_billed_amount_cents: 139320, // $1,393.20/yr (12 × $116.10)
+    recommended_in_signup: 0,
+    version: 2,
     effective_from: new Date().toISOString(),
     effective_to: null,
     metadata: null,
@@ -44,16 +54,17 @@ const PLANS = [
     account_type: "self_managed",
     display_name: "Mid Community",
     status: "active",
-    pricing_model: "flat_per_association",
-    unit_min: 31,
-    unit_max: 75,
+    pricing_model: "per_door",
+    unit_min: 41,
+    unit_max: 100,
     currency: "USD",
     billing_frequency_supported: JSON.stringify(["monthly", "annual"]),
-    monthly_amount_cents: 13900,
-    annual_effective_monthly_cents: 11900,
-    annual_billed_amount_cents: 142800,
-    recommended_in_signup: 0,
-    version: 1,
+    monthly_amount_cents: 375, // $3.75/unit/mo (per-unit rate)
+    minimum_amount_cents: null, // no separate minimum (41 × $3.75 = $153.75 > $129 floor)
+    annual_effective_monthly_cents: null, // per-unit annual computed at billing time (~10% off)
+    annual_billed_amount_cents: null,
+    recommended_in_signup: 1, // "Most chosen" — center-stage tier
+    version: 2,
     effective_from: new Date().toISOString(),
     effective_to: null,
     metadata: null,
@@ -63,16 +74,37 @@ const PLANS = [
     account_type: "self_managed",
     display_name: "Large Community",
     status: "active",
-    pricing_model: "flat_per_association",
-    unit_min: 76,
-    unit_max: 200,
+    pricing_model: "per_door",
+    unit_min: 101,
+    unit_max: 250,
     currency: "USD",
     billing_frequency_supported: JSON.stringify(["monthly", "annual"]),
-    monthly_amount_cents: 19900,
-    annual_effective_monthly_cents: 16900,
-    annual_billed_amount_cents: 202800,
+    monthly_amount_cents: 350, // $3.50/unit/mo (per-unit rate)
+    minimum_amount_cents: null, // no separate minimum (101 × $3.50 = $353.50 > $129 floor)
+    annual_effective_monthly_cents: null,
+    annual_billed_amount_cents: null,
     recommended_in_signup: 0,
-    version: 1,
+    version: 2,
+    effective_from: new Date().toISOString(),
+    effective_to: null,
+    metadata: null,
+  },
+  {
+    plan_key: "enterprise_concierge",
+    account_type: "self_managed",
+    display_name: "Enterprise Concierge",
+    status: "active",
+    pricing_model: "enterprise_manual",
+    unit_min: 251,
+    unit_max: null,
+    currency: "USD",
+    billing_frequency_supported: JSON.stringify(["monthly", "annual"]),
+    monthly_amount_cents: null, // custom / negotiable — manual billing
+    minimum_amount_cents: null,
+    annual_effective_monthly_cents: null,
+    annual_billed_amount_cents: null,
+    recommended_in_signup: 0,
+    version: 2,
     effective_from: new Date().toISOString(),
     effective_to: null,
     metadata: null,

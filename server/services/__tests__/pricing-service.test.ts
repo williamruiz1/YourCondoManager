@@ -28,9 +28,12 @@ vi.mock("../../db", () => ({ db: {}, pool: {} }));
 
 import {
   computePmPortfolioMonthlyBillFromList,
+  computeSelfManagedMonthlyBillFromList,
   resolveSelfManagedPlanFromList,
   PM_PER_DOOR_RATE_CENTS,
   PM_TIER_MINIMUM_CENTS,
+  SM_FLAT_FLOOR_CENTS,
+  SM_PER_UNIT_RATE_CENTS,
   type PmComplexInput,
 } from "../pricing-service";
 import type { PlanCatalog } from "@shared/schema";
@@ -242,38 +245,161 @@ describe("computePmPortfolioMonthlyBillFromList — per-door model", () => {
   });
 });
 
-// ── Self-managed resolution (unchanged behavior — guard regression) ───────────
+// ── Self-managed DECLINING per-unit model (William-ratified 2026-06-21) ───────
+//
+//   Small Community      (1–40)     $129/mo FLAT  → 12900¢ (floor; only minimum)
+//   Mid Community         (41–100)   $3.75/unit/mo → 375¢  (units × 375)
+//   Large Community       (101–250)  $3.50/unit/mo → 350¢  (units × 350)
+//   Enterprise Concierge  (251+)     custom / negotiable — manual
+//
+// Worked examples (per the dispatch):
+//   18 units  → Small  → $129    (flat floor)
+//   75 units  → Mid    → $281.25 (= 75 × $3.75)
+//   150 units → Large  → $525    (= 150 × $3.50)
+//   250 units → Large  → $875    (= 250 × $3.50)
+
+const SM_PLANS: PlanCatalog[] = [
+  pmPlan({
+    planKey: "small_community",
+    accountType: "self_managed",
+    displayName: "Small Community",
+    pricingModel: "flat_per_association",
+    unitMin: 1,
+    unitMax: 40,
+    monthlyAmountCents: SM_FLAT_FLOOR_CENTS, // 12900 — $129/mo flat
+    minimumAmountCents: SM_FLAT_FLOOR_CENTS, // 12900 — $129 floor
+  }),
+  pmPlan({
+    planKey: "mid_community",
+    accountType: "self_managed",
+    displayName: "Mid Community",
+    pricingModel: "per_door", // per-UNIT (mirrors PM per-door storage)
+    unitMin: 41,
+    unitMax: 100,
+    monthlyAmountCents: SM_PER_UNIT_RATE_CENTS.mid_community, // 375 — $3.75/unit
+    minimumAmountCents: null, // no separate minimum
+  }),
+  pmPlan({
+    planKey: "large_community",
+    accountType: "self_managed",
+    displayName: "Large Community",
+    pricingModel: "per_door",
+    unitMin: 101,
+    unitMax: 250,
+    monthlyAmountCents: SM_PER_UNIT_RATE_CENTS.large_community, // 350 — $3.50/unit
+    minimumAmountCents: null,
+  }),
+  pmPlan({
+    planKey: "enterprise_concierge",
+    accountType: "self_managed",
+    displayName: "Enterprise Concierge",
+    pricingModel: "enterprise_manual",
+    unitMin: 251,
+    unitMax: null,
+    monthlyAmountCents: null,
+    minimumAmountCents: null,
+  }),
+];
 
 describe("resolveSelfManagedPlanFromList", () => {
-  const smPlans: PlanCatalog[] = [
-    pmPlan({
-      planKey: "small_community",
-      accountType: "self_managed",
-      displayName: "Small Community",
-      pricingModel: "flat_per_association",
-      unitMin: 1,
-      unitMax: 30,
-    }),
-    pmPlan({
-      planKey: "mid_community",
-      accountType: "self_managed",
-      displayName: "Mid Community",
-      pricingModel: "flat_per_association",
-      unitMin: 31,
-      unitMax: 75,
-    }),
-  ];
-
-  it("matches a unit count to the correct self-managed band", () => {
-    expect(resolveSelfManagedPlanFromList(18, smPlans).planKey).toBe("small_community");
-    expect(resolveSelfManagedPlanFromList(50, smPlans).planKey).toBe("mid_community");
+  it("matches a unit count to the correct community tier", () => {
+    expect(resolveSelfManagedPlanFromList(18, SM_PLANS).planKey).toBe("small_community");
+    expect(resolveSelfManagedPlanFromList(40, SM_PLANS).planKey).toBe("small_community");
+    expect(resolveSelfManagedPlanFromList(41, SM_PLANS).planKey).toBe("mid_community");
+    expect(resolveSelfManagedPlanFromList(100, SM_PLANS).planKey).toBe("mid_community");
+    expect(resolveSelfManagedPlanFromList(101, SM_PLANS).planKey).toBe("large_community");
+    expect(resolveSelfManagedPlanFromList(250, SM_PLANS).planKey).toBe("large_community");
+    expect(resolveSelfManagedPlanFromList(251, SM_PLANS).planKey).toBe("enterprise_concierge");
+    expect(resolveSelfManagedPlanFromList(5000, SM_PLANS).planKey).toBe("enterprise_concierge");
   });
 
   it("throws below 1 unit", () => {
-    expect(() => resolveSelfManagedPlanFromList(0, smPlans)).toThrow(/invalid unit count/i);
+    expect(() => resolveSelfManagedPlanFromList(0, SM_PLANS)).toThrow(/invalid unit count/i);
+  });
+});
+
+describe("computeSelfManagedMonthlyBillFromList — declining per-unit model", () => {
+  it("WORKED EXAMPLE: 18 units → Small → $129 (flat floor)", () => {
+    const r = computeSelfManagedMonthlyBillFromList(18, SM_PLANS);
+    expect(r.planKey).toBe("small_community");
+    expect(r.pricingModel).toBe("flat_per_association");
+    expect(r.flatAmountCents).toBe(12900);
+    expect(r.perUnitAmountCents).toBeNull();
+    expect(r.finalTotalCents).toBe(12900); // $129
+    expect(r.manualReviewRequired).toBe(false);
   });
 
-  it("throws when no band matches", () => {
-    expect(() => resolveSelfManagedPlanFromList(999, smPlans)).toThrow(/no active self-managed plan/i);
+  it("WORKED EXAMPLE: 75 units → Mid → $281.25 (= 75 × $3.75)", () => {
+    const r = computeSelfManagedMonthlyBillFromList(75, SM_PLANS);
+    expect(r.planKey).toBe("mid_community");
+    expect(r.pricingModel).toBe("per_door");
+    expect(r.perUnitAmountCents).toBe(375); // $3.75/unit
+    expect(r.flatAmountCents).toBeNull();
+    expect(r.computedSubtotalCents).toBe(28125); // 75 × 375 = $281.25
+    expect(r.minimumAppliedCents).toBe(0);
+    expect(r.finalTotalCents).toBe(28125);
+  });
+
+  it("WORKED EXAMPLE: 150 units → Large → $525 (= 150 × $3.50)", () => {
+    const r = computeSelfManagedMonthlyBillFromList(150, SM_PLANS);
+    expect(r.planKey).toBe("large_community");
+    expect(r.perUnitAmountCents).toBe(350); // $3.50/unit
+    expect(r.computedSubtotalCents).toBe(52500); // 150 × 350 = $525
+    expect(r.finalTotalCents).toBe(52500);
+    expect(r.minimumAppliedCents).toBe(0);
+  });
+
+  it("WORKED EXAMPLE: 250 units → Large → $875 (= 250 × $3.50)", () => {
+    const r = computeSelfManagedMonthlyBillFromList(250, SM_PLANS);
+    expect(r.planKey).toBe("large_community");
+    expect(r.perUnitAmountCents).toBe(350);
+    expect(r.computedSubtotalCents).toBe(87500); // 250 × 350 = $875
+    expect(r.finalTotalCents).toBe(87500);
+  });
+
+  it("Mid entry (41 units) naturally exceeds the $129 floor → $153.75, no top-up", () => {
+    const r = computeSelfManagedMonthlyBillFromList(41, SM_PLANS);
+    expect(r.planKey).toBe("mid_community");
+    expect(r.computedSubtotalCents).toBe(15375); // 41 × 375 = $153.75
+    expect(r.tierMinimumCents).toBe(0); // no separate minimum on Mid
+    expect(r.minimumAppliedCents).toBe(0);
+    expect(r.finalTotalCents).toBe(15375);
+  });
+
+  it("Large entry (101 units) naturally exceeds the $129 floor → $353.50, no top-up", () => {
+    const r = computeSelfManagedMonthlyBillFromList(101, SM_PLANS);
+    expect(r.planKey).toBe("large_community");
+    expect(r.computedSubtotalCents).toBe(35350); // 101 × 350 = $353.50
+    expect(r.minimumAppliedCents).toBe(0);
+    expect(r.finalTotalCents).toBe(35350);
+  });
+
+  it("Small floor holds across the whole 1–40 band (flat $129 regardless of unit count)", () => {
+    expect(computeSelfManagedMonthlyBillFromList(1, SM_PLANS).finalTotalCents).toBe(12900);
+    expect(computeSelfManagedMonthlyBillFromList(40, SM_PLANS).finalTotalCents).toBe(12900);
+  });
+
+  it("exact tier boundary at 40 stays Small (flat); 41 flips to Mid (per-unit)", () => {
+    expect(computeSelfManagedMonthlyBillFromList(40, SM_PLANS).planKey).toBe("small_community");
+    expect(computeSelfManagedMonthlyBillFromList(41, SM_PLANS).planKey).toBe("mid_community");
+  });
+
+  it("exact tier boundary at 100 stays Mid; 101 flips to Large", () => {
+    expect(computeSelfManagedMonthlyBillFromList(100, SM_PLANS).planKey).toBe("mid_community");
+    expect(computeSelfManagedMonthlyBillFromList(101, SM_PLANS).planKey).toBe("large_community");
+  });
+
+  it("Enterprise Concierge (251+) → manual review, no auto bill", () => {
+    const r = computeSelfManagedMonthlyBillFromList(400, SM_PLANS);
+    expect(r.planKey).toBe("enterprise_concierge");
+    expect(r.manualReviewRequired).toBe(true);
+    expect(r.flatAmountCents).toBeNull();
+    expect(r.perUnitAmountCents).toBeNull();
+    expect(r.computedSubtotalCents).toBe(0);
+    expect(r.finalTotalCents).toBe(0);
+  });
+
+  it("throws below 1 unit", () => {
+    expect(() => computeSelfManagedMonthlyBillFromList(0, SM_PLANS)).toThrow(/invalid unit count/i);
   });
 });
