@@ -29,7 +29,7 @@
  * `bank_feed_sync_runs` row with started_at + finished_at + counts + error.
  * Sole exception is the debounced webhook bursts that never start a run.
  */
-import { and, eq, isNull, or, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, lt, sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import {
   bankAccounts,
@@ -47,11 +47,11 @@ import { log } from "../logger";
 // paths bypass this gate.
 const STALENESS_MS = Number(process.env.BANK_FEED_SYNC_STALENESS_MS || 15 * 60 * 1000);
 
-// Transactions horizon: how far back the sync looks when calling
-// /transactions/get. Plaid's /transactions/sync would be more efficient at
-// scale, but the existing PlaidProvider.getTransactions(since) interface is
-// what's wired today — keep that contract and pull the last 30 days.
-const SYNC_LOOKBACK_DAYS = Number(process.env.BANK_FEED_SYNC_LOOKBACK_DAYS || 30);
+// NOTE: the legacy date-window lookback (BANK_FEED_SYNC_LOOKBACK_DAYS) is gone.
+// The sync engine now uses Plaid /transactions/sync with a per-connection
+// cursor (bank_connections.transactions_cursor), so there is no time horizon:
+// the first sync backfills full history, every subsequent sync pulls only the
+// delta since the persisted cursor.
 
 // Per-item_id webhook debounce window. Plaid can fire SYNC_UPDATES_AVAILABLE
 // repeatedly in a burst; we coalesce to at most one sync per minute per item.
@@ -164,7 +164,6 @@ async function syncOneConnectionLocked(
 
   try {
     const accessToken = decryptPlaidToken(conn.accessTokenEncrypted);
-    const sinceDate = new Date(Date.now() - SYNC_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
     // Refresh account balances + record lastSyncedAt on each account.
     const accountSnapshots = await bankFeedProvider.getAccounts(accessToken);
@@ -184,19 +183,27 @@ async function syncOneConnectionLocked(
         );
     }
 
-    // Fetch + upsert transactions.
-    const txns = await bankFeedProvider.getTransactions(accessToken, sinceDate);
+    // Fetch transaction deltas via Plaid /transactions/sync (P-3). The
+    // connection's persisted cursor is the resumption point; NULL drives an
+    // initial sync (full backfill, equivalent to the old date-window get).
+    const sync = await bankFeedProvider.syncTransactions(
+      accessToken,
+      conn.transactionsCursor ?? null,
+    );
     const dbAccounts = await db
       .select({ id: bankAccounts.id, providerAccountId: bankAccounts.providerAccountId })
       .from(bankAccounts)
       .where(eq(bankAccounts.bankConnectionId, conn.id));
     const accountIdMap = new Map(dbAccounts.map((a) => [a.providerAccountId, a.id]));
 
-    for (const txn of txns) {
+    // added + modified both upsert: insert new rows, update changed ones (e.g.
+    // a pending txn whose amount/name finalized on post). Keyed on the unique
+    // provider_transaction_id.
+    for (const txn of [...sync.added, ...sync.modified]) {
       const bankAccountId = accountIdMap.get(txn.providerAccountId);
       if (!bankAccountId) continue;
 
-      const inserted = await db
+      const upserted = await db
         .insert(bankTransactions)
         .values({
           bankAccountId,
@@ -210,18 +217,46 @@ async function syncOneConnectionLocked(
           category: txn.category,
           pending: txn.pending ? 1 : 0,
         })
-        .onConflictDoNothing()
+        .onConflictDoUpdate({
+          target: bankTransactions.providerTransactionId,
+          set: {
+            amountCents: txn.amountCents,
+            isoCurrencyCode: txn.isoCurrencyCode,
+            date: txn.date,
+            name: txn.name,
+            merchantName: txn.merchantName,
+            category: txn.category,
+            pending: txn.pending ? 1 : 0,
+          },
+        })
         .returning({ id: bankTransactions.id });
 
-      if (inserted.length > 0) transactionsImported++;
+      if (upserted.length > 0) transactionsImported++;
     }
 
-    // Stamp last_synced_at on the connection — this is the load-bearing
-    // observability signal ("did the sync engine actually run for Cherry
-    // Hill?"). Bumped on success only.
+    // removed: Plaid drops a pending txn once it posts under a new id. Delete
+    // it (association-scoped) so the ledger never reconciles a phantom. Only
+    // delete rows NOT already linked to a ledger entry — a removed txn that was
+    // somehow matched is left in place and surfaced rather than silently torn
+    // out from under a reconciliation.
+    if (sync.removed.length > 0) {
+      await db
+        .delete(bankTransactions)
+        .where(
+          and(
+            eq(bankTransactions.associationId, conn.associationId),
+            inArray(bankTransactions.providerTransactionId, sync.removed),
+          ),
+        );
+    }
+
+    // Stamp last_synced_at + persist the new cursor on the connection. The
+    // cursor is the resumption point for the next sync; last_synced_at is the
+    // load-bearing observability signal ("did the sync engine actually run for
+    // Cherry Hill?"). Both bumped on success only.
     await db
       .update(bankConnections)
-      .set({ lastSyncedAt: new Date() })
+      .set({ lastSyncedAt: new Date(), transactionsCursor: sync.nextCursor })
       .where(eq(bankConnections.id, conn.id));
 
     // Auto-reconcile: run the association-scoped matcher.

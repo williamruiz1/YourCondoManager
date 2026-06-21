@@ -29,6 +29,7 @@ import { startDeprovisioningScheduler } from "./de-provisioning";
 import { createRateLimiter, onWriteOnly } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
 import { resolveSessionCookieDomain } from "./session-cookie-domain";
+import { assertPlaidEnvSafe } from "./services/bank-feed/plaid-env-guard";
 
 // Wave 33 (5.4 Part B): seed.ts is ~120 KB of static demo-data tables. It
 // only runs once at boot, after the HTTP server has already started
@@ -370,6 +371,15 @@ app.use((req, res, next) => {
   // Init Sentry first inside the async boot so errors during the rest of
   // boot are captured. Safe across hot-reload (idempotent init).
   await initServerObservability();
+
+  // BLINDSPOT F7 — Plaid production env-flip guard. Refuse to boot in
+  // PLAID_ENV=production unless webhook JWT verification is wired + the
+  // production credentials are present. This makes the safe order
+  // (verification BEFORE going live) mechanical, not a checklist a deploy can
+  // skip. Sandbox/development always passes. Throwing here aborts boot — which
+  // on Fly aborts the deploy, exactly as intended.
+  const plaidGuard = assertPlaidEnvSafe();
+  log(`Plaid env guard OK (env=${plaidGuard.env})`, "plaid");
 
   const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
   app.use("/api/public", publicRateLimiter);

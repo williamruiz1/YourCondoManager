@@ -309,6 +309,13 @@
       "when": 1779900000000,
       "tag": "0043_budget_line_gl_mappings",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1780000000000,
+      "tag": "0044_plaid_transactions_cursor",
+      "breakpoints": true
     }
   ]
 }

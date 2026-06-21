@@ -3665,6 +3665,9 @@ export const bankConnections = pgTable("bank_connections", {
   status: bankConnectionStatusEnum("status").notNull().default("active"),
   connectedByUserId: varchar("connected_by_user_id"),
   lastSyncedAt: timestamp("last_synced_at"),
+  // Plaid /transactions/sync resumption cursor. NULL = no sync yet (the initial
+  // sync omits the cursor). Persisted after each successful sync (P-3).
+  transactionsCursor: text("transactions_cursor"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
