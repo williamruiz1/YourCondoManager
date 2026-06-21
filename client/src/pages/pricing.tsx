@@ -1,8 +1,11 @@
 // PRICING PAGE — v3 (Property-Manager track per-door rebuild)
 // Spec: ~/code/founder-os/wiki/products/ycm/pricing-model-v3.md §2 (locked 2026-05-15 voice session)
+//       + declining-tier amendment (William-ratified 2026-06-21).
 // Two-track layout: Property Managers (default) + Self-Managed Boards.
-// PM track = $4/door/mo FLAT across all tiers — tiers gate FEATURES, not the per-door rate.
-// Per-tier monthly minimums apply; calculator computes max(doors × $4, tier minimum).
+// PM track = DECLINING per-door rate by tier (volume discount): $4.50 (Starter) /
+//   $4.25 (Growth) / $4.00 (Scale) — the per-door rate FALLS as the portfolio grows.
+//   Tiers gate FEATURES + set the per-door rate + the monthly minimum.
+// Per-tier monthly minimums apply; calculator computes max(doors × tierRate, tier minimum).
 // Terminology: "communities" not "complexes" (spec §7).
 // Annual toggle = ~10% discount. Display only — no Stripe / billing wiring (separate PR owns that).
 
@@ -33,15 +36,17 @@ type PricingPageProps = {
 // Pricing tiers (canonical per spec). Annual price is monthly × 12 × 0.9.
 type Track = "property-managers" | "self-managed";
 
-// PM track is $4/door/mo FLAT across every tier (spec §2.1). Tiers gate FEATURES.
-// Each tier carries a door range (for "which tier am I in") + a monthly minimum commit.
-const PM_PER_DOOR = 4; // $4/door/mo, flat across all tiers (spec §2)
+// PM track is a DECLINING per-door rate by tier (volume discount; ratified
+// 2026-06-21): $4.50 (Starter) / $4.25 (Growth) / $4.00 (Scale). The per-door
+// rate falls as the portfolio grows. Tiers gate FEATURES + set the rate + the
+// monthly minimum. Each tier carries a door range + per-door rate + minimum.
 
 interface PMTier {
   name: string;
   range: string; // door range, customer-facing
   minDoors: number; // inclusive lower bound of door range
   maxDoors: number | null; // inclusive upper bound; null = unbounded (Enterprise)
+  perDoor: number | null; // per-door rate ($/door/mo) for this tier; null = custom (Enterprise)
   monthlyMinimum: number; // per-tier minimum monthly commit ($)
   custom?: boolean; // Enterprise = custom / "from $X"
   features: string[];
@@ -67,9 +72,10 @@ const PM_TIERS: PMTier[] = [
     range: "Up to 500 doors",
     minDoors: 0,
     maxDoors: 500,
+    perDoor: 4.5,
     monthlyMinimum: 500,
     features: [
-      "$4 per door / month — flat",
+      "$4.50 per door / month",
       "$500/mo minimum",
       "Core platform, per community",
       "Owner portal + online payments",
@@ -85,10 +91,11 @@ const PM_TIERS: PMTier[] = [
     range: "501–2,000 doors",
     minDoors: 501,
     maxDoors: 2000,
-    monthlyMinimum: 2000,
+    perDoor: 4.25,
+    monthlyMinimum: 2125,
     features: [
-      "$4 per door / month — flat",
-      "$2,000/mo minimum",
+      "$4.25 per door / month",
+      "$2,125/mo minimum",
       "Everything in Starter, plus:",
       "Portfolio rollup dashboard",
       "White-label / co-brand",
@@ -105,10 +112,11 @@ const PM_TIERS: PMTier[] = [
     range: "2,001–5,000 doors",
     minDoors: 2001,
     maxDoors: 5000,
-    monthlyMinimum: 5000,
+    perDoor: 4.0,
+    monthlyMinimum: 8000,
     features: [
-      "$4 per door / month — flat",
-      "$5,000/mo minimum",
+      "$4.00 per door / month",
+      "$8,000/mo minimum",
       "Everything in Growth, plus:",
       "Full API access",
       "Dedicated customer success manager",
@@ -125,11 +133,12 @@ const PM_TIERS: PMTier[] = [
     range: "5,000+ doors",
     minDoors: 5001,
     maxDoors: null,
-    monthlyMinimum: 12500,
+    perDoor: null,
+    monthlyMinimum: 18000,
     custom: true,
     features: [
       "Custom — from $4/door + concierge",
-      "From $12,500/mo",
+      "From $18,000/mo",
       "Everything in Scale, plus:",
       "Custom integrations",
       "White-glove migration",
@@ -221,9 +230,10 @@ function annualPrice(monthly: number): number {
   return Math.round(monthly * 12 * 0.9);
 }
 
-// ── PM CALCULATOR (spec §2 + §8) ──
-// $4/door flat; the per-tier minimum is the floor. Monthly = max(doors × $4, tier minimum).
-// The door count also determines which tier the PM lands in (tiers gate features).
+// ── PM CALCULATOR (spec §2 + §8 + declining-tier amendment 2026-06-21) ──
+// DECLINING per-door rate by tier ($4.50 / $4.25 / $4.00); the per-tier minimum
+// is the floor. Monthly = max(doors × tierRate, tier minimum). The door count
+// determines which tier the PM lands in (tiers gate features + rate + minimum).
 function pmTierForDoors(doors: number): PMTier {
   return (
     PM_TIERS.find(
@@ -234,7 +244,8 @@ function pmTierForDoors(doors: number): PMTier {
 
 interface PMQuote {
   tier: PMTier;
-  rawMonthly: number; // doors × $4 (before minimum)
+  perDoor: number; // resolved tier's per-door rate ($/door/mo); 0 for custom
+  rawMonthly: number; // doors × tier rate (before minimum)
   monthly: number; // max(raw, tier minimum)
   minimumApplied: boolean;
   isCustom: boolean;
@@ -242,10 +253,12 @@ interface PMQuote {
 
 function pmQuote(doors: number): PMQuote {
   const tier = pmTierForDoors(doors);
-  const rawMonthly = doors * PM_PER_DOOR;
+  const perDoor = tier.perDoor ?? 0;
+  const rawMonthly = doors * perDoor;
   const monthly = Math.max(rawMonthly, tier.monthlyMinimum);
   return {
     tier,
+    perDoor,
     rawMonthly,
     monthly,
     minimumApplied: rawMonthly < tier.monthlyMinimum,
@@ -460,8 +473,8 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           >
             <div className="text-center mb-8 max-w-3xl mx-auto">
               <p className="text-base text-foreground/80">
-                <strong className="text-primary">$4 per door / month — flat.</strong> Every tier, every
-                portfolio size. Tiers unlock features, not a higher rate.
+                <strong className="text-primary">From $4 per door / month — your rate drops as you grow.</strong>{" "}
+                $4.50 to start, $4.25 at Growth, $4.00 at Scale. Bigger portfolios earn a lower per-door rate.
               </p>
               <p className="mt-2 text-sm text-muted-foreground italic">
                 That's roughly a fifth of what you charge the association — clean premium positioning between
@@ -492,7 +505,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                     {!tier.custom ? (
                       <>
                         <div className="flex items-baseline gap-1.5">
-                          <span className="font-serif text-4xl font-bold text-primary">${PM_PER_DOOR}</span>
+                          <span className="font-serif text-4xl font-bold text-primary">${(tier.perDoor ?? 0).toFixed(2)}</span>
                           <span className="text-sm text-muted-foreground">/door/mo</span>
                         </div>
                         <p className="mt-2 text-xs text-muted-foreground">
@@ -545,7 +558,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 <div className="bg-primary/5 border-b border-border/60 px-8 py-5">
                   <h3 className="font-serif text-2xl text-foreground">What will you pay?</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    $4 per door, every tier. Your tier-minimum is the floor.
+                    Your per-door rate drops as you grow — $4.50 / $4.25 / $4.00. Your tier-minimum is the floor.
                   </p>
                 </div>
                 <div className="grid md:grid-cols-2 gap-8 p-8">
@@ -610,7 +623,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                           <span className="text-sm text-primary-foreground/80">/{period}</span>
                         </div>
                         <p className="mt-2 text-sm text-primary-foreground/80">
-                          {pmDoors.toLocaleString()} doors × ${PM_PER_DOOR}/door
+                          {pmDoors.toLocaleString()} doors × ${quote.perDoor.toFixed(2)}/door
                           {quote.minimumApplied
                             ? ` is below the $${quote.tier.monthlyMinimum.toLocaleString()}/mo minimum — your minimum applies.`
                             : annual
@@ -634,7 +647,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
 
             {/* ── COMPARISON vs ALTERNATIVES (spec §2.4) ── */}
             <div className="mt-14 max-w-4xl mx-auto">
-              <h3 className="font-serif text-2xl text-center text-foreground mb-2">How $4/door compares</h3>
+              <h3 className="font-serif text-2xl text-center text-foreground mb-2">How $4–$4.50/door compares</h3>
               <p className="text-sm text-muted-foreground text-center mb-6">Per-door platform rate vs the major management platforms.</p>
               <div className="overflow-x-auto rounded-2xl border border-border/70 shadow-sm">
                 <table className="w-full text-sm">
@@ -648,7 +661,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                   <tbody className="divide-y divide-border/60">
                     <tr className="bg-primary/5">
                       <td className="px-5 py-3 font-bold text-primary">Your Condo Manager</td>
-                      <td className="px-5 py-3 font-bold text-primary">$4 / door — flat</td>
+                      <td className="px-5 py-3 font-bold text-primary">$4.50 → $4.00 / door (volume)</td>
                       <td className="px-5 py-3 hidden sm:table-cell">Built in, every tier</td>
                     </tr>
                     <tr>
@@ -764,9 +777,9 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           </h2>
           <div className="space-y-6">
             <div>
-              <h3 className="font-semibold text-foreground mb-1.5">How does $4/door pricing work for property managers?</h3>
+              <h3 className="font-semibold text-foreground mb-1.5">How does per-door pricing work for property managers?</h3>
               <p className="text-sm text-muted-foreground">
-                You pay <strong>$4 per door per month, flat</strong> — the same rate whether you manage 200 doors or 4,000. Each tier carries a monthly minimum ($500 Starter, $2,000 Growth, $5,000 Scale); your bill is your door count × $4, or the tier minimum, whichever is higher. Tiers unlock features (portfolio rollup, white-label, API, dedicated CSM), never a higher per-door rate.
+                Your <strong>per-door rate drops as your portfolio grows</strong> (volume discount): <strong>$4.50/door</strong> up to 500 doors (Starter), <strong>$4.25/door</strong> at 501–2,000 (Growth), and <strong>$4.00/door</strong> at 2,001–5,000 (Scale). Each tier carries a monthly minimum ($500 Starter, $2,125 Growth, $8,000 Scale); your bill is your door count × your tier's per-door rate, or the tier minimum, whichever is higher. Tiers also unlock features (portfolio rollup, white-label, API, dedicated CSM). Above 5,000 doors, Enterprise is custom (from $18,000/mo).
               </p>
             </div>
             <div>

@@ -1,15 +1,19 @@
 /**
  * migrate-pm-stripe-products-to-per-door.ts
  *
- * Migrates the Property-Manager Stripe product layer from the per-complex model
- * to the canonical $4/door FLAT model (pricing-model-v3 §2 + §9).
+ * Migrates the Property-Manager Stripe product layer to the canonical per-door
+ * model with a DECLINING per-tier rate (volume discount; William-ratified
+ * 2026-06-21): Starter $4.50/door · Growth $4.25/door · Scale $4.00/door ·
+ * Enterprise custom/manual (pricing-model-v3 §2 + §9 + declining-tier amendment).
  *
  * What it does (idempotent, safe to re-run):
  *   1. ARCHIVES the 2 old PM-per-complex products (sets active:false). NEVER
  *      deletes. Looked up by the known product IDs from §9.1.
- *   2. CREATES the new PM $4/door products + prices with the per-tier monthly
- *      minimums (Starter / Growth / Scale) + PM Enterprise (manual billing).
- *      Looked up by name/metadata BEFORE creating — re-runs reuse existing.
+ *   2. CREATES the new PM per-door products + prices with the per-tier DECLINING
+ *      per-door rate + per-tier monthly minimum (Starter $4.50/min $500 ·
+ *      Growth $4.25/min $2,125 · Scale $4.00/min $8,000) + PM Enterprise
+ *      (manual billing, from $18,000/mo). Looked up by metadata BEFORE creating
+ *      — re-runs reuse existing.
  *   3. PRINTS the resulting product + price IDs.
  *
  * Hard safety constraints (enforced in code):
@@ -73,11 +77,13 @@ type NewPmTier = {
   manual: boolean;
 };
 
+// DECLINING per-door rate by tier (volume discount) + per-tier minimum =
+// per-door rate × the tier's ENTRY door count (continuous ladder).
 const NEW_PM_TIERS: NewPmTier[] = [
-  { planKey: "pm_starter", name: "PM Starter", doorMin: 1, doorMax: 500, perDoorCents: 400, minimumCents: 50000, manual: false },
-  { planKey: "pm_growth", name: "PM Growth", doorMin: 501, doorMax: 2000, perDoorCents: 400, minimumCents: 200000, manual: false },
-  { planKey: "pm_scale", name: "PM Scale", doorMin: 2001, doorMax: 5000, perDoorCents: 400, minimumCents: 500000, manual: false },
-  { planKey: "pm_enterprise", name: "PM Enterprise Concierge", doorMin: 5001, doorMax: null, perDoorCents: null, minimumCents: 1250000, manual: true },
+  { planKey: "pm_starter", name: "PM Starter", doorMin: 1, doorMax: 500, perDoorCents: 450, minimumCents: 50000, manual: false }, // $4.50/door · min $500
+  { planKey: "pm_growth", name: "PM Growth", doorMin: 501, doorMax: 2000, perDoorCents: 425, minimumCents: 212500, manual: false }, // $4.25/door · min $2,125
+  { planKey: "pm_scale", name: "PM Scale", doorMin: 2001, doorMax: 5000, perDoorCents: 400, minimumCents: 800000, manual: false }, // $4.00/door · min $8,000
+  { planKey: "pm_enterprise", name: "PM Enterprise Concierge", doorMin: 5001, doorMax: null, perDoorCents: null, minimumCents: 1800000, manual: true }, // custom · from $18,000
 ];
 
 const METADATA_NAMESPACE = "ycm_pm_per_door_v3";
@@ -243,8 +249,8 @@ async function createNewProducts(): Promise<CreatedTier[]> {
         name: tier.name,
         description:
           tier.manual
-            ? `PM Enterprise — custom from $4/door + concierge, manual billing (door range ${tier.doorMin}+).`
-            : `PM ${tier.name.replace("PM ", "")} — $4.00/door/mo flat, $${(tier.minimumCents / 100).toLocaleString()}/mo minimum (door range ${tier.doorMin}–${tier.doorMax}).`,
+            ? `PM Enterprise — custom (~from $4/door) + concierge, manual billing (door range ${tier.doorMin}+).`
+            : `PM ${tier.name.replace("PM ", "")} — $${((tier.perDoorCents ?? 0) / 100).toFixed(2)}/door/mo, $${(tier.minimumCents / 100).toLocaleString()}/mo minimum (door range ${tier.doorMin}–${tier.doorMax}).`,
       };
       for (const [k, v] of Object.entries(productMetadata)) params[`metadata[${k}]`] = v;
       product = await stripe("POST", "/products", params);
@@ -275,19 +281,19 @@ async function createNewProducts(): Promise<CreatedTier[]> {
       price = await stripe("POST", "/prices", {
         product: product.id,
         currency: "usd",
-        unit_amount: tier.perDoorCents!, // 400 = $4.00/door
+        unit_amount: tier.perDoorCents!, // per-tier declining rate: 450 / 425 / 400 ¢
         billing_scheme: "per_unit",
         "recurring[interval]": "month",
         "recurring[usage_type]": "metered",
         "recurring[meter]": meter!.id,
         // The monthly minimum floor is enforced in the app's pricing-service
-        // (max(doors × $4, minimum)); recorded here as metadata for reference.
+        // (max(doors × tierRate, minimum)); recorded here as metadata for reference.
         [`metadata[${METADATA_NAMESPACE}_kind]`]: "per_door",
         "metadata[minimum_amount_cents]": String(tier.minimumCents),
         "metadata[per_door_cents]": String(tier.perDoorCents),
-        nickname: `${tier.name} — $4/door/mo`,
+        nickname: `${tier.name} — $${((tier.perDoorCents ?? 0) / 100).toFixed(2)}/door/mo`,
       });
-      console.log(`    ✓ created price ${price.id} ($4.00/door metered, min $${(tier.minimumCents / 100).toLocaleString()})`);
+      console.log(`    ✓ created price ${price.id} ($${((tier.perDoorCents ?? 0) / 100).toFixed(2)}/door metered, min $${(tier.minimumCents / 100).toLocaleString()})`);
     }
 
     created.push({

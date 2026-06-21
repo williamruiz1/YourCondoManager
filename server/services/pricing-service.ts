@@ -56,12 +56,42 @@ export type PmPortfolioBillResult = {
 };
 
 /**
- * Canonical PM per-door rate (cents). $4.00/door/mo FLAT across all tiers per
- * pricing-model-v3 §2.1. Sourced from plan_catalog rows at runtime; this is the
- * expected value the seed encodes, kept here as a documented reference for the
- * pure-function callers that pass their own plan list.
+ * Canonical PM per-door rates (cents) — DECLINING by tier (volume discount;
+ * William-ratified 2026-06-21). The per-door rate DECREASES as the portfolio
+ * grows: bigger portfolios earn a lower per-door rate.
+ *
+ *   PM Starter   (≤500 doors)     $4.50/door/mo  → 450¢   min $500/mo
+ *   PM Growth    (501–2,000)      $4.25/door/mo  → 425¢   min $2,125/mo
+ *   PM Scale     (2,001–5,000)    $4.00/door/mo  → 400¢   min $8,000/mo
+ *   PM Enterprise (5,000+)        custom (~from $4/door)  from $18,000/mo, manual
+ *
+ * The billing FORMULA is unchanged — bill = max(totalDoors × tierPerDoorRate,
+ * tierMinimum) — but the per-door rate is now PER-TIER, read off the resolved
+ * plan_catalog row at runtime (`tier.monthlyAmountCents`), NOT a single flat $4.
+ *
+ * Each tier's monthly minimum = its per-door rate × the tier's ENTRY door count,
+ * so the floor equals the price at the bottom of the tier and the ladder is
+ * continuous (Growth min ≈ 501×$4.25 ≈ $2,125; Scale min ≈ 2,001×$4.00 ≈ $8,000).
+ * Starter keeps a small-account floor of $500.
+ *
+ * These constants are kept as a documented reference for the pure-function
+ * callers that pass their own plan list; the live values are sourced from
+ * plan_catalog rows at runtime.
  */
-export const PM_PER_DOOR_RATE_CENTS = 400; // $4.00/door/mo
+export const PM_PER_DOOR_RATE_CENTS = {
+  pm_starter: 450, // $4.50/door/mo
+  pm_growth: 425, // $4.25/door/mo
+  pm_scale: 400, // $4.00/door/mo
+  // pm_enterprise: custom / manual — no flat per-door rate
+} as const;
+
+/** Per-tier monthly minimums (cents) — the small-account floor / tier-entry floor. */
+export const PM_TIER_MINIMUM_CENTS = {
+  pm_starter: 50000, // $500/mo (small-account floor)
+  pm_growth: 212500, // $2,125/mo (= 501 × $4.25, rounded)
+  pm_scale: 800000, // $8,000/mo (= 2,001 × $4.00, rounded)
+  pm_enterprise: 1800000, // from $18,000/mo (reference; billed manually)
+} as const;
 
 // ── Helpers (pure, testable) ─────────────────────────────────────────────────
 
@@ -99,14 +129,17 @@ export function resolveSelfManagedPlanFromList(
 /**
  * Pure function: compute PM portfolio monthly bill from a provided plan list.
  *
- * Per-door model (pricing-model-v3 §2):
+ * Per-door model (pricing-model-v3 §2 + declining-tier amendment 2026-06-21):
  *   1. Sum total doors across every managed community.
  *   2. Resolve the per-door TIER by the PORTFOLIO's total door count
  *      (≤500 / 501–2,000 / 2,001–5,000 / 5,000+), NOT per-community.
- *   3. bill = max(totalDoors × $4.00, tierMinimum).
+ *   3. bill = max(totalDoors × tierPerDoorRate, tierMinimum).
  *
- * Tier MEMBERSHIP gates features + sets the minimum; the per-door RATE is flat
- * ($4) across every non-enterprise tier. Enterprise (5,000+) is manual billing.
+ * Tier MEMBERSHIP gates features, sets the minimum, AND now sets a DECLINING
+ * per-door RATE — $4.50 (Starter) / $4.25 (Growth) / $4.00 (Scale): the rate
+ * falls as the portfolio grows (volume discount). The rate is read off the
+ * resolved plan row (`tier.monthlyAmountCents`), so no flat constant is assumed.
+ * Enterprise (5,000+) is manual billing.
  */
 export function computePmPortfolioMonthlyBillFromList(
   complexes: PmComplexInput[],

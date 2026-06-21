@@ -1,15 +1,20 @@
 /**
  * pricing-service.test.ts — PM per-door billing + self-managed plan resolution.
  *
- * Covers the canonical pricing-model-v3 §2 PM track:
- *   $4/door FLAT across all tiers; tier resolved by PORTFOLIO total doors;
- *   bill = max(totalDoors × $4, tierMinimum); enterprise (5,000+) = manual.
+ * Covers the canonical pricing-model-v3 §2 PM track with the DECLINING per-door
+ * rate amendment (William-ratified 2026-06-21):
+ *   per-door rate DROPS by tier — $4.50 (Starter) / $4.25 (Growth) / $4.00 (Scale);
+ *   tier resolved by PORTFOLIO total doors;
+ *   bill = max(totalDoors × tierRate, tierMinimum); enterprise (5,000+) = manual.
+ *   Each minimum = tierRate × the tier's ENTRY door count (continuous ladder):
+ *   Starter min $500 (small-account floor) · Growth min $2,125 (501×$4.25) ·
+ *   Scale min $8,000 (2,001×$4.00) · Enterprise from $18,000 (manual).
  *
- * Worked examples (pricing-model-v3 §2.4):
- *   100 doors  → Starter  → $500 (min applied; door bill $400 < $500)
- *   500 doors  → Starter  → $2,000 (= 500 × $4)
- *   1,500 doors → Growth  → $6,000 (= 1,500 × $4)
- *   3,000 doors → Scale   → $12,000 (= 3,000 × $4)
+ * Worked examples:
+ *   100 doors  → Starter  → $500    (min applied; door bill $450 < $500)
+ *   500 doors  → Starter  → $2,250  (= 500 × $4.50)
+ *   1,500 doors → Growth  → $6,375  (= 1,500 × $4.25)
+ *   3,000 doors → Scale   → $12,000 (= 3,000 × $4.00)
  *   5,001 doors → Enterprise → manual
  */
 
@@ -25,6 +30,7 @@ import {
   computePmPortfolioMonthlyBillFromList,
   resolveSelfManagedPlanFromList,
   PM_PER_DOOR_RATE_CENTS,
+  PM_TIER_MINIMUM_CENTS,
   type PmComplexInput,
 } from "../pricing-service";
 import type { PlanCatalog } from "@shared/schema";
@@ -43,7 +49,7 @@ function pmPlan(overrides: Partial<PlanCatalog>): PlanCatalog {
     unitMax: null,
     currency: "USD",
     billingFrequencySupported: ["monthly"],
-    monthlyAmountCents: PM_PER_DOOR_RATE_CENTS,
+    monthlyAmountCents: PM_PER_DOOR_RATE_CENTS.pm_scale, // default $4.00; per-tier rates set per fixture below
     annualEffectiveMonthlyCents: null,
     annualBilledAmountCents: null,
     minimumAmountCents: null,
@@ -65,8 +71,8 @@ const PM_PLANS: PlanCatalog[] = [
     pricingModel: "per_door",
     unitMin: 1,
     unitMax: 500,
-    monthlyAmountCents: 400,
-    minimumAmountCents: 50000, // $500
+    monthlyAmountCents: PM_PER_DOOR_RATE_CENTS.pm_starter, // 450 — $4.50/door
+    minimumAmountCents: PM_TIER_MINIMUM_CENTS.pm_starter, // 50000 — $500
   }),
   pmPlan({
     planKey: "pm_growth",
@@ -74,8 +80,8 @@ const PM_PLANS: PlanCatalog[] = [
     pricingModel: "per_door",
     unitMin: 501,
     unitMax: 2000,
-    monthlyAmountCents: 400,
-    minimumAmountCents: 200000, // $2,000
+    monthlyAmountCents: PM_PER_DOOR_RATE_CENTS.pm_growth, // 425 — $4.25/door
+    minimumAmountCents: PM_TIER_MINIMUM_CENTS.pm_growth, // 212500 — $2,125
   }),
   pmPlan({
     planKey: "pm_scale",
@@ -83,8 +89,8 @@ const PM_PLANS: PlanCatalog[] = [
     pricingModel: "per_door",
     unitMin: 2001,
     unitMax: 5000,
-    monthlyAmountCents: 400,
-    minimumAmountCents: 500000, // $5,000
+    monthlyAmountCents: PM_PER_DOOR_RATE_CENTS.pm_scale, // 400 — $4.00/door
+    minimumAmountCents: PM_TIER_MINIMUM_CENTS.pm_scale, // 800000 — $8,000
   }),
   pmPlan({
     planKey: "pm_enterprise",
@@ -93,7 +99,7 @@ const PM_PLANS: PlanCatalog[] = [
     unitMin: 5001,
     unitMax: null,
     monthlyAmountCents: null,
-    minimumAmountCents: 1250000, // $12,500 (reference; manual billing)
+    minimumAmountCents: PM_TIER_MINIMUM_CENTS.pm_enterprise, // 1800000 — $18,000 (manual)
   }),
 ];
 
@@ -107,36 +113,38 @@ function communities(...doorCounts: number[]): PmComplexInput[] {
 // ── PM per-door billing ───────────────────────────────────────────────────────
 
 describe("computePmPortfolioMonthlyBillFromList — per-door model", () => {
-  it("flat $4/door applies across the portfolio (single community, mid Starter)", () => {
+  it("declining per-door rate applies across the portfolio (single community, mid Starter)", () => {
     const r = computePmPortfolioMonthlyBillFromList(communities(300), PM_PLANS);
     expect(r.totalDoors).toBe(300);
     expect(r.resolvedTierPlanKey).toBe("pm_starter");
-    expect(r.perDoorAmountCents).toBe(400);
-    // 300 × $4 = $1,200 — above the $500 minimum, so no top-up.
-    expect(r.computedSubtotalCents).toBe(120000);
+    expect(r.perDoorAmountCents).toBe(450); // $4.50/door (Starter)
+    // 300 × $4.50 = $1,350 — above the $500 minimum, so no top-up.
+    expect(r.computedSubtotalCents).toBe(135000);
     expect(r.minimumAppliedCents).toBe(0);
-    expect(r.finalTotalCents).toBe(120000);
+    expect(r.finalTotalCents).toBe(135000);
     expect(r.manualReviewRequired).toBe(false);
   });
 
-  it("WORKED EXAMPLE: 100 doors → Starter → $500 minimum applied", () => {
+  it("WORKED EXAMPLE: 100 doors → Starter → $500 minimum applied (door bill $450)", () => {
     const r = computePmPortfolioMonthlyBillFromList(communities(100), PM_PLANS);
     expect(r.totalDoors).toBe(100);
     expect(r.resolvedTierPlanKey).toBe("pm_starter");
-    expect(r.computedSubtotalCents).toBe(40000); // 100 × $4 = $400
+    expect(r.perDoorAmountCents).toBe(450); // $4.50/door
+    expect(r.computedSubtotalCents).toBe(45000); // 100 × $4.50 = $450
     expect(r.tierMinimumCents).toBe(50000); // $500
-    expect(r.minimumAppliedCents).toBe(10000); // top-up $100
+    expect(r.minimumAppliedCents).toBe(5000); // top-up $50
     expect(r.finalTotalCents).toBe(50000); // $500 floor wins
   });
 
-  it("WORKED EXAMPLE: 500 doors → Starter → $2,000 (= 500 × $4)", () => {
+  it("WORKED EXAMPLE: 500 doors → Starter → $2,250 (= 500 × $4.50)", () => {
     const r = computePmPortfolioMonthlyBillFromList(communities(500), PM_PLANS);
     expect(r.resolvedTierPlanKey).toBe("pm_starter");
-    expect(r.finalTotalCents).toBe(200000); // $2,000
+    expect(r.perDoorAmountCents).toBe(450);
+    expect(r.finalTotalCents).toBe(225000); // $2,250
     expect(r.minimumAppliedCents).toBe(0);
   });
 
-  it("WORKED EXAMPLE: 1,500 doors → Growth → $6,000 (= 1,500 × $4)", () => {
+  it("WORKED EXAMPLE: 1,500 doors → Growth → $6,375 (= 1,500 × $4.25)", () => {
     // Split across multiple communities to prove tier is by PORTFOLIO total.
     const r = computePmPortfolioMonthlyBillFromList(
       communities(800, 400, 300),
@@ -144,38 +152,40 @@ describe("computePmPortfolioMonthlyBillFromList — per-door model", () => {
     );
     expect(r.totalDoors).toBe(1500);
     expect(r.resolvedTierPlanKey).toBe("pm_growth");
-    expect(r.computedSubtotalCents).toBe(600000); // $6,000
-    expect(r.minimumAppliedCents).toBe(0); // above $2,000 min
-    expect(r.finalTotalCents).toBe(600000);
-    // Each line is its community's share at $4/door.
+    expect(r.perDoorAmountCents).toBe(425); // $4.25/door (Growth)
+    expect(r.computedSubtotalCents).toBe(637500); // $6,375
+    expect(r.minimumAppliedCents).toBe(0); // above $2,125 min
+    expect(r.finalTotalCents).toBe(637500);
+    // Each line is its community's share at $4.25/door.
     expect(r.lines.map((l) => l.computedLineCents)).toEqual([
-      320000, 160000, 120000,
+      340000, 170000, 127500,
     ]);
     expect(r.lines.every((l) => l.planKey === "pm_growth")).toBe(true);
   });
 
-  it("WORKED EXAMPLE: 3,000 doors → Scale → $12,000 (= 3,000 × $4)", () => {
+  it("WORKED EXAMPLE: 3,000 doors → Scale → $12,000 (= 3,000 × $4.00)", () => {
     const r = computePmPortfolioMonthlyBillFromList(communities(3000), PM_PLANS);
     expect(r.resolvedTierPlanKey).toBe("pm_scale");
+    expect(r.perDoorAmountCents).toBe(400); // $4.00/door (Scale)
     expect(r.computedSubtotalCents).toBe(1200000); // $12,000
-    expect(r.minimumAppliedCents).toBe(0); // above $5,000 min
+    expect(r.minimumAppliedCents).toBe(0); // above $8,000 min
     expect(r.finalTotalCents).toBe(1200000);
   });
 
-  it("Growth minimum applies just over the boundary (501 doors → $2,000 floor)", () => {
+  it("Growth minimum: just over the boundary (501 doors → $2,129.25, above $2,125 floor)", () => {
     const r = computePmPortfolioMonthlyBillFromList(communities(501), PM_PLANS);
     expect(r.resolvedTierPlanKey).toBe("pm_growth");
-    expect(r.computedSubtotalCents).toBe(200400); // 501 × $4 = $2,004
-    expect(r.tierMinimumCents).toBe(200000);
+    expect(r.computedSubtotalCents).toBe(212925); // 501 × $4.25 = $2,129.25
+    expect(r.tierMinimumCents).toBe(212500); // $2,125
     expect(r.minimumAppliedCents).toBe(0); // door bill already > min
-    expect(r.finalTotalCents).toBe(200400);
+    expect(r.finalTotalCents).toBe(212925);
   });
 
-  it("Scale minimum tops up a low-end Scale portfolio (2,001 doors → $5,000 floor)", () => {
+  it("Scale minimum: low-end Scale portfolio (2,001 doors → $8,004, above $8,000 floor)", () => {
     const r = computePmPortfolioMonthlyBillFromList(communities(2001), PM_PLANS);
     expect(r.resolvedTierPlanKey).toBe("pm_scale");
-    expect(r.computedSubtotalCents).toBe(800400); // 2,001 × $4 = $8,004
-    expect(r.tierMinimumCents).toBe(500000);
+    expect(r.computedSubtotalCents).toBe(800400); // 2,001 × $4.00 = $8,004
+    expect(r.tierMinimumCents).toBe(800000); // $8,000
     expect(r.minimumAppliedCents).toBe(0);
     expect(r.finalTotalCents).toBe(800400);
   });
@@ -199,8 +209,8 @@ describe("computePmPortfolioMonthlyBillFromList — per-door model", () => {
     );
     expect(r.totalDoors).toBe(600);
     expect(r.resolvedTierPlanKey).toBe("pm_growth");
-    expect(r.computedSubtotalCents).toBe(240000); // 600 × $4 = $2,400
-    expect(r.finalTotalCents).toBe(240000);
+    expect(r.computedSubtotalCents).toBe(255000); // 600 × $4.25 = $2,550
+    expect(r.finalTotalCents).toBe(255000);
   });
 
   it("exact tier boundary at 500 stays in Starter", () => {
