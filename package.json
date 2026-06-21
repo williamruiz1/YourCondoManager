@@ -24,6 +24,8 @@
     "seed:plan-catalog": "tsx scripts/seed-plan-catalog.ts",
     "migrate:pm-stripe-per-door": "tsx scripts/migrate-pm-stripe-products-to-per-door.ts",
     "migrate:pm-stripe-per-door:dry": "tsx scripts/migrate-pm-stripe-products-to-per-door.ts --dry-run",
+    "migrate:sm-stripe-per-unit": "tsx scripts/migrate-sm-stripe-products-to-per-unit.ts",
+    "migrate:sm-stripe-per-unit:dry": "tsx scripts/migrate-sm-stripe-products-to-per-unit.ts --dry-run",
     "test": "vitest run",
     "test:client": "vitest run --config vitest.config.client.ts",
     "test:server": "vitest run --config vitest.config.server.ts",

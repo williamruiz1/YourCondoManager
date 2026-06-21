@@ -1,11 +1,13 @@
 /**
- * pricing-service.ts — Plan resolution and PM portfolio billing computation.
+ * pricing-service.ts — Plan resolution and portfolio billing computation.
  *
- * Two exported functions:
+ * Exported functions:
  *  - resolveSelfManagedPlan: match a unit count to the correct plan_catalog row
+ *  - computeSelfManagedMonthlyBill: compute monthly bill for ONE self-managed
+ *    community under the declining per-unit model (William-ratified 2026-06-21)
  *  - computePmPortfolioMonthlyBill: compute monthly bill for a PM portfolio
  *
- * Both functions accept a plans array parameter so they can be unit-tested
+ * All pure helpers accept a plans array parameter so they can be unit-tested
  * without a live database. The DB-backed overloads fetch from plan_catalog
  * automatically.
  */
@@ -54,6 +56,57 @@ export type PmPortfolioBillResult = {
   finalTotalCents: number;
   manualReviewRequired: boolean;
 };
+
+// ── Self-Managed types ───────────────────────────────────────────────────────
+
+export type SmMonthlyBillResult = {
+  /** The resolved plan_catalog row's stable key. */
+  planKey: string;
+  displayName: string;
+  /** Units in this community (the billed quantity for per-unit tiers). */
+  unitCount: number;
+  /** The pricing model of the resolved tier (flat_per_association | per_door | enterprise_manual). */
+  pricingModel: string;
+  /** The flat monthly amount for a flat tier (cents); null for per-unit / manual. */
+  flatAmountCents: number | null;
+  /** The per-unit rate (cents) for a per-unit tier; null for flat / manual. */
+  perUnitAmountCents: number | null;
+  /** units × perUnitAmountCents for per-unit tiers; the flat amount for flat tiers; 0 for manual. */
+  computedSubtotalCents: number;
+  /** The tier's monthly minimum / floor (cents); 0 if none. */
+  tierMinimumCents: number;
+  /** Top-up applied when a per-unit bill falls below the tier minimum. */
+  minimumAppliedCents: number;
+  /** The final monthly bill (cents); 0 for manual/enterprise. */
+  finalTotalCents: number;
+  /** Enterprise Concierge (251+) is billed manually — no auto bill. */
+  manualReviewRequired: boolean;
+};
+
+/**
+ * Canonical Self-Managed rates — DECLINING per-unit by community tier
+ * (William-ratified 2026-06-21). The per-unit rate FALLS as the community
+ * grows; the Small tier is a flat floor.
+ *
+ *   Small Community      (1–40 units)     $129/mo FLAT  → 12900¢ (floor)
+ *   Mid Community        (41–100)         $3.75/unit/mo → 375¢  (units × 375)
+ *   Large Community      (101–250)        $3.50/unit/mo → 350¢  (units × 350)
+ *   Enterprise Concierge (251+)           custom / negotiable — manual
+ *
+ * At each tier's entry the per-unit bill naturally exceeds the $129 floor
+ * (41 × $3.75 = $153.75; 101 × $3.50 = $353.50), so Mid/Large carry NO
+ * separate minimum — the $129 Small floor is the only minimum.
+ *
+ * Documented reference for the pure-function callers that pass their own plan
+ * list; the live values are sourced from plan_catalog rows at runtime.
+ */
+export const SM_FLAT_FLOOR_CENTS = 12900; // Small Community — $129/mo flat (the only minimum)
+export const SM_PER_UNIT_RATE_CENTS = {
+  mid_community: 375, // $3.75/unit/mo
+  large_community: 350, // $3.50/unit/mo
+  // small_community: flat $129 floor — no per-unit rate
+  // enterprise_concierge: custom / manual — no per-unit rate
+} as const;
 
 /**
  * Canonical PM per-door rates (cents) — DECLINING by tier (volume discount;
@@ -124,6 +177,72 @@ export function resolveSelfManagedPlanFromList(
   }
 
   return matched;
+}
+
+/**
+ * Pure function: compute a self-managed community's monthly bill from a provided
+ * plan list, under the DECLINING per-unit model (William-ratified 2026-06-21).
+ *
+ *   1. Resolve the tier by the community's unit count
+ *      (1–40 Small / 41–100 Mid / 101–250 Large / 251+ Enterprise).
+ *   2. Bill:
+ *        - flat_per_association (Small)  → flat monthlyAmountCents (the $129 floor)
+ *        - per_door (Mid / Large)        → max(units × tierPerUnitRate, tierMinimum)
+ *                                          (Mid/Large carry no separate minimum, so
+ *                                           the floor is 0 — the per-unit bill stands)
+ *        - enterprise_manual (Enterprise)→ manual; no auto bill (0)
+ *
+ * The per-unit rate is read off the resolved plan row (`tier.monthlyAmountCents`)
+ * — for per_door tiers that column holds the per-UNIT rate (375 / 350 ¢), exactly
+ * mirroring how the PM per-door tiers store the per-DOOR rate there.
+ */
+export function computeSelfManagedMonthlyBillFromList(
+  unitCount: number,
+  plans: PlanCatalog[],
+): SmMonthlyBillResult {
+  const tier = resolveSelfManagedPlanFromList(unitCount, plans);
+
+  const isManual = tier.pricingModel === "enterprise_manual";
+  const isPerUnit = tier.pricingModel === "per_door";
+
+  // Flat tiers (Small) bill the flat monthly amount; per-unit tiers (Mid/Large)
+  // bill units × the per-unit rate; manual (Enterprise) bills nothing here.
+  const flatAmountCents = isPerUnit || isManual ? null : (tier.monthlyAmountCents ?? 0);
+  const perUnitAmountCents = isPerUnit ? (tier.monthlyAmountCents ?? 0) : null;
+
+  const tierMinimumCents = isManual ? 0 : (tier.minimumAmountCents ?? 0);
+
+  let computedSubtotalCents = 0;
+  if (isManual) {
+    computedSubtotalCents = 0;
+  } else if (isPerUnit) {
+    computedSubtotalCents = unitCount * (perUnitAmountCents ?? 0);
+  } else {
+    // flat tier — the "subtotal" is the flat amount itself.
+    computedSubtotalCents = flatAmountCents ?? 0;
+  }
+
+  let minimumAppliedCents = 0;
+  let finalTotalCents = isManual ? 0 : computedSubtotalCents;
+
+  if (!isManual && computedSubtotalCents < tierMinimumCents) {
+    minimumAppliedCents = tierMinimumCents - computedSubtotalCents;
+    finalTotalCents = tierMinimumCents;
+  }
+
+  return {
+    planKey: tier.planKey,
+    displayName: tier.displayName,
+    unitCount,
+    pricingModel: tier.pricingModel,
+    flatAmountCents,
+    perUnitAmountCents,
+    computedSubtotalCents,
+    tierMinimumCents,
+    minimumAppliedCents,
+    finalTotalCents,
+    manualReviewRequired: isManual,
+  };
 }
 
 /**
@@ -246,6 +365,19 @@ async function fetchActivePlans(accountType: "self_managed" | "property_manager"
 export async function resolveSelfManagedPlan(unitCount: number): Promise<PlanCatalog> {
   const plans = await fetchActivePlans("self_managed");
   return resolveSelfManagedPlanFromList(unitCount, plans);
+}
+
+/**
+ * Compute the monthly bill for a single self-managed community.
+ * Queries plan_catalog for active self_managed plans, then applies the
+ * declining per-unit model (Small flat $129 floor · Mid $3.75/unit ·
+ * Large $3.50/unit · Enterprise manual).
+ */
+export async function computeSelfManagedMonthlyBill(
+  unitCount: number,
+): Promise<SmMonthlyBillResult> {
+  const plans = await fetchActivePlans("self_managed");
+  return computeSelfManagedMonthlyBillFromList(unitCount, plans);
 }
 
 /**
