@@ -3160,6 +3160,14 @@ export const amenities = pgTable("amenities", {
   maxDurationMinutes: integer("max_duration_minutes").notNull().default(240),
   requiresApproval: integer("requires_approval").notNull().default(0),
   isActive: integer("is_active").notNull().default(1),
+  // ── Amenity money loop (YCM Financial Core — Phase 3, migration 0042) ────────
+  // ADDITIVE / forward-only. These govern what a booking CAN charge. They default
+  // to 0 so every existing amenity stays free — no live behaviour changes. The
+  // money is INTEGER CENTS (never a float) so GL postings stay exact.
+  /** Usage fee charged when this amenity is booked (income). 0 == free. */
+  usageFeeCents: integer("usage_fee_cents").notNull().default(0),
+  /** Refundable deposit held on booking (a liability until refunded/forfeited). */
+  depositCents: integer("deposit_cents").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -3187,6 +3195,20 @@ export const amenityReservations = pgTable("amenity_reservations", {
   // the reservation has a complete audit trail.
   approvedBy: varchar("approved_by"),
   approvedAt: timestamp("approved_at"),
+  // ── Amenity money loop (YCM Financial Core — Phase 3, migration 0042) ────────
+  // ADDITIVE / forward-only. These snapshot the money STATE of this reservation
+  // — the fee charged, the deposit held, and how the deposit was resolved. They
+  // are the source facts the GL posting service reads to DERIVE balanced journal
+  // entries; the GL is parallel + flag-gated and never source-of-truth here.
+  // INTEGER CENTS throughout. Defaults keep every existing reservation a no-op.
+  /** Usage fee billed for this booking, in cents (snapshot of amenity fee). */
+  feeChargedCents: integer("fee_charged_cents").notNull().default(0),
+  /** Refundable deposit held on this booking, in cents (a liability). */
+  depositHeldCents: integer("deposit_held_cents").notNull().default(0),
+  /** Portion of the held deposit refunded on checkout/return, in cents. */
+  depositRefundedCents: integer("deposit_refunded_cents").notNull().default(0),
+  /** Portion of the held deposit forfeited (kept as income), in cents. */
+  depositForfeitedCents: integer("deposit_forfeited_cents").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
