@@ -23,22 +23,45 @@ export type PmComplexInput = {
 
 export type PmLineItem = {
   associationId: string;
+  /** Doors (units) managed in this community. */
   unitCount: number;
+  /** The portfolio-level per-door tier this community rolls up into. */
   planKey: string;
   displayName: string;
-  unitAmountCents: number | null;
+  /** Per-door rate (cents) for the resolved tier. Null for enterprise. */
+  perDoorAmountCents: number | null;
+  /** This community's share of the door-count bill: unitCount × perDoorAmountCents. */
+  computedLineCents: number;
   isEnterprise: boolean;
 };
 
 export type PmPortfolioBillResult = {
   lines: PmLineItem[];
+  /** Total doors managed across the whole PM portfolio. */
+  totalDoors: number;
+  /** The per-door tier the portfolio's TOTAL door count resolves into. */
+  resolvedTierPlanKey: string;
+  resolvedTierDisplayName: string;
+  /** Per-door rate (cents) for the resolved tier. Null for enterprise. */
+  perDoorAmountCents: number | null;
+  /** totalDoors × perDoorAmountCents (0 for enterprise / manual). */
   computedSubtotalCents: number;
+  /** The resolved tier's monthly minimum (cents); 0 if none. */
+  tierMinimumCents: number;
+  /** Top-up applied when the door-count bill falls below the tier minimum. */
   minimumAppliedCents: number;
+  /** max(computedSubtotalCents, tierMinimumCents). */
   finalTotalCents: number;
   manualReviewRequired: boolean;
 };
 
-const PM_MONTHLY_MINIMUM_CENTS = 30000; // $300/mo minimum
+/**
+ * Canonical PM per-door rate (cents). $4.00/door/mo FLAT across all tiers per
+ * pricing-model-v3 §2.1. Sourced from plan_catalog rows at runtime; this is the
+ * expected value the seed encodes, kept here as a documented reference for the
+ * pure-function callers that pass their own plan list.
+ */
+export const PM_PER_DOOR_RATE_CENTS = 400; // $4.00/door/mo
 
 // ── Helpers (pure, testable) ─────────────────────────────────────────────────
 
@@ -75,69 +98,94 @@ export function resolveSelfManagedPlanFromList(
 
 /**
  * Pure function: compute PM portfolio monthly bill from a provided plan list.
+ *
+ * Per-door model (pricing-model-v3 §2):
+ *   1. Sum total doors across every managed community.
+ *   2. Resolve the per-door TIER by the PORTFOLIO's total door count
+ *      (≤500 / 501–2,000 / 2,001–5,000 / 5,000+), NOT per-community.
+ *   3. bill = max(totalDoors × $4.00, tierMinimum).
+ *
+ * Tier MEMBERSHIP gates features + sets the minimum; the per-door RATE is flat
+ * ($4) across every non-enterprise tier. Enterprise (5,000+) is manual billing.
  */
 export function computePmPortfolioMonthlyBillFromList(
   complexes: PmComplexInput[],
   plans: PlanCatalog[],
 ): PmPortfolioBillResult {
   if (complexes.length === 0) {
-    throw new Error("At least one complex is required.");
+    throw new Error("At least one community is required.");
   }
 
   const pmPlans = plans.filter(
     (p) => p.accountType === "property_manager" && p.status === "active",
   );
 
-  const lines: PmLineItem[] = complexes.map((complex) => {
-    if (complex.unitCount < 1) {
+  // Validate doors up front + compute the portfolio total.
+  let totalDoors = 0;
+  for (const community of complexes) {
+    if (community.unitCount < 1) {
       throw new Error(
-        `Invalid unit count for association ${complex.associationId}: ${complex.unitCount}`,
+        `Invalid door count for association ${community.associationId}: ${community.unitCount}`,
       );
     }
+    totalDoors += community.unitCount;
+  }
 
-    const matched = pmPlans.find(
-      (p) =>
-        p.unitMin !== null &&
-        complex.unitCount >= p.unitMin &&
-        (p.unitMax === null || complex.unitCount <= p.unitMax),
-    );
-
-    if (!matched) {
-      throw new Error(
-        `No PM plan found for ${complex.unitCount} units (association ${complex.associationId}).`,
-      );
-    }
-
-    const isEnterprise = matched.pricingModel === "enterprise_manual";
-
-    return {
-      associationId: complex.associationId,
-      unitCount: complex.unitCount,
-      planKey: matched.planKey,
-      displayName: matched.displayName,
-      unitAmountCents: matched.monthlyAmountCents,
-      isEnterprise,
-    };
-  });
-
-  const manualReviewRequired = lines.some((l) => l.isEnterprise);
-
-  const computedSubtotalCents = lines.reduce(
-    (sum, l) => sum + (l.isEnterprise ? 0 : (l.unitAmountCents ?? 0)),
-    0,
+  // Resolve the tier by the PORTFOLIO's total door count.
+  const tier = pmPlans.find(
+    (p) =>
+      p.unitMin !== null &&
+      totalDoors >= p.unitMin &&
+      (p.unitMax === null || totalDoors <= p.unitMax),
   );
+
+  if (!tier) {
+    throw new Error(
+      `No PM plan found for a portfolio of ${totalDoors} total doors.`,
+    );
+  }
+
+  const isEnterprise = tier.pricingModel === "enterprise_manual";
+  const perDoorAmountCents = isEnterprise ? null : (tier.monthlyAmountCents ?? 0);
+
+  // Per-community line items reflect each community's share of the door-count
+  // bill at the portfolio's resolved per-door rate. (Enterprise → 0; manual.)
+  const lines: PmLineItem[] = complexes.map((community) => ({
+    associationId: community.associationId,
+    unitCount: community.unitCount,
+    planKey: tier.planKey,
+    displayName: tier.displayName,
+    perDoorAmountCents,
+    computedLineCents: isEnterprise
+      ? 0
+      : community.unitCount * (perDoorAmountCents ?? 0),
+    isEnterprise,
+  }));
+
+  const manualReviewRequired = isEnterprise;
+
+  const computedSubtotalCents = isEnterprise
+    ? 0
+    : totalDoors * (perDoorAmountCents ?? 0);
+
+  const tierMinimumCents = isEnterprise ? 0 : (tier.minimumAmountCents ?? 0);
 
   let minimumAppliedCents = 0;
   let finalTotalCents = computedSubtotalCents;
 
-  if (!manualReviewRequired && computedSubtotalCents < PM_MONTHLY_MINIMUM_CENTS) {
-    minimumAppliedCents = PM_MONTHLY_MINIMUM_CENTS - computedSubtotalCents;
-    finalTotalCents = PM_MONTHLY_MINIMUM_CENTS;
+  if (!manualReviewRequired && computedSubtotalCents < tierMinimumCents) {
+    minimumAppliedCents = tierMinimumCents - computedSubtotalCents;
+    finalTotalCents = tierMinimumCents;
   }
 
   return {
     lines,
+    totalDoors,
+    resolvedTierPlanKey: tier.planKey,
+    resolvedTierDisplayName: tier.displayName,
+    perDoorAmountCents,
     computedSubtotalCents,
+    tierMinimumCents,
     minimumAppliedCents,
     finalTotalCents,
     manualReviewRequired,

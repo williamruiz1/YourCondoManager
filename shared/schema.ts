@@ -3241,7 +3241,7 @@ export const planCatalogStatusEnum = pgEnum("plan_catalog_status", [
 ]);
 
 export const pricingModelEnum = pgEnum("pricing_model", [
-  "flat_per_association", "per_complex", "enterprise_manual",
+  "flat_per_association", "per_complex", "per_door", "enterprise_manual",
 ]);
 
 export const planCatalog = pgTable("plan_catalog", {
@@ -3258,6 +3258,10 @@ export const planCatalog = pgTable("plan_catalog", {
   monthlyAmountCents: integer("monthly_amount_cents"),
   annualEffectiveMonthlyCents: integer("annual_effective_monthly_cents"),
   annualBilledAmountCents: integer("annual_billed_amount_cents"),
+  // Per-tier monthly minimum (cents). For per_door tiers this is the floor the
+  // portfolio is billed when (totalDoors × monthlyAmountCents) falls below it.
+  // NULL for plans with no minimum.
+  minimumAmountCents: integer("minimum_amount_cents"),
   recommendedInSignup: integer("recommended_in_signup").notNull().default(0),
   version: integer("version").notNull().default(1),
   effectiveFrom: timestamp("effective_from").notNull(),
