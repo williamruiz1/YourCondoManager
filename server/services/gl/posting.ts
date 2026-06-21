@@ -69,6 +69,11 @@ export const CHART_OF_ACCOUNTS: readonly GlAccountDef[] = [
   acct("4010", "Reserve Fund Contributions", "income", "reserve"),
   acct("4445", "Amenity Rental Income", "income", "operating"),
   acct("4900", "Other Income / Adjustments", "income", "operating"),
+  // Liabilities (Phase 3 — amenity money loop)
+  // A refundable amenity deposit is the association's money to GIVE BACK, so it is
+  // a LIABILITY (not income) on the balance sheet from the moment it is held until
+  // it is refunded (clears to 0) or forfeited (reclassed to income).
+  acct("2300", "Amenity Deposits Held", "liability", "operating"),
   // Equity
   acct("3900", "Fund Balance — Operating", "equity", "operating"),
   acct("3910", "Fund Balance — Reserve", "equity", "reserve"),
