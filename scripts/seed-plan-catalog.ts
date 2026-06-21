@@ -78,9 +78,14 @@ const PLANS = [
     metadata: null,
   },
 
-  // ── PM Tiers — $4/door FLAT across all tiers (pricing-model-v3 §2.1) ───────
-  // Tier resolved by PORTFOLIO total doors; tier MEMBERSHIP gates features +
-  // sets the monthly minimum; per-door RATE is flat $4.00 everywhere.
+  // ── PM Tiers — DECLINING per-door rate by tier (volume discount;
+  //    William-ratified 2026-06-21). Tier resolved by PORTFOLIO total doors;
+  //    tier MEMBERSHIP gates features, sets the monthly minimum, AND sets a
+  //    DECLINING per-door rate that falls as the portfolio grows:
+  //      Starter $4.50/door · Growth $4.25/door · Scale $4.00/door · Ent custom.
+  //    Each minimum = per-door rate × the tier's ENTRY door count (continuous
+  //    ladder): Growth ≈ 501×$4.25 ≈ $2,125; Scale ≈ 2,001×$4.00 ≈ $8,000.
+  //    Starter keeps a small-account floor of $500.
   {
     plan_key: "pm_starter",
     account_type: "property_manager",
@@ -91,12 +96,12 @@ const PLANS = [
     unit_max: 500,
     currency: "USD",
     billing_frequency_supported: JSON.stringify(["monthly"]),
-    monthly_amount_cents: 400, // $4.00/door
-    minimum_amount_cents: 50000, // $500/mo minimum
+    monthly_amount_cents: 450, // $4.50/door
+    minimum_amount_cents: 50000, // $500/mo minimum (small-account floor)
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
     recommended_in_signup: 0,
-    version: 2,
+    version: 3,
     effective_from: new Date().toISOString(),
     effective_to: null,
     metadata: null,
@@ -111,12 +116,12 @@ const PLANS = [
     unit_max: 2000,
     currency: "USD",
     billing_frequency_supported: JSON.stringify(["monthly"]),
-    monthly_amount_cents: 400, // $4.00/door
-    minimum_amount_cents: 200000, // $2,000/mo minimum
+    monthly_amount_cents: 425, // $4.25/door
+    minimum_amount_cents: 212500, // $2,125/mo minimum (= 501 × $4.25, rounded)
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
     recommended_in_signup: 1, // center-stage tier
-    version: 2,
+    version: 3,
     effective_from: new Date().toISOString(),
     effective_to: null,
     metadata: null,
@@ -132,11 +137,11 @@ const PLANS = [
     currency: "USD",
     billing_frequency_supported: JSON.stringify(["monthly"]),
     monthly_amount_cents: 400, // $4.00/door
-    minimum_amount_cents: 500000, // $5,000/mo minimum
+    minimum_amount_cents: 800000, // $8,000/mo minimum (= 2,001 × $4.00, rounded)
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
     recommended_in_signup: 0,
-    version: 2,
+    version: 3,
     effective_from: new Date().toISOString(),
     effective_to: null,
     metadata: null,
@@ -151,12 +156,12 @@ const PLANS = [
     unit_max: null,
     currency: "USD",
     billing_frequency_supported: JSON.stringify(["monthly"]),
-    monthly_amount_cents: null, // custom — manual billing
-    minimum_amount_cents: 1250000, // from $12,500/mo (reference; billed manually)
+    monthly_amount_cents: null, // custom — manual billing (~from $4/door)
+    minimum_amount_cents: 1800000, // from $18,000/mo (reference; billed manually)
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
     recommended_in_signup: 0,
-    version: 2,
+    version: 3,
     effective_from: new Date().toISOString(),
     effective_to: null,
     metadata: null,
