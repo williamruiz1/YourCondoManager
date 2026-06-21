@@ -18975,16 +18975,40 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   });
 
   // POST /api/webhooks/plaid
-  // Receives Plaid webhook events. No auth required (Plaid calls this directly).
-  // Body is already parsed by the global express.json() middleware in index.ts.
+  // Receives Plaid webhook events. No auth required (Plaid calls this directly)
+  // — instead, the body is cryptographically verified via the Plaid-Verification
+  // JWT in production (see PlaidProvider.verifyWebhook). An UNVERIFIED webhook is
+  // REJECTED (401) and never processed: this is the security gate that lets us
+  // accept bank-transaction sync triggers from Plaid alone, not from any caller.
   app.post("/api/webhooks/plaid", async (req, res) => {
+    // STEP 1 — verify (in its own try/catch so a verification failure is a 401
+    // rejection, NOT a silent 200). The raw, unmodified body bytes are required:
+    // the signature binds to a SHA-256 of exactly what Plaid sent, so we must
+    // use req.rawBody (captured by express.json's verify hook) — re-serializing
+    // req.body would change byte order/spacing and fail the hash.
+    let event;
     try {
-      const rawBody = JSON.stringify(req.body);
-      const event = await bankFeedProvider.verifyWebhook(
+      const rawBody = Buffer.isBuffer((req as any).rawBody)
+        ? (req as any).rawBody.toString("utf8")
+        : JSON.stringify(req.body);
+      event = await bankFeedProvider.verifyWebhook(
         req.headers as Record<string, string>,
         rawBody,
       );
+    } catch (verifyError: any) {
+      // Verification failed (bad/missing signature, stale replay, body mismatch).
+      // Reject — do NOT process and do NOT 200. A 401 tells Plaid (and us via
+      // logs) the delivery was not trusted.
+      debug("[plaid][webhook] verification failed", verifyError);
+      return res
+        .status(401)
+        .json({ received: false, error: "webhook verification failed" });
+    }
 
+    // STEP 2 — process the verified event. Any error here is an INTERNAL error
+    // (DB hiccup, etc.); return 200 so Plaid doesn't retry-storm us — the 5-min
+    // sweep is the backstop that recovers a dropped event.
+    try {
       debug("[plaid][webhook] received", {
         webhookType: event.webhookType,
         webhookCode: event.webhookCode,
@@ -18992,9 +19016,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       });
 
       // TRANSACTIONS / SYNC_UPDATES_AVAILABLE — new transactions available.
-      //   founder-os#2478: webhook now triggers an immediate sync (debounced
-      //   per-item_id to 1/min) instead of being dropped on the floor. The
-      //   5-min automation sweep still runs as a backstop.
+      //   The cursor-based /transactions/sync path only needs this single code
+      //   (the legacy INITIAL/HISTORICAL/DEFAULT_UPDATE codes are get-era and no
+      //   longer drive the sync). Per Plaid's sync-migration guidance.
       // ITEM / ERROR              — mark connection needs_reauth.
       // ITEM / USER_PERMISSION_REVOKED — mark connection revoked.
       // ITEM / PENDING_EXPIRATION — warn admin (future: push notification).
@@ -19010,10 +19034,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           .where(eq(bankConnections.providerItemId, event.itemId));
       } else if (
         event.webhookType === "TRANSACTIONS" &&
-        (event.webhookCode === "SYNC_UPDATES_AVAILABLE" ||
-          event.webhookCode === "DEFAULT_UPDATE" ||
-          event.webhookCode === "INITIAL_UPDATE" ||
-          event.webhookCode === "HISTORICAL_UPDATE")
+        event.webhookCode === "SYNC_UPDATES_AVAILABLE"
       ) {
         // Fire-and-forget: don't make Plaid wait for the sync to complete.
         // The sync service writes its own bank_feed_sync_runs row + logs
@@ -19027,7 +19048,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       res.json({ received: true });
     } catch (error: any) {
       debug("[plaid][webhook] error", error);
-      // Return 200 so Plaid does not retry on our internal errors.
+      // Return 200 so Plaid does not retry on our internal (post-verification)
+      // errors. The webhook was authentic; the sweep backstop recovers it.
       res.status(200).json({ received: false, error: error.message });
     }
   });

@@ -12,6 +12,16 @@
  *   PLAID_ENV                — "sandbox" | "development" | "production"
  *   PLAID_WEBHOOK_URL        — URL Plaid will POST webhook events to
  *   PLAID_REDIRECT_URI       — OAuth redirect URI (used for Link OAuth flows)
+ *   PLAID_WEBHOOK_VERIFICATION — optional; "false" disables JWT verification
+ *                                (DANGEROUS — production refuses to boot if so)
+ *
+ * Production hardening (2026-06-21):
+ *   - verifyWebhook performs real JWT (JWS/ES256) verification in production
+ *     (see ./plaid-webhook-verify.ts) and throws on any failure.
+ *   - transactions are pulled via /transactions/sync (cursor-based);
+ *     getTransactions(/transactions/get) is retained only as deprecated.
+ *   - the env-flip guard (./plaid-env-guard.ts) refuses production unless the
+ *     verifier + prod keys are wired.
  */
 
 import {
@@ -21,6 +31,7 @@ import {
   Products,
   CountryCode,
   type Transaction,
+  type RemovedTransaction,
   type AccountBase,
 } from "plaid";
 import { debug } from "../../logger";
@@ -28,8 +39,11 @@ import type {
   BankFeedProvider,
   BankAccountSnapshot,
   BankTransactionSnapshot,
+  TransactionSyncResult,
   WebhookEvent,
 } from "./provider";
+import { verifyPlaidWebhook } from "./plaid-webhook-verify";
+import { shouldEnforceWebhookVerification } from "./plaid-env-guard";
 
 // ── Plaid client singleton ───────────────────────────────────────────────────
 
@@ -119,6 +133,18 @@ function mapTransaction(txn: Transaction): BankTransactionSnapshot {
       (txn.category && txn.category.length > 0 ? txn.category[0] : null),
     pending: txn.pending,
   };
+}
+
+/** Case-insensitive header lookup (Express lowercases, but be defensive). */
+function lookupHeaderCI(
+  headers: Record<string, string>,
+  name: string,
+): string {
+  const target = name.toLowerCase();
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === target) return v ?? "";
+  }
+  return "";
 }
 
 // ── PlaidProvider ────────────────────────────────────────────────────────────
@@ -212,22 +238,79 @@ export class PlaidProvider implements BankFeedProvider {
     return all;
   }
 
+  async syncTransactions(
+    accessToken: string,
+    cursor: string | null,
+  ): Promise<TransactionSyncResult> {
+    debug("[PlaidProvider] syncTransactions", { hasCursor: cursor != null });
+
+    const added: BankTransactionSnapshot[] = [];
+    const modified: BankTransactionSnapshot[] = [];
+    const removed: string[] = [];
+
+    // Plaid requires `null`/omitted cursor for the initial sync, then the
+    // returned cursor for each subsequent page. We drain `has_more` here so the
+    // caller persists exactly one final cursor per sync.
+    let nextCursor: string = cursor ?? "";
+    let hasMore = true;
+    // Safety ceiling: Plaid pages 100-500 txns; thousands of pages would be
+    // pathological. Bound the loop so a provider bug can't spin forever.
+    let pageGuard = 0;
+    const MAX_PAGES = 1000;
+
+    while (hasMore) {
+      if (pageGuard++ >= MAX_PAGES) {
+        throw new Error(
+          `Plaid syncTransactions exceeded ${MAX_PAGES} pages — aborting to avoid an unbounded loop`,
+        );
+      }
+
+      const response = await getClient().transactionsSync({
+        access_token: accessToken,
+        // Initial sync: omit cursor entirely. Subsequent: pass the latest.
+        ...(nextCursor ? { cursor: nextCursor } : {}),
+        options: {
+          include_personal_finance_category: true,
+        },
+      });
+
+      const data = response.data;
+      for (const txn of data.added as Transaction[]) {
+        added.push(mapTransaction(txn));
+      }
+      for (const txn of data.modified as Transaction[]) {
+        modified.push(mapTransaction(txn));
+      }
+      for (const rt of data.removed as RemovedTransaction[]) {
+        if (rt.transaction_id) removed.push(rt.transaction_id);
+      }
+
+      nextCursor = data.next_cursor;
+      hasMore = data.has_more;
+    }
+
+    return { added, modified, removed, nextCursor, hasMore: false };
+  }
+
   async verifyWebhook(
     headers: Record<string, string>,
     rawBody: string,
   ): Promise<WebhookEvent> {
     debug("[PlaidProvider] verifyWebhook");
 
-    // Plaid signs webhooks with JWT verification (JWK-based, non-trivial to verify
-    // without a full key-fetch cycle). In Sandbox, verification is skipped by
-    // Plaid (they send no signature). We parse and return the event; a future
-    // Production cutover should add JWT verification via plaid SDK's
-    // WebhookVerificationKeyGetResponse flow.
-    //
-    // The rawBody param is accepted for forward-compatibility with a proper
-    // JWT verification implementation.
-    void rawBody;
-    void headers;
+    // Production (and any env where verification is explicitly forced on):
+    // perform full JWT (JWS/ES256) signature + body-hash + replay verification.
+    // Plaid does NOT sign sandbox webhooks, so sandbox/development skip the
+    // signature check (unless PLAID_WEBHOOK_VERIFICATION forces it on). The
+    // decision is mechanical via the env guard — a production runtime cannot
+    // reach the parse step without first passing verification.
+    if (shouldEnforceWebhookVerification()) {
+      // Header names are case-insensitive over the wire; Express lowercases
+      // them. Look the value up case-insensitively for safety.
+      const jwt = lookupHeaderCI(headers, "plaid-verification");
+      // Throws on ANY verification failure — caller MUST reject the webhook.
+      await verifyPlaidWebhook(getClient(), jwt, rawBody);
+    }
 
     let parsed: Record<string, unknown>;
     try {
