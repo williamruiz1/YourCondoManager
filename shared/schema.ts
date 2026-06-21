@@ -3999,3 +3999,38 @@ export type InsertGlEntry = z.infer<typeof insertGlEntrySchema>;
 export type GlAccountType = (typeof glAccountTypeEnum.enumValues)[number];
 export type GlFund = (typeof glFundEnum.enumValues)[number];
 export type GlSide = (typeof glSideEnum.enumValues)[number];
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Financial statements — Phase 2 (DERIVED, forward-only, parallel, flag-gated).
+//
+// budget_line_gl_mappings — an OPTIONAL bridge letting a budget_line (planned
+// spend) carry a tie to a GL account code + fund, so the DERIVED budget-vs-actual
+// statement can join planned amounts to GL-derived actuals by (code, fund). The
+// mapping is optional enrichment: budget-vs-actual falls back to category-name
+// matching when a line is unmapped. ADDITIVE — touches no existing table/row.
+//
+// These statements are DERIVED and NOT source-of-truth. The owner ledger stays
+// the system of record; the GL stays parallel (GL_ENABLED default OFF).
+// ──────────────────────────────────────────────────────────────────────────────
+export const budgetLineGlMappings = pgTable(
+  "budget_line_gl_mappings",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    budgetLineId: varchar("budget_line_id").notNull().references(() => budgetLines.id),
+    /** The GL account code the planned amount tracks against (e.g. "5100"). */
+    glAccountCode: text("gl_account_code").notNull(),
+    /** operating | reserve — reuses the GL fund enum for exact segregation. */
+    fund: glFundEnum("fund").notNull().default("operating"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // One mapping per budget line.
+    uniqueLine: uniqueIndex("budget_line_gl_mappings_line_uq").on(table.budgetLineId),
+    byCodeFund: index("budget_line_gl_mappings_code_fund_idx").on(table.glAccountCode, table.fund),
+  }),
+);
+
+export const insertBudgetLineGlMappingSchema = createInsertSchema(budgetLineGlMappings).omit({ id: true, createdAt: true, updatedAt: true });
+export type BudgetLineGlMapping = typeof budgetLineGlMappings.$inferSelect;
+export type InsertBudgetLineGlMapping = z.infer<typeof insertBudgetLineGlMappingSchema>;

@@ -308,6 +308,10 @@ import {
 } from "./services/plaid-reconciliation";
 // #1340 — go-live readiness dashboard (admin /go-live-readiness).
 import { computeReadinessSnapshot, GATES } from "./services/go-live-checks";
+// YCM Financial Core Phase 2 — DERIVED financial statements (read-only, GL_ENABLED-gated).
+// These are DERIVED and NOT source-of-truth; the owner ledger stays the system of record.
+import { isGlEnabled } from "./services/gl/flag";
+import { buildFinancialStatements } from "./services/gl/statements-service";
 // #1783 — Security & Compliance Baseline public routes (/privacy, /security, /.well-known/security.txt).
 // Policy files live at docs/policies/ in the repo; the route handlers below
 // read them at request time (small files, 1-300 lines each — fine to read
@@ -4132,6 +4136,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req, parsed.associationId);
       const [row] = await db.insert(delinquencyThresholds).values(parsed).returning();
       res.status(201).json(row);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // YCM Financial Core Phase 2 — DERIVED financial statements (READ-ONLY).
+  //
+  // GET /api/financial/statements?associationId=...     → balance sheet + budget-vs-actual
+  // GET /api/financial/statements/balance-sheet?...     → balance sheet only
+  //
+  // GATED behind GL_ENABLED (default OFF). When the flag is off these return 404
+  // — the derived statements never surface until the GL is explicitly enabled.
+  // These statements are DERIVED and NOT source-of-truth; the owner ledger stays
+  // the system of record and these endpoints NEVER write any table.
+  // ──────────────────────────────────────────────────────────────────────────
+  app.get("/api/financial/statements", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      if (!isGlEnabled()) return res.status(404).json({ message: "Financial statements are not enabled (GL_ENABLED is off)." });
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const statements = await buildFinancialStatements(associationId);
+      res.json(statements);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/financial/statements/balance-sheet", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      if (!isGlEnabled()) return res.status(404).json({ message: "Financial statements are not enabled (GL_ENABLED is off)." });
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const statements = await buildFinancialStatements(associationId);
+      res.json({ associationId, generatedAt: statements.generatedAt, derived: true, balanceSheet: statements.balanceSheet, tieOut: statements.tieOut });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
