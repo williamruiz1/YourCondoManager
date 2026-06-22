@@ -420,7 +420,7 @@ export default function TermsOfServicePage({
               Solutions
             </h3>
             <ul className="space-y-4 text-sm">
-              {["Self-Managed Boards", "Enterprise Firms", "Resident Experience", "Developer API"].map(
+              {["Self-Managed Communities", "Enterprise Firms", "Resident Experience", "Developer API"].map(
                 (item, idx) => (
                   <li key={idx}>
                     <a

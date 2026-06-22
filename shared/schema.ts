@@ -3262,6 +3262,14 @@ export const planCatalog = pgTable("plan_catalog", {
   // portfolio is billed when (totalDoors × monthlyAmountCents) falls below it.
   // NULL for plans with no minimum.
   minimumAmountCents: integer("minimum_amount_cents"),
+  // LIVE Stripe ids for this tier (migration 0046). The public signup/subscribe
+  // route resolves the Stripe price off the unit/door-resolved plan_catalog row,
+  // so price IDs are never hardcoded in the frontend. stripePriceId is the
+  // recurring price the subscription line item uses (flat OR metered/usage);
+  // stripeProductId is the parent product (reference). NULL on manual/enterprise
+  // tiers (billed by hand).
+  stripePriceId: text("stripe_price_id"),
+  stripeProductId: text("stripe_product_id"),
   recommendedInSignup: integer("recommended_in_signup").notNull().default(0),
   version: integer("version").notNull().default(1),
   effectiveFrom: timestamp("effective_from").notNull(),

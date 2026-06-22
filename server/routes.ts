@@ -249,8 +249,10 @@ import {
   bankTransactions,
   goLiveGateAttestations,
   paymentTransactions,
+  planCatalog,
 } from "@shared/schema";
-import type { AdminRole } from "@shared/schema";
+import type { AdminRole, PlanCatalog } from "@shared/schema";
+import { resolveSelfManagedPlan } from "./services/pricing-service";
 import {
   listTogglesForAssociation,
   setToggle,
@@ -15788,33 +15790,67 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   );
 
   // POST /api/public/signup/start — create Stripe customer + checkout session
+  //
+  // Price resolution (rewritten — closes the "$30 stale fallback" bug):
+  // the Stripe price is resolved from the `plan_catalog` row for the user's
+  // RESOLVED tier, NOT from the legacy `STRIPE_PLAN_PRICE_IDS` secret blob.
+  //   • Self-managed → tier derived from unit count via resolveSelfManagedPlan()
+  //     (Small flat $129 / Mid $3.75-unit / Large $3.50-unit / Enterprise manual).
+  //   • Property-manager → tier pinned by the signup slug (Starter / Growth /
+  //     Scale), defaulting to pm_starter; price read off that plan_catalog row.
+  // Each plan_catalog row now carries `stripe_price_id` (migration 0046), so the
+  // signup never falls back to a stale per-complex $30 price for an unrecognized
+  // slug. Metered (per_door / per-unit) tiers omit `quantity` (Stripe forbids it
+  // on usage-based prices) and bill from usage records; flat tiers send qty 1.
   app.post("/api/public/signup/start", async (req, res) => {
     try {
       const { name, email, organizationName, associationType, unitCount, plan } = req.body as Record<string, string>;
       if (!name || !email || !organizationName || !plan) return res.status(400).json({ message: "name, email, organizationName, and plan are required" });
 
-      // PRICING STALE — "enterprise" plan key will change when PM tier naming is finalized.
-      // See docs/strategy/pricing-and-positioning.md
-      if (plan === "enterprise") return res.json({ enterpriseContact: true });
+      const { resolveSignupPlan } = await import("@shared/signup-plan-keys");
+      const resolved = resolveSignupPlan(plan);
+
+      // Enterprise (either track) → contact sales, no self-serve checkout.
+      if (resolved.track === "enterprise") return res.json({ enterpriseContact: true });
 
       const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
       if (!secretKey) return res.status(503).json({ message: "Billing not configured" });
 
-      const priceIdsRaw = await getSecret("STRIPE_PLAN_PRICE_IDS", "stripe_plan_price_ids");
-      const priceIds = priceIdsRaw ? JSON.parse(priceIdsRaw) as Record<string, string> : {};
-
-      // For self-managed plan, resolve the two-tier price based on unit count.
-      // Canonical: under 30 units → self-managed-small ($30/mo), 30+ → self-managed-large ($50/mo).
-      // Falls back to generic "self-managed" key if tier-specific keys are not set.
-      let priceId: string | undefined;
-      if (plan === "self-managed") {
-        const units = unitCount ? parseInt(unitCount as string, 10) : 0;
-        const tierKey = (!isNaN(units) && units >= 30) ? "self-managed-large" : "self-managed-small";
-        priceId = priceIds[tierKey] ?? priceIds["self-managed"];
+      // Resolve the plan_catalog row whose Stripe price the subscription uses.
+      let tier: PlanCatalog | undefined;
+      if (resolved.track === "self-managed") {
+        // Tier derived from the entered unit count (1–40 Small / 41–100 Mid /
+        // 101–250 Large). resolveSelfManagedPlan throws above 250 → Enterprise
+        // Concierge (manual). Default to 1 unit when omitted (lands on Small).
+        const units = unitCount ? parseInt(unitCount as string, 10) : 1;
+        if (isNaN(units) || units < 1) return res.status(400).json({ message: "A valid unit count is required for self-managed signup." });
+        try {
+          tier = await resolveSelfManagedPlan(units);
+        } catch {
+          // No self-serve tier (251+ units) → Enterprise Concierge, contact sales.
+          return res.json({ enterpriseContact: true });
+        }
       } else {
-        priceId = priceIds[plan];
+        // Property-manager — tier pinned by the slug (pm_starter / pm_growth /
+        // pm_scale). Read the active plan_catalog row by plan_key.
+        const targetKey = resolved.planKey ?? "pm_starter";
+        tier = await db
+          .select()
+          .from(planCatalog)
+          .where(and(eq(planCatalog.planKey, targetKey), eq(planCatalog.status, "active")))
+          .then((r) => r[0]);
       }
-      if (!priceId) return res.status(503).json({ message: "Plan pricing not configured" });
+
+      if (!tier) return res.status(503).json({ message: "Plan pricing not configured" });
+
+      // Manual / enterprise tiers (no self-serve price) → contact sales.
+      if (tier.pricingModel === "enterprise_manual" || !tier.stripePriceId) {
+        return res.json({ enterpriseContact: true });
+      }
+      const priceId = tier.stripePriceId;
+      // Per-door / per-unit tiers bill via Stripe usage (metered): the line item
+      // must NOT carry a quantity. Flat tiers (flat_per_association) send qty 1.
+      const isMetered = tier.pricingModel === "per_door";
 
       // Check for existing account
       const existingUser = await db.select().from(adminUsers).where(eq(adminUsers.email, email.toLowerCase().trim())).then(r => r[0]);
@@ -15824,6 +15860,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const customerParams = new URLSearchParams({ email: email.trim(), name: name.trim() });
       customerParams.set("metadata[organizationName]", organizationName);
       customerParams.set("metadata[plan]", plan);
+      customerParams.set("metadata[planKey]", tier.planKey);
       const customer = await stripeRequest("POST", "/customers", customerParams);
       const customerId = customer.id as string;
 
@@ -15841,7 +15878,6 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         payment_method_collection: "if_required",
         customer: customerId,
         "line_items[0][price]": priceId,
-        "line_items[0][quantity]": "1",
         // 4.4 Q5 (Wave 39, founder-ratified 2026-04-26): trial 14 → 21 days.
         // Rationale: 21d trial + 7d grace = 4 real weeks before hard-lock.
         // payment_method_collection stays "if_required" — no CC upfront.
@@ -15849,12 +15885,24 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         success_url: `${baseUrl}/signup/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/pricing`,
       });
+      // Flat (non-metered) tiers send quantity 1; metered (per-door / per-unit)
+      // tiers omit quantity entirely — Stripe rejects a quantity on usage prices.
+      // TODO(usage-reporting): for metered tiers, report per-unit/per-door usage
+      // records against this subscription item on the billing cycle (the bill =
+      // units × tier rate, computed by pricing-service). The subscription is
+      // CREATED here on the correct metered price; usage-record reporting is the
+      // follow-up so the first invoice reflects actual unit/door counts.
+      if (!isMetered) {
+        sessionParams.set("line_items[0][quantity]", "1");
+      }
       sessionParams.set("subscription_data[metadata][associationId]", assoc.id);
       sessionParams.set("subscription_data[metadata][adminUserId]", adminUser.id);
       sessionParams.set("subscription_data[metadata][plan]", plan);
+      sessionParams.set("subscription_data[metadata][planKey]", tier.planKey);
       sessionParams.set("metadata[associationId]", assoc.id);
       sessionParams.set("metadata[adminUserId]", adminUser.id);
       sessionParams.set("metadata[plan]", plan);
+      sessionParams.set("metadata[planKey]", tier.planKey);
 
       const session = await stripeRequest("POST", "/checkout/sessions", sessionParams);
       res.json({ checkoutUrl: session.url, sessionId: session.id });
@@ -16062,12 +16110,22 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         // a generic 500 when the platform isn't configured.
         const platformSecretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
         if (!platformSecretKey) return res.status(503).json({ message: "Billing not configured" });
-        const priceIdsRaw = await getSecret("STRIPE_PLAN_PRICE_IDS", "stripe_plan_price_ids");
-        const priceIds = priceIdsRaw ? (JSON.parse(priceIdsRaw) as Record<string, string>) : {};
-        const units = parsed.data.unitCount ?? 0;
-        const tierKey = units >= 30 ? "self-managed-large" : "self-managed-small";
-        const priceId = priceIds[tierKey] ?? priceIds["self-managed"];
-        if (!priceId) return res.status(503).json({ message: "Plan pricing not configured" });
+        // Resolve the Stripe price from plan_catalog by the entered unit count —
+        // same canonical path as the public signup route (closes the stale
+        // 30-unit / $30/$50 per-complex bug on this authenticated 2nd-HOA flow).
+        const units = parsed.data.unitCount ?? 1;
+        let smTier;
+        try {
+          smTier = await resolveSelfManagedPlan(units >= 1 ? units : 1);
+        } catch {
+          // 251+ units → Enterprise Concierge (manual). Route to sales.
+          return res.status(503).json({ message: "This community needs Enterprise Concierge — contact sales.", code: "ENTERPRISE_CONTACT" });
+        }
+        if (smTier.pricingModel === "enterprise_manual" || !smTier.stripePriceId) {
+          return res.status(503).json({ message: "This community needs Enterprise Concierge — contact sales.", code: "ENTERPRISE_CONTACT" });
+        }
+        const priceId = smTier.stripePriceId;
+        const isMeteredSm = smTier.pricingModel === "per_door";
 
         // Create Stripe customer (per-HOA — matches public signup pattern).
         const customerParams = new URLSearchParams({ email: adminEmail, name: adminEmail });
@@ -16108,15 +16166,21 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           payment_method_collection: "if_required",
           customer: customerId,
           "line_items[0][price]": priceId,
-          "line_items[0][quantity]": "1",
           "subscription_data[trial_period_days]": "21",
           success_url: successUrl,
           cancel_url: cancelUrl,
           client_reference_id: assoc.id,
         });
+        // Metered (per-unit Mid/Large) tiers omit quantity — Stripe forbids it on
+        // usage prices; the flat Small tier sends qty 1. (TODO usage-reporting:
+        // report per-unit usage records on the cycle, same as the public flow.)
+        if (!isMeteredSm) {
+          sessionParams.set("line_items[0][quantity]", "1");
+        }
         sessionParams.set("subscription_data[metadata][associationId]", assoc.id);
         sessionParams.set("subscription_data[metadata][adminUserId]", adminUserId);
         sessionParams.set("subscription_data[metadata][plan]", "self-managed");
+        sessionParams.set("subscription_data[metadata][planKey]", smTier.planKey);
         sessionParams.set("metadata[associationId]", assoc.id);
         sessionParams.set("metadata[adminUserId]", adminUserId);
         sessionParams.set("metadata[plan]", "self-managed");

@@ -94,15 +94,20 @@ describe("POST /api/admin/associations/start-checkout — source-scan invariants
 });
 
 describe("Public /api/public/signup/start — unchanged in shape (no regression)", () => {
+  // Window widened 4500 → 6500: the public signup/start route legitimately grew
+  // when price resolution moved to plan_catalog (closes the "$30 stale fallback"
+  // bug). The route's whole body (collision gate at ~2.9k chars, 21-day trial at
+  // ~4.6k, terminal res.json at ~6.1k) now fits in the 6500 window; the next
+  // route mount starts after that, so the slice stays scoped to this handler.
   it("still rejects email collisions with 409 (anonymous flow gate)", () => {
-    const handler = handlerRegion('"/api/public/signup/start"', 0, 4500);
+    const handler = handlerRegion('"/api/public/signup/start"', 0, 6500);
     expect(handler).toContain("An account with this email already exists.");
     // Locks the underlying check so reordering doesn't accidentally remove it.
     expect(handler).toMatch(/existingUser/);
   });
 
   it("still uses the 21-day trial (no regression from Wave 39)", () => {
-    const handler = handlerRegion('"/api/public/signup/start"', 0, 4500);
+    const handler = handlerRegion('"/api/public/signup/start"', 0, 6500);
     expect(handler).toContain('"subscription_data[trial_period_days]": "21"');
   });
 });

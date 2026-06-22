@@ -1,7 +1,7 @@
 // PRICING PAGE — v3 (Property-Manager track per-door rebuild)
 // Spec: ~/code/founder-os/wiki/products/ycm/pricing-model-v3.md §2 (locked 2026-05-15 voice session)
 //       + declining-tier amendment (William-ratified 2026-06-21).
-// Two-track layout: Property Managers (default) + Self-Managed Boards.
+// Two-track layout: Property Managers (default) + Self-Managed Communities.
 // PM track = DECLINING per-door rate by tier (volume discount): $4.50 (Starter) /
 //   $4.25 (Growth) / $4.00 (Scale) — the per-door rate FALLS as the portfolio grows.
 //   Tiers gate FEATURES + set the per-door rate + the monthly minimum.
@@ -466,7 +466,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             <em className="not-italic text-primary">how you operate</em>
           </h1>
           <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-            Whether you manage a portfolio of properties or run a self-managed board, you only pay for what you actually use. No per-seat licensing.
+            Whether you manage a portfolio of properties or run a self-managed community, you only pay for what you actually use. No per-seat licensing.
           </p>
         </header>
 
@@ -501,7 +501,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                     : "text-foreground/70 hover:text-foreground"
                 )}
               >
-                Self-Managed Boards
+                Self-Managed Communities
               </button>
             </div>
 
@@ -751,7 +751,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
           </section>
         )}
 
-        {/* ── SELF-MANAGED BOARDS TRACK ── */}
+        {/* ── SELF-MANAGED COMMUNITIES TRACK ── */}
         {activeTrack === "self-managed" && (
           <section
             id="track-sm-panel"
@@ -927,7 +927,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
             <div>
               <h3 className="font-semibold text-foreground mb-1.5">Which track am I?</h3>
               <p className="text-sm text-muted-foreground">
-                You're a <strong>Property Manager</strong> if you're a paid management company running multiple condo or HOA portfolios on behalf of associations. You're a <strong>Self-Managed Board</strong> if you're an HOA or condo association where the board members directly run operations (no outside property manager).
+                You're a <strong>Property Manager</strong> if you're a paid management company running multiple condo or HOA portfolios on behalf of associations. You're a <strong>Self-Managed Community</strong> if you're an HOA or condo association where the board members directly run operations (no outside property manager).
               </p>
             </div>
             <div>
@@ -937,7 +937,7 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               </p>
             </div>
             <div>
-              <h3 className="font-semibold text-foreground mb-1.5">How does pricing work for self-managed boards?</h3>
+              <h3 className="font-semibold text-foreground mb-1.5">How does pricing work for self-managed communities?</h3>
               <p className="text-sm text-muted-foreground">
                 Your <strong>per-unit rate drops as your community grows</strong>. <strong>Small communities</strong> (1–40 units) pay a flat <strong>$129/mo</strong>. <strong>Mid communities</strong> (41–100) pay <strong>$3.75/unit/mo</strong>, and <strong>Large communities</strong> (101–250) pay <strong>$3.50/unit/mo</strong> — so a 150-unit community is $525/mo and a 250-unit community is $875/mo. Above 250 units, Enterprise Concierge is custom / negotiable. The $129 Small flat rate is the only minimum.
               </p>

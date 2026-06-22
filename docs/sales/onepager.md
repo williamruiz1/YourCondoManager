@@ -20,7 +20,7 @@ Self-managed condo and HOA boards run a real business on spreadsheets and email.
 
 ## The solution
 
-Your Condo Manager is the single-pane platform built for self-managed boards — finances, governance, residents, and maintenance in one place, with no expensive management fees.
+Your Condo Manager is the single-pane platform built for self-managed communities — finances, governance, residents, and maintenance in one place, with no expensive management fees.
 
 - **Financials & banking** — Connect accounts with Plaid, track dues and reserves, and reconcile every transaction. No spreadsheets, no surprises at audit time.
 - **Board & owner workflow** — Run meetings, votes, work orders, and document sharing in one place. Owners get a portal to view their account and pay dues.
