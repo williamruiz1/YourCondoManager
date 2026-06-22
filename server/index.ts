@@ -20,6 +20,7 @@ import { fanOutCriticalAlerts } from "./alerts/notifications";
 import { runOnboardingReminderSweep } from "./services/onboarding-reminder-sweep";
 import { runBankFeedSweep } from "./services/bank-feed-sync";
 import { runPressingItemsSweep } from "./services/pressing-items/scanner";
+import { runUsageReconcileSweep } from "./services/usage-reconcile";
 import { sendPlatformAdminEmailNotification } from "./admin-notification-service";
 import { recoverInFlightJobs } from "./job-queue";
 import { log } from "./logger";
@@ -222,7 +223,7 @@ async function runAutomationSweep() {
   // per-subsystem functions (runDueRecurringCharges,
   // runAutomaticSpecialAssessmentInstallments) were retired alongside the
   // Q8 run-endpoint shims and no longer exist in the bundle.
-  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut, accessReviewReminder, onboardingReminderResult, bankFeedSweepResult, pressingItemsResult] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut, accessReviewReminder, onboardingReminderResult, bankFeedSweepResult, pressingItemsResult, usageReconcileResult] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
     storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
@@ -280,10 +281,20 @@ async function runAutomationSweep() {
       console.error("[pressing-items] sweep failed:", error);
       return { associationsScanned: 0, totalInserted: 0, totalUpdated: 0, totalResolved: 0 };
     }),
+    // usage-reporting (gap closed) — report current per-unit / per-door usage to
+    // the Stripe Billing Meters, once per billing period per active metered
+    // subscription. Idempotent (local ledger + deterministic Stripe identifier), so
+    // it is safe to call every sweep tick: subscriptions already reported for the
+    // current period are skipped. Returns null when Stripe is unconfigured. Wrapped
+    // so a Stripe 5xx can't jam the rest of automation.
+    runUsageReconcileSweep().catch((error: unknown) => {
+      console.error("[usage-reporting] reconcile sweep failed:", error);
+      return null;
+    }),
   ]);
 
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}, access-review-reminder fired=${accessReviewReminder.fired} (${accessReviewReminder.reason}), onboarding-reminders scanned=${onboardingReminderResult.scanned} sent=${onboardingReminderResult.sent} failed=${onboardingReminderResult.failed} skipped=${onboardingReminderResult.skipped}, bank-feed-sync scanned=${bankFeedSweepResult.scanned} synced=${bankFeedSweepResult.synced} skipped=${bankFeedSweepResult.skipped} failed=${bankFeedSweepResult.failed} txns=${bankFeedSweepResult.totalTransactions} matches=${bankFeedSweepResult.totalMatches}, pressing-items assoc=${pressingItemsResult.associationsScanned} inserted=${pressingItemsResult.totalInserted} updated=${pressingItemsResult.totalUpdated} resolved=${pressingItemsResult.totalResolved}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}, access-review-reminder fired=${accessReviewReminder.fired} (${accessReviewReminder.reason}), onboarding-reminders scanned=${onboardingReminderResult.scanned} sent=${onboardingReminderResult.sent} failed=${onboardingReminderResult.failed} skipped=${onboardingReminderResult.skipped}, bank-feed-sync scanned=${bankFeedSweepResult.scanned} synced=${bankFeedSweepResult.synced} skipped=${bankFeedSweepResult.skipped} failed=${bankFeedSweepResult.failed} txns=${bankFeedSweepResult.totalTransactions} matches=${bankFeedSweepResult.totalMatches}, pressing-items assoc=${pressingItemsResult.associationsScanned} inserted=${pressingItemsResult.totalInserted} updated=${pressingItemsResult.totalUpdated} resolved=${pressingItemsResult.totalResolved}, usage-reconcile ${usageReconcileResult ? `scanned=${usageReconcileResult.scanned} reported=${usageReconcileResult.reported} skipped=${usageReconcileResult.skipped} errors=${usageReconcileResult.errors}` : "skipped (stripe unconfigured)"}`,
     "automation",
   );
 

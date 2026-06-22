@@ -254,6 +254,8 @@ import {
 } from "@shared/schema";
 import type { AdminRole, PlanCatalog } from "@shared/schema";
 import { resolveSelfManagedPlan } from "./services/pricing-service";
+import { reportInitialUsageForAssociation, reconcileAllSubscriptionUsage } from "./services/usage-reconcile";
+import type { MeterPoster } from "./services/stripe-meter-reporting";
 import {
   listTogglesForAssociation,
   setToggle,
@@ -15360,6 +15362,12 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     return data;
   }
 
+  // MeterPoster adapter — lets the usage-reconcile service POST Stripe Billing-Meter
+  // events through the same platform Stripe credential as everything else (no key
+  // ever leaves stripeRequest). Used by the initial-usage report at provision time
+  // and by the periodic reconcile endpoint below.
+  const stripeMeterPost: MeterPoster = (path, body) => stripeRequest("POST", path, body);
+
   // Result returned from provisionWorkspace — callers that pass a `req` use this
   // to decide whether to proceed (session set, cookie on response) or trigger the
   // magic-link fallback (AC 20).
@@ -15439,6 +15447,26 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       if (!existingConfig) {
         await db.insert(tenantConfigs).values({ associationId, portalName: "Owner Portal", supportEmail: adminUser.email }).catch(() => {});
       }
+
+      // INITIAL metered-usage report (closes TODO usage-reporting). For metered
+      // tiers (per-unit self-managed Mid/Large, per-door PM) report the current
+      // unit/door count to the Stripe Billing Meter NOW, so the first invoice of the
+      // billing period reflects actual usage. Best-effort + non-blocking: a failed
+      // meter-event POST must NEVER fail provisioning — the periodic reconcile
+      // (POST /api/internal/billing/reconcile-usage) is the backstop that re-reports
+      // any subscription whose current period hasn't been reported yet. Flat tiers
+      // (Small $129) and manual/enterprise tiers resolve to a no-op here.
+      await reportInitialUsageForAssociation(associationId, stripeMeterPost)
+        .then((r) => {
+          if (r.status === "reported") {
+            console.log("[usage-reporting][initial] reported", { associationId, eventName: r.eventName, value: r.value });
+          } else if (r.status === "error") {
+            console.error("[usage-reporting][initial] failed (non-blocking; reconcile will retry)", { associationId, error: r.message });
+          }
+        })
+        .catch((err: any) => {
+          console.error("[usage-reporting][initial] threw (non-blocking; reconcile will retry)", { associationId, error: err?.message });
+        });
     }
 
     const result: ProvisionResult = {
@@ -15914,11 +15942,16 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       });
       // Flat (non-metered) tiers send quantity 1; metered (per-door / per-unit)
       // tiers omit quantity entirely — Stripe rejects a quantity on usage prices.
-      // TODO(usage-reporting): for metered tiers, report per-unit/per-door usage
-      // records against this subscription item on the billing cycle (the bill =
-      // units × tier rate, computed by pricing-service). The subscription is
-      // CREATED here on the correct metered price; usage-record reporting is the
-      // follow-up so the first invoice reflects actual unit/door counts.
+      //
+      // usage-reporting (gap closed): the subscription does not exist yet here —
+      // it is created by Stripe when this Checkout Session completes. The per-unit
+      // / per-door COUNT is therefore reported to the Stripe Billing Meter at
+      // provision time (provisionWorkspace → reportInitialUsageForAssociation, fired
+      // on checkout.session.completed) so the FIRST invoice reflects actual usage,
+      // and re-reported once per period by the periodic reconcile
+      // (POST /api/internal/billing/reconcile-usage). See server/services/
+      // usage-reconcile.ts + stripe-meter-reporting.ts. Nothing to report on the
+      // bare metered price here — quantity is correctly omitted.
       if (!isMetered) {
         sessionParams.set("line_items[0][quantity]", "1");
       }
@@ -16199,8 +16232,14 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           client_reference_id: assoc.id,
         });
         // Metered (per-unit Mid/Large) tiers omit quantity — Stripe forbids it on
-        // usage prices; the flat Small tier sends qty 1. (TODO usage-reporting:
-        // report per-unit usage records on the cycle, same as the public flow.)
+        // usage prices; the flat Small tier sends qty 1.
+        //
+        // usage-reporting (gap closed): same as the public signup flow — the
+        // subscription is created when this Checkout Session completes, so the
+        // per-unit count is reported to the Stripe Billing Meter at provision time
+        // (provisionWorkspace → reportInitialUsageForAssociation) and re-reported
+        // once per period by the reconcile (POST /api/internal/billing/
+        // reconcile-usage). See server/services/usage-reconcile.ts.
         if (!isMeteredSm) {
           sessionParams.set("line_items[0][quantity]", "1");
         }
@@ -16340,6 +16379,29 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       res.status(500).json({ message: e.message });
     }
   });
+
+  // POST /api/internal/billing/reconcile-usage — manual trigger of the metered
+  // usage reconcile (the same job the automation sweep runs every tick). Reports
+  // each active metered subscription's current per-unit / per-door count to its
+  // Stripe Billing Meter, once per billing period (idempotent; safe to re-run).
+  // Platform-admin only. Used operationally to force a re-report (e.g. after a
+  // count change) without waiting for the next sweep tick.
+  app.post(
+    "/api/internal/billing/reconcile-usage",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (_req, res) => {
+      try {
+        const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+        if (!secretKey) return res.status(503).json({ message: "Billing not configured" });
+        const summary = await reconcileAllSubscriptionUsage(stripeMeterPost);
+        return res.json(summary);
+      } catch (e: any) {
+        console.error("[usage-reporting][manual-reconcile] error", e?.message);
+        return res.status(500).json({ message: e?.message ?? "reconcile-failed" });
+      }
+    },
+  );
 
   app.get("/api/admin/roadmap", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (_req, res) => {
     try {
