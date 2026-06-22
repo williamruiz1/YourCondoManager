@@ -157,8 +157,24 @@ export class PlaidProvider implements BankFeedProvider {
     debug("[PlaidProvider] createLinkToken", { associationId: opts.associationId });
 
     const webhookUrl = process.env.PLAID_WEBHOOK_URL;
-    const redirectUri = process.env.PLAID_REDIRECT_URI;
 
+    // NOTE: We intentionally do NOT pass `redirect_uri` here.
+    //
+    // Supplying `redirect_uri` forces Plaid Link into OAuth mode, where some
+    // institutions hand the user off to the bank's site and then redirect back
+    // to our app — at which point the SPA must re-initialize Link with
+    // `receivedRedirectUri` (and re-fetch the same link_token it stored before
+    // the hand-off). That OAuth return flow is NOT implemented on the client
+    // (there is no `/api/plaid/oauth-return` route and `usePlaidLink` does not
+    // set `receivedRedirectUri`), so when `redirect_uri` was set Plaid Link
+    // threw "Internal error occurred" right after the loading bars.
+    //
+    // Running Link WITHOUT `redirect_uri` (standard, non-OAuth mode) works for
+    // the vast majority of US institutions and removes the broken OAuth round
+    // trip entirely. If/when full OAuth return handling is implemented on the
+    // client, re-add `redirect_uri` here. (`PLAID_REDIRECT_URI` is still
+    // registered in the Plaid dashboard and validated at token-create time;
+    // we simply don't request the OAuth flow.)
     const response = await getClient().linkTokenCreate({
       user: {
         // client_user_id must be unique and stable for the end user.
@@ -170,7 +186,6 @@ export class PlaidProvider implements BankFeedProvider {
       country_codes: [CountryCode.Us],
       language: "en",
       ...(webhookUrl ? { webhook: webhookUrl } : {}),
-      ...(redirectUri ? { redirect_uri: redirectUri } : {}),
     });
 
     return { linkToken: response.data.link_token };
