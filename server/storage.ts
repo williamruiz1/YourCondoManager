@@ -3813,6 +3813,7 @@ export interface IStorage {
     apply?: boolean;
   }): Promise<{ calculatedFee: number; daysLate: number; appliedEventId: string | null }>;
   getFinancialAccounts(associationId?: string): Promise<FinancialAccount[]>;
+  getFinancialAccount(id: string): Promise<FinancialAccount | undefined>;
   createFinancialAccount(data: InsertFinancialAccount): Promise<FinancialAccount>;
   updateFinancialAccount(id: string, data: Partial<InsertFinancialAccount>): Promise<FinancialAccount | undefined>;
   getFinancialCategories(associationId?: string): Promise<FinancialCategory[]>;
@@ -7456,6 +7457,15 @@ export class DatabaseStorage implements IStorage {
       .from(financialAccounts)
       .where(eq(financialAccounts.associationId, associationId))
       .orderBy(desc(financialAccounts.createdAt));
+  }
+
+  async getFinancialAccount(id: string): Promise<FinancialAccount | undefined> {
+    const [result] = await db
+      .select()
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, id))
+      .limit(1);
+    return result;
   }
 
   async createFinancialAccount(data: InsertFinancialAccount): Promise<FinancialAccount> {
