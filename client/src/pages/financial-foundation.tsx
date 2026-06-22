@@ -32,6 +32,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FinancialRecurringChargesContent } from "./financial-recurring-charges";
 
+// Format a cents integer as USD. Used for the synced balance on linked-bank
+// (source='plaid') Chart-of-Accounts rows.
+function formatCents(cents: number): string {
+  return (cents / 100).toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+
 const accountSchema = z.object({
   associationId: z.string().min(1),
   name: z.string().min(1),
@@ -214,20 +220,42 @@ export function FinancialFoundationContent() {
             ) : isMobile ? (
               <div className="space-y-3">
                 {(accounts ?? []).map((a) => (
-                  <div key={a.id} className="rounded-xl border p-4 space-y-2">
-                    <div className="text-sm font-medium">{a.name}</div>
+                  <div key={a.id} className="rounded-xl border p-4 space-y-2" data-testid={`card-account-${a.id}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-medium">{a.name}</div>
+                      {a.source === "plaid" && (
+                        <Badge variant="outline" data-testid={`badge-linked-${a.id}`}>Linked</Badge>
+                      )}
+                    </div>
                     <div className="text-xs text-muted-foreground">Code: {a.accountCode || "-"}</div>
                     <Badge variant="secondary">{a.accountType}</Badge>
+                    {a.source === "plaid" && a.currentBalanceCents != null && (
+                      <div className="text-sm font-semibold tabular-nums">{formatCents(a.currentBalanceCents)}</div>
+                    )}
                   </div>
                 ))}
               </div>
             ) : (
               // Wave 23 a11y: aria-label names this accounts table.
               <Table aria-label="Chart of accounts">
-                <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Code</TableHead><TableHead>Type</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Code</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Balance</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {(accounts ?? []).map((a) => (
-                    <TableRow key={a.id}><TableCell>{a.name}</TableCell><TableCell>{a.accountCode || "-"}</TableCell><TableCell><Badge variant="secondary">{a.accountType}</Badge></TableCell></TableRow>
+                    <TableRow key={a.id} data-testid={`row-account-${a.id}`}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {a.name}
+                          {a.source === "plaid" && (
+                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-linked-${a.id}`}>Linked</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{a.accountCode || "-"}</TableCell>
+                      <TableCell><Badge variant="secondary">{a.accountType}</Badge></TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {a.source === "plaid" && a.currentBalanceCents != null ? formatCents(a.currentBalanceCents) : "—"}
+                      </TableCell>
+                    </TableRow>
                   ))}
                 </TableBody>
               </Table>

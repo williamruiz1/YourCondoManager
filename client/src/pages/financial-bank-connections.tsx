@@ -392,7 +392,7 @@ export default function FinancialBankConnectionsPage() {
                 <EmptyState
                   icon={Receipt}
                   title="No transactions yet"
-                  description="Click Sync Now to pull the latest transactions from Plaid Sandbox."
+                  description="Click Sync Now to pull the latest transactions from your bank."
                 />
               ) : (
                 <Table>

@@ -41,6 +41,7 @@ import {
 import { bankFeedProvider } from "./bank-feed";
 import { decryptPlaidToken } from "./bank-feed/token-crypto";
 import { reconcileBankTransactions } from "./plaid-reconciliation";
+import { syncBridgedFinancialAccountBalance } from "./financial-account-bank-bridge";
 import { log } from "../logger";
 
 // Connections older than this are picked up by the sweep. Webhook + manual
@@ -165,6 +166,17 @@ async function syncOneConnectionLocked(
   try {
     const accessToken = decryptPlaidToken(conn.accessTokenEncrypted);
 
+    // Map providerAccountId → bank_accounts.id for this connection, so the COA
+    // bridge can key its balance refresh off the bank account id without a
+    // RETURNING clause on the balance update.
+    const connBankAccounts = await db
+      .select({ id: bankAccounts.id, providerAccountId: bankAccounts.providerAccountId })
+      .from(bankAccounts)
+      .where(eq(bankAccounts.bankConnectionId, conn.id));
+    const balanceAccountIdMap = new Map(
+      connBankAccounts.map((a) => [a.providerAccountId, a.id]),
+    );
+
     // Refresh account balances + record lastSyncedAt on each account.
     const accountSnapshots = await bankFeedProvider.getAccounts(accessToken);
     for (const acct of accountSnapshots) {
@@ -181,6 +193,20 @@ async function syncOneConnectionLocked(
             eq(bankAccounts.providerAccountId, acct.providerAccountId),
           ),
         );
+
+      // Bridge: keep the mirrored Chart-of-Accounts row's balance in sync so
+      // /app/financial/foundation reflects current balances. Best-effort — a
+      // bridge update must never fail the bank-feed sync. No-op if no mirror
+      // row exists for this account.
+      const bankAccountId = balanceAccountIdMap.get(acct.providerAccountId);
+      if (bankAccountId) {
+        try {
+          await syncBridgedFinancialAccountBalance(bankAccountId, acct.currentBalanceCents);
+        } catch (bridgeErr) {
+          const msg = bridgeErr instanceof Error ? bridgeErr.message : String(bridgeErr);
+          log(`[coa-bridge] balance sync skipped for ${bankAccountId} (non-fatal): ${msg}`);
+        }
+      }
     }
 
     // Fetch transaction deltas via Plaid /transactions/sync (P-3). The

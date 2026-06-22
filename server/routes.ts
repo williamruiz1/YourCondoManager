@@ -299,6 +299,7 @@ import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySetting
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
 import { bankFeedProvider } from "./services/bank-feed";
 import { syncBankFeedForItemId } from "./services/bank-feed-sync";
+import { bridgeLinkedBankAccounts, deactivateBridgedFinancialAccounts } from "./services/financial-account-bank-bridge";
 import {
   encryptPlaidToken as encryptPlaidTokenShared,
   decryptPlaidToken as decryptPlaidTokenShared,
@@ -4910,7 +4911,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const parsed = insertFinancialAccountSchema.parse(req.body);
       assertAssociationScope(req as AdminRequest, parsed.associationId);
-      const result = await storage.createFinancialAccount(parsed);
+      // The manual create path always produces a 'manual' row. Bridge fields
+      // (source/linkedBankAccountId/currentBalanceCents) are owned by the bank
+      // link, never by hand-entry — strip any client-supplied values.
+      const result = await storage.createFinancialAccount({
+        ...parsed,
+        source: "manual",
+        linkedBankAccountId: null,
+        currentBalanceCents: null,
+      });
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4920,11 +4929,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/financial/accounts/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "financial-account", getParam(req.params.id));
+      // Linked-bank (source='plaid') rows are owned by their bank connection —
+      // read-only here. The COA UI disables edit on them; this is the server gate.
+      const existing = await storage.getFinancialAccount(getParam(req.params.id));
+      if (existing && existing.source === "plaid") {
+        return res.status(409).json({ message: "Linked bank accounts are managed by the bank connection and can't be edited here.", code: "FINANCIAL_ACCOUNT_LINKED_READONLY" });
+      }
       const parsed = insertFinancialAccountSchema.partial().parse(req.body);
       if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
         assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
       }
-      const result = await storage.updateFinancialAccount(getParam(req.params.id), parsed);
+      // Never let a manual edit flip a row into a linked row or alter bridge fields.
+      const { source: _s, linkedBankAccountId: _l, currentBalanceCents: _b, ...safe } = parsed as Record<string, unknown>;
+      const result = await storage.updateFinancialAccount(getParam(req.params.id), safe);
       if (!result) return res.status(404).json({ message: "Account not found" });
       res.json(result);
     } catch (error: any) {
@@ -18793,6 +18810,28 @@ This is an automated enquiry from the Your Condo Manager marketing site.
             lastSyncedAt: new Date(),
           })),
         ).onConflictDoNothing();
+
+        // Bridge: mirror each linked bank account into the Chart of Accounts
+        // (financial_accounts) so it appears immediately on
+        // /app/financial/foundation as a balance-synced asset row. Best-effort:
+        // a bridge failure must never fail the bank link. Read the persisted
+        // bank_accounts rows (canonical ids/balances) so re-links upsert the
+        // same COA rows idempotently rather than duplicating.
+        try {
+          const linkedRows = await db
+            .select({
+              id: bankAccounts.id,
+              associationId: bankAccounts.associationId,
+              name: bankAccounts.name,
+              mask: bankAccounts.mask,
+              currentBalanceCents: bankAccounts.currentBalanceCents,
+            })
+            .from(bankAccounts)
+            .where(eq(bankAccounts.bankConnectionId, connection.id));
+          await bridgeLinkedBankAccounts(linkedRows);
+        } catch (bridgeErr: any) {
+          debug("[plaid][exchange-token] COA bridge skipped (non-fatal)", bridgeErr);
+        }
       }
 
       res.status(201).json({ connectionId: connection.id, accountCount: accounts.length });
@@ -19141,6 +19180,21 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         .update(bankConnections)
         .set({ status: "revoked", updatedAt: new Date() })
         .where(eq(bankConnections.id, id));
+
+      // Bridge: deactivate the mirrored Chart-of-Accounts rows for this
+      // connection's accounts so the COA doesn't keep orphaned linked rows.
+      // Soft (mark inactive, not deleted) — mirrors the connection's own
+      // revoke-not-delete philosophy. Best-effort: never fail the disconnect.
+      try {
+        const connAccounts = await db
+          .select({ id: bankAccounts.id })
+          .from(bankAccounts)
+          .where(eq(bankAccounts.bankConnectionId, id));
+        await deactivateBridgedFinancialAccounts(connAccounts.map((a) => a.id));
+      } catch (bridgeErr: any) {
+        debug("[plaid][disconnect] COA bridge deactivation skipped (non-fatal)", bridgeErr);
+      }
+
       res.json({ ok: true });
     } catch (error: any) {
       debug("[plaid][disconnect] error", error);

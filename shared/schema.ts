@@ -487,9 +487,25 @@ export const financialAccounts = pgTable("financial_accounts", {
   accountCode: text("account_code"),
   accountType: text("account_type").notNull().default("expense"),
   isActive: integer("is_active").notNull().default(1),
+  // Bank → Chart-of-Accounts bridge (migration 0047). `source` distinguishes a
+  // hand-entered COA row ('manual', the default — every pre-existing row) from
+  // one mirrored from a linked Plaid bank account ('plaid'). A 'plaid' row is
+  // owned by its bank connection: read-only in the COA UI and balance-synced.
+  source: text("source").notNull().default("manual"),
+  // FK to the bank account this row mirrors (only set when source='plaid'). The
+  // bridge upserts keyed on this column, so re-linking/re-syncing is idempotent.
+  linkedBankAccountId: varchar("linked_bank_account_id").references(() => bankAccounts.id),
+  // Synced balance for a linked bank row (cents, mirrors bankAccounts.current_balance_cents).
+  // Null for manual rows (manual COA entries don't carry a balance today).
+  currentBalanceCents: integer("current_balance_cents"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // One COA row per linked bank account — the upsert conflict target for the
+  // bridge (idempotent re-link/re-sync). Postgres allows many NULLs, so manual
+  // rows (linked_bank_account_id NULL) never collide.
+  linkedBankAccountUq: uniqueIndex("financial_accounts_linked_bank_account_uq").on(table.linkedBankAccountId),
+}));
 
 export const financialCategories = pgTable("financial_categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
