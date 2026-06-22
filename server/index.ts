@@ -472,18 +472,34 @@ app.use((req, res, next) => {
   // and runs once at boot. Lazy-import keeps it out of the cold-start
   // bundle and out of dist/index.cjs's main chunk.
   //
-  // founder-os#2472: the dynamic import specifier MUST include the `.js`
+  // founder-os#2472: the dynamic import specifier MUST include the file
   // extension. The production runtime is `node dist/index.cjs` (CJS), but
   // `package.json` declares `"type": "module"` and `await import()` invokes
   // Node's ESM resolver. ESM resolution requires explicit file extensions
-  // for relative paths — `await import("./seed")` throws
-  // ERR_MODULE_NOT_FOUND at boot, the error was being logged but silently
-  // swallowed, and the app continued serving empty tables. Cherry Hill data
-  // never landed in production as a direct consequence.
+  // for relative paths — a bare `./seed` throws ERR_MODULE_NOT_FOUND at
+  // boot, the error was being logged but silently swallowed, and the app
+  // continued serving empty tables. Cherry Hill data never landed in
+  // production as a direct consequence.
+  //
+  // Site audit 2026-06-22: the seed sibling is built in `format: "cjs"`
+  // (it uses `module.exports`/`require` internally). Under
+  // `"type": "module"`, Node parses a `.js` file as ESM — so importing the
+  // CJS-format `dist/seed.js` threw `ReferenceError: module is not defined
+  // in ES module scope` on every prod boot ("[boot] Seed failed to run").
+  // The build now emits the sibling as `dist/seed.cjs`, whose `.cjs`
+  // extension forces Node's CJS loader regardless of "type": "module".
+  //
+  // Dev (tsx via `script/dev.ts`) does NOT resolve a `.cjs` specifier back
+  // to `server/seed.ts` (verified), but it DOES resolve `.js`. So the
+  // specifier branches on the runtime: `./seed.cjs` for the prod bundle,
+  // `./seed.js` for the tsx dev runner. Both are in esbuild's `external`
+  // list so neither is inlined into the main bundle.
+  const seedModuleSpecifier =
+    process.env.NODE_ENV === "production" ? "./seed.cjs" : "./seed.js";
   void (async () => {
     try {
-      log("[boot] seed :: starting lazy import of ./seed.js", "startup");
-      const { seedDatabase } = await import("./seed.js");
+      log(`[boot] seed :: starting lazy import of ${seedModuleSpecifier}`, "startup");
+      const { seedDatabase } = await import(/* @vite-ignore */ seedModuleSpecifier);
       await seedDatabase();
       log("[boot] seed :: completed", "startup");
     } catch (err) {

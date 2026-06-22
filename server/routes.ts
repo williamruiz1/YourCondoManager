@@ -33,6 +33,7 @@ function safeInvalidateAlertCache(): void {
 }
 import { createAuthRestoreToken, getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import { revokePortalAccess as revokePortalAccessForOwnership } from "./de-provisioning";
+import { sendDemoRequestConfirmation } from "./demo-request-confirmation";
 import {
   sendAssociationAdminEmailNotification,
   sendDirectAdminEmailNotification,
@@ -10997,6 +10998,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           replyTo: email,
         });
       }
+
+      // Site audit 2026-06-22 (BLOCKER 1): send the submitter a "we got your
+      // message" confirmation — the modal promises one but none was sent.
+      // Best-effort + non-blocking: do NOT await (the response must not wait
+      // on it) and do NOT let a failure fail the submission (the enquiry
+      // already reached YCM via the admin notification above). The helper
+      // swallows + logs its own errors; the extra `.catch` guards the
+      // unawaited-promise rejection path.
+      void sendDemoRequestConfirmation({ email, name, associationName }).catch(() => {});
 
       res.json({ success: true, message: "Enquiry submitted successfully" });
     } catch (error: any) {
