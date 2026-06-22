@@ -43,6 +43,8 @@ const PLANS = [
     minimum_amount_cents: 12900, // $129/mo floor
     annual_effective_monthly_cents: 11610, // ~10% off → $116.10/mo equivalent
     annual_billed_amount_cents: 139320, // $1,393.20/yr (12 × $116.10)
+    stripe_price_id: "price_1TkqUKAoad3tIYtu3cRGnKA9", // LIVE — $129 flat
+    stripe_product_id: "prod_UkLAYuRGJoCriv",
     recommended_in_signup: 0,
     version: 2,
     effective_from: new Date().toISOString(),
@@ -63,6 +65,8 @@ const PLANS = [
     minimum_amount_cents: null, // no separate minimum (41 × $3.75 = $153.75 > $129 floor)
     annual_effective_monthly_cents: null, // per-unit annual computed at billing time (~10% off)
     annual_billed_amount_cents: null,
+    stripe_price_id: "price_1TkqULAoad3tIYtu3fU7JTxb", // LIVE — $3.75/unit metered
+    stripe_product_id: "prod_UkLAExI87koG5n",
     recommended_in_signup: 1, // "Most chosen" — center-stage tier
     version: 2,
     effective_from: new Date().toISOString(),
@@ -83,6 +87,8 @@ const PLANS = [
     minimum_amount_cents: null, // no separate minimum (101 × $3.50 = $353.50 > $129 floor)
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
+    stripe_price_id: "price_1TkqUMAoad3tIYtub6TWZvdx", // LIVE — $3.50/unit metered
+    stripe_product_id: "prod_UkLArcTqDSRFTD",
     recommended_in_signup: 0,
     version: 2,
     effective_from: new Date().toISOString(),
@@ -103,6 +109,8 @@ const PLANS = [
     minimum_amount_cents: null,
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
+    stripe_price_id: null, // manual / enterprise — no self-serve price
+    stripe_product_id: "prod_UkLAYN8Uh5Nf4f",
     recommended_in_signup: 0,
     version: 2,
     effective_from: new Date().toISOString(),
@@ -132,6 +140,8 @@ const PLANS = [
     minimum_amount_cents: 50000, // $500/mo minimum (small-account floor)
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
+    stripe_price_id: "price_1Tkpt4Aoad3tIYtusCTuDL63", // LIVE — PM Starter
+    stripe_product_id: "prod_UkKYLxHm8res10",
     recommended_in_signup: 0,
     version: 3,
     effective_from: new Date().toISOString(),
@@ -152,6 +162,8 @@ const PLANS = [
     minimum_amount_cents: 212500, // $2,125/mo minimum (= 501 × $4.25, rounded)
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
+    stripe_price_id: "price_1Tkpt5Aoad3tIYtu5clAM5pV", // LIVE — PM Growth
+    stripe_product_id: "prod_UkKYCEf1KQulZB",
     recommended_in_signup: 1, // center-stage tier
     version: 3,
     effective_from: new Date().toISOString(),
@@ -172,6 +184,8 @@ const PLANS = [
     minimum_amount_cents: 800000, // $8,000/mo minimum (= 2,001 × $4.00, rounded)
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
+    stripe_price_id: "price_1Tkpt6Aoad3tIYtup5EBImuB", // LIVE — PM Scale
+    stripe_product_id: "prod_UkKYDKxhK26oyL",
     recommended_in_signup: 0,
     version: 3,
     effective_from: new Date().toISOString(),
@@ -192,6 +206,8 @@ const PLANS = [
     minimum_amount_cents: 1800000, // from $18,000/mo (reference; billed manually)
     annual_effective_monthly_cents: null,
     annual_billed_amount_cents: null,
+    stripe_price_id: null, // manual / enterprise — no self-serve price
+    stripe_product_id: "prod_UkKY33jlwIF8ML",
     recommended_in_signup: 0,
     version: 3,
     effective_from: new Date().toISOString(),
@@ -212,13 +228,15 @@ async function seed() {
           unit_min, unit_max, currency, billing_frequency_supported,
           monthly_amount_cents, minimum_amount_cents,
           annual_effective_monthly_cents, annual_billed_amount_cents,
+          stripe_price_id, stripe_product_id,
           recommended_in_signup, version, effective_from, effective_to, metadata
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9,
           $10, $11,
           $12, $13,
-          $14, $15, $16, $17, $18
+          $14, $15,
+          $16, $17, $18, $19, $20
         )
         ON CONFLICT (plan_key) DO UPDATE SET
           account_type = EXCLUDED.account_type,
@@ -233,6 +251,8 @@ async function seed() {
           minimum_amount_cents = EXCLUDED.minimum_amount_cents,
           annual_effective_monthly_cents = EXCLUDED.annual_effective_monthly_cents,
           annual_billed_amount_cents = EXCLUDED.annual_billed_amount_cents,
+          stripe_price_id = EXCLUDED.stripe_price_id,
+          stripe_product_id = EXCLUDED.stripe_product_id,
           recommended_in_signup = EXCLUDED.recommended_in_signup,
           version = EXCLUDED.version,
           effective_from = EXCLUDED.effective_from,
@@ -244,6 +264,7 @@ async function seed() {
           plan.unit_min, plan.unit_max, plan.currency, plan.billing_frequency_supported,
           plan.monthly_amount_cents, plan.minimum_amount_cents,
           plan.annual_effective_monthly_cents, plan.annual_billed_amount_cents,
+          plan.stripe_price_id, plan.stripe_product_id,
           plan.recommended_in_signup, plan.version, plan.effective_from, plan.effective_to, plan.metadata,
         ],
       );

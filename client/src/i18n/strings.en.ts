@@ -1130,7 +1130,7 @@ export const strings = {
   "pricing.hero.headlineLead": "Run your association",
   "pricing.hero.headlineEmphasis": "without a property manager.",
   "pricing.hero.subhead":
-    "Flat monthly pricing per association. No per-unit fees, no contracts, no surprises. Built for self-managed boards who want a real system — not another spreadsheet.",
+    "Flat monthly pricing per association. No per-unit fees, no contracts, no surprises. Built for self-managed communities who want a real system — not another spreadsheet.",
 
   "pricing.cards.popular": "Most Popular",
   "pricing.cards.perMonth": "/month",
@@ -1140,7 +1140,7 @@ export const strings = {
 
   "pricing.cards.selfManaged.name": "Self-Managed",
   "pricing.cards.selfManaged.tagline":
-    "For self-managed Boards & Condo Associations.",
+    "For self-managed Communities & Condo Associations.",
   "pricing.cards.selfManaged.tierLowLabel": "Under 30 units:",
   "pricing.cards.selfManaged.tierHighLabel": "30 units or more:",
   "pricing.cards.selfManaged.feeNote": "Per association. No per-unit fees.",
@@ -1209,7 +1209,7 @@ export const strings = {
 
   "pricing.finalCta.title": "Ready to stop managing on spreadsheets?",
   "pricing.finalCta.body":
-    "Your Condo Manager gives self-managed boards a real system of record — dues collection, owner portal, maintenance tracking, and governance tools in one place. No property manager required.",
+    "Your Condo Manager gives self-managed communities a real system of record — dues collection, owner portal, maintenance tracking, and governance tools in one place. No property manager required.",
   "pricing.finalCta.startTrial": "Start 14-Day Free Trial",
   "pricing.finalCta.scheduleDemo": "Schedule a Demo",
 
