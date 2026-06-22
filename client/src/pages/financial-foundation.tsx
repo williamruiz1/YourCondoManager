@@ -102,8 +102,12 @@ export function FinancialFoundationContent() {
   });
 
   useEffect(() => {
-    accountForm.setValue("associationId", activeAssociationId, { shouldValidate: true });
-    categoryForm.setValue("associationId", activeAssociationId, { shouldValidate: true });
+    // Only set the value — do NOT validate. Validating here ran the whole-form
+    // resolver before the user had entered a name, throwing an uncaught
+    // ZodError ("name too_small") on page load. Validation fires on submit (and
+    // on change after the field is touched) via the zodResolver.
+    accountForm.setValue("associationId", activeAssociationId);
+    categoryForm.setValue("associationId", activeAssociationId);
   }, [accountForm, activeAssociationId, categoryForm]);
 
   const createAccount = useMutation({

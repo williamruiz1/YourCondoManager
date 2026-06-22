@@ -5,10 +5,16 @@
 // Owners pay via the portal-side flow (see portal-finances.tsx); this page
 // is for HOA-scope (associationId-scoped, portalAccessId NULL) accounts.
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePlaidLink } from "react-plaid-link";
-import type { PlaidLinkOnSuccess, PlaidLinkOnSuccessMetadata } from "react-plaid-link";
+import type {
+  PlaidLinkOnSuccess,
+  PlaidLinkOnSuccessMetadata,
+  PlaidLinkOnExit,
+  PlaidLinkError,
+  PlaidLinkOnExitMetadata,
+} from "react-plaid-link";
 import { apiRequest } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -201,16 +207,67 @@ export default function FinancialBankConnectionsPage() {
     [exchangeToken],
   );
 
+  // Capture the REAL Plaid error on exit. Previously onExit just cleared the
+  // token, so a Link failure surfaced to the user as a blank "Internal error
+  // occurred" with no captured detail. Now we log + toast Plaid's actual
+  // error_code / error_message / error_type, which is the discriminating data
+  // for diagnosing any future Link failure.
+  const onPlaidExit = useCallback<PlaidLinkOnExit>(
+    (error: PlaidLinkError | null, metadata: PlaidLinkOnExitMetadata) => {
+      if (error) {
+        // eslint-disable-next-line no-console -- surface the real Plaid error for support/debugging
+        console.error("[plaid][link][exit] error", {
+          error_code: error.error_code,
+          error_message: error.error_message,
+          error_type: error.error_type,
+          display_message: error.display_message,
+          request_id: metadata?.request_id,
+          link_session_id: metadata?.link_session_id,
+        });
+        toast({
+          title: "Plaid Link couldn't finish",
+          description:
+            error.display_message ||
+            error.error_message ||
+            `${error.error_type ?? "ERROR"}: ${error.error_code ?? "unknown"}`,
+          variant: "destructive",
+        });
+      }
+      setLinkToken(null);
+    },
+    [toast],
+  );
+
   const { open: openPlaid, ready: plaidReady } = usePlaidLink({
     token: linkToken,
     onSuccess: onPlaidSuccess,
-    onExit: () => setLinkToken(null),
+    onExit: onPlaidExit,
   });
 
-  // Auto-open Plaid Link as soon as the token is fetched and the SDK is ready.
-  if (linkToken && plaidReady) {
-    setTimeout(() => openPlaid(), 0);
-  }
+  // Auto-open Plaid Link exactly ONCE per fetched token, as soon as the SDK is
+  // ready. The previous implementation called `setTimeout(open, 0)` directly in
+  // the render body, so it scheduled an `open()` on EVERY re-render while
+  // `linkToken && plaidReady` were truthy. React re-renders many times, so this
+  // produced repeated open() calls — Plaid logged "call to open() but Link is
+  // already open. This is a noop." and the churn surfaced as
+  // "Something went wrong — Internal error occurred."
+  //
+  // The fix: a useEffect gated on (token, ready) that opens once and a ref that
+  // records which token we've already opened, so a re-render (or a re-created
+  // handler) cannot re-trigger open() for the same session.
+  const openedForTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!linkToken || !plaidReady) return;
+    if (openedForTokenRef.current === linkToken) return;
+    openedForTokenRef.current = linkToken;
+    openPlaid();
+  }, [linkToken, plaidReady, openPlaid]);
+
+  // Reset the open-once guard whenever the token is cleared (on exit/success),
+  // so the next "Connect Bank Account" click opens a fresh Link session.
+  useEffect(() => {
+    if (!linkToken) openedForTokenRef.current = null;
+  }, [linkToken]);
 
   const uniqueConnectionIds = Array.from(new Set(accounts.map((a) => a.bankConnectionId)));
 
