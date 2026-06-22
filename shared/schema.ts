@@ -2988,6 +2988,16 @@ export const platformSubscriptions = pgTable("platform_subscriptions", {
   unitTier: integer("unit_tier"),
   unitCount: integer("unit_count"),
   adminEmail: text("admin_email").notNull(),
+  // Stripe metered-usage reporting ledger (migration 0048). For metered tiers
+  // (per-unit self-managed Mid/Large, per-door PM) the reconcile reports the
+  // current unit/door count to the Stripe Billing Meter once per billing period.
+  // These columns are the local idempotency anchor: a subscription whose
+  // lastUsageReportedPeriodEnd matches the live current_period_end is already
+  // reported for this period → the reconcile skips it (never double-reports to a
+  // SUM meter). NULL on flat tiers (never metered) and on never-yet-reported rows.
+  lastUsageReportedValue: integer("last_usage_reported_value"),
+  lastUsageReportedPeriodEnd: timestamp("last_usage_reported_period_end"),
+  lastUsageReportedAt: timestamp("last_usage_reported_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
