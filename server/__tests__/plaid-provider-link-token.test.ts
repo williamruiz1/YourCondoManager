@@ -1,17 +1,25 @@
 /**
  * PlaidProvider.createLinkToken tests.
  *
- * Regression guard for the production "Internal error occurred" bug: when the
- * link token was created WITH `redirect_uri`, Plaid Link was forced into OAuth
- * mode, but the client never implemented the OAuth return flow
- * (`receivedRedirectUri` + a `/api/plaid/oauth-return` route), so Link threw an
- * internal error right after the loading bars.
+ * OAuth support (2026-06-23): OAuth institutions (Chase, Bank of America, Wells
+ * Fargo, and most large US banks) REQUIRE `redirect_uri` on the link token.
+ * Without it Plaid returns "You have not been enabled for this institution"
+ * and the OAuth hand-off can never run.
  *
- * The fix is to run Link in standard (non-OAuth) mode by NOT requesting
- * `redirect_uri` at token-create time. These tests pin that:
- *   1. createLinkToken NEVER sends `redirect_uri`, even when PLAID_REDIRECT_URI is set.
- *   2. The webhook IS still sent when PLAID_WEBHOOK_URL is set.
- *   3. The core token-create config is intact (client_name, products, country, user).
+ * A prior fix had DROPPED `redirect_uri` to stop a "double-open / forced OAuth"
+ * crash that was actually caused by the client never implementing the OAuth
+ * return flow. That made non-OAuth banks work but broke OAuth banks. The correct
+ * fix — now in place — is to implement the client OAuth return flow
+ * (persist link_token across the redirect, re-init usePlaidLink with
+ * `receivedRedirectUri`, auto-open) AND set `redirect_uri` here.
+ *
+ * These tests pin the corrected behavior:
+ *   1. createLinkToken SENDS `redirect_uri` when PLAID_REDIRECT_URI is set.
+ *   2. createLinkToken OMITS `redirect_uri` when PLAID_REDIRECT_URI is NOT set
+ *      (so a sandbox/dev install with no redirect configured still works in
+ *      standard non-OAuth mode).
+ *   3. The webhook IS still sent when PLAID_WEBHOOK_URL is set.
+ *   4. The core token-create config is intact (client_name, products, country, user).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,7 +51,7 @@ import { PlaidProvider } from "../services/bank-feed/plaid-provider";
 const ENV_KEYS = ["PLAID_REDIRECT_URI", "PLAID_WEBHOOK_URL"] as const;
 const saved: Record<string, string | undefined> = {};
 
-describe("PlaidProvider.createLinkToken (non-OAuth Link mode)", () => {
+describe("PlaidProvider.createLinkToken (OAuth-capable Link mode)", () => {
   beforeEach(() => {
     linkTokenCreateCalls = [];
     for (const k of ENV_KEYS) saved[k] = process.env[k];
@@ -56,7 +64,7 @@ describe("PlaidProvider.createLinkToken (non-OAuth Link mode)", () => {
     vi.clearAllMocks();
   });
 
-  it("does NOT send redirect_uri even when PLAID_REDIRECT_URI is set (avoids broken OAuth flow)", async () => {
+  it("SENDS redirect_uri when PLAID_REDIRECT_URI is set (required for OAuth banks)", async () => {
     process.env.PLAID_REDIRECT_URI = "https://app.yourcondomanager.org/api/plaid/oauth-return";
     process.env.PLAID_WEBHOOK_URL = "https://app.yourcondomanager.org/api/webhooks/plaid";
 
@@ -66,7 +74,21 @@ describe("PlaidProvider.createLinkToken (non-OAuth Link mode)", () => {
     expect(linkToken).toBe("link-sandbox-test-token");
     expect(linkTokenCreateCalls).toHaveLength(1);
     const req = linkTokenCreateCalls[0];
-    // The bug: redirect_uri forced OAuth mode with no client return handling.
+    // OAuth institutions fail without redirect_uri ("not been enabled for this
+    // institution"). The client implements the receivedRedirectUri return flow.
+    expect(req.redirect_uri).toBe(
+      "https://app.yourcondomanager.org/api/plaid/oauth-return",
+    );
+  });
+
+  it("OMITS redirect_uri when PLAID_REDIRECT_URI is NOT set (standard non-OAuth mode)", async () => {
+    delete process.env.PLAID_REDIRECT_URI;
+    process.env.PLAID_WEBHOOK_URL = "https://app.yourcondomanager.org/api/webhooks/plaid";
+
+    const provider = new PlaidProvider();
+    await provider.createLinkToken({ associationId: "assoc-1b", userId: "user-1b" });
+
+    const req = linkTokenCreateCalls[0];
     expect(req).not.toHaveProperty("redirect_uri");
     expect(req.redirect_uri).toBeUndefined();
   });
@@ -95,7 +117,7 @@ describe("PlaidProvider.createLinkToken (non-OAuth Link mode)", () => {
     expect(req.products).toEqual(["transactions"]);
     expect(req.country_codes).toEqual(["US"]);
     expect(req.user.client_user_id).toBe("assoc-3:user-3");
-    // No webhook set in env this time → omitted.
+    // No webhook / redirect set in env this time → both omitted.
     expect(req).not.toHaveProperty("webhook");
     expect(req).not.toHaveProperty("redirect_uri");
   });

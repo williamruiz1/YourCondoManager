@@ -16,6 +16,12 @@ import type {
   PlaidLinkOnExitMetadata,
 } from "react-plaid-link";
 import { apiRequest } from "@/lib/queryClient";
+import {
+  isPlaidOAuthReturn,
+  readSavedOAuthToken,
+  saveOAuthToken,
+  clearOAuthToken,
+} from "@/lib/plaid-oauth";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
@@ -75,6 +81,34 @@ export default function FinancialBankConnectionsPage() {
   const qc = useQueryClient();
   const [linkToken, setLinkToken] = useState<string | null>(null);
 
+  // OAuth round-trip state. `oauthReturn` is captured once at first render from
+  // the URL (it's a redirect-return navigation), and `receivedRedirectUri` is
+  // the full return URL that Plaid Link needs to resume the OAuth session.
+  const [oauthReturn] = useState<boolean>(() => isPlaidOAuthReturn());
+  const [receivedRedirectUri, setReceivedRedirectUri] = useState<string | undefined>(
+    () => (isPlaidOAuthReturn() && typeof window !== "undefined" ? window.location.href : undefined),
+  );
+
+  // On an OAuth return, restore the link_token we saved before the hand-off so
+  // usePlaidLink can resume the SAME Link session. Runs once on mount.
+  useEffect(() => {
+    if (!oauthReturn) return;
+    const saved = readSavedOAuthToken();
+    if (saved) {
+      setLinkToken(saved);
+    } else {
+      // Token vanished (cleared / different device / private mode). Can't resume
+      // OAuth — surface it instead of opening an empty Link.
+      toast({
+        title: "Couldn't finish bank connection",
+        description:
+          "The Plaid session expired during the bank redirect. Please click Connect Bank Account to start again.",
+        variant: "destructive",
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, []);
+
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<ConnectedAccount[]>({
     queryKey: ["/api/plaid/accounts", activeAssociationId],
     queryFn: async () => {
@@ -101,7 +135,13 @@ export default function FinancialBankConnectionsPage() {
       const res = await apiRequest("POST", "/api/plaid/create-link-token", { associationId: activeAssociationId });
       return res.json() as Promise<{ linkToken: string }>;
     },
-    onSuccess: (data) => setLinkToken(data.linkToken),
+    onSuccess: (data) => {
+      // Persist the token BEFORE Link opens so it survives an OAuth redirect
+      // round-trip (the bank hand-off reloads the page). Non-OAuth banks never
+      // redirect, so the token is simply cleared on success/exit below.
+      saveOAuthToken(data.linkToken);
+      setLinkToken(data.linkToken);
+    },
     onError: (err: Error) => toast({ title: "Could not start Plaid Link", description: err.message, variant: "destructive" }),
   });
 
@@ -117,6 +157,7 @@ export default function FinancialBankConnectionsPage() {
     },
     onSuccess: () => {
       toast({ title: "Bank connected" });
+      clearOAuthToken();
       setLinkToken(null);
       qc.invalidateQueries({ queryKey: ["/api/plaid/accounts", activeAssociationId] });
     },
@@ -233,15 +274,23 @@ export default function FinancialBankConnectionsPage() {
           variant: "destructive",
         });
       }
+      clearOAuthToken();
       setLinkToken(null);
     },
     [toast],
   );
 
+  // `receivedRedirectUri` is passed ONLY on an OAuth return. On the initial
+  // (non-return) Link open it MUST be undefined — passing it on a fresh open
+  // makes the SDK try to resume a non-existent OAuth session. This single
+  // usePlaidLink instance therefore serves BOTH paths: standard banks (no
+  // receivedRedirectUri, no redirect) and OAuth banks (receivedRedirectUri set
+  // after the round-trip).
   const { open: openPlaid, ready: plaidReady } = usePlaidLink({
     token: linkToken,
     onSuccess: onPlaidSuccess,
     onExit: onPlaidExit,
+    ...(receivedRedirectUri ? { receivedRedirectUri } : {}),
   });
 
   // Auto-open Plaid Link exactly ONCE per fetched token, as soon as the SDK is
@@ -261,12 +310,35 @@ export default function FinancialBankConnectionsPage() {
     if (openedForTokenRef.current === linkToken) return;
     openedForTokenRef.current = linkToken;
     openPlaid();
-  }, [linkToken, plaidReady, openPlaid]);
 
-  // Reset the open-once guard whenever the token is cleared (on exit/success),
-  // so the next "Connect Bank Account" click opens a fresh Link session.
+    // On an OAuth return, strip the oauth_state_id / plaidOAuthReturn params
+    // from the URL once Link has consumed them, so a later refresh of this page
+    // doesn't re-enter return mode against a now-stale session.
+    if (oauthReturn && typeof window !== "undefined") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [linkToken, plaidReady, openPlaid, oauthReturn]);
+
+  // Reset the open-once guard + the received-redirect URI whenever the token is
+  // cleared AFTER a session ran (on exit/success), so the next "Connect Bank
+  // Account" click opens a fresh, NON-OAuth-return Link session.
+  //
+  // The `hadTokenRef` guard is load-bearing: on an OAuth return `linkToken`
+  // starts null and is restored a tick later by the mount effect. Without this
+  // guard, this effect would fire on that initial null and wipe
+  // `receivedRedirectUri` BEFORE the restored token could use it, breaking the
+  // OAuth resume. We only reset once a token has actually been set at least once.
+  const hadTokenRef = useRef(false);
   useEffect(() => {
-    if (!linkToken) openedForTokenRef.current = null;
+    if (linkToken) {
+      hadTokenRef.current = true;
+      return;
+    }
+    if (!hadTokenRef.current) return; // initial null (incl. pre-restore OAuth return) — don't reset
+    if (!linkToken) {
+      openedForTokenRef.current = null;
+      setReceivedRedirectUri(undefined);
+    }
   }, [linkToken]);
 
   const uniqueConnectionIds = Array.from(new Set(accounts.map((a) => a.bankConnectionId)));
