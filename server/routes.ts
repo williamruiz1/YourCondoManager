@@ -18830,6 +18830,34 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
   });
 
+  // GET /api/plaid/oauth-return
+  // OAuth landing route. This path IS the `redirect_uri` registered with Plaid
+  // (PLAID_REDIRECT_URI = https://app.yourcondomanager.org/api/plaid/oauth-return).
+  //
+  // When an OAuth institution (Chase, BofA, Wells Fargo, …) finishes the bank
+  // hand-off, Plaid redirects the user's BROWSER here with an `oauth_state_id`
+  // query param. We are NOT an API/JSON endpoint in this flow — the browser is
+  // navigating — so we 302 the browser into the SPA bank-connections page,
+  // preserving the exact query string. The client then re-initializes
+  // `usePlaidLink` with `receivedRedirectUri = window.location.href` and the
+  // saved `link_token` to complete the OAuth flow.
+  //
+  // This route is intentionally UNAUTHENTICATED: Plaid hits it as a top-level
+  // browser navigation (no app session cookie guarantees), and it does nothing
+  // sensitive — it only redirects into the SPA, which re-establishes the user
+  // session and completes Link client-side. The `?plaidOAuthReturn=1` flag tells
+  // the page to enter return mode without depending on Plaid's param name.
+  app.get("/api/plaid/oauth-return", (req, res) => {
+    const qs = req.originalUrl.includes("?")
+      ? req.originalUrl.slice(req.originalUrl.indexOf("?") + 1)
+      : "";
+    const sep = qs ? "&" : "";
+    res.redirect(
+      302,
+      `/app/financial/bank-connections?${qs}${sep}plaidOAuthReturn=1`,
+    );
+  });
+
   // POST /api/plaid/exchange-token
   // Exchanges public_token (from Link onSuccess) → access_token, persists connection.
   app.post("/api/plaid/exchange-token", requireAdmin, async (req: AdminRequest, res) => {
