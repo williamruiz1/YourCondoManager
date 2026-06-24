@@ -1,4 +1,4 @@
-// zone: Financials → Bank Connections
+// zone: Financials → Setup → Bank Accounts
 // persona: Manager, Board Officer, Assisted Board, PM Assistant
 //
 // Admin-side Plaid bank connection management for the association.
@@ -75,7 +75,7 @@ function formatMoney(cents: number | null | undefined) {
 }
 
 export default function FinancialBankConnectionsPage() {
-  useDocumentTitle("Payment Methods — YCM");
+  useDocumentTitle("Bank Accounts — YCM");
   const { activeAssociationId, activeAssociationName } = useActiveAssociation();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -346,7 +346,7 @@ export default function FinancialBankConnectionsPage() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6" data-testid="financial-bank-connections">
       <WorkspacePageHeader
-        title="Payment Methods"
+        title="Bank Accounts"
         summary={
           activeAssociationName
             ? `Manage Plaid-linked bank accounts for ${activeAssociationName}. This is the canonical reconciliation surface for HOAs with a connected bank.`
