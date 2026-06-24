@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>YCM — Multi-Party Money Collection (DESIGN / PROPOSAL — not built live)</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d2129; --ink:#e8eaf0; --muted:#9aa3b2;
+    --line:#2a2f3a; --gold:#d9b65f; --green:#3ea76a; --amber:#d9a441; --red:#d96a5f;
+    --blue:#5f8fd9; --purple:#9a7fd9;
+    --hoa:#3ea76a; --pm:#5f8fd9; --ycm:#d9b65f; --owner:#9a7fd9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 22px 80px}
+  header.top{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:8px}
+  .pill{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    padding:4px 10px;border-radius:999px;border:1px solid var(--amber);color:var(--amber);background:rgba(217,164,65,.08)}
+  h1{font-size:26px;margin:14px 0 6px}
+  h2{font-size:20px;margin:34px 0 10px;border-left:3px solid var(--gold);padding-left:10px}
+  h3{font-size:16px;margin:20px 0 6px;color:var(--gold)}
+  p{margin:8px 0}
+  .sub{color:var(--muted);font-size:13px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .card.flow{border-left:4px solid var(--line)}
+  .card.flow1{border-left-color:var(--green)}
+  .card.flow2{border-left-color:var(--blue)}
+  .card.flow3{border-left-color:var(--purple)}
+  .status{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+    padding:3px 8px;border-radius:6px;margin-left:8px;vertical-align:middle}
+  .status.live{background:rgba(62,167,106,.15);color:var(--green);border:1px solid var(--green)}
+  .status.new{background:rgba(95,143,217,.15);color:var(--blue);border:1px solid var(--blue)}
+  .status.flag{background:rgba(217,164,65,.12);color:var(--amber);border:1px solid var(--amber)}
+  .flowdiag{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:14px 0;font-size:13px}
+  .node{padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);font-weight:600;white-space:nowrap}
+  .node.owner{border-color:var(--owner);color:#c9bdf0}
+  .node.hoa{border-color:var(--hoa);color:#9fe0bb}
+  .node.pm{border-color:var(--pm);color:#aecbf2}
+  .node.ycm{border-color:var(--ycm);color:#f0dca0}
+  .arrow{color:var(--muted);font-weight:700}
+  .arrow small{display:block;color:var(--muted);font-weight:400;font-size:11px;text-align:center}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  code{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:12.5px;color:#cdd6e6}
+  .decision{background:rgba(217,106,95,.06);border:1px solid var(--red);border-radius:12px;padding:16px 18px;margin:16px 0}
+  .decision h3{color:var(--red);margin-top:0}
+  .opt{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0}
+  .opt b{color:var(--ink)}
+  .rec{color:var(--green);font-weight:700}
+  .warn{color:var(--amber);font-weight:700}
+  ul{margin:8px 0 8px 0;padding-left:20px}
+  li{margin:4px 0}
+  .kv{font-size:13px}
+  .kv b{color:var(--gold)}
+  footer{margin-top:50px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:12px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin:8px 0 0}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <span class="pill">Design / Proposal — NOT built live</span>
+  <h1>YCM — Multi-Party Money Collection on Stripe Connect</h1>
+  <p class="sub">How owners' dues, HOA money, and property-manager fees move — and who is allowed to hold what. This document is a <b>proposal for review</b>. The code that ships with it is behind a feature flag that is <b>OFF by default</b>; the live money path is unchanged. Generated 2026-06-24.</p>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--owner)"></span> Owner (pays dues)</span>
+    <span><span class="dot" style="background:var(--hoa)"></span> HOA / condo association</span>
+    <span><span class="dot" style="background:var(--pm)"></span> Property Manager (PM)</span>
+    <span><span class="dot" style="background:var(--ycm)"></span> Your Condo Manager (platform)</span>
+  </div>
+</header>
+
+<h2>The one rule that governs everything</h2>
+<div class="card">
+  <p><b>YCM is a software platform, never a bank.</b> Money always settles to the <b>account of the party it belongs to</b> — the HOA's money goes to the HOA's own Stripe account, the PM's fee goes to the PM's own Stripe account. YCM only ever pulls its own small <b>platform fee</b>, and the funds <b>never sit in or pass through a YCM-controlled balance</b>. This keeps YCM out of "money transmitter" territory (where you'd need money-transmission licenses and trust-fund handling that a SaaS shouldn't take on).</p>
+  <p class="sub">Mechanically: every charge in all three flows is a <b>Stripe "direct charge" on the rightful party's connected account</b> (platform secret key + <code>Stripe-Account: acct_…</code> header). YCM's cut rides as an <code>application_fee_amount</code>; a second party's cut (when there is one) rides as a separate <code>Transfer</code> straight to that party's account. At no point does Stripe move the principal into the YCM platform balance.</p>
+</div>
+
+<h2>The three flows at a glance</h2>
+<table>
+<tr><th>Flow</th><th>Who pays</th><th>Whose money it is</th><th>Where it settles</th><th>YCM takes</th><th>Status</th></tr>
+<tr><td><b>1. Self-managed HOA</b></td><td>Owner</td><td>HOA</td><td>HOA's connected account</td><td>Application fee (1%, $0.50–$25)</td><td><span class="status live">Live</span></td></tr>
+<tr><td><b>2. PM management fee</b></td><td>HOA</td><td>PM</td><td>PM's connected account</td><td>Application fee (platform fee)</td><td><span class="status new">New</span> <span class="status flag">Flagged off</span></td></tr>
+<tr><td><b>3. PM collects owner dues for a managed HOA</b></td><td>Owner</td><td>HOA (PM takes a fee)</td><td>HOA's connected account; PM fee transferred to PM</td><td>Application fee (platform fee)</td><td><span class="status new">New</span> <span class="status flag">Flagged off</span></td></tr>
+</table>
+
+<!-- FLOW 1 -->
+<h2>Flow 1 — Self-managed HOA <span class="status live">Live — reference pattern, do not change</span></h2>
+<div class="card flow flow1">
+  <div class="flowdiag">
+    <span class="node owner">Owner</span>
+    <span class="arrow">→<small>pays dues</small></span>
+    <span class="node hoa">HOA connected account</span>
+    <span class="arrow">⤿<small>1% app fee</small></span>
+    <span class="node ycm">YCM platform balance</span>
+  </div>
+  <p><b>Plain English:</b> an owner pays their dues; the full amount lands in their HOA's own Stripe account and pays out to the HOA's bank. YCM skims a 1% platform fee (with a $0.50 floor and $25 cap) at the same moment.</p>
+  <h3>Stripe mechanism: <span class="rec">Direct charge + application fee</span></h3>
+  <ul>
+    <li>Charge created with the <b>platform secret key</b> + header <code>Stripe-Account: &lt;hoa acct_…&gt;</code> → the charge lives on the HOA's account ("direct charge").</li>
+    <li><code>application_fee_amount</code> moves YCM's cut to the platform balance automatically.</li>
+    <li>Funds settle to the HOA; YCM never holds them.</li>
+  </ul>
+  <p class="kv"><b>Where the account id lives:</b> <code>payment_gateway_connections.providerAccountId</code> (the HOA's <code>acct_…</code>), Connect state in <code>metadataJson._connect</code>. Resolved by <code>resolveConnectChargeRouting(associationId)</code>.</p>
+  <p class="kv"><b>Code today:</b> <code>server/services/stripe-connect-resolver.ts</code> → callers <code>payment-portal.ts</code>, <code>autopay.ts</code>, <code>retry-service.ts</code> pass <code>stripeAccountHeader</code> + <code>applicationFeeCents</code> into <code>payment-service.ts</code>. <b>Untouched by this work.</b></p>
+</div>
+
+<!-- FLOW 2 -->
+<h2>Flow 2 — PM management fee <span class="status new">New</span> <span class="status flag">Flag off by default</span></h2>
+<div class="card flow flow2">
+  <div class="flowdiag">
+    <span class="node hoa">HOA (payer)</span>
+    <span class="arrow">→<small>pays mgmt fee</small></span>
+    <span class="node pm">PM connected account</span>
+    <span class="arrow">⤿<small>platform fee</small></span>
+    <span class="node ycm">YCM platform balance</span>
+  </div>
+  <p><b>Plain English:</b> a property manager bills the HOAs it manages for its management fee. The PM is the merchant of record — the money is the PM's revenue and settles to the PM's own Stripe account. YCM takes a platform fee.</p>
+  <h3>Stripe mechanism: <span class="rec">Direct charge + application fee</span> (same shape as Flow 1, PM-as-destination)</h3>
+  <ul>
+    <li>Charge with platform key + <code>Stripe-Account: &lt;pm acct_…&gt;</code> → lands on the PM's account.</li>
+    <li><code>application_fee_amount</code> routes YCM's platform fee to YCM.</li>
+    <li>The HOA is the <b>payer</b> (its saved bank/card), the PM is the <b>recipient</b>. No third party splits this charge — it's a single-recipient charge, so the simplest correct mechanism is identical to Flow 1.</li>
+  </ul>
+  <p class="kv"><b>Why not a split here:</b> there are only two parties (payer HOA, recipient PM) plus YCM's fee. A two-party-plus-platform-fee charge is exactly the Flow 1 pattern; introducing transfers would add risk for no benefit.</p>
+  <p class="kv"><b>Where the PM account id lives:</b> a <b>new</b> connected-account relationship is required — the PM has its own <code>acct_…</code>, distinct from any HOA. See "Storage" below.</p>
+</div>
+
+<!-- FLOW 3 -->
+<h2>Flow 3 — PM collects owner dues for a managed HOA <span class="status new">New</span> <span class="status flag">Flag off by default</span></h2>
+<div class="card flow flow3">
+  <div class="flowdiag">
+    <span class="node owner">Owner</span>
+    <span class="arrow">→<small>pays dues</small></span>
+    <span class="node hoa">HOA connected account</span>
+    <span class="arrow">⤿<small>PM's cut</small></span>
+    <span class="node pm">PM connected account</span>
+  </div>
+  <div class="flowdiag">
+    <span class="arrow" style="margin-left:0">and</span>
+    <span class="node hoa">HOA connected account</span>
+    <span class="arrow">⤿<small>platform fee</small></span>
+    <span class="node ycm">YCM platform balance</span>
+  </div>
+  <p><b>Plain English:</b> owners pay dues through the PM relationship, but the dues <b>belong to the HOA</b>. The money must land in the HOA's own account (or a designated segregated/trust account — see decision below), the PM gets its agreed cut, and YCM gets its platform fee. This is a <b>three-way split</b>.</p>
+  <h3>Stripe mechanism: <span class="rec">Direct charge on the HOA account + separate Transfer of the PM fee + application fee</span></h3>
+  <ul>
+    <li>Charge with platform key + <code>Stripe-Account: &lt;hoa acct_…&gt;</code> → the <b>principal lands on the HOA's account</b> (the dues belong to the HOA).</li>
+    <li><code>application_fee_amount</code> → YCM's platform fee to YCM.</li>
+    <li>A separate <code>Transfer</code> from the HOA's balance to the <b>PM's connected account</b> (<code>destination = &lt;pm acct_…&gt;</code>) moves only the PM's agreed cut. The HOA keeps the remainder.</li>
+  </ul>
+  <p class="kv warn">Critical: the PM's cut is a transfer <b>out of the HOA's balance to the PM</b> — it never lands in, or passes through, a YCM-controlled balance. YCM stays a router, not a holder.</p>
+  <h3>Why this mechanism and not the alternative</h3>
+  <table>
+  <tr><th>Mechanism</th><th>Verdict</th><th>Why</th></tr>
+  <tr><td><b>(chosen)</b> Destination charge on HOA + Transfer of PM cut</td><td class="rec">Use</td><td>Principal settles to the rightful owner (HOA) directly; PM cut is a clean transfer to the PM; YCM only ever sees its fee. No YCM-held funds.</td></tr>
+  <tr><td>Separate charge on the <b>YCM platform</b> + transfers to HOA &amp; PM</td><td class="warn">Reject</td><td>Routes the HOA's dues through the YCM platform balance first. That makes YCM a holder/transmitter of other people's money — exactly what we must avoid.</td></tr>
+  <tr><td>Destination charge with <code>on_behalf_of</code> set to PM</td><td class="warn">Reject (for the default)</td><td>Makes the PM the merchant of record for the HOA's money — muddies whose money it is and complicates trust-account segregation. Revisit only if a state requires PM-as-MoR.</td></tr>
+  </table>
+</div>
+
+<h2>Where every party's connected-account id is stored</h2>
+<div class="card">
+  <table>
+  <tr><th>Party</th><th>Account id</th><th>Storage</th></tr>
+  <tr><td>HOA (self-managed or managed)</td><td><code>acct_…</code></td><td><b>Existing:</b> <code>payment_gateway_connections.providerAccountId</code> + <code>metadataJson._connect</code></td></tr>
+  <tr><td>Property Manager</td><td><code>acct_…</code></td><td><b>New (this work):</b> a PM Connect relationship. The PM's <code>acct_…</code> + its Connect onboarding state, plus the set of HOAs it manages and the agreed fee. Persisted additively so the live schema is untouched (mirrors how <code>_connect</code> was added without a migration).</td></tr>
+  </table>
+  <p class="sub">The build stores the PM relationship as additive metadata/rows reachable only behind the feature flag. Nothing about the existing HOA gateway rows changes.</p>
+</div>
+
+<!-- DECISION -->
+<div class="decision">
+  <h3>⚠ Decision required — William / legal counsel sign-off (NOT decided here)</h3>
+  <p>Flow 3 moves money that <b>belongs to the HOA</b> but is collected through the PM relationship. Many states' real-estate / property-management law require that <b>funds belonging to a client (the HOA) be segregated from the PM's operating funds</b> — i.e. held in a designated <b>trust / escrow account</b>, not commingled with the PM's own money. <b>This is a legal/compliance decision, not an engineering one.</b> The code is built so either option can be wired in without a rewrite; <b>no compliance assumption is hardcoded.</b></p>
+  <h4>Fund-routing options for Flow 3</h4>
+  <div class="opt">
+    <b>Option A — Dues settle directly to the HOA's own connected account; PM fee is a separate transfer to the PM.</b>
+    <ul>
+      <li><span class="rec">Pro:</span> the HOA's money is in the HOA's own account from the first second — arguably the cleanest segregation (it never touches the PM at all). YCM never holds it.</li>
+      <li><span class="warn">Consideration:</span> requires each managed HOA to have its own Connect account. Confirm with counsel that "HOA's own Stripe account, PM never custodies it" satisfies the applicable trust-account rule (it usually does, because the PM never holds the funds).</li>
+    </ul>
+  </div>
+  <div class="opt">
+    <b>Option B — Dues settle into a designated trust / segregated sub-account (held for the HOA), distinct from the PM's operating funds; PM fee swept to the PM.</b>
+    <ul>
+      <li><span class="rec">Pro:</span> matches the literal "broker trust account" model some states prescribe, where the PM administers a segregated client-trust account.</li>
+      <li><span class="warn">Consideration:</span> requires modeling a trust/escrow connected account and the sweep mechanics; more moving parts; the segregated account must still <b>never be a YCM-controlled balance</b>.</li>
+    </ul>
+  </div>
+  <p><b>The ask:</b> William + counsel choose A or B (or a per-state policy) and confirm the trust-account handling. Until then, Flow 3's routing target is a <b>configurable policy</b> defaulting to Option A (HOA-direct), and the flag stays off.</p>
+</div>
+
+<h2>Reversibility &amp; safety</h2>
+<div class="card">
+  <ul>
+    <li><b>Feature flag <code>MULTI_PARTY_CONNECT_ENABLED</code> — default OFF.</b> Mirrors <code>GL_ENABLED</code>. When off, flows 2 &amp; 3 resolvers return <code>null</code> and every existing caller falls through to the unchanged Flow 1 / manual-key path.</li>
+    <li><b>Flow 1 is byte-behavior-identical when the flag is off.</b> The existing <code>resolveConnectChargeRouting</code> is not modified; new logic lives in new functions/files gated by the flag.</li>
+    <li><b>No live money movement is wired on by default.</b> The build adds routing <i>computation</i> + storage; it does not point any live charge path at the new flows until the flag is on AND the trust-account decision is made.</li>
+    <li><b>No live Stripe mutating calls in tests.</b> All new routing is unit-tested against mocks.</li>
+  </ul>
+</div>
+
+<footer>
+  <p>Your Condo Manager · Multi-Party Collection Design · <b>Proposal — not built live</b> · feature flag <code>MULTI_PARTY_CONNECT_ENABLED</code> (off) · Flow 1 unchanged · 2026-06-24</p>
+  <p>Open decision: trust-account handling for Flow 3 (Option A vs B) — awaiting William + legal sign-off.</p>
+</footer>
+</div>
+</body>
+</html>
