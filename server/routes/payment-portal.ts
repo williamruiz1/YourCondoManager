@@ -28,6 +28,8 @@ import {
   initiateStripeSetupCheckout,
   fetchStripeCheckoutSession,
 } from "../services/payment-service";
+import { resolveConnectChargeRouting } from "../services/stripe-connect-resolver";
+import { computeApplicationFeeCents } from "../services/stripe-charge-metadata";
 
 // ── Types (mirrored from routes.ts / autopay.ts) ────────────────────────────
 // `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
@@ -167,12 +169,23 @@ export function registerPaymentPortalRoutes(
         return res.status(403).json({ message: "Not authorized for this unit" });
       }
 
-      // Load Stripe gateway connection
+      // Resolve charge routing. Prefer Stripe Connect (direct charge on the
+      // HOA's connected sub-merchant via the platform key + Stripe-Account
+      // header, with the YCM application fee) when the association is fully
+      // onboarded + active. Otherwise fall back to the legacy manual-key path
+      // (the HOA's own Stripe secret key on `payment_gateway_connections`).
+      const connectRouting = await resolveConnectChargeRouting(req.portalAssociationId);
+
+      // Load Stripe gateway connection (manual-key fallback).
       const gateway = await storage.getActivePaymentGatewayConnection({
         associationId: req.portalAssociationId,
         provider: "stripe",
       });
-      if (!gateway?.secretKey) {
+
+      // The charge needs EITHER an active Connect account (platform key + header)
+      // OR a manual HOA secret key. If neither is present, ACH isn't configured.
+      const checkoutSecretKey = connectRouting?.platformSecretKey ?? gateway?.secretKey ?? null;
+      if (!checkoutSecretKey) {
         return res.status(400).json({ message: "Online ACH payment is not configured for this association" });
       }
 
@@ -205,15 +218,20 @@ export function registerPaymentPortalRoutes(
         description: description || undefined,
       });
 
-      // Initiate Stripe Checkout
+      // Initiate Stripe Checkout. When routing through Connect, attach the
+      // §1.2 application fee (dues are the only line item here, so the fee
+      // applies to the full amount) + the §2.3 "DUES" descriptor suffix.
       const appBaseUrl = `${req.protocol}://${req.get("host")}`;
       const result = await initiateStripeCheckout({
         transactionId: txn.id,
-        secretKey: gateway.secretKey,
+        secretKey: checkoutSecretKey,
         appBaseUrl,
         ownerEmail: person?.email ?? req.portalEmail,
         associationName: assoc?.name ?? "HOA",
         unitNumber: unit?.unitNumber ?? "Unit",
+        stripeAccountHeader: connectRouting?.stripeAccountHeader ?? null,
+        applicationFeeCents: connectRouting ? computeApplicationFeeCents(amountCents) : null,
+        statementDescriptorSuffix: connectRouting ? "DUES" : null,
       });
 
       res.status(201).json({

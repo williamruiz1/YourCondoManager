@@ -99,6 +99,20 @@ export async function initiateStripeCheckout(params: {
   ownerEmail?: string | null;
   associationName: string;
   unitNumber: string;
+  /**
+   * Stripe Connect routing (spec §1.1). When provided, the Checkout Session is
+   * created on the connected HOA account via the `Stripe-Account` header (a
+   * DIRECT charge), `secretKey` MUST be the PLATFORM key, and an
+   * `application_fee_amount` is attached to the underlying PaymentIntent so the
+   * YCM platform fee routes to the platform balance. When omitted, this is the
+   * legacy manual-key path (charge on whatever account `secretKey` belongs to)
+   * — UNCHANGED.
+   */
+  stripeAccountHeader?: string | null;
+  /** Spec §1.2 application fee in cents (only applied when stripeAccountHeader is set). */
+  applicationFeeCents?: number | null;
+  /** Spec §2.3 statement descriptor suffix (e.g. "DUES"); attached to the PaymentIntent. */
+  statementDescriptorSuffix?: string | null;
 }): Promise<{ checkoutUrl: string; sessionId: string }> {
   const [txn] = await db
     .select()
@@ -147,12 +161,38 @@ export async function initiateStripeCheckout(params: {
   sessionParams.set("metadata[currency]", txn.currency || "USD");
   sessionParams.set("metadata[amount]", (txn.amountCents / 100).toFixed(2));
 
+  // Stripe Connect direct-charge routing (spec §1.1 + §1.2). When routing to a
+  // connected HOA account, attach the application fee + statement descriptor
+  // suffix to the underlying PaymentIntent. Both are only meaningful on a
+  // direct charge (i.e. with the Stripe-Account header set below).
+  if (params.stripeAccountHeader) {
+    if (params.applicationFeeCents && params.applicationFeeCents > 0) {
+      sessionParams.set(
+        "payment_intent_data[application_fee_amount]",
+        String(params.applicationFeeCents),
+      );
+    }
+    if (params.statementDescriptorSuffix) {
+      sessionParams.set(
+        "payment_intent_data[statement_descriptor_suffix]",
+        params.statementDescriptorSuffix,
+      );
+    }
+  }
+
+  const checkoutHeaders: Record<string, string> = {
+    Authorization: `Bearer ${params.secretKey}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  // Direct charge on the connected HOA account (spec §1.1). Required for the
+  // application fee to route to the platform balance and for per-HOA payouts.
+  if (params.stripeAccountHeader) {
+    checkoutHeaders["Stripe-Account"] = params.stripeAccountHeader;
+  }
+
   const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.secretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: checkoutHeaders,
     body: sessionParams.toString(),
   });
 

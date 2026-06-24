@@ -37,6 +37,8 @@ import {
   updatePaymentTransactionStatus,
 } from "../services/payment-service";
 import { markTransactionForRetry, getDelinquencySettings } from "../services/retry-service";
+import { resolveConnectChargeRouting } from "../services/stripe-connect-resolver";
+import { computeApplicationFeeCents } from "../services/stripe-charge-metadata";
 
 // ── Re-usable types (mirrored from routes.ts) ────────────────────────────────
 // `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
@@ -99,6 +101,16 @@ export async function runAutopayCollectionForAssociation(
     associationId,
     provider: "stripe",
   });
+
+  // Prefer Stripe Connect direct-charge routing (platform key + Stripe-Account
+  // header + application fee) when the association is fully onboarded + active.
+  // Resolved once per association run. NOTE: off-session autopay requires the
+  // saved customer + payment method to live on the SAME Stripe account the
+  // charge is made against — i.e. on the connected account when routing through
+  // Connect. Saved methods created under the legacy manual key cannot be
+  // off-session charged on the connected account. Onboarding-time PM capture
+  // for Connect accounts is a follow-on (see PR notes / gap list).
+  const connectRouting = await resolveConnectChargeRouting(associationId);
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
@@ -193,7 +205,8 @@ export async function runAutopayCollectionForAssociation(
         continue;
       }
 
-      if (!gateway?.secretKey) {
+      const chargeSecretKey = connectRouting?.platformSecretKey ?? gateway?.secretKey ?? null;
+      if (!chargeSecretKey) {
         await db.insert(autopayRuns).values({
           enrollmentId: enrollment.id,
           associationId,
@@ -222,9 +235,11 @@ export async function runAutopayCollectionForAssociation(
         isOffSession: true,
       });
 
-      // Charge off-session
+      // Charge off-session. When routing through Connect, this becomes a
+      // direct charge on the HOA's connected account (Stripe-Account header)
+      // with the §1.2 application fee + §2.3 "DUES" descriptor suffix.
       const chargeResult = await chargeOffSession({
-        secretKey: gateway.secretKey,
+        secretKey: chargeSecretKey,
         stripeCustomerId: method.providerCustomerId,
         stripePaymentMethodId: method.providerPaymentMethodId,
         amountCents,
@@ -235,6 +250,9 @@ export async function runAutopayCollectionForAssociation(
         unitId: enrollment.unitId,
         transactionId: txn.id,
         enrollmentId: enrollment.id,
+        stripeAccountHeader: connectRouting?.stripeAccountHeader ?? null,
+        applicationFeeCents: connectRouting ? computeApplicationFeeCents(amountCents) : null,
+        statementDescriptorSuffix: connectRouting ? "DUES" : null,
       });
 
       // Update transaction with provider info
