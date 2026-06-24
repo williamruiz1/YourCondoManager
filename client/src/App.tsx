@@ -179,10 +179,10 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Billing", href: "/app/financial/billing", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { label: "Assessment Rules", href: "/app/financial/rules", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { label: "Payments", href: "/app/financial/payments", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
-      { label: "Bank Connections", href: "/app/financial/bank-connections", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
+      { label: "Bank Accounts", href: "/app/financial/bank-connections", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Expenses", href: "/app/financial/expenses", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Reports", href: "/app/financial/reports", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
-      { label: "Statement", href: "/app/financial/statement", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Owner Statement", href: "/app/financial/statement", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
     ],
   },
   {
