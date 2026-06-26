@@ -357,12 +357,16 @@ function PortalBankPaymentCard({
                 owner pay the full balance or a custom amount when on a plan.
                 William verbatim: "pay the whole balance" is distinct from
                 "amount due this period" — both surface, the latter is primary. */}
+            {/* #217 mobile pass — pay CTAs go full-width + min 44px tall on
+                phones (each is a primary money action; full-width tap target),
+                then shrink to content width and wrap on ≥sm. */}
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               {hasDue ? (
                 <Button
                   onClick={handlePayDueClick}
                   data-testid="portal-bank-pay-due"
                   aria-label={`Pay $${dueAmount.toFixed(2)} due for ${amountDueThisPeriod?.periodLabel ?? "this period"}`}
+                  className="min-h-11 w-full sm:w-auto"
                 >
                   Pay ${dueAmount.toFixed(2)} due {amountDueThisPeriod?.periodLabel
                     ? `for ${amountDueThisPeriod.periodLabel}`
@@ -374,6 +378,7 @@ function PortalBankPaymentCard({
                 disabled={balance <= 0}
                 variant={hasDue ? "outline" : "default"}
                 data-testid="portal-bank-pay-now"
+                className="min-h-11 w-full sm:w-auto"
               >
                 {balance > 0
                   ? hasDue
@@ -386,6 +391,7 @@ function PortalBankPaymentCard({
                   onClick={handlePayCustomClick}
                   variant="ghost"
                   data-testid="portal-bank-pay-custom"
+                  className="min-h-11 w-full sm:w-auto"
                 >
                   Pay another amount
                 </Button>
@@ -407,15 +413,21 @@ function PortalBankPaymentCard({
                   ? "Confirm full-balance payment"
                   : "Enter the amount you want to pay"}
             </p>
+            {/* #217 mobile pass — taller input (44px min tap target) +
+                inputMode=decimal so phones show the numeric keypad. */}
             <Input
               type="number"
+              inputMode="decimal"
               min="0"
               step="0.01"
               value={confirmAmount}
               onChange={(e) => setConfirmAmount(e.target.value)}
               data-testid="portal-bank-confirm-amount"
+              className="h-11 text-base"
             />
-            <div className="flex gap-2">
+            {/* #217 mobile pass — confirm/cancel stack full-width on phones so
+                each is an easy 44px+ tap target; row on ≥sm. */}
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Button
                 onClick={() => {
                   const amt = Number(confirmAmount);
@@ -423,10 +435,15 @@ function PortalBankPaymentCard({
                 }}
                 disabled={submitPayment.isPending || !confirmAmount}
                 data-testid="portal-bank-confirm"
+                className="min-h-11 w-full sm:w-auto"
               >
                 {submitPayment.isPending ? "Submitting…" : "Confirm Payment"}
               </Button>
-              <Button variant="outline" onClick={() => setConfirming(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setConfirming(false)}
+                className="min-h-11 w-full sm:w-auto"
+              >
                 Cancel
               </Button>
             </div>
@@ -518,16 +535,18 @@ function PerUnitFinanceCard({ unit }: { unit: FinanceUnitBreakdown }) {
         className="px-5 py-4 hover:no-underline"
         data-testid={`portal-finances-unit-${unit.unitId}-trigger`}
       >
-        <div className="flex flex-1 items-center justify-between gap-4">
-          <div className="text-left">
+        <div className="flex flex-1 items-center justify-between gap-3 sm:gap-4">
+          {/* #217 mobile pass — min-w-0 + truncate so a long unit label can't
+              push the balance figure off-screen on a narrow phone. */}
+          <div className="min-w-0 text-left">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
               Unit
             </p>
-            <p className="font-headline text-xl text-on-surface" data-testid={`portal-finances-unit-${unit.unitId}-label`}>
+            <p className="truncate font-headline text-lg text-on-surface sm:text-xl" data-testid={`portal-finances-unit-${unit.unitId}-label`}>
               {unit.unitLabel}
             </p>
           </div>
-          <div className="text-right">
+          <div className="shrink-0 text-right">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
               {headerTotal > 0 ? "Balance due" : "Balance"}
             </p>
@@ -833,9 +852,13 @@ function FinancesHubContent() {
         <Card>
           <CardContent className="space-y-3 py-5">
             <h2 className="font-headline text-lg" id="portal-finances-make-payment-heading">{t("portal.finances.makePayment.title")}</h2>
-            <div className="flex gap-2">
+            {/* #217 mobile pass — amount field + Pay button stack on phones so
+                the input isn't squeezed beside the CTA at 320–375px, and each
+                is a comfortable 44px tap target; inline on ≥sm. */}
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.01"
                 placeholder={t("portal.finances.makePayment.amountPlaceholder")}
@@ -844,6 +867,7 @@ function FinancesHubContent() {
                 data-testid="portal-finances-amount-input"
                 aria-labelledby="portal-finances-make-payment-heading"
                 aria-label={t("portal.finances.makePayment.amountPlaceholder")}
+                className="h-11 text-base sm:flex-1"
               />
               <Button
                 onClick={() => {
@@ -852,6 +876,7 @@ function FinancesHubContent() {
                 }}
                 disabled={startCheckout.isPending || !paymentAmount}
                 data-testid="portal-finances-pay-now"
+                className="min-h-11 w-full sm:w-auto"
               >
                 {startCheckout.isPending ? t("portal.finances.makePayment.redirecting") : t("portal.finances.makePayment.cta")}
               </Button>
@@ -1079,7 +1104,10 @@ function PaymentMethodsContent() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6" data-testid="portal-finances-payment-methods">
-      <div className="flex items-center justify-between">
+      {/* #217 mobile pass — title + Add button stack on phones (the Add CTA
+          goes full-width, 44px tall) so they don't collide on a narrow
+          viewport; inline row on ≥sm. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-headline text-3xl" data-testid="portal-finances-payment-methods-heading">
             {t("portal.finances.paymentMethods.title")}
@@ -1088,7 +1116,12 @@ function PaymentMethodsContent() {
             {t("portal.finances.paymentMethods.subtitle")}
           </p>
         </div>
-        <Button onClick={() => setupMethod.mutate()} disabled={setupMethod.isPending} data-testid="portal-finances-add-method">
+        <Button
+          onClick={() => setupMethod.mutate()}
+          disabled={setupMethod.isPending}
+          data-testid="portal-finances-add-method"
+          className="min-h-11 w-full sm:w-auto"
+        >
           {setupMethod.isPending ? t("portal.finances.paymentMethods.opening") : t("portal.finances.paymentMethods.add")}
         </Button>
       </div>
@@ -1105,8 +1138,11 @@ function PaymentMethodsContent() {
           <div className="space-y-2">
             {methods.map((m) => (
               <Card key={m.id}>
-                <CardContent className="flex items-center justify-between py-4">
-                  <div>
+                {/* #217 mobile pass — stack the bank label above its actions on
+                    phones so two buttons + the account label don't crowd at
+                    320–375px; inline row on ≥sm. */}
+                <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold">
                       {m.bankName ?? t("portal.finances.paymentMethods.bankAccount")} ··· {m.last4}
                     </p>
@@ -1341,8 +1377,11 @@ function StatementContent() {
 
       {/* Period picker */}
       <Card className="no-print">
+        {/* #217 mobile pass — date fields go full-width + 44px tall on phones
+            (native date pickers are easier to tap), Generate is full-width;
+            inline row on ≥sm. */}
         <CardContent className="flex flex-col gap-3 py-5 sm:flex-row sm:items-end">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 sm:flex-1">
             <label htmlFor="statement-from" className="text-xs font-semibold text-on-surface-variant">
               From
             </label>
@@ -1352,9 +1391,10 @@ function StatementContent() {
               value={from}
               onChange={(e) => setFrom(e.target.value)}
               data-testid="portal-statement-from"
+              className="h-11 text-base sm:h-9 sm:text-sm"
             />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 sm:flex-1">
             <label htmlFor="statement-to" className="text-xs font-semibold text-on-surface-variant">
               To
             </label>
@@ -1364,12 +1404,14 @@ function StatementContent() {
               value={to}
               onChange={(e) => setTo(e.target.value)}
               data-testid="portal-statement-to"
+              className="h-11 text-base sm:h-9 sm:text-sm"
             />
           </div>
           <Button
             onClick={() => setApplied({ from, to })}
             disabled={!from || !to || from > to}
             data-testid="portal-statement-generate"
+            className="min-h-11 w-full sm:w-auto"
           >
             Generate
           </Button>
@@ -1559,41 +1601,79 @@ function ReceiptsContent() {
           description="Receipts will appear here once you have settled payments."
         />
       ) : (
-        <Card>
-          <CardContent className="py-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Receipt #</TableHead>
-                  <TableHead className="text-right no-print">Download</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data?.receipts ?? []).map((r: ReceiptSummary) => (
-                  <TableRow key={r.id} data-testid={`portal-receipt-row-${r.id}`}>
-                    <TableCell>{r.paidAtFormatted}</TableCell>
-                    <TableCell className="tabular-nums">{r.amountFormatted}</TableCell>
-                    <TableCell>{r.description}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.receiptReference}</TableCell>
-                    <TableCell className="text-right no-print">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedId(r.id)}
-                        data-testid={`portal-receipt-view-${r.id}`}
-                      >
-                        View / Print
-                      </Button>
-                    </TableCell>
+        <>
+          {/* #217 mobile pass — the 5-column receipts table overflows on
+              phones (Date / Amount / Description / Receipt # / Download), so
+              below sm it renders as a stacked card list with a full-width
+              tappable action; the table returns at ≥sm. */}
+          <ul
+            className="flex flex-col gap-3 sm:hidden"
+            data-testid="portal-finances-receipts-cards"
+          >
+            {(data?.receipts ?? []).map((r: ReceiptSummary) => (
+              <li key={r.id}>
+                <Card data-testid={`portal-receipt-card-${r.id}`}>
+                  <CardContent className="space-y-2 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold">{r.paidAtFormatted}</p>
+                        <p className="truncate text-xs text-on-surface-variant">{r.description}</p>
+                      </div>
+                      <p className="shrink-0 text-base font-semibold tabular-nums">{r.amountFormatted}</p>
+                    </div>
+                    <p className="font-mono text-[11px] text-on-surface-variant">
+                      Receipt {r.receiptReference}
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setSelectedId(r.id)}
+                      data-testid={`portal-receipt-view-mobile-${r.id}`}
+                      className="min-h-11 w-full no-print"
+                    >
+                      View / Print
+                    </Button>
+                  </CardContent>
+                </Card>
+              </li>
+            ))}
+          </ul>
+
+          <Card className="hidden sm:block">
+            <CardContent className="py-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Receipt #</TableHead>
+                    <TableHead className="text-right no-print">Download</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {(data?.receipts ?? []).map((r: ReceiptSummary) => (
+                    <TableRow key={r.id} data-testid={`portal-receipt-row-${r.id}`}>
+                      <TableCell>{r.paidAtFormatted}</TableCell>
+                      <TableCell className="tabular-nums">{r.amountFormatted}</TableCell>
+                      <TableCell>{r.description}</TableCell>
+                      <TableCell className="font-mono text-xs">{r.receiptReference}</TableCell>
+                      <TableCell className="text-right no-print">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedId(r.id)}
+                          data-testid={`portal-receipt-view-${r.id}`}
+                        >
+                          View / Print
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );
