@@ -1202,6 +1202,30 @@ function requireAdminRole(roles: AdminRole[]) {
   };
 }
 
+/**
+ * P1-7 (Issue #214) — Plaid bank-connection / reconciliation write-role gate.
+ *
+ * The `/api/plaid/*` admin mutation routes (exchange-token, sync, reconcile,
+ * reconcile/manual, create-link-token, DELETE connection) are financial-mutation
+ * surfaces: they establish bank connections and post/alter ledger reconciliation
+ * matches. Before this gate they carried `requireAdmin` ONLY — meaning the
+ * strictly view-only `viewer` persona could trigger a bank sync or reconcile a
+ * transaction against the owner ledger. That violated the role-to-capability
+ * matrix (`docs/security/financial-route-role-matrix.md`).
+ *
+ * This is the same write-role boundary used by the reconciliation module
+ * (`RECON_WRITE_ROLES` in server/routes/admin-reconciliation.ts): the five
+ * operator personas EXCLUDING `viewer`. `assertAssociationScope` (already in
+ * place on every Plaid route) continues to enforce tenant isolation on top.
+ */
+const PLAID_WRITE_ROLES: AdminRole[] = [
+  "platform-admin",
+  "board-officer",
+  "assisted-board",
+  "pm-assistant",
+  "manager",
+];
+
 async function requireActiveSubscription(req: AdminRequest, res: Response, next: NextFunction) {
   // Platform admins bypass subscription checks
   if (req.adminRole === "platform-admin") return next();
@@ -18812,7 +18836,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
   // POST /api/plaid/create-link-token
   // Returns a link_token the frontend uses to launch Plaid Link UI.
-  app.post("/api/plaid/create-link-token", requireAdmin, async (req: AdminRequest, res) => {
+  app.post("/api/plaid/create-link-token", requireAdmin, requireAdminRole(PLAID_WRITE_ROLES), async (req: AdminRequest, res) => {
     try {
       const { associationId } = req.body as { associationId?: string };
       if (!associationId) {
@@ -18860,7 +18884,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
   // POST /api/plaid/exchange-token
   // Exchanges public_token (from Link onSuccess) → access_token, persists connection.
-  app.post("/api/plaid/exchange-token", requireAdmin, async (req: AdminRequest, res) => {
+  app.post("/api/plaid/exchange-token", requireAdmin, requireAdminRole(PLAID_WRITE_ROLES), async (req: AdminRequest, res) => {
     try {
       const { associationId, publicToken, institutionName } = req.body as {
         associationId?: string;
@@ -19017,7 +19041,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
   // POST /api/plaid/sync
   // Fetches transactions from Plaid for all active connections and upserts to bankTransactions.
-  app.post("/api/plaid/sync", requireAdmin, async (req: AdminRequest, res) => {
+  app.post("/api/plaid/sync", requireAdmin, requireAdminRole(PLAID_WRITE_ROLES), async (req: AdminRequest, res) => {
     try {
       const { associationId, since } = req.body as {
         associationId?: string;
@@ -19118,7 +19142,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   // POST /api/plaid/reconcile
   // Auto-reconcile unmatched bank credits with pending owner pay-intent ledger
   // entries for the given association (Issue #448).
-  app.post("/api/plaid/reconcile", requireAdmin, async (req: AdminRequest, res) => {
+  app.post("/api/plaid/reconcile", requireAdmin, requireAdminRole(PLAID_WRITE_ROLES), async (req: AdminRequest, res) => {
     try {
       const { associationId } = req.body as { associationId?: string };
       if (!associationId) {
@@ -19152,7 +19176,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
   // POST /api/plaid/reconcile/manual
   // Admin explicitly pairs a bank credit with a pending ledger entry (±$1).
-  app.post("/api/plaid/reconcile/manual", requireAdmin, async (req: AdminRequest, res) => {
+  app.post("/api/plaid/reconcile/manual", requireAdmin, requireAdminRole(PLAID_WRITE_ROLES), async (req: AdminRequest, res) => {
     try {
       const { associationId, bankTransactionId, ledgerEntryId } = req.body as {
         associationId?: string;
@@ -19261,7 +19285,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   // Disconnect (revoke) an admin/association-scoped Plaid bank connection.
   // Marks status=revoked rather than hard-deleting so historical
   // transactions remain attributed.
-  app.delete("/api/plaid/connections/:id", requireAdmin, async (req: AdminRequest, res) => {
+  app.delete("/api/plaid/connections/:id", requireAdmin, requireAdminRole(PLAID_WRITE_ROLES), async (req: AdminRequest, res) => {
     try {
       const id = typeof req.params.id === "string" ? req.params.id : "";
       if (!id) {
