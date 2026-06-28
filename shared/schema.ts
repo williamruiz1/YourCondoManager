@@ -2064,6 +2064,77 @@ export const associationInsurancePolicies = pgTable("association_insurance_polic
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ── Resale certificate / "6(d)" request workflow (founder-os#8013) ───────────
+// Connecticut CIOA §47-270 requires the association to furnish a resale
+// certificate within 10 BUSINESS days of a written request, for a statutory
+// $185 fee (§47-270(b)(1)). This table backs that request workflow: it records
+// the request, computes the §47-270(b) SLA deadline, captures the fee + any
+// copy/expedite costs, and persists the board attestation + generated snapshot.
+// The certificate contents themselves are assembled live from the ledgers by
+// server/services/resale-certificate.ts; this table is the request/SLA/fee +
+// attestation envelope around that generation.
+export const resaleCertificateStatusEnum = pgEnum("resale_certificate_status", [
+  "requested", // request received; SLA timer running; fee assessed
+  "generated", // certificate produced from live ledgers (snapshot stored)
+  "attested", // board officer signed/attested the certificate
+  "delivered", // furnished to the requesting party
+  "cancelled", // request withdrawn
+]);
+
+export const resaleCertificateRequests = pgTable("resale_certificate_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  // The selling unit owner (optional — a closing attorney/title co. may request).
+  sellerPersonId: varchar("seller_person_id").references(() => persons.id),
+  // Free-text identity of who requested (attorney / title company / owner name).
+  requestedByName: text("requested_by_name"),
+  requestedByEmail: text("requested_by_email"),
+  // State whose statute governs this certificate ("CT" live; "DE" downstream).
+  state: text("state").notNull().default("CT"),
+  status: resaleCertificateStatusEnum("status").notNull().default("requested"),
+  requestedAt: timestamp("requested_at").defaultNow().notNull(),
+  // §47-270(b): furnishing deadline = requestedAt + 10 business days.
+  slaDueAt: timestamp("sla_due_at").notNull(),
+  // §47-270(b)(1): statutory fee + optional copy/expedite costs, in CENTS.
+  statutoryFeeCents: integer("statutory_fee_cents").notNull(),
+  copyFeeCents: integer("copy_fee_cents").notNull().default(0),
+  expediteFeeCents: integer("expedite_fee_cents").notNull().default(0),
+  feePaid: integer("fee_paid").notNull().default(0), // 0/1
+  // Generation + the live-ledger snapshot of the assembled certificate.
+  generatedAt: timestamp("generated_at"),
+  certValidUntil: timestamp("cert_valid_until"),
+  generatedSnapshotJson: jsonb("generated_snapshot_json"),
+  // Board attestation (§47-270 requires the association to prepare/sign).
+  attestedByName: text("attested_by_name"),
+  attestedByAdminId: varchar("attested_by_admin_id"),
+  attestedAt: timestamp("attested_at"),
+  deliveredAt: timestamp("delivered_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ResaleCertificateRequest = typeof resaleCertificateRequests.$inferSelect;
+export type InsertResaleCertificateRequest = typeof resaleCertificateRequests.$inferInsert;
+// Insert schema omits server-managed fields. The SLA deadline, fee, and snapshot
+// are computed server-side (never trusted from the client).
+export const insertResaleCertificateRequestSchema = createInsertSchema(resaleCertificateRequests).omit({
+  id: true,
+  status: true,
+  requestedAt: true,
+  slaDueAt: true,
+  statutoryFeeCents: true,
+  generatedAt: true,
+  certValidUntil: true,
+  generatedSnapshotJson: true,
+  attestedByName: true,
+  attestedByAdminId: true,
+  attestedAt: true,
+  deliveredAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertAssociationSchema = createInsertSchema(associations).omit({ id: true, createdAt: true });
 export const insertBuildingSchema = createInsertSchema(buildings).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUnitSchema = createInsertSchema(units).omit({ id: true, createdAt: true });

@@ -282,6 +282,7 @@ import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
+import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import {
   getEffectivePortalRole,
   requireBoardAccess,
@@ -1447,6 +1448,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     requireAdmin,
     requireAdminRole,
     requirePortal,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // CT resale certificate / "6(d)" generator (founder-os#8013). §47-270:
+  // furnish within 10 business days for a $185 statutory fee; figures pulled
+  // live from the ledgers (§47-270(c) binds the association to them).
+  //   POST /api/financial/resale-certificate/request      (open request + SLA + fee)
+  //   GET  /api/financial/resale-certificate/preview        (live preview)
+  //   GET  /api/financial/resale-certificate/:requestId     (generate + persist)
+  //   POST /api/financial/resale-certificate/:requestId/attest
+  registerResaleCertificateRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
     getAssociationIdQuery,
     assertAssociationScope,
   });
