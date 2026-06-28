@@ -344,6 +344,13 @@
       "when": 1780400000000,
       "tag": "0048_platform_subscription_usage_reporting",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1780500000000,
+      "tag": "0049_ct_reserve_disclosure",
+      "breakpoints": true
     }
   ]
 }

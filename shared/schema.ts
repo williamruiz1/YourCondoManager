@@ -23,6 +23,20 @@ export const associations = pgTable("associations", {
   // Maps onboarding (Phase 1): coordinates stored after admin confirms satellite view
   latitudeDeg: decimal("latitude_deg", { precision: 10, scale: 7 }),
   longitudeDeg: decimal("longitude_deg", { precision: 10, scale: 7 }),
+  // CT CIOA reserve disclosure (#8016, from the #1035 audit §Area 1). Connecticut
+  // does NOT mandate a reserve study or a minimum funding level — that is Delaware
+  // (DUCIOA §81-315). CT requires DISCLOSURE only: the annual budget summary must
+  // STATE the reserve amount + the basis on which reserves are calculated/funded
+  // (CGS §47-261e(a)), and the resale certificate must state the reserve amount
+  // (CGS §47-270(a)(5)). These two fields are the board-declared persisted store
+  // for that disclosure — NOT a live bank balance and NOT a funding-mandate gate.
+  // reserveBalanceCents: the stated reserve amount, in cents (matches the cents
+  // convention used by financialAccounts.currentBalanceCents). Null = not yet stated.
+  reserveBalanceCents: integer("reserve_balance_cents"),
+  // reserveBasis: the §47-261e(a) narrative — "the basis on which reserves are
+  // calculated and funded" (e.g. "per the 2026 reserve study, funded at 10% of the
+  // annual operating budget"). Null = not yet stated.
+  reserveBasis: text("reserve_basis"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
