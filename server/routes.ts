@@ -8,7 +8,6 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
-import { reserveDisclosureDollars, reserveDisclosureBasis } from "./ct-reserve-disclosure";
 import { sendEmail } from "./email/send";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
 import { invalidateAlertCache } from "./alerts";
@@ -17644,13 +17643,16 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       let totalOwnerAccounts = 0;
 
       await Promise.all(visibleAssociations.map(async (assoc) => {
-        const ledgerSummary = await storage.getOwnerLedgerSummary(assoc.id);
+        const [accounts, ledgerSummary] = await Promise.all([
+          storage.getFinancialAccounts(assoc.id),
+          storage.getOwnerLedgerSummary(assoc.id),
+        ]);
 
-        // CT CIOA §47-261e(a) / §47-270(a)(5): the reserve amount is a board-declared
-        // per-association disclosure figure (associations.reserveBalanceCents), NOT a
-        // sum of per-account bank balances. Cents → dollars for this dollar-valued
-        // aggregate. No CT funding-mandate check (CT discloses; DE §81-315 mandates).
-        totalReserveFunds += reserveDisclosureDollars(assoc);
+        for (const acct of accounts) {
+          if (acct.accountType === "reserve" || acct.name.toLowerCase().includes("reserve")) {
+            totalReserveFunds += 0; // balances aren't stored on account rows; use placeholder
+          }
+        }
 
         const delinquent = ledgerSummary.filter((e) => e.balance > 0);
         totalDelinquentAccounts += delinquent.length;
@@ -17710,9 +17712,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           state: assoc.state || null,
           unitCount: unitsList.length,
           operatingBalance: 0,
-          // CT CIOA §47-261e(a)/§47-270(a)(5): board-declared reserve disclosure
-          // (associations.reserveBalanceCents), cents → dollars. Null → 0.
-          reserveBalance: reserveDisclosureDollars(assoc),
+          reserveBalance: 0,
           delinquencyPct: Math.round(delinquencyPct * 10) / 10,
           openWorkOrders: openWOs,
           status,
@@ -17829,12 +17829,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         occupancyRatePercent: overview.occupancyRatePercent,
         activeOwners: overview.activeOwners,
         activeOccupants: overview.activeOccupants,
-        // CT CIOA §47-270(a)(5) (resale cert) + §47-261e(a) (budget summary): the
-        // board-declared reserve amount + the basis on which it is calculated/funded.
-        // reserveFund in dollars (cents → dollars); reserveBasis is the narrative.
-        // Disclosure only — no CT reserve-study or funding-floor mandate (DE §81-315).
-        reserveFund: reserveDisclosureDollars(assoc),
-        reserveBasis: reserveDisclosureBasis(assoc),
+        reserveFund: 0, // placeholder — no reserve balance table
         openTickets: overview.maintenanceOpen,
         highPriorityTickets: highPriorityOpen,
         maintenanceOverdue: overview.maintenanceOverdue,
