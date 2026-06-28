@@ -9,6 +9,16 @@ import { db } from "./db";
 import { sendPlatformEmail } from "./email-provider";
 import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
 import {
+  buildBudgetSummary as buildCtBudgetSummary,
+  buildOwnerNotices as buildCtOwnerNotices,
+  evaluateEmergencyAttestation,
+  evaluateSpecialAssessmentGate,
+  planRatificationClose,
+  tallyNegativeOption,
+  validateVoteWindow,
+  type BudgetSummary,
+} from "./services/budget-ratification-service";
+import {
   adminAssociationScopes,
   adminUserPreferences,
   associationMemberships,
@@ -34,6 +44,9 @@ import {
   budgetLines,
   budgets,
   budgetVersions,
+  budgetRatifications,
+  budgetRatificationVotes,
+  voteCampaigns,
   calendarEvents,
   clauseRecords,
   clauseTags,
@@ -115,6 +128,10 @@ import {
   type Budget,
   type BudgetLine,
   type BudgetVersion,
+  type BudgetRatification,
+  type InsertBudgetRatification,
+  type BudgetRatificationVote,
+  type InsertBudgetRatificationVote,
   type CalendarEvent,
   type ClauseRecord,
   type ClauseTag,
@@ -3829,6 +3846,30 @@ export interface IStorage {
   getBudgetLines(budgetVersionId: string): Promise<BudgetLine[]>;
   createBudgetLine(data: InsertBudgetLine): Promise<BudgetLine>;
   updateBudgetLine(id: string, data: Partial<InsertBudgetLine>): Promise<BudgetLine | undefined>;
+  // ── Connecticut CGS §47-261e budget ratification (owner-veto / negative option) ──
+  countAssociationOwners(associationId: string): Promise<number>;
+  getBudgetRatifications(associationId?: string): Promise<BudgetRatification[]>;
+  getBudgetRatification(id: string): Promise<BudgetRatification | undefined>;
+  getBudgetRatificationByVersion(budgetVersionId: string): Promise<BudgetRatification | undefined>;
+  initiateBudgetRatification(input: {
+    associationId: string;
+    budgetVersionId: string;
+    kind?: "annual-budget" | "special-assessment" | "emergency-assessment";
+    reserveStatement: string;
+    boardAdoptedAt: Date;
+    summaryDistributedAt?: Date;
+    voteOpenAt?: Date;
+    voteCloseAt?: Date;
+    specialAssessmentAmount?: number;
+    annualBudgetTotal?: number;
+    emergencyBoardSeats?: number;
+    emergencyAttestingVotes?: number;
+    emergencyAttestedBy?: string;
+    notes?: string;
+  }): Promise<{ ratification: BudgetRatification; noticeCount: number; summary: BudgetSummary | null }>;
+  getBudgetRatificationVotes(ratificationId: string): Promise<BudgetRatificationVote[]>;
+  castBudgetRatificationVote(ratificationId: string, data: { personId: string; voteChoice: "yes" | "no" | "abstain"; voteWeight?: number }): Promise<BudgetRatificationVote>;
+  closeBudgetRatification(ratificationId: string): Promise<BudgetRatification | undefined>;
   getBudgetVariance(associationId: string, budgetVersionId: string): Promise<Array<{
     budgetLineId: string;
     lineItemName: string;
@@ -7623,6 +7664,367 @@ export class DatabaseStorage implements IStorage {
       .where(eq(budgetLines.id, id))
       .returning();
     return result;
+  }
+
+  // ── Connecticut CGS §47-261e budget ratification (owner-veto / negative option) ──
+
+  /**
+   * §47-261e denominator: the count of distinct OWNERS-OF-RECORD for the
+   * association — distinct active (endDate IS NULL) ownership persons across the
+   * association's units. This is the base for the "majority of ALL owners" tally.
+   */
+  async countAssociationOwners(associationId: string): Promise<number> {
+    const assocUnits = await db
+      .select({ id: units.id })
+      .from(units)
+      .where(eq(units.associationId, associationId));
+    const unitIds = assocUnits.map((u) => u.id);
+    if (unitIds.length === 0) return 0;
+    const rows = await db
+      .select({ personId: ownerships.personId })
+      .from(ownerships)
+      .where(and(inArray(ownerships.unitId, unitIds), isNull(ownerships.endDate)));
+    const distinct = new Set(rows.map((r) => r.personId));
+    return distinct.size;
+  }
+
+  /** Distinct active owner persons (id + email) for §47-261e notice distribution. */
+  private async getAssociationOwnerPersons(associationId: string): Promise<Person[]> {
+    const assocUnits = await db
+      .select({ id: units.id })
+      .from(units)
+      .where(eq(units.associationId, associationId));
+    const unitIds = assocUnits.map((u) => u.id);
+    if (unitIds.length === 0) return [];
+    const ownerRows = await db
+      .select({ personId: ownerships.personId })
+      .from(ownerships)
+      .where(and(inArray(ownerships.unitId, unitIds), isNull(ownerships.endDate)));
+    const personIds = Array.from(new Set(ownerRows.map((r) => r.personId)));
+    if (personIds.length === 0) return [];
+    return db.select().from(persons).where(inArray(persons.id, personIds));
+  }
+
+  async getBudgetRatifications(associationId?: string): Promise<BudgetRatification[]> {
+    if (!associationId) {
+      return db.select().from(budgetRatifications).orderBy(desc(budgetRatifications.createdAt));
+    }
+    return db
+      .select()
+      .from(budgetRatifications)
+      .where(eq(budgetRatifications.associationId, associationId))
+      .orderBy(desc(budgetRatifications.createdAt));
+  }
+
+  async getBudgetRatification(id: string): Promise<BudgetRatification | undefined> {
+    const [row] = await db.select().from(budgetRatifications).where(eq(budgetRatifications.id, id));
+    return row;
+  }
+
+  async getBudgetRatificationByVersion(budgetVersionId: string): Promise<BudgetRatification | undefined> {
+    const [row] = await db
+      .select()
+      .from(budgetRatifications)
+      .where(eq(budgetRatifications.budgetVersionId, budgetVersionId))
+      .orderBy(desc(budgetRatifications.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  /**
+   * §47-261e(a)+(b)+(c): Initiate a statutory budget ratification.
+   *  - builds the owner-facing summary INCLUDING the reserve statement (§47-261e(a))
+   *  - applies the §47-261e(b) 15% special-assessment gate (auto-approves <15%)
+   *  - applies the §47-261e(c) two-thirds emergency-board attestation (bypasses vote)
+   *  - validates the §47-261e 10–60 day vote window when a vote is required
+   *  - snapshots the owner denominator and distributes a notice to each owner
+   *  - reuses voteCampaigns as the campaign lifecycle container
+   */
+  async initiateBudgetRatification(input: {
+    associationId: string;
+    budgetVersionId: string;
+    kind?: "annual-budget" | "special-assessment" | "emergency-assessment";
+    reserveStatement: string;
+    boardAdoptedAt: Date;
+    summaryDistributedAt?: Date;
+    voteOpenAt?: Date;
+    voteCloseAt?: Date;
+    specialAssessmentAmount?: number;
+    annualBudgetTotal?: number;
+    emergencyBoardSeats?: number;
+    emergencyAttestingVotes?: number;
+    emergencyAttestedBy?: string;
+    notes?: string;
+  }): Promise<{ ratification: BudgetRatification; noticeCount: number; summary: BudgetSummary | null }> {
+    const kind = input.kind ?? "annual-budget";
+
+    // Resolve + scope the budget version.
+    const [version] = await db.select().from(budgetVersions).where(eq(budgetVersions.id, input.budgetVersionId));
+    if (!version) throw new Error("Budget version not found");
+    const [budget] = await db.select().from(budgets).where(eq(budgets.id, version.budgetId));
+    if (!budget) throw new Error("Budget not found");
+    if (budget.associationId !== input.associationId) {
+      throw new Error("Budget version does not belong to association");
+    }
+
+    // §47-261e(a) — build the summary INCLUDING the reserve statement.
+    const lines = await this.getBudgetLines(input.budgetVersionId);
+    const summary = buildCtBudgetSummary(
+      lines.map((l) => ({ lineItemName: l.lineItemName, plannedAmount: l.plannedAmount })),
+      input.reserveStatement,
+    );
+
+    const distributedAt = input.summaryDistributedAt ?? new Date();
+
+    // Determine whether the owner negative-option vote is required.
+    let voteRequired = true;
+    let status: "pending-distribution" | "vote-open" | "ratified" | "rejected" = "vote-open";
+
+    if (kind === "emergency-assessment") {
+      // §47-261e(c) — two-thirds board attestation bypasses owner ratification.
+      const att = evaluateEmergencyAttestation({
+        boardSeats: input.emergencyBoardSeats ?? 0,
+        attestingVotes: input.emergencyAttestingVotes ?? 0,
+      });
+      if (!att.approved) {
+        throw new Error(
+          `§47-261e(c): emergency assessment requires a recorded two-thirds board attestation (need ${att.requiredVotes} of ${input.emergencyBoardSeats ?? 0})`,
+        );
+      }
+      voteRequired = false;
+      status = "ratified";
+    } else if (kind === "special-assessment") {
+      // §47-261e(b) — assessments below 15% of the annual budget skip the vote.
+      const gate = evaluateSpecialAssessmentGate({
+        assessmentAmount: input.specialAssessmentAmount ?? 0,
+        annualBudgetTotal: input.annualBudgetTotal ?? summary.total,
+      });
+      voteRequired = gate.requiresVote;
+      status = gate.requiresVote ? "vote-open" : "ratified";
+    }
+
+    // §47-261e — validate the 10–60 day vote window when a vote is required.
+    if (voteRequired) {
+      if (!input.voteCloseAt) {
+        throw new Error("§47-261e: a vote close date is required for the negative-option ratification");
+      }
+      const windowCheck = validateVoteWindow(distributedAt, input.voteCloseAt);
+      if (!windowCheck.valid) {
+        throw new Error(windowCheck.reason ?? "§47-261e: invalid vote window");
+      }
+    }
+
+    const totalOwners = await this.countAssociationOwners(input.associationId);
+
+    // Reuse the existing voting engine: a campaign as the lifecycle container.
+    let voteCampaignId: string | null = null;
+    if (voteRequired) {
+      const [campaign] = await db
+        .insert(voteCampaigns)
+        .values({
+          associationId: input.associationId,
+          title: `§47-261e Budget Ratification — ${budget.name} (FY${budget.fiscalYear})`,
+          description: "Connecticut CGS §47-261e negative-option budget ratification. The budget takes effect unless a majority of all owners votes to reject it.",
+          voteType: "budget-ratification",
+          weightingRule: "unit",
+          openAt: input.voteOpenAt ?? distributedAt,
+          closeAt: input.voteCloseAt ?? null,
+          status: "open",
+          updatedAt: new Date(),
+        })
+        .returning();
+      voteCampaignId = campaign.id;
+    }
+
+    const [ratification] = await db
+      .insert(budgetRatifications)
+      .values({
+        associationId: input.associationId,
+        budgetVersionId: input.budgetVersionId,
+        kind,
+        status,
+        reserveStatement: summary.reserveStatement,
+        budgetSummaryJson: summary as unknown as Record<string, unknown>,
+        boardAdoptedAt: input.boardAdoptedAt,
+        summaryDistributedAt: distributedAt,
+        voteOpenAt: voteRequired ? (input.voteOpenAt ?? distributedAt) : null,
+        voteCloseAt: voteRequired ? (input.voteCloseAt ?? null) : null,
+        totalOwnersAtInitiation: totalOwners,
+        voteCampaignId,
+        specialAssessmentAmount: input.specialAssessmentAmount ?? null,
+        annualBudgetTotal: input.annualBudgetTotal ?? summary.total,
+        voteRequired: voteRequired ? 1 : 0,
+        emergencyBoardSeats: input.emergencyBoardSeats ?? null,
+        emergencyAttestingVotes: input.emergencyAttestingVotes ?? null,
+        emergencyAttestedBy: input.emergencyAttestedBy ?? null,
+        emergencyAttestedAt: kind === "emergency-assessment" ? new Date() : null,
+        outcomeDeterminedAt: voteRequired ? null : new Date(),
+        notes: input.notes ?? null,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    // If auto-approved (no vote), bind the budget version effective now.
+    if (!voteRequired) {
+      await this.markBudgetVersionRatified(input.budgetVersionId);
+    }
+
+    // §47-261e(a) — distribute the summary (incl. reserve statement) to each owner.
+    const owners = await this.getAssociationOwnerPersons(input.associationId);
+    const notices = buildCtOwnerNotices({
+      owners: owners.map((o) => ({ personId: o.id, email: o.email ?? "" })),
+      summary,
+      budgetName: budget.name,
+      fiscalYear: budget.fiscalYear,
+      voteRequired,
+      voteCloseAt: input.voteCloseAt ?? null,
+      kind,
+    });
+
+    for (const notice of notices) {
+      await db.insert(noticeSends).values({
+        associationId: input.associationId,
+        recipientEmail: notice.recipientEmail,
+        recipientPersonId: notice.recipientPersonId,
+        subjectRendered: notice.subject,
+        bodyRendered: notice.body,
+        status: "queued",
+        provider: "internal-mock",
+        campaignKey: `ct-47-261e-ratification:${ratification.id}`,
+        metadataJson: { ratificationId: ratification.id, statute: "CGS §47-261e", kind } as Record<string, unknown>,
+      });
+    }
+
+    return { ratification, noticeCount: notices.length, summary };
+  }
+
+  async getBudgetRatificationVotes(ratificationId: string): Promise<BudgetRatificationVote[]> {
+    return db
+      .select()
+      .from(budgetRatificationVotes)
+      .where(eq(budgetRatificationVotes.ratificationId, ratificationId))
+      .orderBy(desc(budgetRatificationVotes.castAt));
+  }
+
+  /**
+   * §47-261e: record an owner's negative-option ballot. voteChoice "no" = a vote
+   * to REJECT the budget. One ballot per owner (upsert on the unique index).
+   */
+  async castBudgetRatificationVote(
+    ratificationId: string,
+    data: { personId: string; voteChoice: "yes" | "no" | "abstain"; voteWeight?: number },
+  ): Promise<BudgetRatificationVote> {
+    const ratification = await this.getBudgetRatification(ratificationId);
+    if (!ratification) throw new Error("Budget ratification not found");
+    if (ratification.status !== "vote-open") {
+      throw new Error("§47-261e: ratification is not open for voting");
+    }
+    const [existing] = await db
+      .select()
+      .from(budgetRatificationVotes)
+      .where(and(
+        eq(budgetRatificationVotes.ratificationId, ratificationId),
+        eq(budgetRatificationVotes.personId, data.personId),
+      ))
+      .limit(1);
+    if (existing) {
+      const [updated] = await db
+        .update(budgetRatificationVotes)
+        .set({ voteChoice: data.voteChoice, voteWeight: data.voteWeight ?? 1, castAt: new Date() })
+        .where(eq(budgetRatificationVotes.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db
+      .insert(budgetRatificationVotes)
+      .values({
+        ratificationId,
+        personId: data.personId,
+        voteChoice: data.voteChoice,
+        voteWeight: data.voteWeight ?? 1,
+      })
+      .returning();
+    return created;
+  }
+
+  /**
+   * §47-261e: close the negative-option window and determine the outcome.
+   *  - tallies the REJECT weight (voteChoice "no") against ALL owners
+   *  - RATIFIED unless reject weight > totalOwners/2 (binds the budget version)
+   *  - REJECTED → archives the rejected version; the last ratified budget stays
+   *    active (§47-261e auto-revert to the last approved budget)
+   */
+  async closeBudgetRatification(ratificationId: string): Promise<BudgetRatification | undefined> {
+    const ratification = await this.getBudgetRatification(ratificationId);
+    if (!ratification) return undefined;
+    if (ratification.status !== "vote-open") {
+      return ratification; // already determined (auto-approved or closed)
+    }
+
+    const votes = await this.getBudgetRatificationVotes(ratificationId);
+    const rejectWeight = votes
+      .filter((v) => v.voteChoice === "no")
+      .reduce((sum, v) => sum + (v.voteWeight ?? 1), 0);
+
+    const tally = tallyNegativeOption({
+      totalOwners: ratification.totalOwnersAtInitiation,
+      rejectWeight,
+    });
+    const plan = planRatificationClose(tally, ratification.budgetVersionId);
+
+    const now = new Date();
+    if (plan.ratifyVersionId) {
+      await this.markBudgetVersionRatified(plan.ratifyVersionId);
+    } else if (plan.archiveVersionId) {
+      // §47-261e auto-revert: the rejected version is archived; the last ratified
+      // budget version is left untouched and remains the active budget.
+      await db
+        .update(budgetVersions)
+        .set({ status: "archived", ratifiedAt: null, updatedAt: now })
+        .where(eq(budgetVersions.id, plan.archiveVersionId));
+    }
+
+    // Close the reused campaign lifecycle.
+    if (ratification.voteCampaignId) {
+      await db
+        .update(voteCampaigns)
+        .set({ status: "closed", certifiedAt: now, updatedAt: now })
+        .where(eq(voteCampaigns.id, ratification.voteCampaignId));
+    }
+
+    const [updated] = await db
+      .update(budgetRatifications)
+      .set({
+        status: tally.outcome,
+        rejectWeightFinal: rejectWeight,
+        outcomeDeterminedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(budgetRatifications.id, ratificationId))
+      .returning();
+    return updated;
+  }
+
+  /**
+   * Bind a budget version to "ratified", clearing any other ratified version for
+   * the same budget first (enforces one-ratified-per-budget like the admin path).
+   */
+  private async markBudgetVersionRatified(budgetVersionId: string): Promise<void> {
+    const [version] = await db.select().from(budgetVersions).where(eq(budgetVersions.id, budgetVersionId));
+    if (!version) throw new Error("Budget version not found");
+    const now = new Date();
+    // Archive any currently-ratified sibling so the new one becomes the single active budget.
+    await db
+      .update(budgetVersions)
+      .set({ status: "archived", ratifiedAt: null, updatedAt: now })
+      .where(and(
+        eq(budgetVersions.budgetId, version.budgetId),
+        eq(budgetVersions.status, "ratified"),
+      ));
+    await db
+      .update(budgetVersions)
+      .set({ status: "ratified", ratifiedAt: now, updatedAt: now })
+      .where(eq(budgetVersions.id, budgetVersionId));
   }
 
   async getBudgetVariance(associationId: string, budgetVersionId: string): Promise<Array<{

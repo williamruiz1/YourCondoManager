@@ -263,6 +263,7 @@ import {
 } from "@shared/schema";
 import type { AdminRole, PlanCatalog } from "@shared/schema";
 import { resolveSelfManagedPlan } from "./services/pricing-service";
+import { toOwnerPortalRatificationView } from "./services/budget-ratification-service";
 import { reportInitialUsageForAssociation, reconcileAllSubscriptionUsage } from "./services/usage-reconcile";
 import type { MeterPoster } from "./services/stripe-meter-reporting";
 import {
@@ -5275,6 +5276,94 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.updateBudgetLine(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Budget line not found" });
       safeInvalidateAlertCache(); // 15a: budget-variance source write
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Connecticut CGS §47-261e budget ratification (owner-veto / negative option) ──
+
+  // List ratifications for an association.
+  app.get("/api/financial/budget-ratifications", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const result = await storage.getBudgetRatifications(getAssociationIdQuery(req));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get one ratification (+ its votes).
+  app.get("/api/financial/budget-ratifications/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const ratification = await storage.getBudgetRatification(getParam(req.params.id));
+      if (!ratification) return res.status(404).json({ message: "Budget ratification not found" });
+      assertAssociationScope(req as AdminRequest, ratification.associationId);
+      const votes = await storage.getBudgetRatificationVotes(ratification.id);
+      res.json({ ...ratification, votes });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e initiate: build summary (incl. reserve statement), apply gates, distribute notices, open vote.
+  app.post("/api/financial/budget-ratifications", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const b = req.body ?? {};
+      if (!b.associationId || !b.budgetVersionId || !b.reserveStatement || !b.boardAdoptedAt) {
+        return res.status(400).json({ message: "associationId, budgetVersionId, reserveStatement, and boardAdoptedAt are required" });
+      }
+      assertAssociationScope(req as AdminRequest, b.associationId);
+      await assertResourceScope(req as AdminRequest, "budget-version", b.budgetVersionId);
+      const result = await storage.initiateBudgetRatification({
+        associationId: b.associationId,
+        budgetVersionId: b.budgetVersionId,
+        kind: b.kind,
+        reserveStatement: b.reserveStatement,
+        boardAdoptedAt: new Date(b.boardAdoptedAt),
+        summaryDistributedAt: b.summaryDistributedAt ? new Date(b.summaryDistributedAt) : undefined,
+        voteOpenAt: b.voteOpenAt ? new Date(b.voteOpenAt) : undefined,
+        voteCloseAt: b.voteCloseAt ? new Date(b.voteCloseAt) : undefined,
+        specialAssessmentAmount: b.specialAssessmentAmount,
+        annualBudgetTotal: b.annualBudgetTotal,
+        emergencyBoardSeats: b.emergencyBoardSeats,
+        emergencyAttestingVotes: b.emergencyAttestingVotes,
+        emergencyAttestedBy: b.emergencyAttestedBy,
+        notes: b.notes,
+      });
+      safeInvalidateAlertCache();
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e cast an owner negative-option ballot (voteChoice "no" = reject the budget).
+  app.post("/api/financial/budget-ratifications/:id/vote", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const ratification = await storage.getBudgetRatification(getParam(req.params.id));
+      if (!ratification) return res.status(404).json({ message: "Budget ratification not found" });
+      assertAssociationScope(req as AdminRequest, ratification.associationId);
+      const { personId, voteChoice, voteWeight } = req.body ?? {};
+      if (!personId || !["yes", "no", "abstain"].includes(voteChoice)) {
+        return res.status(400).json({ message: "personId and a valid voteChoice (yes|no|abstain) are required" });
+      }
+      const result = await storage.castBudgetRatificationVote(ratification.id, { personId, voteChoice, voteWeight });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e close the negative-option window, tally rejects vs ALL owners, ratify or auto-revert.
+  app.post("/api/financial/budget-ratifications/:id/close", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const ratification = await storage.getBudgetRatification(getParam(req.params.id));
+      if (!ratification) return res.status(404).json({ message: "Budget ratification not found" });
+      assertAssociationScope(req as AdminRequest, ratification.associationId);
+      const result = await storage.closeBudgetRatification(ratification.id);
+      safeInvalidateAlertCache();
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -14029,6 +14118,38 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const myEntries = allEntries.filter((e) => e.personId === req.portalPersonId);
       const balance = myEntries.reduce((sum, e) => sum + e.amount, 0);
       res.json({ entries: myEntries, balance });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // §47-261e owner-portal surface: proposed budget summary + reserve statement + ratification status.
+  app.get("/api/portal/budget-ratifications", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      if (!req.portalAssociationId || !req.portalPersonId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const ratifications = await storage.getBudgetRatifications(req.portalAssociationId);
+      // Surface the owner's own ballot (if any) per ratification.
+      const withMyVote = await Promise.all(
+        ratifications.map(async (r) => {
+          const votes = await storage.getBudgetRatificationVotes(r.id);
+          const myVote = votes.find((v) => v.personId === req.portalPersonId) ?? null;
+          return toOwnerPortalRatificationView({
+            id: r.id,
+            kind: r.kind,
+            status: r.status,
+            reserveStatement: r.reserveStatement,
+            budgetSummaryJson: r.budgetSummaryJson,
+            voteOpenAt: r.voteOpenAt,
+            voteCloseAt: r.voteCloseAt,
+            totalOwnersAtInitiation: r.totalOwnersAtInitiation,
+            voteRequired: r.voteRequired,
+            myVote: myVote ? myVote.voteChoice : null,
+          });
+        }),
+      );
+      res.json(withMyVote);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
