@@ -9,6 +9,7 @@ import { FinancialLedgerContent } from "./financial-ledger";
 import { FinancialAssessmentsContent } from "./financial-assessments";
 import { FinancialLateFeesContent } from "./financial-late-fees";
 import { FinancialDelinquencyContent } from "./financial-delinquency";
+import { FinancialLiensContent } from "./financial-liens";
 
 export default function FinancialBillingPage() {
   useDocumentTitle(t("financialBilling.title"));
@@ -34,6 +35,7 @@ export default function FinancialBillingPage() {
             <TabsTrigger value="assessments">{t("financialBilling.tabs.assessments")}</TabsTrigger>
             <TabsTrigger value="late-fees">{t("financialBilling.tabs.lateFees")}</TabsTrigger>
             <TabsTrigger value="delinquency">{t("financialBilling.tabs.delinquency")}</TabsTrigger>
+            <TabsTrigger value="liens">Liens</TabsTrigger>
           </TabsList>
           <TabsContent value="ledger" className="mt-0">
             <FinancialLedgerContent />
@@ -46,6 +48,9 @@ export default function FinancialBillingPage() {
           </TabsContent>
           <TabsContent value="delinquency" className="mt-0">
             <FinancialDelinquencyContent />
+          </TabsContent>
+          <TabsContent value="liens" className="mt-0">
+            <FinancialLiensContent />
           </TabsContent>
         </Tabs>
       </div>
