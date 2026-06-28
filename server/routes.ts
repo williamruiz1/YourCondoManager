@@ -8,6 +8,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
+import { reserveDisclosureDollars, reserveDisclosureBasis } from "./ct-reserve-disclosure";
 import { sendEmail } from "./email/send";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
 import { invalidateAlertCache } from "./alerts";
@@ -180,6 +181,7 @@ import {
   insertDelinquencyEscalationSchema,
   collectionsHandoffs,
   insertCollectionsHandoffSchema,
+  assessmentLiens,
   bankStatementImports,
   bankStatementTransactions,
   insertBankStatementTransactionSchema,
@@ -4385,6 +4387,127 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const [updated] = await db.update(collectionsHandoffs).set(updates).where(eq(collectionsHandoffs.id, id)).returning();
       res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Statutory assessment liens (CT CGS §47-258 / DE §81-316) — #8014 ─────────
+  app.get("/api/financial/assessment-liens", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const { listAssessmentLiens } = await import("./services/assessment-lien-service");
+      const rows = await listAssessmentLiens(associationId);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-258(a)+(e): create a lien (arises automatically; SOL expiry set from arose-date).
+  app.post("/api/financial/assessment-liens", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = req.body?.associationId as string | undefined;
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationInputScope(req, associationId);
+      const { createAssessmentLien } = await import("./services/assessment-lien-service");
+      const lien = await createAssessmentLien({
+        associationId,
+        unitId: req.body.unitId,
+        personId: req.body.personId ?? null,
+        escalationId: req.body.escalationId ?? null,
+        sourceReference: req.body.sourceReference ?? null,
+        aroseDate: new Date(req.body.aroseDate),
+        principalAmount: Number(req.body.principalAmount),
+        monthlyCommonExpense: req.body.monthlyCommonExpense != null ? Number(req.body.monthlyCommonExpense) : 0,
+        statuteSection: req.body.statuteSection ?? "47-258",
+      });
+      res.status(201).json(lien);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-258(b): compute the 9-month super-priority for a lien (read-only calc).
+  app.get("/api/financial/assessment-liens/:id/super-priority", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const [lien] = await db.select().from(assessmentLiens).where(eq(assessmentLiens.id, req.params.id as string)).limit(1);
+      if (!lien) return res.status(404).json({ message: "Not found" });
+      assertAssociationScope(req, lien.associationId);
+      const { computeSuperPriority } = await import("./services/assessment-lien-service");
+      const enforcementDate = req.query.enforcementDate ? new Date(String(req.query.enforcementDate)) : new Date();
+      const result = computeSuperPriority({
+        monthlyCommonExpense: lien.monthlyCommonExpense,
+        totalLienAmount: lien.principalAmount,
+        enforcementDate,
+        statuteSection: lien.statuteSection,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // release: apply a payment to a lien → released / active / expired.
+  app.post("/api/financial/assessment-liens/:id/apply-payment", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const [lien] = await db.select().from(assessmentLiens).where(eq(assessmentLiens.id, req.params.id as string)).limit(1);
+      if (!lien) return res.status(404).json({ message: "Not found" });
+      assertAssociationScope(req, lien.associationId);
+      const { applyPaymentToAssessmentLien } = await import("./services/assessment-lien-service");
+      const updated = await applyPaymentToAssessmentLien({
+        lienId: lien.id,
+        associationId: lien.associationId,
+        amountPaid: Number(req.body.amountPaid),
+      });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-258(m): evaluate the pre-foreclosure gate + issue the 60-day notice.
+  app.post("/api/financial/assessment-liens/:id/pre-foreclosure", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const [lien] = await db.select().from(assessmentLiens).where(eq(assessmentLiens.id, req.params.id as string)).limit(1);
+      if (!lien) return res.status(404).json({ message: "Not found" });
+      assertAssociationScope(req, lien.associationId);
+      const { issuePreForeclosureNotice } = await import("./services/assessment-lien-service");
+      const outcome = await issuePreForeclosureNotice({
+        associationId: lien.associationId,
+        lienId: lien.id,
+        unitId: lien.unitId,
+        personId: lien.personId,
+        recipientEmail: req.body.recipientEmail,
+        mortgageeEmail: req.body.mortgageeEmail ?? null,
+        gate: {
+          monthsOwed: Number(req.body.monthsOwed),
+          boardVoteOrPolicyAttested: Boolean(req.body.boardVoteOrPolicyAttested),
+          writtenDemandSent: Boolean(req.body.writtenDemandSent),
+          mortgageeCopySent: Boolean(req.body.mortgageeCopySent),
+          aroseDate: lien.aroseDate,
+          asOf: new Date(),
+        },
+        notice: {
+          ownerName: req.body.ownerName,
+          unitNumber: req.body.unitNumber,
+          associationName: req.body.associationName,
+          principalDebt: Number(req.body.principalDebt ?? lien.principalAmount),
+          fees: Number(req.body.fees ?? 0),
+          attorneyCosts: req.body.attorneyCosts != null ? Number(req.body.attorneyCosts) : 0,
+          issuedAt: new Date(),
+          paymentInstructions: req.body.paymentInstructions ?? "Contact the management office to arrange payment.",
+          mortgageeName: req.body.mortgageeName ?? null,
+          mortgageeContact: req.body.mortgageeContact ?? null,
+          statuteSection: lien.statuteSection,
+        },
+      });
+      if (!outcome.gate.allowed) {
+        return res.status(422).json(outcome);
+      }
+      res.status(201).json(outcome);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -17521,16 +17644,13 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       let totalOwnerAccounts = 0;
 
       await Promise.all(visibleAssociations.map(async (assoc) => {
-        const [accounts, ledgerSummary] = await Promise.all([
-          storage.getFinancialAccounts(assoc.id),
-          storage.getOwnerLedgerSummary(assoc.id),
-        ]);
+        const ledgerSummary = await storage.getOwnerLedgerSummary(assoc.id);
 
-        for (const acct of accounts) {
-          if (acct.accountType === "reserve" || acct.name.toLowerCase().includes("reserve")) {
-            totalReserveFunds += 0; // balances aren't stored on account rows; use placeholder
-          }
-        }
+        // CT CIOA §47-261e(a) / §47-270(a)(5): the reserve amount is a board-declared
+        // per-association disclosure figure (associations.reserveBalanceCents), NOT a
+        // sum of per-account bank balances. Cents → dollars for this dollar-valued
+        // aggregate. No CT funding-mandate check (CT discloses; DE §81-315 mandates).
+        totalReserveFunds += reserveDisclosureDollars(assoc);
 
         const delinquent = ledgerSummary.filter((e) => e.balance > 0);
         totalDelinquentAccounts += delinquent.length;
@@ -17590,7 +17710,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           state: assoc.state || null,
           unitCount: unitsList.length,
           operatingBalance: 0,
-          reserveBalance: 0,
+          // CT CIOA §47-261e(a)/§47-270(a)(5): board-declared reserve disclosure
+          // (associations.reserveBalanceCents), cents → dollars. Null → 0.
+          reserveBalance: reserveDisclosureDollars(assoc),
           delinquencyPct: Math.round(delinquencyPct * 10) / 10,
           openWorkOrders: openWOs,
           status,
@@ -17707,7 +17829,12 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         occupancyRatePercent: overview.occupancyRatePercent,
         activeOwners: overview.activeOwners,
         activeOccupants: overview.activeOccupants,
-        reserveFund: 0, // placeholder — no reserve balance table
+        // CT CIOA §47-270(a)(5) (resale cert) + §47-261e(a) (budget summary): the
+        // board-declared reserve amount + the basis on which it is calculated/funded.
+        // reserveFund in dollars (cents → dollars); reserveBasis is the narrative.
+        // Disclosure only — no CT reserve-study or funding-floor mandate (DE §81-315).
+        reserveFund: reserveDisclosureDollars(assoc),
+        reserveBasis: reserveDisclosureBasis(assoc),
         openTickets: overview.maintenanceOpen,
         highPriorityTickets: highPriorityOpen,
         maintenanceOverdue: overview.maintenanceOverdue,

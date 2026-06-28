@@ -23,6 +23,20 @@ export const associations = pgTable("associations", {
   // Maps onboarding (Phase 1): coordinates stored after admin confirms satellite view
   latitudeDeg: decimal("latitude_deg", { precision: 10, scale: 7 }),
   longitudeDeg: decimal("longitude_deg", { precision: 10, scale: 7 }),
+  // CT CIOA reserve disclosure (#8016, from the #1035 audit §Area 1). Connecticut
+  // does NOT mandate a reserve study or a minimum funding level — that is Delaware
+  // (DUCIOA §81-315). CT requires DISCLOSURE only: the annual budget summary must
+  // STATE the reserve amount + the basis on which reserves are calculated/funded
+  // (CGS §47-261e(a)), and the resale certificate must state the reserve amount
+  // (CGS §47-270(a)(5)). These two fields are the board-declared persisted store
+  // for that disclosure — NOT a live bank balance and NOT a funding-mandate gate.
+  // reserveBalanceCents: the stated reserve amount, in cents (matches the cents
+  // convention used by financialAccounts.currentBalanceCents). Null = not yet stated.
+  reserveBalanceCents: integer("reserve_balance_cents"),
+  // reserveBasis: the §47-261e(a) narrative — "the basis on which reserves are
+  // calculated and funded" (e.g. "per the 2026 reserve study, funded at 10% of the
+  // annual operating budget"). Null = not yet stated.
+  reserveBasis: text("reserve_basis"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -4075,3 +4089,99 @@ export const budgetLineGlMappings = pgTable(
 export const insertBudgetLineGlMappingSchema = createInsertSchema(budgetLineGlMappings).omit({ id: true, createdAt: true, updatedAt: true });
 export type BudgetLineGlMapping = typeof budgetLineGlMappings.$inferSelect;
 export type InsertBudgetLineGlMapping = z.infer<typeof insertBudgetLineGlMappingSchema>;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Statutory assessment lien (CT CGS §47-258 / DE §81-316) — BUILD #8014
+// ──────────────────────────────────────────────────────────────────────────────
+//
+// Connecticut General Statutes §47-258 gives a common-interest community an
+// AUTOMATIC lien on a unit for unpaid common-expense assessments, with a 9-month
+// SUPER-PRIORITY over a first mortgage. Delaware §81-316 carries the same 9-month
+// super-priority — the super-priority calc is state-portable (see
+// server/services/assessment-lien-service.ts → computeSuperPriority).
+//
+// This is a GREENFIELD lien primitive: it sits OVER the existing delinquency /
+// escalation / notice engine (delinquencyEscalations, delinquencyNotices,
+// noticeSends) and does NOT replace it. The lien is the statutory lifecycle
+// object; the escalation/notice rows remain the operational collections feed.
+//
+// §47-258(a) — lien arises automatically on the unpaid assessment (arose-date).
+// §47-258(b) — 9-month super-priority over first mortgage.
+// §47-258(d) — no separate recording is required for the lien to be enforceable.
+// §47-258(e) — a 3-year statute of limitations runs from the arose-date.
+// §47-258(m) — a 2-month + board-vote/standard-policy + written-demand-with-
+//              mortgagee-copy GATE precedes foreclosure, then a 60-day notice.
+//
+// ALL queries are association-scoped (associationId). ADDITIVE — touches no
+// existing table/row. Actual foreclosure filing / legal action is OUT OF SCOPE.
+
+export const assessmentLienStatusEnum = pgEnum("assessment_lien_status", [
+  "active", "released", "expired",
+]);
+
+export const assessmentLiens = pgTable("assessment_liens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  /** Optional tie back to the escalation that drove this lien (operational feed). */
+  escalationId: varchar("escalation_id").references(() => delinquencyEscalations.id),
+  /** Free-form reference (e.g. originating special-assessment id / ledger key). */
+  sourceReference: text("source_reference"),
+  /** §47-258(a): the date the lien arose = the date the assessment became due. */
+  aroseDate: timestamp("arose_date").notNull(),
+  /** Principal unpaid common-expense assessment the lien secures. */
+  principalAmount: real("principal_amount").notNull(),
+  /** Per-month common-expense charge — input to the §47-258(b) super-priority calc. */
+  monthlyCommonExpense: real("monthly_common_expense").notNull().default(0),
+  /** Statute the lien is asserted under — portable: "47-258" (CT) | "81-316" (DE). */
+  statuteSection: text("statute_section").notNull().default("47-258"),
+  status: assessmentLienStatusEnum("status").notNull().default("active"),
+  /** §47-258(e): arose-date + 3 years. After this the lien is unenforceable. */
+  expiresAt: timestamp("expires_at").notNull(),
+  releasedAt: timestamp("released_at"),
+  releaseReason: text("release_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  byAssociation: index("assessment_liens_association_idx").on(table.associationId),
+  byUnit: index("assessment_liens_unit_idx").on(table.associationId, table.unitId),
+}));
+export const insertAssessmentLienSchema = createInsertSchema(assessmentLiens).omit({ id: true, createdAt: true, updatedAt: true });
+export type AssessmentLien = typeof assessmentLiens.$inferSelect;
+export type InsertAssessmentLien = z.infer<typeof insertAssessmentLienSchema>;
+
+// §47-258(m) pre-foreclosure gate evaluation + 60-day notice record.
+export const assessmentLienPreforeclosureResultEnum = pgEnum("assessment_lien_preforeclosure_result", [
+  "allowed", "blocked",
+]);
+
+export const assessmentLienPreforeclosures = pgTable("assessment_lien_preforeclosures", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  lienId: varchar("lien_id").notNull().references(() => assessmentLiens.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  /** §47-258(m)(1) gate inputs. */
+  monthsOwed: integer("months_owed").notNull(),
+  boardVoteOrPolicyAttested: integer("board_vote_or_policy_attested").notNull().default(0),
+  writtenDemandSent: integer("written_demand_sent").notNull().default(0),
+  mortgageeCopySent: integer("mortgagee_copy_sent").notNull().default(0),
+  /** §47-258(m)(1) gate verdict + machine-readable block reasons. */
+  gateResult: assessmentLienPreforeclosureResultEnum("gate_result").notNull(),
+  gateBlockReasonsJson: jsonb("gate_block_reasons_json").notNull().default(sql`'[]'::jsonb`),
+  /** §47-258(m)(2) 60-day notice. */
+  noticeSendId: varchar("notice_send_id").references(() => noticeSends.id),
+  mortgageeNoticeSendId: varchar("mortgagee_notice_send_id").references(() => noticeSends.id),
+  noticeIssuedAt: timestamp("notice_issued_at"),
+  noticeDeadlineAt: timestamp("notice_deadline_at"),
+  noticeDays: integer("notice_days").notNull().default(60),
+  totalDue: real("total_due"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  byLien: index("assessment_lien_preforeclosures_lien_idx").on(table.lienId),
+  byAssociation: index("assessment_lien_preforeclosures_association_idx").on(table.associationId),
+}));
+export const insertAssessmentLienPreforeclosureSchema = createInsertSchema(assessmentLienPreforeclosures).omit({ id: true, createdAt: true });
+export type AssessmentLienPreforeclosure = typeof assessmentLienPreforeclosures.$inferSelect;
+export type InsertAssessmentLienPreforeclosure = z.infer<typeof insertAssessmentLienPreforeclosureSchema>;
