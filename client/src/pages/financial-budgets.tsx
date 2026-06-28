@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveAssociation } from "@/hooks/use-active-association";
+import { BudgetRatificationPanel } from "@/components/budget-ratification-panel";
 import { ChevronRight, Plus, CheckCircle2, FileText } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { financeSubPages } from "@/lib/sub-page-nav";
@@ -395,6 +396,11 @@ export function FinancialBudgetsContent() {
                   Mark Ratified
                 </Button>
               )}
+            </div>
+          )}
+          {selectedVersion && assocId && (
+            <div className="mt-4">
+              <BudgetRatificationPanel associationId={assocId} budgetVersionId={versionId} />
             </div>
           )}
         </div>
