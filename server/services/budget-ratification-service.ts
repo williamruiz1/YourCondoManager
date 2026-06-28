@@ -32,25 +32,59 @@ export interface BudgetSummaryLine {
   plannedAmount: number;
 }
 
+/**
+ * §47-261e(a) statement of reserves — the statute requires BOTH statutory
+ * elements: the reserve AMOUNT and the BASIS on which reserves are calculated
+ * and funded. Both are required; either missing makes the summary non-compliant.
+ */
+export interface ReserveStatementInput {
+  /** The reserve amount (dollars). Required. Must be a finite, non-negative number. */
+  reserveAmount: number;
+  /** The basis on which reserves are calculated and funded. Required, non-empty. */
+  reserveBasis: string;
+}
+
 export interface BudgetSummary {
-  /** §47-261e(a) reserve statement — MUST be included in the distributed summary. */
+  /** §47-261e(a) — the reserve AMOUNT element. */
+  reserveAmount: number;
+  /** §47-261e(a) — the BASIS element (how reserves are calculated and funded). */
+  reserveBasis: string;
+  /** §47-261e(a) combined human-readable statement of reserves (amount + basis). */
   reserveStatement: string;
   lineItems: Array<{ lineItemName: string; plannedAmount: number }>;
   total: number;
 }
 
+/** Compose the combined statement-of-reserves display string from both elements. */
+export function composeReserveStatement(reserveAmount: number, reserveBasis: string): string {
+  return `Reserve amount: $${reserveAmount.toLocaleString()}. Basis: ${reserveBasis.trim()}`;
+}
+
 /**
  * §47-261e(a): Build the owner-facing budget summary that MUST include the
- * statement of reserves. A summary lacking a reserve statement is non-compliant.
+ * statement of reserves — and that statement MUST carry BOTH statutory elements:
+ * the reserve AMOUNT and the BASIS on which reserves are calculated and funded.
+ * A summary missing EITHER element is rejected as non-compliant.
  */
 export function buildBudgetSummary(
   lines: BudgetSummaryLine[],
-  reserveStatement: string,
+  reserve: ReserveStatementInput,
 ): BudgetSummary {
-  const trimmed = (reserveStatement ?? "").trim();
-  if (!trimmed) {
+  const reserveAmount = reserve?.reserveAmount;
+  const reserveBasis = (reserve?.reserveBasis ?? "").trim();
+  if (
+    reserveAmount === undefined ||
+    reserveAmount === null ||
+    !Number.isFinite(reserveAmount) ||
+    reserveAmount < 0
+  ) {
     throw new Error(
-      "§47-261e(a): budget summary MUST include a statement of reserves",
+      "§47-261e(a): statement of reserves is incomplete — the reserve AMOUNT (a non-negative number) is required",
+    );
+  }
+  if (!reserveBasis) {
+    throw new Error(
+      "§47-261e(a): statement of reserves is incomplete — the BASIS on which reserves are calculated and funded is required",
     );
   }
   const lineItems = lines.map((l) => ({
@@ -60,7 +94,13 @@ export function buildBudgetSummary(
   const total = Number(
     lineItems.reduce((sum, l) => sum + l.plannedAmount, 0).toFixed(2),
   );
-  return { reserveStatement: trimmed, lineItems, total };
+  return {
+    reserveAmount,
+    reserveBasis,
+    reserveStatement: composeReserveStatement(reserveAmount, reserveBasis),
+    lineItems,
+    total,
+  };
 }
 
 /**
@@ -115,30 +155,88 @@ export type RatificationOutcome = "ratified" | "rejected";
 
 export interface NegativeOptionTally {
   outcome: RatificationOutcome;
-  totalOwners: number;
+  /** The denominator: the configured voting base (UNITS by default — see VotingBasis). */
+  totalVotingBase: number;
   rejectWeight: number;
-  /** The number of reject votes (strictly) required to defeat the budget. */
+  /** The reject weight (strictly) required to defeat the budget (> base/2). */
   rejectThreshold: number;
 }
 
 /**
- * §47-261e (negative option): the budget is RATIFIED unless a MAJORITY OF ALL
- * UNIT OWNERS votes to reject it. The denominator is ALL owners (not just those
- * who voted) — silence / abstention / non-participation counts toward effect.
- *
- * A budget is REJECTED only when rejectWeight > totalOwners / 2.
+ * §47-261e (negative option): the budget is RATIFIED unless a MAJORITY of the
+ * VOTING BASE votes to reject it. Per §47-261e + §47-203, the voting base is the
+ * association's UNITS (one vote per unit) by default — NOT distinct owner-persons
+ * (that would under-count multi-unit owners and bias toward wrongly deeming a
+ * budget ratified, the higher-harm error). The denominator is the WHOLE base
+ * (not just those who voted) — silence / abstention / non-participation counts
+ * toward effect. A budget is REJECTED only when rejectWeight > totalVotingBase/2.
  */
 export function tallyNegativeOption(params: {
-  totalOwners: number;
+  totalVotingBase: number;
   rejectWeight: number;
 }): NegativeOptionTally {
-  const totalOwners = Math.max(0, params.totalOwners);
+  const totalVotingBase = Math.max(0, params.totalVotingBase);
   const rejectWeight = Math.max(0, params.rejectWeight);
-  // Strict majority of ALL owners: > 50%.
-  const rejectThreshold = totalOwners / 2;
+  // Strict majority of the voting base: > 50%.
+  const rejectThreshold = totalVotingBase / 2;
   const outcome: RatificationOutcome =
     rejectWeight > rejectThreshold ? "rejected" : "ratified";
-  return { outcome, totalOwners, rejectWeight, rejectThreshold };
+  return { outcome, totalVotingBase, rejectWeight, rejectThreshold };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §47-261e + §47-203 — configurable voting basis (the negative-option denominator)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const votingBasisValues = ["per-unit", "allocated-interest", "per-owner"] as const;
+export type VotingBasis = (typeof votingBasisValues)[number];
+export const DEFAULT_VOTING_BASIS: VotingBasis = "per-unit";
+
+export interface VotingBaseResolution {
+  basis: VotingBasis;
+  /** The negative-option denominator under the resolved basis. */
+  denominator: number;
+  /** False when the requested basis is not yet data-wired and a fallback was used. */
+  wired: boolean;
+  note?: string;
+}
+
+/**
+ * Resolve the §47-261e voting-base denominator for an association.
+ *  - "per-unit" (DEFAULT): one vote per UNIT → denominator = unit count.
+ *  - "allocated-interest": votes weighted by unit allocated-interest % →
+ *     denominator = total allocated interest. TYPED-BUT-NOT-YET-DATA-WIRED:
+ *     no unit-level allocated_interest field exists yet, so until that lands
+ *     this falls back to the per-unit count (statutorily safe — never
+ *     under-counts) and reports wired=false. TODO(allocated-interest): wire to
+ *     a real unit allocated-interest column when added.
+ *  - "per-owner": one vote per distinct owner-person → denominator = owner count.
+ *     Retained as an explicit opt-in mode; NOT the default (it under-counts
+ *     multi-unit owners for a negative-option vote).
+ */
+export function resolveVotingBaseCount(params: {
+  basis: VotingBasis;
+  unitCount: number;
+  ownerCount: number;
+  allocatedInterestTotal?: number | null;
+}): VotingBaseResolution {
+  const { basis, unitCount, ownerCount, allocatedInterestTotal } = params;
+  if (basis === "per-owner") {
+    return { basis, denominator: Math.max(0, ownerCount), wired: true };
+  }
+  if (basis === "allocated-interest") {
+    if (typeof allocatedInterestTotal === "number" && allocatedInterestTotal > 0) {
+      return { basis, denominator: allocatedInterestTotal, wired: true };
+    }
+    return {
+      basis,
+      denominator: Math.max(0, unitCount),
+      wired: false,
+      note: "allocated-interest not data-wired; using per-unit count as the safe fallback",
+    };
+  }
+  // default per-unit
+  return { basis: "per-unit", denominator: Math.max(0, unitCount), wired: true };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,7 +331,7 @@ export function buildOwnerNotices(params: {
   const subject = `Proposed Budget Summary & Ratification Notice — ${budgetName} (FY${fiscalYear})`;
   const reserveLine = `Statement of Reserves (CGS §47-261e(a)): ${summary.reserveStatement}`;
   const windowLine = voteRequired
-    ? `This budget will take effect on ${voteCloseAt ? voteCloseAt.toDateString() : "the ratification date"} UNLESS a majority of all unit owners votes to reject it.`
+    ? `This budget will take effect on ${voteCloseAt ? voteCloseAt.toDateString() : "the ratification date"} UNLESS a majority of the units (the voting base) votes to reject it.`
     : kind === "emergency-assessment"
       ? "Adopted as an emergency special assessment under §47-261e(c) (two-thirds board attestation)."
       : "Approved without an owner vote (special assessment below the §47-261e(b) 15% threshold).";
@@ -291,14 +389,17 @@ export interface OwnerPortalRatificationView {
   budgetSummary: unknown;
   voteOpenAt: Date | null;
   voteCloseAt: Date | null;
-  totalOwners: number;
+  /** The §47-261e voting basis used (per-unit by default). */
+  votingBasis: string;
+  /** The negative-option denominator under that basis (units by default). */
+  totalVotingBase: number;
   voteRequired: boolean;
   myVote: string | null;
 }
 
 /**
  * Owner-portal contract: the proposed budget summary, the reserve statement, the
- * ratification status, and the owner's own recorded vote (if any).
+ * ratification status, the voting basis + denominator, and the owner's own vote.
  */
 export function toOwnerPortalRatificationView(input: {
   id: string;
@@ -308,7 +409,8 @@ export function toOwnerPortalRatificationView(input: {
   budgetSummaryJson: unknown;
   voteOpenAt: Date | null;
   voteCloseAt: Date | null;
-  totalOwnersAtInitiation: number;
+  votingBasis: string;
+  votingBaseAtInitiation: number;
   voteRequired: number;
   myVote: string | null;
 }): OwnerPortalRatificationView {
@@ -321,7 +423,8 @@ export function toOwnerPortalRatificationView(input: {
     budgetSummary: input.budgetSummaryJson,
     voteOpenAt: input.voteOpenAt,
     voteCloseAt: input.voteCloseAt,
-    totalOwners: input.totalOwnersAtInitiation,
+    votingBasis: input.votingBasis,
+    totalVotingBase: input.votingBaseAtInitiation,
     voteRequired: input.voteRequired === 1,
     myVote: input.myVote,
   };

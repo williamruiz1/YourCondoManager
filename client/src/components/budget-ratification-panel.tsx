@@ -38,7 +38,8 @@ export function BudgetRatificationPanel({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [reserveStatement, setReserveStatement] = useState("");
+  const [reserveAmount, setReserveAmount] = useState("");
+  const [reserveBasis, setReserveBasis] = useState("");
   const [voteCloseAt, setVoteCloseAt] = useState(isoInDays(30));
 
   const listQuery = useQuery<BudgetRatification[]>({
@@ -76,7 +77,8 @@ export function BudgetRatificationPanel({
         associationId,
         budgetVersionId,
         kind: "annual-budget",
-        reserveStatement,
+        reserveAmount: Number(reserveAmount),
+        reserveBasis,
         boardAdoptedAt: new Date().toISOString(),
         voteCloseAt: new Date(voteCloseAt).toISOString(),
       });
@@ -115,25 +117,33 @@ export function BudgetRatificationPanel({
           {existing && <Badge variant={statusVariant(existing.status)}>{existing.status}</Badge>}
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Owner-veto / negative option: the budget takes effect unless a majority of all owners votes to reject it.
+          Owner-veto / negative option: the budget takes effect unless a majority of the units (the voting base) votes to reject it.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
         {!existing && (
           <div className="space-y-2">
-            <label className="text-xs font-medium">Statement of Reserves (§47-261e(a) — required)</label>
+            <label className="text-xs font-medium">Statement of Reserves (§47-261e(a) — both elements required)</label>
             <Input
-              data-testid="input-reserve-statement"
-              placeholder="e.g. Reserve fund balance is $42,000; recommended funding $50,000."
-              value={reserveStatement}
-              onChange={(e) => setReserveStatement(e.target.value)}
+              data-testid="input-reserve-amount"
+              type="number"
+              min={0}
+              placeholder="Reserve amount (e.g. 42000)"
+              value={reserveAmount}
+              onChange={(e) => setReserveAmount(e.target.value)}
+            />
+            <Input
+              data-testid="input-reserve-basis"
+              placeholder="Basis on which reserves are calculated & funded (e.g. per the 2026 reserve study, funded at 10% of annual budget)"
+              value={reserveBasis}
+              onChange={(e) => setReserveBasis(e.target.value)}
             />
             <label className="text-xs font-medium">Vote closes (10–60 days from distribution)</label>
             <Input type="date" value={voteCloseAt} onChange={(e) => setVoteCloseAt(e.target.value)} />
             <Button
               size="sm"
               data-testid="button-initiate-ratification"
-              disabled={!reserveStatement.trim() || initiate.isPending}
+              disabled={reserveAmount.trim() === "" || Number.isNaN(Number(reserveAmount)) || !reserveBasis.trim() || initiate.isPending}
               onClick={() => initiate.mutate()}
             >
               Distribute summary & open owner vote
@@ -144,8 +154,9 @@ export function BudgetRatificationPanel({
         {existing && (
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Reserve statement</span><span className="text-right max-w-[60%]">{existing.reserveStatement}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Owners of record (denominator)</span><span>{existing.totalOwnersAtInitiation}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Reject votes so far</span><span>{rejectCount} (needs &gt; {existing.totalOwnersAtInitiation / 2} to defeat)</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Voting basis</span><span>{existing.votingBasis}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Voting base (denominator)</span><span>{existing.votingBaseAtInitiation}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Reject votes so far</span><span>{rejectCount} (needs &gt; {existing.votingBaseAtInitiation / 2} to defeat)</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Vote closes</span><span>{existing.voteCloseAt ? new Date(existing.voteCloseAt).toDateString() : "n/a"}</span></div>
             {existing.status === "vote-open" && (
               <Button
@@ -159,7 +170,7 @@ export function BudgetRatificationPanel({
               </Button>
             )}
             {existing.status === "rejected" && (
-              <p className="text-xs text-destructive">Rejected by a majority of all owners — reverted to the last approved budget (§47-261e).</p>
+              <p className="text-xs text-destructive">Rejected by a majority of the voting base — reverted to the last approved budget (§47-261e).</p>
             )}
           </div>
         )}

@@ -684,9 +684,10 @@ function FinancesHubContent() {
     kind: string;
     status: string;
     reserveStatement: string;
-    budgetSummary: { total?: number; reserveStatement?: string; lineItems?: Array<{ lineItemName: string; plannedAmount: number }> } | null;
+    budgetSummary: { total?: number; reserveStatement?: string; reserveAmount?: number; reserveBasis?: string; lineItems?: Array<{ lineItemName: string; plannedAmount: number }> } | null;
     voteCloseAt: string | null;
-    totalOwners: number;
+    votingBasis: string;
+    totalVotingBase: number;
     voteRequired: boolean;
     myVote: string | null;
   }>>({
@@ -763,7 +764,7 @@ function FinancesHubContent() {
                 </p>
                 <p className="mt-1 text-xs text-on-surface-variant">
                   {r.voteRequired
-                    ? `This budget takes effect ${r.voteCloseAt ? `on ${new Date(r.voteCloseAt).toLocaleDateString()}` : ""} unless a majority of all ${r.totalOwners} owners votes to reject it.`
+                    ? `This budget takes effect ${r.voteCloseAt ? `on ${new Date(r.voteCloseAt).toLocaleDateString()}` : ""} unless a majority of the ${r.totalVotingBase} ${r.votingBasis === "per-owner" ? "owners" : "units"} (the voting base) votes to reject it.`
                     : "Approved without an owner vote (below the §47-261e(b) threshold or emergency assessment)."}
                 </p>
                 {r.myVote && (

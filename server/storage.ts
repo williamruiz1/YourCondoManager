@@ -13,9 +13,12 @@ import {
   evaluateEmergencyAttestation,
   evaluateSpecialAssessmentGate,
   planRatificationClose,
+  resolveVotingBaseCount,
   tallyNegativeOption,
   validateVoteWindow,
+  DEFAULT_VOTING_BASIS,
   type BudgetSummary,
+  type VotingBasis,
 } from "./services/budget-ratification-service";
 import {
   adminAssociationScopes,
@@ -3847,6 +3850,8 @@ export interface IStorage {
   updateBudgetLine(id: string, data: Partial<InsertBudgetLine>): Promise<BudgetLine | undefined>;
   // ── Connecticut CGS §47-261e budget ratification (owner-veto / negative option) ──
   countAssociationOwners(associationId: string): Promise<number>;
+  countAssociationUnits(associationId: string): Promise<number>;
+  resolveAssociationVotingBase(associationId: string): Promise<{ basis: VotingBasis; denominator: number; wired: boolean; note?: string }>;
   getBudgetRatifications(associationId?: string): Promise<BudgetRatification[]>;
   getBudgetRatification(id: string): Promise<BudgetRatification | undefined>;
   getBudgetRatificationByVersion(budgetVersionId: string): Promise<BudgetRatification | undefined>;
@@ -3854,7 +3859,8 @@ export interface IStorage {
     associationId: string;
     budgetVersionId: string;
     kind?: "annual-budget" | "special-assessment" | "emergency-assessment";
-    reserveStatement: string;
+    reserveAmount: number;
+    reserveBasis: string;
     boardAdoptedAt: Date;
     summaryDistributedAt?: Date;
     voteOpenAt?: Date;
@@ -3867,7 +3873,7 @@ export interface IStorage {
     notes?: string;
   }): Promise<{ ratification: BudgetRatification; noticeCount: number; summary: BudgetSummary | null }>;
   getBudgetRatificationVotes(ratificationId: string): Promise<BudgetRatificationVote[]>;
-  castBudgetRatificationVote(ratificationId: string, data: { personId: string; voteChoice: "yes" | "no" | "abstain"; voteWeight?: number }): Promise<BudgetRatificationVote>;
+  castBudgetRatificationVote(ratificationId: string, data: { unitId?: string; personId?: string; voteChoice: "yes" | "no" | "abstain"; voteWeight?: number }): Promise<BudgetRatificationVote>;
   closeBudgetRatification(ratificationId: string): Promise<BudgetRatification | undefined>;
   getBudgetVariance(associationId: string, budgetVersionId: string): Promise<Array<{
     budgetLineId: string;
@@ -7668,9 +7674,21 @@ export class DatabaseStorage implements IStorage {
   // ── Connecticut CGS §47-261e budget ratification (owner-veto / negative option) ──
 
   /**
-   * §47-261e denominator: the count of distinct OWNERS-OF-RECORD for the
-   * association — distinct active (endDate IS NULL) ownership persons across the
-   * association's units. This is the base for the "majority of ALL owners" tally.
+   * §47-203 voting base: the count of UNITS in the association — the DEFAULT
+   * negative-option denominator (one vote per unit).
+   */
+  async countAssociationUnits(associationId: string): Promise<number> {
+    const assocUnits = await db
+      .select({ id: units.id })
+      .from(units)
+      .where(eq(units.associationId, associationId));
+    return assocUnits.length;
+  }
+
+  /**
+   * Distinct OWNERS-OF-RECORD for the association — distinct active
+   * (endDate IS NULL) ownership persons. Used ONLY for the opt-in `per-owner`
+   * voting basis (NOT the default — it under-counts multi-unit owners).
    */
   async countAssociationOwners(associationId: string): Promise<number> {
     const assocUnits = await db
@@ -7685,6 +7703,27 @@ export class DatabaseStorage implements IStorage {
       .where(and(inArray(ownerships.unitId, unitIds), isNull(ownerships.endDate)));
     const distinct = new Set(rows.map((r) => r.personId));
     return distinct.size;
+  }
+
+  /**
+   * §47-261e + §47-203: resolve the configured voting-base denominator for an
+   * association. Reads `associations.votingBasis` (DEFAULT per-unit) and computes
+   * the denominator: per-unit → unit count; per-owner → distinct owner count;
+   * allocated-interest → typed-but-not-yet-data-wired (falls back to per-unit
+   * count, reports wired=false).
+   */
+  async resolveAssociationVotingBase(associationId: string): Promise<{ basis: VotingBasis; denominator: number; wired: boolean; note?: string }> {
+    const [assoc] = await db
+      .select({ votingBasis: associations.votingBasis })
+      .from(associations)
+      .where(eq(associations.id, associationId))
+      .limit(1);
+    const basis = (assoc?.votingBasis ?? DEFAULT_VOTING_BASIS) as VotingBasis;
+    const [unitCount, ownerCount] = await Promise.all([
+      this.countAssociationUnits(associationId),
+      basis === "per-owner" ? this.countAssociationOwners(associationId) : Promise.resolve(0),
+    ]);
+    return resolveVotingBaseCount({ basis, unitCount, ownerCount, allocatedInterestTotal: null });
   }
 
   /** Distinct active owner persons (id + email) for §47-261e notice distribution. */
@@ -7743,7 +7782,8 @@ export class DatabaseStorage implements IStorage {
     associationId: string;
     budgetVersionId: string;
     kind?: "annual-budget" | "special-assessment" | "emergency-assessment";
-    reserveStatement: string;
+    reserveAmount: number;
+    reserveBasis: string;
     boardAdoptedAt: Date;
     summaryDistributedAt?: Date;
     voteOpenAt?: Date;
@@ -7766,11 +7806,12 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Budget version does not belong to association");
     }
 
-    // §47-261e(a) — build the summary INCLUDING the reserve statement.
+    // §47-261e(a) — build the summary INCLUDING the statement of reserves
+    // (BOTH the reserve AMOUNT and the BASIS; either missing throws).
     const lines = await this.getBudgetLines(input.budgetVersionId);
     const summary = buildCtBudgetSummary(
       lines.map((l) => ({ lineItemName: l.lineItemName, plannedAmount: l.plannedAmount })),
-      input.reserveStatement,
+      { reserveAmount: input.reserveAmount, reserveBasis: input.reserveBasis },
     );
 
     const distributedAt = input.summaryDistributedAt ?? new Date();
@@ -7813,7 +7854,9 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    const totalOwners = await this.countAssociationOwners(input.associationId);
+    // §47-261e + §47-203 — resolve the configured voting-base denominator
+    // (UNITS by default, NOT owner-persons) and snapshot it.
+    const votingBase = await this.resolveAssociationVotingBase(input.associationId);
 
     // Reuse the existing voting engine: a campaign as the lifecycle container.
     let voteCampaignId: string | null = null;
@@ -7823,7 +7866,7 @@ export class DatabaseStorage implements IStorage {
         .values({
           associationId: input.associationId,
           title: `§47-261e Budget Ratification — ${budget.name} (FY${budget.fiscalYear})`,
-          description: "Connecticut CGS §47-261e negative-option budget ratification. The budget takes effect unless a majority of all owners votes to reject it.",
+          description: "Connecticut CGS §47-261e negative-option budget ratification. The budget takes effect unless a majority of the units (the voting base) votes to reject it.",
           voteType: "budget-ratification",
           weightingRule: "unit",
           openAt: input.voteOpenAt ?? distributedAt,
@@ -7842,13 +7885,16 @@ export class DatabaseStorage implements IStorage {
         budgetVersionId: input.budgetVersionId,
         kind,
         status,
+        reserveAmount: summary.reserveAmount,
+        reserveBasis: summary.reserveBasis,
         reserveStatement: summary.reserveStatement,
         budgetSummaryJson: summary as unknown as Record<string, unknown>,
         boardAdoptedAt: input.boardAdoptedAt,
         summaryDistributedAt: distributedAt,
         voteOpenAt: voteRequired ? (input.voteOpenAt ?? distributedAt) : null,
         voteCloseAt: voteRequired ? (input.voteCloseAt ?? null) : null,
-        totalOwnersAtInitiation: totalOwners,
+        votingBasis: votingBase.basis,
+        votingBaseAtInitiation: votingBase.denominator,
         voteCampaignId,
         specialAssessmentAmount: input.specialAssessmentAmount ?? null,
         annualBudgetTotal: input.annualBudgetTotal ?? summary.total,
@@ -7906,25 +7952,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * §47-261e: record an owner's negative-option ballot. voteChoice "no" = a vote
-   * to REJECT the budget. One ballot per owner (upsert on the unique index).
+   * §47-261e: record a negative-option ballot. voteChoice "no" = a vote to REJECT
+   * the budget. Keyed by UNIT (per-unit / allocated-interest basis — one ballot
+   * per unit, so a multi-unit owner casts one PER UNIT) or by owner-person
+   * (per-owner basis). Upsert on whichever key is supplied.
    */
   async castBudgetRatificationVote(
     ratificationId: string,
-    data: { personId: string; voteChoice: "yes" | "no" | "abstain"; voteWeight?: number },
+    data: { unitId?: string; personId?: string; voteChoice: "yes" | "no" | "abstain"; voteWeight?: number },
   ): Promise<BudgetRatificationVote> {
     const ratification = await this.getBudgetRatification(ratificationId);
     if (!ratification) throw new Error("Budget ratification not found");
     if (ratification.status !== "vote-open") {
       throw new Error("§47-261e: ratification is not open for voting");
     }
+    if (!data.unitId && !data.personId) {
+      throw new Error("§47-261e: a ballot must identify a unit (per-unit basis) or an owner (per-owner basis)");
+    }
+    // Find an existing ballot for the same key (unit takes precedence when given).
+    const keyFilter = data.unitId
+      ? eq(budgetRatificationVotes.unitId, data.unitId)
+      : eq(budgetRatificationVotes.personId, data.personId!);
     const [existing] = await db
       .select()
       .from(budgetRatificationVotes)
-      .where(and(
-        eq(budgetRatificationVotes.ratificationId, ratificationId),
-        eq(budgetRatificationVotes.personId, data.personId),
-      ))
+      .where(and(eq(budgetRatificationVotes.ratificationId, ratificationId), keyFilter))
       .limit(1);
     if (existing) {
       const [updated] = await db
@@ -7938,7 +7990,8 @@ export class DatabaseStorage implements IStorage {
       .insert(budgetRatificationVotes)
       .values({
         ratificationId,
-        personId: data.personId,
+        unitId: data.unitId ?? null,
+        personId: data.personId ?? null,
         voteChoice: data.voteChoice,
         voteWeight: data.voteWeight ?? 1,
       })
@@ -7948,8 +8001,9 @@ export class DatabaseStorage implements IStorage {
 
   /**
    * §47-261e: close the negative-option window and determine the outcome.
-   *  - tallies the REJECT weight (voteChoice "no") against ALL owners
-   *  - RATIFIED unless reject weight > totalOwners/2 (binds the budget version)
+   *  - tallies the REJECT weight (voteChoice "no") against the VOTING BASE
+   *    (units by default — the configured denominator snapshotted at initiation)
+   *  - RATIFIED unless reject weight > votingBase/2 (binds the budget version)
    *  - REJECTED → archives the rejected version; the last ratified budget stays
    *    active (§47-261e auto-revert to the last approved budget)
    */
@@ -7966,7 +8020,7 @@ export class DatabaseStorage implements IStorage {
       .reduce((sum, v) => sum + (v.voteWeight ?? 1), 0);
 
     const tally = tallyNegativeOption({
-      totalOwners: ratification.totalOwnersAtInitiation,
+      totalVotingBase: ratification.votingBaseAtInitiation,
       rejectWeight,
     });
     const plan = planRatificationClose(tally, ratification.budgetVersionId);
