@@ -4,6 +4,11 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HUB_VISIBILITY_ALL_VALUES } from "./hub-visibility";
 
+// §47-261e + §47-203 — negative-option voting basis (budget-ratification denominator).
+// per-unit (default; one vote per unit) | allocated-interest (weighted by unit
+// allocated-interest %; typed-but-not-yet-data-wired) | per-owner (one per owner-person).
+export const budgetVotingBasisEnum = pgEnum("budget_voting_basis", ["per-unit", "allocated-interest", "per-owner"]);
+
 export const associations = pgTable("associations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -16,6 +21,9 @@ export const associations = pgTable("associations", {
   country: text("country").notNull().default("USA"),
   isArchived: integer("is_archived").notNull().default(0),
   archivedAt: timestamp("archived_at"),
+  // §47-261e + §47-203 — negative-option voting basis (the budget-ratification
+  // denominator). Default per-unit (one vote per unit), NOT per-owner-person.
+  votingBasis: budgetVotingBasisEnum("voting_basis").notNull().default("per-unit"),
   // 4.2 Q3 addendum (3a): per-association amenities feature toggle. Defaults to
   // enabled (1). When 0, the owner-portal amenities entry is hidden, the
   // /portal/amenities route 404s, and amenity-reservation APIs return 404.
@@ -1139,15 +1147,21 @@ export const budgetRatifications = pgTable("budget_ratifications", {
   budgetVersionId: varchar("budget_version_id").notNull().references(() => budgetVersions.id),
   kind: budgetRatificationKindEnum("kind").notNull().default("annual-budget"),
   status: budgetRatificationStatusEnum("status").notNull().default("pending-distribution"),
-  // §47-261e(a) — summary + reserve statement + 30-day distribution deadline
-  reserveStatement: text("reserve_statement").notNull(),
+  // §47-261e(a) — summary + statement of reserves (BOTH statutory elements:
+  // the reserve AMOUNT and the BASIS) + 30-day distribution deadline
+  reserveAmount: real("reserve_amount").notNull(),
+  reserveBasis: text("reserve_basis").notNull(),
+  reserveStatement: text("reserve_statement").notNull(), // combined display (amount + basis)
   budgetSummaryJson: jsonb("budget_summary_json"),
   boardAdoptedAt: timestamp("board_adopted_at").notNull(),
   summaryDistributedAt: timestamp("summary_distributed_at"),
   // §47-261e — negative-option vote window (10–60 days)
   voteOpenAt: timestamp("vote_open_at"),
   voteCloseAt: timestamp("vote_close_at"),
-  totalOwnersAtInitiation: integer("total_owners_at_initiation").notNull().default(0),
+  // §47-261e + §47-203 — the voting basis used + the denominator snapshot
+  // (UNITS by default, NOT owner-persons).
+  votingBasis: budgetVotingBasisEnum("voting_basis").notNull().default("per-unit"),
+  votingBaseAtInitiation: integer("voting_base_at_initiation").notNull().default(0),
   voteCampaignId: varchar("vote_campaign_id").references(() => voteCampaigns.id),
   // §47-261e(b) — special-assessment 15% threshold gate
   specialAssessmentAmount: real("special_assessment_amount"),
@@ -1166,17 +1180,24 @@ export const budgetRatifications = pgTable("budget_ratifications", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// §47-261e per-owner negative-option ballots. voteChoiceEnum reused; voteChoice
-// "no" = a vote to REJECT the budget; "yes"/"abstain" do not count toward rejection.
+// §47-261e negative-option ballots. voteChoiceEnum reused; voteChoice "no" = a
+// vote to REJECT the budget; "yes"/"abstain" do not count toward rejection.
+// A ballot is keyed by UNIT (per-unit / allocated-interest basis — one vote per
+// unit, so a multi-unit owner casts one ballot PER UNIT) OR by owner-person
+// (per-owner basis). Both unitId and personId are nullable; uniqueness is
+// enforced per-unit and per-person via separate partial indexes (Postgres
+// ignores NULL rows for uniqueness).
 export const budgetRatificationVotes = pgTable("budget_ratification_votes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ratificationId: varchar("ratification_id").notNull().references(() => budgetRatifications.id),
-  personId: varchar("person_id").notNull().references(() => persons.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
   voteChoice: voteChoiceEnum("vote_choice").notNull(),
   voteWeight: real("vote_weight").notNull().default(1),
   castAt: timestamp("cast_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
+  uniqueVotePerUnit: uniqueIndex("budget_ratification_votes_ratification_unit_uq").on(table.ratificationId, table.unitId),
   uniqueVotePerOwner: uniqueIndex("budget_ratification_votes_ratification_person_uq").on(table.ratificationId, table.personId),
 }));
 // ─────────────────────────────────────────────────────────────────────────────

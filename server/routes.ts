@@ -5311,8 +5311,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/financial/budget-ratifications", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
       const b = req.body ?? {};
-      if (!b.associationId || !b.budgetVersionId || !b.reserveStatement || !b.boardAdoptedAt) {
-        return res.status(400).json({ message: "associationId, budgetVersionId, reserveStatement, and boardAdoptedAt are required" });
+      // §47-261e(a): the statement of reserves requires BOTH elements — the
+      // reserve AMOUNT and the BASIS on which reserves are calculated and funded.
+      if (
+        !b.associationId || !b.budgetVersionId || !b.boardAdoptedAt ||
+        b.reserveAmount === undefined || b.reserveAmount === null ||
+        !b.reserveBasis || String(b.reserveBasis).trim() === ""
+      ) {
+        return res.status(400).json({ message: "associationId, budgetVersionId, boardAdoptedAt, reserveAmount, and reserveBasis are all required (§47-261e(a) statement of reserves needs both the amount and the basis)" });
       }
       assertAssociationScope(req as AdminRequest, b.associationId);
       await assertResourceScope(req as AdminRequest, "budget-version", b.budgetVersionId);
@@ -5320,7 +5326,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         associationId: b.associationId,
         budgetVersionId: b.budgetVersionId,
         kind: b.kind,
-        reserveStatement: b.reserveStatement,
+        reserveAmount: Number(b.reserveAmount),
+        reserveBasis: String(b.reserveBasis),
         boardAdoptedAt: new Date(b.boardAdoptedAt),
         summaryDistributedAt: b.summaryDistributedAt ? new Date(b.summaryDistributedAt) : undefined,
         voteOpenAt: b.voteOpenAt ? new Date(b.voteOpenAt) : undefined,
@@ -5345,11 +5352,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const ratification = await storage.getBudgetRatification(getParam(req.params.id));
       if (!ratification) return res.status(404).json({ message: "Budget ratification not found" });
       assertAssociationScope(req as AdminRequest, ratification.associationId);
-      const { personId, voteChoice, voteWeight } = req.body ?? {};
-      if (!personId || !["yes", "no", "abstain"].includes(voteChoice)) {
-        return res.status(400).json({ message: "personId and a valid voteChoice (yes|no|abstain) are required" });
+      const { unitId, personId, voteChoice, voteWeight } = req.body ?? {};
+      if ((!unitId && !personId) || !["yes", "no", "abstain"].includes(voteChoice)) {
+        return res.status(400).json({ message: "a unitId (per-unit basis) or personId (per-owner basis) and a valid voteChoice (yes|no|abstain) are required" });
       }
-      const result = await storage.castBudgetRatificationVote(ratification.id, { personId, voteChoice, voteWeight });
+      const result = await storage.castBudgetRatificationVote(ratification.id, { unitId, personId, voteChoice, voteWeight });
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -14143,7 +14150,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
             budgetSummaryJson: r.budgetSummaryJson,
             voteOpenAt: r.voteOpenAt,
             voteCloseAt: r.voteCloseAt,
-            totalOwnersAtInitiation: r.totalOwnersAtInitiation,
+            votingBasis: r.votingBasis,
+            votingBaseAtInitiation: r.votingBaseAtInitiation,
             voteRequired: r.voteRequired,
             myVote: myVote ? myVote.voteChoice : null,
           });
