@@ -282,6 +282,7 @@ import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
+import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import {
   getEffectivePortalRole,
   requireBoardAccess,
@@ -1448,6 +1449,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     requireAdminRole,
     requirePortal,
     getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // founder-os#8013 — CT resale / 6(d) certificate (CGS §47-270).
+  registerResaleCertificateRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
     assertAssociationScope,
   });
 
