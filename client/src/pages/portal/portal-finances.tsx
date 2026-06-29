@@ -220,14 +220,30 @@ function PortalBankPaymentCard({
   // balance; "custom" = owner-typed amount.
   const [payMode, setPayMode] = useState<"due" | "balance" | "custom">("due");
 
-  const { data: connection } = useQuery<PortalBankConnection | null>({
+  // 2026-06 (dues-to-GL / settlement-risk fix) — the endpoint now returns
+  // { connection, payEnabled }. `payEnabled` is false while the server-side
+  // settlement-risk gate keeps /api/portal/plaid/pay disabled (the path posts a
+  // ledger credit before ACH settlement). When false, the pay CTAs are hidden
+  // and owners are pointed at the safe card/ACH payment option. Tolerates the
+  // legacy bare-connection shape so an old cached response still renders.
+  const { data: connInfo } = useQuery<{ connection: PortalBankConnection | null; payEnabled: boolean }>({
     queryKey: ["portal/plaid/connection"],
     queryFn: async () => {
       const res = await portalFetch("/api/portal/plaid/connection");
-      if (!res.ok) return null;
-      return (await res.json()) as PortalBankConnection | null;
+      if (!res.ok) return { connection: null, payEnabled: false };
+      const body = (await res.json()) as
+        | { connection: PortalBankConnection | null; payEnabled?: boolean }
+        | PortalBankConnection
+        | null;
+      if (body && typeof body === "object" && "connection" in body) {
+        return { connection: body.connection ?? null, payEnabled: body.payEnabled ?? false };
+      }
+      // Legacy shape (bare connection or null): default payEnabled false (safe).
+      return { connection: (body as PortalBankConnection | null) ?? null, payEnabled: false };
     },
   });
+  const connection = connInfo?.connection ?? null;
+  const payEnabled = connInfo?.payEnabled ?? false;
 
   const createLinkToken = useMutation({
     mutationFn: async () => {
@@ -345,6 +361,20 @@ function PortalBankPaymentCard({
             >
               {createLinkToken.isPending ? "Opening…" : "Connect your bank"}
             </Button>
+          </>
+        ) : !payEnabled ? (
+          <>
+            <p className="text-sm text-on-surface-variant" data-testid="portal-bank-connected">
+              Connected: <strong>{connection.institutionName ?? "Bank"}</strong>
+            </p>
+            {/* Settlement-risk gate (default OFF): bank (ACH) pay from the portal
+                is temporarily unavailable because it would record the payment
+                before funds settle. Point owners at the safe card/ACH option. */}
+            <p className="text-sm text-on-surface-variant" data-testid="portal-bank-pay-disabled">
+              Paying directly from your bank here is temporarily unavailable. Please use the
+              card or ACH payment option to make a payment — your balance and ledger update
+              once that payment is confirmed.
+            </p>
           </>
         ) : !confirming ? (
           <>

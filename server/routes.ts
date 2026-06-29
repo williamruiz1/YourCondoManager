@@ -316,8 +316,9 @@ import {
 import { computeReadinessSnapshot, GATES } from "./services/go-live-checks";
 // YCM Financial Core Phase 2 — DERIVED financial statements (read-only, GL_ENABLED-gated).
 // These are DERIVED and NOT source-of-truth; the owner ledger stays the system of record.
-import { isGlEnabled } from "./services/gl/flag";
-import { buildFinancialStatements } from "./services/gl/statements-service";
+import { isGlEnabledForAssociation } from "./services/gl/flag";
+import { isPortalPlaidPayEnabled } from "./services/bank-feed/plaid-env-guard";
+import { buildFinancialStatements, buildGlAccountActivity } from "./services/gl/statements-service";
 // #1783 — Security & Compliance Baseline public routes (/privacy, /security, /.well-known/security.txt).
 // Policy files live at docs/policies/ in the repo; the route handlers below
 // read them at request time (small files, 1-300 lines each — fine to read
@@ -4184,10 +4185,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ──────────────────────────────────────────────────────────────────────────
   app.get("/api/financial/statements", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
-      if (!isGlEnabled()) return res.status(404).json({ message: "Financial statements are not enabled (GL_ENABLED is off)." });
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       assertAssociationScope(req, associationId);
+      // Per-association gate: statements surface only for a GL-enabled association
+      // (global GL_ENABLED OR the GL_ENABLED_ASSOCIATIONS allowlist). Resolved +
+      // scope-asserted FIRST so the 404 can't be used to probe association ids.
+      if (!isGlEnabledForAssociation(associationId)) return res.status(404).json({ message: "Financial statements are not enabled for this association (GL is off)." });
       const statements = await buildFinancialStatements(associationId);
       res.json(statements);
     } catch (error: any) {
@@ -4197,12 +4201,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/financial/statements/balance-sheet", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
-      if (!isGlEnabled()) return res.status(404).json({ message: "Financial statements are not enabled (GL_ENABLED is off)." });
       const associationId = getAssociationIdQuery(req);
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       assertAssociationScope(req, associationId);
+      if (!isGlEnabledForAssociation(associationId)) return res.status(404).json({ message: "Financial statements are not enabled for this association (GL is off)." });
       const statements = await buildFinancialStatements(associationId);
       res.json({ associationId, generatedAt: statements.generatedAt, derived: true, balanceSheet: statements.balanceSheet, tieOut: statements.tieOut });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // GET /api/financial/gl/accounts?associationId=...  → DERIVED per-GL-account
+  // balances (the dues-driven Cash 1010 / AR 1200 / Income 4000 roll-up). This
+  // is the SEAM for the Chart of Accounts screen (/app/financial/foundation),
+  // which reads the manual `financial_accounts` table today. Fully merging GL
+  // balances into that screen's UI is deferred; this read-only endpoint exposes
+  // the data so the COA screen can adopt a "GL view" cleanly. Same per-assoc GL
+  // gate as the statements endpoints. DERIVED — never source-of-truth.
+  app.get("/api/financial/gl/accounts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      if (!isGlEnabledForAssociation(associationId)) return res.status(404).json({ message: "The GL is not enabled for this association (GL is off)." });
+      const activity = await buildGlAccountActivity(associationId);
+      res.json(activity);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -19414,6 +19438,18 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   // payment as pending. Body: { amount: number, description?: string }.
   app.post("/api/portal/plaid/pay", requirePortal, async (req: PortalRequest, res) => {
     try {
+      // SETTLEMENT-RISK GATE (default OFF). This path posts a `payment` ledger
+      // CREDIT immediately, BEFORE ACH funds clear, with NO settlement
+      // reconciliation — an owner could lower their on-ledger balance without
+      // money moving. Disabled until the entry posts only on CONFIRMED
+      // settlement (mirroring the Stripe webhook-"succeeded" pattern). Cherry
+      // Hill uses the safe Stripe ACH path meanwhile. See plaid-env-guard.ts.
+      if (!isPortalPlaidPayEnabled()) {
+        return res.status(503).json({
+          error: "Bank (ACH) payment from the portal is temporarily unavailable. Please use the card/ACH payment option.",
+          code: "PLAID_PAY_DISABLED",
+        });
+      }
       const { amount, description } = req.body as { amount?: number; description?: string };
       if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
         return res.status(400).json({ error: "amount must be a positive number", code: "INVALID_AMOUNT" });
@@ -19470,7 +19506,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   });
 
   // GET /api/portal/plaid/connection
-  // Returns the active portal-scoped bank connection (or null).
+  // Returns the active portal-scoped bank connection (or null) plus the
+  // `payEnabled` capability so the UI can hide the "pay from bank" CTA while the
+  // settlement-risk gate keeps /api/portal/plaid/pay disabled (default OFF).
   app.get("/api/portal/plaid/connection", requirePortal, async (req: PortalRequest, res) => {
     try {
       const portalAccessId = req.portalAccessId;
@@ -19492,7 +19530,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           ),
         )
         .limit(1);
-      res.json(conn ?? null);
+      res.json({ connection: conn ?? null, payEnabled: isPortalPlaidPayEnabled() });
     } catch (error: any) {
       debug("[plaid][portal][connection] error", error);
       res.status(500).json({ error: error.message, code: "PLAID_CONNECTION_ERROR" });

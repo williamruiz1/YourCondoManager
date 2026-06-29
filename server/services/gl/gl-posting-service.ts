@@ -34,7 +34,7 @@ import {
   type JournalEntry,
   type OwnerLedgerEntryLike,
 } from "./posting";
-import { isGlEnabled } from "./flag";
+import { isGlEnabledForAssociation } from "./flag";
 
 export interface GlPostingResult {
   skipped: boolean;
@@ -143,17 +143,22 @@ function toInsertRows(
  * Returns a result describing what happened. If GL_ENABLED is off, returns
  * `{ skipped: true }` without touching the database.
  *
- * @param opts.force  ignore the GL_ENABLED flag (used by the reconcile script /
- *                    tests, which must build the GL to compare it).
+ * @param opts.force  ignore the GL enablement flags (used by the reconcile
+ *                    script / tests, which must build the GL to compare it).
+ *
+ * Enablement honors BOTH the global GL_ENABLED flag AND the per-association
+ * allowlist (GL_ENABLED_ASSOCIATIONS) — see flag.ts. The reconcile-to-cent gate
+ * is applied one layer up (runtime-sync.ts maybeSyncAssociationGl), which is the
+ * path the live money triggers call.
  */
 export async function syncAssociationGl(
   associationId: string,
   opts: { force?: boolean } = {},
 ): Promise<GlPostingResult> {
-  if (!opts.force && !isGlEnabled()) {
+  if (!opts.force && !isGlEnabledForAssociation(associationId)) {
     return {
       skipped: true,
-      reason: "GL_ENABLED is off (forward-only/parallel: GL not source-of-truth)",
+      reason: "GL not enabled for this association (forward-only/parallel: GL not source-of-truth)",
       accountsSeeded: 0,
       journalsConsidered: 0,
       legsInserted: 0,

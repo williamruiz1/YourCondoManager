@@ -7,6 +7,7 @@ import { promisify } from "util";
 import { inflateRawSync } from "zlib";
 import { db } from "./db";
 import { sendPlatformEmail } from "./email-provider";
+import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
 import {
   adminAssociationScopes,
   adminUserPreferences,
@@ -8337,6 +8338,13 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(ownerPaymentLinks.id, link.id));
     }
+
+    // YCM Financial Core — dues-to-GL wiring. The confirmed payment is now in the
+    // owner ledger (the system of record). Post it into the PARALLEL fund-aware GL
+    // so it reaches the financial statements. BEST-EFFORT + NON-FATAL: a GL sync
+    // failure must never break this webhook handler — the money is already
+    // recorded. Per-association + reconcile-to-cent gated, idempotent on retries.
+    await maybeSyncAssociationGl(payload.associationId, "payment-webhook");
 
     const [processedEvent] = await db
       .update(paymentWebhookEvents)

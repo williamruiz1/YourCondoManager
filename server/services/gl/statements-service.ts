@@ -36,11 +36,13 @@ import {
   buildBudgetVsActual,
   glTotalIncomeCents,
   glTotalExpenseCents,
+  accountBalances,
   type BalanceSheet,
   type BudgetVsActualReport,
   type BudgetLineLike,
   type ActualExpenseLike,
 } from "./statements";
+import { CHART_OF_ACCOUNTS, centsToDollars } from "./posting";
 
 /** Derive a budget's fund from its name (a "...Reserve..." budget is reserve). */
 function fundFromBudgetName(name: string): GlFund {
@@ -172,5 +174,72 @@ export async function buildFinancialStatements(associationId: string): Promise<F
       balanceSheetBalanced: balanceSheet.balanced,
       balanceSheetDifferenceCents: balanceSheet.differenceCents,
     },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COA-screen SEAM (read-only).
+//
+// The Chart of Accounts screen (/app/financial/foundation) reads the MANUAL
+// `financial_accounts` table — a different table than the GL's gl_accounts /
+// gl_entries. Fully merging GL balances INTO that screen's UI is deferred (it
+// would touch the manual-account editor semantics right before go-live). This
+// is the documented seam: a derived, read-only roll-up of the GL chart with the
+// dues-driven balances so the COA screen (or a "GL view" tab) can adopt it
+// cleanly. DERIVED — never source-of-truth, never written.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface GlAccountActivityRow {
+  accountCode: string;
+  fund: GlFund;
+  name: string;
+  accountType: string;
+  /** Signed balance in the account's natural direction (debit-normal positive
+   *  when net-debit; credit-normal positive when net-credit). */
+  balanceCents: number;
+  balance: number;
+}
+
+export interface GlAccountActivity {
+  associationId: string;
+  generatedAt: string;
+  derived: true;
+  accounts: GlAccountActivityRow[];
+}
+
+/**
+ * Build the per-GL-account activity roll-up for an association (DERIVED, read-
+ * only). Only accounts with non-zero activity are returned, ordered by code.
+ * This is the seam the COA screen consumes to reflect dues without owning the
+ * GL.
+ */
+export async function buildGlAccountActivity(associationId: string): Promise<GlAccountActivity> {
+  const journals = await loadGlJournals(associationId);
+  const balances = accountBalances(journals);
+
+  const rows: GlAccountActivityRow[] = balances
+    .filter((b) => b.balanceCents !== 0)
+    .map((b) => {
+      const def = CHART_OF_ACCOUNTS.find((a) => a.code === b.accountCode && a.fund === b.fund);
+      return {
+        accountCode: b.accountCode,
+        fund: b.fund,
+        name: def?.name ?? b.accountCode,
+        accountType: def?.accountType ?? "asset",
+        balanceCents: b.balanceCents,
+        balance: centsToDollars(b.balanceCents),
+      };
+    })
+    .sort((a, b) =>
+      a.accountCode !== b.accountCode
+        ? a.accountCode.localeCompare(b.accountCode)
+        : a.fund.localeCompare(b.fund),
+    );
+
+  return {
+    associationId,
+    generatedAt: new Date().toISOString(),
+    derived: true,
+    accounts: rows,
   };
 }
