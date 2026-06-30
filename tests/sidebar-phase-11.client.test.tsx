@@ -45,14 +45,17 @@ describe("Phase 11 — six zone-group labels (3.1 Q1)", () => {
     unmount();
   });
 
-  it("Platform Admin sees Home + Platform (no customer zones)", () => {
+  it("Platform Admin sees Home + Platform + Financials (Financials granted per PR #239)", () => {
     const { container, unmount } = renderSidebar({ role: "platform-admin" });
     const labels = getZoneLabels(container);
     expect(labels).toContain("Home");
     expect(labels).toContain("Platform");
-    // Per 3.1 Q5 + 0.2 matrix — Platform Admin does NOT see customer-tenant
-    // content zones.
-    expect(labels).not.toContain("Financials");
+    // PR #239 (commit 381f261, ratified 2026-06-02) granted platform-admin
+    // financials access, so the Financials zone now renders for platform-admin
+    // (the pilot owner is also the board member; resolves front/back drift).
+    expect(labels).toContain("Financials");
+    // The remaining customer-tenant content zones stay hidden per 3.1 Q5 + 0.2
+    // matrix — only Financials was amended by PR #239.
     expect(labels).not.toContain("Operations");
     expect(labels).not.toContain("Governance");
     expect(labels).not.toContain("Communications");
