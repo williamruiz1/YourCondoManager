@@ -51,6 +51,7 @@ const UnitsPage = lazy(() => import("@/pages/units"));
 const PersonsPage = lazy(() => import("@/pages/persons"));
 const BoardPage = lazy(() => import("@/pages/board"));
 const DocumentsPage = lazy(() => import("@/pages/documents"));
+const RecordsRequestsPage = lazy(() => import("@/pages/records-requests"));
 const RoadmapPage = lazy(() => import("@/pages/roadmap"));
 const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
 const AdminAccessReviewPage = lazy(() => import("@/pages/admin-access-review"));
@@ -416,6 +417,9 @@ function WorkspaceRouter({
         <Route path="/app/board" component={BoardPage} />
         <Route path="/app/documents">
           <DocumentsPage />
+        </Route>
+        <Route path="/app/records-requests">
+          <RecordsRequestsPage />
         </Route>
         {/* 3.2 Q6 — `/app/admin` alias retired. Hard 404 via the catch-all
             below. The previous `<Route path="/app/admin" component={RoadmapPage} />`
