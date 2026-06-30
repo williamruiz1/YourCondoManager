@@ -18,7 +18,7 @@
  *
  * Tenant isolation: every query filters by `association_id`.
  */
-import { and, eq, gte, lte, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, gte, lte, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../../db";
 import {
   bankTransactions,
@@ -27,6 +27,10 @@ import {
   units,
   ownerships,
 } from "@shared/schema";
+import {
+  findOwnerSuggestionsForUnmatchedCredits,
+  CREDIT_SEARCH_WINDOW_DAYS,
+} from "./auto-matcher";
 
 export interface ReconciliationReport {
   associationId: string;
@@ -206,5 +210,250 @@ export async function buildReconciliationReport(input: {
     unmatchedBankTransactions: unmatchedBank,
     unmatchedLedgerEntries,
     byOwner,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consolidated transaction ledger (founder-os UI consolidation).
+//
+// THE problem this solves: the Bank Accounts page used to show TWO separate
+// raw lists (a "Connected → transactions" list and a "Pending reconciliation"
+// list) of the SAME bank movements, with no column identifying WHO each
+// transaction was from or WHAT it was for. This builder produces ONE row per
+// bank credit, joining the existing engine's output so every transaction is
+// identified in a single table.
+//
+// It does NOT reimplement any matching logic — it READS the matched ledger
+// entries (the auto-matcher already wrote `bank_transaction_id` + `settled_at`)
+// and COMPOSES `findOwnerSuggestionsForUnmatchedCredits` (the existing engine
+// function) to attach owner suggestions to unmatched credits. The "status"
+// column is a pure projection of that joined state.
+//
+// Window: the last CREDIT_SEARCH_WINDOW_DAYS (30) of bank credits — the same
+// window the auto-matcher operates over, so the suggestions line up 1:1 with
+// the rows shown.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ReconTxStatus =
+  | "auto-matched" // engine confidently matched it to an owner ledger entry
+  | "suggested" // unmatched, but the engine fingerprints it to an owner (confirm needed)
+  | "needs-review" // unmatched + ambiguous (multiple owner candidates)
+  | "unmatched"; // unmatched + no owner signal at all
+
+export interface ReconTransactionRow {
+  bankTransactionId: string;
+  date: string; // yyyy-mm-dd
+  descriptor: string; // raw bank descriptor (merchantName ?? name)
+  amountCents: number; // absolute (positive) for display
+  status: ReconTxStatus;
+  // Identification — populated for auto-matched (from the ledger entry) OR for
+  // a single suggested/needs-review candidate (from the engine suggestion).
+  identifiedAs: {
+    personId: string | null;
+    personName: string | null;
+    unitId: string | null;
+    unitNumber: string | null;
+  };
+  // "For" — Dues / Assessment / etc., read from the matched ledger entry's
+  // type/description when available. Never invented; null when unknown.
+  forLabel: string | null;
+  // Confidence 0..1 for auto-matched (alias/heuristic) or the top suggestion.
+  confidence: number | null;
+  // The matched ledger entry id (auto-matched rows only) — for un-match/audit.
+  ledgerEntryId: string | null;
+  // For suggested/needs-review rows: the candidate owner(s) to confirm. The
+  // first is the top candidate (used by the one-click Confirm action).
+  ownerCandidates: Array<{
+    personId: string;
+    personName: string;
+    unitId: string;
+    unitNumber: string | null;
+    confidence: number;
+  }>;
+}
+
+export interface ReconTransactionLedger {
+  associationId: string;
+  windowDays: number;
+  rows: ReconTransactionRow[];
+  counts: {
+    total: number;
+    autoMatched: number;
+    suggested: number;
+    needsReview: number;
+    unmatched: number;
+  };
+}
+
+/**
+ * Derive a human "For" label from a matched payment ledger entry. The matched
+ * entry itself is always entry_type='payment' (the bank credit IS the payment),
+ * so the meaningful signal is its description (e.g. "Q3 dues", "Special
+ * assessment"). We surface the description verbatim when present; otherwise
+ * null. We intentionally do NOT guess Dues-vs-Assessment.
+ */
+function forLabelFromLedgerEntry(entry: {
+  entryType: string;
+  description: string | null;
+}): string | null {
+  if (entry.description && entry.description.trim().length > 0) {
+    return entry.description.trim();
+  }
+  return null;
+}
+
+export async function buildReconciliationTransactionLedger(input: {
+  associationId: string;
+}): Promise<ReconTransactionLedger> {
+  const { associationId } = input;
+
+  const cutoffDate = new Date(Date.now() - CREDIT_SEARCH_WINDOW_DAYS * 86400 * 1000);
+  const cutoffStr = cutoffDate.toISOString().slice(0, 10);
+
+  // 1. Bank credits in window (Plaid convention: negative = credit/inflow).
+  const bankRows = await db
+    .select()
+    .from(bankTransactions)
+    .where(
+      and(
+        eq(bankTransactions.associationId, associationId),
+        gte(bankTransactions.date, cutoffStr),
+      ),
+    )
+    .orderBy(asc(bankTransactions.date));
+  const credits = bankRows.filter((r) => r.amountCents < 0);
+
+  // 2. Ledger entries linked to a bank transaction (the engine already wrote
+  //    bank_transaction_id when it matched). Map bankTxId → matched entry.
+  const linkedEntries = await db
+    .select()
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        isNotNull(ownerLedgerEntries.bankTransactionId),
+      ),
+    );
+  const matchByBankTx = new Map<string, (typeof linkedEntries)[number]>();
+  for (const e of linkedEntries) {
+    if (e.bankTransactionId) matchByBankTx.set(e.bankTransactionId, e);
+  }
+
+  // 3. Person + unit directory (for naming matched-row owners).
+  const personRows = await db
+    .select()
+    .from(persons)
+    .where(eq(persons.associationId, associationId));
+  const unitRows = await db
+    .select()
+    .from(units)
+    .where(eq(units.associationId, associationId));
+  const personById = new Map(personRows.map((p) => [p.id, p]));
+  const unitById = new Map(unitRows.map((u) => [u.id, u]));
+
+  // 4. Owner suggestions for UNMATCHED credits — reuse the existing engine fn
+  //    (no matching logic reimplemented here). Map bankTxId → suggestion.
+  const suggestions = await findOwnerSuggestionsForUnmatchedCredits(associationId);
+  const suggestionByBankTx = new Map(
+    suggestions.map((s) => [s.bankTransactionId, s]),
+  );
+
+  // 5. Project one consolidated row per credit.
+  const rows: ReconTransactionRow[] = credits.map((c) => {
+    const amountCents = Math.abs(c.amountCents);
+    const descriptor = c.merchantName ?? c.name;
+    const matched = matchByBankTx.get(c.id);
+
+    if (matched) {
+      const person = personById.get(matched.personId);
+      const unit = unitById.get(matched.unitId);
+      return {
+        bankTransactionId: c.id,
+        date: c.date,
+        descriptor,
+        amountCents,
+        status: "auto-matched",
+        identifiedAs: {
+          personId: matched.personId,
+          personName: person ? `${person.firstName} ${person.lastName}` : "Unknown",
+          unitId: matched.unitId,
+          unitNumber: unit?.unitNumber ?? null,
+        },
+        forLabel: forLabelFromLedgerEntry({
+          entryType: matched.entryType,
+          description: matched.description,
+        }),
+        // Matched rows don't carry a stored confidence; the match is committed.
+        // Show null (the UI renders a committed "matched" badge, not a %).
+        confidence: null,
+        ledgerEntryId: matched.id,
+        ownerCandidates: [],
+      };
+    }
+
+    const suggestion = suggestionByBankTx.get(c.id);
+    if (suggestion && suggestion.ownerCandidates.length > 0) {
+      const top = suggestion.ownerCandidates[0];
+      const status: ReconTxStatus =
+        suggestion.tier === "ambiguous" ? "needs-review" : "suggested";
+      return {
+        bankTransactionId: c.id,
+        date: c.date,
+        descriptor,
+        amountCents,
+        status,
+        identifiedAs:
+          status === "suggested"
+            ? {
+                personId: top.personId,
+                personName: top.personName,
+                unitId: top.unitId,
+                unitNumber: top.unitNumber,
+              }
+            : { personId: null, personName: null, unitId: null, unitNumber: null },
+        forLabel: null, // not yet a ledger entry → unknown
+        confidence: suggestion.topConfidence,
+        ledgerEntryId: null,
+        ownerCandidates: suggestion.ownerCandidates.map((o) => ({
+          personId: o.personId,
+          personName: o.personName,
+          unitId: o.unitId,
+          unitNumber: o.unitNumber,
+          confidence: o.confidence,
+        })),
+      };
+    }
+
+    // No match, no owner signal.
+    return {
+      bankTransactionId: c.id,
+      date: c.date,
+      descriptor,
+      amountCents,
+      status: "unmatched",
+      identifiedAs: { personId: null, personName: null, unitId: null, unitNumber: null },
+      forLabel: null,
+      confidence: null,
+      ledgerEntryId: null,
+      ownerCandidates: [],
+    };
+  });
+
+  // Newest first for the UI.
+  rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
+  const counts = {
+    total: rows.length,
+    autoMatched: rows.filter((r) => r.status === "auto-matched").length,
+    suggested: rows.filter((r) => r.status === "suggested").length,
+    needsReview: rows.filter((r) => r.status === "needs-review").length,
+    unmatched: rows.filter((r) => r.status === "unmatched").length,
+  };
+
+  return {
+    associationId,
+    windowDays: CREDIT_SEARCH_WINDOW_DAYS,
+    rows,
+    counts,
   };
 }
