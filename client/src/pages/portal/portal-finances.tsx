@@ -710,19 +710,37 @@ function FinancesHubContent() {
 
   const startCheckout = useMutation({
     mutationFn: async (amount: number) => {
-      // 2026-05-25 (live session) — same labeling bug as above. Use a
-      // neutral "Online payment" phrase rather than asserting a category
-      // the owner didn't pick.
+      // 2026-06-30 — fix the request/response contract to match the server.
+      // `POST /api/portal/pay` (server/routes/payment-portal.ts) expects
+      // `{ amountCents: integer, unitId }` and returns `{ checkoutUrl }`.
+      // The prior body `{ amount, description }` + `data.url` read silently
+      // broke the owner "Pay now" button (400 "amountCents must be a positive
+      // integer", and no redirect even on success). Convert dollars→cents and
+      // resolve the unit the payment applies to.
+      const units = dashboard?.byUnit ?? [];
+      // Prefer the single owned unit; for multi-unit owners default to the
+      // unit carrying an outstanding balance (oldest/first such), else the
+      // first unit. Stripe Checkout still collects the full amount entered.
+      const unitId =
+        units.length === 1
+          ? units[0].unitId
+          : (units.find((u) => (u.total ?? 0) > 0)?.unitId ?? units[0]?.unitId);
+      if (!unitId) {
+        throw new Error("No unit is associated with your account to apply this payment to.");
+      }
+      const amountCents = Math.round(amount * 100);
       const res = await portalFetch("/api/portal/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, description: "Online payment" }),
+        // 2026-05-25 (live session) — neutral "Online payment" phrase rather
+        // than asserting a category the owner didn't pick.
+        body: JSON.stringify({ amountCents, unitId, description: "Online payment" }),
       });
       if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<{ url?: string }>;
+      return res.json() as Promise<{ checkoutUrl?: string }>;
     },
     onSuccess: (data) => {
-      if (data.url) window.location.assign(data.url);
+      if (data.checkoutUrl) window.location.assign(data.checkoutUrl);
       qc.invalidateQueries({ queryKey: ["portal/financial-dashboard"] });
     },
   });
