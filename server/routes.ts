@@ -327,6 +327,7 @@ import { computeReadinessSnapshot, GATES } from "./services/go-live-checks";
 // These are DERIVED and NOT source-of-truth; the owner ledger stays the system of record.
 import { isGlEnabledForAssociation } from "./services/gl/flag";
 import { isPortalPlaidPayEnabled } from "./services/bank-feed/plaid-env-guard";
+import { renderPolicyHtml, wantsHtml } from "./policy-render";
 import { buildFinancialStatements, buildGlAccountActivity } from "./services/gl/statements-service";
 // #1783 — Security & Compliance Baseline public routes (/privacy, /security, /.well-known/security.txt).
 // Policy files live at docs/policies/ in the repo; the route handlers below
@@ -1465,10 +1466,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // registered before the SPA catch-all (which lives in server/static.ts +
   // is invoked from server/index.ts after registerRoutes returns).
   //
-  // /privacy + /security serve their respective policy markdown files
-  // verbatim with Content-Type: text/plain; charset=utf-8. Auditors and
-  // partner questionnaires consume markdown directly. A Phase 1 follow-on
-  // can layer markdown → HTML rendering for human polish.
+  // /privacy + /security serve their respective canonical policy markdown
+  // files from docs/policies/. They CONTENT-NEGOTIATE (see wantsHtml):
+  //   • Browsers (Accept: text/html) get a polished, on-brand HTML page —
+  //     marked renders the markdown to formatted HTML (headings, bold, lists,
+  //     and the GFM role table) so a human never sees raw markdown.
+  //   • Machine clients (auditors, partner-questionnaire tooling, curl,
+  //     Accept: text/plain / */*, or ?format=md / ?raw) keep getting the raw
+  //     markdown verbatim with Content-Type: text/plain; charset=utf-8.
+  // The markdown files remain the single source of truth for the legal content.
+  // This is the "Phase 1 follow-on (markdown → HTML for human polish)" the
+  // original #1783 handlers anticipated. The HTML render fixes the bug where
+  // yourcondomanager.org/privacy dumped raw markdown to visitors.
   //
   // /.well-known/security.txt is also shipped as a static asset at
   // client/public/.well-known/security.txt (picked up by express.static
@@ -1476,17 +1485,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // belt-and-suspenders fallback that guarantees the correct text/plain
   // Content-Type per RFC 9116 §3 if the static-asset path misses for any
   // reason (e.g., a misconfigured deploy or path-collision regression).
-  app.get("/privacy", (_req, res) => {
+  app.get("/privacy", (req, res) => {
     const md = readPolicyFile("privacy-policy-v1.md");
     if (!md) {
       return res.status(404).type("text/plain").send("Privacy policy not found");
     }
+    if (wantsHtml(req)) {
+      return res.type("text/html; charset=utf-8").send(renderPolicyHtml(md, "Privacy Policy"));
+    }
     res.type("text/plain; charset=utf-8").send(md);
   });
-  app.get("/security", (_req, res) => {
+  app.get("/security", (req, res) => {
     const md = readPolicyFile("information-security-policy-v1.md");
     if (!md) {
       return res.status(404).type("text/plain").send("Information security policy not found");
+    }
+    if (wantsHtml(req)) {
+      return res.type("text/html; charset=utf-8").send(renderPolicyHtml(md, "Information Security Policy"));
     }
     res.type("text/plain; charset=utf-8").send(md);
   });
