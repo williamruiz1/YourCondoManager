@@ -295,6 +295,47 @@ async function syncOneConnectionLocked(
       `[bank-feed-sync] connection=${conn.id} trigger=${trigger} err=${errorMessage}`,
       "bank-feed-sync",
     );
+
+    // 2026-06-30 — self-heal unrecoverable token errors. The sweep only re-runs
+    // connections with status='active', so a permanently-invalid token (e.g. a
+    // stale sandbox token after PLAID_ENV was flipped to production, or an item
+    // whose login expired) otherwise 400s on EVERY 5-min sweep forever. Mirror
+    // the webhook ITEM/ERROR pattern (routes.ts) and transition the connection
+    // out of 'active' so it (a) stops re-erroring and (b) surfaces a reconnect
+    // prompt. Plaid SDK errors carry error_code on err.response.data.
+    const plaidErrorCode: string | null =
+      err?.response?.data?.error_code ?? err?.error_code ?? null;
+    // Errors that require the owner/admin to re-link the bank (no automatic
+    // retry can ever recover them).
+    const REAUTH_CODES = new Set([
+      "INVALID_ACCESS_TOKEN", // token invalid (incl. wrong-environment sandbox token)
+      "ITEM_LOGIN_REQUIRED", // credentials changed / login expired
+      "ACCESS_NOT_GRANTED",
+      "INVALID_CREDENTIALS",
+    ]);
+    const REVOKED_CODES = new Set([
+      "USER_PERMISSION_REVOKED",
+      "USER_ACCOUNT_REVOKED",
+    ]);
+    if (plaidErrorCode && REVOKED_CODES.has(plaidErrorCode)) {
+      await db
+        .update(bankConnections)
+        .set({ status: "revoked", updatedAt: new Date() })
+        .where(eq(bankConnections.id, conn.id));
+      log(
+        `[bank-feed-sync] connection=${conn.id} marked REVOKED (${plaidErrorCode}) — owner must re-link`,
+        "bank-feed-sync",
+      );
+    } else if (plaidErrorCode && REAUTH_CODES.has(plaidErrorCode)) {
+      await db
+        .update(bankConnections)
+        .set({ status: "needs_reauth", updatedAt: new Date() })
+        .where(eq(bankConnections.id, conn.id));
+      log(
+        `[bank-feed-sync] connection=${conn.id} marked NEEDS_REAUTH (${plaidErrorCode}) — owner must reconnect`,
+        "bank-feed-sync",
+      );
+    }
   }
 
   const finishedAt = new Date();
