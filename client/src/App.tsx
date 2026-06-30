@@ -68,6 +68,7 @@ const FinancialRulesPage = lazy(() => import("@/pages/financial-rules"));
 const FinancialPaymentsPage = lazy(() => import("@/pages/financial-payments"));
 const FinancialReportsPage = lazy(() => import("@/pages/financial-reports"));
 const FinancialStatementPage = lazy(() => import("@/pages/financial-statement"));
+const ResaleCertificatePage = lazy(() => import("@/pages/resale-certificate"));
 const FinancialBillingPage = lazy(() => import("@/pages/financial-billing"));
 const FinancialExpensesPage = lazy(() => import("@/pages/financial-expenses"));
 const FinancialBankConnectionsPage = lazy(() => import("@/pages/financial-bank-connections"));
@@ -435,6 +436,7 @@ function WorkspaceRouter({
         <Route path="/app/admin/reconciliation" component={AdminReconciliationPage} />
         {/* founder-os#2479 — admin manual payment recording. */}
         <Route path="/app/admin/payments/record" component={AdminPaymentsRecordPage} />
+        <Route path="/app/financials/resale-certificate" component={ResaleCertificatePage} />
         {/* Legacy alias from the dispatch spec (/admin/payments/record). */}
         <Route path="/admin/payments/record">
           <RouteRedirect to="/app/admin/payments/record" />
