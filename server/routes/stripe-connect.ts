@@ -194,7 +194,7 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
         // refetches via the listing endpoint. We don't redirect to a
         // wouter route because this is a backend GET landing page reached
         // through Stripe's hosted return URL.
-        const redirect = `/financials/payments?stripeConnect=callback&associationId=${encodeURIComponent(associationId)}`;
+        const redirect = `/app/financial/payments?stripeConnect=callback&associationId=${encodeURIComponent(associationId)}`;
         return res.redirect(302, redirect);
         void updated;
       } catch (err) {
