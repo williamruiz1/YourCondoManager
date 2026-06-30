@@ -334,6 +334,31 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
       : "/api/financial/stripe-connect/connections"],
   });
 
+  // Post-onboarding return landing: Stripe redirects to the server callback
+  // (/api/financial/stripe-connect/callback), which re-fetches the account
+  // snapshot and 302s here with `?stripeConnect=callback`. Show a confirmation,
+  // refetch the live connection status, and strip the query so a refresh is clean.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("stripeConnect") !== "callback") return;
+    toast({
+      title: "Stripe onboarding complete",
+      description: "We're refreshing this HOA's connection status — payouts activate once Stripe verifies the details.",
+    });
+    queryClient.invalidateQueries({ queryKey: [
+      associationId
+        ? `/api/financial/stripe-connect/connections?associationId=${associationId}`
+        : "/api/financial/stripe-connect/connections",
+    ] });
+    params.delete("stripeConnect");
+    params.delete("associationId");
+    const qs = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+    // Run once on mount for the callback landing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onboardMutation = useMutation({
     mutationFn: async () => {
       if (!associationId) throw new Error("Select an association first");
