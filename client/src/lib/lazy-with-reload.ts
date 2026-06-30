@@ -1,0 +1,103 @@
+// zone: shared
+//
+// Stale-chunk guard for code-split (lazy) routes.
+//
+// Why this exists
+// ---------------
+// The client is built with Vite content-hashed chunks (vite.config.ts
+// `manualChunks` + Rollup's default hashed asset filenames). Every deploy
+// that changes a page module shifts that module's chunk filename. A browser
+// tab that was opened BEFORE a deploy still holds the OLD index referencing
+// the OLD hashed chunk names; when the user then navigates to a lazy route,
+// `import("@/pages/foo")` resolves to a filename that no longer exists on the
+// server and the dynamic import rejects with:
+//
+//     "Failed to fetch dynamically imported module: …/assets/foo-<oldhash>.js"
+//     (Chrome) / "error loading dynamically imported module" (Firefox/Safari)
+//
+// React's `lazy()` surfaces that rejection as a render error → the route
+// shows the ErrorBoundary fallback (a dead screen) instead of the page.
+//
+// The fix
+// -------
+// Wrap the import: on a dynamic-import failure, reload the page ONCE (which
+// re-fetches the fresh index + fresh chunk names), guarded by a sessionStorage
+// flag so we never loop if the failure is genuine (a truly missing chunk, an
+// offline network, etc.). This is the canonical Vite recommendation for the
+// "new deploy invalidates old chunks" problem.
+//
+// Reference: this is the documented mitigation for Vite's `vite:preloadError`
+// event and the equivalent `lazy()` import-failure case.
+
+import { lazy, type ComponentType, type LazyExoticComponent } from "react";
+
+// React.lazy itself is typed against ComponentType<any> so that route
+// components carrying their own props (e.g. <LandingPage onStartGoogleSignIn=…>)
+// type-check. Mirror that exact constraint here.
+type AnyComponent = ComponentType<any>;
+
+const RELOAD_FLAG_PREFIX = "ycm:chunk-reload:";
+
+/** Matches the cross-browser dynamic-import / chunk-load failure messages. */
+export function isChunkLoadError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  if (!message) return false;
+  return (
+    /failed to fetch dynamically imported module/i.test(message) ||
+    /error loading dynamically imported module/i.test(message) ||
+    /importing a module script failed/i.test(message) || // Safari
+    /'?text\/html'? is not a valid JavaScript MIME type/i.test(message) || // SPA index served for a missing .js
+    /chunkloaderror/i.test(message) ||
+    /loading chunk \d+ failed/i.test(message)
+  );
+}
+
+function safeSessionStorage(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null; // private mode / storage disabled
+  }
+}
+
+/**
+ * Drop-in replacement for React.lazy that recovers from stale-chunk errors
+ * after a deploy by reloading the page once.
+ *
+ * @param importFn  the dynamic `import()` thunk
+ * @param chunkKey  a stable, unique key per route used to scope the
+ *                  one-reload-only guard (so two different broken routes
+ *                  don't share a single reload budget).
+ */
+export function lazyWithReload<T extends AnyComponent>(
+  importFn: () => Promise<{ default: T }>,
+  chunkKey: string,
+): LazyExoticComponent<T> {
+  const flagKey = `${RELOAD_FLAG_PREFIX}${chunkKey}`;
+  return lazy(() =>
+    importFn()
+      .then((mod) => {
+        // Successful load — clear any prior reload flag for this chunk so a
+        // future stale-chunk event is allowed to trigger a reload again.
+        safeSessionStorage()?.removeItem(flagKey);
+        return mod;
+      })
+      .catch((error: unknown) => {
+        const store = safeSessionStorage();
+        const alreadyReloaded = store?.getItem(flagKey) === "1";
+        if (isChunkLoadError(error) && !alreadyReloaded && typeof window !== "undefined") {
+          // First stale-chunk failure for this route since the last good
+          // load: reload once to pick up the fresh index + chunk names.
+          store?.setItem(flagKey, "1");
+          window.location.reload();
+          // Return a never-resolving promise so the ErrorBoundary doesn't
+          // flash before the reload navigates away.
+          return new Promise<never>(() => {});
+        }
+        // Genuine failure (already reloaded once, or not a chunk error):
+        // rethrow so the ErrorBoundary shows the real error.
+        throw error;
+      }),
+  );
+}

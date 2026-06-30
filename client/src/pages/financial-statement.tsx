@@ -61,19 +61,46 @@ export default function FinancialStatementPage() {
     to: string;
   } | null>(null);
 
-  const { data: persons = [] } = useQuery<Person[]>({ queryKey: ["/api/persons"] });
-  const { data: units = [] } = useQuery<Unit[]>({ queryKey: ["/api/units"] });
+  // Scope persons + units to the active association SERVER-side via the
+  // associationId query param. The server's getPersons() admits a person who
+  // owns a unit / has occupancy / sits on the board / has ledger entries in
+  // the association — NOT only persons whose persons.association_id matches.
+  // That column is nullable and is NULL for CHC owners, so the old approach of
+  // fetching unscoped and re-filtering client-side on
+  // `p.associationId === activeAssociationId` discarded every CHC owner and
+  // left the owner dropdown (and therefore the statement) empty. This mirrors
+  // the #307 owner-statement fence fix and the admin-payments-record pattern.
+  const { data: persons = [] } = useQuery<Person[]>({
+    queryKey: ["/api/persons", activeAssociationId],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/persons?associationId=${activeAssociationId}`,
+      );
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+  const { data: units = [] } = useQuery<Unit[]>({
+    queryKey: ["/api/units", activeAssociationId],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/units?associationId=${activeAssociationId}`,
+      );
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
 
-  // Units scoped to the active association for the unit dropdown.
+  // Server already scoped both to the active association; render directly.
+  // units.associationId IS non-null, so keep a defensive same-association
+  // filter purely as a belt-and-suspenders guard for any unscoped fallback.
   const assocUnits = useMemo(
-    () => units.filter((u) => u.associationId === activeAssociationId),
+    () => units.filter((u) => !activeAssociationId || u.associationId === activeAssociationId),
     [units, activeAssociationId],
   );
-  // Persons scoped to the active association.
-  const assocPersons = useMemo(
-    () => persons.filter((p) => p.associationId === activeAssociationId),
-    [persons, activeAssociationId],
-  );
+  const assocPersons = persons;
 
   const { data: statement, isLoading, isError } = useQuery<AccountStatementResponse>({
     queryKey: [
