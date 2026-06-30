@@ -2865,6 +2865,110 @@ export type ElectionProxyDocument = typeof electionProxyDocuments.$inferSelect;
 export type InsertElectionProxyDocument = z.infer<typeof insertElectionProxyDocumentSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Budget ratification — Connecticut CGS §47-261e negative-option (owner-veto)
+// adoption of budgets + special assessments. The statutory ratification flow
+// sits OVER the existing budgets/budgetVersions engine and binds the version
+// status to a real owner vote (negative option) instead of an admin flip.
+//   §47-261e(a) — 30-day owner budget summary (with reserve statement) + a
+//                 ratification meeting 10–60 days out; the budget is ratified
+//                 UNLESS a majority of all unit owners reject it; on rejection
+//                 the last-ratified budget continues.
+//   §47-261e(b) — special assessment: the (a) ratification procedure applies
+//                 when the assessment meets/exceeds the threshold (default 15%
+//                 of the current annual budget); below it the board may impose
+//                 it without an owner vote.
+//   §47-261e(c) — emergency special assessment: a two-thirds board vote + a
+//                 written emergency attestation makes it effective immediately,
+//                 without owner ratification.
+//   §47-261e(d)/(e) — loan-security owner-approval mechanics: OUT OF SCOPE here
+//                 (smaller follow-on per the dispatch).
+export const budgetRatificationTypeEnum = pgEnum("budget_ratification_type", [
+  "annual-budget", // §47-261e(a)
+  "special-assessment", // §47-261e(b)
+  "emergency-assessment", // §47-261e(c)
+]);
+export const budgetRatificationStatusEnum = pgEnum("budget_ratification_status", [
+  "summary-pending", // adopted; 30-day owner summary not yet distributed
+  "summary-distributed", // summary sent; ratification meeting scheduled
+  "voting-open", // ratification meeting / window open
+  "ratified", // window closed; majority did NOT reject → effective
+  "rejected", // majority of all owners rejected → reverted to last-ratified
+  "imposed-no-vote", // §(b) special assessment below threshold → imposed, no vote
+  "emergency-imposed", // §(c) two-thirds emergency attestation → imposed immediately
+  "superseded",
+]);
+
+export const budgetRatifications = pgTable("budget_ratifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  budgetId: varchar("budget_id").references(() => budgets.id),
+  budgetVersionId: varchar("budget_version_id").references(() => budgetVersions.id),
+  // Reuse the elections/voting/quorum engine for the negative-option ballot.
+  electionId: varchar("election_id").references(() => elections.id),
+  ratificationType: budgetRatificationTypeEnum("ratification_type").notNull().default("annual-budget"),
+  statuteCitation: text("statute_citation").notNull().default("CGS §47-261e"),
+  // §47-261e(a) — summary distribution + ratification window
+  adoptedAt: timestamp("adopted_at").notNull(),
+  summaryDueBy: timestamp("summary_due_by").notNull(), // adoptedAt + 30 days
+  summarySentAt: timestamp("summary_sent_at"),
+  reserveStatementIncluded: integer("reserve_statement_included").notNull().default(0), // §47-261e(a)
+  reserveStatement: text("reserve_statement"),
+  meetingDate: timestamp("meeting_date"),
+  votingWindowMinDate: timestamp("voting_window_min_date"), // summarySentAt + 10 days
+  votingWindowMaxDate: timestamp("voting_window_max_date"), // summarySentAt + 60 days
+  // Negative-option tally — budget ratified UNLESS a majority of all owners reject
+  totalOwnerCount: integer("total_owner_count").notNull().default(0),
+  rejectVoteCount: integer("reject_vote_count").notNull().default(0),
+  rejectThresholdRule: text("reject_threshold_rule").notNull().default("majority-of-all"),
+  rejectThresholdCount: integer("reject_threshold_count"),
+  // §47-261e(b) — special-assessment threshold gate
+  assessmentAmount: real("assessment_amount"),
+  baselineAnnualBudget: real("baseline_annual_budget"),
+  specialAssessmentThresholdPct: real("special_assessment_threshold_pct").notNull().default(15),
+  requiresOwnerRatification: integer("requires_owner_ratification").notNull().default(1),
+  // §47-261e(c) — emergency attestation
+  boardSeatCount: integer("board_seat_count"),
+  boardVotesInFavor: integer("board_votes_in_favor"),
+  emergencyAttestation: text("emergency_attestation"),
+  emergencyAttestedBy: text("emergency_attested_by"),
+  emergencyAttestedAt: timestamp("emergency_attested_at"),
+  // Outcome
+  status: budgetRatificationStatusEnum("status").notNull().default("summary-pending"),
+  outcome: text("outcome"), // 'ratified' | 'rejected' | 'imposed-no-vote' | 'emergency-imposed'
+  revertedToBudgetVersionId: varchar("reverted_to_budget_version_id").references(() => budgetVersions.id),
+  resolvedAt: timestamp("resolved_at"),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertBudgetRatificationSchema = createInsertSchema(budgetRatifications).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  resolvedAt: true,
+});
+export type BudgetRatification = typeof budgetRatifications.$inferSelect;
+export type InsertBudgetRatification = z.infer<typeof insertBudgetRatificationSchema>;
+
+// §47-261e(a) — per-owner log of the 30-day budget-summary distribution.
+export const budgetRatificationSummarySends = pgTable("budget_ratification_summary_sends", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ratificationId: varchar("ratification_id").notNull().references(() => budgetRatifications.id),
+  recipientPersonId: varchar("recipient_person_id").references(() => persons.id),
+  recipientEmail: text("recipient_email").notNull(),
+  noticeSendId: varchar("notice_send_id").references(() => noticeSends.id),
+  subjectRendered: text("subject_rendered"),
+  bodyRendered: text("body_rendered"),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueRecipientPerRatification: uniqueIndex("budget_ratification_summary_sends_ratification_email_uq").on(table.ratificationId, table.recipientEmail),
+}));
+export const insertBudgetRatificationSummarySendSchema = createInsertSchema(budgetRatificationSummarySends).omit({ id: true, sentAt: true });
+export type BudgetRatificationSummarySend = typeof budgetRatificationSummarySends.$inferSelect;
+export type InsertBudgetRatificationSummarySend = z.infer<typeof insertBudgetRatificationSummarySendSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Portal login OTP tokens for verifiable authentication
 // associationId is nullable — OTP is now issued per-email across all associations
