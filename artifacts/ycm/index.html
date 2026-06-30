@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>YourCondoManager — Admin Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--teal:#014D4A;--accent:#2DBDB0;--ink:#0f2725;--mut:#5b716e;--line:#e3ecea;--bg:#f5f9f8;--ok:#0f8a4a;--warn:#b8860b;--card:#fff;--blue:#2c5fb3;}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5;display:flex;min-height:100vh}
+  h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif;margin:0}
+  a{color:var(--teal);text-decoration:none}
+
+  /* ---- sidebar ---- */
+  aside{width:248px;flex:0 0 248px;background:linear-gradient(180deg,var(--teal),#02312f);color:#eafffb;padding:22px 16px;position:sticky;top:0;height:100vh;overflow:auto}
+  aside .brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  aside .brand .mark{width:30px;height:30px;border-radius:7px;background:#fff;color:var(--teal);display:flex;align-items:center;justify-content:center;font-weight:800;font-family:'Plus Jakarta Sans'}
+  aside .brand b{font-family:'Plus Jakarta Sans';font-size:15px;color:#fff}
+  aside .tag{font-size:11.5px;color:#bfe8e2;margin:2px 0 18px 40px}
+  aside nav a{display:block;color:#d6f3ef;font-size:13.5px;font-weight:500;padding:8px 11px;border-radius:8px;margin-bottom:3px;cursor:pointer}
+  aside nav a:hover{background:rgba(255,255,255,.10)}
+  aside nav a.head{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8fd0c8;font-weight:700;margin-top:16px;padding:6px 11px 2px;pointer-events:none}
+  aside .foot{margin-top:22px;font-size:11px;color:#8fd0c8;border-top:1px solid rgba(255,255,255,.14);padding-top:12px}
+
+  /* ---- main ---- */
+  main{flex:1;min-width:0;display:flex;flex-direction:column}
+  header.top{background:#fff;border-bottom:1px solid var(--line);padding:20px 30px}
+  header.top h1{font-size:21px;font-weight:800;color:var(--teal)}
+  header.top p{margin:6px 0 0;color:var(--mut);font-size:13.5px;max-width:760px}
+  header.top .stamp{display:inline-block;margin-top:10px;background:#eafaf8;border:1px solid #bce9e3;color:var(--teal);padding:4px 11px;border-radius:999px;font-size:12px;font-weight:600}
+
+  .body{padding:24px 30px 60px}
+  .sec{margin-bottom:30px;scroll-margin-top:14px}
+  .sec h2{font-size:16.5px;display:flex;align-items:center;gap:9px;color:var(--ink)}
+  .sec h2 .dot{width:10px;height:10px;border-radius:3px}
+  .sec .sub{color:var(--mut);font-size:13px;margin:4px 0 14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px 16px;display:flex;flex-direction:column}
+  .card .row{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+  .card h3{font-size:14.5px;font-weight:700}
+  .card p{margin:0 0 12px;color:var(--mut);font-size:13px;flex:1}
+  .chip{font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 8px;border-radius:6px}
+  .chip.latest{background:#e6f6ee;color:var(--ok)}
+  .chip.ver{background:#eef1f1;color:var(--mut)}
+  .chip.live{background:#e6f6ee;color:var(--ok)}
+  .chip.wire{background:#eef4ff;color:var(--blue)}
+  .chip.plan{background:#fdf3e0;color:var(--warn)}
+  .btn{align-self:flex-start;background:var(--teal);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn:hover{background:#02615c}
+  .btn.ghost{background:#f3f8f7;color:var(--teal);border:1px solid var(--line)}
+
+  /* ---- viewer ---- */
+  .viewer{display:none;flex-direction:column;flex:1;min-height:0}
+  .viewer.on{display:flex}
+  .vbar{background:#fff;border-bottom:1px solid var(--line);padding:11px 20px;display:flex;align-items:center;gap:14px}
+  .vbar b{font-family:'Plus Jakarta Sans';font-size:14px}
+  .vbar .back{background:var(--teal);color:#fff;border:none;border-radius:8px;padding:6px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .vbar a.open{margin-left:auto;font-size:12.5px;font-weight:600}
+  .viewer iframe{flex:1;width:100%;border:none;background:#fff}
+  .browse.off{display:none}
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="brand"><div class="mark">Y</div><b>YourCondoManager</b></div>
+  <div class="tag">Admin Hub · everything in one place</div>
+  <nav id="nav">
+    <a class="head">Run the business</a>
+    <a data-go="sec-active">Active work board</a>
+    <a class="head">Design &amp; proposals</a>
+    <a data-go="sec-community">Community page</a>
+    <a data-go="sec-platform">Platform &amp; navigation</a>
+    <a data-go="sec-portal">Owner portal</a>
+    <a data-go="sec-money">Money &amp; collection</a>
+    <a class="head">Go-live</a>
+    <a data-go="sec-readiness">Cherry Hill readiness</a>
+  </nav>
+  <div class="foot">Internal · not public.<br/>Regenerated each session.<br/>Cherry Hill Court — first live customer.</div>
+</aside>
+
+<main>
+  <!-- BROWSE MODE -->
+  <div class="browse" id="browse">
+    <header class="top">
+      <h1>Admin Hub</h1>
+      <p>Every wireframe, redesign, plan, and readiness doc built for YourCondoManager — gathered in one place so you can open any of them without chasing separate links. Click <b>Open</b> on any card to view it right here.</p>
+      <span class="stamp" id="stamp">Snapshot · loading…</span>
+    </header>
+
+    <div class="body">
+
+      <div class="sec" id="sec-active">
+        <h2><span class="dot" style="background:var(--ok)"></span>Active work board</h2>
+        <p class="sub">Live snapshot of what's working, what's ready for your eyes, and decisions waiting on you.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="row"><span class="chip live">Live snapshot</span></div>
+            <h3>Review Hub — active work</h3>
+            <p>What's live (dues + bank feed), what's ready to review, and the open decisions — in one kanban-style board.</p>
+            <button class="btn" data-open="ycm-review-hub.html" data-title="Review Hub — active work">Open</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="sec-community">
+        <h2><span class="dot" style="background:var(--blue)"></span>Community page redesign</h2>
+        <p class="sub">The public Cherry Hill page. Newest version first — older versions kept so you can flip back.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="row"><span class="chip latest">Latest · v4</span></div>
+            <h3>Community page — v4</h3>
+            <p>Built off your Stitch direction: serif headlines, teal brand, a "request documents" band for lenders/insurers, and the real Owner Portal link. Keeps the map.</p>
+            <button class="btn" data-open="community-page-redesign-cherryhill-v4.html" data-title="Community page — v4 (latest)">Open</button>
+          </div>
+          <div class="card">
+            <div class="row"><span class="chip ver">v3</span></div>
+            <h3>Community page — v3</h3>
+            <p>Structured multi-column layout with board, contacts, and the lender/insurance utilities. The step before v4.</p>
+            <button class="btn ghost" data-open="community-page-redesign-cherryhill-v3.html" data-title="Community page — v3">Open</button>
+          </div>
+          <div class="card">
+            <div class="row"><span class="chip ver">v2</span></div>
+            <h3>Community page — v2</h3>
+            <p>First condensed pass — removed the dues clutter, added the Owner Portal link.</p>
+            <button class="btn ghost" data-open="community-page-redesign-cherryhill-v2.html" data-title="Community page — v2">Open</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="sec-platform">
+        <h2><span class="dot" style="background:var(--blue)"></span>Platform &amp; navigation</h2>
+        <p class="sub">How the app is structured — proposals to make it simpler to move around.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="row"><span class="chip wire">Wireframe</span></div>
+            <h3>Platform simplification</h3>
+            <p>Removes the redundant "hub" layer so every section drops from three clicks to two. Before/after.</p>
+            <button class="btn" data-open="platform-ia-wireframe.html" data-title="Platform simplification — wireframe">Open</button>
+          </div>
+          <div class="card">
+            <div class="row"><span class="chip wire">Wireframe</span></div>
+            <h3>Financials page restructure</h3>
+            <p>Reorganizes the money screens so dues, assessments, and reconciliation each have a clear home.</p>
+            <button class="btn" data-open="financials-ia-restructure-wireframe.html" data-title="Financials restructure — wireframe">Open</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="sec-portal">
+        <h2><span class="dot" style="background:var(--blue)"></span>Owner portal</h2>
+        <p class="sub">What owners see when they log in.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="row"><span class="chip wire">Wireframe</span></div>
+            <h3>Owner portal layout</h3>
+            <p>The full owner experience: finances, pay, statements, documents, maintenance, and pressing items.</p>
+            <button class="btn" data-open="ycm-owner-portal-wireframe.html" data-title="Owner portal — wireframe">Open</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="sec-money">
+        <h2><span class="dot" style="background:var(--warn)"></span>Money &amp; collection</h2>
+        <p class="sub">How dues, assessments, and shared fees flow.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="row"><span class="chip plan">Design</span></div>
+            <h3>Multi-party collection</h3>
+            <p>How a single payment can route to the right places — the fund-routing design behind document/amenity fees.</p>
+            <button class="btn" data-open="multi-party-collection-design.html" data-title="Multi-party collection — design">Open</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="sec-readiness">
+        <h2><span class="dot" style="background:var(--ok)"></span>Cherry Hill go-live readiness</h2>
+        <p class="sub">The checklists and queues that got Cherry Hill live.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="row"><span class="chip plan">Checklist</span></div>
+            <h3>Cherry Hill readiness</h3>
+            <p>Everything that had to be true before Cherry Hill could go live.</p>
+            <button class="btn" data-open="ycm-cherry-hill-readiness.html" data-title="Cherry Hill readiness">Open</button>
+          </div>
+          <div class="card">
+            <div class="row"><span class="chip plan">Checklist</span></div>
+            <h3>Live-test checklist</h3>
+            <p>The step-by-step money-loop test — link bank, collect dues, see it reconcile.</p>
+            <button class="btn" data-open="ycm-live-test-checklist.html" data-title="Live-test checklist">Open</button>
+          </div>
+          <div class="card">
+            <div class="row"><span class="chip plan">Queue</span></div>
+            <h3>Readiness queue</h3>
+            <p>The build queue the team worked to get Cherry Hill ready.</p>
+            <button class="btn ghost" data-open="ycm-readiness-queue.html" data-title="Readiness queue">Open</button>
+          </div>
+          <div class="card">
+            <div class="row"><span class="chip plan">Queue</span></div>
+            <h3>Queue snapshot</h3>
+            <p>A point-in-time snapshot of the readiness queue.</p>
+            <button class="btn ghost" data-open="ycm-queue-snapshot.html" data-title="Queue snapshot">Open</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- VIEWER MODE -->
+  <div class="viewer" id="viewer">
+    <div class="vbar">
+      <button class="back" id="backBtn">← All artifacts</button>
+      <b id="vtitle">—</b>
+      <a class="open" id="vopen" target="_blank" rel="noopener">Open full-screen ↗</a>
+    </div>
+    <iframe id="vframe" title="artifact viewer"></iframe>
+  </div>
+</main>
+
+<script>
+  var browse = document.getElementById('browse');
+  var viewer = document.getElementById('viewer');
+  var vframe = document.getElementById('vframe');
+  var vtitle = document.getElementById('vtitle');
+  var vopen  = document.getElementById('vopen');
+
+  function openArtifact(file, title){
+    vframe.src = file;
+    vtitle.textContent = title;
+    vopen.href = file;
+    browse.classList.add('off');
+    viewer.classList.add('on');
+    window.scrollTo(0,0);
+  }
+  function closeViewer(){
+    viewer.classList.remove('on');
+    browse.classList.remove('off');
+    vframe.src = 'about:blank';
+  }
+  document.querySelectorAll('[data-open]').forEach(function(b){
+    b.addEventListener('click', function(){ openArtifact(b.getAttribute('data-open'), b.getAttribute('data-title')); });
+  });
+  document.getElementById('backBtn').addEventListener('click', closeViewer);
+  document.querySelectorAll('#nav a[data-go]').forEach(function(a){
+    a.addEventListener('click', function(){
+      if(viewer.classList.contains('on')) closeViewer();
+      var el = document.getElementById(a.getAttribute('data-go'));
+      if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+  // timestamp
+  try{
+    var d = new Date();
+    var opts = {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'};
+    document.getElementById('stamp').textContent = 'Snapshot · ' + d.toLocaleString('en-US', opts) + ' · Cherry Hill Court';
+  }catch(e){ document.getElementById('stamp').textContent = 'Cherry Hill Court — first live customer'; }
+</script>
+</body>
+</html>
