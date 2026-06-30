@@ -91,6 +91,43 @@ const CATEGORY_ICONS: Record<string, typeof Info> = {
   custom: Info,
 };
 
+// --- v4 premium aesthetic tokens ---------------------------------------------
+// Editorial serif for the hero h1 + section h2s (Source Serif 4 is loaded in
+// client/index.html). Falls back to Georgia/serif if it hasn't loaded.
+const SERIF = '"Source Serif 4", Georgia, serif';
+// Refined palette (teal brand). themeColor still drives the live accent so a
+// community can override it; these are the supporting tones.
+const V4 = {
+  ink: "#0f2725",
+  muted: "#5b716e",
+  line: "#e3ecea",
+  pageBg: "#f5f9f8",
+} as const;
+
+// Shared section-heading pattern — a teal icon chip + a serif title. Defined
+// once so every section renders identically.
+function SectionHeading({ icon: Icon, title, themeColor }: { icon: typeof Info; title: string; themeColor: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <span
+        className="flex h-9 w-9 items-center justify-center rounded-xl shrink-0"
+        style={{ backgroundColor: `${themeColor}14`, color: themeColor }}
+        aria-hidden="true"
+      >
+        <Icon className="h-[18px] w-[18px]" />
+      </span>
+      <h2 className="text-xl font-semibold tracking-tight" style={{ fontFamily: SERIF, color: V4.ink }}>
+        {title}
+      </h2>
+    </div>
+  );
+}
+
+// Shared card chrome — softer corners, generous padding, subtle teal-tinted
+// border + gentle shadow. Applied via className so no card logic changes.
+const CARD_V4 = "rounded-2xl border shadow-sm transition-shadow hover:shadow-md";
+const cardBorder = { borderColor: V4.line } as const;
+
 export default function CommunityHubPublicPage() {
   useDocumentTitle(t("communityHubPublic.title"));
   const [, params] = useRoute("/community/:identifier");
@@ -119,7 +156,7 @@ export default function CommunityHubPublicPage() {
 
   if (isLoading) {
     return (
-      <div role="status" aria-label={t("common.loading")} className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div role="status" aria-label={t("common.loading")} className="min-h-screen flex items-center justify-center" style={{ backgroundColor: V4.pageBg }}>
         <div className="animate-pulse text-muted-foreground motion-reduce:animate-none">{t("communityHubPublic.loading")}</div>
       </div>
     );
@@ -127,11 +164,11 @@ export default function CommunityHubPublicPage() {
 
   if (error || !hub) {
     return (
-      <main id="main-content" tabIndex={-1} className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <Card className="max-w-md w-full">
+      <main id="main-content" tabIndex={-1} className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: V4.pageBg }}>
+        <Card className={`max-w-md w-full ${CARD_V4}`} style={cardBorder}>
           <CardContent className="pt-6 text-center">
             <Building2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
-            <h1 className="text-xl font-semibold mb-2">{t("communityHubPublic.error.title")}</h1>
+            <h1 className="text-xl font-semibold mb-2" style={{ fontFamily: SERIF, color: V4.ink }}>{t("communityHubPublic.error.title")}</h1>
             <p className="text-muted-foreground">{t("communityHubPublic.error.body")}</p>
           </CardContent>
         </Card>
@@ -150,25 +187,22 @@ export default function CommunityHubPublicPage() {
   // Section rendering engine — renders sections in configurable order
   const sectionRenderers: Record<string, () => React.ReactNode> = {
     notices: () => <NoticesSection notices={notices} themeColor={themeColor} activeCategory={noticeCategory} onCategoryChange={setNoticeCategory} />,
-    "quick-actions": () => <QuickActionsSection actionLinks={actionLinks} />,
+    "quick-actions": () => <QuickActionsSection actionLinks={actionLinks} themeColor={themeColor} />,
     "info-blocks": () => <InfoBlocksSection infoBlocks={infoBlocks} themeColor={themeColor} />,
     buildings: () => publicBuildings.length > 0 ? <BuildingsSection buildings={publicBuildings} themeColor={themeColor} /> : null,
     events: () => meetings.length > 0 ? (
       <section>
-        <div className="flex items-center gap-2 mb-3">
-          <Calendar className="h-5 w-5" style={{ color: themeColor }} />
-          <h2 className="text-lg font-semibold">Upcoming Events</h2>
-        </div>
-        <div className="space-y-2">
+        <SectionHeading icon={Calendar} title="Upcoming Events" themeColor={themeColor} />
+        <div className="space-y-3">
           {meetings.map((m) => (
-            <Card key={m.id}>
-              <CardContent className="py-3 px-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-sm">{m.title}</p>
-                    <p className="text-xs text-muted-foreground">{m.meetingType}{m.location ? ` — ${m.location}` : ""}</p>
+            <Card key={m.id} className={CARD_V4} style={cardBorder}>
+              <CardContent className="py-4 px-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm" style={{ color: V4.ink }}>{m.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{m.meetingType}{m.location ? ` — ${m.location}` : ""}</p>
                   </div>
-                  <Badge variant="outline" className="text-xs shrink-0">{new Date(m.scheduledAt).toLocaleDateString()}</Badge>
+                  <Badge variant="outline" className="text-xs shrink-0 rounded-full" style={{ borderColor: `${themeColor}33`, color: themeColor }}>{new Date(m.scheduledAt).toLocaleDateString()}</Badge>
                 </div>
               </CardContent>
             </Card>
@@ -178,21 +212,18 @@ export default function CommunityHubPublicPage() {
     ) : null,
     documents: () => docs.length > 0 ? (
       <section>
-        <div className="flex items-center gap-2 mb-3">
-          <FileText className="h-5 w-5" style={{ color: themeColor }} />
-          <h2 className="text-lg font-semibold">Key Documents</h2>
-        </div>
-        <div className="space-y-2">
+        <SectionHeading icon={FileText} title="Key Documents" themeColor={themeColor} />
+        <div className="space-y-3">
           {docs.map((doc) => (
-            <Card key={doc.id}>
-              <CardContent className="py-3 px-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-sm">{doc.title}</p>
-                    <p className="text-xs text-muted-foreground">{doc.documentType}</p>
+            <Card key={doc.id} className={CARD_V4} style={cardBorder}>
+              <CardContent className="py-4 px-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm" style={{ color: V4.ink }}>{doc.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{doc.documentType}</p>
                   </div>
                   <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
-                    <Button variant="ghost" size="sm"><Download className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" className="rounded-xl" style={{ color: themeColor }}><Download className="h-4 w-4" /></Button>
                   </a>
                 </div>
               </CardContent>
@@ -219,52 +250,66 @@ export default function CommunityHubPublicPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen" style={{ backgroundColor: V4.pageBg }}>
       {/* Hero Banner */}
       <header
-        className="relative"
+        className="relative overflow-hidden"
         style={{
           background: config.bannerImageUrl
-            ? `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.6)), url(${config.bannerImageUrl}) center/cover`
-            : `linear-gradient(135deg, ${themeColor}, ${themeColor}dd)`,
+            ? `linear-gradient(rgba(1,77,74,0.55), rgba(1,77,74,0.78)), url(${config.bannerImageUrl}) center/cover`
+            : `linear-gradient(135deg, ${themeColor} 0%, ${themeColor} 45%, ${themeColor}cc 100%)`,
         }}
       >
-        <div className="max-w-4xl mx-auto px-4 py-10 sm:py-16">
-          <div className="flex items-center gap-4 mb-4">
+        {/* soft accent glow for depth */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full blur-3xl opacity-30"
+          style={{ background: "#2DBDB0" }}
+        />
+        <div className="relative max-w-4xl mx-auto px-4 py-12 sm:py-20">
+          <div className="flex items-center gap-4 mb-5">
             {config.logoUrl && (
               <img
                 src={config.logoUrl}
                 alt={association?.name || "Community"}
-                className="h-14 w-14 sm:h-16 sm:w-16 rounded-lg object-cover bg-white/90 p-1 shrink-0"
+                className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl object-cover bg-white/95 p-1.5 shrink-0 shadow-lg ring-1 ring-white/30"
               />
             )}
             <div className="min-w-0">
-              <h1 className="text-xl sm:text-3xl font-bold text-white truncate">
+              <h1
+                className="text-2xl sm:text-4xl font-bold text-white tracking-tight leading-tight"
+                style={{ fontFamily: SERIF }}
+              >
                 {association?.name || "Community Hub"}
               </h1>
               {association && (
-                <p className="text-white/80 text-sm">{association.city}, {association.state}</p>
+                <p className="text-white/85 text-sm sm:text-base mt-1 flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {association.city}, {association.state}
+                </p>
               )}
             </div>
           </div>
           {config.communityDescription && (
-            <p className="text-white/90 max-w-2xl text-sm sm:text-base leading-relaxed">
+            <p className="text-white/90 max-w-2xl text-sm sm:text-lg leading-relaxed">
               {config.communityDescription}
             </p>
           )}
         </div>
+        {/* base accent rule */}
+        <div className="h-1 w-full" style={{ background: "#2DBDB0" }} aria-hidden="true" />
       </header>
 
       <main id="main-content" tabIndex={-1} className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
         {/* Welcome Mode */}
         {config.welcomeModeEnabled === 1 && config.welcomeHeadline && (
-          <Card className="border-2" style={{ borderColor: `${themeColor}40` }}>
-            <CardContent className="pt-6">
-              <h2 className="text-lg font-semibold mb-3">{config.welcomeHeadline}</h2>
+          <Card className={`${CARD_V4} border`} style={{ borderColor: `${themeColor}33`, background: `linear-gradient(180deg, ${themeColor}0a, transparent)` }}>
+            <CardContent className="pt-6 pb-5 px-6">
+              <h2 className="text-xl font-semibold mb-3 tracking-tight" style={{ fontFamily: SERIF, color: V4.ink }}>{config.welcomeHeadline}</h2>
               {Array.isArray(config.welcomeHighlights) && config.welcomeHighlights.length > 0 && (
-                <ul className="space-y-2">
+                <ul className="space-y-2.5">
                   {config.welcomeHighlights.map((highlight: string, i: number) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <li key={i} className="flex items-start gap-2.5 text-sm" style={{ color: V4.muted }}>
                       <ChevronRight className="h-4 w-4 mt-0.5 shrink-0" style={{ color: themeColor }} />
                       {highlight}
                     </li>
@@ -298,7 +343,7 @@ export default function CommunityHubPublicPage() {
           if (s === "contacts") return false;
           return false;
         }) && (
-          <Card>
+          <Card className={CARD_V4} style={cardBorder}>
             <CardContent className="py-12 text-center">
               <Building2 className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
               <p className="text-muted-foreground">This community hub is being set up. Check back soon for updates.</p>
@@ -312,8 +357,8 @@ export default function CommunityHubPublicPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t bg-white py-6 mt-8">
-        <div className="max-w-4xl mx-auto px-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+      <footer className="border-t bg-white py-7 mt-10" style={{ borderColor: V4.line }}>
+        <div className="max-w-4xl mx-auto px-4 flex items-center justify-center gap-2 text-sm" style={{ color: V4.muted }}>
           <BrandMark decorative className="h-6 w-6" />
           <p>Powered by YourCondoManager</p>
         </div>
@@ -350,16 +395,13 @@ function NoticesSection({
 
   return (
     <section>
-      <div className="flex items-center gap-2 mb-3">
-        <Bell className="h-5 w-5" style={{ color: themeColor }} />
-        <h2 className="text-lg font-semibold">Notices & Announcements</h2>
-      </div>
+      <SectionHeading icon={Bell} title="Notices & Announcements" themeColor={themeColor} />
       {usedCategories.length > 1 && (
-        <div className="flex gap-2 flex-wrap mb-3">
+        <div className="flex gap-2 flex-wrap mb-4">
           <button
             onClick={() => onCategoryChange("all")}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${activeCategory === "all" ? "text-white border-transparent" : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"}`}
-            style={activeCategory === "all" ? { backgroundColor: themeColor, borderColor: themeColor } : {}}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${activeCategory === "all" ? "text-white border-transparent" : "bg-white text-gray-600 hover:border-gray-300"}`}
+            style={activeCategory === "all" ? { backgroundColor: themeColor, borderColor: themeColor } : { borderColor: V4.line }}
           >
             All
           </button>
@@ -367,8 +409,8 @@ function NoticesSection({
             <button
               key={cat}
               onClick={() => onCategoryChange(cat)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors capitalize ${activeCategory === cat ? "text-white border-transparent" : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"}`}
-              style={activeCategory === cat ? { backgroundColor: themeColor, borderColor: themeColor } : {}}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-colors capitalize ${activeCategory === cat ? "text-white border-transparent" : "bg-white text-gray-600 hover:border-gray-300"}`}
+              style={activeCategory === cat ? { backgroundColor: themeColor, borderColor: themeColor } : { borderColor: V4.line }}
             >
               {cat}
             </button>
@@ -379,26 +421,26 @@ function NoticesSection({
         {filteredNotices.map((notice) => (
           <Card
             key={notice.id}
-            className={notice.isPinned ? "border-l-4" : ""}
-            style={notice.isPinned ? { borderLeftColor: themeColor } : {}}
+            className={`${CARD_V4} ${notice.isPinned ? "border-l-[3px]" : ""}`}
+            style={notice.isPinned ? { ...cardBorder, borderLeftColor: themeColor } : cardBorder}
           >
-            <CardContent className="pt-4 pb-3">
+            <CardContent className="pt-5 pb-4 px-5">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                   {notice.isPinned === 1 && (
-                    <Badge variant="secondary" className="text-xs">Pinned</Badge>
+                    <Badge variant="secondary" className="text-xs rounded-full" style={{ backgroundColor: `${themeColor}14`, color: themeColor }}>Pinned</Badge>
                   )}
-                  <Badge className={`text-xs ${priorityColors[notice.priority] || priorityColors.normal}`}>
+                  <Badge className={`text-xs rounded-full ${priorityColors[notice.priority] || priorityColors.normal}`}>
                     {notice.priority}
                   </Badge>
                   {notice.noticeCategory && notice.noticeCategory !== "general" && (
-                    <Badge variant="outline" className="text-xs capitalize">{notice.noticeCategory}</Badge>
+                    <Badge variant="outline" className="text-xs capitalize rounded-full" style={{ borderColor: V4.line }}>{notice.noticeCategory}</Badge>
                   )}
                 </div>
-                <h3 className="font-medium">{notice.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">{notice.body}</p>
+                <h3 className="font-semibold text-[15px]" style={{ color: V4.ink }}>{notice.title}</h3>
+                <p className="text-sm text-muted-foreground mt-1.5 whitespace-pre-line leading-relaxed">{notice.body}</p>
               </div>
-              <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
+              <div className="flex items-center gap-3 mt-3.5 pt-3 border-t text-xs text-muted-foreground" style={{ borderColor: V4.line }}>
                 {notice.authorName && <span>By {notice.authorName}</span>}
                 {notice.publishedAt && (
                   <span>{new Date(notice.publishedAt).toLocaleDateString()}</span>
@@ -412,12 +454,12 @@ function NoticesSection({
   );
 }
 
-function QuickActionsSection({ actionLinks }: { actionLinks: PublicHubData["actionLinks"] }) {
+function QuickActionsSection({ actionLinks, themeColor }: { actionLinks: PublicHubData["actionLinks"]; themeColor: string }) {
   if (actionLinks.length === 0) return null;
 
   return (
     <section>
-      <h2 className="text-lg font-semibold mb-3">Quick Actions</h2>
+      <h2 className="text-xl font-semibold mb-4 tracking-tight" style={{ fontFamily: SERIF, color: V4.ink }}>Quick Actions</h2>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {actionLinks.map((link) => (
           <a
@@ -425,12 +467,16 @@ function QuickActionsSection({ actionLinks }: { actionLinks: PublicHubData["acti
             href={link.routeTarget}
             target={link.routeType === "external" ? "_blank" : undefined}
             rel={link.routeType === "external" ? "noopener noreferrer" : undefined}
+            className="group"
           >
-            <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
-              <CardContent className="flex flex-col items-center justify-center text-center p-4 min-h-[80px]">
-                <span className="font-medium text-sm">{link.label}</span>
+            <Card
+              className={`${CARD_V4} cursor-pointer h-full bg-white group-hover:border-[var(--qa-accent)]`}
+              style={{ ...cardBorder, ["--qa-accent" as any]: themeColor }}
+            >
+              <CardContent className="flex flex-col items-center justify-center text-center p-5 min-h-[88px] gap-1.5">
+                <span className="font-medium text-sm transition-colors group-hover:text-[var(--qa-accent)]" style={{ color: V4.ink }}>{link.label}</span>
                 {link.routeType === "external" && (
-                  <ExternalLink className="h-3 w-3 mt-1 text-muted-foreground" />
+                  <ExternalLink className="h-3 w-3 text-muted-foreground transition-colors group-hover:text-[var(--qa-accent)]" />
                 )}
               </CardContent>
             </Card>
@@ -446,22 +492,21 @@ function InfoBlocksSection({ infoBlocks, themeColor }: { infoBlocks: PublicHubDa
 
   return (
     <section>
-      <div className="flex items-center gap-2 mb-3">
-        <Info className="h-5 w-5" style={{ color: themeColor }} />
-        <h2 className="text-lg font-semibold">Community Information</h2>
-      </div>
+      <SectionHeading icon={Info} title="Community Information" themeColor={themeColor} />
       <div className="grid gap-3 sm:grid-cols-2">
         {infoBlocks.map((block) => {
           const IconComp = CATEGORY_ICONS[block.category] || Info;
           return (
-            <Card key={block.id}>
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <IconComp className="h-4 w-4 shrink-0" style={{ color: themeColor }} />
-                  <CardTitle className="text-base">{block.title}</CardTitle>
+            <Card key={block.id} className={CARD_V4} style={cardBorder}>
+              <CardHeader className="pb-2 pt-5 px-5">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style={{ backgroundColor: `${themeColor}14`, color: themeColor }} aria-hidden="true">
+                    <IconComp className="h-4 w-4" />
+                  </span>
+                  <CardTitle className="text-base" style={{ color: V4.ink }}>{block.title}</CardTitle>
                 </div>
               </CardHeader>
-              <CardContent className="pt-0">
+              <CardContent className="pt-0 px-5 pb-5">
                 {block.body && (
                   <p className="text-sm text-muted-foreground whitespace-pre-line">{block.body}</p>
                 )}
@@ -496,18 +541,17 @@ function BuildingsSection({ buildings, themeColor }: { buildings: PublicBuilding
 
   return (
     <section>
-      <div className="flex items-center gap-2 mb-3">
-        <Building2 className="h-5 w-5" style={{ color: themeColor }} />
-        <h2 className="text-lg font-semibold">Buildings</h2>
-      </div>
+      <SectionHeading icon={Building2} title="Buildings" themeColor={themeColor} />
       <div className="grid gap-3 sm:grid-cols-2">
         {buildings.map((building) => (
-          <Card key={building.id}>
-            <CardContent className="pt-4 pb-3">
+          <Card key={building.id} className={CARD_V4} style={cardBorder}>
+            <CardContent className="pt-5 pb-4 px-5">
               <div className="flex items-start gap-3">
-                <Home className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0 mt-0.5" style={{ backgroundColor: `${themeColor}14`, color: themeColor }} aria-hidden="true">
+                  <Home className="h-4 w-4" />
+                </span>
                 <div className="min-w-0">
-                  <p className="font-medium text-sm">{building.name}</p>
+                  <p className="font-medium text-sm" style={{ color: V4.ink }}>{building.name}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                     <MapPin className="h-3 w-3 shrink-0" />
                     {building.address}
@@ -533,21 +577,20 @@ function ContactsSection({ association, themeColor }: { association: PublicHubDa
 
   return (
     <section>
-      <div className="flex items-center gap-2 mb-3">
-        <Phone className="h-5 w-5" style={{ color: themeColor }} />
-        <h2 className="text-lg font-semibold">Contact & Key Information</h2>
-      </div>
-      <Card>
-        <CardContent className="pt-4">
-          <div className="space-y-3">
+      <SectionHeading icon={Phone} title="Contact & Key Information" themeColor={themeColor} />
+      <Card className={CARD_V4} style={cardBorder}>
+        <CardContent className="pt-5 pb-5 px-5">
+          <div className="space-y-3.5">
             <div className="flex items-center gap-3">
-              <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl shrink-0" style={{ backgroundColor: `${themeColor}14`, color: themeColor }} aria-hidden="true">
+                <Building2 className="h-[18px] w-[18px]" />
+              </span>
               <div>
-                <p className="font-medium text-sm">{association.name}</p>
+                <p className="font-medium text-sm" style={{ color: V4.ink }}>{association.name}</p>
                 <p className="text-xs text-muted-foreground">{association.city}, {association.state}</p>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground leading-relaxed">
               For inquiries, please contact your property management office or sign in to the resident portal.
             </p>
           </div>
@@ -622,10 +665,10 @@ function HubAuthSection({ themeColor }: { themeColor: string }) {
   if (step === "idle") {
     return (
       <section className="text-center py-6">
-        <p className="text-muted-foreground text-sm mb-3">
+        <p className="text-muted-foreground text-sm mb-4">
           Are you a resident? Sign in for full access to documents, requests, and more.
         </p>
-        <Button style={{ backgroundColor: themeColor }} onClick={() => setStep("email")}>
+        <Button className="rounded-xl shadow-sm hover:shadow-md transition-shadow" style={{ backgroundColor: themeColor }} onClick={() => setStep("email")}>
           <Mail className="h-4 w-4 mr-2" />
           Sign In with Email
         </Button>
@@ -644,8 +687,8 @@ function HubAuthSection({ themeColor }: { themeColor: string }) {
 
   return (
     <section className="py-6">
-      <Card className="max-w-sm mx-auto">
-        <CardContent className="pt-5 pb-4">
+      <Card className={`max-w-sm mx-auto ${CARD_V4}`} style={cardBorder}>
+        <CardContent className="pt-6 pb-5 px-6">
           {step === "email" ? (
             <form onSubmit={handleRequestPin} className="space-y-3">
               <div className="text-center mb-3">
@@ -662,7 +705,7 @@ function HubAuthSection({ themeColor }: { themeColor: string }) {
                 autoFocus
               />
               {error && <p className="text-xs text-destructive">{error}</p>}
-              <Button type="submit" className="w-full" style={{ backgroundColor: themeColor }} disabled={loading}>
+              <Button type="submit" className="w-full rounded-xl" style={{ backgroundColor: themeColor }} disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Code"}
               </Button>
               <button type="button" className="w-full text-xs text-muted-foreground hover:text-foreground" onClick={() => setStep("idle")}>
@@ -692,7 +735,7 @@ function HubAuthSection({ themeColor }: { themeColor: string }) {
                 autoFocus
               />
               {error && <p className="text-xs text-destructive">{error}</p>}
-              <Button type="submit" className="w-full" style={{ backgroundColor: themeColor }} disabled={loading}>
+              <Button type="submit" className="w-full rounded-xl" style={{ backgroundColor: themeColor }} disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify & Sign In"}
               </Button>
               <button type="button" className="w-full text-xs text-muted-foreground hover:text-foreground" onClick={() => { setStep("email"); setPin(""); setError(""); }}>
