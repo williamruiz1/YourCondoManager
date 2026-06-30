@@ -140,7 +140,9 @@ export default function CommunityHubPublicPage() {
   }
 
   const { config, association, notices, infoBlocks, actionLinks, meetings = [], documents: docs = [] } = hub;
-  const themeColor = config.themeColor || "#3b82f6";
+  // Brand teal default (was a generic blue #3b82f6 — the "blue tint" on the
+  // community page). A community can still override via config.themeColor.
+  const themeColor = config.themeColor || "#014D4A";
   const enabledSections = config.enabledSections || [];
   const sectionOrder = config.sectionOrder || ["notices", "quick-actions", "info-blocks", "map", "contacts"];
   const publicBuildings = buildingsData?.buildings || [];
@@ -313,7 +315,7 @@ export default function CommunityHubPublicPage() {
       <footer className="border-t bg-white py-6 mt-8">
         <div className="max-w-4xl mx-auto px-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
           <BrandMark decorative className="h-6 w-6" />
-          <p>Powered by Your Condo Manager</p>
+          <p>Powered by YourCondoManager</p>
         </div>
       </footer>
     </div>
