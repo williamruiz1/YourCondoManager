@@ -3976,8 +3976,9 @@ export const glFundEnum = pgEnum("gl_fund", ["operating", "reserve"]);
 export const glSideEnum = pgEnum("gl_side", ["debit", "credit"]);
 
 // gl_accounts — the chart of accounts. One row per account per association.
-// `accountCode` is the human GL number (e.g. "4000" Assessment Income, "1010"
-// Operating Cash, "1015" Interfund Receivable). `normalBalance` records whether
+// `accountCode` is the human GL number (e.g. "4000" HOA Dues Income, "4200"
+// Special Assessment Income, "5000" expense, "1010" Operating Cash, "2000"
+// Accounts Payable). `normalBalance` records whether
 // the account increases on the debit (asset/expense) or credit (liability/
 // equity/income) side — used to derive a signed balance from raw debit/credit.
 export const glAccounts = pgTable(
