@@ -310,7 +310,8 @@ import { getStripeApplicationFeeRate } from "./platform-settings-store";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
 import { bankFeedProvider } from "./services/bank-feed";
-import { syncBankFeedForItemId } from "./services/bank-feed-sync";
+import { isStripeFinancialConnectionsEnabled } from "./services/bank-feed/stripe-fc-env-guard";
+import { syncBankFeedForItemId, syncBankFeedForConnection } from "./services/bank-feed-sync";
 import { bridgeLinkedBankAccounts, deactivateBridgedFinancialAccounts } from "./services/financial-account-bank-bridge";
 import {
   encryptPlaidToken as encryptPlaidTokenShared,
@@ -19011,6 +19012,31 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
   });
 
+  // GET /api/bank-feed/provider
+  // Tells the client which bank-feed provider is active so the bank-connect UI
+  // can pick the right collection flow. Behind the STRIPE_FINANCIAL_CONNECTIONS_
+  // ENABLED flag: returns provider "stripe_fc" + the platform publishable key
+  // (needed by Stripe.js collectFinancialConnectionsAccounts) when ON, else
+  // provider "plaid" with no FC config. Read-only metadata — admin-scoped.
+  app.get("/api/bank-feed/provider", requireAdmin, async (_req: AdminRequest, res) => {
+    try {
+      if (isStripeFinancialConnectionsEnabled()) {
+        const publishableKey = await getSecret(
+          "PLATFORM_STRIPE_PUBLISHABLE_KEY",
+          "platform_stripe_publishable_key",
+        );
+        return res.json({
+          provider: "stripe_fc",
+          fc: { publishableKey: publishableKey ?? null },
+        });
+      }
+      return res.json({ provider: "plaid", fc: null });
+    } catch (error: any) {
+      debug("[bank-feed][provider] error", error);
+      res.status(500).json({ error: error.message, code: "BANK_FEED_PROVIDER_ERROR" });
+    }
+  });
+
   // GET /api/plaid/oauth-return
   // OAuth landing route. This path IS the `redirect_uri` registered with Plaid
   // (PLAID_REDIRECT_URI = https://app.yourcondomanager.org/api/plaid/oauth-return).
@@ -19065,7 +19091,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         .insert(bankConnections)
         .values({
           associationId,
-          provider: "plaid",
+          // Tag the row with the active provider so the source of each
+          // connection is auditable after a vendor pivot. The bank-feed engine
+          // is provider-agnostic (it goes through bankFeedProvider), so the
+          // value is metadata, not a dispatch key.
+          provider: isStripeFinancialConnectionsEnabled() ? "stripe_fc" : "plaid",
           providerItemId: itemId,
           accessTokenEncrypted,
           institutionName: institutionName ?? null,
@@ -19434,6 +19464,86 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       debug("[plaid][webhook] error", error);
       // Return 200 so Plaid does not retry on our internal (post-verification)
       // errors. The webhook was authentic; the sweep backstop recovers it.
+      res.status(200).json({ received: false, error: error.message });
+    }
+  });
+
+  // POST /api/webhooks/stripe-fc
+  // Receives Stripe Financial Connections webhook events (only meaningful when
+  // STRIPE_FINANCIAL_CONNECTIONS_ENABLED is ON — otherwise bankFeedProvider is
+  // Plaid and this returns 200 no-op). No auth: the body is verified via the
+  // Stripe-Signature HMAC inside bankFeedProvider.verifyWebhook (production
+  // enforces; test may skip when no secret is set). Unverified = 401.
+  //
+  // FC events reference the FC ACCOUNT id (not the session id stored in
+  // provider_item_id), so we resolve account → bank_accounts → bankConnectionId
+  // and sync that connection. If the account isn't found, the 5-min sweep is the
+  // backstop (parity with Plaid's dropped-event recovery).
+  app.post("/api/webhooks/stripe-fc", async (req, res) => {
+    if (!isStripeFinancialConnectionsEnabled()) {
+      // FC not the active provider — accept + ignore so a stray delivery never
+      // 500s or gets retry-stormed.
+      return res.status(200).json({ received: true, ignored: "fc-disabled" });
+    }
+
+    // STEP 1 — verify the Stripe signature (401 on failure).
+    let event;
+    try {
+      const rawBody = Buffer.isBuffer((req as any).rawBody)
+        ? (req as any).rawBody.toString("utf8")
+        : JSON.stringify(req.body);
+      event = await bankFeedProvider.verifyWebhook(
+        req.headers as Record<string, string>,
+        rawBody,
+      );
+    } catch (verifyError: any) {
+      debug("[stripe-fc][webhook] verification failed", verifyError);
+      return res
+        .status(401)
+        .json({ received: false, error: "webhook verification failed" });
+    }
+
+    // STEP 2 — process. Errors here → 200 (sweep is the backstop), matching the
+    // Plaid handler so Stripe doesn't retry-storm us on an internal hiccup.
+    try {
+      debug("[stripe-fc][webhook] received", {
+        webhookType: event.webhookType,
+        webhookCode: event.webhookCode,
+        accountId: event.itemId,
+      });
+
+      // event.itemId carries the FC ACCOUNT id (see StripeFcProvider.verifyWebhook).
+      const fcAccountId = event.itemId;
+      if (fcAccountId) {
+        const [acct] = await db
+          .select({ bankConnectionId: bankAccounts.bankConnectionId })
+          .from(bankAccounts)
+          .where(eq(bankAccounts.providerAccountId, fcAccountId))
+          .limit(1);
+
+        if (event.webhookType === "ITEM" && event.webhookCode === "USER_PERMISSION_REVOKED") {
+          if (acct?.bankConnectionId) {
+            await db
+              .update(bankConnections)
+              .set({ status: "revoked", updatedAt: new Date() })
+              .where(eq(bankConnections.id, acct.bankConnectionId));
+          }
+        } else if (
+          event.webhookType === "TRANSACTIONS" &&
+          event.webhookCode === "SYNC_UPDATES_AVAILABLE" &&
+          acct?.bankConnectionId
+        ) {
+          // Fire-and-forget per-connection sync (debounce/lock live inside the
+          // sync engine). No item_id path for FC — sync by connection id.
+          syncBankFeedForConnection(acct.bankConnectionId, "manual").catch((err: unknown) => {
+            debug("[stripe-fc][webhook] async sync failed", err);
+          });
+        }
+      }
+
+      res.json({ received: true });
+    } catch (error: any) {
+      debug("[stripe-fc][webhook] error", error);
       res.status(200).json({ received: false, error: error.message });
     }
   });
