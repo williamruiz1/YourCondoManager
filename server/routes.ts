@@ -269,6 +269,7 @@ import {
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
 import { normalizeHubVisibility } from "@shared/hub-visibility";
+import { slugifyCommunityName, ensureUniqueSlug } from "@shared/community-slug";
 import {
   resolveAmountDue,
   toAmountDueThisPeriod,
@@ -18274,7 +18275,14 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       // 1. Ensure hub config exists
       let [config] = await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, associationId));
       if (!config) {
-        const slug = assoc.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+        // Trustworthy community-URL slug (founder-os): clean, short, unique,
+        // reserved-word-safe — yourcondomanager.org/community/<slug>.
+        const slug = await ensureUniqueSlug({
+          base: slugifyCommunityName(assoc.name),
+          fallbackSeed: associationId,
+          isTaken: async (candidate) =>
+            (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, candidate))).length > 0,
+        });
         [config] = await db.insert(hubPageConfigs).values({
           associationId,
           isEnabled: 0,
