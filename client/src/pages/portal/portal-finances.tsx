@@ -10,12 +10,10 @@
 //   /portal/finances/ledger
 //   /portal/finances/assessments/:assessmentId (leverages 4.3 Q5 drill-in)
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Receipt } from "lucide-react";
-import { usePlaidLink } from "react-plaid-link";
-import type { PlaidLinkOnSuccess, PlaidLinkOnSuccessMetadata } from "react-plaid-link";
 import type { OwnerLedgerEntry } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
@@ -85,6 +83,65 @@ const FINANCE_CATEGORY_LABEL: Record<FinanceCategoryKey, string> = {
   credit: "Credit",
   adjustment: "Adjustment",
 };
+
+// 2026-06-30 — human-readable ledger TYPE labels (William finding #5). The
+// owner ledger stored raw `entryType` strings ("charge", "assessment") that
+// read as jargon. Map each to a plain owner-facing label. NOTE: this is a
+// DISPLAY-ONLY mapping — it does NOT change GL income-account mapping (a
+// separate held decision). "charge" → "HOA Dues", "assessment" → "Special
+// Assessment". Unknown/future types fall back to a de-kebabed Title Case.
+const LEDGER_TYPE_LABEL: Record<string, string> = {
+  charge: "HOA Dues",
+  assessment: "Special Assessment",
+  "late-fee": "Late Fee",
+  payment: "Payment",
+  credit: "Credit",
+  adjustment: "Adjustment",
+};
+
+export function ledgerTypeLabel(entryType: string): string {
+  const known = LEDGER_TYPE_LABEL[entryType];
+  if (known) return known;
+  // De-kebab + Title Case fallback for any unmapped/future type.
+  return entryType
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// 2026-06-30 — resolve the unit label for a ledger entry from the dashboard's
+// `byUnit` breakdown (which carries the resolved `<building>-<unit>` label).
+// Owner ledger entries carry only `unitId`; this maps it to the human label so
+// the ledger reads cleanly (William finding #5: "which unit is each line for?").
+function buildUnitLabelMap(byUnit: FinanceUnitBreakdown[]): Map<string, string> {
+  return new Map(byUnit.map((u) => [u.unitId, u.unitLabel]));
+}
+
+// 2026-06-30 — "What's due now" breakdown (William finding #3): separate HOA
+// dues from special-assessment installments. Dues-due = the positive `charge`
+// + `late-fee` category balances summed across units (assessments are EXCLUDED
+// here — they're shown as installments, not the lifetime lump). Installment-due
+// = the sum of the upcoming installment amounts. Total = dues + installments.
+// Pure over its inputs so it can be unit-tested without rendering.
+export interface DueNowBreakdown {
+  duesDue: number;
+  assessmentInstallmentDue: number;
+  totalDueNow: number;
+}
+export function computeDueNow(
+  byUnit: Array<{ byCategory: Partial<Record<FinanceCategoryKey, number>> }>,
+  upcomingInstallments: Array<{ installmentAmount: number }>,
+): DueNowBreakdown {
+  const duesDue = byUnit.reduce(
+    (sum, u) =>
+      sum + Math.max(0, u.byCategory.charge ?? 0) + Math.max(0, u.byCategory["late-fee"] ?? 0),
+    0,
+  );
+  const assessmentInstallmentDue = upcomingInstallments.reduce(
+    (sum, i) => sum + (i.installmentAmount ?? 0),
+    0,
+  );
+  return { duesDue, assessmentInstallmentDue, totalDueNow: duesDue + assessmentInstallmentDue };
+}
 
 // Stacked-bar segment colors — restrained palette per the wireframe.
 // Teal accent for the active "assessment" category; cooler tones for
@@ -179,313 +236,14 @@ function getTitleForPath(path: string): string {
   return t("portal.finances.title");
 }
 
-// ---------- Plaid bank-payment card (Issue #333) ----------
+// ---------- (Plaid owner-pay card removed 2026-06-30) ----------
 //
-// Owner-side Plaid flow. If no portal-scoped bank connection exists, the
-// card surfaces a "Connect your bank" CTA that drives the Plaid Link sheet
-// via /api/portal/plaid/create-link-token. Once connected, the card lets
-// the owner pay against their outstanding balance via /api/portal/plaid/pay
-// — payment is recorded as a pending ledger entry; ACH execution is a
-// follow-up job.
-
-type PortalBankConnection = {
-  id: string;
-  institutionName: string | null;
-  status: string;
-  createdAt: string | Date;
-};
-
-/**
- * 2026-05-25 (live session) — restructured to express the balance-vs-
- * amount-due distinction. The primary CTA is "Pay $X due this period"
- * when an active plan resolves a due amount; otherwise the legacy
- * "Pay full balance from bank" CTA is the primary. A secondary path
- * lets the owner pay any other amount (e.g. full balance early).
- */
-function PortalBankPaymentCard({
-  balance,
-  amountDueThisPeriod,
-}: {
-  balance: number;
-  amountDueThisPeriod: FinancialDashboard["amountDueThisPeriod"];
-}) {
-  const { portalFetch } = usePortalContext();
-  const qc = useQueryClient();
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [confirmAmount, setConfirmAmount] = useState<string>("");
-  const [confirming, setConfirming] = useState(false);
-  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
-  // 2026-05-25 — explicit mode tracking so the owner knows what they're
-  // paying. "due" = the plan-resolved installment; "balance" = the lifetime
-  // balance; "custom" = owner-typed amount.
-  const [payMode, setPayMode] = useState<"due" | "balance" | "custom">("due");
-
-  // 2026-06 (dues-to-GL / settlement-risk fix) — the endpoint now returns
-  // { connection, payEnabled }. `payEnabled` is false while the server-side
-  // settlement-risk gate keeps /api/portal/plaid/pay disabled (the path posts a
-  // ledger credit before ACH settlement). When false, the pay CTAs are hidden
-  // and owners are pointed at the safe card/ACH payment option. Tolerates the
-  // legacy bare-connection shape so an old cached response still renders.
-  const { data: connInfo } = useQuery<{ connection: PortalBankConnection | null; payEnabled: boolean }>({
-    queryKey: ["portal/plaid/connection"],
-    queryFn: async () => {
-      const res = await portalFetch("/api/portal/plaid/connection");
-      if (!res.ok) return { connection: null, payEnabled: false };
-      const body = (await res.json()) as
-        | { connection: PortalBankConnection | null; payEnabled?: boolean }
-        | PortalBankConnection
-        | null;
-      if (body && typeof body === "object" && "connection" in body) {
-        return { connection: body.connection ?? null, payEnabled: body.payEnabled ?? false };
-      }
-      // Legacy shape (bare connection or null): default payEnabled false (safe).
-      return { connection: (body as PortalBankConnection | null) ?? null, payEnabled: false };
-    },
-  });
-  const connection = connInfo?.connection ?? null;
-  const payEnabled = connInfo?.payEnabled ?? false;
-
-  const createLinkToken = useMutation({
-    mutationFn: async () => {
-      const res = await portalFetch("/api/portal/plaid/create-link-token", { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<{ linkToken: string }>;
-    },
-    onSuccess: (data) => setLinkToken(data.linkToken),
-  });
-
-  const exchangeToken = useMutation({
-    mutationFn: async (input: { publicToken: string; institutionName: string | null }) => {
-      const res = await portalFetch("/api/portal/plaid/exchange-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: () => {
-      setLinkToken(null);
-      qc.invalidateQueries({ queryKey: ["portal/plaid/connection"] });
-    },
-  });
-
-  const submitPayment = useMutation({
-    mutationFn: async (amount: number) => {
-      // 2026-05-25 (live session) — William's $1 payment showed up labeled
-      // "HOA dues — bank payment" but was applied against a DRIVEWAY
-      // ASSESSMENT, not HOA dues. The description was hardcoded. Use a
-      // neutral phrase here; the server applies the entry against the
-      // owner-personId ledger and the operator-side category attribution
-      // is what determines what the payment paid down. Owners who want
-      // category attribution can use the legacy /api/portal/pay flow
-      // which passes the category as `description`.
-      const res = await portalFetch("/api/portal/plaid/pay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, description: "Bank payment" }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<{ status: string; message: string }>;
-    },
-    onSuccess: (data) => {
-      setSubmitMessage(data.message ?? "Payment submitted — processing in 1-3 business days.");
-      setConfirming(false);
-      setConfirmAmount("");
-      qc.invalidateQueries({ queryKey: ["portal/financial-dashboard"] });
-      qc.invalidateQueries({ queryKey: ["portal/ledger"] });
-    },
-  });
-
-  const onPlaidSuccess = useCallback<PlaidLinkOnSuccess>(
-    (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
-      exchangeToken.mutate({
-        publicToken,
-        institutionName: metadata.institution?.name ?? null,
-      });
-    },
-    [exchangeToken],
-  );
-
-  const { open: openPlaid, ready: plaidReady } = usePlaidLink({
-    token: linkToken,
-    onSuccess: onPlaidSuccess,
-    onExit: () => setLinkToken(null),
-  });
-
-  if (linkToken && plaidReady) {
-    setTimeout(() => openPlaid(), 0);
-  }
-
-  const dueAmount = amountDueThisPeriod?.amount ?? 0;
-  const hasDue = !!amountDueThisPeriod && dueAmount > 0;
-
-  const handlePayDueClick = () => {
-    setSubmitMessage(null);
-    setPayMode("due");
-    setConfirmAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "");
-    setConfirming(true);
-  };
-
-  const handlePayBalanceClick = () => {
-    setSubmitMessage(null);
-    setPayMode("balance");
-    setConfirmAmount(balance > 0 ? balance.toFixed(2) : "");
-    setConfirming(true);
-  };
-
-  const handlePayCustomClick = () => {
-    setSubmitMessage(null);
-    setPayMode("custom");
-    setConfirmAmount("");
-    setConfirming(true);
-  };
-
-  return (
-    <Card data-testid="portal-bank-payment">
-      <CardContent className="space-y-3 py-5">
-        <h2 className="font-headline text-lg">Pay with Bank Account</h2>
-        {submitMessage ? (
-          <p className="text-sm text-on-surface" data-testid="portal-bank-payment-success">{submitMessage}</p>
-        ) : null}
-
-        {!connection ? (
-          <>
-            <p className="text-sm text-on-surface-variant">
-              Link your checking or savings account via Plaid to pay assessments directly from your bank — no card fees.
-            </p>
-            <Button
-              onClick={() => createLinkToken.mutate()}
-              disabled={createLinkToken.isPending}
-              data-testid="portal-bank-connect"
-            >
-              {createLinkToken.isPending ? "Opening…" : "Connect your bank"}
-            </Button>
-          </>
-        ) : !payEnabled ? (
-          <>
-            <p className="text-sm text-on-surface-variant" data-testid="portal-bank-connected">
-              Connected: <strong>{connection.institutionName ?? "Bank"}</strong>
-            </p>
-            {/* Settlement-risk gate (default OFF): bank (ACH) pay from the portal
-                is temporarily unavailable because it would record the payment
-                before funds settle. Point owners at the safe card/ACH option. */}
-            <p className="text-sm text-on-surface-variant" data-testid="portal-bank-pay-disabled">
-              Paying directly from your bank here is temporarily unavailable. Please use the
-              card or ACH payment option to make a payment — your balance and ledger update
-              once that payment is confirmed.
-            </p>
-          </>
-        ) : !confirming ? (
-          <>
-            <p className="text-sm text-on-surface-variant" data-testid="portal-bank-connected">
-              Connected: <strong>{connection.institutionName ?? "Bank"}</strong>
-            </p>
-            {/* 2026-05-25 (live session) — Primary CTA is the plan-resolved
-                "Amount due this period" when present; otherwise it's the
-                legacy "Pay full balance" path. Secondary actions let the
-                owner pay the full balance or a custom amount when on a plan.
-                William verbatim: "pay the whole balance" is distinct from
-                "amount due this period" — both surface, the latter is primary. */}
-            {/* #217 mobile pass — pay CTAs go full-width + min 44px tall on
-                phones (each is a primary money action; full-width tap target),
-                then shrink to content width and wrap on ≥sm. */}
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              {hasDue ? (
-                <Button
-                  onClick={handlePayDueClick}
-                  data-testid="portal-bank-pay-due"
-                  aria-label={`Pay $${dueAmount.toFixed(2)} due for ${amountDueThisPeriod?.periodLabel ?? "this period"}`}
-                  className="min-h-11 w-full sm:w-auto"
-                >
-                  Pay ${dueAmount.toFixed(2)} due {amountDueThisPeriod?.periodLabel
-                    ? `for ${amountDueThisPeriod.periodLabel}`
-                    : "this period"}
-                </Button>
-              ) : null}
-              <Button
-                onClick={handlePayBalanceClick}
-                disabled={balance <= 0}
-                variant={hasDue ? "outline" : "default"}
-                data-testid="portal-bank-pay-now"
-                className="min-h-11 w-full sm:w-auto"
-              >
-                {balance > 0
-                  ? hasDue
-                    ? `Pay full balance ($${balance.toFixed(2)})`
-                    : `Pay $${balance.toFixed(2)} from bank`
-                  : "No balance due"}
-              </Button>
-              {balance > 0 ? (
-                <Button
-                  onClick={handlePayCustomClick}
-                  variant="ghost"
-                  data-testid="portal-bank-pay-custom"
-                  className="min-h-11 w-full sm:w-auto"
-                >
-                  Pay another amount
-                </Button>
-              ) : null}
-            </div>
-            {hasDue ? (
-              <p className="text-xs text-on-surface-variant" data-testid="portal-bank-due-context">
-                You can pay the installment for this period, the full lifetime
-                balance, or any other amount.
-              </p>
-            ) : null}
-          </>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-xs text-on-surface-variant" data-testid="portal-bank-confirm-mode">
-              {payMode === "due"
-                ? `Confirm installment for ${amountDueThisPeriod?.periodLabel ?? "this period"}`
-                : payMode === "balance"
-                  ? "Confirm full-balance payment"
-                  : "Enter the amount you want to pay"}
-            </p>
-            {/* #217 mobile pass — taller input (44px min tap target) +
-                inputMode=decimal so phones show the numeric keypad. */}
-            <Input
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              value={confirmAmount}
-              onChange={(e) => setConfirmAmount(e.target.value)}
-              data-testid="portal-bank-confirm-amount"
-              className="h-11 text-base"
-            />
-            {/* #217 mobile pass — confirm/cancel stack full-width on phones so
-                each is an easy 44px+ tap target; row on ≥sm. */}
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button
-                onClick={() => {
-                  const amt = Number(confirmAmount);
-                  if (Number.isFinite(amt) && amt > 0) submitPayment.mutate(amt);
-                }}
-                disabled={submitPayment.isPending || !confirmAmount}
-                data-testid="portal-bank-confirm"
-                className="min-h-11 w-full sm:w-auto"
-              >
-                {submitPayment.isPending ? "Submitting…" : "Confirm Payment"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setConfirming(false)}
-                className="min-h-11 w-full sm:w-auto"
-              >
-                Cancel
-              </Button>
-            </div>
-            <p className="text-xs text-on-surface-variant">
-              Payment is recorded immediately. ACH transfer settles in 1–3 business days.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+// The owner-side Plaid "connect your bank / pay from bank" card was removed
+// from the My Finances hub. Owners now pay through Stripe Checkout (card +
+// ACH on the HOA's connected Stripe account) via POST /api/portal/pay
+// (Connect-routed in server/services/payment-service.ts). Plaid remains the
+// ADMIN bank-feed / reconciliation integration only — it is not an owner
+// payment path (William finding #1, 2026-06-30).
 
 // ---------- Per-unit hierarchical breakdown (2026-05-25) ----------
 
@@ -649,8 +407,8 @@ function PerUnitFinanceCard({ unit }: { unit: FinanceUnitBreakdown }) {
                       {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
                     </TableCell>
                     <TableCell className="text-xs">
-                      <Badge variant="outline" className="capitalize">
-                        {String(entry.entryType).replace(/-/g, " ")}
+                      <Badge variant="outline">
+                        {ledgerTypeLabel(String(entry.entryType))}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
@@ -681,6 +439,9 @@ function FinancesHubContent() {
   const { portalFetch, session } = usePortalContext();
   const qc = useQueryClient();
   const [paymentAmount, setPaymentAmount] = useState("");
+  // 2026-06-30 — surface pay-flow errors so the owner sees WHY a payment
+  // didn't start, rather than a silently-dead button (William finding #2).
+  const [payError, setPayError] = useState<string | null>(null);
 
   const { data: dashboard } = useQuery<FinancialDashboard>({
     queryKey: ["portal/financial-dashboard", session.id],
@@ -740,14 +501,33 @@ function FinancesHubContent() {
       return res.json() as Promise<{ checkoutUrl?: string }>;
     },
     onSuccess: (data) => {
-      if (data.checkoutUrl) window.location.assign(data.checkoutUrl);
+      setPayError(null);
+      if (data.checkoutUrl) {
+        window.location.assign(data.checkoutUrl);
+      } else {
+        setPayError("Payment could not be started — no checkout link was returned. Please try again.");
+      }
       qc.invalidateQueries({ queryKey: ["portal/financial-dashboard"] });
+    },
+    onError: (err: unknown) => {
+      setPayError(err instanceof Error ? err.message : "Payment could not be started. Please try again.");
     },
   });
 
   const balance = dashboard?.balance ?? 0;
   const upcoming = dashboard?.specialAssessmentUpcomingInstallments ?? [];
   const byUnit = dashboard?.byUnit ?? [];
+  const unitLabelMap = useMemo(() => buildUnitLabelMap(byUnit), [byUnit]);
+
+  // 2026-06-30 — "What's due now" breakdown (William finding #3): separate HOA
+  // dues from special-assessment installments, and show the installment(s)
+  // due now — NOT the full assessment lump (an $80k driveway assessment is not
+  // all due at once). See `computeDueNow` for the pure logic.
+  const { duesDue, assessmentInstallmentDue, totalDueNow } = useMemo(
+    () => computeDueNow(byUnit, upcoming),
+    [byUnit, upcoming],
+  );
+  const hasDueNowBreakdown = byUnit.length > 0 || upcoming.length > 0;
   // 2026-05-25 (live session) — server-resolved "Amount due this period".
   // null when no active plan OR mid-quarter on a quarterly plan.
   const amountDueThisPeriod = dashboard?.amountDueThisPeriod ?? null;
@@ -770,6 +550,60 @@ function FinancesHubContent() {
           {t("portal.finances.subtitle")}
         </p>
       </div>
+
+      {/* 2026-06-30 — "What's due now" breakdown (William finding #3). Separate
+          HOA dues from special-assessment installments, and show the installment
+          due — NOT the full assessment lump. Total = dues + installment. The
+          lifetime balance is shown alongside as a reference, never as "what's
+          due". */}
+      {hasDueNowBreakdown ? (
+        <section data-testid="portal-finances-due-now">
+          <Card className="border-destructive/30 bg-destructive/[0.04]">
+            <CardContent className="py-5">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-destructive">
+                What&rsquo;s due now
+              </p>
+              <p
+                className="mt-1 font-headline text-4xl md:text-5xl tabular-nums text-destructive"
+                data-testid="portal-finances-due-now-total"
+              >
+                ${formatCurrency(totalDueNow)}
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
+                <div className="flex items-center justify-between gap-3 border-t border-destructive/10 pt-2">
+                  <span className="text-sm text-on-surface">HOA Dues</span>
+                  <span
+                    className="font-medium tabular-nums text-on-surface"
+                    data-testid="portal-finances-due-now-dues"
+                  >
+                    ${formatCurrency(duesDue)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3 border-t border-destructive/10 pt-2">
+                  <span className="text-sm text-on-surface">
+                    Special Assessment{upcoming.length > 1 ? " installments" : " installment"}
+                  </span>
+                  <span
+                    className="font-medium tabular-nums text-on-surface"
+                    data-testid="portal-finances-due-now-assessment"
+                  >
+                    ${formatCurrency(assessmentInstallmentDue)}
+                  </span>
+                </div>
+              </div>
+              {assessmentInstallmentDue > 0 ? (
+                <p
+                  className="mt-3 text-xs text-on-surface-variant"
+                  data-testid="portal-finances-due-now-note"
+                >
+                  Special assessments are billed in installments — only the amount
+                  due now is shown here, not the full assessment.
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
 
       {/* 2026-05-25 (live session) — Balance vs Amount-due distinction.
           William verbatim: the $5,618.61 figure is the TOTAL balance (lifetime),
@@ -894,12 +728,43 @@ function FinancesHubContent() {
         </Link>
       </section>
 
-      <PortalBankPaymentCard balance={balance} amountDueThisPeriod={amountDueThisPeriod} />
-
+      {/* 2026-06-30 — Owner PAY flow is Stripe (William finding #1). The Plaid
+          "connect your bank" card was REMOVED from the owner pay experience —
+          owners pay through Stripe Checkout (card + ACH on the HOA's connected
+          Stripe account) via POST /api/portal/pay. Plaid stays the admin
+          bank-FEED/reconciliation tool only; it is not an owner payment path. */}
       <section className="grid gap-4 md:grid-cols-2">
-        <Card>
+        <Card data-testid="portal-finances-pay-card">
           <CardContent className="space-y-3 py-5">
             <h2 className="font-headline text-lg" id="portal-finances-make-payment-heading">{t("portal.finances.makePayment.title")}</h2>
+            {/* Quick-fill chips: pay what's due now, or the full balance. The
+                owner can still type any amount below. */}
+            {(totalDueNow > 0 || balance > 0) ? (
+              <div className="flex flex-wrap gap-2" data-testid="portal-finances-pay-quickfill">
+                {totalDueNow > 0 ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPaymentAmount(totalDueNow.toFixed(2))}
+                    data-testid="portal-finances-pay-fill-due"
+                  >
+                    Due now (${formatCurrency(totalDueNow)})
+                  </Button>
+                ) : null}
+                {balance > 0 ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPaymentAmount(balance.toFixed(2))}
+                    data-testid="portal-finances-pay-fill-balance"
+                  >
+                    Full balance (${formatCurrency(balance)})
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
             {/* #217 mobile pass — amount field + Pay button stack on phones so
                 the input isn't squeezed beside the CTA at 320–375px, and each
                 is a comfortable 44px tap target; inline on ≥sm. */}
@@ -919,6 +784,7 @@ function FinancesHubContent() {
               />
               <Button
                 onClick={() => {
+                  setPayError(null);
                   const amt = Number(paymentAmount);
                   if (Number.isFinite(amt) && amt > 0) startCheckout.mutate(amt);
                 }}
@@ -929,6 +795,11 @@ function FinancesHubContent() {
                 {startCheckout.isPending ? t("portal.finances.makePayment.redirecting") : t("portal.finances.makePayment.cta")}
               </Button>
             </div>
+            {payError ? (
+              <p className="text-xs text-destructive" role="alert" data-testid="portal-finances-pay-error">
+                {payError}
+              </p>
+            ) : null}
             <p className="text-xs text-on-surface-variant">
               {t("portal.finances.makePayment.body")}
             </p>
@@ -1063,6 +934,7 @@ function FinancesHubContent() {
                   <TableRow>
                     <TableHead>{t("portal.finances.col.date")}</TableHead>
                     <TableHead>{t("portal.finances.col.type")}</TableHead>
+                    {byUnit.length > 1 ? <TableHead>{t("portal.finances.col.unit")}</TableHead> : null}
                     <TableHead>{t("portal.finances.col.description")}</TableHead>
                     <TableHead className="text-right">{t("portal.finances.col.amount")}</TableHead>
                   </TableRow>
@@ -1073,9 +945,14 @@ function FinancesHubContent() {
                       <TableCell className="text-xs">
                         {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
                       </TableCell>
-                      <TableCell className="capitalize text-xs">
-                        <Badge variant="outline">{entry.entryType.replace(/-/g, " ")}</Badge>
+                      <TableCell className="text-xs">
+                        <Badge variant="outline">{ledgerTypeLabel(entry.entryType)}</Badge>
                       </TableCell>
+                      {byUnit.length > 1 ? (
+                        <TableCell className="text-xs text-on-surface-variant">
+                          {unitLabelMap.get(entry.unitId) ?? "—"}
+                        </TableCell>
+                      ) : null}
                       <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
                       <TableCell className="text-right text-xs">${Number(entry.amount).toFixed(2)}</TableCell>
                     </TableRow>
@@ -1095,6 +972,10 @@ function FinancesHubContent() {
 function PaymentMethodsContent() {
   const { portalFetch, session } = usePortalContext();
   const qc = useQueryClient();
+  // 2026-06-30 — surface setup errors so "Add method" is never a silent dead
+  // button (William finding #2). The button previously 400'd for Connect
+  // associations (no manual key) with no UI feedback.
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const { data: methods = [] } = useQuery<PaymentMethod[]>({
     queryKey: ["portal/payment-methods", session.id],
@@ -1121,10 +1002,22 @@ function PaymentMethodsContent() {
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<{ url?: string }>;
+      // 2026-06-30 — the server returns `{ checkoutUrl, sessionId }` (Stripe
+      // setup-mode Checkout). The prior client read `data.url` which never
+      // matched, so even a successful setup didn't redirect. Read both shapes.
+      return res.json() as Promise<{ checkoutUrl?: string; url?: string }>;
     },
     onSuccess: (data) => {
-      if (data.url) window.location.assign(data.url);
+      setSetupError(null);
+      const url = data.checkoutUrl ?? data.url;
+      if (url) {
+        window.location.assign(url);
+      } else {
+        setSetupError("Could not open payment setup — no checkout link was returned. Please try again.");
+      }
+    },
+    onError: (err: unknown) => {
+      setSetupError(err instanceof Error ? err.message : "Could not open payment setup. Please try again.");
     },
   });
 
@@ -1173,6 +1066,12 @@ function PaymentMethodsContent() {
           {setupMethod.isPending ? t("portal.finances.paymentMethods.opening") : t("portal.finances.paymentMethods.add")}
         </Button>
       </div>
+
+      {setupError ? (
+        <p className="text-sm text-destructive" role="alert" data-testid="portal-finances-add-method-error">
+          {setupError}
+        </p>
+      ) : null}
 
       <section aria-labelledby="payment-methods-saved-heading">
         <h2 id="payment-methods-saved-heading" className="mb-3 font-headline text-lg">{t("portal.finances.paymentMethods.savedTitle")}</h2>
@@ -1278,12 +1177,28 @@ function LedgerContent() {
     },
   });
 
+  // 2026-06-30 — load the dashboard's per-unit breakdown (cached; same query
+  // key as the hub) so the full ledger can attribute each row to its unit
+  // (William finding #5). Owner ledger entries carry only `unitId`.
+  const { data: dashboard } = useQuery<FinancialDashboard>({
+    queryKey: ["portal/financial-dashboard", session.id],
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/financial-dashboard");
+      if (!res.ok) throw new Error("Failed to load dashboard");
+      return res.json();
+    },
+  });
+  const byUnit = dashboard?.byUnit ?? [];
+  const unitLabelMap = useMemo(() => buildUnitLabelMap(byUnit), [byUnit]);
+  const showUnitColumn = byUnit.length > 1;
+
   const filtered = useMemo(
     () => (typeFilter === "all" ? ledger : ledger.filter((l) => l.entryType === typeFilter)),
     [ledger, typeFilter],
   );
 
   const typeOptions = ["all", "charge", "assessment", "payment", "late-fee", "credit", "adjustment"];
+  const typeOptionLabel = (opt: string) => (opt === "all" ? "All" : ledgerTypeLabel(opt));
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-finances-ledger">
@@ -1306,12 +1221,12 @@ function LedgerContent() {
             type="button"
             onClick={() => setTypeFilter(opt)}
             aria-pressed={typeFilter === opt}
-            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+            className={`rounded-full px-3 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
               typeFilter === opt ? "bg-primary text-on-primary" : "bg-surface-container text-on-surface-variant"
             }`}
             data-testid={`portal-finances-ledger-filter-${opt}`}
           >
-            {opt.replace(/-/g, " ")}
+            {typeOptionLabel(opt)}
           </button>
         ))}
       </div>
@@ -1332,7 +1247,10 @@ function LedgerContent() {
               use the standard `<Table>` markup unchanged. */}
           <CardContent className="p-0 overflow-x-auto">
             {filtered.length > LEDGER_VIRTUALIZE_THRESHOLD ? (
-              <VirtualizedPortalLedger entries={filtered} />
+              <VirtualizedPortalLedger
+                entries={filtered}
+                unitLabelMap={showUnitColumn ? unitLabelMap : undefined}
+              />
             ) : (
               <Table aria-label={t("portal.finances.ledger.title")}>
                 <caption className="sr-only">{t("portal.finances.ledger.title")}</caption>
@@ -1340,6 +1258,7 @@ function LedgerContent() {
                   <TableRow>
                     <TableHead>{t("portal.finances.col.date")}</TableHead>
                     <TableHead>{t("portal.finances.col.type")}</TableHead>
+                    {showUnitColumn ? <TableHead>{t("portal.finances.col.unit")}</TableHead> : null}
                     <TableHead>{t("portal.finances.col.description")}</TableHead>
                     <TableHead className="text-right">{t("portal.finances.col.amount")}</TableHead>
                   </TableRow>
@@ -1347,7 +1266,7 @@ function LedgerContent() {
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="py-6 text-center text-sm text-on-surface-variant">
+                      <TableCell colSpan={showUnitColumn ? 5 : 4} className="py-6 text-center text-sm text-on-surface-variant">
                         {t("portal.finances.ledger.empty.filterMatch")}
                       </TableCell>
                     </TableRow>
@@ -1358,8 +1277,13 @@ function LedgerContent() {
                           {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
                         </TableCell>
                         <TableCell className="text-xs">
-                          <Badge variant="outline">{entry.entryType.replace(/-/g, " ")}</Badge>
+                          <Badge variant="outline">{ledgerTypeLabel(entry.entryType)}</Badge>
                         </TableCell>
+                        {showUnitColumn ? (
+                          <TableCell className="text-xs text-on-surface-variant">
+                            {unitLabelMap.get(entry.unitId) ?? "—"}
+                          </TableCell>
+                        ) : null}
                         <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
                         <TableCell className="text-right text-xs">${Number(entry.amount).toFixed(2)}</TableCell>
                       </TableRow>
@@ -1492,8 +1416,17 @@ function StatementContent() {
 // kept in the DOM. The visual columns mirror the legacy `<Table>` exactly:
 // Date / Type / Description / right-aligned Amount.
 
-function VirtualizedPortalLedger({ entries }: { entries: OwnerLedgerEntry[] }) {
-  const gridTemplate = "minmax(90px, 110px) minmax(90px, 130px) minmax(150px, 1fr) minmax(80px, 110px)";
+function VirtualizedPortalLedger({
+  entries,
+  unitLabelMap,
+}: {
+  entries: OwnerLedgerEntry[];
+  unitLabelMap?: Map<string, string>;
+}) {
+  const showUnit = !!unitLabelMap;
+  const gridTemplate = showUnit
+    ? "minmax(90px, 110px) minmax(90px, 130px) minmax(80px, 120px) minmax(150px, 1fr) minmax(80px, 110px)"
+    : "minmax(90px, 110px) minmax(90px, 130px) minmax(150px, 1fr) minmax(80px, 110px)";
   return (
     <div data-testid="portal-finances-ledger-virtualized" role="table" aria-label={t("portal.finances.ledger.title")}>
       <div
@@ -1503,6 +1436,7 @@ function VirtualizedPortalLedger({ entries }: { entries: OwnerLedgerEntry[] }) {
       >
         <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.date")}</div>
         <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.type")}</div>
+        {showUnit ? <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.unit")}</div> : null}
         <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.description")}</div>
         <div className="px-4 py-3 text-right" role="columnheader">{t("portal.finances.col.amount")}</div>
       </div>
@@ -1523,8 +1457,13 @@ function VirtualizedPortalLedger({ entries }: { entries: OwnerLedgerEntry[] }) {
               {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
             </div>
             <div className="px-4 py-3">
-              <Badge variant="outline">{entry.entryType.replace(/-/g, " ")}</Badge>
+              <Badge variant="outline">{ledgerTypeLabel(entry.entryType)}</Badge>
             </div>
+            {showUnit ? (
+              <div className="truncate px-4 py-3 text-on-surface-variant">
+                {unitLabelMap?.get(entry.unitId) ?? "—"}
+              </div>
+            ) : null}
             <div className="truncate px-4 py-3" title={entry.description ?? undefined}>
               {entry.description ?? "—"}
             </div>
