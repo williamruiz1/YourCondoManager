@@ -44,6 +44,7 @@ import { ownerLedgerEntries } from "@shared/schema";
 import { isGlEnabledForAssociation } from "./flag";
 import { reconcileFromOwnerLedger } from "./reconcile";
 import { syncAssociationGl, type GlPostingResult } from "./gl-posting-service";
+import { syncAssociationVendorGl } from "./vendor-posting-service";
 import type { OwnerLedgerEntryLike } from "./posting";
 
 export type GlSyncOutcome =
@@ -125,6 +126,43 @@ export async function maybeSyncAssociationGl(
     // NON-FATAL: the owner ledger already recorded the money. Log and move on.
     console.error(
       `[gl] non-fatal GL sync error for association=${associationId}` +
+        `${context ? ` (${context})` : ""}: ${err?.message ?? err}`,
+    );
+    return { posted: false, reason: "error", detail: err?.message ?? String(err) };
+  }
+}
+
+/**
+ * BEST-EFFORT live trigger for the VENDOR-EXPENSE / accounts-payable subledger.
+ * Call this AFTER a vendor_invoice is created/updated (received/approved/paid) or
+ * fire-and-forget alongside the dues sync. It mirrors `maybeSyncAssociationGl`'s
+ * four guarantees: NON-FATAL (never breaks the live A/P path), PER-ASSOCIATION
+ * GATED (only when the GL is enabled for this association), and IDEMPOTENT /
+ * FORWARD-ONLY (re-derives the whole vendor corpus, inserts with
+ * onConflictDoNothing). It does NOT apply the owner-ledger reconcile-to-cent gate
+ * — that gate is dues-specific (it asserts AR == owner-ledger Σ); vendor postings
+ * touch expense / A-P / cash, never AR, so they are independent of it.
+ */
+export async function maybeSyncAssociationVendorGl(
+  associationId: string,
+  context?: string,
+): Promise<{ posted: boolean; reason?: string; legsInserted?: number; detail?: string }> {
+  try {
+    if (!isGlEnabledForAssociation(associationId)) {
+      return { posted: false, reason: "not-enabled" };
+    }
+    const result = await syncAssociationVendorGl(associationId, { force: true });
+    if (result.legsInserted > 0) {
+      console.log(
+        `[gl] synced vendor A/P association=${associationId}${context ? ` (${context})` : ""}: ` +
+          `+${result.legsInserted} legs (${result.journalsConsidered} journals from ${result.invoicesConsidered} invoices)`,
+      );
+    }
+    return { posted: true, legsInserted: result.legsInserted };
+  } catch (err: any) {
+    // NON-FATAL: the vendor_invoices row already recorded the bill. Log + move on.
+    console.error(
+      `[gl] non-fatal vendor GL sync error for association=${associationId}` +
         `${context ? ` (${context})` : ""}: ${err?.message ?? err}`,
     );
     return { posted: false, reason: "error", detail: err?.message ?? String(err) };

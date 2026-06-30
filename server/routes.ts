@@ -327,6 +327,7 @@ import { computeReadinessSnapshot, GATES } from "./services/go-live-checks";
 // YCM Financial Core Phase 2 — DERIVED financial statements (read-only, GL_ENABLED-gated).
 // These are DERIVED and NOT source-of-truth; the owner ledger stays the system of record.
 import { isGlEnabledForAssociation } from "./services/gl/flag";
+import { maybeSyncAssociationVendorGl } from "./services/gl/runtime-sync";
 import { isPortalPlaidPayEnabled } from "./services/bank-feed/plaid-env-guard";
 import { renderPolicyHtml, wantsHtml } from "./policy-render";
 import { buildFinancialStatements, buildGlAccountActivity } from "./services/gl/statements-service";
@@ -5428,6 +5429,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.createVendorInvoice(parsed);
       res.status(201).json(result);
 
+      // Forward-only/parallel GL: post the vendor expense → A/P into the derived
+      // GL (best-effort, non-fatal, gated by GL enablement). The vendor_invoices
+      // row is the system of record; this never blocks or breaks the live path.
+      maybeSyncAssociationVendorGl(result.associationId, "invoice-create").catch(() => {});
+
       sendAssociationAdminEmailNotification({
         associationId: result.associationId,
         category: "invoices",
@@ -5456,6 +5462,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.updateVendorInvoice(getParam(req.params.id), parsed);
       if (!result) return res.status(404).json({ message: "Invoice not found" });
       res.json(result);
+
+      // Forward-only/parallel GL: re-derive the vendor expense → A/P postings so a
+      // status change (received → paid) updates the derived GL (best-effort,
+      // non-fatal, gated). Idempotent: already-posted legs are a no-op.
+      maybeSyncAssociationVendorGl(result.associationId, "invoice-update").catch(() => {});
 
       sendAssociationAdminEmailNotification({
         associationId: result.associationId,

@@ -74,9 +74,39 @@ export const CHART_OF_ACCOUNTS: readonly GlAccountDef[] = [
   // a LIABILITY (not income) on the balance sheet from the moment it is held until
   // it is refunded (clears to 0) or forfeited (reclassed to income).
   acct("2300", "Amenity Deposits Held", "liability", "operating"),
+  // Liabilities (Phase 4 — vendor expense / accounts-payable money loop)
+  // A vendor bill the association has incurred but not yet paid is money it OWES,
+  // so it is a LIABILITY (Accounts Payable) from the moment the bill is recorded
+  // until it is paid (then 2000 clears and 1010 Cash goes down).
+  acct("2000", "Accounts Payable", "liability", "operating"),
   // Equity
   acct("3900", "Fund Balance — Operating", "equity", "operating"),
   acct("3910", "Fund Balance — Reserve", "equity", "reserve"),
+  // ──────────────────────────────────────────────────────────────────────────
+  // Expenses (Phase 4 — vendor expense → GL).
+  //
+  // The standard HOA operating-expense chart a board treasurer expects to see on
+  // an income statement (Insurance, Landscaping, Management Fees, Pool, Utilities,
+  // Repairs…). A vendor invoice's category maps to one of these via
+  // `expenseAccountForCategory` (vendor-posting.ts); anything that does not match
+  // a known category degrades to 5900 Other Operating Expenses — fail-SAFE, never
+  // dropped. Reserve-fund expense (capital projects funded from reserves) is a
+  // later, additive extension; vendor invoices default to the operating fund
+  // today, exactly as dues do.
+  acct("5010", "Management Fees", "expense", "operating"),
+  acct("5020", "Insurance", "expense", "operating"),
+  acct("5030", "Landscaping & Grounds", "expense", "operating"),
+  acct("5040", "Utilities", "expense", "operating"),
+  acct("5050", "Repairs & Maintenance", "expense", "operating"),
+  acct("5060", "Pool & Amenities", "expense", "operating"),
+  acct("5070", "Cleaning & Janitorial", "expense", "operating"),
+  acct("5080", "Trash & Recycling", "expense", "operating"),
+  acct("5090", "Pest Control", "expense", "operating"),
+  acct("5100", "Snow Removal", "expense", "operating"),
+  acct("5110", "Legal & Professional", "expense", "operating"),
+  acct("5120", "Accounting & Audit", "expense", "operating"),
+  acct("5130", "Security", "expense", "operating"),
+  acct("5900", "Other Operating Expenses", "expense", "operating"),
 ] as const;
 
 /** Look up a chart account by (code, fund). Throws if undefined — a missing
