@@ -22,6 +22,7 @@ import { promises as fs } from "node:fs";
 import { describe, it, expect } from "vitest";
 
 import { renderSidebar } from "./utils/sidebar-helpers";
+import { filterZonesForPersona, SIDEBAR_ZONES } from "@/components/app-sidebar-zones";
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 
@@ -87,6 +88,49 @@ describe("Phase 11 — six zone-group labels (3.1 Q1)", () => {
     const { container, unmount } = renderSidebar({ role: null });
     const labels = getZoneLabels(container);
     expect(labels.length).toBe(0);
+    unmount();
+  });
+});
+
+describe("Board-member scoping — single-association Board Officer (CHC board-member)", () => {
+  // Regression coverage for the board-member scope-down (chcmgmt18 →
+  // board-officer scoped to Cherry Hill Court only, 2026-06-30). A single-
+  // association board member must NOT see Platform, Portfolio Health, or
+  // Associations, and must have NO ability to switch associations. This
+  // asserts the pure `filterZonesForPersona` contract that backs the
+  // sidebar + the top-bar association-switcher gate.
+  const baseCtx = {
+    role: "board-officer" as const,
+    singleAssociationBoardExperience: true,
+    amenitiesDisabled: false,
+  };
+
+  it("hides the Platform zone entirely", () => {
+    const zones = filterZonesForPersona(SIDEBAR_ZONES, baseCtx);
+    expect(zones.map((z) => z.label)).not.toContain("Platform");
+  });
+
+  it("hides Portfolio Health and Associations under Home (no cross-association nav)", () => {
+    const zones = filterZonesForPersona(SIDEBAR_ZONES, baseCtx);
+    const home = zones.find((z) => z.label === "Home");
+    expect(home).toBeDefined();
+    const homeUrls = (home?.items ?? []).map((i) => i.url);
+    expect(homeUrls).not.toContain("/app/portfolio");
+    expect(homeUrls).not.toContain("/app/associations");
+  });
+
+  it("still shows the board member their own community's operating zones", () => {
+    const zones = filterZonesForPersona(SIDEBAR_ZONES, baseCtx).map((z) => z.label);
+    expect(zones).toContain("Home");
+    expect(zones).toContain("Financials");
+    expect(zones).toContain("Operations");
+    expect(zones).toContain("Governance");
+    expect(zones).toContain("Communications");
+  });
+
+  it("renders the sidebar for a board-officer session (switcher gate exercised by the single-association predicate above)", () => {
+    const { container, unmount } = renderSidebar({ role: "board-officer" });
+    expect(container).toBeTruthy();
     unmount();
   });
 });
