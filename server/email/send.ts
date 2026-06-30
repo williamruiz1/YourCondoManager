@@ -23,6 +23,7 @@
 import { TEMPLATES, type TemplateKey, type TemplateDataMap } from "./templates/index.js";
 import { resendSend, type ResendSendResult } from "./resend-client.js";
 import { sendPlatformEmail as smtpSendEmail } from "../email-provider.js";
+import { resolveTenantSender } from "./tenant-sender.js";
 
 export type SendEmailParams<K extends TemplateKey> = {
   to: string | string[];
@@ -101,6 +102,13 @@ export async function sendEmail<K extends TemplateKey>(
 
   const provider = resolveProvider();
 
+  // Per-tenant sending alias: when this association has a configured alias AND
+  // the feature flag is on, send FROM `<slug>@yourcondomanager.org` with the
+  // tenant display name + Reply-To. Otherwise this returns the global default,
+  // so behavior is unchanged. The From is SERVER-DERIVED from associationId —
+  // never client-supplied — so one tenant can never send as another's alias.
+  const tenantSender = await resolveTenantSender(params.associationId ?? null);
+
   if (provider === "resend") {
     const apiKey = process.env.RESEND_API_KEY?.trim();
     if (!apiKey) {
@@ -111,13 +119,17 @@ export async function sendEmail<K extends TemplateKey>(
         errorMessage: "RESEND_API_KEY env not set",
       };
     }
+    // When an alias resolved, its Reply-To wins unless the caller passed an
+    // explicit replyTo override.
+    const replyTo =
+      params.replyTo?.trim() || tenantSender.replyTo || resolveReplyTo(params.replyTo);
     const result: ResendSendResult = await resendSend(apiKey, {
-      from: resolveFromAddress(),
+      from: tenantSender.fromHeader || resolveFromAddress(),
       to: params.to,
       subject,
       html,
       text,
-      replyTo: resolveReplyTo(params.replyTo),
+      replyTo,
       tags: [
         { name: "template", value: params.template },
         ...(params.tags ?? []),
