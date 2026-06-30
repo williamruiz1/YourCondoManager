@@ -72,7 +72,29 @@ function formatDate(value: string | Date | null | undefined) {
 
 function formatMoney(cents: number | null | undefined) {
   if (typeof cents !== "number") return "—";
-  return `$${(cents / 100).toFixed(2)}`;
+  // Thousands separators + 2 decimals, e.g. $12,345.67 (and -$1,200.00 for debits).
+  const dollars = cents / 100;
+  return dollars.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+// Render the bank account type as a human label. Providers (Plaid / Stripe FC)
+// return raw values like `depository` / `checking` / `savings`; we show
+// "Checking" / "Savings" and drop the noisy "depository" container prefix.
+function formatAccountType(type: string | null | undefined, subtype: string | null | undefined) {
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  const t = (type ?? "").trim().toLowerCase();
+  const st = (subtype ?? "").trim().toLowerCase();
+  // The meaningful label is the subtype (checking/savings); `depository` is just
+  // the container. Prefer the subtype; only fall back to the type when no subtype.
+  if (st) return cap(st);
+  if (t && t !== "depository") return cap(t);
+  if (t === "depository") return "Bank account";
+  return "—";
 }
 
 export default function FinancialBankConnectionsPage() {
@@ -547,7 +569,7 @@ export default function FinancialBankConnectionsPage() {
                         <TableCell className="font-medium">{acct.name}</TableCell>
                         <TableCell>
                           <Badge variant="outline">
-                            {acct.subtype ? `${acct.type} · ${acct.subtype}` : acct.type}
+                            {formatAccountType(acct.type, acct.subtype)}
                           </Badge>
                         </TableCell>
                         <TableCell>{acct.mask ? `••${acct.mask}` : "—"}</TableCell>
