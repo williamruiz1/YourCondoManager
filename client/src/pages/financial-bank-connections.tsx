@@ -22,6 +22,7 @@ import {
   saveOAuthToken,
   clearOAuthToken,
 } from "@/lib/plaid-oauth";
+import { collectFinancialConnections } from "@/lib/stripe-fc-link";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
@@ -80,6 +81,22 @@ export default function FinancialBankConnectionsPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [linkToken, setLinkToken] = useState<string | null>(null);
+
+  // Which bank-feed provider is active server-side. When "stripe_fc" (the
+  // STRIPE_FINANCIAL_CONNECTIONS_ENABLED flag is ON), the Connect button runs
+  // the Stripe Financial Connections hosted flow instead of Plaid Link. When
+  // "plaid" (the default), everything below behaves exactly as before.
+  const { data: bankFeedProviderInfo } = useQuery<{
+    provider: "plaid" | "stripe_fc";
+    fc: { publishableKey: string | null } | null;
+  }>({
+    queryKey: ["/api/bank-feed/provider"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/bank-feed/provider");
+      return res.json();
+    },
+  });
+  const useStripeFc = bankFeedProviderInfo?.provider === "stripe_fc";
 
   // OAuth round-trip state. `oauthReturn` is captured once at first render from
   // the URL (it's a redirect-return navigation), and `receivedRedirectUri` is
@@ -162,6 +179,44 @@ export default function FinancialBankConnectionsPage() {
       qc.invalidateQueries({ queryKey: ["/api/plaid/accounts", activeAssociationId] });
     },
     onError: (err: Error) => toast({ title: "Connection failed", description: err.message, variant: "destructive" }),
+  });
+
+  // Stripe Financial Connections connect flow (used when useStripeFc). Mirrors
+  // the Plaid createLinkToken → Link → exchange-token sequence, but the FC
+  // hosted modal handles the bank OAuth (incl. Chase) inline, so there is no
+  // redirect-return plumbing: create session → collect → exchange session id.
+  const connectStripeFc = useMutation({
+    mutationFn: async () => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const publishableKey = bankFeedProviderInfo?.fc?.publishableKey;
+      if (!publishableKey) {
+        throw new Error("Stripe publishable key is not configured on the server");
+      }
+      // 1. Create the FC session (server returns the client_secret as linkToken).
+      const tokenRes = await apiRequest("POST", "/api/plaid/create-link-token", {
+        associationId: activeAssociationId,
+      });
+      const { linkToken: clientSecret } = (await tokenRes.json()) as { linkToken: string };
+      // 2. Run the hosted FC collection flow (lazy-loads Stripe.js).
+      const { sessionId, institutionName } = await collectFinancialConnections(
+        publishableKey,
+        clientSecret,
+      );
+      // 3. Exchange the FC session id (the FC provider's exchangePublicToken
+      //    retrieves the session, subscribes the accounts, and persists the row).
+      const res = await apiRequest("POST", "/api/plaid/exchange-token", {
+        associationId: activeAssociationId,
+        publicToken: sessionId,
+        institutionName,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Bank connected" });
+      qc.invalidateQueries({ queryKey: ["/api/plaid/accounts", activeAssociationId] });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Connection failed", description: err.message, variant: "destructive" }),
   });
 
   const syncNow = useMutation({
@@ -445,11 +500,16 @@ export default function FinancialBankConnectionsPage() {
               {syncNow.isPending ? "Syncing…" : "Sync Now"}
             </Button>
             <Button
-              onClick={() => createLinkToken.mutate()}
-              disabled={createLinkToken.isPending || !activeAssociationId}
+              onClick={() => (useStripeFc ? connectStripeFc.mutate() : createLinkToken.mutate())}
+              disabled={
+                (useStripeFc ? connectStripeFc.isPending : createLinkToken.isPending) ||
+                !activeAssociationId
+              }
               data-testid="btn-connect-bank"
             >
-              {createLinkToken.isPending ? "Opening…" : "Connect Bank Account"}
+              {(useStripeFc ? connectStripeFc.isPending : createLinkToken.isPending)
+                ? "Opening…"
+                : "Connect Bank Account"}
             </Button>
           </div>
         </CardHeader>
