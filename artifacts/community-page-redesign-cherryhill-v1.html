@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cherry Hill Court Condominiums — Community | YourCondoManager</title>
+<meta name="description" content="The public community page for Cherry Hill Court Condominiums, New Haven CT. Pay dues, access the owner portal, and stay up to date." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --teal-900: #013431;      /* deepest brand teal */
+    --teal-700: #014D4A;      /* primary brand teal */
+    --teal-600: #0A6360;
+    --accent:   #2DBDB0;      /* bright accent */
+    --accent-soft: #d7f3ef;
+    --cream:    #F0E5D2;
+    --cool-white: #F6F9FF;
+    --ink:      #122220;      /* near-black text on light */
+    --muted:    #5d6b69;      /* secondary text */
+    --line:     #e6ece9;      /* hairlines on light */
+    --surface:  #ffffff;
+    --bg:       #f5f8f6;      /* page background, very soft warm-cool */
+    --radius:   18px;
+    --radius-sm: 12px;
+    --shadow-sm: 0 1px 2px rgba(1,52,49,.05), 0 1px 3px rgba(1,52,49,.06);
+    --shadow-md: 0 8px 24px rgba(1,52,49,.08), 0 2px 8px rgba(1,52,49,.05);
+    --shadow-lg: 0 24px 60px rgba(1,52,49,.16);
+    --maxw: 1080px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, .display {
+    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+    letter-spacing: -0.02em;
+    line-height: 1.12;
+    margin: 0;
+  }
+  p { margin: 0; }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  /* ---------------- Top bar ---------------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(246,249,255,.82);
+    backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 68px;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand-logo {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: var(--teal-700);
+    display: grid; place-items: center;
+    box-shadow: var(--shadow-sm);
+    flex-shrink: 0;
+  }
+  .brand-logo svg { width: 22px; height: 22px; display: block; }
+  .brand-name { font-family: 'Plus Jakarta Sans'; font-weight: 700; font-size: 15px; color: var(--teal-700); letter-spacing: -0.01em; }
+  .brand-sub { font-size: 11px; color: var(--muted); margin-top: -2px; }
+  .topbar-cta {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--teal-700); color: #fff;
+    font-weight: 600; font-size: 13.5px;
+    padding: 9px 17px; border-radius: 999px;
+    box-shadow: var(--shadow-sm);
+    transition: transform .15s ease, background .15s ease;
+  }
+  .topbar-cta:hover { background: var(--teal-600); transform: translateY(-1px); }
+
+  /* ---------------- Hero ---------------- */
+  .hero {
+    position: relative;
+    background:
+      radial-gradient(1200px 480px at 78% -8%, rgba(45,189,176,.30), transparent 60%),
+      radial-gradient(900px 520px at 8% 110%, rgba(45,189,176,.14), transparent 55%),
+      linear-gradient(150deg, var(--teal-900) 0%, var(--teal-700) 52%, var(--teal-600) 100%);
+    color: #fff;
+    overflow: hidden;
+  }
+  .hero::after {
+    /* subtle skyline silhouette */
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: 0; height: 120px;
+    background: linear-gradient(to top, rgba(1,52,49,.45), transparent);
+    pointer-events: none;
+  }
+  .hero-inner { position: relative; z-index: 2; padding: 64px 0 84px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.22);
+    color: #eafffb;
+    font-size: 12.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 999px;
+    backdrop-filter: blur(4px);
+  }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(45,189,176,.25); }
+  .hero h1 {
+    font-size: clamp(34px, 5.4vw, 58px);
+    font-weight: 800;
+    margin: 20px 0 14px;
+    max-width: 16ch;
+  }
+  .hero-lead {
+    font-size: clamp(16px, 1.9vw, 19px);
+    color: rgba(255,255,255,.86);
+    max-width: 54ch;
+    line-height: 1.62;
+  }
+  .hero-meta {
+    display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 26px;
+  }
+  .hero-meta .chip {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-size: 14px; color: rgba(255,255,255,.92); font-weight: 500;
+  }
+  .hero-meta svg { width: 17px; height: 17px; opacity: .9; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 13px; margin-top: 34px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    font-weight: 600; font-size: 15px;
+    padding: 14px 26px; border-radius: 999px;
+    cursor: pointer; border: none;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+  }
+  .btn svg { width: 18px; height: 18px; }
+  .btn-primary { background: var(--accent); color: var(--teal-900); box-shadow: 0 10px 30px rgba(45,189,176,.35); }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(45,189,176,.45); }
+  .btn-ghost { background: rgba(255,255,255,.10); color: #fff; border: 1px solid rgba(255,255,255,.28); }
+  .btn-ghost:hover { background: rgba(255,255,255,.18); transform: translateY(-2px); }
+
+  /* ---------------- Stats strip ---------------- */
+  .stats {
+    position: relative; z-index: 3;
+    margin-top: -42px;
+  }
+  .stats-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .stat { padding: 24px 22px; border-right: 1px solid var(--line); }
+  .stat:last-child { border-right: none; }
+  .stat .num { font-family: 'Plus Jakarta Sans'; font-weight: 800; font-size: 28px; color: var(--teal-700); }
+  .stat .lbl { font-size: 12.5px; color: var(--muted); margin-top: 4px; font-weight: 500; }
+
+  /* ---------------- Section scaffolding ---------------- */
+  section.block { padding: 56px 0; }
+  .section-head { display: flex; align-items: center; gap: 11px; margin-bottom: 26px; }
+  .section-icon {
+    width: 38px; height: 38px; border-radius: 11px;
+    background: var(--accent-soft); color: var(--teal-700);
+    display: grid; place-items: center; flex-shrink: 0;
+  }
+  .section-icon svg { width: 20px; height: 20px; }
+  .section-head h2 { font-size: 24px; font-weight: 700; }
+  .section-head .sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .card.hoverable:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: #cfe7e3; }
+
+  /* About */
+  .about-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 28px; align-items: start; }
+  .about-lead { font-size: 17px; color: var(--ink); line-height: 1.7; }
+  .about-lead strong { color: var(--teal-700); }
+  .about-body { font-size: 15px; color: var(--muted); margin-top: 16px; line-height: 1.72; }
+  .feature-list { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 12px; }
+  .feature-list li { display: flex; gap: 11px; font-size: 14.5px; color: var(--ink); }
+  .feature-list .tick {
+    width: 22px; height: 22px; border-radius: 7px; background: var(--accent-soft);
+    color: var(--teal-700); display: grid; place-items: center; flex-shrink: 0; margin-top: 1px;
+  }
+  .feature-list .tick svg { width: 13px; height: 13px; }
+  .about-aside {
+    background: linear-gradient(160deg, var(--teal-700), var(--teal-900));
+    color: #fff; border-radius: var(--radius); padding: 28px;
+    box-shadow: var(--shadow-md);
+  }
+  .about-aside h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+  .ataside-row { display: flex; gap: 13px; padding: 13px 0; border-bottom: 1px solid rgba(255,255,255,.14); }
+  .ataside-row:last-child { border-bottom: none; }
+  .ataside-row svg { width: 18px; height: 18px; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+  .ataside-row .k { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.62); }
+  .ataside-row .v { font-size: 14.5px; font-weight: 600; margin-top: 1px; }
+
+  /* Pay-dues banner */
+  .dues {
+    background:
+      radial-gradient(700px 300px at 90% 10%, rgba(45,189,176,.22), transparent 60%),
+      linear-gradient(135deg, var(--teal-700), var(--teal-900));
+    border-radius: 24px; color: #fff;
+    padding: 48px 44px;
+    display: grid; grid-template-columns: 1.4fr auto; gap: 30px; align-items: center;
+    box-shadow: var(--shadow-lg);
+    position: relative; overflow: hidden;
+  }
+  .dues .pill { display: inline-flex; align-items: center; gap: 7px; background: rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.2); padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing:.03em; }
+  .dues h2 { font-size: 30px; font-weight: 800; margin: 16px 0 10px; max-width: 18ch; }
+  .dues p { color: rgba(255,255,255,.85); font-size: 15.5px; max-width: 46ch; }
+  .dues-secure { display:flex; align-items:center; gap:8px; margin-top:18px; font-size:13px; color: rgba(255,255,255,.78); }
+  .dues-secure svg { width:15px; height:15px; color: var(--accent); }
+  .dues-actions { display: flex; flex-direction: column; gap: 12px; min-width: 230px; }
+  .dues .btn-primary { width: 100%; }
+  .dues .btn-light { background:#fff; color: var(--teal-700); width:100%; }
+  .dues .btn-light:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+  /* Quick actions */
+  .qa-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .qa {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 22px 18px; text-align: center; box-shadow: var(--shadow-sm);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    display: flex; flex-direction: column; align-items: center; gap: 11px;
+  }
+  .qa:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: #cfe7e3; }
+  .qa-ic { width: 44px; height: 44px; border-radius: 13px; background: var(--accent-soft); color: var(--teal-700); display: grid; place-items: center; }
+  .qa-ic svg { width: 22px; height: 22px; }
+  .qa .t { font-weight: 600; font-size: 14px; }
+  .qa .d { font-size: 12px; color: var(--muted); }
+
+  /* Notices */
+  .notice {
+    border-left: 4px solid var(--accent);
+    padding-left: 20px; margin-bottom: 18px;
+  }
+  .notice .tags { display: flex; gap: 8px; align-items: center; margin-bottom: 7px; }
+  .badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; letter-spacing: .02em; }
+  .badge.pin { background: var(--accent-soft); color: var(--teal-700); }
+  .badge.important { background: #fff3e0; color: #b26a00; }
+  .badge.normal { background: #eef2f1; color: #5d6b69; }
+  .notice h3 { font-family:'Inter'; font-size: 16px; font-weight: 600; letter-spacing: 0; }
+  .notice p { font-size: 14.5px; color: var(--muted); margin-top: 5px; }
+  .notice .meta { font-size: 12.5px; color: #9aa6a4; margin-top: 8px; }
+
+  /* Contact / board */
+  .contact-grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
+  .person { display:flex; gap:15px; align-items:center; }
+  .avatar { width:52px; height:52px; border-radius:14px; background: linear-gradient(145deg, var(--accent), var(--teal-700)); color:#fff; display:grid; place-items:center; font-family:'Plus Jakarta Sans'; font-weight:700; font-size:18px; flex-shrink:0; }
+  .person .role { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color: var(--muted); }
+  .person .nm { font-weight:600; font-size:15.5px; }
+  .person .ct { font-size:13px; color: var(--teal-600); margin-top:2px; }
+
+  /* Sign-in CTA */
+  .signin {
+    background: var(--cool-white);
+    border: 1px solid var(--line);
+    border-radius: 24px; padding: 44px;
+    display:grid; grid-template-columns: 1fr auto; gap:28px; align-items:center;
+  }
+  .signin h2 { font-size: 25px; font-weight: 800; color: var(--teal-700); }
+  .signin p { color: var(--muted); margin-top: 8px; max-width: 50ch; font-size: 15px; }
+  .signin-form { display:flex; gap:10px; }
+  .signin-form input {
+    border: 1px solid var(--line); background:#fff; border-radius: 999px;
+    padding: 13px 20px; font-size: 14.5px; font-family:'Inter'; min-width: 240px; outline: none;
+  }
+  .signin-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(45,189,176,.18); }
+
+  /* Footer */
+  footer {
+    background: var(--teal-900); color: rgba(255,255,255,.7);
+    padding: 44px 0 36px; margin-top: 64px;
+  }
+  .foot-grid { display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+  .foot-brand { display:flex; align-items:center; gap:11px; }
+  .foot-logo { width:34px; height:34px; border-radius:9px; background: rgba(255,255,255,.08); display:grid; place-items:center; }
+  .foot-logo svg { width:20px; height:20px; }
+  .foot-brand .nm { color:#fff; font-family:'Plus Jakarta Sans'; font-weight:700; font-size:14px; }
+  .foot-links { display:flex; gap:22px; font-size:13.5px; }
+  .foot-links a:hover { color: var(--accent); }
+  .foot-bottom { margin-top: 26px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,.1); font-size:12.5px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+  .powered { display:flex; align-items:center; gap:7px; }
+  .powered svg { width:15px; height:15px; }
+
+  /* Preview banner */
+  .preview-banner {
+    background: #122220; color: #d7f3ef;
+    font-size: 12.5px; text-align: center; padding: 8px 16px;
+    letter-spacing: .02em;
+  }
+  .preview-banner b { color: var(--accent); }
+
+  /* Responsive */
+  @media (max-width: 880px) {
+    .stats-card { grid-template-columns: 1fr 1fr; }
+    .stat:nth-child(2) { border-right: none; }
+    .stat:nth-child(1), .stat:nth-child(2) { border-bottom: 1px solid var(--line); }
+    .about-grid { grid-template-columns: 1fr; }
+    .grid-2, .grid-3, .contact-grid { grid-template-columns: 1fr; }
+    .qa-grid { grid-template-columns: 1fr 1fr; }
+    .dues { grid-template-columns: 1fr; }
+    .signin { grid-template-columns: 1fr; }
+    .signin-form { flex-direction: column; }
+    .signin-form input { min-width: 0; width: 100%; }
+  }
+  @media (max-width: 520px) {
+    .wrap { padding: 0 18px; }
+    .qa-grid { grid-template-columns: 1fr 1fr; }
+    .brand-sub { display:none; }
+    .topbar-cta span { display:none; }
+    .dues { padding: 34px 26px; }
+    .signin { padding: 30px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="preview-banner">PREVIEW — not yet built. Design proposal for <b>William's approval</b> before React implementation. No live route changed.</div>
+
+<!-- ===== Top bar ===== -->
+<div class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 120 120" aria-label="YourCondoManager">
+          <polygon points="10,88 34,70 34,112 10,112" fill="#fff"/>
+          <polygon points="46,58 70,40 70,112 46,112" fill="#fff"/>
+          <polygon points="82,26 106,8 106,112 82,112" fill="#fff"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">Cherry Hill Court</div>
+        <div class="brand-sub">Condominium Association</div>
+      </div>
+    </div>
+    <a class="topbar-cta" href="#signin">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+      <span>Owner Portal</span>
+    </a>
+  </div>
+</div>
+
+<!-- ===== Hero ===== -->
+<header class="hero">
+  <div class="wrap hero-inner">
+    <span class="eyebrow"><span class="dot"></span> New Haven, Connecticut</span>
+    <h1>Welcome to Cherry Hill Court Condominiums</h1>
+    <p class="hero-lead">A close-knit, owner-managed community of 18 homes. This is your home base for paying dues, reaching the board, and staying in the loop — all in one place.</p>
+
+    <div class="hero-meta">
+      <span class="chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+        18 residential units
+      </span>
+      <span class="chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        New Haven, CT
+      </span>
+      <span class="chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Self-managed by the board
+      </span>
+    </div>
+
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="#dues">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        Pay Your Dues
+      </a>
+      <a class="btn btn-ghost" href="#signin">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Sign in to the Portal
+      </a>
+    </div>
+  </div>
+
+  <!-- ===== Stats strip ===== -->
+  <div class="wrap stats">
+    <div class="stats-card">
+      <div class="stat"><div class="num">18</div><div class="lbl">Homes in the community</div></div>
+      <div class="stat"><div class="num">2003</div><div class="lbl">Association established</div></div>
+      <div class="stat"><div class="num">Online</div><div class="lbl">Dues paid via Stripe</div></div>
+      <div class="stat"><div class="num">24/7</div><div class="lbl">Owner portal access</div></div>
+    </div>
+  </div>
+</header>
+
+<!-- ===== About ===== -->
+<section class="block" id="about">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+      </div>
+      <div>
+        <h2>About our community</h2>
+        <div class="sub">Who we are and how we run things</div>
+      </div>
+    </div>
+
+    <div class="about-grid">
+      <div>
+        <p class="about-lead"><strong>Cherry Hill Court</strong> is an 18-home condominium community in New Haven, Connecticut, owned and run by the people who live here.</p>
+        <p class="about-body">Our volunteer board keeps the grounds maintained, the reserves healthy, and the community well-run — without a third-party management company. Dues are now collected securely online, so paying is simple and there's a clear record for every owner. This page is the single place to handle everything: pay what you owe, reach the board, find documents, and keep up with what's happening.</p>
+        <ul class="feature-list">
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Owner-managed — decisions made by residents, for residents</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Secure online dues with a receipt and full payment history</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> One portal for documents, requests, notices, and meetings</li>
+        </ul>
+      </div>
+
+      <aside class="about-aside">
+        <h3>Quick facts</h3>
+        <div class="ataside-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <div><div class="k">Location</div><div class="v">New Haven, Connecticut</div></div>
+        </div>
+        <div class="ataside-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+          <div><div class="k">Homes</div><div class="v">18 condominium units</div></div>
+        </div>
+        <div class="ataside-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          <div><div class="k">Management</div><div class="v">Self-managed by the board</div></div>
+        </div>
+        <div class="ataside-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          <div><div class="k">Dues</div><div class="v">Paid online via Stripe</div></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Pay dues banner ===== -->
+<section class="block" id="dues" style="padding-top:0;">
+  <div class="wrap">
+    <div class="dues">
+      <div>
+        <span class="pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Secure payments
+        </span>
+        <h2>Pay your association dues online</h2>
+        <p>Pay in a couple of clicks, get an instant receipt, and see your full payment history any time. Powered by Stripe — your card details never touch our systems.</p>
+        <div class="dues-secure">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Bank-grade encryption · PCI-compliant via Stripe
+        </div>
+      </div>
+      <div class="dues-actions">
+        <a class="btn btn-light" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          Pay Dues Now
+        </a>
+        <a class="btn btn-ghost" href="#signin" style="border-color:rgba(255,255,255,.35);">
+          View payment history
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Quick actions ===== -->
+<section class="block" id="actions" style="padding-top:0;">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </div>
+      <div>
+        <h2>Quick actions</h2>
+        <div class="sub">Everything an owner needs, one tap away</div>
+      </div>
+    </div>
+    <div class="qa-grid">
+      <a class="qa" href="#dues">
+        <div class="qa-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>
+        <div class="t">Pay Dues</div>
+        <div class="d">Secure online payment</div>
+      </a>
+      <a class="qa" href="#signin">
+        <div class="qa-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+        <div class="t">Documents</div>
+        <div class="d">Bylaws, minutes & more</div>
+      </a>
+      <a class="qa" href="#signin">
+        <div class="qa-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
+        <div class="t">Submit a Request</div>
+        <div class="d">Maintenance & service</div>
+      </a>
+      <a class="qa" href="#contact">
+        <div class="qa-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <div class="t">Contact Board</div>
+        <div class="d">Reach a member directly</div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Notices ===== -->
+<section class="block" id="notices" style="padding-top:0;">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </div>
+      <div>
+        <h2>Notices &amp; announcements</h2>
+        <div class="sub">The latest from the board</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="notice">
+        <div class="tags"><span class="badge pin">Pinned</span><span class="badge important">Important</span></div>
+        <h3>Online dues payment is now live</h3>
+        <p>You can now pay your association dues right here on the community page. Sign in to the owner portal to see your balance, pay securely, and download a receipt. No more checks in the mail.</p>
+        <div class="meta">Posted by the Board · sample notice</div>
+      </div>
+      <div class="notice" style="border-left-color:#cfe7e3;">
+        <div class="tags"><span class="badge normal">General</span></div>
+        <h3>Annual owners' meeting — save the date</h3>
+        <p>Our annual meeting will be held this spring. An agenda and the dial-in details will be posted here and emailed to all owners closer to the date.</p>
+        <div class="meta">Posted by the Board · sample notice</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Contact / Board ===== -->
+<section class="block" id="contact" style="padding-top:0;">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      </div>
+      <div>
+        <h2>Contact &amp; board</h2>
+        <div class="sub">Reach the people who run Cherry Hill Court</div>
+      </div>
+    </div>
+    <div class="contact-grid">
+      <div class="card hoverable">
+        <div class="person">
+          <div class="avatar">B</div>
+          <div>
+            <div class="role">Board contact</div>
+            <div class="nm">Cherry Hill Court Board</div>
+            <div class="ct">board@cherryhillcourt.org · sample</div>
+          </div>
+        </div>
+      </div>
+      <div class="card hoverable">
+        <div class="person">
+          <div class="avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <div>
+            <div class="role">General inquiries</div>
+            <div class="nm">Email the association</div>
+            <div class="ct">For dues questions, maintenance, and account help</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-top:16px;">Contact details shown above are sensible placeholders — final board names and addresses will be filled in from the association's real records.</p>
+  </div>
+</section>
+
+<!-- ===== Sign-in CTA ===== -->
+<section class="block" id="signin" style="padding-top:0;">
+  <div class="wrap">
+    <div class="signin">
+      <div>
+        <h2>Are you an owner here?</h2>
+        <p>Sign in for full access — pay dues, view your balance and history, read documents, submit requests, and see meeting details. We'll email you a one-time code; no password to remember.</p>
+      </div>
+      <form class="signin-form" onsubmit="return false;">
+        <input type="email" placeholder="your.email@example.com" aria-label="Email address" />
+        <button class="btn btn-primary" type="submit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Send Code
+        </button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Footer ===== -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <div class="foot-logo">
+          <svg viewBox="0 0 120 120" aria-label="YourCondoManager"><polygon points="10,88 34,70 34,112 10,112" fill="#fff"/><polygon points="46,58 70,40 70,112 46,112" fill="#fff"/><polygon points="82,26 106,8 106,112 82,112" fill="#fff"/></svg>
+        </div>
+        <div>
+          <div class="nm">Cherry Hill Court Condominiums</div>
+          <div style="font-size:12px;">New Haven, Connecticut</div>
+        </div>
+      </div>
+      <div class="foot-links">
+        <a href="#about">About</a>
+        <a href="#dues">Pay Dues</a>
+        <a href="#notices">Notices</a>
+        <a href="#contact">Contact</a>
+        <a href="#signin">Owner Portal</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Cherry Hill Court Condominium Association. All rights reserved.</span>
+      <span class="powered">
+        <svg viewBox="0 0 120 120" aria-label="YourCondoManager"><polygon points="10,88 34,70 34,112 10,112" fill="#2DBDB0"/><polygon points="46,58 70,40 70,112 46,112" fill="#2DBDB0"/><polygon points="82,26 106,8 106,112 82,112" fill="#2DBDB0"/></svg>
+        Powered by YourCondoManager
+      </span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
