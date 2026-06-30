@@ -297,6 +297,7 @@ import {
   periodFromDate,
   applyChargeMetadataToCheckoutSession,
 } from "./services/stripe-charge-metadata";
+import { paymentLinkCheckoutKey } from "./services/stripe-idempotency";
 import { getStripeApplicationFeeRate } from "./platform-settings-store";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
@@ -5784,6 +5785,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (connectedAccountId) {
         stripeHeaders["Stripe-Account"] = connectedAccountId;
       }
+
+      // Idempotency: one hosted session per (link, amount, period). A network
+      // retry of this POST returns the original session rather than creating a
+      // second checkout for the same owner payment.
+      stripeHeaders["Idempotency-Key"] = paymentLinkCheckoutKey({
+        linkToken: link.token,
+        amountCents,
+        period: periodFromDate(),
+      });
 
       const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
         method: "POST",

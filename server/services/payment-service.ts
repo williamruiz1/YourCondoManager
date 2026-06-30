@@ -11,6 +11,7 @@
 import crypto from "crypto";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
+import { checkoutSessionKey, offSessionChargeKey } from "./stripe-idempotency";
 import {
   paymentTransactions,
   ownerLedgerEntries,
@@ -189,6 +190,10 @@ export async function initiateStripeCheckout(params: {
   if (params.stripeAccountHeader) {
     checkoutHeaders["Stripe-Account"] = params.stripeAccountHeader;
   }
+
+  // Idempotency: one hosted checkout session per logical transaction. A retry
+  // of this POST (network blip) returns the original session, never a second.
+  checkoutHeaders["Idempotency-Key"] = checkoutSessionKey(txn.id);
 
   const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
@@ -622,6 +627,11 @@ export async function chargeOffSession(params: {
   if (params.stripeAccountHeader) {
     intentHeaders["Stripe-Account"] = params.stripeAccountHeader;
   }
+
+  // Idempotency: one off-session intent per logical transaction. A retry of the
+  // off-session charge POST (network blip) returns the original intent rather
+  // than charging the owner's bank account a second time.
+  intentHeaders["Idempotency-Key"] = offSessionChargeKey(params.transactionId);
 
   const res = await fetch("https://api.stripe.com/v1/payment_intents", {
     method: "POST",
