@@ -21,6 +21,7 @@ import { db } from "../db";
 import {
   associations,
   ownerLedgerEntries,
+  ownerships,
   persons,
   units,
 } from "@shared/schema";
@@ -77,6 +78,22 @@ export async function buildAccountStatement(input: {
   const { associationId, personId, unitId, from, to } = input;
 
   // Verify the person belongs to this association (tenant fence).
+  //
+  // `persons.association_id` is an OPTIONAL column (nullable, no NOT NULL) and
+  // is NOT the system's authoritative person↔association binding — across CHC
+  // (and any association seeded without backfilling it) all `persons` rows have
+  // `association_id = NULL`, so fencing on it 404'd EVERY owner's statement
+  // (Issue: owner-portal account-statement 404). The rest of the portal
+  // (ledger, financial-dashboard, owned-units resolution) never scopes by
+  // `persons.association_id` — it scopes by the owner's ledger entries +
+  // ownerships in the association. We match that model: a person is in-scope
+  // for this association's statement if ANY authoritative binding holds —
+  //   (a) an ownership of a unit in this association (the portal's canonical
+  //       binding, the same `ownerships ⋈ units.associationId` the portal uses),
+  //   (b) ledger entries in this association (they're a billed owner here), OR
+  //   (c) `persons.association_id` matches where the column IS populated.
+  // This is strictly no looser than the old fence: every admitted case is a
+  // real person↔association relationship, so cross-tenant leakage is impossible.
   const personRows = await db
     .select({
       id: persons.id,
@@ -86,10 +103,41 @@ export async function buildAccountStatement(input: {
       associationId: persons.associationId,
     })
     .from(persons)
-    .where(and(eq(persons.id, personId), eq(persons.associationId, associationId)))
+    .where(eq(persons.id, personId))
     .limit(1);
   const person = personRows[0];
   if (!person) return null;
+
+  // Tenant binding check (matches how the working portal finance views scope).
+  let belongsToAssociation = person.associationId === associationId;
+  if (!belongsToAssociation) {
+    const [ownershipRow] = await db
+      .select({ id: ownerships.id })
+      .from(ownerships)
+      .innerJoin(units, eq(ownerships.unitId, units.id))
+      .where(
+        and(
+          eq(ownerships.personId, personId),
+          eq(units.associationId, associationId),
+        ),
+      )
+      .limit(1);
+    belongsToAssociation = Boolean(ownershipRow);
+  }
+  if (!belongsToAssociation) {
+    const [ledgerRow] = await db
+      .select({ id: ownerLedgerEntries.id })
+      .from(ownerLedgerEntries)
+      .where(
+        and(
+          eq(ownerLedgerEntries.personId, personId),
+          eq(ownerLedgerEntries.associationId, associationId),
+        ),
+      )
+      .limit(1);
+    belongsToAssociation = Boolean(ledgerRow);
+  }
+  if (!belongsToAssociation) return null;
 
   // Pull all ledger entries for the owner scope (across all time — the pure
   // function partitions into opening vs in-period). Tenant + owner scoped;
