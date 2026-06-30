@@ -40,6 +40,7 @@ import {
 import { getPlatformKeyMode } from "../services/stripe-connect";
 import { getSecret } from "../platform-secrets-store";
 import { log } from "../logger";
+import { handleAchFailureEvent } from "../services/ach-failure-service";
 
 export type AdminRequest = Request & {
   adminUserId?: string;
@@ -406,6 +407,43 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
             },
           });
           return res.status(200).json({ received: true, type: event.type, action: "reconciled", summary });
+        }
+
+        case "payment_intent.payment_failed":
+        case "charge.failed": {
+          // ACH return / failed charge (delayed-notification). Mark the linked
+          // transaction delinquent + queue the explicit retry (ACH is the
+          // Smart-Retries exception — Stripe does not auto-retry a bank return).
+          const obj = event.data?.object as
+            | {
+                id?: string;
+                payment_intent?: string | null;
+                failure_code?: string | null;
+                failure_message?: string | null;
+                last_payment_error?: { code?: string; message?: string } | null;
+              }
+            | undefined;
+          const result = await handleAchFailureEvent({
+            eventId: event.id ?? "",
+            eventType: event.type,
+            object: obj,
+          });
+          return res.status(200).json({
+            received: true,
+            type: event.type,
+            action: result.action,
+            transactionId: result.transactionId,
+          });
+        }
+
+        case "charge.refunded":
+        case "charge.dispute.created":
+        case "charge.dispute.closed": {
+          // Subscribed + acknowledged so Stripe stops retrying; full dispute
+          // lifecycle accounting is a follow-on. Acknowledging here means the
+          // endpoint is registered for these events (R3.1) without taking an
+          // unsafe money action.
+          return res.status(200).json({ received: true, type: event.type, action: "acknowledged" });
         }
 
         default:
