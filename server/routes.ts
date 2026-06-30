@@ -9,6 +9,13 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { debug } from "./logger";
 import { sendEmail } from "./email/send";
+import {
+  validateSlug as validateTenantAliasSlug,
+  isSlugAvailable as isTenantAliasSlugAvailable,
+  aliasAddress as tenantAliasAddress,
+  resolveTenantSender,
+  isTenantAliasEnabled,
+} from "./email/tenant-sender";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
 import { invalidateAlertCache } from "./alerts";
 import { getMigrationHealth } from "./migration-health";
@@ -11900,6 +11907,29 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     try {
       const parsed = insertTenantConfigSchema.parse(req.body);
       assertAssociationInputScope(req as AdminRequest, parsed.associationId);
+
+      // Tenant sending alias: validate the slug server-side (format, length,
+      // reserved-list) and enforce GLOBAL uniqueness BEFORE upsert. The slug is
+      // normalized to lowercase so an admin can never claim another tenant's
+      // alias or a reserved/system address (support@, privacy@, legal@, …).
+      if (parsed.emailSlug != null && String(parsed.emailSlug).trim() !== "") {
+        const v = validateTenantAliasSlug(String(parsed.emailSlug));
+        if (!v.ok) {
+          return res.status(400).json({ message: v.reason, code: "INVALID_ALIAS_SLUG" });
+        }
+        const available = await isTenantAliasSlugAvailable(v.slug, parsed.associationId);
+        if (!available) {
+          return res.status(400).json({
+            message: `The alias "${v.slug}@yourcondomanager.org" is already in use by another tenant.`,
+            code: "ALIAS_SLUG_TAKEN",
+          });
+        }
+        parsed.emailSlug = v.slug; // persist the normalized form
+      } else if (parsed.emailSlug != null) {
+        // Empty string → clear the alias (revert to global default).
+        parsed.emailSlug = null;
+      }
+
       const result = await storage.upsertTenantConfig(parsed);
       res.status(201).json(result);
 
@@ -11920,6 +11950,91 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       res.status(400).json({ message: error.message });
     }
   });
+
+  // ── Tenant sending alias: slug availability/preview check ───────────────
+  // GET /api/platform/tenant-alias/check?associationId=…&slug=…
+  // Returns whether the slug is valid + available for THIS association, plus the
+  // composed alias address. Scope-gated so an admin can only probe within scope.
+  app.get(
+    "/api/platform/tenant-alias/check",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) return res.status(400).json({ message: "associationId is required" });
+        assertAssociationScope(req, associationId);
+        const slug = String(req.query.slug ?? "");
+        const v = validateTenantAliasSlug(slug);
+        if (!v.ok) {
+          return res.json({ valid: false, available: false, reason: v.reason, address: null });
+        }
+        const available = await isTenantAliasSlugAvailable(v.slug, associationId);
+        return res.json({
+          valid: true,
+          available,
+          reason: available ? null : "This alias is already in use by another tenant.",
+          address: tenantAliasAddress(v.slug),
+        });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
+
+  // ── Tenant sending alias: send a TEST email FROM the tenant alias ───────
+  // POST /api/platform/tenant-alias/test  { associationId, to }
+  // Resolves the tenant sender for the association (server-derived — never a
+  // client-supplied from) and sends a small test message so an admin / validator
+  // can confirm the alias sends + lands with the right From + Reply-To.
+  // Scope-gated; the From can ONLY be the calling admin's own association alias.
+  app.post(
+    "/api/platform/tenant-alias/test",
+    requireAdmin,
+    requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const associationId = String(req.body?.associationId ?? "");
+        const to = String(req.body?.to ?? "").trim();
+        if (!associationId) return res.status(400).json({ message: "associationId is required" });
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+          return res.status(400).json({ message: "A valid 'to' address is required" });
+        }
+        // SECURITY: scope-gate — an admin can only test-send for an association
+        // within their own scope, and the From is derived from THAT associationId.
+        assertAssociationScope(req, associationId);
+
+        const sender = await resolveTenantSender(associationId);
+        const flagOn = isTenantAliasEnabled();
+        const result = await sendPlatformEmail({
+          to,
+          associationId,
+          subject: "Test — Your Condo Manager sending alias",
+          html:
+            `<p>This is a test email sent from your association's sending alias.</p>` +
+            `<p><strong>From:</strong> ${escapeHtml(sender.fromHeader)}<br/>` +
+            `<strong>Reply-To:</strong> ${escapeHtml(sender.replyTo || "(none)")}<br/>` +
+            `<strong>Source:</strong> ${escapeHtml(sender.source)}${flagOn ? "" : " (feature flag OFF — global default in use)"}</p>`,
+          text:
+            `This is a test email sent from your association's sending alias.\n` +
+            `From: ${sender.fromHeader}\nReply-To: ${sender.replyTo || "(none)"}\nSource: ${sender.source}` +
+            `${flagOn ? "" : " (feature flag OFF — global default in use)"}`,
+          templateKey: "tenant-alias-test",
+        });
+        return res.status(result.status === "failed" ? 502 : 200).json({
+          status: result.status,
+          messageId: result.messageId,
+          from: sender.fromHeader,
+          replyTo: sender.replyTo,
+          source: sender.source,
+          flagEnabled: flagOn,
+          errorMessage: result.errorMessage ?? null,
+        });
+      } catch (error: any) {
+        res.status(400).json({ message: error.message });
+      }
+    },
+  );
 
   // ── Webhook signing secrets management ──────────────────────────────────
   app.get("/api/admin/webhook-secrets", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {

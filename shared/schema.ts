@@ -1518,10 +1518,30 @@ export const tenantConfigs = pgTable("tenant_configs", {
   aiIngestionCanaryPercent: integer("ai_ingestion_canary_percent").notNull().default(100),
   aiIngestionRolloutNotes: text("ai_ingestion_rollout_notes"),
   smsFromNumber: text("sms_from_number"),
+  // ── Tenant sending alias (migration 0049) ──────────────────────────────
+  // Per-association sending identity on the verified yourcondomanager.org
+  // domain. Owner-facing email (dues notices, announcements, receipts) is sent
+  // FROM `<email_slug>@yourcondomanager.org` with `email_display_name` as the
+  // friendly "From" name and a Reply-To pointing at the tenant's real inbox.
+  // GATED behind the TENANT_SENDING_ALIAS_ENABLED flag (default OFF) — when the
+  // flag is off, or when these are null, the global EMAIL_FROM default is used,
+  // so existing behavior is unchanged. `email_slug` is GLOBALLY UNIQUE so a
+  // tenant's alias can only ever resolve to its own association (anti-spoofing).
+  emailSlug: text("email_slug"),
+  emailDisplayName: text("email_display_name"),
+  emailReplyToOverride: text("email_reply_to_override"),
+  // Advanced (design only, flag-gated, NOT live in v1): a tenant's own send
+  // domain (requires per-domain Resend verification before it can be used).
+  customSendDomain: text("custom_send_domain"),
+  customSendDomainVerified: integer("custom_send_domain_verified").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueTenantConfigAssociation: uniqueIndex("tenant_configs_association_uq").on(table.associationId),
+  // Global uniqueness of the sending-alias local-part across ALL tenants. A
+  // partial index (WHERE email_slug IS NOT NULL) so unconfigured tenants don't
+  // collide on NULL.
+  uniqueTenantEmailSlug: uniqueIndex("tenant_configs_email_slug_uq").on(table.emailSlug).where(sql`email_slug IS NOT NULL`),
 }));
 
 export const emailThreads = pgTable("email_threads", {
