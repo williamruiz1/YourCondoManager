@@ -70,7 +70,7 @@ function RequestsHubContent() {
 
   const submit = useMutation({
     mutationFn: async () => {
-      const res = await portalFetch("/api/portal/submit-maintenance-request", {
+      const res = await portalFetch("/api/portal/maintenance-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, description, locationText: location, category, priority }),
