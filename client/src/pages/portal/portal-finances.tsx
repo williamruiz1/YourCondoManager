@@ -708,6 +708,27 @@ function FinancesHubContent() {
     },
   });
 
+  // §47-261e — proposed budget summary + reserve statement + ratification status.
+  const { data: ratifications = [] } = useQuery<Array<{
+    id: string;
+    kind: string;
+    status: string;
+    reserveStatement: string;
+    budgetSummary: { total?: number; reserveStatement?: string; reserveAmount?: number; reserveBasis?: string; lineItems?: Array<{ lineItemName: string; plannedAmount: number }> } | null;
+    voteCloseAt: string | null;
+    votingBasis: string;
+    totalVotingBase: number;
+    voteRequired: boolean;
+    myVote: string | null;
+  }>>({
+    queryKey: ["portal/budget-ratifications", session.id],
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/budget-ratifications");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const startCheckout = useMutation({
     mutationFn: async (amount: number) => {
       // 2026-06-30 — fix the request/response contract to match the server.
@@ -770,6 +791,38 @@ function FinancesHubContent() {
           {t("portal.finances.subtitle")}
         </p>
       </div>
+
+      {/* §47-261e — proposed budget summary + reserve statement + ratification status */}
+      {ratifications.length > 0 && (
+        <section className="flex flex-col gap-3" data-testid="portal-budget-ratifications">
+          {ratifications.map((r) => (
+            <Card key={r.id} className="border-amber-200">
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+                    Proposed budget · Connecticut CGS §47-261e
+                  </p>
+                  <span className="rounded-full bg-surface-variant px-2 py-0.5 text-xs">{r.status}</span>
+                </div>
+                {typeof r.budgetSummary?.total === "number" && (
+                  <p className="mt-1 font-headline text-2xl tabular-nums">${r.budgetSummary.total.toLocaleString()}</p>
+                )}
+                <p className="mt-2 text-sm">
+                  <span className="font-medium">Statement of reserves:</span> {r.reserveStatement}
+                </p>
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  {r.voteRequired
+                    ? `This budget takes effect ${r.voteCloseAt ? `on ${new Date(r.voteCloseAt).toLocaleDateString()}` : ""} unless a majority of the ${r.totalVotingBase} ${r.votingBasis === "per-owner" ? "owners" : "units"} (the voting base) votes to reject it.`
+                    : "Approved without an owner vote (below the §47-261e(b) threshold or emergency assessment)."}
+                </p>
+                {r.myVote && (
+                  <p className="mt-1 text-xs text-on-surface-variant">Your recorded vote: <span className="font-medium">{r.myVote}</span></p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+      )}
 
       {/* 2026-05-25 (live session) — Balance vs Amount-due distinction.
           William verbatim: the $5,618.61 figure is the TOTAL balance (lifetime),
