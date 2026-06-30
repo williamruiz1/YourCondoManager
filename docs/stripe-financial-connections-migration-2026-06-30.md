@@ -89,7 +89,7 @@ maps to each vendor's API.
 | *(client collection)* | `react-plaid-link` `usePlaidLink({token})` | Stripe.js `stripe.collectFinancialConnectionsAccounts({clientSecret})` (lazy-loaded; `client/src/lib/stripe-fc-link.ts`) |
 | `exchangePublicToken(x)` | `POST /item/public_token/exchange` (x = `public_token`) → `access_token`,`item_id` | `GET /v1/financial_connections/sessions/{id}` (x = **session id**), then `POST …/accounts/{id}/subscribe?features[]=transactions` per account → synthesizes an opaque access blob `{customerId,accountIds,sessionId}`; `itemId` = session id |
 | `getAccounts(token)` | `POST /accounts/get` | per account: `POST …/accounts/{id}/refresh?features[]=balance` then `GET …/accounts/{id}` |
-| `syncTransactions(token,cursor)` | `POST /transactions/sync` (Plaid cursor) | per account: `GET /v1/financial_connections/transactions?account={id}&starting_after={cursor}`; cursor = JSON map `{accountId: lastTxnId}` |
+| `syncTransactions(token,cursor)` | `POST /transactions/sync` (Plaid cursor) | per account: `GET /v1/financial_connections/transactions?account={id}&transaction_refresh[after]={refreshId}` (returns txns **added OR updated** since the saved refresh), then `GET …/accounts/{id}` to read the new `transaction_refresh.id`; cursor = JSON map `{accountId: transactionRefreshId}` |
 | `getTransactions(token,since)` *(deprecated)* | `POST /transactions/get` | full per-account list (no cursor) |
 | `verifyWebhook(headers,body)` | Plaid JWT (JWS/ES256) | Stripe `Stripe-Signature` HMAC-SHA256 over `t.body` + 5-min replay window |
 | `removeConnection(token)` | `POST /item/remove` | per account: `POST …/accounts/{id}/disconnect` |
@@ -124,15 +124,47 @@ consumes (`server/services/bank-feed/stripe-fc-provider.ts`):
 - **Balance:** FC's single balance is surfaced as both `currentBalanceCents` and
   `availableBalanceCents` (FC doesn't split them the way Plaid does).
 - **`date`:** FC `transacted_at` (unix seconds) → ISO `YYYY-MM-DD`.
-- **`pending`:** FC `status === "pending"`. FC read-only transactions are
-  immutable once posted, so there is no `modified`/`removed` delta to mirror
-  Plaid's pending→post id swap; the FC `syncTransactions` returns `added` only
-  (the sync engine upserts added+modified and deletes removed — both no-ops when
-  empty, so the contract holds).
+- **`pending` + status lifecycle (corrected 2026-06-30, fc-golive):** FC
+  transaction **ids are STABLE** across `pending → posted → void` (Stripe's
+  "Access transactions" guide: save + merge by id). `syncTransactions` therefore
+  uses the `transaction_refresh[after]` cursor, which returns every txn **added
+  OR updated** since the last sync — so a `pending` txn that posts re-appears
+  under its **same id** in `added` and the sync engine's upsert flips its
+  `pending` flag 1→0 in place. A **voided** txn (`status === "void"` or a
+  populated `status_transitions.void_at`) is routed to `removed` so a phantom
+  deposit leaves the books (the sync engine deletes it association-scoped, and
+  preserves it if it was already matched to a ledger entry). **This replaced the
+  draft's `starting_after={lastTxnId}` paging, which silently MISSED status
+  updates** (a posted txn kept its id and never re-appeared past the cursor →
+  the row stayed `pending=1` forever and voids never left the books — corrupting
+  the reconciliation report's deposit totals + the statements).
 - **Storage:** `bank_connections.provider` = `"stripe_fc"`;
   `provider_item_id` = the FC session id; `access_token_encrypted` = the
   encrypted opaque blob `{customerId,accountIds,sessionId}` (no Stripe credential
-  in it); `transactions_cursor` = the per-account cursor JSON.
+  in it); `transactions_cursor` = the per-account cursor JSON
+  `{accountId: transactionRefreshId}`.
+
+### Statements / reconciliation render-correctness (William's go-live concern)
+
+The bank feed reaches the owner/admin financial surfaces in **exactly two**
+places — both provider-agnostic, both proven correct under FC:
+
+1. **Reconciliation (report + auto-matcher)** reads `bank_transactions`. It keys
+   on the sign convention (`amountCents < 0` = a credit / owner deposit). FC's
+   negation makes an FC inflow land as a negative `amountCents`, so an owner FC
+   deposit auto-matches its dues ledger entry and the report's "Total bank
+   deposits" sums correctly — verified in
+   `__tests__/stripe-fc-statements-rendering.test.ts`.
+2. **Chart of Accounts** (`/app/financial/foundation`) reads
+   `financial_accounts.current_balance_cents`, fed by the COA bridge from
+   `getAccounts` balances. FC balances are read as positive cents (no negation),
+   so the COA balance renders correctly.
+
+The **GL financial statements** (balance sheet / budget-vs-actual,
+`server/services/gl/statements-service.ts`) are derived from the GL journals +
+budgets + vendor invoices — they do **NOT** read the bank feed at all, so the
+provider switch does not touch them. *Net: switching to FC changes the feed's
+source, not the shape any statement consumes.*
 
 ---
 
@@ -171,3 +203,73 @@ consumes (`server/services/bank-feed/stripe-fc-provider.ts`):
   `DATABASE_URL`, which is absent). The flow is fully exercised against a mocked
   Stripe; the live test-mode pass and the one-time Dashboard FC registration
   remain to be done in an environment with the platform Stripe test key.
+
+### `fc-golive` follow-on (PR #309 → ready-for-review)
+
+- **Fixed the FC sync cursor** to use `transaction_refresh[after]` (stable-id
+  upsert + void→`removed`) instead of `starting_after` paging — see the corrected
+  data-model mapping above. This is the statements/reconciliation render-correctness
+  fix.
+- **Added 2 provider tests** (void→removed; pending→posted re-emit on upsert) →
+  `stripe-fc-provider.test.ts` now **22** green.
+- **Added** `stripe-fc-statements-rendering.test.ts` (**7** tests) — proves an FC
+  feed renders correct deposits, auto-matches owner payments, and renders correct
+  COA balances through the **real** reconciliation + bridge code.
+- `tsc` clean; bank-feed + reconciliation + Plaid + GL-statements + COA-bridge
+  suites all green (no regression).
+
+---
+
+## Go-live checklist (ordered) — WILLIAM vs AUTOMATION
+
+> Do NOT run the production steps until William completes step 1. Plaid stays the
+> default the entire time the flag is OFF; the switch is fully reversible (step 7).
+
+| # | Step | Owner |
+|---|---|---|
+| 1 | **Stripe Dashboard → Settings → Financial Connections → complete LIVE-mode registration/enablement** for the platform account. Required before any *live* FC bank-data call works (FC test data works without it). This is the FC equivalent of Plaid's Security Questionnaire — a self-serve toggle, not a multi-day review. | **WILLIAM** (his Stripe account / dashboard action) |
+| 2 | Set the production **`STRIPE_FC_WEBHOOK_SECRET`** (`whsec_…`) as a Fly secret, and create a Stripe webhook endpoint → `POST /api/webhooks/stripe-fc` subscribed to `financial_connections.account.refreshed_transactions` + `financial_connections.account.disconnected`. (The prod boot guard refuses to start with the flag ON and no webhook secret.) | **WILLIAM** must create the webhook endpoint + reveal the `whsec_…` in his Stripe dashboard; **automation** sets the Fly secret once William provides it |
+| 3 | **Mark PR #309 ready-for-review** (`gh pr ready 309`) and review. | automation (done in this pass) → William/reviewer approves |
+| 4 | **Merge PR #309** to `main`. (Fly auto-deploys `main`.) | automation, **after** William's approval |
+| 5 | **Set `STRIPE_FINANCIAL_CONNECTIONS_ENABLED=1`** in prod (`flyctl secrets set …`) → redeploy. | automation, coordinated **after** steps 1–2 |
+| 6 | **Verify live:** an HOA re-links its bank via the Connect Bank Account button (now the FC hosted flow); confirm `GET /api/bank-feed/provider` reports `stripe_fc`; run a manual Sync-Now; confirm transactions land in `bank_transactions`, the reconciliation report's deposit total is correct, and the linked balance shows on `/app/financial/foundation`. | automation verifies + reports; **William** does the in-app bank re-link (his credentials) |
+| 7 | **Rollback (if needed):** set `STRIPE_FINANCIAL_CONNECTIONS_ENABLED=0` → redeploy. Plaid resumes immediately; existing Plaid connections were never touched. | automation |
+
+**Note on existing connections:** a Plaid `access_token` cannot be read by the FC
+provider. To move an HOA onto FC, that HOA **re-links** its bank once via the
+Connect Bank Account button (now the FC flow). Re-linking is idempotent at the
+account level. Until re-linked, an HOA's old Plaid connection simply stops
+syncing under FC (it's a different provider) — so re-link is part of the per-HOA
+cutover, not an automatic migration.
+
+---
+
+## Does FC scale to PROPERTY MANAGERS / multiple HOAs?
+
+**Yes — the architecture already supports it, with one operational caveat.**
+
+- **Per-HOA isolation is built in.** `bank_connections` (and `bank_accounts`,
+  `bank_transactions`) carry `association_id` — one bank link per HOA. The FC
+  provider scopes its Stripe **`account_holder`** to a **per-association Customer**
+  (`ensureFcCustomer(associationId)`, keyed by `metadata.ycm_fc_association`), so
+  each HOA's FC accounts attach to that HOA's own customer. No cross-HOA bleed:
+  every sync, report, and balance query is `association_id`-filtered.
+- **Multi-HOA aggregation already works.** A property manager is a user with
+  `association_memberships` across multiple associations (the `property-manager`
+  plan tier exists). They link each HOA's bank under that HOA, and the existing
+  per-association feeds roll up into the manager's multi-HOA view exactly as the
+  Plaid feeds do — FC changes the source, not the aggregation.
+- **Each HOA links its OWN bank, even at the same institution.** FC connects
+  per bank account via the hosted collection flow, so HOA-A's Chase account and
+  HOA-B's Chase account are independent FC accounts under independent
+  per-association customers.
+
+**Caveat / gotcha (operational, not a blocker):**
+- **No "link once, fan out to all HOAs" flow** — each HOA's bank is linked
+  individually (correct for fiduciary isolation: a manager should not point one
+  bank link at multiple HOAs' books). A manager onboarding N HOAs does N link
+  flows. This matches the Plaid behavior and the per-association data model;
+  there is no shared-link shortcut, by design.
+- **Per-account FC cost scales linearly** (~30¢/account/mo + ~10¢/balance call) —
+  a manager with many HOAs pays per linked account, same as Plaid's per-item
+  pricing. Worth noting for the manager-tier unit economics, not a technical gap.

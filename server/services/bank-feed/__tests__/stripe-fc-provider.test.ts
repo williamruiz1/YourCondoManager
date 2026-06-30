@@ -199,7 +199,7 @@ describe("StripeFcProvider.getAccounts", () => {
 // ── syncTransactions ─────────────────────────────────────────────────────────
 
 describe("StripeFcProvider.syncTransactions", () => {
-  it("maps FC transactions, NEGATES the amount sign, and returns a per-account cursor", async () => {
+  it("maps FC transactions, NEGATES the amount sign, and returns the transaction_refresh cursor", async () => {
     // single page, has_more false. FC: +amount = money IN; we negate so + = debit.
     on(
       (u, m) =>
@@ -230,6 +230,15 @@ describe("StripeFcProvider.syncTransactions", () => {
         ],
       },
     );
+    // Account GET returns the current transaction_refresh.id — the cursor we
+    // persist (NOT a last-seen txn id) so the next sync pulls only the delta.
+    on(
+      (u, m) =>
+        u.includes("/financial_connections/accounts/fca_1") &&
+        !u.includes("/transactions") &&
+        m === "GET",
+      { id: "fca_1", transaction_refresh: { id: "fctxnref_now", status: "succeeded" } },
+    );
 
     const provider = new StripeFcProvider();
     const blob = JSON.stringify({ v: 1, customerId: "c", accountIds: ["fca_1"], sessionId: "s" });
@@ -250,50 +259,69 @@ describe("StripeFcProvider.syncTransactions", () => {
       amountCents: 2500, // money out → debit (positive)
       pending: true,
     });
-    // cursor is a per-account map pointing at the last-seen txn id
+    // cursor is a per-account map pointing at the account's transaction_refresh id
     const cursorMap = JSON.parse(result.nextCursor);
-    expect(cursorMap).toEqual({ fca_1: "fctxn_2" });
+    expect(cursorMap).toEqual({ fca_1: "fctxnref_now" });
     expect(result.hasMore).toBe(false);
   });
 
-  it("passes the persisted per-account cursor as starting_after on a resumed sync", async () => {
+  it("passes the persisted refresh cursor as transaction_refresh[after] on a resumed sync", async () => {
     on(
       (u, m) => u.includes("/financial_connections/transactions") && m === "GET",
       { has_more: false, data: [] },
     );
+    on(
+      (u, m) =>
+        u.includes("/financial_connections/accounts/fca_1") &&
+        !u.includes("/transactions") &&
+        m === "GET",
+      { id: "fca_1", transaction_refresh: { id: "fctxnref_after_sync", status: "succeeded" } },
+    );
 
     const provider = new StripeFcProvider();
     const blob = JSON.stringify({ v: 1, customerId: "c", accountIds: ["fca_1"], sessionId: "s" });
-    await provider.syncTransactions(blob, JSON.stringify({ fca_1: "fctxn_prev" }));
+    const result = await provider.syncTransactions(
+      blob,
+      JSON.stringify({ fca_1: "fctxnref_prev" }),
+    );
 
     const listCall = fetchCalls.find((c) =>
       c.url.includes("/financial_connections/transactions"),
     );
-    expect(listCall!.url).toContain("starting_after=fctxn_prev");
+    // The list call carries the prior refresh id as transaction_refresh[after]
+    // (URL-encoded as transaction_refresh%5Bafter%5D), NEVER starting_after on
+    // a fresh resumption — that is the fix for the missed-status-update bug.
+    expect(decodeURIComponent(listCall!.url)).toContain(
+      "transaction_refresh[after]=fctxnref_prev",
+    );
+    expect(listCall!.url).not.toContain("starting_after=fctxnref_prev");
+    // And the cursor advances to the account's CURRENT refresh id.
+    expect(JSON.parse(result.nextCursor)).toEqual({ fca_1: "fctxnref_after_sync" });
   });
 
-  it("drains pagination across pages for one account", async () => {
-    let call = 0;
-    routes.push({
-      match: (u, m) => u.includes("/financial_connections/transactions") && m === "GET",
-      get body() {
-        return undefined;
-      },
-    } as any);
-    // Override fetch to script two pages.
+  it("drains pagination across pages for one account, then reads the refresh cursor", async () => {
+    // Script: list page 1 (has_more) → list page 2 (final) → account GET (refresh id).
+    let listCall = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       fetchCalls.push({ url, method, body: typeof init?.body === "string" ? init.body : undefined });
-      call += 1;
-      if (call === 1) {
+      if (url.includes("/financial_connections/transactions")) {
+        listCall += 1;
+        if (listCall === 1) {
+          return jsonResponse({
+            has_more: true,
+            data: [{ id: "p1", account: "fca_1", amount: 100, currency: "usd", status: "posted" }],
+          });
+        }
         return jsonResponse({
-          has_more: true,
-          data: [{ id: "p1", account: "fca_1", amount: 100, currency: "usd", status: "posted" }],
+          has_more: false,
+          data: [{ id: "p2", account: "fca_1", amount: 200, currency: "usd", status: "posted" }],
         });
       }
+      // Account GET → transaction_refresh id (the new cursor).
       return jsonResponse({
-        has_more: false,
-        data: [{ id: "p2", account: "fca_1", amount: 200, currency: "usd", status: "posted" }],
+        id: "fca_1",
+        transaction_refresh: { id: "fctxnref_p2", status: "succeeded" },
       });
     }));
 
@@ -301,7 +329,110 @@ describe("StripeFcProvider.syncTransactions", () => {
     const blob = JSON.stringify({ v: 1, customerId: "c", accountIds: ["fca_1"], sessionId: "s" });
     const result = await provider.syncTransactions(blob, null);
     expect(result.added.map((t) => t.providerTransactionId)).toEqual(["p1", "p2"]);
-    expect(JSON.parse(result.nextCursor)).toEqual({ fca_1: "p2" });
+    // Within-result pagination uses starting_after; the persisted cursor is the
+    // account's transaction_refresh id, NOT the last txn id.
+    const page2 = fetchCalls.find(
+      (c) => c.url.includes("/financial_connections/transactions") && c.url.includes("starting_after=p1"),
+    );
+    expect(page2).toBeTruthy();
+    expect(JSON.parse(result.nextCursor)).toEqual({ fca_1: "fctxnref_p2" });
+  });
+
+  it("routes a VOIDED FC transaction to `removed` (not `added`) so a phantom deposit leaves the books", async () => {
+    on(
+      (u, m) => u.includes("/financial_connections/transactions") && m === "GET",
+      {
+        has_more: false,
+        data: [
+          // posted live deposit → added
+          {
+            id: "fctxn_live",
+            account: "fca_1",
+            amount: 5000,
+            currency: "usd",
+            transacted_at: 1_700_000_000,
+            status: "posted",
+          },
+          // voided via status → removed
+          {
+            id: "fctxn_voided_status",
+            account: "fca_1",
+            amount: 1000,
+            currency: "usd",
+            status: "void",
+          },
+          // voided via status_transitions.void_at → removed
+          {
+            id: "fctxn_voided_at",
+            account: "fca_1",
+            amount: 2000,
+            currency: "usd",
+            status: "posted",
+            status_transitions: { posted_at: 1_700_000_000, void_at: 1_700_200_000 },
+          },
+        ],
+      },
+    );
+    on(
+      (u, m) =>
+        u.includes("/financial_connections/accounts/fca_1") &&
+        !u.includes("/transactions") &&
+        m === "GET",
+      { id: "fca_1", transaction_refresh: { id: "fctxnref_v", status: "succeeded" } },
+    );
+
+    const provider = new StripeFcProvider();
+    const blob = JSON.stringify({ v: 1, customerId: "c", accountIds: ["fca_1"], sessionId: "s" });
+    const result = await provider.syncTransactions(blob, null);
+
+    expect(result.added.map((t) => t.providerTransactionId)).toEqual(["fctxn_live"]);
+    expect(result.removed.sort()).toEqual(["fctxn_voided_at", "fctxn_voided_status"]);
+  });
+
+  it("re-emits a pending→posted txn (stable id) in `added` so the row's pending flag flips on upsert", async () => {
+    // The SAME id (fctxn_dues) reappears on the next sync now status=posted —
+    // this is exactly the case the old starting_after cursor MISSED. With the
+    // refresh cursor it re-appears, lands in `added`, and the sync engine's
+    // upsert flips pending 1→0 on the existing row.
+    on(
+      (u, m) => u.includes("/financial_connections/transactions") && m === "GET",
+      {
+        has_more: false,
+        data: [
+          {
+            id: "fctxn_dues",
+            account: "fca_1",
+            amount: 5000,
+            currency: "usd",
+            transacted_at: 1_700_000_000,
+            status: "posted", // previously seen as pending; same id, now posted
+          },
+        ],
+      },
+    );
+    on(
+      (u, m) =>
+        u.includes("/financial_connections/accounts/fca_1") &&
+        !u.includes("/transactions") &&
+        m === "GET",
+      { id: "fca_1", transaction_refresh: { id: "fctxnref_2", status: "succeeded" } },
+    );
+
+    const provider = new StripeFcProvider();
+    const blob = JSON.stringify({ v: 1, customerId: "c", accountIds: ["fca_1"], sessionId: "s" });
+    const result = await provider.syncTransactions(
+      blob,
+      JSON.stringify({ fca_1: "fctxnref_1" }),
+    );
+
+    expect(result.added).toEqual([
+      expect.objectContaining({
+        providerTransactionId: "fctxn_dues",
+        amountCents: -5000, // deposit → credit
+        pending: false, // posted now
+      }),
+    ]);
+    expect(result.removed).toHaveLength(0);
   });
 });
 

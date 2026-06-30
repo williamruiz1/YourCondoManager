@@ -159,6 +159,17 @@ interface FcBalance {
   type?: string;
 }
 
+interface FcTransactionRefresh {
+  // The state of the most recent attempt to refresh the account transactions.
+  // `id` (fctxnref_…) is the canonical incremental-sync cursor: passing it as
+  // `transaction_refresh[after]` on the next list call returns every txn that
+  // was added OR updated since (incl. pending→posted, →void) — see Stripe's
+  // "Access transactions" guide. We persist this id, NOT a last-seen txn id.
+  id?: string | null;
+  status?: string; // "pending" | "succeeded" | "failed"
+  next_refresh_available_at?: number | null;
+}
+
 interface FcAccount {
   id: string;
   display_name?: string | null;
@@ -168,6 +179,12 @@ interface FcAccount {
   subcategory?: string | null; // "checking" | "savings" | "credit_card" | ...
   balance?: FcBalance | null;
   status?: string; // "active" | "inactive" | "disconnected"
+  transaction_refresh?: FcTransactionRefresh | null;
+}
+
+interface FcStatusTransitions {
+  posted_at?: number | null;
+  void_at?: number | null;
 }
 
 interface FcTransaction {
@@ -180,6 +197,7 @@ interface FcTransaction {
   transacted_at?: number | null;
   description?: string | null;
   status?: string; // "pending" | "posted" | "void"
+  status_transitions?: FcStatusTransitions | null;
 }
 
 interface FcTransactionList {
@@ -274,6 +292,19 @@ export function mapFcTransaction(txn: FcTransaction): BankTransactionSnapshot {
     category: null, // FC does not categorize on the read-only txn object
     pending: (txn.status ?? "") === "pending",
   };
+}
+
+/**
+ * Is this FC transaction voided? FC voids a transaction when it "disappears and
+ * no longer affects the account's balance" (e.g. a pending charge that never
+ * posted). Detected by `status === "void"` OR a populated `status_transitions.void_at`.
+ * A void must be REMOVED from the books so a statement / reconciliation never
+ * counts a phantom deposit.
+ */
+function isFcVoid(txn: FcTransaction): boolean {
+  if ((txn.status ?? "").toLowerCase() === "void") return true;
+  const voidAt = txn.status_transitions?.void_at ?? null;
+  return typeof voidAt === "number" && voidAt > 0;
 }
 
 /** Extract the FC account list off a session object (shape varies by include). */
@@ -523,8 +554,15 @@ export class StripeFcProvider implements BankFeedProvider {
       let pageGuard = 0;
       while (true) {
         if (pageGuard++ >= MAX_TXN_PAGES) break;
-        const page = await this.listTransactionsPage(accountId, after);
-        for (const t of page.data) out.push(mapFcTransaction(t));
+        const page = await this.listTransactionsPage(accountId, {
+          transactionRefreshAfter: null,
+          startingAfter: after,
+        });
+        // Deprecated path: skip voids (parity with the canonical sync, which
+        // routes them to `removed`); the matcher never sees a phantom deposit.
+        for (const t of page.data) {
+          if (!isFcVoid(t)) out.push(mapFcTransaction(t));
+        }
         if (!page.has_more || page.data.length === 0) break;
         after = page.data[page.data.length - 1].id;
       }
@@ -532,20 +570,52 @@ export class StripeFcProvider implements BankFeedProvider {
     return out;
   }
 
-  /** List one page of FC transactions for an account (cursor = `starting_after`). */
+  /**
+   * List one page of FC transactions for an account.
+   *
+   * `transactionRefreshAfter` is the per-account `transaction_refresh.id`
+   * (fctxnref_…) persisted from the prior sync. When present we pass it as
+   * `transaction_refresh[after]` — per Stripe's "Access transactions" guide,
+   * the list then returns every transaction ADDED **or UPDATED** since that
+   * refresh (incl. pending→posted and →void on previously-seen ids), which is
+   * exactly the delta the sync engine needs to upsert. NULL → full backfill
+   * (initial sync). `startingAfter` paginates WITHIN the result set.
+   */
   private async listTransactionsPage(
     accountId: string,
-    startingAfter: string | null,
+    opts: { transactionRefreshAfter: string | null; startingAfter: string | null },
   ): Promise<FcTransactionList> {
     const query = new URLSearchParams();
     query.set("account", accountId);
     query.set("limit", "100");
-    if (startingAfter) query.set("starting_after", startingAfter);
+    if (opts.transactionRefreshAfter) {
+      query.set("transaction_refresh[after]", opts.transactionRefreshAfter);
+    }
+    if (opts.startingAfter) query.set("starting_after", opts.startingAfter);
     return stripeCall<FcTransactionList>({
       method: "GET",
       path: "/financial_connections/transactions",
       query,
     });
+  }
+
+  /**
+   * Read the account's current `transaction_refresh.id`. This is the cursor we
+   * persist after a sync: passing it as `transaction_refresh[after]` next time
+   * yields only new/updated transactions. Returns null if FC hasn't produced a
+   * transaction refresh yet (e.g. brand-new link before the first refresh).
+   */
+  private async getTransactionRefreshId(accountId: string): Promise<string | null> {
+    try {
+      const account = await stripeCall<FcAccount>({
+        method: "GET",
+        path: `/financial_connections/accounts/${encodeURIComponent(accountId)}`,
+      });
+      return account.transaction_refresh?.id ?? null;
+    } catch (err) {
+      debug("[StripeFcProvider] getTransactionRefreshId non-fatal", { accountId, err });
+      return null;
+    }
   }
 
   async syncTransactions(
@@ -555,26 +625,33 @@ export class StripeFcProvider implements BankFeedProvider {
     debug("[StripeFcProvider] syncTransactions", { hasCursor: cursor != null });
     const blob = parseAccessBlob(accessToken);
 
-    // The persisted cursor is a JSON map { accountId: lastSeenTxnId }. FC's
-    // transaction list is append-only (posted transactions don't change id),
-    // so `starting_after: lastSeenTxnId` is a clean incremental resumption
-    // point per account. NULL/invalid cursor → full backfill (initial sync).
+    // The persisted cursor is a JSON map { accountId: transactionRefreshId }.
+    // FC transaction IDs are STABLE across status transitions (pending→posted→
+    // void), and the `transaction_refresh[after]` filter returns every txn
+    // ADDED or UPDATED since the saved refresh id. So we UPSERT by id (the sync
+    // engine keys on provider_transaction_id) and REMOVE voids. NULL/invalid
+    // cursor → full backfill (initial sync). This replaces the prior
+    // `starting_after=lastSeenTxnId` paging, which silently MISSED status
+    // updates (a pending txn that posts keeps its id, so it never re-appeared
+    // after the cursor → the row stayed pending=1 forever, and voids never left
+    // the books — corrupting the reconciliation report + statements).
     const cursorMap: Record<string, string> = parseCursorMap(cursor);
     const nextCursorMap: Record<string, string> = { ...cursorMap };
 
+    // `added` carries new + still-live (pending/posted) txns to upsert;
+    // `removed` carries voided provider txn ids to delete. The sync engine
+    // upserts added+modified identically (both keyed on provider_transaction_id)
+    // and deletes removed — so re-emitting a posted txn under its stable id in
+    // `added` flips its pending flag 1→0 on the existing row (an in-place
+    // update), and a void is torn out. We keep `modified` empty and route all
+    // live deltas through `added` (the upsert is identical either way).
     const added: BankTransactionSnapshot[] = [];
-    // FC's read-only transaction objects are immutable once posted, so there is
-    // no "modified" delta and no "removed" delta to mirror Plaid's pending→post
-    // id swap. Pending transactions surface as new rows; when they post, FC
-    // emits a fresh object. We therefore upsert added only; modified/removed
-    // stay empty (the interface contract still holds — the sync engine upserts
-    // added+modified and deletes removed, both no-ops when empty).
     const modified: BankTransactionSnapshot[] = [];
     const removed: string[] = [];
 
     for (const accountId of blob.accountIds) {
-      let after: string | null = cursorMap[accountId] ?? null;
-      let lastSeen: string | null = after;
+      const refreshAfter: string | null = cursorMap[accountId] ?? null;
+      let startingAfter: string | null = null;
       let pageGuard = 0;
       while (true) {
         if (pageGuard++ >= MAX_TXN_PAGES) {
@@ -582,16 +659,35 @@ export class StripeFcProvider implements BankFeedProvider {
             `Stripe FC syncTransactions exceeded ${MAX_TXN_PAGES} pages — aborting to avoid an unbounded loop`,
           );
         }
-        const page = await this.listTransactionsPage(accountId, after);
+        const page = await this.listTransactionsPage(accountId, {
+          transactionRefreshAfter: refreshAfter,
+          startingAfter,
+        });
         if (page.data.length === 0) break;
         for (const t of page.data) {
-          added.push(mapFcTransaction(t));
-          lastSeen = t.id;
+          if (isFcVoid(t)) {
+            // A voided txn must leave the books. The sync engine's `removed`
+            // path is association-scoped and only deletes rows not linked to a
+            // ledger entry, so a voided-but-matched txn is preserved + surfaced
+            // rather than silently torn out from under a reconciliation.
+            removed.push(t.id);
+          } else {
+            // New OR updated (pending→posted) live txn → upsert by stable id.
+            added.push(mapFcTransaction(t));
+          }
         }
         if (!page.has_more) break;
-        after = page.data[page.data.length - 1].id;
+        startingAfter = page.data[page.data.length - 1].id;
       }
-      if (lastSeen) nextCursorMap[accountId] = lastSeen;
+
+      // Advance the cursor to the account's CURRENT transaction_refresh id so
+      // the next sync only pulls the delta since now. If FC has no refresh id
+      // yet (brand-new link), retain the prior cursor (a subsequent sync, after
+      // the first refresh completes, will pick it up).
+      const newRefreshId = await this.getTransactionRefreshId(accountId);
+      if (newRefreshId) {
+        nextCursorMap[accountId] = newRefreshId;
+      }
     }
 
     return {
