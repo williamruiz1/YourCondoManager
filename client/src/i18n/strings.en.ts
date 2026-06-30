@@ -356,17 +356,18 @@ export const strings = {
   "portal.finances.recentLedger.empty": "No ledger entries yet.",
   "portal.finances.col.date": "Date",
   "portal.finances.col.type": "Type",
+  "portal.finances.col.unit": "Unit",
   "portal.finances.col.description": "Description",
   "portal.finances.col.amount": "Amount",
 
   "portal.finances.paymentMethods.title": "Payment methods",
   "portal.finances.paymentMethods.subtitle":
-    "Bank accounts linked to your portal and autopay enrollments.",
+    "Cards and bank accounts saved via Stripe for faster checkout and autopay.",
   "portal.finances.paymentMethods.add": "Add method",
   "portal.finances.paymentMethods.opening": "Opening…",
   "portal.finances.paymentMethods.savedTitle": "Saved methods",
   "portal.finances.paymentMethods.savedEmpty":
-    "No saved payment methods yet. Add a bank account to enable faster checkout and autopay.",
+    "No saved payment methods yet. Add a card or bank account to enable faster checkout and autopay.",
   "portal.finances.paymentMethods.default": "Default",
   "portal.finances.paymentMethods.setDefault": "Set default",
   "portal.finances.paymentMethods.remove": "Remove",
