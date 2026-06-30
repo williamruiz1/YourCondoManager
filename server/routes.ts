@@ -12974,61 +12974,62 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         try {
           await sendPlatformEmail({
             to: email,
-            subject: "Your Owner Portal Login Code — Your Condo Management",
+            subject: "Your login code — YourCondoManager Owner Portal",
             html: `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;padding:40px 16px">
+<body style="margin:0;padding:0;background-color:#f5f9f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f9f8;padding:40px 16px">
     <tr><td align="center">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(1,77,74,0.08)">
 
         <!-- Header -->
-        <tr><td style="background-color:#1e293b;border-radius:12px 12px 0 0;padding:28px 32px">
+        <tr><td style="background-color:#014D4A;background:linear-gradient(135deg,#014D4A,#036a66);padding:30px 32px">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td>
-                <div style="display:inline-block;background-color:#6366f1;color:#ffffff;font-size:13px;font-weight:700;letter-spacing:0.05em;padding:6px 12px;border-radius:6px">YCM</div>
+              <td style="vertical-align:middle;width:42px">
+                <div style="width:38px;height:38px;border-radius:9px;background-color:#ffffff;color:#014D4A;font-size:20px;font-weight:800;text-align:center;line-height:38px;font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif">Y</div>
+              </td>
+              <td style="vertical-align:middle;padding-left:12px">
+                <div style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.01em">YourCondoManager</div>
+                <div style="font-size:12.5px;color:#bfe8e2;margin-top:1px">Owner Portal</div>
               </td>
             </tr>
-            <tr><td style="padding-top:14px">
-              <div style="font-size:20px;font-weight:600;color:#ffffff">Your Condo Management</div>
-              <div style="font-size:13px;color:#94a3b8;margin-top:2px">Owner Portal</div>
-            </td></tr>
           </table>
         </td></tr>
 
         <!-- Body -->
-        <tr><td style="background-color:#ffffff;padding:32px">
-          <p style="margin:0 0 8px;font-size:22px;font-weight:600;color:#0f172a">Your login code</p>
-          <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.6">
+        <tr><td style="background-color:#ffffff;padding:34px 32px">
+          <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#0f2725">Your login code</p>
+          <p style="margin:0 0 26px;font-size:15px;color:#5b716e;line-height:1.6">
             Use the code below to sign in to your owner portal.<br>
-            This code expires in <strong style="color:#0f172a">15 minutes</strong>.
+            It expires in <strong style="color:#0f2725">15 minutes</strong>.
           </p>
 
           <!-- Code block -->
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px">
-            <tr><td style="background-color:#f1f5f9;border:2px dashed #cbd5e1;border-radius:10px;padding:28px;text-align:center">
-              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#64748b;margin-bottom:10px;font-weight:600">One-time code</div>
-              <div style="font-size:42px;font-weight:700;letter-spacing:0.3em;color:#1e293b;font-family:'Courier New',Courier,monospace">${otp}</div>
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:26px">
+            <tr><td style="background-color:#eafaf8;border:2px dashed #8fd0c8;border-radius:12px;padding:26px;text-align:center">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:#0f8a4a;margin-bottom:10px;font-weight:700">One-time code</div>
+              <div style="font-size:42px;font-weight:700;letter-spacing:0.3em;color:#014D4A;font-family:'Courier New',Courier,monospace">${otp}</div>
             </td></tr>
           </table>
 
-          <p style="margin:0 0 16px;font-size:14px;color:#475569;line-height:1.6">
-            Enter this code on the login screen to access your account. For security, do not share this code with anyone — Your Condo Management will never ask for it.
+          <p style="margin:0 0 16px;font-size:14px;color:#5b716e;line-height:1.6">
+            Enter this code on the login screen to access your account. For your security, never share this code — YourCondoManager will never ask you for it.
           </p>
 
-          <table cellpadding="0" cellspacing="0" style="margin-bottom:8px">
-            <tr><td style="background-color:#fef3c7;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;padding:10px 14px">
-              <span style="font-size:13px;color:#92400e">If you did not request this code, you can safely ignore this email.</span>
+          <table cellpadding="0" cellspacing="0" style="margin-bottom:4px">
+            <tr><td style="background-color:#fff8e8;border-left:3px solid #b8860b;border-radius:0 6px 6px 0;padding:10px 14px">
+              <span style="font-size:13px;color:#7a5a12">If you did not request this code, you can safely ignore this email — no one can access your account without it.</span>
             </td></tr>
           </table>
         </td></tr>
 
         <!-- Footer -->
-        <tr><td style="background-color:#f1f5f9;border-radius:0 0 12px 12px;padding:20px 32px">
-          <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">
-            &copy; ${new Date().getFullYear()} Your Condo Management &nbsp;&middot;&nbsp; Owner Portal &nbsp;&middot;&nbsp; This is an automated message, please do not reply.
+        <tr><td style="background-color:#f5f9f8;border-top:1px solid #e3ecea;padding:20px 32px">
+          <p style="margin:0;font-size:12px;color:#8aa3a0;text-align:center;line-height:1.6">
+            &copy; ${new Date().getFullYear()} YourCondoManager &nbsp;&middot;&nbsp; Owner Portal<br>
+            This is an automated message — please do not reply.
           </p>
         </td></tr>
 
@@ -13037,7 +13038,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   </table>
 </body>
 </html>`,
-            text: `Your Condo Management — Owner Portal\n\nYour login code is: ${otp}\n\nThis code expires in 15 minutes. Enter it on the login screen to access your account.\n\nDo not share this code with anyone. If you did not request it, you can safely ignore this email.\n\n© ${new Date().getFullYear()} Your Condo Management`,
+            text: `YourCondoManager — Owner Portal\n\nYour login code is: ${otp}\n\nThis code expires in 15 minutes. Enter it on the login screen to access your account.\n\nFor your security, never share this code. If you did not request it, you can safely ignore this email.\n\n© ${new Date().getFullYear()} YourCondoManager`,
           });
         } catch (emailErr: any) {
           console.error("[portal-otp][email-send-failed]", { email, error: emailErr.message });
