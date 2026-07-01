@@ -289,6 +289,7 @@ import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
+import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import {
   getEffectivePortalRole,
@@ -1444,6 +1445,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // arrive outside the YCM portal. Endpoint set: /api/admin/payments/{record,
   // record-bulk,recent}. UI page: /app/admin/payments/record.
   registerAdminPaymentsRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // HOA Remediation Phase 2 — dual-approval (maker-checker) on disbursements
+  // (money-OUT). Segregation of duties: a disbursement must be approved by a
+  // DIFFERENT admin than the one who created it before it can be marked paid.
+  // NET-NEW / ADDITIVE — touches no existing owner-ledger / GL / payout path.
+  // Endpoints: /api/admin/disbursements[/:id/{submit,approve,reject,pay}].
+  registerAdminDisbursementRoutes(app, {
     requireAdmin,
     requireAdminRole,
     getAssociationIdQuery,

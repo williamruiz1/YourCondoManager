@@ -63,6 +63,8 @@ const GoLiveReadinessPage = lazyWithReload(() => import("@/pages/go-live-readine
 const AdminReconciliationPage = lazyWithReload(() => import("@/pages/admin-reconciliation"), "@/pages/admin-reconciliation");
 // founder-os#2479 — admin manual payment recording surface.
 const AdminPaymentsRecordPage = lazyWithReload(() => import("@/pages/admin-payments-record"), "@/pages/admin-payments-record");
+// HOA Remediation Phase 2 — disbursement dual-approval (maker-checker) queue.
+const AdminDisbursementsPage = lazyWithReload(() => import("@/pages/admin-disbursements"), "@/pages/admin-disbursements");
 const ExecutivePage = lazyWithReload(() => import("@/pages/executive"), "@/pages/executive");
 const FinancialFoundationPage = lazyWithReload(() => import("@/pages/financial-foundation"), "@/pages/financial-foundation");
 const FinancialRulesPage = lazyWithReload(() => import("@/pages/financial-rules"), "@/pages/financial-rules");
@@ -219,6 +221,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Access Review", href: "/app/admin/access-review", roles: ["platform-admin"] },
       { label: "Reconciliation", href: "/app/admin/reconciliation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Record Payment", href: "/app/admin/payments/record", roles: ["platform-admin", "board-officer"] },
+      { label: "Disbursement Approvals", href: "/app/admin/disbursements", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
     ],
   },
@@ -436,6 +439,8 @@ function WorkspaceRouter({
         <Route path="/app/admin/reconciliation" component={AdminReconciliationPage} />
         {/* founder-os#2479 — admin manual payment recording. */}
         <Route path="/app/admin/payments/record" component={AdminPaymentsRecordPage} />
+        {/* HOA Remediation Phase 2 — disbursement dual-approval (maker-checker). */}
+        <Route path="/app/admin/disbursements" component={AdminDisbursementsPage} />
         {/* Legacy alias from the dispatch spec (/admin/payments/record). */}
         <Route path="/admin/payments/record">
           <RouteRedirect to="/app/admin/payments/record" />
