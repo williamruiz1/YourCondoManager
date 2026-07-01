@@ -12968,13 +12968,32 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       await db.delete(portalLoginTokens).where(eq(portalLoginTokens.email, email));
       await db.insert(portalLoginTokens).values({ associationId: null, email, otpHash, expiresAt });
 
+      // Resolve the owner's community (association) name so the email is branded to THEIR HOA,
+      // not to the platform. The OTP flow is email-only (one code covers all of an email's
+      // associations). If the email maps to exactly one association, use that name; if it maps
+      // to multiple (rare) or none resolvable, fall back to a neutral label — never invent a name.
+      let communityName = "Your community portal";
+      {
+        const distinctAssocIds = Array.from(new Set(activeAccesses.map((a) => a.associationId)));
+        if (distinctAssocIds.length === 1) {
+          const [assocRow] = await db
+            .select({ name: associations.name })
+            .from(associations)
+            .where(eq(associations.id, distinctAssocIds[0]));
+          if (assocRow?.name) communityName = assocRow.name;
+        }
+      }
+
       // Send the OTP via email; fall back to simulation mode
       const emailProviderReady = isEmailProviderConfigured();
       if (emailProviderReady) {
         try {
           await sendPlatformEmail({
             to: email,
-            subject: "Your login code — YourCondoManager Owner Portal",
+            subject:
+              communityName === "Your community portal"
+                ? "Your login code — Your Condo Manager Owner Portal"
+                : `Your ${communityName} login code`,
             html: `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -12988,10 +13007,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td style="vertical-align:middle;width:42px">
-                <div style="width:38px;height:38px;border-radius:9px;background-color:#ffffff;color:#014D4A;font-size:20px;font-weight:800;text-align:center;line-height:38px;font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif">Y</div>
+                <div style="width:38px;height:38px;border-radius:9px;background-color:#ffffff;color:#014D4A;font-size:20px;font-weight:800;text-align:center;line-height:38px;font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif">${(communityName.match(/[A-Za-z]/)?.[0] ?? "C").toUpperCase()}</div>
               </td>
               <td style="vertical-align:middle;padding-left:12px">
-                <div style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.01em">YourCondoManager</div>
+                <div style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.01em">${communityName}</div>
                 <div style="font-size:12.5px;color:#bfe8e2;margin-top:1px">Owner Portal</div>
               </td>
             </tr>
@@ -13015,7 +13034,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           </table>
 
           <p style="margin:0 0 16px;font-size:14px;color:#5b716e;line-height:1.6">
-            Enter this code on the login screen to access your account. For your security, never share this code — YourCondoManager will never ask you for it.
+            Enter this code on the login screen to access your account. For your security, never share this code — we will never ask you for it.
           </p>
 
           <table cellpadding="0" cellspacing="0" style="margin-bottom:4px">
@@ -13028,8 +13047,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         <!-- Footer -->
         <tr><td style="background-color:#f5f9f8;border-top:1px solid #e3ecea;padding:20px 32px">
           <p style="margin:0;font-size:12px;color:#8aa3a0;text-align:center;line-height:1.6">
-            &copy; ${new Date().getFullYear()} YourCondoManager &nbsp;&middot;&nbsp; Owner Portal<br>
-            This is an automated message — please do not reply.
+            This is an automated message — please do not reply.<br>
+            Powered by Your Condo Manager
           </p>
         </td></tr>
 
@@ -13038,7 +13057,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   </table>
 </body>
 </html>`,
-            text: `YourCondoManager — Owner Portal\n\nYour login code is: ${otp}\n\nThis code expires in 15 minutes. Enter it on the login screen to access your account.\n\nFor your security, never share this code. If you did not request it, you can safely ignore this email.\n\n© ${new Date().getFullYear()} YourCondoManager`,
+            text: `${communityName} — Owner Portal\n\nYour login code is: ${otp}\n\nThis code expires in 15 minutes. Enter it on the login screen to access your account.\n\nFor your security, never share this code. If you did not request it, you can safely ignore this email.\n\nPowered by Your Condo Manager`,
           });
         } catch (emailErr: any) {
           console.error("[portal-otp][email-send-failed]", { email, error: emailErr.message });
