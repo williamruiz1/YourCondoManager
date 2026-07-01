@@ -300,21 +300,55 @@ function TrustBanner({ rec }: { rec: StatementsReconciliation }) {
     );
   }
 
+  // NOT trustworthy → NEVER hide the statements. Render them anyway (below) and
+  // surface the discrepancy PROMINENTLY here so it's acknowledged and attended
+  // to. The headline shows the single most-significant out-of-balance amount as
+  // a dollar figure ("Out of balance by $X.XX — under review"); the detail list
+  // breaks down each contributing gap.
+  const discrepancyCents = Math.max(
+    Math.abs(rec.arDifferenceCents),
+    Math.abs(rec.balanceSheetDifferenceCents),
+  );
+  // Red for a material / definitive out-of-balance (≥ $1.00, or any double-entry
+  // invariant break); amber for a sub-dollar rounding-scale gap. Either way the
+  // page still renders every statement below this banner.
+  const severe = discrepancyCents >= 100 || rec.invariantViolations.length > 0;
+  const tone = severe
+    ? {
+        card: "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30",
+        icon: "text-red-600 dark:text-red-400",
+        head: "text-red-800 dark:text-red-300",
+        body: "text-red-700/90 dark:text-red-300/80",
+      }
+    : {
+        card: "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
+        icon: "text-amber-600 dark:text-amber-400",
+        head: "text-amber-800 dark:text-amber-300",
+        body: "text-amber-700/90 dark:text-amber-300/80",
+      };
+
   return (
-    <Card className="border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
+    <Card className={tone.card} data-testid="statements-discrepancy-banner">
       <CardContent className="space-y-2 py-4">
         <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <AlertTriangle className={cn("mt-0.5 h-5 w-5 shrink-0", tone.icon)} />
           <div className="space-y-1">
-            <p className="font-semibold text-amber-800 dark:text-amber-300">
-              Does not fully tie out — review before relying on these figures
+            <p className={cn("text-base font-semibold", tone.head)} data-testid="statements-discrepancy-headline">
+              Out of balance by{" "}
+              <span className="font-mono">{fmtDollars(discrepancyCents)}</span> — under
+              review
             </p>
-            <ul className="mt-1 space-y-1 text-sm text-amber-700/90 dark:text-amber-300/80">
+            <p className={cn("text-sm", tone.body)}>
+              These statements still show in full below, but the ledger does not yet
+              reconcile to the cent. Someone should look into the gap before relying on
+              these figures — it is surfaced here on purpose so it is not missed.
+            </p>
+            <ul className={cn("mt-1 space-y-1 text-sm", tone.body)}>
               {!rec.ownerLedgerTiesOut && (
                 <li>
                   General ledger vs owner ledger differ by{" "}
                   <strong>{fmtDollars(Math.abs(rec.arDifferenceCents))}</strong>{" "}
-                  (ledger {fmtDollars(rec.ownerLedgerBalanceCents)} vs GL AR{" "}
+                  (owner ledger {fmtDollars(rec.ownerLedgerBalanceCents)} vs GL AR{" "}
                   {fmtDollars(rec.glAccountsReceivableCents)}).
                 </li>
               )}
