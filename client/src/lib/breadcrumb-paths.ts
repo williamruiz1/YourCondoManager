@@ -176,6 +176,10 @@ export const BREADCRUMB_PATHS: Readonly<Record<string, BreadcrumbTrail>> = Objec
     { label: "Financials", href: "/app/financials" },
     { label: "Expenses" },
   ],
+  "/app/financial/ar-aging": [
+    { label: "Financials", href: "/app/financials" },
+    { label: "AR Aging" },
+  ],
   "/app/financial/reports": [
     { label: "Financials", href: "/app/financials" },
     { label: "Reports" },

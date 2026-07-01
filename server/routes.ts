@@ -284,6 +284,7 @@ import {
 } from "@shared/payment-period";
 import { registerAiAssistantRoutes } from "./routes/ai-assistant";
 import { registerPressingItemsRoutes } from "./routes/pressing-items";
+import { buildArAgingReport } from "./services/ar-aging";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
@@ -6783,6 +6784,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         summary: { ...summaryCurrent, total: summaryTotal },
         byUnit,
       });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/financial/ar-aging?associationId — AR AGING / DELINQUENCY (read-only,
+  // owner-ledger-derived, no GL flag / no assessment needed).
+  app.get("/api/financial/ar-aging", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const report = await buildArAgingReport(associationId);
+      res.json(report);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

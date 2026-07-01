@@ -132,6 +132,7 @@ export const ROUTE_MANIFEST: RouteManifest = {
   "/app/financial/payments": FINANCIALS_ACCESS,
   "/app/financial/expenses": FINANCIALS_ACCESS,
   "/app/financial/reports": FINANCIALS_ACCESS,
+  "/app/financial/ar-aging": FINANCIALS_ACCESS,
   // 4.3 Q9 consolidated assessment-rules surface.
   "/app/financial/rules": FINANCIALS_ACCESS,
   // Plaid-backed bank-feed admin surface (Issue #333).
