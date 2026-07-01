@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YCM — HOA Financial Best-Practices Gap Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--teal:#014D4A;--accent:#2DBDB0;--ink:#0f2725;--mut:#5b716e;--line:#e3ecea;--bg:#f5f9f8;
+  --have:#0f8a5f;--have-bg:#e7f6ef;--partial:#b6820c;--partial-bg:#fdf4dd;--miss:#c0392b;--miss-bg:#fbeae7}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif;margin:0}
+header{background:linear-gradient(135deg,var(--teal),#036a66);color:#fff;padding:34px 32px}
+header h1{font-size:25px;font-weight:800}
+header p{margin:9px 0 0;color:#cfeee9;font-size:14px;max-width:800px}
+header .meta{margin-top:14px;font-size:12px;color:#a9ddd6}
+.wrap{max-width:1080px;margin:0 auto;padding:26px 22px 70px}
+h2{font-size:19px;margin:34px 0 4px;color:var(--teal)}
+h3{font-size:15px;margin:20px 0 6px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 16px}
+p{font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0 6px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;text-align:center}
+.stat .v{font-size:26px;font-weight:800;font-family:'Plus Jakarta Sans';color:var(--teal)}
+.stat .l{font-size:12px;color:var(--mut);margin-top:3px}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13.5px;margin-top:6px}
+th,td{padding:11px 13px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#eef5f4;color:var(--teal);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
+tr:last-child td{border-bottom:none}
+.pill{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;display:inline-block}
+.have{background:var(--have-bg);color:var(--have)}
+.partial{background:var(--partial-bg);color:var(--partial)}
+.miss{background:var(--miss-bg);color:var(--miss)}
+.rk{font-family:'Plus Jakarta Sans';font-weight:800;color:var(--teal);font-size:15px}
+.gap{background:#fff;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:12px;padding:16px 18px;margin:14px 0}
+.gap.p0{border-left-color:var(--miss)}
+.gap.p1{border-left-color:var(--partial)}
+.gap.p2{border-left-color:var(--accent)}
+.gap h3{display:flex;align-items:center;gap:10px;font-size:15.5px}
+.gap .row{margin:8px 0;font-size:13.5px}
+.gap .row b{color:var(--teal);font-weight:700}
+.gap .src{font-size:12.5px;color:var(--mut);font-style:italic}
+code{background:#eef5f4;padding:1px 6px;border-radius:5px;font-size:12px;color:#0a3e3b;font-family:ui-monospace,Menlo,monospace}
+.note{background:#fff8e8;border:1px solid #f1e0b6;border-radius:11px;padding:13px 16px;font-size:13.5px;color:#7a5a12;margin:16px 0}
+.good{background:var(--have-bg);border:1px solid #bfe6d4;border-radius:11px;padding:13px 16px;font-size:13.5px;color:#0a5c40;margin:16px 0}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:10px 0 2px}
+a{color:var(--teal)}
+ul{font-size:13.5px;margin:6px 0}
+.foot{margin-top:36px;font-size:12px;color:var(--mut);border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>YourCondoManager — HOA Financial Best-Practices Gap Audit</h1>
+  <p>Where YCM's financial engine stands against the established standards for community-association accounting and bank reconciliation — CAI, GAAP for Common Interest Realty Associations (FASB ASC 972 / the AICPA CIRA Audit Guide), and the leading HOA-management platforms. The question this answers: <b>what proven practices are we ignoring, and what does it cost us?</b></p>
+  <div class="meta">Read-only code + web audit · First customer: Cherry Hill Court (18-unit condo) · Grounded in <code>shared/schema.ts</code>, <code>server/services/reconciliation/*</code>, <code>server/services/gl/*</code></div>
+</header>
+
+<div class="wrap">
+
+  <div class="stats">
+    <div class="stat"><div class="v">6</div><div class="l">HAVE IT (built &amp; live)</div></div>
+    <div class="stat"><div class="v">5</div><div class="l">PARTIAL / built-not-on</div></div>
+    <div class="stat"><div class="v">6</div><div class="l">MISSING</div></div>
+    <div class="stat"><div class="v">3</div><div class="l">P0 gaps (correctness)</div></div>
+  </div>
+
+  <div class="good"><b>Headline — the foundation is strong.</b> YCM already has a fund-aware double-entry general ledger (operating vs. reserve), a chart of accounts, an idempotent GL posting engine, a confidence-scored multi-signal reconciliation matcher, a <i>learned</i> bank-descriptor→owner alias map, reconciliation periods with open/closed/locked states, a staged delinquency-notice engine, payment plans, collections handoff, and an audit log. This is well ahead of most 18-unit self-managed HOAs. The gaps below are about turning a good subledger into a <i>correct, controlled, GAAP-aligned</i> financial system — and about the one architectural decision the owner already flagged: <b>the ledger is person-centric, not unit-centric.</b></div>
+
+  <h2>The three P0 gaps in one breath</h2>
+  <p><b>1. The balance attaches to a person, not the unit.</b> <b>2. The real GL is built but switched OFF — the live books are a dues-only subledger with no expense/vendor/bank side.</b> <b>3. Reconciliation is one-way (matched/unmatched counts), not a true three-way bank-to-book proof, and there's no reserve study driving reserve funding.</b> Everything else compounds off these.</p>
+
+  <h2>1 · Scorecard — best practice vs. YCM</h2>
+  <div class="legend">
+    <span><span class="pill have">HAVE IT</span> built &amp; on the live path</span>
+    <span><span class="pill partial">PARTIAL</span> built but off, or only half the standard</span>
+    <span><span class="pill miss">MISSING</span> not present</span>
+  </div>
+  <table>
+    <thead><tr><th style="width:22%">Best practice</th><th style="width:10%">State</th><th style="width:34%">What YCM does today (code evidence)</th><th style="width:34%">The standard it's measured against</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Unit-centric receivable</b> — balance attaches to the unit; co-owners jointly &amp; severally liable</td>
+        <td><span class="pill miss">MISSING</span></td>
+        <td><code>owner_ledger_entries</code> requires <b>both</b> <code>unitId</code> and <code>personId</code> as <code>notNull()</code>. The canonical owner statement (<code>account-statement.ts</code>) scopes to <b><code>personId</code></b> ("an owner may hold multiple units under one personId"), with <code>unitId</code> only an optional narrower. Balance is a person's, not a unit's.</td>
+        <td>CIRA accounting treats the <b>assessment receivable as an obligation of the unit</b>; co-owners are jointly and severally liable and the lien attaches to the property, not the person. (FASB ASC 972 / AICPA CIRA Guide; state condo lien statutes.)</td>
+      </tr>
+      <tr>
+        <td><b>Payment identification by reference / account number</b> (not name-guessing)</td>
+        <td><span class="pill partial">PARTIAL</span></td>
+        <td>Multi-signal matcher: amount + date + fuzzy payor-name (<code>payorNameMatch</code>, Levenshtein tokens) + a <b>learned</b> <code>bank_descriptor_aliases</code> map that remembers "this descriptor → this person/unit." No unit reference number issued to owners; no lockbox/virtual-account model.</td>
+        <td>Lockbox &amp; managed HOA platforms key payments to a <b>unique per-unit account/reference number on the remittance</b>, not the payer's name. Name matching is the fallback of last resort. (AppFolio/Alliance Association Bank lockbox; Vantaca Pay; Zego.)</td>
+      </tr>
+      <tr>
+        <td><b>Fund accounting — operating vs. reserve segregation</b></td>
+        <td><span class="pill partial">PARTIAL</span></td>
+        <td>The GL has a real fund dimension: <code>gl_fund = operating | reserve</code> on both accounts and journal legs; per-fund cash accounts ("1010 Operating Cash vs Reserve Cash"). <b>But the entire GL is gated behind <code>GL_ENABLED</code>, default OFF</b> — the live owner ledger is dues-only with no fund tag.</td>
+        <td>GAAP for CIRAs uses <b>fund accounting</b> to separate operating from reserve/replacement activity; reserve monies are effectively restricted. (FASB ASC 972; AICPA CIRA Audit Guide.)</td>
+      </tr>
+      <tr>
+        <td><b>Double-entry accrual GL</b> (assets/liabilities/income/expense; balanced journals)</td>
+        <td><span class="pill partial">PARTIAL</span></td>
+        <td>Built, correct, and idempotent: <code>gl_accounts</code> + <code>gl_entries</code> (Σdebits==Σcredits, integer cents, unique source-leg index). <b>Default OFF</b>; "may NOT become source-of-truth until the reconcile-to-the-cent gate passes." Live books remain the single-sided dues subledger — <b>no expense or vendor side at all.</b></td>
+        <td>Under GAAP, CIRAs keep <b>accrual-basis, double-entry books</b> with a full balance sheet and income/expense statement. (FASB ASC 972.)</td>
+      </tr>
+      <tr>
+        <td><b>Three-way reconciliation</b> (bank ↔ GL cash ↔ owner subledger)</td>
+        <td><span class="pill miss">MISSING</span></td>
+        <td><code>reconciliation/report.ts</code> produces matched-count / unmatched-bank / unmatched-ledger inventories — a <b>one-way payment-matching report</b>, not a balance proof. No "bank balance = book balance + outstanding items" tie-out; no deposits-in-transit / outstanding-check model.</td>
+        <td>Standard monthly control is a <b>three-way reconciliation</b>: bank statement balance ties to the GL cash balance, which ties to the sum of owner subledger balances; differences are itemized and investigated. (CAI / HOA CPA practice.)</td>
+      </tr>
+      <tr>
+        <td><b>Monthly reconciliation with locked periods</b></td>
+        <td><span class="pill have">HAVE IT</span></td>
+        <td><code>reconciliation_periods</code> with <code>open → closed → locked</code>, <code>closedBy/closedAt/lockedBy/lockedAt</code>, tied to a bank statement import.</td>
+        <td>Reconcile every account monthly; close and lock the period. (CAI; AICPA.)</td>
+      </tr>
+      <tr>
+        <td><b>Segregation of duties + dual approval on disbursements</b></td>
+        <td><span class="pill miss">MISSING</span></td>
+        <td>No accounts-payable / disbursement / check-run tables; no dual-approval or approval-threshold model in schema. <code>audit_logs</code> (actor/action/before/after) exists but there is no <b>maker-checker</b> control.</td>
+        <td>No one person authorizes, disburses, reconciles, and records. Dual signatures on checks over a threshold ($1k–$2.5k); reserve transfers often need two signers. (CAI; Hovland Forensic; HOAleader 7-step control checkup.)</td>
+      </tr>
+      <tr>
+        <td><b>Reserve study &amp; funding plan</b></td>
+        <td><span class="pill miss">MISSING</span></td>
+        <td>No reserve-study / component-inventory / funding-plan table anywhere in <code>shared/schema.ts</code>. A CA/CT reserve-<i>disclosure</i> checklist template exists in governance content, but no reserve-study data model, % funded, or contribution driver.</td>
+        <td>Site-based reserve study at least every 3 years; contribute ~20% of income to reserves; maintain 70–100% funded. (CAI Reserve Study standards; First Citizens.)</td>
+      </tr>
+      <tr>
+        <td><b>Delinquency aging + statutory notice sequence + liens</b></td>
+        <td><span class="pill partial">PARTIAL</span></td>
+        <td>Good: <code>delinquency_settings</code>, staged <code>delinquency_notices</code> (payment-failed → notice-1 → notice-2 → final at 30/60/90), <code>delinquency_escalations</code>, <code>late_fee_rules/events</code>, <code>collections_handoffs</code>. Missing: a formal <b>aging buckets</b> report (current / 30 / 60 / 90+) and a <b>lien</b> lifecycle (notice-of-intent → lien filed → foreclosure).</td>
+        <td>Track delinquency % (CAI benchmark: ≤3% excellent, 6–10% poor); age receivables; follow the statutory pre-lien notice → lien → collection ladder. (CAI; state condo statutes.)</td>
+      </tr>
+      <tr>
+        <td><b>Budget &amp; budget-vs-actual reporting</b></td>
+        <td><span class="pill have">HAVE IT</span></td>
+        <td><code>budgets</code>, <code>budget_versions</code> (draft/proposed/ratified/archived), <code>budget_lines</code>, and a <code>budget_line_gl_mappings</code> bridge for GL-derived budget-vs-actual.</td>
+        <td>Annual budget adopted; monthly income/expense reported against budget. (CAI.)</td>
+      </tr>
+      <tr>
+        <td><b>Balance sheet &amp; income statement (financial reporting)</b></td>
+        <td><span class="pill partial">PARTIAL</span></td>
+        <td>Derived financial statements exist in <code>server/services/gl/statements.ts</code> — but read-only, <b>GL_ENABLED-gated (OFF)</b>, and explicitly "DERIVED and NOT source-of-truth." No live balance sheet from the dues subledger (it has no liability/equity/expense side).</td>
+        <td>GAAP financial statements: balance sheet, statement of revenues &amp; expenses, and reserve fund disclosure. (FASB ASC 972.)</td>
+      </tr>
+      <tr>
+        <td><b>Annual independent audit / review</b></td>
+        <td><span class="pill miss">MISSING</span></td>
+        <td>No audit/review workflow, engagement tracking, or export package for an outside CPA.</td>
+        <td>Many states + governing docs require an annual CPA audit or review; the CIRA audit guide governs it. (AICPA; state statutes.)</td>
+      </tr>
+      <tr>
+        <td><b>Owner statements + transparency + autopay + payment plans</b></td>
+        <td><span class="pill have">HAVE IT</span></td>
+        <td><code>account-statement.ts</code> (opening/activity/closing), owner portal, autopay, receipts, <code>payment_plans</code>.</td>
+        <td>Owners get periodic statements and self-service payment. (CAI transparency.)</td>
+      </tr>
+      <tr>
+        <td><b>Audit trail / who-did-what</b></td>
+        <td><span class="pill have">HAVE IT</span></td>
+        <td><code>audit_logs</code> (actor email, action, entity, before/after JSON) + <code>auth_events</code>.</td>
+        <td>Immutable trail of financial changes. (AICPA controls.)</td>
+      </tr>
+      <tr>
+        <td><b>Revenue recognition (assessments as receivable when levied)</b></td>
+        <td><span class="pill partial">PARTIAL</span></td>
+        <td>Assessments post charges to the subledger, so a receivable exists — but with GL off there is no accrual-basis recognition (assessment income vs. deferred/prepaid), and ASC 606 handling of member assessments isn't modeled.</td>
+        <td>Accrual basis; assessments recognized as receivable/income per the budget period; ASC 606 considerations for CIRA assessments. (FASB ASC 972 / 606.)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2 · Prioritized gap list — what we're ignoring, ranked by impact</h2>
+  <p class="sub">Ranked by impact on <b>correctness</b> and <b>operating efficiency</b> for a real HOA. P0 = correctness/liability risk; P1 = control &amp; compliance; P2 = maturity.</p>
+
+  <div class="gap p0">
+    <h3><span class="rk">P0-1</span> Ledger is person-centric, not unit-centric <span class="pill miss">MISSING</span></h3>
+    <div class="row"><b>Best practice:</b> The assessment receivable is an obligation of the <b>unit</b>. Co-owners are jointly &amp; severally liable; the lien attaches to the property. A per-unit roster of authorized payer names sits <i>beside</i> the unit balance, not as the balance owner.</div>
+    <div class="row"><b>YCM today:</b> <code>owner_ledger_entries</code> is stamped with <b>both</b> <code>unitId</code> and <code>personId</code> (both required), and the owner statement is scoped to <code>personId</code>. When ownership changes (sale, add/remove co-owner, death), the balance is tied to a person, not the property that legally owes it.</div>
+    <div class="row"><b>Risk of not doing it:</b> Owner-transitions orphan or mis-attribute balances; joint-and-several liability can't be enforced cleanly; a co-owner's payment may not obviously credit the unit; the reconciliation is forced into name-guessing because "who paid" is the primary key instead of "which unit."</div>
+    <div class="row src">Source: FASB ASC 972 / AICPA CIRA Audit &amp; Accounting Guide; state condominium lien statutes; CAI assessment-collection guidance.</div>
+    <div class="row"><b>Recommendation:</b> Make the <b>unit the balance-bearing entity</b>. <code>personId</code> becomes optional metadata on a payment (who tendered it), and the unit carries the receivable. Add a per-unit <b>payer roster</b> (authorized names/descriptors) and — critically — issue each unit a <b>stable payment reference / account number</b> so payments resolve to the unit deterministically (see P0-3). This is the architectural pivot the owner already flagged; everything downstream gets simpler.</div>
+  </div>
+
+  <div class="gap p0">
+    <h3><span class="rk">P0-2</span> The real books are OFF — live ledger is a single-sided dues subledger <span class="pill partial">PARTIAL</span></h3>
+    <div class="row"><b>Best practice:</b> Accrual-basis, fund-aware, <b>double-entry</b> GL with a full balance sheet and income/expense statement — the association's real books.</div>
+    <div class="row"><b>YCM today:</b> A correct, idempotent, fund-aware GL is <i>built</i> (<code>gl_accounts</code>, <code>gl_entries</code>, balanced journals) but gated behind <code>GL_ENABLED</code> (<b>default OFF</b>, per <code>server/services/gl/flag.ts</code> and the schema comments). The live money path writes only <code>owner_ledger_entries</code> — dues in, no expense side, no vendor payables, no cash accounts, no fund tag.</div>
+    <div class="row"><b>Risk of not doing it:</b> The association has <b>no true financial statements</b> — you can show what owners owe, but not what the HOA spent, owes vendors, or holds by fund. That fails GAAP, blocks the annual audit, and hides the reserve position. Operating and reserve cash are commingled in reality because nothing enforces the split.</div>
+    <div class="row src">Source: FASB ASC 972; AICPA CIRA Guide; CAI financial-reporting best practices.</div>
+    <div class="row"><b>Recommendation:</b> Drive the GL to source-of-truth for Cherry Hill: run the reconcile-to-the-cent gate (<code>script/verify-gl-reconcile.ts</code>), build the expense/vendor/bank side so journals balance both ways, then flip <code>GL_ENABLED</code> for the association. The subledger becomes a <i>view</i> of the GL, not a parallel truth.</div>
+  </div>
+
+  <div class="gap p0">
+    <h3><span class="rk">P0-3</span> No unique payment reference — reconciliation relies on name/amount guessing <span class="pill partial">PARTIAL</span></h3>
+    <div class="row"><b>Best practice:</b> Every unit gets a <b>unique account/reference number</b> that must appear on the remittance (lockbox coupon, virtual account, or memo reference). Payments resolve to the unit by that key — deterministically — before any name matching is attempted.</div>
+    <div class="row"><b>YCM today:</b> The matcher is genuinely good for its class — amount + date + fuzzy name + a <b>learned</b> <code>bank_descriptor_aliases</code> map. But the primary signal is still <b>name + amount</b>, which collides (two owners, same dues, same day → both go to manual review by design) and breaks on nicknames, business names, and third-party payers.</div>
+    <div class="row"><b>Risk of not doing it:</b> Persistent manual-review load, mis-posted payments, and a reconciliation that can't scale past a handful of units. This is the "ad-hoc name-matching" the owner explicitly wants to leave behind.</div>
+    <div class="row src">Source: AppFolio / Alliance Association Bank automated lockbox; Vantaca Pay; Zego lockbox for HOA.</div>
+    <div class="row"><b>Recommendation:</b> Issue a per-unit reference number (Stripe payment metadata / statement descriptor / lockbox coupon). Match on the reference first (100% confidence, no review), fall back to amount+alias, and keep the fuzzy-name matcher only as the last resort. Pairs directly with P0-1.</div>
+  </div>
+
+  <div class="gap p1">
+    <h3><span class="rk">P1-1</span> Reconciliation is one-way, not a three-way balance proof <span class="pill miss">MISSING</span></h3>
+    <div class="row"><b>Best practice:</b> Monthly <b>three-way reconciliation</b> — bank statement balance = GL cash balance = sum of owner subledger balances, with deposits-in-transit and outstanding items itemized and any difference investigated.</div>
+    <div class="row"><b>YCM today:</b> <code>report.ts</code> gives matched/unmatched <i>counts</i> — a payment-matching inventory, not a tie-out. There's no assertion that the books actually equal the bank.</div>
+    <div class="row"><b>Risk:</b> Payments can match individually while the totals silently drift; errors and missing deposits go undetected until an audit.</div>
+    <div class="row src">Source: CAI 10 financial best practices; AICPA CIRA controls; standard bank-rec practice.</div>
+    <div class="row"><b>Recommendation:</b> Add a period-close tie-out that proves bank = GL cash = subledger, lists reconciling items, and blocks locking a period with an unexplained variance. (Depends on P0-2 for the GL cash side.)</div>
+  </div>
+
+  <div class="gap p1">
+    <h3><span class="rk">P1-2</span> No segregation of duties / dual-approval on disbursements <span class="pill miss">MISSING</span></h3>
+    <div class="row"><b>Best practice:</b> No single person authorizes, disburses, reconciles, and records. Dual signatures/approvals on payments over a threshold; reserve transfers need two approvers.</div>
+    <div class="row"><b>YCM today:</b> No AP/disbursement/check-run model and no maker-checker approval anywhere in schema. The <code>audit_logs</code> trail records changes but doesn't <i>enforce</i> a second set of eyes.</div>
+    <div class="row"><b>Risk:</b> This is the #1 vector in HOA embezzlement cases — one treasurer controlling all four duties. A self-managed 18-unit board is exactly the profile.</div>
+    <div class="row src">Source: Hovland Forensic HOA embezzlement; HOAleader 7-step controls checkup; CAI; MACPA fund-safeguarding.</div>
+    <div class="row"><b>Recommendation:</b> When AP is built, add approval thresholds + a second-approver gate on disbursements and reserve transfers, with the audit log capturing both approvers.</div>
+  </div>
+
+  <div class="gap p1">
+    <h3><span class="rk">P1-3</span> No reserve study / funding plan driving reserves <span class="pill miss">MISSING</span></h3>
+    <div class="row"><b>Best practice:</b> A reserve study (component inventory + funding plan) refreshed at least every 3 years drives the reserve contribution; target 70–100% funded, ~20% of income to reserves.</div>
+    <div class="row"><b>YCM today:</b> The GL can hold a reserve fund, but there is <b>no reserve-study data model</b> — no components, no % funded, no contribution driver. Reserve funding would be a guess.</div>
+    <div class="row"><b>Risk:</b> Under-funded reserves → special assessments (like Cherry Hill's driveway) become emergencies instead of planned events; lender/insurer scrutiny; owner disputes.</div>
+    <div class="row src">Source: CAI National Reserve Study Standards; First Citizens reserve-fund guidance.</div>
+    <div class="row"><b>Recommendation:</b> Add a reserve-study model (components, useful life, replacement cost, current reserves, % funded) that computes the recommended monthly reserve contribution and shows funded status on the dashboard.</div>
+  </div>
+
+  <div class="gap p2">
+    <h3><span class="rk">P2-1</span> Track a special assessment separately from operating dues, by fund <span class="pill partial">PARTIAL</span></h3>
+    <div class="row"><b>Best practice:</b> A special assessment (e.g. Cherry Hill's driveway) is tracked as its own restricted activity — its own receivable and typically its own fund — not blended into operating dues.</div>
+    <div class="row"><b>YCM today:</b> <code>special_assessments</code> is a solid model (allocation methods, installments, loan-style terms), and it posts to the ledger — but with GL off there's no fund tag, so the driveway money isn't accounted as separate restricted activity from operating cash.</div>
+    <div class="row src">Source: FASB ASC 972 fund accounting; CAI.</div>
+    <div class="row"><b>Recommendation:</b> Post special-assessment charges/receipts to a dedicated fund/GL account so the driveway project has its own visible balance and can't be spent on operations. (Rides on P0-2.)</div>
+  </div>
+
+  <div class="gap p2">
+    <h3><span class="rk">P2-2</span> No formal AR aging buckets or lien lifecycle <span class="pill partial">PARTIAL</span></h3>
+    <div class="row"><b>Best practice:</b> Age receivables into current / 30 / 60 / 90+ buckets; track delinquency % against the CAI benchmark (≤3% excellent); model the statutory pre-lien → lien → foreclosure ladder.</div>
+    <div class="row"><b>YCM today:</b> Strong staged notices (30/60/90) + escalations + collections handoff, but no aging-bucket <i>report</i> and no <b>lien</b> object (notice-of-intent → filed → released).</div>
+    <div class="row src">Source: CAI delinquency benchmarks; state condo lien statutes.</div>
+    <div class="row"><b>Recommendation:</b> Add an aging report (unit-centric, per P0-1) and a lien lifecycle so the board sees delinquency % and the legal collection state at a glance.</div>
+  </div>
+
+  <div class="gap p2">
+    <h3><span class="rk">P2-3</span> No annual audit/review export package <span class="pill miss">MISSING</span></h3>
+    <div class="row"><b>Best practice:</b> Annual CPA audit or review per state/governing docs, following the AICPA CIRA guide; a clean export package makes it cheap.</div>
+    <div class="row"><b>YCM today:</b> No audit workflow or CPA export.</div>
+    <div class="row src">Source: AICPA CIRA Audit &amp; Accounting Guide; state statutes.</div>
+    <div class="row"><b>Recommendation:</b> Once the GL is live, generate a year-end package (trial balance, financials by fund, reserve disclosure, GL detail) for the outside CPA. Lower priority than getting the books right first.</div>
+  </div>
+
+  <div class="note"><b>Sequencing note.</b> P0-1 (unit-centric) and P0-3 (unique reference) are the same pivot and should ship together — they make reconciliation deterministic and fix the liability model. P0-2 (turn on the GL) is the unlock for P1-1 (three-way rec), P2-1 (fund-separated special assessments), and P2-3 (audit package). The GL is already built and correct; the work is the expense/vendor side + the reconcile-to-the-cent gate + flipping the flag, not a rewrite.</div>
+
+  <h2>3 · Cited sources</h2>
+  <ul>
+    <li><b>CAI — Community Associations Institute:</b> <a href="https://cai-rmc.org/Blog/9123554">10 Financial Best Practices for HOAs &amp; Condominiums</a>; <a href="https://www.caionline.org/">CAI resources</a>; Best Practices series; National Reserve Study Standards.</li>
+    <li><b>GAAP for CIRAs (FASB ASC 972 / AICPA CIRA Audit &amp; Accounting Guide):</b> <a href="http://archives.cpajournal.com/old/07085824.htm">Accounting for Common Interest Realty Associations (CPA Journal)</a>; <a href="http://www.gannlaw.com/OnlineApp/dtSearch-Data/TextFiles/Condominium/37.pdf">Overview of Accounting Standards for the CIRA Industry</a>; <a href="https://www.desrochescpas.com/revenuerecognition">Revenue recognition for community associations (ASC 606)</a>.</li>
+    <li><b>Lockbox / payment identification:</b> <a href="https://www.westernalliancebancorporation.com/alliance-association-bank/hoa-banking/hoa-treasury-management/hoa-lockbox">Alliance Association Bank HOA Lockbox</a>; <a href="https://www.appfolio.com/markets/hoa/financials">AppFolio HOA financials (automated lockbox / auto-reconciliation)</a>; <a href="https://www.vantaca.com/pay">Vantaca Pay</a>; <a href="https://www.gozego.com/articles/lockbox-payments-for-hoa/">Zego — Lockbox Payments for HOA</a>.</li>
+    <li><b>Reserve funds:</b> <a href="https://www.firstcitizens.com/commercial/insights/cab-insights/managing-hoa-reserve-funds">First Citizens — Best practices for managing HOA reserve funds</a>.</li>
+    <li><b>Internal controls / segregation of duties / fraud:</b> <a href="https://hovlandforensic.com/blog/hoa-embezzlement/">Hovland Forensic — HOA Embezzlement</a>; <a href="https://www.hoaleader.com/public/Complete-This-7-Step-Checkup-on-Your-HOAs-Financial-Controls-to-Prevent-Embezzlement.cfm">HOAleader — 7-Step Financial Controls Checkup</a>; <a href="https://macpas.com/safeguarding-hoa-funds-best-practices-to-prevent-fraud-and-theft/">MACPA — Safeguarding HOA Funds</a>; <a href="https://www.jsmorlu.com/homeowners-association/hoa-financial-control/">JS Morlu — The HOA Financial Control Problem</a>.</li>
+  </ul>
+
+  <div class="foot">
+    Audit method: read-only inspection of <code>shared/schema.ts</code>, <code>server/services/reconciliation/{auto-matcher,report}.ts</code>, <code>server/services/gl/*</code>, <code>server/services/account-statement.ts</code>, and delinquency/assessment services, compared against the named CAI / GAAP-CIRA / AICPA / industry-platform standards above. No code was modified; no git operations were run. Each finding is grounded in a file/table, not first principles. State labels: HAVE IT = built &amp; on the live path · PARTIAL = built-but-off or half the standard · MISSING = not present.
+  </div>
+
+</div>
+</body>
+</html>
