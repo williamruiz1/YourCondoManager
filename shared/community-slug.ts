@@ -184,6 +184,40 @@ export function isReservedSlug(slug: string): boolean {
   return RESERVED_COMMUNITY_SLUGS.has(slug.toLowerCase());
 }
 
+/**
+ * Reduce any slug-ish string to a comparison KEY: lowercase ascii alphanumerics
+ * with every separator (hyphen/underscore/space/punctuation) and accent removed.
+ * Used for TOLERANT vanity-URL resolution so a visitor who types a natural
+ * variant of a community's stored slug still lands on the right hub:
+ *
+ *   normalizeSlugKey("cherryhill")        === "cherryhill"
+ *   normalizeSlugKey("Cherry-Hill")       === "cherryhill"
+ *   normalizeSlugKey("CHERRY_HILL")       === "cherryhill"
+ *   normalizeSlugKey("cherry hill")       === "cherryhill"
+ *
+ * This is intentionally forgiving on FORMATTING only — it never adds or drops
+ * distinctive words, so "cherryhill" and "cherryhillcourt" stay distinct.
+ */
+export function normalizeSlugKey(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+/**
+ * True if `identifier` (as typed in a /community/<identifier> URL) should
+ * resolve to a hub whose stored slug is `storedSlug`, tolerating differences
+ * in case and separator formatting only. Empty inputs never match.
+ */
+export function slugMatches(storedSlug: string | null | undefined, identifier: string): boolean {
+  if (!storedSlug || !identifier) return false;
+  const a = normalizeSlugKey(storedSlug);
+  const b = normalizeSlugKey(identifier);
+  return a.length > 0 && a === b;
+}
+
 export interface EnsureUniqueSlugOptions {
   /** The desired base slug (already produced by slugifyCommunityName / sanitizeSlug). */
   base: string;
