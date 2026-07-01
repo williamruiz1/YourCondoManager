@@ -4250,6 +4250,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/financial/statements/income-statement?associationId=...
+  //   → income & expense statement (income by account, expense by account, net)
+  //     + the reconcile-to-cent trust indicator. Same per-association GL gate.
+  app.get("/api/financial/statements/income-statement", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      if (!isGlEnabledForAssociation(associationId)) return res.status(404).json({ message: "Financial statements are not enabled for this association (GL is off)." });
+      const statements = await buildFinancialStatements(associationId);
+      res.json({ associationId, generatedAt: statements.generatedAt, derived: true, incomeStatement: statements.incomeStatement, reconciliation: statements.reconciliation });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   // GET /api/financial/gl/accounts?associationId=...  → DERIVED per-GL-account
   // balances (the dues-driven Cash 1010 / AR 1200 / Income 4000 roll-up). This
   // is the SEAM for the Chart of Accounts screen (/app/financial/foundation),

@@ -138,6 +138,9 @@ export const ROUTE_MANIFEST: RouteManifest = {
   "/app/financial/bank-connections": FINANCIALS_ACCESS,
   // Owner account-statement generator (readiness P0-3 / Issue #206).
   "/app/financial/statement": FINANCIALS_ACCESS,
+  // GL-derived financial statements — balance sheet + income/expense +
+  // budget-vs-actual, reconciled to the cent (YCM Financial Core Phase 3).
+  "/app/financial/statements": FINANCIALS_ACCESS,
 
   // ---- Financials zone legacy singular-prefix redirects (3.2 Q4 archive) ----
   "/app/financial/fees": FINANCIALS_ACCESS,
