@@ -276,7 +276,7 @@ import {
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
 import { normalizeHubVisibility } from "@shared/hub-visibility";
-import { slugifyCommunityName, ensureUniqueSlug } from "@shared/community-slug";
+import { slugifyCommunityName, ensureUniqueSlug, normalizeSlugKey } from "@shared/community-slug";
 import {
   resolveAmountDue,
   toAmountDueThisPeriod,
@@ -713,6 +713,41 @@ function renderPaymentLinkPage(params: {
 function getParam(value: string | string[] | undefined): string {
   if (!value) return "";
   return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * Resolve a community-hub config from a `/community/:identifier` URL segment
+ * (founder-os #8151 — trustworthy community vanity URLs). Match priority,
+ * most-specific first:
+ *   1. exact stored slug          — e.g. /community/cherryhill
+ *   2. association id             — legacy / back-compat deep links
+ *   3. tolerant slug key          — case- & separator-insensitive match of the
+ *      stored slug, so /community/Cherry-Hill or /community/CHERRYHILL still
+ *      resolve to stored "cherryhill".
+ * The tolerant step (3) runs ONLY after (1) and (2) miss, so an exact slug or id
+ * always wins — this can never change a URL that already resolves; it only
+ * rescues one that would otherwise 404. If two slugs normalize to the same key
+ * (rare — ensureUniqueSlug prevents exact dupes, not normalized ones) the match
+ * is made deterministic by ordering on the slug. Returns undefined on no match.
+ */
+async function resolveHubConfigByIdentifier(identifier: string) {
+  if (!identifier) return undefined;
+  let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
+  if (!config) {
+    config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
+  }
+  if (!config) {
+    const key = normalizeSlugKey(identifier);
+    if (key) {
+      config = (await db
+        .select()
+        .from(hubPageConfigs)
+        .where(sql`regexp_replace(lower(${hubPageConfigs.slug}), '[^a-z0-9]+', '', 'g') = ${key}`)
+        .orderBy(hubPageConfigs.slug)
+        .limit(1))[0];
+    }
+  }
+  return config;
 }
 
 function normalizeBaseUrl(value: string | null | undefined): string | null {
@@ -18630,11 +18665,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
     try {
       const identifier = getParam(req.params.identifier);
-      // Try slug first, then ID
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
@@ -18733,10 +18764,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
     try {
       const identifier = getParam(req.params.identifier);
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
@@ -18783,10 +18811,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     try {
       const identifier = getParam(req.params.identifier);
       const buildingId = getParam(req.params.buildingId);
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
@@ -18818,10 +18843,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
     try {
       const identifier = getParam(req.params.identifier);
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
@@ -18864,12 +18886,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   app.get("/api/hub/:identifier/static-map", async (req, res) => {
     try {
       const identifier = getParam(req.params.identifier);
-
-      // Same lookup pattern as /api/hub/:identifier/map
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
