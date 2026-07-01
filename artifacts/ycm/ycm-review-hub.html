@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>YourCondoManager — Review Hub (2026-06-30)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--teal:#014D4A;--accent:#2DBDB0;--ink:#0f2725;--mut:#5b716e;--line:#e3ecea;--bg:#f5f9f8;--ok:#0f8a4a;--warn:#b8860b;--card:#fff;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5}
+  h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif;margin:0}
+  a{color:var(--teal);text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 22px 64px}
+  header{background:linear-gradient(135deg,var(--teal),#036a66);color:#fff;padding:34px 0 30px;margin-bottom:26px}
+  header .wrap{padding-top:0;padding-bottom:0}
+  .logo{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .logo .mark{width:34px;height:34px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--teal);font-weight:800;font-family:'Plus Jakarta Sans'}
+  header h1{font-size:27px;font-weight:800}
+  header p{margin:8px 0 0;color:#cfeee9;max-width:680px}
+  .stamp{display:inline-block;margin-top:14px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#eafffb;padding:5px 12px;border-radius:999px;font-size:12.5px;font-weight:600}
+  .sec{margin-top:30px}
+  .sec h2{font-size:18px;display:flex;align-items:center;gap:10px}
+  .sec h2 .dot{width:11px;height:11px;border-radius:3px}
+  .sub{color:var(--mut);font-size:13.5px;margin:4px 0 14px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px 17px}
+  .card h3{font-size:15px;font-weight:700;margin-bottom:5px}
+  .card p{margin:0;color:var(--mut);font-size:13.5px}
+  .card .links{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
+  .pill{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#f3f8f7;color:var(--teal)}
+  .pill.live{background:#e6f6ee;border-color:#bfe6cf;color:var(--ok)}
+  .pill.go{background:#eafaf8;border-color:#bce9e3;color:var(--teal)}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:6px;margin-bottom:7px}
+  .tag.live{background:#e6f6ee;color:var(--ok)}
+  .tag.review{background:#eef4ff;color:#2c5fb3}
+  .tag.dec{background:#fdf3e0;color:var(--warn)}
+  .tag.next{background:#eef1f1;color:var(--mut)}
+  ul.dec{list-style:none;margin:0;padding:0}
+  ul.dec li{background:#fff;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:9px;padding:11px 14px;margin-bottom:9px;font-size:13.8px}
+  ul.dec li b{color:var(--ink)}
+  .note{background:#fff8e8;border:1px solid #f1e0b6;border-radius:11px;padding:13px 16px;font-size:13.5px;color:#7a5a12}
+  footer{margin-top:34px;color:var(--mut);font-size:12.5px;text-align:center}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="logo"><div class="mark">Y</div><strong style="font-family:'Plus Jakarta Sans';font-size:15px">YourCondoManager</strong></div>
+  <h1>Review Hub — everything in one place</h1>
+  <p>What's live and working, what's ready for your eyes, and the decisions waiting on you. Built so you're not chasing separate pull requests.</p>
+  <span class="stamp">Snapshot · 2026-06-30, 2:38 PM ET · Cherry Hill Court (first live customer)</span>
+</div></header>
+
+<div class="wrap">
+
+  <div class="sec">
+    <h2><span class="dot" style="background:var(--ok)"></span>Live &amp; working now</h2>
+    <p class="sub">Real, deployed, and verified — click in and use it.</p>
+    <div class="grid">
+      <div class="card"><span class="tag live">Live</span><h3>Dues collection</h3><p>Cherry Hill collects $330/mo from owners through Stripe — the money rail has been live since this morning.</p><div class="links"><a class="pill live" href="https://app.yourcondomanager.org" target="_blank">Open the app</a></div></div>
+      <div class="card"><span class="tag live">Live</span><h3>Bank feed — Chase linked</h3><p>Stripe Financial Connections is live; you linked Chase and <b>91 transactions</b> pulled in. This is the reconciliation feed.</p><div class="links"><a class="pill live" href="https://app.yourcondomanager.org/app/financial/bank-connections" target="_blank">Bank Accounts page</a></div></div>
+      <div class="card"><span class="tag live">Live</span><h3>Owner portal — finances &amp; pay</h3><p>Owners pay via Stripe (not Plaid), "Add method" works, dues vs. assessments split, statements and maintenance fixed.</p><div class="links"><a class="pill" href="https://github.com/williamruiz1/YourCondoManager/pull/308" target="_blank">#308</a><a class="pill" href="https://github.com/williamruiz1/YourCondoManager/pull/307" target="_blank">#307</a></div></div>
+      <div class="card"><span class="tag live">Live</span><h3>Financials page + privacy</h3><p>Page-load errors permanently guarded, run-history labeled, admin statement fixed, privacy page renders clean, dead links fixed.</p><div class="links"><a class="pill" href="https://github.com/williamruiz1/YourCondoManager/pull/311" target="_blank">#311</a><a class="pill" href="https://github.com/williamruiz1/YourCondoManager/pull/313" target="_blank">#313</a></div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><span class="dot" style="background:#2c5fb3"></span>Ready to review</h2>
+    <p class="sub">Proposals and plans — open the visuals directly, or the write-ups on GitHub.</p>
+    <div class="grid">
+      <div class="card"><span class="tag review">Preview</span><h3>Chase deposits → owner payments</h3><p><b>$12,474+ of owner payments</b> landed in Chase but were never credited — a preview of what the auto-reconciler <em>would</em> apply: 38 of 70 deposits name-match, 24 auto-match cleanly. <b>Nothing applied</b> — awaiting your go.</p><div class="links"><a class="pill go" href="chc-chase-payment-match-preview.html" target="_blank">Open preview</a></div></div>
+      <div class="card"><span class="tag review">Wireframe</span><h3>Platform simplification</h3><p>Kill the redundant "hub" layer — every section drops from 3 clicks to 2. Before/after wireframe.</p><div class="links"><a class="pill go" href="platform-ia-wireframe.html" target="_blank">Open wireframe</a><a class="pill" href="https://github.com/williamruiz1/YourCondoManager/pull/314" target="_blank">#314</a></div></div>
+      <div class="card"><span class="tag review">Preview</span><h3>Community page redesign</h3><p>Condensed v2 (no dues clutter, Owner Portal link). v3 — structured, multi-column, board/contacts — building next.</p><div class="links"><a class="pill go" href="community-page-redesign-cherryhill-v2.html" target="_blank">Open v2</a><a class="pill" href="https://github.com/williamruiz1/YourCondoManager/pull/317" target="_blank">#317</a></div></div>
+      <div class="card"><span class="tag review">Plan</span><h3>Reconciliation logistics + catch-up</h3><p>How statements vs. the bank feed work, the retroactive 180-day catch-up, and the two history paths.</p><div class="links"><a class="pill" href="https://github.com/williamruiz1/YourCondoManager/pull/318" target="_blank">#318</a></div></div>
+      <div class="card"><span class="tag review">Audit</span><h3>QuickBooks readiness + migration</h3><p>Honest verdict: the dues/accounting engine is strong; the one real gap is vendor expenses not posting to the ledger. Plus the QB import path.</p><div class="links"><a class="pill" href="https://github.com/williamruiz1/YourCondoManager/pull/319" target="_blank">#319</a></div></div>
+      <div class="card"><span class="tag review">Vision</span><h3>Community-page utilities (consolidated)</h3><p>Your lender / insurance / resale-certificate "request a doc &amp; pay a fee" vision, pulled into one place with what's built vs. scoped.</p><div class="links"><span class="pill">doc landed</span></div></div>
+      <div class="card"><span class="tag next">In motion</span><h3>Reconciliation trust &amp; verification</h3><p>How we PROVE the books are fully reconciled (tie-to-the-penny, exception list, audit trail) + the migration experience. Resumes after the cap reset.</p><div class="links"><span class="pill">resumes ~3pm ET</span></div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><span class="dot" style="background:var(--warn)"></span>Decisions waiting on you</h2>
+    <p class="sub">Genuine forks — your call, not mine.</p>
+    <ul class="dec">
+      <li><b>Expenses → General Ledger</b> — the #1 accounting gap (expenses don't hit the P&amp;L yet). You said fix it; the approach is in #319. <i>Confirm and I build it.</i></li>
+      <li><b>Income-account split</b> — should dues and special assessments post to separate income accounts (today both hit one)?</li>
+      <li><b>Platform structure</b> — 6 decisions in #314 (delete the hub layer, rename "Assessment Rules," etc.).</li>
+      <li><b>Opening balances</b> — keep the ~$21.6k opening balances + the $80k driveway assessment (your real position), or zero out and start fresh?</li>
+      <li><b>Community page v3</b> — confirm direction once you see v3 (incorporating the lender/insurance utilities).</li>
+    </ul>
+  </div>
+
+  <div class="sec">
+    <div class="note"><b>Heads-up on timing:</b> a couple of the scoping agents just stalled on an Anthropic usage cap that <b>resets at 3:00 PM ET</b> (~20 min). They'll resume automatically — the community page v3 and the reconciliation trust/verification scope. Everything live above is unaffected.</div>
+  </div>
+
+  <footer>YourCondoManager · internal review hub · regenerated each session. Not public.</footer>
+</div>
+</body>
+</html>
