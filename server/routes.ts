@@ -13955,6 +13955,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const myEntries = allEntries.filter((e) => e.personId === req.portalPersonId);
       const balance = myEntries.reduce((sum, e) => sum + e.amount, 0);
       const activePlan = paymentPlansAll.find((p) => p.status === "active") ?? null;
+      // 2026-07-01 (display-only) — most-recent payment date, derived read-only
+      // from the ledger. Drives the owner-portal "Paid in full on <date>" state
+      // when the owner owes nothing. No money logic, no ledger write — just the
+      // `postedAt` of the newest `payment`/`credit` entry.
+      const lastPayment = myEntries
+        .filter((e) => e.entryType === "payment" || e.entryType === "credit")
+        .map((e) => (e.postedAt ? new Date(e.postedAt) : null))
+        .filter((d): d is Date => d != null && !Number.isNaN(d.getTime()))
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
       // Next due date from the soonest upcoming nextRunDate
       const nextDue = activeSchedules
         .map((s) => s.nextRunDate ? new Date(s.nextRunDate) : null)
@@ -14051,6 +14060,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         totalPaid: Math.abs(myEntries.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
         feeSchedules: activeSchedules.map((s) => ({ id: s.id, name: s.chargeDescription, amount: s.amount, frequency: s.frequency })),
         nextDueDate: nextDue ? nextDue.toISOString() : null,
+        // 2026-07-01 (display-only) — drives the "Paid in full on <date>" state.
+        lastPaymentDate: lastPayment ? lastPayment.toISOString() : null,
         paymentPlan: activePlan ? {
           id: activePlan.id,
           totalAmount: activePlan.totalAmount,
