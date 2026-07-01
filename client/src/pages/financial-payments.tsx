@@ -304,11 +304,74 @@ interface StripeConnectConnectionView {
   createdAt: string;
 }
 
-function statusBadgeVariant(
-  status: StripeConnectConnectionView["connectState"]["status"],
-): "default" | "secondary" | "destructive" {
-  if (status === "active") return "default";
-  if (status === "disabled" || status === "restricted") return "destructive";
+// ── Plain-English status for board members (founder-os#8152 / OP #66) ─────────
+// Maps the raw Stripe Connect state (status enum + capability flags + Stripe's
+// internal disabled_reason) into a board-member-readable { label, meaning, next }
+// so the surface never shows raw Stripe field names or account IDs as primary
+// content. Honest: "can charge but not pay out" is surfaced, not hidden.
+export interface GatewayPlainStatus {
+  label: string;         // the plain badge text
+  meaning: string;       // one line: what this means, no jargon
+  next: string;          // the action a board member should take (or reassurance)
+  tone: "ok" | "warn" | "action";
+}
+
+export function gatewayPlainStatus(
+  cs: StripeConnectConnectionView["connectState"],
+): GatewayPlainStatus {
+  const { status, chargesEnabled, payoutsEnabled, detailsSubmitted } = cs;
+
+  if (status === "active" && chargesEnabled && payoutsEnabled) {
+    return {
+      label: "Ready to accept payments",
+      meaning: "Owners can pay online and the money goes straight to the HOA's bank account.",
+      next: "Nothing needed — you're all set.",
+      tone: "ok",
+    };
+  }
+  if (status === "active" && chargesEnabled && !payoutsEnabled) {
+    return {
+      label: "Accepting payments — payouts not on yet",
+      meaning: "Owners can pay, but money can't be sent to the HOA's bank account until setup is finished.",
+      next: 'Click "Finish setup" to turn on payouts to the HOA\'s bank.',
+      tone: "warn",
+    };
+  }
+  if (status === "restricted") {
+    return {
+      label: "A few more details needed",
+      meaning: "Stripe needs a little more information before online payments can fully turn on.",
+      next: 'Click "Finish setup" and complete the requested details.',
+      tone: "action",
+    };
+  }
+  if (status === "disabled") {
+    return {
+      label: "Payments are turned off",
+      meaning: "Online payments aren't available for this HOA right now.",
+      next: 'Click "Finish setup" to reconnect — or contact support if it keeps happening.',
+      tone: "action",
+    };
+  }
+  if (status === "pending" || !detailsSubmitted) {
+    return {
+      label: "Setup not finished",
+      meaning: "The HOA's bank connection hasn't been completed yet.",
+      next: 'Click "Continue setup" to finish connecting the bank account.',
+      tone: "action",
+    };
+  }
+  return {
+    label: "Checking status…",
+    meaning: "We're confirming this HOA's payment setup.",
+    next: "Check back in a moment.",
+    tone: "warn",
+  };
+}
+
+function plainStatusVariant(tone: GatewayPlainStatus["tone"]): "default" | "secondary" | "destructive" {
+  if (tone === "ok") return "default";
+  if (tone === "action") return "destructive";
   return "secondary";
 }
 
@@ -374,8 +437,8 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
         return;
       }
       toast({
-        title: "Connect onboarding started",
-        description: `Account ${data.accountId} (statement descriptor: ${data.statementDescriptor}).`,
+        title: "Payment setup started",
+        description: "Follow the steps to finish connecting the HOA's bank account.",
       });
     },
     onError: (err: Error) => {
@@ -395,47 +458,39 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
     <div className="space-y-4">
       <Card data-testid="card-stripe-connect">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Connect this HOA to Stripe</CardTitle>
+          <CardTitle className="text-sm">Set up online payments for this HOA</CardTitle>
           <CardDescription>
-            This is the recommended path for accepting owner payments. Each HOA becomes a sub-merchant
-            under the YCM platform — owners see the HOA name on their bank statement, payouts route
-            directly to the HOA's bank account, and Stripe issues a 1099-K to the HOA at year-end.
+            The recommended way to let owners pay online. The HOA connects its own bank account —
+            owners see the HOA's name on their statement, the money goes straight to the HOA's bank
+            account, and the HOA gets its own year-end tax form (1099-K). Setup takes a few minutes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {associationConnection && (
-            <div className="rounded-lg border p-3 space-y-2" data-testid="row-stripe-connect-status">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Current status</p>
-                <div className="flex items-center gap-2">
-                  <KeyModeBadge keyMode={associationConnection.keyMode} />
-                  <Badge variant={statusBadgeVariant(associationConnection.connectState.status)}>
-                    {associationConnection.connectState.status}
-                  </Badge>
+          {associationConnection && (() => {
+            const plain = gatewayPlainStatus(associationConnection.connectState);
+            return (
+              <div className="rounded-lg border p-3 space-y-2" data-testid="row-stripe-connect-status">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Payment status</p>
+                  <div className="flex items-center gap-2">
+                    <KeyModeBadge keyMode={associationConnection.keyMode} />
+                    <Badge variant={plainStatusVariant(plain.tone)} data-testid="badge-gateway-plain-status">
+                      {plain.label}
+                    </Badge>
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground" data-testid="text-gateway-meaning">
+                  {plain.meaning}
+                </p>
+                <p
+                  className={`text-xs ${plain.tone === "ok" ? "text-muted-foreground" : "font-medium"}`}
+                  data-testid="text-gateway-next-action"
+                >
+                  <span className="font-medium">Next:</span> {plain.next}
+                </p>
               </div>
-              {associationConnection.providerAccountId && (
-                <p className="text-xs text-muted-foreground">
-                  Stripe account: <code>{associationConnection.providerAccountId}</code>
-                </p>
-              )}
-              {associationConnection.connectState.statementDescriptor && (
-                <p className="text-xs text-muted-foreground">
-                  Statement descriptor: <code>{associationConnection.connectState.statementDescriptor}</code>
-                </p>
-              )}
-              {associationConnection.connectState.disabledReason && (
-                <p className="text-xs text-destructive">
-                  Disabled reason: {associationConnection.connectState.disabledReason}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Charges: {associationConnection.connectState.chargesEnabled ? "enabled" : "disabled"} ·
-                Payouts: {associationConnection.connectState.payoutsEnabled ? "enabled" : "disabled"} ·
-                Details submitted: {associationConnection.connectState.detailsSubmitted ? "yes" : "no"}
-              </p>
-            </div>
-          )}
+            );
+          })()}
 
           <Button
             onClick={() => onboardMutation.mutate()}
@@ -457,7 +512,7 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
         <Card data-testid="card-stripe-connect-list">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Connected HOAs ({connections.length})</CardTitle>
-            <CardDescription>Stripe Connect status across the portfolio.</CardDescription>
+            <CardDescription>Online-payment status for each HOA.</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -471,26 +526,27 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
                 <TableHeader>
                   <TableRow>
                     <TableHead>HOA</TableHead>
-                    <TableHead>Stripe account</TableHead>
-                    <TableHead>Statement descriptor</TableHead>
+                    <TableHead>Shows on owner&apos;s statement as</TableHead>
                     <TableHead>Mode</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Payment status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {connections.map((c) => (
+                  {connections.map((c) => {
+                    const plain = gatewayPlainStatus(c.connectState);
+                    return (
                     <TableRow key={c.id} data-testid={`row-stripe-connect-${c.id}`}>
                       <TableCell className="font-medium">{c.associationName ?? c.associationId}</TableCell>
-                      <TableCell><code className="text-xs">{c.providerAccountId ?? "—"}</code></TableCell>
-                      <TableCell><code className="text-xs">{c.connectState.statementDescriptor ?? "—"}</code></TableCell>
+                      <TableCell className="text-xs">{c.connectState.statementDescriptor ?? "—"}</TableCell>
                       <TableCell><KeyModeBadge keyMode={c.keyMode} /></TableCell>
                       <TableCell>
-                        <Badge variant={statusBadgeVariant(c.connectState.status)}>
-                          {c.connectState.status}
+                        <Badge variant={plainStatusVariant(plain.tone)}>
+                          {plain.label}
                         </Badge>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
