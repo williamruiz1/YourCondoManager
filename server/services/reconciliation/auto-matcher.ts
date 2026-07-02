@@ -1121,6 +1121,70 @@ export async function findOwnerSuggestionsForUnmatchedCredits(
   return suggestions;
 }
 
+export interface AssociationOwner {
+  personId: string;
+  personName: string;
+  unitId: string;
+  unitNumber: string | null;
+}
+
+/**
+ * Full owner roster for an association (every person with an ownership → unit),
+ * used by the reconciliation review queue's "choose a different owner" dropdown.
+ * This is the complete directory — NOT the name-scored candidate subset — so a
+ * treasurer can attribute a deposit to ANY owner, including no-name bank noise.
+ * Read-only; creates nothing.
+ */
+export async function listAssociationOwners(
+  associationId: string,
+): Promise<AssociationOwner[]> {
+  const personRows = await db
+    .select({
+      id: persons.id,
+      firstName: persons.firstName,
+      lastName: persons.lastName,
+    })
+    .from(persons)
+    .innerJoin(ownerships, eq(ownerships.personId, persons.id))
+    .where(eq(persons.associationId, associationId));
+  const ownershipRows = await db
+    .select({ personId: ownerships.personId, unitId: ownerships.unitId })
+    .from(ownerships);
+  const unitRows = await db
+    .select({ id: units.id, unitNumber: units.unitNumber })
+    .from(units)
+    .where(eq(units.associationId, associationId));
+
+  const unitById = new Map<string, { unitNumber: string | null }>();
+  for (const u of unitRows) unitById.set(u.id, { unitNumber: u.unitNumber });
+  const ownershipByPerson = new Map<string, { unitId: string; unitNumber: string | null }>();
+  for (const o of ownershipRows) {
+    const unit = unitById.get(o.unitId);
+    if (!unit) continue; // stale ownership referencing a unit outside this association
+    ownershipByPerson.set(o.personId, { unitId: o.unitId, unitNumber: unit.unitNumber });
+  }
+
+  const owners: AssociationOwner[] = [];
+  for (const p of personRows) {
+    const own = ownershipByPerson.get(p.id);
+    if (!own) continue;
+    owners.push({
+      personId: p.id,
+      personName: `${p.firstName} ${p.lastName}`.trim(),
+      unitId: own.unitId,
+      unitNumber: own.unitNumber,
+    });
+  }
+  // Stable, human-friendly order: by unit number then name.
+  owners.sort((a, b) => {
+    const ua = a.unitNumber ?? "";
+    const ub = b.unitNumber ?? "";
+    if (ua !== ub) return ua.localeCompare(ub, undefined, { numeric: true });
+    return a.personName.localeCompare(b.personName);
+  });
+  return owners;
+}
+
 /**
  * Create a payment ledger entry for an owner and atomically auto-match it to
  * the bank transaction. Used by the Suggestions tab "Create" button.
