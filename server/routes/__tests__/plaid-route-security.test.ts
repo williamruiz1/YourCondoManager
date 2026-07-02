@@ -26,8 +26,14 @@
  */
 
 import express, { type NextFunction, type Request, type Response } from "express";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { AdminRole } from "@shared/schema";
+
+// Every case here boots a REAL http server via withApp(); under full-suite
+// parallel load a boot occasionally exceeds vitest's 5s default (observed:
+// 5014ms on CI run 28580251568 — the suite's one remaining flake, founder-os
+// #8337 R3). 20s absorbs the load jitter without weakening any assertion.
+vi.setConfig({ testTimeout: 20_000 });
 
 // ── PLAID_WRITE_ROLES contract copy ───────────────────────────────────────────
 // Mirrors the production constant in server/routes.ts. If the production list
