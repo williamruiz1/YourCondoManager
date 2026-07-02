@@ -25,7 +25,15 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # founder-os#8337 R2 — cancel redundant PR runs (rapid pushes to the same PR
+  # branch), but NEVER cancel a push-to-main run. All jobs share ONE self-hosted
+  # runner and run serialized; the Playwright job (slowest, last) was being
+  # cancelled mid-flight by the next main push before it could finish, so `main`
+  # never reached a green CI run and EVERY PR was admin-merged past branch
+  # protection (branch protection became theater). Letting a main run always
+  # complete is what makes a green main CI run — R1 (docs-only PR all-green) and
+  # R2 (green main run) — actually achievable.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Migrated 2026-05-24 from `ubuntu-latest` (GitHub-hosted, METERED) to the
 # mac-ycm self-hosted runner. Per founder-os perseverance-protocol.md Hard
