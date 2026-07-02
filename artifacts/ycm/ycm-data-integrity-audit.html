@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YourCondoManager — Data-Integrity Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--teal:#014D4A;--accent:#2DBDB0;--ink:#0f2725;--mut:#5b716e;--line:#e3ecea;--bg:#f5f9f8;--ok:#0f8a4a;--warn:#b8860b;--bad:#b23b3b;--card:#fff;}
+  *{box-sizing:border-box}
+  body{font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:0;line-height:1.5}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 22px 60px}
+  h1{font-family:"Plus Jakarta Sans",sans-serif;font-weight:800;color:var(--teal);font-size:30px;margin:0 0 6px}
+  h2{font-family:"Plus Jakarta Sans",sans-serif;font-weight:700;color:var(--teal);font-size:19px;margin:30px 0 12px;display:flex;align-items:center;gap:9px}
+  .sub{color:var(--mut);font-size:14.5px;margin:0 0 4px}
+  .meta{color:var(--mut);font-size:13px;margin-top:8px}
+  .banner{background:var(--teal);color:#fff;border-radius:14px;padding:20px 24px;margin:18px 0 8px}
+  .banner .big{font-family:"Plus Jakarta Sans";font-weight:800;font-size:17px;margin-bottom:6px}
+  .banner p{margin:0;color:#d7ece9;font-size:14px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+  @media(max-width:720px){.tiles{grid-template-columns:1fr 1fr}}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .tile .n{font-family:"Plus Jakarta Sans";font-weight:800;font-size:26px;color:var(--teal)}
+  .tile .l{color:var(--mut);font-size:12.5px;margin-top:2px}
+  .tile.ok .n{color:var(--ok)} .tile.bad .n{color:var(--bad)} .tile.warn .n{color:var(--warn)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:18px 20px;margin:12px 0}
+  .card h3{font-family:"Plus Jakarta Sans";font-weight:700;font-size:16px;margin:0 0 4px;color:var(--ink)}
+  .pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;margin-left:8px;vertical-align:middle}
+  .p-clean{background:#e5f5ec;color:var(--ok)} .p-fix{background:#e2f4f1;color:var(--teal)} .p-flag{background:#fbf1dc;color:var(--warn)} .p-test{background:#eef0f1;color:#5b716e}
+  .card p{margin:6px 0;color:var(--mut);font-size:14px}
+  table{border-collapse:collapse;width:100%;margin-top:10px;font-size:13px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--teal);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.num{font-variant-numeric:tabular-nums;font-weight:600}
+  code{background:#eef3f2;padding:1px 6px;border-radius:5px;font-size:12.5px;color:var(--teal)}
+  .note{font-size:12.5px;color:var(--mut);margin-top:8px}
+  .top3{background:#fff;border:2px solid var(--teal);border-radius:13px;padding:18px 20px;margin:14px 0}
+  .top3 ol{margin:8px 0 0;padding-left:20px} .top3 li{margin:7px 0;font-size:14px;color:var(--ink)}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+</style></head>
+<body><div class="wrap">
+
+  <h1>Data-Integrity Audit — YourCondoManager</h1>
+  <p class="sub">Live production database sweep. Triggered by the bug where 17 Cherry Hill owners had a blank association link, which broke reconciliation. This checks for every similar mis-wired or orphaned record across all 11 associations.</p>
+  <p class="meta">Run 2026-07-02 · scope: platform-wide (Cherry Hill Court focus) · mostly read-only · one safe reversible fix applied (blank-association owners).</p>
+
+  <div class="banner">
+    <div class="big">Bottom line: the blank-association owner bug was found in 3 more communities and auto-fixed. No money, ledger, or payment data was touched. Everything else is clean or a data-hygiene flag.</div>
+    <p>6 owners in Lakewood, Sunset Towers, and Pacific Heights had the same blank-association bug — all safely repaired. The books, ownership percentages, and cross-community scoping are all consistent.</p>
+  </div>
+
+  <div class="tiles">
+    <div class="tile bad"><div class="n">6</div><div class="l">Blank-association owners — <b>auto-fixed</b> (#1)</div></div>
+    <div class="tile ok"><div class="n">0</div><div class="l">Bad ledger / payment links (#3, #4)</div></div>
+    <div class="tile ok"><div class="n">0</div><div class="l">Double-owned units &gt;100% (#6)</div></div>
+    <div class="tile warn"><div class="n">3</div><div class="l">Data-hygiene flags for you (#2, #5, #7)</div></div>
+  </div>
+
+  <div class="top3">
+    <h3 style="color:var(--teal);margin:0">Top 3 to look at</h3>
+    <ol>
+      <li><b>Duplicate "William Ruiz" in Cherry Hill (3 records).</b> Same name, three person IDs in one community — a real owner's dues/ledger could split across them. Worth merging to one. (Check&nbsp;#5)</li>
+      <li><b>16 Cherry Hill units have no "primary contact" set</b> even though they have an active owner (23 units platform-wide). Notifications, statements, and reminders may not reach anyone. (Check&nbsp;#7)</li>
+      <li><b>2 real units have no owner at all</b> — one in Lakewood, one in Sunset Towers (plus 18 in a throwaway "CHC TEST HOA" that you can ignore/delete). An ownerless unit can't be billed. (Check&nbsp;#2)</li>
+    </ol>
+  </div>
+
+  <h2><span class="dot" style="background:var(--bad)"></span>Check 1 — Owners with a blank association that own a unit <span class="pill p-fix">AUTO-FIXED · reversible</span></h2>
+  <div class="card">
+    <p>This is the exact bug class from the 17-owner Cherry Hill incident: a person record with no <code>association_id</code> that nonetheless owns a unit — which breaks reconciliation because the owner isn't scoped to a community.</p>
+    <p><b>Found 6 such owners</b> across 3 communities. Every one owned units in <b>exactly one</b> association (none ambiguous), so each was safely repaired: <code>association_id</code> set to that community, inside a transaction, with a full before/after <code>audit_logs</code> row (<code>action=update.person.association_id</code>). <b>0 skipped.</b> Reversible — the before value was <code>null</code> for all 6.</p>
+    <table>
+      <tr><th>Owner</th><th>Person ID</th><th>Set to community</th></tr>
+      <tr><td>James Chen</td><td><code>970d8971…</code></td><td>Sunset Towers</td></tr>
+      <tr><td>Maria Gonzalez</td><td><code>2236ea5d…</code></td><td>Sunset Towers</td></tr>
+      <tr><td>Jennifer Martinez</td><td><code>9279f6db…</code></td><td>Pacific Heights Condos</td></tr>
+      <tr><td>Robert Thompson</td><td><code>3e16a978…</code></td><td>Pacific Heights Condos</td></tr>
+      <tr><td>Lisa Patel</td><td><code>a119e527…</code></td><td>Lakewood Residences</td></tr>
+      <tr><td>Sarah Williams</td><td><code>d665f20b…</code></td><td>Lakewood Residences</td></tr>
+    </table>
+    <p class="note">Post-fix re-check: <b>0</b> owning-a-unit persons remain with a blank association. 4 other blank-association persons exist but own no units — left untouched (flagged below, not the same bug).</p>
+  </div>
+
+  <h2><span class="dot" style="background:var(--warn)"></span>Check 2 — Units with no active owner <span class="pill p-flag">FLAG · report-only</span></h2>
+  <div class="card">
+    <p><b>20 units</b> have no ownership row at all. <b>18 of them are in a throwaway "CHC TEST HOA"</b> (a seeded test community — safe to ignore or delete). The <b>2 real ones</b> are worth a look:</p>
+    <table>
+      <tr><th>Community</th><th>Unowned units</th></tr>
+      <tr><td>CHC TEST HOA <span class="pill p-test">test data</span></td><td class="num">18</td></tr>
+      <tr><td>Lakewood Residences</td><td class="num">1</td></tr>
+      <tr><td>Sunset Towers</td><td class="num">1</td></tr>
+    </table>
+    <p class="note">0 units have owners where all ownerships are expired ("inactive-only"). An ownerless unit can't be billed dues, so the 2 real ones should get an owner assigned.</p>
+  </div>
+
+  <h2><span class="dot" style="background:var(--ok)"></span>Check 3 — Ledger entries with a broken unit/person link <span class="pill p-clean">CLEAN</span></h2>
+  <div class="card">
+    <p><b>0 problems</b> across all 93 owner-ledger entries. No blank or dangling <code>unit_id</code>, <code>person_id</code>, or <code>association_id</code>. The ledger is fully wired.</p>
+  </div>
+
+  <h2><span class="dot" style="background:var(--ok)"></span>Check 4 — Payments not linked to a ledger or unit <span class="pill p-clean">CLEAN</span></h2>
+  <div class="card">
+    <p><b>0 problems.</b> There are only 2 payment transactions, both still in <code>initiated</code> state (neither confirmed), and both point to valid units and persons. No confirmed payment is missing a ledger link. No money data was read-modified.</p>
+    <p class="note">For reference, the 93 ledger entries break down as: 37 general, 36 recurring-charge-schedule, 18 monthly-dues-catchup, 2 plaid-pay-intent.</p>
+  </div>
+
+  <h2><span class="dot" style="background:var(--warn)"></span>Check 5 — Duplicate person records (could split a ledger) <span class="pill p-flag">FLAG · report-only</span></h2>
+  <div class="card">
+    <p><b>1 duplicate group</b> — and it's a real one: <b>"William Ruiz" exists 3 times in Cherry Hill Court</b> under three different person IDs. If one owner's dues/payments land against different IDs, the ledger for that owner splits and won't reconcile cleanly. Recommend merging to a single record (do NOT auto-merge — money-adjacent).</p>
+    <table>
+      <tr><th>Name</th><th>Community</th><th>Person IDs</th></tr>
+      <tr><td>William Ruiz</td><td>Cherry Hill Court</td><td><code>5e97992f…</code>, <code>6fe9babe…</code>, <code>chper002…</code></td></tr>
+    </table>
+    <p class="note">No other community has duplicate-name person records.</p>
+  </div>
+
+  <h2><span class="dot" style="background:var(--ok)"></span>Check 6 — Double-owned units (ownership &gt;100%) <span class="pill p-clean">CLEAN</span></h2>
+  <div class="card">
+    <p><b>0 units.</b> No unit has active ownership rows summing past 100%. Co-ownership splits are consistent everywhere.</p>
+  </div>
+
+  <h2><span class="dot" style="background:var(--warn)"></span>Check 7 — Units with an owner but no "primary contact" <span class="pill p-flag">FLAG · report-only</span></h2>
+  <div class="card">
+    <p><b>23 units</b> have an active owner but no <code>primary_contact_person_id</code> set — meaning notifications, statements, and payment reminders may have no addressee. Cherry Hill is the bulk of it:</p>
+    <table>
+      <tr><th>Community</th><th>Units missing primary contact</th></tr>
+      <tr><td>Cherry Hill Court</td><td class="num">16</td></tr>
+      <tr><td>Sunset Towers</td><td class="num">3</td></tr>
+      <tr><td>Lakewood Residences</td><td class="num">2</td></tr>
+      <tr><td>Pacific Heights Condos</td><td class="num">2</td></tr>
+    </table>
+    <p class="note">Report-only — a safe follow-up fix would be to default each unit's primary contact to its active owner, but that's a separate ratified change.</p>
+  </div>
+
+  <h2><span class="dot" style="background:var(--ok)"></span>Check 8 — Cross-community scoping consistency <span class="pill p-clean">CLEAN</span></h2>
+  <div class="card">
+    <p><b>0 problems</b> across every scoping check: no ownership where the owner's community differs from the unit's; no ledger entry or payment whose community differs from the unit's; no ledger entry whose person is in a different community; no unit pointing at a non-existent association. All 11 associations are cleanly scoped.</p>
+  </div>
+
+  <h2><span class="dot" style="background:var(--teal)"></span>Cherry Hill Court snapshot</h2>
+  <div class="card">
+    <p>18 units · 21 persons · 93 owner-ledger entries. Association <code>f301d073…</code>. No blank-association owners remain in CHC; the only CHC-specific flags are the duplicate "William Ruiz" record (#5) and the 16 units missing a primary contact (#7).</p>
+  </div>
+
+  <p class="meta">Method: direct read-only SQL against the live <code>yourcondomanager</code> production database. The only writes were the 6 Check-1 <code>persons.association_id</code> repairs, each transactional and recorded in <code>audit_logs</code> with before/after values (fully reversible). No money, ledger amount, balance, or payment row was modified.</p>
+
+</div></body></html>
