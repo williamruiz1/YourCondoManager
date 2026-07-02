@@ -380,12 +380,12 @@ function plainStatusVariant(tone: GatewayPlainStatus["tone"]): "default" | "seco
 // production-looking screen is impossible to mistake for live.
 function KeyModeBadge({ keyMode }: { keyMode?: "test" | "live" | "unknown" }) {
   if (!keyMode || keyMode === "unknown") {
-    return <Badge variant="outline" data-testid="badge-key-mode-unknown">unknown</Badge>;
+    return <Badge variant="outline" data-testid="badge-key-mode-unknown">Mode unknown</Badge>;
   }
   if (keyMode === "live") {
-    return <Badge variant="default" data-testid="badge-key-mode-live">LIVE</Badge>;
+    return <Badge variant="default" data-testid="badge-key-mode-live">Live</Badge>;
   }
-  return <Badge variant="secondary" data-testid="badge-key-mode-test">TEST</Badge>;
+  return <Badge variant="secondary" data-testid="badge-key-mode-test">Test mode</Badge>;
 }
 
 function StripeConnectSection({ associationId }: { associationId: string | null }) {
@@ -406,8 +406,8 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
     const params = new URLSearchParams(window.location.search);
     if (params.get("stripeConnect") !== "callback") return;
     toast({
-      title: "Stripe onboarding complete",
-      description: "We're refreshing this HOA's connection status — payouts activate once Stripe verifies the details.",
+      title: "Payment setup complete",
+      description: "We're refreshing this HOA's status — deposits to the HOA's bank turn on once Stripe verifies the details.",
     });
     queryClient.invalidateQueries({ queryKey: [
       associationId
@@ -443,7 +443,7 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
     },
     onError: (err: Error) => {
       toast({
-        title: "Could not start Stripe onboarding",
+        title: "Could not start payment setup",
         description: err.message,
         variant: "destructive",
       });
@@ -497,13 +497,21 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
             disabled={onboardMutation.isPending || !associationId}
             data-testid="button-connect-stripe"
           >
+            {/* Label matches the button named in gatewayPlainStatus().next
+                ("Finish setup" / "Continue setup") so the next-action copy
+                always points at a button that actually exists. */}
             {onboardMutation.isPending
-              ? "Starting onboarding…"
-              : associationConnection?.connectState.status === "active"
-                ? "Re-run Stripe onboarding"
-                : associationConnection
-                  ? "Continue Stripe onboarding"
-                  : "Connect with Stripe"}
+              ? "Opening setup…"
+              : !associationConnection
+                ? "Connect with Stripe"
+                : associationConnection.connectState.status === "active" &&
+                    associationConnection.connectState.chargesEnabled &&
+                    associationConnection.connectState.payoutsEnabled
+                  ? "Re-run setup"
+                  : associationConnection.connectState.status === "pending" ||
+                      !associationConnection.connectState.detailsSubmitted
+                    ? "Continue setup"
+                    : "Finish setup"}
           </Button>
         </CardContent>
       </Card>
@@ -637,10 +645,11 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div>
-            <CardTitle className="text-sm">Payout reconciliation</CardTitle>
+            <CardTitle className="text-sm">Bank-deposit check</CardTitle>
             <CardDescription>
-              When a Stripe payout lands in the HOA's bank, YCM explodes it back into one ledger entry per
-              owner. The per-owner net totals should match the bank deposit exactly.
+              Each time Stripe sends a deposit to the HOA's bank account, YCM matches it back to the
+              individual owner payments in the books. The totals should match the deposit exactly —
+              any difference is flagged for review.
             </CardDescription>
           </div>
           {data && (
@@ -651,9 +660,9 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All payouts</SelectItem>
-                  <SelectItem value="reconciled">Reconciled (variance 0)</SelectItem>
-                  <SelectItem value="unreconciled">Unreconciled (variance ≠ 0)</SelectItem>
+                  <SelectItem value="all">All deposits</SelectItem>
+                  <SelectItem value="reconciled">Matches the books</SelectItem>
+                  <SelectItem value="unreconciled">Needs review</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -670,20 +679,19 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
         ) : payouts.length === 0 ? (
           <EmptyState
             icon={RefreshCw}
-            title="No payouts to reconcile yet"
-            description="Once Stripe sends the first payout to a connected HOA's bank, its owner-level breakdown appears here."
+            title="No bank deposits to check yet"
+            description="Once Stripe sends the first deposit to a connected HOA's bank account, its owner-by-owner breakdown appears here."
             testId="empty-state-reconciliation"
           />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Payout</TableHead>
-                <TableHead>Arrived</TableHead>
-                <TableHead className="text-right">Owners</TableHead>
+                <TableHead>Deposit</TableHead>
+                <TableHead className="text-right">Owner payments</TableHead>
                 <TableHead className="text-right">Bank deposit</TableHead>
-                <TableHead className="text-right">Reconciled net</TableHead>
-                <TableHead className="text-right">Variance</TableHead>
+                <TableHead className="text-right">Matched in the books</TableHead>
+                <TableHead className="text-right">Difference</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -694,11 +702,13 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
                     onClick={() => toggle(p.id)}
                     data-testid={`row-payout-${p.id}`}
                   >
+                    {/* The date is the board-facing identity of a deposit; the
+                        Stripe payout id stays as demoted reference text only. */}
                     <TableCell className="font-medium">
-                      <code className="text-xs">{p.payoutId}</code>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {p.arrivalDate ? new Date(p.arrivalDate).toLocaleDateString() : "—"}
+                      <div>{p.arrivalDate ? new Date(p.arrivalDate).toLocaleDateString() : "Date pending"}</div>
+                      <div className="text-[10px] font-normal text-muted-foreground">
+                        <code>{p.payoutId}</code>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">{p.chargeCount}</TableCell>
                     <TableCell className="text-right">{centsToUsd(p.payoutAmountCents)}</TableCell>
@@ -708,13 +718,13 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
                         variant={p.varianceCents === 0 ? "default" : "destructive"}
                         data-testid={`badge-variance-${p.id}`}
                       >
-                        {centsToUsd(p.varianceCents)}
+                        {p.varianceCents === 0 ? "Matches" : `${centsToUsd(p.varianceCents)} off`}
                       </Badge>
                     </TableCell>
                   </TableRow>
                   {expanded.has(p.id) && (
                     <TableRow data-testid={`row-payout-detail-${p.id}`}>
-                      <TableCell colSpan={6} className="bg-muted/30 p-0">
+                      <TableCell colSpan={5} className="bg-muted/30 p-0">
                         <div className="p-3">
                           <Table>
                             <TableHeader>
@@ -722,9 +732,9 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
                                 <TableHead>Owner</TableHead>
                                 <TableHead>Unit</TableHead>
                                 <TableHead>Type</TableHead>
-                                <TableHead className="text-right">Gross</TableHead>
-                                <TableHead className="text-right">Fees</TableHead>
-                                <TableHead className="text-right">Net</TableHead>
+                                <TableHead className="text-right">Amount paid</TableHead>
+                                <TableHead className="text-right">Processing fees</TableHead>
+                                <TableHead className="text-right">Deposited</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -845,7 +855,11 @@ function GatewayTab({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium capitalize">{c.provider}</p>
                 {c.providerAccountId && (
-                  <p className="text-xs text-muted-foreground">Account: {c.providerAccountId}</p>
+                  // Raw acct_ id demoted to a hover tooltip (support reference);
+                  // the board-facing line is plain (#8152).
+                  <p className="text-xs text-muted-foreground" title={c.providerAccountId}>
+                    Connected and ready to take payments
+                  </p>
                 )}
               </div>
               <Badge variant="default">Active</Badge>
