@@ -84,7 +84,17 @@ type ReconTransactionLedger = {
     suggested: number;
     needsReview: number;
     unmatched: number;
+    nonOwnerIncome?: number;
   };
+};
+
+// Full owner roster (all owners of the association) — powers the
+// "choose a different owner" attribution dropdown.
+type AssociationOwner = {
+  personId: string;
+  personName: string;
+  unitId: string;
+  unitNumber: string | null;
 };
 
 type StatusFilter = "all" | "auto-matched" | "suggested" | "needs-review" | "unmatched";
@@ -205,7 +215,7 @@ export default function FinancialBankConnectionsPage() {
           associationId: "",
           windowDays: 30,
           rows: [],
-          counts: { total: 0, autoMatched: 0, suggested: 0, needsReview: 0, unmatched: 0 },
+          counts: { total: 0, autoMatched: 0, suggested: 0, needsReview: 0, unmatched: 0, nonOwnerIncome: 0 },
         };
       const res = await apiRequest(
         "GET",
@@ -215,9 +225,55 @@ export default function FinancialBankConnectionsPage() {
     },
     enabled: Boolean(activeAssociationId),
   });
-  const reconRows = reconLedger?.rows ?? [];
+  // Full owner roster — the complete directory for the "choose a different
+  // owner" attribution dropdown (not just the name-scored candidates).
+  const { data: ownerRoster } = useQuery<{ owners: AssociationOwner[] }>({
+    queryKey: ["/api/admin/reconciliation/owners", activeAssociationId],
+    queryFn: async () => {
+      if (!activeAssociationId) return { owners: [] };
+      const res = await apiRequest(
+        "GET",
+        `/api/admin/reconciliation/owners?associationId=${encodeURIComponent(activeAssociationId)}`,
+      );
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId),
+  });
+  const owners = ownerRoster?.owners ?? [];
+
+  // Review-queue ordering: clean/high-confidence suggested matches first,
+  // ambiguous "needs you" next, no-name noise last, already-resolved
+  // auto-matched sink to the bottom. Within a group, higher confidence (then
+  // larger amount) first — so the treasurer resolves the easy wins top-down.
+  const STATUS_RANK: Record<ReconTxStatus, number> = {
+    suggested: 0,
+    "needs-review": 1,
+    unmatched: 2,
+    "auto-matched": 3,
+  };
+  const rawReconRows = reconLedger?.rows ?? [];
+  const reconRows = [...rawReconRows].sort((a, b) => {
+    const ra = STATUS_RANK[a.status];
+    const rb = STATUS_RANK[b.status];
+    if (ra !== rb) return ra - rb;
+    const ca = a.confidence ?? 0;
+    const cb = b.confidence ?? 0;
+    if (ca !== cb) return cb - ca;
+    return b.amountCents - a.amountCents;
+  });
   const filteredReconRows =
     statusFilter === "all" ? reconRows : reconRows.filter((r) => r.status === statusFilter);
+
+  // Running tally: of the total dollars sitting unmatched, how much the engine
+  // can resolve to an owner right now (suggested + needs-review carry an owner
+  // path). No-name "unmatched" deposits need manual attribution.
+  const centsByStatus = (status: ReconTxStatus) =>
+    reconRows.filter((r) => r.status === status).reduce((s, r) => s + r.amountCents, 0);
+  const suggestedCents = centsByStatus("suggested");
+  const needsReviewCents = centsByStatus("needs-review");
+  const unmatchedCents = centsByStatus("unmatched");
+  const resolvableCents = suggestedCents + needsReviewCents;
+  const totalOpenCents = resolvableCents + unmatchedCents;
 
   const createLinkToken = useMutation({
     mutationFn: async () => {
@@ -381,6 +437,26 @@ export default function FinancialBankConnectionsPage() {
       toast({ title: "Match failed", description: err.message, variant: "destructive" }),
   });
 
+  // "Not an owner payment": record a durable, reversible decision that a deposit
+  // is non-owner income (bank interest / transfer / etc.). Moves NO money and
+  // creates NO owner-ledger entry — the deposit simply leaves the review queue.
+  const markNonOwnerIncome = useMutation({
+    mutationFn: async (input: { bankTransactionId: string }) => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const res = await apiRequest("POST", "/api/admin/reconciliation/mark-non-owner-income", {
+        associationId: activeAssociationId,
+        ...input,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Marked as non-owner income", description: "Removed from the review queue. No payment recorded." });
+      invalidateRecon();
+    },
+    onError: (err: Error) =>
+      toast({ title: "Couldn't classify deposit", description: err.message, variant: "destructive" }),
+  });
+
   const onPlaidSuccess = useCallback<PlaidLinkOnSuccess>(
     (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
       exchangeToken.mutate({
@@ -523,6 +599,34 @@ export default function FinancialBankConnectionsPage() {
           </Button>
         </CardHeader>
         <CardContent>
+          {/* Running tally — of the dollars sitting unmatched, how much the
+              engine can resolve to an owner right now. */}
+          {totalOpenCents > 0 ? (
+            <div
+              className="mb-4 rounded-md border border-outline-variant bg-surface-container p-3"
+              data-testid="recon-tally"
+            >
+              <div className="text-sm">
+                <span className="font-semibold" data-testid="tally-resolvable">
+                  {formatMoney(resolvableCents)}
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold" data-testid="tally-total">
+                  {formatMoney(totalOpenCents)}
+                </span>{" "}
+                resolvable
+              </div>
+              <div className="mt-1 text-xs text-on-surface-variant">
+                {formatMoney(suggestedCents)} ready to confirm ·{" "}
+                {formatMoney(needsReviewCents)} needs your review ·{" "}
+                {formatMoney(unmatchedCents)} unidentified
+                {reconLedger?.counts.nonOwnerIncome
+                  ? ` · ${reconLedger.counts.nonOwnerIncome} marked non-owner income`
+                  : ""}
+              </div>
+            </div>
+          ) : null}
+
           {/* Filter toggle — same rows, filtered (NOT a separate redundant list). */}
           {reconRows.length > 0 ? (
             <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -595,6 +699,14 @@ export default function FinancialBankConnectionsPage() {
                               <span className="text-on-surface-variant"> · #{row.identifiedAs.unitNumber}</span>
                             ) : null}
                           </span>
+                        ) : row.status === "needs-review" && row.ownerCandidates.length > 0 ? (
+                          <span className="text-xs text-on-surface-variant">
+                            Ambiguous:{" "}
+                            {row.ownerCandidates
+                              .slice(0, 3)
+                              .map((c) => `${c.personName} (${(c.confidence * 100).toFixed(0)}%)`)
+                              .join(" / ")}
+                          </span>
                         ) : (
                           <span className="text-on-surface-variant">—</span>
                         )}
@@ -624,50 +736,82 @@ export default function FinancialBankConnectionsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {row.status === "suggested" && topCandidate ? (
-                          <Button
-                            size="sm"
-                            disabled={confirmSuggestion.isPending}
-                            onClick={() =>
-                              confirmSuggestion.mutate({
-                                bankTransactionId: row.bankTransactionId,
-                                personId: topCandidate.personId,
-                                unitId: topCandidate.unitId,
-                              })
-                            }
-                            data-testid={`btn-confirm-${row.bankTransactionId}`}
-                          >
-                            Confirm
-                          </Button>
-                        ) : row.status === "needs-review" && row.ownerCandidates.length > 0 ? (
-                          <Select
-                            onValueChange={(personId) => {
-                              const cand = row.ownerCandidates.find((c) => c.personId === personId);
-                              if (!cand) return;
-                              manualMatch.mutate({
-                                bankTransactionId: row.bankTransactionId,
-                                personId: cand.personId,
-                                unitId: cand.unitId,
-                              });
-                            }}
-                          >
-                            <SelectTrigger
-                              className="w-[200px]"
-                              data-testid={`select-match-${row.bankTransactionId}`}
-                              disabled={manualMatch.isPending}
-                            >
-                              <SelectValue placeholder="Match to owner…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {row.ownerCandidates.map((cand) => (
-                                <SelectItem key={cand.personId} value={cand.personId}>
-                                  {`${cand.personName}${cand.unitNumber ? ` · #${cand.unitNumber}` : ""} · ${(cand.confidence * 100).toFixed(0)}%`}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                        {row.status === "auto-matched" ? (
+                          <span className="text-xs text-on-surface-variant">Recorded</span>
                         ) : (
-                          <span className="text-on-surface-variant">—</span>
+                          <div className="flex flex-col items-start gap-1.5">
+                            {/* Confirm the engine's suggested match (top candidate). */}
+                            {row.status === "suggested" && topCandidate ? (
+                              <Button
+                                size="sm"
+                                disabled={confirmSuggestion.isPending}
+                                onClick={() =>
+                                  confirmSuggestion.mutate({
+                                    bankTransactionId: row.bankTransactionId,
+                                    personId: topCandidate.personId,
+                                    unitId: topCandidate.unitId,
+                                  })
+                                }
+                                data-testid={`btn-confirm-${row.bankTransactionId}`}
+                              >
+                                Confirm {topCandidate.personName}
+                              </Button>
+                            ) : null}
+
+                            {/* Choose a different owner — full association roster. */}
+                            <Select
+                              value=""
+                              onValueChange={(encoded) => {
+                                const [personId, unitId] = encoded.split("::");
+                                if (!personId || !unitId) return;
+                                manualMatch.mutate({
+                                  bankTransactionId: row.bankTransactionId,
+                                  personId,
+                                  unitId,
+                                });
+                              }}
+                            >
+                              <SelectTrigger
+                                className="h-8 w-[210px]"
+                                data-testid={`select-owner-${row.bankTransactionId}`}
+                                disabled={manualMatch.isPending || owners.length === 0}
+                              >
+                                <SelectValue
+                                  placeholder={
+                                    row.status === "suggested"
+                                      ? "Choose a different owner…"
+                                      : "Match to owner…"
+                                  }
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {owners.map((o) => (
+                                  <SelectItem
+                                    key={`${o.personId}::${o.unitId}`}
+                                    value={`${o.personId}::${o.unitId}`}
+                                  >
+                                    {`${o.personName}${o.unitNumber ? ` · #${o.unitNumber}` : ""}`}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* Not an owner payment — bank interest / transfer / etc. */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs text-on-surface-variant"
+                              disabled={markNonOwnerIncome.isPending}
+                              onClick={() =>
+                                markNonOwnerIncome.mutate({
+                                  bankTransactionId: row.bankTransactionId,
+                                })
+                              }
+                              data-testid={`btn-non-owner-${row.bankTransactionId}`}
+                            >
+                              Not an owner payment
+                            </Button>
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>

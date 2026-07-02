@@ -21,6 +21,7 @@
 import { and, asc, eq, gte, lte, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../../db";
 import {
+  auditLogs,
   bankTransactions,
   ownerLedgerEntries,
   persons,
@@ -282,7 +283,41 @@ export interface ReconTransactionLedger {
     suggested: number;
     needsReview: number;
     unmatched: number;
+    // Deposits a human has explicitly classified as NOT an owner payment
+    // (bank interest, inter-account transfer, etc.). These are excluded from
+    // `rows` — they've left the review queue — and counted here so the surface
+    // can show how many were resolved-as-income.
+    nonOwnerIncome: number;
   };
+}
+
+// Audit-log action recorded when a human marks a bank credit as non-owner
+// income (interest / transfer / etc.). This is the DURABLE, reversible record
+// of that decision — it moves NO money and creates NO owner-ledger entry. A
+// classified credit simply leaves the reconciliation review queue.
+export const NON_OWNER_INCOME_ACTION = "reconciliation.non-owner-income";
+
+/**
+ * The set of bank-transaction ids a human has classified as non-owner income
+ * for this association. Read from the append-only audit log — the same log the
+ * mark-non-owner-income endpoint writes to. Idempotent by construction (a Set).
+ */
+export async function getNonOwnerIncomeBtxIds(
+  associationId: string,
+): Promise<Set<string>> {
+  const rows = await db
+    .select({ entityId: auditLogs.entityId })
+    .from(auditLogs)
+    .where(
+      and(
+        eq(auditLogs.associationId, associationId),
+        eq(auditLogs.entityType, "bank_transaction"),
+        eq(auditLogs.action, NON_OWNER_INCOME_ACTION),
+      ),
+    );
+  return new Set(
+    rows.map((r) => r.entityId).filter((id): id is string => id !== null),
+  );
 }
 
 /**
@@ -321,7 +356,12 @@ export async function buildReconciliationTransactionLedger(input: {
       ),
     )
     .orderBy(asc(bankTransactions.date));
-  const credits = bankRows.filter((r) => r.amountCents < 0);
+  // Drop credits a human already classified as non-owner income — they've been
+  // resolved out of the review queue (no owner ledger entry, no money moved).
+  const nonOwnerIncomeIds = await getNonOwnerIncomeBtxIds(associationId);
+  const allCredits = bankRows.filter((r) => r.amountCents < 0);
+  const credits = allCredits.filter((r) => !nonOwnerIncomeIds.has(r.id));
+  const nonOwnerIncomeCount = allCredits.length - credits.length;
 
   // 2. Ledger entries linked to a bank transaction (the engine already wrote
   //    bank_transaction_id when it matched). Map bankTxId → matched entry.
@@ -448,6 +488,7 @@ export async function buildReconciliationTransactionLedger(input: {
     suggested: rows.filter((r) => r.status === "suggested").length,
     needsReview: rows.filter((r) => r.status === "needs-review").length,
     unmatched: rows.filter((r) => r.status === "unmatched").length,
+    nonOwnerIncome: nonOwnerIncomeCount,
   };
 
   return {
