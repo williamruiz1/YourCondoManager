@@ -100,6 +100,9 @@ export function SiteFooter() {
             <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500">
               © {new Date().getFullYear()} Your Condo Manager. The Modern Estate Excellence.
             </p>
+            <p className="mt-1 text-[10px] tracking-wide text-slate-400 dark:text-slate-500">
+              Your Condo Manager, Inc. · 1207 Delaware Ave, # 2199, Wilmington, DE 19806
+            </p>
           </div>
         </div>
       </div>
