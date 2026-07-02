@@ -17,9 +17,49 @@
 //   - else PLAYWRIGHT_STATIC=1 / Darwin (macOS) → static-server fallback
 //   - Linux + DATABASE_URL set                  → `npm run dev` against caller-provided DB
 
+import { execFileSync } from "node:child_process";
+
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = Number(process.env.PLAYWRIGHT_PORT ?? 5000);
+// Ask the OS for a guaranteed-free ephemeral port, synchronously (config load is
+// sync). A short node subprocess binds port 0, reads the OS-assigned port, and
+// releases it. Falls back to 5000 on any failure.
+function freePortSync(): number {
+  try {
+    const out = execFileSync(
+      process.execPath,
+      [
+        "-e",
+        "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close(()=>process.exit(0))})",
+      ],
+      { encoding: "utf8", timeout: 5000 },
+    ).trim();
+    const p = Number(out);
+    if (Number.isInteger(p) && p > 0) return p;
+  } catch {
+    /* fall through to the default */
+  }
+  return 5000;
+}
+
+// Port selection (founder-os#8320 / #8337 root-cause fix):
+//   - PLAYWRIGHT_PORT explicitly set → honor it (deterministic override).
+//   - CI → a GUARANTEED-FREE ephemeral port, chosen fresh at config load.
+//         The self-hosted macOS runner cannot guarantee a fixed port is free:
+//         a webServer orphaned by a `cancel-in-progress` run survives and holds
+//         port 5000, so every run (even docs-only) died with
+//         "http://localhost:5000 is already used" BEFORE any test. Each
+//         `npx playwright test` invocation is a fresh process that loads this
+//         config and self-selects its own free port → a stale server on any
+//         fixed port can never collide, cross-run OR between the sequential
+//         route-mock/real-backend/visual steps. This is the structural fix; the
+//         ci.yml port-free step is now only belt-and-suspenders.
+//   - local → 5000 (+ reuseExistingServer below) for dev familiarity.
+const PORT = process.env.PLAYWRIGHT_PORT
+  ? Number(process.env.PLAYWRIGHT_PORT)
+  : process.env.CI
+    ? freePortSync()
+    : 5000;
 const BASE_URL = `http://localhost:${PORT}`;
 
 const useRealBackend = process.env.PLAYWRIGHT_REAL_BACKEND === "1";
