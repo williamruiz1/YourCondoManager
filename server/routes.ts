@@ -7037,6 +7037,116 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/financial/reports/cash-flow?startDate&endDate&associationId
+  //
+  // READ-ONLY cash-activity report for a self-managed HOA (cash-basis approximation).
+  // Cash IN  = owner-ledger payments received (by postedAt).
+  // Cash OUT = vendor invoices (by invoiceDate, excluding draft/void) + utility
+  //            payments (by paidDate ?? dueDate ?? createdAt), grouped by expense
+  //            category. Mirrors how the Budgets "actual" figure is computed, so
+  //            the numbers reconcile with the Budget-vs-Actual report. Never writes
+  //            any table; moves no money.
+  app.get("/api/financial/reports/cash-flow", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+
+      const startDateParam = typeof req.query.startDate === "string" ? req.query.startDate : null;
+      const endDateParam = typeof req.query.endDate === "string" ? req.query.endDate : null;
+      const startDate = startDateParam ? new Date(startDateParam) : new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+      const endDate = endDateParam ? new Date(endDateParam) : new Date();
+
+      const inRange = (d: Date | null | undefined) => {
+        if (!d) return false;
+        const t = new Date(d).getTime();
+        return t >= startDate.getTime() && t <= endDate.getTime();
+      };
+      const monthKey = (d: Date | null | undefined) => {
+        const dt = d ? new Date(d) : new Date();
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+      };
+
+      // ── Cash IN: owner-ledger payments received in the period ──
+      const paymentRows = await db.select().from(ownerLedgerEntries).where(and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        eq(ownerLedgerEntries.entryType, "payment"),
+        gte(ownerLedgerEntries.postedAt, startDate),
+        lte(ownerLedgerEntries.postedAt, endDate),
+      ));
+
+      // ── Cash OUT: vendor invoices + utility payments ──
+      const [invoices, utilities, categories] = await Promise.all([
+        storage.getVendorInvoices(associationId),
+        storage.getUtilityPayments(associationId),
+        storage.getFinancialCategories(associationId),
+      ]);
+      const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+      const nameForCategory = (categoryId: string | null | undefined) =>
+        (categoryId && categoryNameById.get(categoryId)) || "Uncategorized";
+
+      // Aggregate into monthly buckets + per-category outflow
+      const monthMap = new Map<string, { cashIn: number; cashOut: number }>();
+      const bump = (key: string, field: "cashIn" | "cashOut", amount: number) => {
+        const cur = monthMap.get(key) ?? { cashIn: 0, cashOut: 0 };
+        cur[field] += amount;
+        monthMap.set(key, cur);
+      };
+
+      let totalCashIn = 0;
+      for (const p of paymentRows) {
+        const amt = Math.abs(p.amount);
+        totalCashIn += amt;
+        bump(monthKey(p.postedAt), "cashIn", amt);
+      }
+
+      const outByCategory = new Map<string, number>();
+      let totalCashOut = 0;
+
+      for (const inv of invoices) {
+        if (inv.status === "draft" || inv.status === "void") continue;
+        if (!inRange(inv.invoiceDate)) continue;
+        const amt = Math.abs(inv.amount);
+        totalCashOut += amt;
+        bump(monthKey(inv.invoiceDate), "cashOut", amt);
+        const cat = nameForCategory(inv.categoryId);
+        outByCategory.set(cat, (outByCategory.get(cat) ?? 0) + amt);
+      }
+
+      for (const u of utilities) {
+        const when = u.paidDate ?? u.dueDate ?? u.createdAt;
+        if (!inRange(when)) continue;
+        const amt = Math.abs(u.amount);
+        totalCashOut += amt;
+        bump(monthKey(when), "cashOut", amt);
+        const cat = nameForCategory(u.categoryId) === "Uncategorized"
+          ? `Utilities${u.utilityType ? ` — ${u.utilityType}` : ""}`
+          : nameForCategory(u.categoryId);
+        outByCategory.set(cat, (outByCategory.get(cat) ?? 0) + amt);
+      }
+
+      const series = Array.from(monthMap.entries())
+        .map(([month, v]) => ({ month, cashIn: v.cashIn, cashOut: v.cashOut, net: v.cashIn - v.cashOut }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      const byCategory = Array.from(outByCategory.entries())
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount);
+
+      res.json({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        cashIn: { total: totalCashIn },
+        cashOut: { total: totalCashOut, byCategory },
+        netCashFlow: totalCashIn - totalCashOut,
+        series,
+        basis: "Cash-basis approximation. Cash in = owner payments received (by post date). Cash out = vendor invoices (by invoice date, excluding drafts/voids) and utility payments (by paid/due date).",
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/governance/meetings", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getGovernanceMeetings(getAssociationIdQuery(req));
