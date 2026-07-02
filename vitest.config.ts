@@ -28,3 +28,5 @@ export default defineConfig({
     css: { modules: { classNameStrategy: "non-scoped" } },
   },
 });
+
+// founder-os#8337 R1 gate proof: functionally inert comment — this PR must go green through the FULL CI gauntlet with no check-related admin override.
