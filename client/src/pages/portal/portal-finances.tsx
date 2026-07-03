@@ -21,12 +21,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/empty-state";
 import { PortalAssessmentDetailDialog } from "@/components/portal-assessment-detail-dialog";
@@ -63,27 +57,6 @@ function defaultStatementPeriod(): { from: string; to: string } {
 // card per unit with category split and entry detail.
 
 type FinanceCategoryKey = "charge" | "assessment" | "payment" | "late-fee" | "credit" | "adjustment";
-
-// 2026-05-25 — per coordinator correction: do not surface "late fees" yet.
-// All other categories stay visible (incl. $0) so the owner can see that
-// nothing is hidden. Late-fee data still flows through the server response;
-// it's just not rendered in the per-unit category split until enabled.
-const FINANCE_CATEGORY_ORDER: FinanceCategoryKey[] = [
-  "assessment",
-  "charge",
-  "payment",
-  "credit",
-  "adjustment",
-];
-
-const FINANCE_CATEGORY_LABEL: Record<FinanceCategoryKey, string> = {
-  assessment: "Assessment",
-  charge: "HOA dues",
-  "late-fee": "Late fee",
-  payment: "Payment",
-  credit: "Credit",
-  adjustment: "Adjustment",
-};
 
 // 2026-06-30 — human-readable ledger TYPE labels (William finding #5). The
 // owner ledger stored raw `entryType` strings ("charge", "assessment") that
@@ -143,18 +116,6 @@ export function computeDueNow(
   );
   return { duesDue, assessmentInstallmentDue, totalDueNow: duesDue + assessmentInstallmentDue };
 }
-
-// Stacked-bar segment colors — restrained palette per the wireframe.
-// Teal accent for the active "assessment" category; cooler tones for
-// regular charges; on-surface-variant for inactive categories.
-const FINANCE_CATEGORY_BAR_COLOR: Record<FinanceCategoryKey, string> = {
-  assessment: "bg-primary",
-  charge: "bg-primary/60",
-  "late-fee": "bg-destructive/70",
-  payment: "bg-emerald-500/70",
-  credit: "bg-emerald-400/60",
-  adjustment: "bg-on-surface-variant/40",
-};
 
 type FinanceUnitEntry = {
   id: string;
@@ -358,271 +319,155 @@ function formatCurrency(amount: number): string {
   });
 }
 
-/**
- * Stacked horizontal bar showing how a unit's balance breaks down across
- * categories. Renders even when only one category is present so the visual
- * vocabulary stays consistent. Uses `aria-label` for screen-reader summary;
- * the legend below the bar carries the keyed amounts.
- */
-function CategoryStackedBar({
-  byCategory,
-  total,
-}: {
-  byCategory: Partial<Record<FinanceCategoryKey, number>>;
-  total: number;
-}) {
-  const totalForBar = FINANCE_CATEGORY_ORDER.reduce(
-    (sum, cat) => sum + Math.max(0, byCategory[cat] ?? 0),
-    0,
-  );
-  if (totalForBar <= 0) {
-    return (
-      <div
-        className="h-2 w-full rounded-full bg-surface-container"
-        aria-label="No outstanding categories"
-        data-testid="unit-category-bar-empty"
-      />
-    );
-  }
-  return (
-    <div
-      className="flex h-2 w-full overflow-hidden rounded-full bg-surface-container"
-      role="img"
-      aria-label={`Category split for ${formatCurrency(total)}`}
-      data-testid="unit-category-bar"
-    >
-      {FINANCE_CATEGORY_ORDER.map((cat) => {
-        const value = Math.max(0, byCategory[cat] ?? 0);
-        if (value <= 0) return null;
-        const pct = (value / totalForBar) * 100;
-        return (
-          <div
-            key={cat}
-            className={`${FINANCE_CATEGORY_BAR_COLOR[cat]} h-full`}
-            style={{ width: `${pct}%` }}
-            aria-label={`${FINANCE_CATEGORY_LABEL[cat]} ${formatCurrency(value)}`}
-          />
-        );
-      })}
-    </div>
-  );
+// Format a signed dollar amount so any credit/payment (negative) row still
+// reconciles to its column total, rather than showing an abs magnitude.
+function signedCurrency(amount: number): string {
+  return `${amount < 0 ? "-" : ""}$${formatCurrency(amount)}`;
 }
 
-/**
- * Per-unit collapsible card. Header always shows: unit label + total due.
- * Expanded body shows the category breakdown (rendered for ALL categories,
- * even those at $0 — per William's "where is HOA dues" question, make
- * absence visible) plus the ledger entries scoped to this unit.
- */
-function PerUnitFinanceCard({
-  unit,
-  dueBreakdown,
+// ---------- Per-unit TRANSPOSED breakdown (2026-07-03) ----------
+//
+// William ask (2026-07-03): flip the per-unit finances table so each UNIT is a
+// COLUMN and the line items (HOA Dues / Special Assessment / Total) are ROWS,
+// with a final "All units" / total column that sums across. Shown for EVERY
+// owner — including single-unit owners (a clean unit + total two-column table).
+// Both groups the endpoint supplies are preserved as row-groups: a "Due now"
+// group (what's owed right now — dues + the special-assessment INSTALLMENT, not
+// the full lump) and a "Total balance" group. Pure display over the additive
+// `perUnit` array; reconciles by construction to the owner-wide due-now +
+// balance totals.
+function PerUnitTransposedTable({
+  units,
   hasUpcomingInstallments,
 }: {
-  unit: FinanceUnitBreakdown;
-  // 2026-07-03 — per-unit dues-vs-assessment split (from the endpoint's
-  // additive `perUnit` array). When present, the expanded body leads with a
-  // clean "Due now" + "Total balance" summary that separates HOA dues from
-  // special assessments, per William's multi-unit ask.
-  dueBreakdown?: PerUnitBreakdown;
+  units: PerUnitBreakdown[];
   hasUpcomingInstallments?: boolean;
 }) {
-  const headerTotal = unit.total;
-  return (
-    <AccordionItem
-      value={unit.unitId}
-      className="overflow-hidden rounded-2xl border border-outline-variant/15 bg-surface !border-b"
-      data-testid={`portal-finances-unit-${unit.unitId}`}
-    >
-      <AccordionTrigger
-        className="px-5 py-4 hover:no-underline"
-        data-testid={`portal-finances-unit-${unit.unitId}-trigger`}
+  // Column-wise sums across every owned unit → the "All units" / total column.
+  const across = {
+    dueNowDues: units.reduce((s, u) => s + u.dueNowDues, 0),
+    dueNowAssessment: units.reduce((s, u) => s + u.dueNowAssessment, 0),
+    dueNowTotal: units.reduce((s, u) => s + u.dueNowTotal, 0),
+    balanceDues: units.reduce((s, u) => s + u.balanceDues, 0),
+    balanceAssessment: units.reduce((s, u) => s + u.balanceAssessment, 0),
+    balanceTotal: units.reduce((s, u) => s + u.balanceTotal, 0),
+  };
+
+  type Row = {
+    label: string;
+    get: (u: PerUnitBreakdown) => number;
+    acrossValue: number;
+    // `emphasis` marks each group's Total row (bolder; teal accent on the
+    // grand total).
+    emphasis?: boolean;
+  };
+  const dueNowRows: Row[] = [
+    { label: "HOA Dues", get: (u) => u.dueNowDues, acrossValue: across.dueNowDues },
+    {
+      label: `Special Assessment${hasUpcomingInstallments ? " installment" : ""}`,
+      get: (u) => u.dueNowAssessment,
+      acrossValue: across.dueNowAssessment,
+    },
+    { label: "Total due now", get: (u) => u.dueNowTotal, acrossValue: across.dueNowTotal, emphasis: true },
+  ];
+  const balanceRows: Row[] = [
+    { label: "HOA Dues", get: (u) => u.balanceDues, acrossValue: across.balanceDues },
+    { label: "Special Assessment", get: (u) => u.balanceAssessment, acrossValue: across.balanceAssessment },
+    { label: "Total balance", get: (u) => u.balanceTotal, acrossValue: across.balanceTotal, emphasis: true },
+  ];
+
+  const multiUnit = units.length > 1;
+  const totalColLabel = multiUnit ? "All units" : "Total";
+  // Sticky first column so the line-item labels stay visible while the unit
+  // columns scroll horizontally on a narrow phone.
+  const stickyCell = "sticky left-0 z-10 bg-surface";
+  // total column always present (unit + total, even for a single-unit owner).
+  const colCount = units.length + 2;
+
+  const renderRow = (row: Row, key: string) => (
+    <TableRow key={key} className={row.emphasis ? "border-t border-outline-variant/20" : undefined}>
+      <TableCell
+        className={`${stickyCell} whitespace-nowrap text-sm ${row.emphasis ? "font-semibold text-on-surface" : "text-on-surface-variant"}`}
       >
-        <div className="flex flex-1 items-center justify-between gap-3 sm:gap-4">
-          {/* #217 mobile pass — min-w-0 + truncate so a long unit label can't
-              push the balance figure off-screen on a narrow phone. */}
-          <div className="min-w-0 text-left">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-              Unit
-            </p>
-            <p className="truncate font-headline text-lg text-on-surface sm:text-xl" data-testid={`portal-finances-unit-${unit.unitId}-label`}>
-              {unit.unitLabel}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-              {headerTotal > 0 ? "Balance due" : "Balance"}
-            </p>
-            <p
-              className={`font-headline text-2xl ${headerTotal > 0 ? "text-destructive" : "text-on-surface"}`}
-              data-testid={`portal-finances-unit-${unit.unitId}-total`}
-            >
-              ${formatCurrency(headerTotal)}
-            </p>
-          </div>
-        </div>
-      </AccordionTrigger>
-      <AccordionContent className="px-5">
-        {/* 2026-07-03 — per-unit "Due now" + "Total balance" split into HOA
-            dues vs special assessment (William multi-unit ask). Reconciles to
-            the owner-wide totals. Only rendered when the endpoint supplied the
-            additive `perUnit` breakdown. */}
-        {dueBreakdown ? (
-          <div
-            className="grid grid-cols-1 gap-4 border-t border-outline-variant/10 pt-4 sm:grid-cols-2"
-            data-testid={`portal-finances-unit-${unit.unitId}-split`}
-          >
-            {/* Due now */}
-            <div className="rounded-xl border border-outline-variant/15 bg-surface-container/40 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-                Due now
-              </p>
-              <ul className="mt-2 space-y-1.5 text-sm">
-                <li className="flex items-center justify-between gap-3">
-                  <span className="text-on-surface">HOA Dues</span>
-                  <span className="font-medium tabular-nums text-on-surface" data-testid={`portal-finances-unit-${unit.unitId}-duenow-dues`}>
-                    ${formatCurrency(dueBreakdown.dueNowDues)}
-                  </span>
-                </li>
-                <li className="flex items-center justify-between gap-3">
-                  <span className="text-on-surface">
-                    Special Assessment{hasUpcomingInstallments ? " installment" : ""}
-                  </span>
-                  <span className="font-medium tabular-nums text-primary" data-testid={`portal-finances-unit-${unit.unitId}-duenow-assessment`}>
-                    ${formatCurrency(dueBreakdown.dueNowAssessment)}
-                  </span>
-                </li>
-                <li className="flex items-center justify-between gap-3 border-t border-outline-variant/10 pt-1.5">
-                  <span className="font-semibold text-on-surface">Total due now</span>
-                  <span
-                    className={`font-headline tabular-nums ${dueBreakdown.dueNowTotal > 0 ? "text-destructive" : "text-on-surface"}`}
-                    data-testid={`portal-finances-unit-${unit.unitId}-duenow-total`}
-                  >
-                    ${formatCurrency(dueBreakdown.dueNowTotal)}
-                  </span>
-                </li>
-              </ul>
-            </div>
-            {/* Total balance */}
-            <div className="rounded-xl border border-outline-variant/15 bg-surface-container/40 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-                Total balance
-              </p>
-              <ul className="mt-2 space-y-1.5 text-sm">
-                <li className="flex items-center justify-between gap-3">
-                  <span className="text-on-surface">HOA dues &amp; other</span>
-                  <span className="font-medium tabular-nums text-on-surface" data-testid={`portal-finances-unit-${unit.unitId}-balance-dues`}>
-                    ${formatCurrency(dueBreakdown.balanceDues)}
-                  </span>
-                </li>
-                <li className="flex items-center justify-between gap-3">
-                  <span className="text-on-surface">Special Assessment</span>
-                  <span className="font-medium tabular-nums text-primary" data-testid={`portal-finances-unit-${unit.unitId}-balance-assessment`}>
-                    ${formatCurrency(dueBreakdown.balanceAssessment)}
-                  </span>
-                </li>
-                <li className="flex items-center justify-between gap-3 border-t border-outline-variant/10 pt-1.5">
-                  <span className="font-semibold text-on-surface">Total balance</span>
-                  <span
-                    className={`font-headline tabular-nums ${dueBreakdown.balanceTotal > 0 ? "text-destructive" : "text-on-surface"}`}
-                    data-testid={`portal-finances-unit-${unit.unitId}-balance-total`}
-                  >
-                    ${formatCurrency(dueBreakdown.balanceTotal)}
-                  </span>
-                </li>
-              </ul>
-            </div>
-            {dueBreakdown.dueNowAssessment > 0 ? (
-              <p className="text-xs text-on-surface-variant sm:col-span-2" data-testid={`portal-finances-unit-${unit.unitId}-assessment-note`}>
-                Special assessments are billed in installments — only the amount
-                due now is shown here, not the full assessment.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
+        {row.label}
+      </TableCell>
+      {units.map((u) => (
+        <TableCell
+          key={u.unitId}
+          className={`text-right tabular-nums text-sm ${row.emphasis ? "font-semibold text-on-surface" : "text-on-surface"}`}
+          data-testid={`portal-finances-transpose-cell-${u.unitId}-${key}`}
+        >
+          {signedCurrency(row.get(u))}
+        </TableCell>
+      ))}
+      <TableCell
+        className={`text-right tabular-nums text-sm ${row.emphasis ? "font-semibold text-primary" : "font-medium text-on-surface"}`}
+        data-testid={`portal-finances-transpose-cell-all-${key}`}
+      >
+        {signedCurrency(row.acrossValue)}
+      </TableCell>
+    </TableRow>
+  );
 
-        {/* Category split (stacked bar + legend) */}
-        <div className="space-y-3 border-t border-outline-variant/10 pt-4">
-          <CategoryStackedBar byCategory={unit.byCategory} total={headerTotal} />
-          <ul
-            className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2"
-            data-testid={`portal-finances-unit-${unit.unitId}-categories`}
-          >
-            {FINANCE_CATEGORY_ORDER.map((cat) => {
-              const value = unit.byCategory[cat] ?? 0;
-              return (
-                <li
-                  key={cat}
-                  className="flex items-center justify-between gap-3 text-sm"
-                  data-testid={`portal-finances-unit-${unit.unitId}-category-${cat}`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      className={`inline-block h-2 w-2 rounded-full ${FINANCE_CATEGORY_BAR_COLOR[cat]} ${
-                        value <= 0 ? "opacity-30" : ""
-                      }`}
-                    />
-                    <span className={value > 0 ? "text-on-surface" : "text-on-surface-variant"}>
-                      {FINANCE_CATEGORY_LABEL[cat]}
-                    </span>
-                  </span>
-                  <span
-                    className={`font-medium tabular-nums ${value > 0 ? "text-on-surface" : "text-on-surface-variant"}`}
-                  >
-                    ${formatCurrency(value)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+  const groupHeader = (label: string, key: string) => (
+    <TableRow key={key} className="bg-surface-container/40">
+      <TableCell
+        colSpan={colCount}
+        className={`${stickyCell} bg-surface-container/40 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant`}
+      >
+        {label}
+      </TableCell>
+    </TableRow>
+  );
 
-        {/* Entry detail — the rows that produce the per-category totals. */}
-        {unit.entries.length > 0 ? (
-          <div className="mt-5">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-              Recent entries
-            </p>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24">Date</TableHead>
-                  <TableHead className="w-28">Type</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="w-28 text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {unit.entries.slice(0, 8).map((entry) => (
-                  <TableRow key={entry.id} data-testid={`portal-finances-unit-${unit.unitId}-entry-${entry.id}`}>
-                    <TableCell className="text-xs text-on-surface-variant">
-                      {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <Badge variant="outline">
-                        {ledgerTypeLabel(String(entry.entryType))}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">
-                      ${formatCurrency(Number(entry.amount))}
-                    </TableCell>
-                  </TableRow>
+  return (
+    <div className="space-y-2">
+      <Card>
+        {/* Horizontal scroll on narrow screens so many unit columns never burst
+            the layout — the table scrolls inside its own container. */}
+        <CardContent className="p-0 overflow-x-auto">
+          <Table data-testid="portal-finances-by-unit-transpose">
+            <caption className="sr-only">Per-unit finances — HOA dues and special assessments by unit.</caption>
+            <TableHeader>
+              <TableRow>
+                <TableHead className={`${stickyCell} whitespace-nowrap`} scope="col">
+                  Line item
+                </TableHead>
+                {units.map((u) => (
+                  <TableHead
+                    key={u.unitId}
+                    scope="col"
+                    className="whitespace-nowrap text-right"
+                    data-testid={`portal-finances-transpose-col-${u.unitId}`}
+                  >
+                    {u.unitLabel}
+                  </TableHead>
                 ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <p
-            className="mt-5 text-xs text-on-surface-variant"
-            data-testid={`portal-finances-unit-${unit.unitId}-no-entries`}
-          >
-            No ledger entries for this unit.
-          </p>
-        )}
-      </AccordionContent>
-    </AccordionItem>
+                <TableHead
+                  scope="col"
+                  className="whitespace-nowrap text-right text-primary"
+                  data-testid="portal-finances-transpose-col-all"
+                >
+                  {totalColLabel}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {groupHeader("Due now", "group-duenow")}
+              {dueNowRows.map((r, i) => renderRow(r, `duenow-${i}`))}
+              {groupHeader("Total balance", "group-balance")}
+              {balanceRows.map((r, i) => renderRow(r, `balance-${i}`))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+      {across.dueNowAssessment > 0 ? (
+        <p className="text-xs text-on-surface-variant" data-testid="portal-finances-transpose-note">
+          Special assessments are billed in installments — the &ldquo;Due now&rdquo; assessment is
+          only the current installment, not the full assessment shown under Total balance.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -711,14 +556,11 @@ function FinancesHubContent() {
   const upcoming = dashboard?.specialAssessmentUpcomingInstallments ?? [];
   const byUnit = dashboard?.byUnit ?? [];
   const unitLabelMap = useMemo(() => buildUnitLabelMap(byUnit), [byUnit]);
-  // 2026-07-03 — per-unit dues-vs-assessment split, keyed by unitId. Only the
-  // value-add for MULTI-unit owners; a single-unit owner's split is already
-  // covered by the top "What's due now" + "Total balance" cards.
-  const perUnitMap = useMemo(
-    () => new Map((dashboard?.perUnit ?? []).map((p) => [p.unitId, p])),
-    [dashboard?.perUnit],
-  );
-  const showPerUnitBreakdown = byUnit.length > 1;
+  // 2026-07-03 — per-unit dues-vs-assessment breakdown (from the endpoint's
+  // additive `perUnit` array). Rendered as a TRANSPOSED table (units = columns,
+  // line items = rows) for EVERY owner, single-unit included (William ask
+  // 2026-07-03). Sums reconcile to the owner-wide due-now + balance totals.
+  const perUnit = dashboard?.perUnit ?? [];
 
   // 2026-06-30 — "What's due now" breakdown (William finding #3): separate HOA
   // dues from special-assessment installments, and show the installment(s)
@@ -742,12 +584,6 @@ function FinancesHubContent() {
   // balance + lastPaymentDate; no money logic, no ledger write.
   const paidInFull = balance <= 0 && !hasAmountDue && totalDueNow <= 0;
   const lastPaymentDate = dashboard?.lastPaymentDate ?? null;
-  // Default-expand the first unit (or all units if there are <= 3) so the
-  // owner sees the breakdown without having to click. Per the wireframe.
-  const defaultOpenUnits = useMemo(
-    () => (byUnit.length <= 3 ? byUnit.map((u) => u.unitId) : byUnit.slice(0, 1).map((u) => u.unitId)),
-    [byUnit],
-  );
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6" data-testid="portal-finances">
@@ -1096,11 +932,11 @@ function FinancesHubContent() {
         </Card>
       </section>
 
-      {/* 2026-07-03 — the per-unit breakdown is the value-add for MULTI-unit
-          owners. A single-unit owner's dues-vs-assessment split is already
-          covered by the top "What's due now" + "Total balance" cards, so the
-          section is hidden for them (don't clutter the single-unit case). */}
-      {showPerUnitBreakdown ? (
+      {/* 2026-07-03 — per-unit breakdown, TRANSPOSED (units = columns, line
+          items = rows) and shown for EVERY owner — single-unit owners get a
+          clean two-column (unit + total) table, multi-unit owners get one
+          column per unit plus an "All units" total column (William ask). */}
+      {perUnit.length > 0 ? (
         <section
           data-testid="portal-finances-by-unit"
           aria-labelledby="portal-finances-by-unit-heading"
@@ -1111,7 +947,9 @@ function FinancesHubContent() {
                 By unit
               </h2>
               <p className="text-xs text-on-surface-variant">
-                {`What each of your ${byUnit.length} units owes — HOA dues and special assessments shown separately.`}
+                {perUnit.length > 1
+                  ? `What each of your ${perUnit.length} units owes — HOA dues and special assessments shown separately.`
+                  : "HOA dues and special assessments for your unit, shown separately."}
               </p>
             </div>
             <p
@@ -1121,21 +959,10 @@ function FinancesHubContent() {
               ${formatCurrency(dashboard?.grandTotal ?? balance)}
             </p>
           </div>
-          <Accordion
-            type="multiple"
-            defaultValue={defaultOpenUnits}
-            className="flex flex-col gap-3"
-            data-testid="portal-finances-by-unit-accordion"
-          >
-            {byUnit.map((unit) => (
-              <PerUnitFinanceCard
-                key={unit.unitId}
-                unit={unit}
-                dueBreakdown={perUnitMap.get(unit.unitId)}
-                hasUpcomingInstallments={upcoming.length > 0}
-              />
-            ))}
-          </Accordion>
+          <PerUnitTransposedTable
+            units={perUnit}
+            hasUpcomingInstallments={upcoming.length > 0}
+          />
         </section>
       ) : null}
 
