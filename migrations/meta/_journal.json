@@ -369,8 +369,15 @@
 		{
 			"idx": 52,
 			"version": "7",
-			"when": 1780400000004,
-			"tag": "0052_period_closes",
+			"when": 1780400001003,
+			"tag": "0052_ct_reserve_disclosure",
+			"breakpoints": true
+		},
+		{
+			"idx": 53,
+			"version": "7",
+			"when": 1780400001004,
+			"tag": "0053_period_closes",
 			"breakpoints": true
 		}
 	]

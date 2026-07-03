@@ -332,3 +332,63 @@ describe("parsePeriodBounds", () => {
     expect(b!.from.getTime()).toBeLessThan(b!.to.getTime());
   });
 });
+
+// ── Cross-period continuity (#8533 acceptance: closing(N) === opening(N+1)) ──
+//
+// The treasurer-grade guarantee: statements for consecutive periods CHAIN —
+// the balance an owner ends month N with is exactly the balance month N+1
+// opens with, including entries posted at the extreme boundary instants.
+// Also: a statement over [epoch → now] closes at the live ledger balance
+// (the reconciliation the portal's live-balance figure shows).
+describe("computeStatement — cross-period continuity", () => {
+  const LEDGER: StatementLedgerEntry[] = [
+    entry("jan-1", "assessment", 300, "2026-01-05T12:00:00Z"),
+    entry("jan-2", "payment", -300, "2026-01-20T12:00:00Z"),
+    // Boundary torture: the last representable ms of January…
+    entry("jan-3", "late-fee", 25, "2026-01-31T23:59:59.999Z"),
+    // …and the first instant of February.
+    entry("feb-1", "assessment", 300, "2026-02-01T00:00:00.000Z"),
+    entry("feb-2", "payment", -150, "2026-02-14T12:00:00Z"),
+    entry("mar-1", "assessment", 300, "2026-03-01T09:00:00Z"),
+    entry("mar-2", "credit", -50, "2026-03-15T09:00:00Z"),
+  ];
+
+  function statementFor(from: string, to: string) {
+    return computeStatement({
+      associationId: ASSOC,
+      personId: PERSON,
+      unitId: UNIT,
+      entries: LEDGER,
+      from: new Date(from),
+      to: new Date(to),
+    });
+  }
+
+  const jan = () => statementFor("2026-01-01T00:00:00.000Z", "2026-01-31T23:59:59.999Z");
+  const feb = () => statementFor("2026-02-01T00:00:00.000Z", "2026-02-28T23:59:59.999Z");
+  const mar = () => statementFor("2026-03-01T00:00:00.000Z", "2026-03-31T23:59:59.999Z");
+
+  it("closing(Jan) === opening(Feb) — including a last-ms-of-January entry", () => {
+    expect(jan().closingBalance).toBe(25); // 300 - 300 + 25
+    expect(feb().openingBalance).toBe(jan().closingBalance);
+  });
+
+  it("closing(Feb) === opening(Mar) — including a first-instant-of-February entry", () => {
+    // Feb: opening 25, +300 (posted exactly 00:00 — in-period, NOT opening), -150
+    expect(feb().openingBalance).toBe(25);
+    expect(feb().periodNetChange).toBe(150);
+    expect(mar().openingBalance).toBe(feb().closingBalance);
+  });
+
+  it("chains across all three periods: opening(Jan) + Σ netChange === closing(Mar)", () => {
+    const total = jan().periodNetChange + feb().periodNetChange + mar().periodNetChange;
+    expect(jan().openingBalance + total).toBe(mar().closingBalance);
+  });
+
+  it("an all-time statement closes at the live ledger balance (signed sum of every entry)", () => {
+    const liveBalance = LEDGER.reduce((sum, e) => sum + e.amount, 0);
+    const allTime = statementFor("2020-01-01T00:00:00.000Z", "2026-12-31T23:59:59.999Z");
+    expect(allTime.openingBalance).toBe(0);
+    expect(allTime.closingBalance).toBe(liveBalance);
+  });
+});
