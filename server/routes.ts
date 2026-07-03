@@ -6,6 +6,7 @@ import path from "path";
 import fs from "fs";
 import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
+import { authorizeUploadAccess, validateUploadFilename } from "./uploads-access";
 import { db } from "./db";
 import { debug } from "./logger";
 import { sendEmail } from "./email/send";
@@ -3636,84 +3637,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/uploads/:filename", async (req, res) => {
     try {
-      const rawFilename = getParam(req.params.filename);
-      // Prevent path traversal: only allow basename, no slashes or dots leading out
-      const filename = path.basename(rawFilename);
-      if (!filename || filename !== rawFilename || filename.startsWith(".")) {
-        return res.status(400).json({ message: "Invalid filename" });
+      // Validation + authorization live in server/uploads-access.ts (extracted
+      // for unit-testability per founder-os#8541 / YCM#218; includes the
+      // auth-before-exists, empty-scope-fail-closed, and inline-vs-attachment
+      // hardenings documented there).
+      const validated = validateUploadFilename(getParam(req.params.filename), uploadDir);
+      if (!validated.ok) {
+        return res.status(400).json({ message: validated.message });
       }
 
-      const filePath = path.join(uploadDir, filename);
-      // Ensure the resolved path is still inside uploadDir
-      const resolvedPath = path.resolve(filePath);
-      if (!resolvedPath.startsWith(path.resolve(uploadDir) + path.sep)) {
-        return res.status(400).json({ message: "Invalid filename" });
+      const authUser = req.isAuthenticated?.() && req.user
+        ? (req.user as { adminUserId?: string | null; email?: string | null })
+        : null;
+
+      const decision = await authorizeUploadAccess(
+        { fileUrl: validated.fileUrl, authUser, portalAccessId: req.header("x-portal-access-id") || "" },
+        {
+          getAdminUserById: (id) => storage.getAdminUserById(id),
+          getAdminUserByEmail: (email) => storage.getAdminUserByEmail(email),
+          getAdminAssociationScopesByUserId: (userId) => storage.getAdminAssociationScopesByUserId(userId),
+          documentExistsInAssociations: async (fileUrl, associationIds) => {
+            const [row] = await db
+              .select({ id: documents.id })
+              .from(documents)
+              .where(and(eq(documents.fileUrl, fileUrl), inArray(documents.associationId, associationIds)))
+              .limit(1);
+            return Boolean(row);
+          },
+          versionExistsInAssociations: async (fileUrl, associationIds) => {
+            const [row] = await db
+              .select({ documentId: documentVersions.documentId })
+              .from(documentVersions)
+              .innerJoin(documents, eq(documentVersions.documentId, documents.id))
+              .where(and(eq(documentVersions.fileUrl, fileUrl), inArray(documents.associationId, associationIds)))
+              .limit(1);
+            return Boolean(row);
+          },
+          getPortalAccessById: (id) => storage.getPortalAccessById(id),
+          getPortalDocuments: (portalAccessId) => storage.getPortalDocuments(portalAccessId),
+          getDocumentVersions: (documentId) => storage.getDocumentVersions(documentId),
+        },
+      );
+
+      if (decision.kind === "deny") {
+        return res.status(decision.status).json({ message: decision.message });
       }
 
-      if (!fs.existsSync(resolvedPath)) {
+      // Existence is checked AFTER authorization (H1) so unauthorized callers
+      // cannot enumerate which upload filenames exist.
+      if (!fs.existsSync(validated.resolvedPath)) {
         return res.status(404).json({ message: "File not found" });
       }
 
-      const fileUrl = `/api/uploads/${filename}`;
-
-      if (req.isAuthenticated?.() && req.user) {
-        const authUser = req.user as { adminUserId?: string | null; email?: string | null };
-        const adminUser = authUser.adminUserId
-          ? await storage.getAdminUserById(authUser.adminUserId)
-          : (authUser.email ? await storage.getAdminUserByEmail(authUser.email.trim().toLowerCase()) : undefined);
-        if (adminUser && adminUser.isActive === 1) {
-          // For non-platform-admin users, verify the file belongs to a document in their scoped associations
-          if (adminUser.role !== "platform-admin") {
-            const scopedAssociationIds = await storage.getAdminAssociationScopesByUserId(adminUser.id)
-              .then((scopes) => scopes.map((s) => s.associationId));
-            if (scopedAssociationIds.length > 0) {
-              // Check documents table for an entry with this fileUrl in the scoped associations
-              const [matchingDoc] = await db
-                .select({ id: documents.id })
-                .from(documents)
-                .where(and(eq(documents.fileUrl, fileUrl), inArray(documents.associationId, scopedAssociationIds)))
-                .limit(1);
-              if (!matchingDoc) {
-                // Also check document versions
-                const [matchingVersion] = await db
-                  .select({ documentId: documentVersions.documentId })
-                  .from(documentVersions)
-                  .innerJoin(documents, eq(documentVersions.documentId, documents.id))
-                  .where(and(eq(documentVersions.fileUrl, fileUrl), inArray(documents.associationId, scopedAssociationIds)))
-                  .limit(1);
-                if (!matchingVersion) {
-                  return res.status(403).json({ message: "File is not accessible for your association scope" });
-                }
-              }
-            }
-          }
-          return res.sendFile(resolvedPath);
-        }
+      if (decision.disposition === "attachment") {
+        res.setHeader("Content-Disposition", `attachment; filename="${validated.filename.replace(/"/g, "")}"`);
       }
-
-      const portalAccessId = req.header("x-portal-access-id") || "";
-      if (!portalAccessId) {
-        return res.status(403).json({ message: "Upload access requires admin or portal credentials" });
-      }
-
-      const portalAccess = await storage.getPortalAccessById(portalAccessId);
-      if (!portalAccess || portalAccess.status !== "active") {
-        return res.status(403).json({ message: "Portal access required" });
-      }
-
-      const portalDocs = await storage.getPortalDocuments(portalAccess.id);
-      const directMatch = portalDocs.some((doc) => doc.fileUrl === fileUrl);
-      if (directMatch) {
-        return res.sendFile(resolvedPath);
-      }
-
-      const versionLists = await Promise.all(portalDocs.map((doc) => storage.getDocumentVersions(doc.id)));
-      const versionMatch = versionLists.some((versions) => versions.some((version) => version.fileUrl === fileUrl));
-      if (versionMatch) {
-        return res.sendFile(resolvedPath);
-      }
-
-      return res.status(403).json({ message: "File is not visible for this portal access" });
+      return res.sendFile(validated.resolvedPath);
     } catch (error: any) {
       return res.status(500).json({ message: error.message });
     }
