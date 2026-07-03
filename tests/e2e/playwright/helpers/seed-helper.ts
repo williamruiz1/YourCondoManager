@@ -316,6 +316,24 @@ export async function installSeedRoutes(page: Page, store: SeedStore): Promise<v
     });
   });
 
+  // Financial dashboard — read by /portal/finances. Must carry a NON-ZERO
+  // balance: at $0 the page renders the "no outstanding balance" empty state
+  // (added while the Playwright gate was dead on the port-5000 collision,
+  // founder-os#8337) and the balance card the nav spec asserts never mounts.
+  await page.route(/\/api\/portal\/financial-dashboard/, async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        balance: 425.5,
+        nextDueDate: "2026-08-01",
+        lastPaymentDate: "2026-06-01",
+        totalCharges: 1200,
+        totalPayments: 774.5,
+      }),
+    });
+  });
+
   // Association settings — amenities toggle + reads.
   await page.route(/\/api\/associations\/[^/]+\/settings\/amenities/, async (route: Route) => {
     const url = route.request().url();

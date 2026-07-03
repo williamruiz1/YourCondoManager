@@ -1,0 +1,185 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cherry Hill — Assessment Load Preview</title>
+<style>
+:root{--teal:#014D4A;--teal2:#036b66;--bg:#f5f7f7;--review:#b3541e;--reviewbg:#fdf1e8;--cleanbg:#f0f7f5;--line:#dce4e3;}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#132322;line-height:1.5}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
+.banner{background:#fff8e6;border:2px solid #e0a800;border-radius:12px;padding:16px 20px;margin-bottom:24px;font-weight:600;color:#7a5c00}
+.banner b{color:#5a4400}
+h1{color:var(--teal);font-size:26px;margin:6px 0 4px}
+.sub{color:#5a6b6a;font-size:14px;margin-bottom:24px}
+.cards{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:26px}
+.card{flex:1;min-width:150px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.card .n{font-size:28px;font-weight:700;color:var(--teal)}
+.card .l{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#7a8a89;margin-top:2px}
+.card.review .n{color:var(--review)}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+thead th{background:var(--teal);color:#fff;text-align:left;padding:12px 14px;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+tbody td{padding:12px 14px;border-top:1px solid var(--line);font-size:14px;vertical-align:top}
+tbody tr.review{background:var(--reviewbg)}
+tbody tr.clean{background:#fff}
+.mono{font-family:'SF Mono',ui-monospace,Menlo,monospace;font-size:13px}
+.unit{font-weight:700;color:var(--teal)}
+.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.plan{color:#8a5a00;font-size:12px;font-style:italic}
+.status{font-weight:700;font-size:12px}
+.status.clean{color:var(--teal2)}
+.status.review{color:var(--review)}
+.reason{font-weight:400;font-style:italic;color:var(--review);margin-top:4px;font-size:12px;max-width:240px}
+.zero{display:inline-block;background:#e4f3ee;color:var(--teal2);font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;margin-left:6px;vertical-align:middle;letter-spacing:.03em}
+tfoot td{padding:14px;font-weight:700;background:var(--cleanbg);border-top:2px solid var(--teal)}
+.plans{margin-top:28px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px}
+.plans h3{color:var(--teal);margin:0 0 8px;font-size:15px}
+.plans code{background:#eef4f3;padding:2px 6px;border-radius:5px}
+.foot{margin-top:24px;color:#8a9a99;font-size:12px}
+</style></head><body><div class="wrap">
+<div class="banner">⚠️ <b>PREVIEW ONLY — nothing has been written.</b> This is a read-only mapping of the assessment ledger (balances as of May 9, 2026) onto the live YourCondoManager records. Validate every row below before any real load. Zero writes were made to the database.</div>
+<h1>Cherry Hill Court — Special-Assessment Balance Load Preview</h1>
+<div class="sub">Association f301d073-ed84-4d73-84ce-3ef28af66f7a · Source: “Copy of Assessment as of May 27 2026 Luz.xlsx” → sheet “Assesment track from Oct 1 2018” · Balance column: <b>Balance as of May 09 2026</b> · Generated 2026-07-01 06:13</div>
+<div class="cards">
+  <div class="card"><div class="n">18</div><div class="l">Units in ledger</div></div>
+  <div class="card"><div class="n">15</div><div class="l">Mapped cleanly</div></div>
+  <div class="card review"><div class="n">3</div><div class="l">Need review</div></div>
+  <div class="card"><div class="n">5</div><div class="l">Paid off ($0)</div></div>
+  <div class="card"><div class="n">$17,975.70</div><div class="l">Total to load</div></div>
+</div>
+<table>
+<thead><tr><th>Spreadsheet unit / owner</th><th>YCM unit</th><th>YCM person</th><th>Balance (May 9)</th><th>Plan</th><th>Match status</th></tr></thead>
+<tbody>
+<tr class="clean">
+      <td class="mono">1415-A Nsofor</td>
+      <td class="mono unit">1415-A</td>
+      <td>Nsofor Robinson</td>
+      <td class="num">$1,319.05</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1415-B  Achigasim</td>
+      <td class="mono unit">1415-B</td>
+      <td>Achigasim</td>
+      <td class="num">$1,321.86</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1415-C Sanchez</td>
+      <td class="mono unit">1415-C</td>
+      <td>Jose Sanchez</td>
+      <td class="num">$1,218.17</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1417-A Charles <span class='zero'>PAID OFF</span></td>
+      <td class="mono unit">1417-A</td>
+      <td>Charles</td>
+      <td class="num">$0.00</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="review">
+      <td class="mono">1417-B Ruiz/Miranda</td>
+      <td class="mono unit">1417-B</td>
+      <td>Priscilla Ruiz / Luz Miranda</td>
+      <td class="num">$1,016.24</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status review">REVIEW<div class='reason'>unit has multiple owners — pick which person the balance belongs to</div></td>
+    </tr><tr class="clean">
+      <td class="mono">1417- C  Pantoja <span class='zero'>PAID OFF</span></td>
+      <td class="mono unit">1417-C</td>
+      <td>Felipe Pantoja</td>
+      <td class="num">$0.00</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1417- D Fanning <span class='zero'>PAID OFF</span></td>
+      <td class="mono unit">1417-D</td>
+      <td>Catherine Fanning</td>
+      <td class="num">$0.00</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1417- E Heyward</td>
+      <td class="mono unit">1417-E</td>
+      <td>Mary Heyward</td>
+      <td class="num">$1,466.52</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1417 - F L&amp;W (William/Laura</td>
+      <td class="mono unit">1417-F</td>
+      <td>William Ruiz</td>
+      <td class="num">$1,525.42</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="review">
+      <td class="mono">1417 - G Thomas Diane <span class='zero'>PAID OFF</span></td>
+      <td class="mono unit">1417-G</td>
+      <td>Stephen Torok</td>
+      <td class="num">$0.00</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status review">REVIEW<div class='reason'>name mismatch — sheet says “Thomas Diane”, YCM sole owner is “Stephen Torok”</div></td>
+    </tr><tr class="clean">
+      <td class="mono">1419 -Tillman</td>
+      <td class="mono unit">1419</td>
+      <td>Lester Tillman</td>
+      <td class="num">$1,368.44</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1421 -A Simpson</td>
+      <td class="mono unit">1421-A</td>
+      <td>Andrew Simpson</td>
+      <td class="num">$1,291.70</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1421-B Ruiz, W.</td>
+      <td class="mono unit">1421-B</td>
+      <td>William Ruiz</td>
+      <td class="num">$2,121.77</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1421-C L&amp;W (Laura/William)</td>
+      <td class="mono unit">1421-C</td>
+      <td>William Ruiz</td>
+      <td class="num">$1,971.42</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1421-D Pantoja</td>
+      <td class="mono unit">1421-D</td>
+      <td>Felipe Pantoja</td>
+      <td class="num">$1,061.71</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="clean">
+      <td class="mono">1421-E Pantoja Thalia</td>
+      <td class="mono unit">1421-E</td>
+      <td>Thalia Pantoja</td>
+      <td class="num">$971.48</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr><tr class="review">
+      <td class="mono">1421-F Santiago <span class='zero'>PAID OFF</span></td>
+      <td class="mono unit">1421-F</td>
+      <td>— no person match —</td>
+      <td class="num">$0.00</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status review">REVIEW<div class='reason'>surname in sheet not found on this YCM unit</div></td>
+    </tr><tr class="clean">
+      <td class="mono">1421-G Magen LLC</td>
+      <td class="mono unit">1421-G</td>
+      <td>Magen LLC</td>
+      <td class="num">$1,321.92</td>
+      <td class="plan">unknown — needs William</td>
+      <td class="status clean">CLEAN</td>
+    </tr>
+</tbody>
+<tfoot><tr><td colspan="3">TOTAL to load (13 units with balances; 5 zero-balance units excluded)</td><td class="num">$17,975.70</td><td colspan="2"></td></tr></tfoot>
+</table>
+<div class="plans"><h3>Board payment plans (per-unit plan not in the sheet — left “needs William”)</h3>
+Monthly <code>$47.14</code> &nbsp; Quarterly <code>$141.44</code> &nbsp; Annually <code>$565.68</code> &nbsp; Full <code>$4,445.00</code>
+</div>
+<div class="foot">Read-only preview. No INSERT/UPDATE/DELETE was executed against prod. Unit/person data pulled via read-only SELECT from yourcondomanager (Fly).</div>
+</div></body></html>

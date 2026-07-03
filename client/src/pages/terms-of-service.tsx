@@ -420,7 +420,7 @@ export default function TermsOfServicePage({
               Solutions
             </h3>
             <ul className="space-y-4 text-sm">
-              {["Self-Managed Boards", "Enterprise Firms", "Resident Experience", "Developer API"].map(
+              {["Self-Managed Communities", "Enterprise Firms", "Resident Experience", "Developer API"].map(
                 (item, idx) => (
                   <li key={idx}>
                     <a
@@ -497,12 +497,9 @@ export default function TermsOfServicePage({
               Terms of Service
             </a>
           </Link>
-          <a
-            href="#"
-            className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-primary dark:hover:text-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
-          >
-            Cookie Settings
-          </a>
+          {/* Link audit 2026-06-30: "Cookie Settings" was a dead `href="#"` with
+              no cookie-preferences surface — removed, matching the SiteFooter
+              cleanup of 2026-06-22 rather than linking to nowhere. */}
         </div>
       </footer>
     </div>

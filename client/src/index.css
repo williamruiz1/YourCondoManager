@@ -3,24 +3,34 @@
 @tailwind utilities;
 
 /* ──────────────────────────────────────────────────────────────────────────
- * YCM brand v1 tokens — ratified 2026-05-11 (founder-os#1024 Phase 1.A).
- * Canonical reference: ~/.claude/projects/-Users-williamruiz/memory/project_ycm_brand_v1.md
+ * YCM brand v2 tokens — deep-teal identity (brand-identity-spec.md v1.0,
+ * 2026-06-16). Supersedes the v1 "cream + cool white" buildings palette.
+ * Canonical: ~/Downloads/06. YourCondoManager/Brand-Redesign/brand-identity-spec.md
  *
- * Logo variant locked: v16-05 "Cream + cool white" — slate blue sky, cream side
- * buildings, cool white center, navy unlit windows, teal accents.
+ * Logo: ascending-bars mark; type: Inter Tight. Palette:
+ *   Deep Teal #014D4A (primary) · Teal Accent #15A39C · Light Teal #BFE8E4
+ *   Gray #E5E7EB · Off-White #F5F7F9 · Ink #0F2E2C · Muted #6B7280
  *
- * Token names mirror the memory entry (slate, teal, cream, cool-white, navy).
- * Use these for marketing-surface design (landing page, OG image, favicon, public
- * outreach materials). App-surface (dashboard / admin / forms) continues to use
- * the existing Tailwind palette until Phase 2 brand rollout decides whether to
- * extend the brand into the app shell.
+ * The v1 var NAMES are retained (role-mapped to v2 values per spec §3.6) so
+ * any consumer reading the var layer inherits brand v2 with no call-site churn.
+ * Phase 0 (token layer + logo + font) extends brand v2 INTO the app shell.
  * ────────────────────────────────────────────────────────────────────────── */
 :root {
-  --ycm-sky: #5B7DA3;         /* slate blue sky — background, primary brand presence */
-  --ycm-teal: #2DBDB0;        /* roof + lit-window accents — primary CTA + active state */
-  --ycm-cream: #F0E5D2;       /* side-building warm tone — secondary surface */
-  --ycm-cool-white: #F6F9FF;  /* center-building cool tone — primary content surface */
-  --ycm-navy: #0B1B3B;        /* unlit windows — high-contrast text, footer */
+  /* Brand v2 role tokens (canonical names) */
+  --brand-primary: #014D4A;   /* Deep Teal — wordmark, headings, primary buttons, nav */
+  --brand-accent: #15A39C;    /* Teal Accent — links, active, focus, progress, highlights */
+  --brand-light: #BFE8E4;     /* Light Teal — tints, hover bg, selected rows, chart fills */
+  --brand-gray: #E5E7EB;      /* Gray — borders, dividers, disabled */
+  --brand-off-white: #F5F7F9; /* Off-White — page background, app canvas */
+  --brand-ink: #0F2E2C;       /* Ink — body text on light */
+  --brand-muted: #6B7280;     /* Muted — secondary text, tagline */
+
+  /* v1 aliases (role-mapped to v2 per spec §3.6) — kept for back-compat */
+  --ycm-sky: #014D4A;         /* → Deep Teal (consolidated brand surface) */
+  --ycm-teal: #15A39C;        /* → Teal Accent (links / active / accents) */
+  --ycm-cream: #BFE8E4;       /* → Light Teal (pale fills / soft tints) */
+  --ycm-cool-white: #F5F7F9;  /* → Off-White (page / section backgrounds) */
+  --ycm-navy: #014D4A;        /* → Deep Teal (brand ink / headings / dark surfaces) */
 }
 
 /* Material Symbols Outlined — with system symbol fallback when CDN is blocked */
@@ -48,40 +58,43 @@
   --card: 0 0% 98%;
   --card-foreground: 220 13% 13%;
   --card-border: 220 13% 94%;
-  --sidebar: 220 13% 96%;
-  --sidebar-foreground: 220 13% 13%;
-  --sidebar-border: 220 13% 92%;
-  --sidebar-primary: 217 91% 42%;
-  --sidebar-primary-foreground: 217 91% 98%;
-  --sidebar-accent: 217 15% 88%;
-  --sidebar-accent-foreground: 220 13% 13%;
-  --sidebar-ring: 217 91% 42%;
+  --sidebar: 178 97% 15%;            /* Deep Teal sidebar (brand v2 app shell) */
+  --sidebar-foreground: 0 0% 100%;   /* white nav labels on deep teal */
+  --sidebar-border: 178 60% 22%;     /* darker teal divider */
+  --sidebar-primary: 176 77% 36%;    /* Teal Accent — active rail / active item */
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 178 50% 24%;     /* hover surface on the deep-teal rail */
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-ring: 176 77% 36%;       /* Teal Accent focus ring */
   --popover: 220 13% 94%;
   --popover-foreground: 220 13% 13%;
   --popover-border: 220 13% 89%;
-  --primary: 217 91% 42%;
-  --primary-foreground: 217 91% 98%;
+  --primary: 178 97% 15%;            /* Deep Teal #014D4A — primary buttons/brand (white text = AAA) */
+  --primary-foreground: 0 0% 100%;
   --secondary: 220 13% 91%;
   --secondary-foreground: 220 13% 13%;
-  --muted: 217 15% 92%;
+  --muted: 204 24% 97%;              /* Off-White #F5F7F9 — muted surface */
   --muted-foreground: 220 9% 46%;
-  --accent: 217 15% 93%;
-  --accent-foreground: 220 13% 13%;
+  --accent: 175 47% 83%;             /* Light Teal #BFE8E4 — accent/hover fills */
+  --accent-foreground: 178 97% 15%;  /* Deep Teal text on light-teal (high contrast) */
   --destructive: 0 84% 45%;
   --destructive-foreground: 0 84% 98%;
   --input: 220 13% 75%;
-  --ring: 217 91% 42%;
-  --chart-1: 217 91% 42%;
-  --chart-2: 24 90% 45%;
-  --chart-3: 142 76% 36%;
-  --chart-4: 280 67% 45%;
-  --chart-5: 340 82% 42%;
-  --font-sans: Geist, sans-serif;
+  --ring: 176 77% 36%;               /* Teal Accent #15A39C — focus ring */
+  --chart-1: 178 97% 15%;            /* Deep Teal */
+  --chart-2: 176 77% 36%;            /* Teal Accent */
+  --chart-3: 175 47% 83%;            /* Light Teal */
+  --chart-4: 39 65% 55%;             /* Warning amber #D9A441 (brand-harmonized) */
+  --chart-5: 4 53% 50%;              /* Danger #C2453D (brand-harmonized) */
+  /* Brand v2 type system — Inter Tight (brand-identity-spec §4). Fallback stack
+   * per spec §4: 'Inter Tight', 'Inter', system. Serif/mono retained for any
+   * legacy consumers. */
+  --font-sans: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-serif: Lora, Georgia, serif;
   --font-mono: Geist Mono, monospace;
-  --font-headline: Newsreader, serif;
-  --font-body: Manrope, sans-serif;
-  --font-label: Manrope, sans-serif;
+  --font-headline: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-label: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --radius: .5rem;
   --shadow-2xs: 0px 1px 2px 0px hsl(220 13% 13% / 0.04);
   --shadow-xs: 0px 1px 2px 0px hsl(220 13% 13% / 0.06);
@@ -135,34 +148,34 @@
   --card: 220 13% 11%;
   --card-foreground: 220 13% 98%;
   --card-border: 220 13% 14%;
-  --sidebar: 220 13% 13%;
-  --sidebar-foreground: 220 13% 98%;
-  --sidebar-border: 220 13% 16%;
-  --sidebar-primary: 217 91% 58%;
-  --sidebar-primary-foreground: 217 91% 98%;
-  --sidebar-accent: 217 15% 18%;
-  --sidebar-accent-foreground: 220 13% 98%;
-  --sidebar-ring: 217 91% 58%;
+  --sidebar: 178 80% 9%;             /* very deep teal sidebar (dark mode) */
+  --sidebar-foreground: 0 0% 98%;
+  --sidebar-border: 178 50% 16%;
+  --sidebar-primary: 176 65% 48%;    /* brighter Teal Accent — active item on dark */
+  --sidebar-primary-foreground: 178 97% 10%;
+  --sidebar-accent: 178 45% 18%;
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-ring: 176 65% 48%;
   --popover: 220 13% 15%;
   --popover-foreground: 220 13% 98%;
   --popover-border: 220 13% 19%;
-  --primary: 217 91% 48%;
-  --primary-foreground: 217 91% 98%;
+  --primary: 176 65% 45%;            /* Teal Accent (brightened) — primary on dark reads better than deep teal */
+  --primary-foreground: 178 97% 10%; /* near-black-teal text on accent button */
   --secondary: 220 13% 18%;
   --secondary-foreground: 220 13% 98%;
-  --muted: 217 15% 17%;
+  --muted: 178 30% 14%;              /* deep-teal-tinted muted surface */
   --muted-foreground: 220 9% 65%;
-  --accent: 217 15% 16%;
-  --accent-foreground: 220 13% 98%;
+  --accent: 178 45% 18%;             /* deep-teal hover fill on dark */
+  --accent-foreground: 0 0% 98%;
   --destructive: 0 84% 45%;
   --destructive-foreground: 0 84% 98%;
   --input: 220 13% 35%;
-  --ring: 217 91% 58%;
-  --chart-1: 217 91% 65%;
-  --chart-2: 24 90% 65%;
-  --chart-3: 142 76% 60%;
-  --chart-4: 280 67% 65%;
-  --chart-5: 340 82% 62%;
+  --ring: 176 65% 48%;               /* brightened Teal Accent focus ring */
+  --chart-1: 176 65% 55%;            /* Teal Accent (bright) */
+  --chart-2: 175 47% 70%;            /* Light Teal (bright) */
+  --chart-3: 178 50% 40%;            /* mid Deep Teal */
+  --chart-4: 39 70% 62%;             /* Warning amber */
+  --chart-5: 4 60% 58%;              /* Danger */
   --shadow-2xs: 0px 2px 0px 0px hsl(220 13% 98% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(220 13% 98% / 0.00);
   --shadow-sm: 0px 2px 0px 0px hsl(220 13% 98% / 0.00), 0px 1px 2px -1px hsl(220 13% 98% / 0.00);
@@ -209,27 +222,25 @@
 }
 
 /*
- * YCM brand v1 marketing scope (founder-os#1024 Phase 1.B).
+ * YCM brand v2 marketing scope.
  *
- * The public marketing surface (landing.tsx) opts into the ratified brand v1
- * palette by wrapping its root in `.ycm-marketing`. We override only the
- * CSS-variable-backed semantic tokens that the marketing page consumes via
- * `*-primary` / `*-ring` utilities — the app shell (which renders OUTSIDE this
- * scope) keeps the existing blue palette untouched. Brand rollout into the app
- * is a Phase 2 decision (per the ycm.* token comment in tailwind.config.ts).
+ * The public marketing surface (landing.tsx) wraps its root in `.ycm-marketing`.
+ * As of the Phase 0 brand-v2 migration the app shell ALSO runs on brand v2
+ * (deep teal), so this override now just pins the marketing-surface semantic
+ * tokens to the canonical v2 values (identical to the app shell — no longer a
+ * separate palette). Kept as a scope hook for marketing-only refinements.
  *
  * Token → brand mapping (HSL channels matching index.css token format):
- *   --primary             → navy #0B1B3B  (220 69% 14%) — AA-safe white-on-navy
- *                            buttons + readable navy text-primary on white
- *   --primary-foreground  → cool-white #F6F9FF (220 100% 98%)
- *   --ring                → teal #2DBDB0  (175 62% 46%) — brand focus ring
+ *   --primary             → Deep Teal #014D4A (178 97% 15%) — white-on-teal = AAA
+ *   --primary-foreground  → white (0 0% 100%)
+ *   --ring                → Teal Accent #15A39C (176 77% 36%) — brand focus ring
  * Sky / teal / cream accents are applied directly in landing.tsx via the
- * `ycm.*` tailwind utilities (bg-ycm-sky, text-ycm-teal, etc.).
+ * `ycm.*` tailwind utilities (now role-mapped to brand v2 in tailwind.config.ts).
  */
 .ycm-marketing {
-  --primary: 220 69% 14%;
-  --primary-foreground: 220 100% 98%;
-  --ring: 175 62% 46%;
+  --primary: 178 97% 15%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 176 77% 36%;
 }
 
 @layer base {
