@@ -63,6 +63,12 @@ import {
   type BankTransaction,
   type OwnerLedgerEntry,
 } from "@shared/schema";
+import { isUnitCentricEnabledForAssociation } from "../unit-centric-flag";
+import {
+  loadUnitPayerRosters,
+  rosterNameMatch,
+  type UnitPayerRoster,
+} from "../unit-payer-roster";
 
 // ── Tunable thresholds (kept exported so tests can probe the live values) ────
 
@@ -107,6 +113,10 @@ export interface AutoMatchOutcome {
   ledgerEntryId: string;
   confidence: number;
   aliasMatch?: boolean; // true when a descriptor alias drove the match
+  // Phase 1 (P0-3): true when the unique per-unit reference (unitAccountRef)
+  // found in the descriptor drove the match at confidence 1.0. This is the
+  // "matched by reference" no-review tier the admin UI renders distinctly.
+  referenceMatch?: boolean;
   signals: {
     amountDeltaCents: number;
     dateDeltaDays: number;
@@ -267,6 +277,51 @@ export function payorNameMatch(
   return "none";
 }
 
+// ── Phase 1 (P0-3): unique per-unit reference detection ──────────────────────
+//
+// A unit's `unitAccountRef` (e.g. "CHC-0007") appears verbatim in the bank
+// descriptor when the owner puts it on the remittance. The Tier-0 pass looks
+// for a KNOWN ref inside the descriptor and, on a hit, matches the deposit to
+// that unit at confidence 1.0 BEFORE any name-guessing.
+//
+// Matching is normalization-tolerant (the descriptor may render "CHC 0007",
+// "chc-0007", "Ref:CHC0007"): we normalize BOTH the descriptor and each ref to
+// an alphanumeric-lowercase form and test for a whole-token OR contiguous
+// substring hit. Refs shorter than MIN_REF_LEN are ignored to prevent a short
+// code from matching noise.
+
+export const MIN_REF_LEN = 3;
+
+/** Alphanumeric-lowercase, no separators — e.g. "CHC-0007" → "chc0007". */
+export function normalizeRef(s: string | null | undefined): string {
+  if (!s) return "";
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Find which of `knownRefs` appears in the bank descriptor. Returns the FIRST
+ * (longest-first) matching ref's original value, or null. Pure.
+ *
+ * A ref matches when its normalized form is a contiguous substring of the
+ * normalized descriptor. Longest-first so "CHC-00070" wins over "CHC-0007"
+ * when both could match.
+ */
+export function findReferenceInDescriptor(
+  bankDescription: string | null | undefined,
+  knownRefs: Array<{ ref: string; unitId: string }>,
+): { ref: string; unitId: string } | null {
+  const hay = normalizeRef(bankDescription);
+  if (!hay) return null;
+  const candidates = knownRefs
+    .filter((r) => normalizeRef(r.ref).length >= MIN_REF_LEN)
+    .sort((a, b) => normalizeRef(b.ref).length - normalizeRef(a.ref).length);
+  for (const c of candidates) {
+    const needle = normalizeRef(c.ref);
+    if (needle && hay.includes(needle)) return c;
+  }
+  return null;
+}
+
 /**
  * Score a single candidate pairing. Pure function over inputs; no DB.
  * Exposed for tests + the per-row UI confidence preview.
@@ -279,6 +334,14 @@ export function scoreCandidate(input: {
   ledgerPostedAt: Date;
   ownerFirstName: string | null | undefined;
   ownerLastName: string | null | undefined;
+  /**
+   * Phase 1 (P0-1) — OPTIONAL unit-roster name signal. When provided (only on
+   * the unit-centric flag path), this SUPERSEDES the single-owner name check:
+   * the payor signal becomes "does ANY name on the unit's payer roster appear
+   * in the descriptor?". Backward-compatible: when omitted, scoring is
+   * byte-for-byte the pre-Phase-1 behavior (single-owner name match).
+   */
+  rosterMatch?: "exact" | "partial" | "none";
 }): { confidence: number; signals: AutoMatchOutcome["signals"] } {
   const amountDelta = Math.abs(input.bankAmountAbsCents - input.ledgerAmountAbsCents);
   const dateDelta = diffDays(input.bankDate, input.ledgerPostedAt);
@@ -297,7 +360,15 @@ export function scoreCandidate(input: {
   }
 
   let payorMatch: "exact" | "partial" | "none" = "none";
-  if (input.ownerFirstName && input.ownerLastName) {
+  if (input.rosterMatch !== undefined) {
+    // Unit-centric path: the roster's any-name match is the payor signal.
+    payorMatch = input.rosterMatch;
+    if (payorMatch === "exact") {
+      confidence += SCORE_WEIGHTS.payorExactMatch;
+    } else if (payorMatch === "partial") {
+      confidence += SCORE_WEIGHTS.payorPartialMatch;
+    }
+  } else if (input.ownerFirstName && input.ownerLastName) {
     payorMatch = payorNameMatch(input.bankDescription, input.ownerFirstName, input.ownerLastName);
     if (payorMatch === "exact") {
       confidence += SCORE_WEIGHTS.payorExactMatch;
@@ -419,6 +490,22 @@ export async function runAutoMatch(
   const aliasMap = new Map<string, { personId: string; unitId: string }>();
   for (const a of aliasRows) aliasMap.set(a.normalizedDescriptor, a);
 
+  // 4b. Phase 1 (P0-1 / P0-3): when the unit-centric flag is ON for this
+  //     association, load the per-unit payer rosters + the ref→unit list. These
+  //     drive (i) the Tier-0 exact-reference pass (confidence 1.0, no review)
+  //     and (ii) the unit-roster (any-name) payor signal. When the flag is OFF
+  //     these stay empty and the matcher behaves EXACTLY as before (single-owner
+  //     name path) — the full backward-compat contract.
+  const unitCentric = isUnitCentricEnabledForAssociation(associationId);
+  let rostersByUnit = new Map<string, UnitPayerRoster>();
+  let knownRefs: Array<{ ref: string; unitId: string }> = [];
+  if (unitCentric) {
+    rostersByUnit = await loadUnitPayerRosters(associationId);
+    knownRefs = Array.from(rostersByUnit.values())
+      .filter((r) => !!r.unitAccountRef)
+      .map((r) => ({ ref: r.unitAccountRef as string, unitId: r.unitId }));
+  }
+
   // 5. Score the full bipartite graph (creditCount × entryCount).
   //    Alias matches override the heuristic score: a descriptor alias from
   //    a prior human confirmation yields confidence = ALIAS_CONFIDENCE (0.99)
@@ -432,6 +519,7 @@ export async function runAutoMatch(
     confidence: number;
     signals: AutoMatchOutcome["signals"];
     aliasMatch: boolean;
+    referenceMatch?: boolean;
   };
   const allEdges: ScoredEdge[] = [];
 
@@ -444,12 +532,45 @@ export async function runAutoMatch(
     // Check if this descriptor has a known alias.
     const knownAlias = normalizedDesc ? aliasMap.get(normalizedDesc) : undefined;
 
+    // Phase 1 (P0-3) — TIER-0 EXACT-REFERENCE PASS (only when unit-centric flag
+    // is on). If the descriptor contains a known unitAccountRef, the deposit
+    // resolves DETERMINISTICALLY to that unit at confidence 1.0, BEFORE any
+    // name-guessing. We emit reference edges to every pending entry for the
+    // referenced unit that is within the amount tolerance (so the greedy
+    // apply picks the matching-amount entry). If the amounts don't line up at
+    // all, we still surface a reference edge to the closest entry so the
+    // treasurer sees the ref hit rather than losing it.
+    const refHit = unitCentric ? findReferenceInDescriptor(creditDesc, knownRefs) : null;
+
     for (const entry of pendingEntries) {
       const entryAbsCents = Math.round(Math.abs(entry.amount) * 100);
       const owner = personById.get(entry.personId);
 
       const dateDelta = diffDays(creditDate, entry.postedAt);
       if (dateDelta > DATE_WINDOW_DAYS) continue;
+
+      // TIER-0: reference hit + this entry belongs to the referenced unit +
+      // amount within ±$1 → confidence 1.0, no review. Amount fence prevents a
+      // ref from binding a wildly-wrong amount (partial-payment safety).
+      if (
+        refHit &&
+        entry.unitId === refHit.unitId &&
+        Math.abs(creditAbsCents - entryAbsCents) <= AMOUNT_NEAR_CENTS_TOL
+      ) {
+        allEdges.push({
+          bankTransactionId: credit.id,
+          ledgerEntryId: entry.id,
+          confidence: 1,
+          aliasMatch: false,
+          referenceMatch: true,
+          signals: {
+            amountDeltaCents: Math.abs(creditAbsCents - entryAbsCents),
+            dateDeltaDays: dateDelta,
+            payorMatch: "exact", // the reference IS the strongest possible payor signal
+          },
+        });
+        continue;
+      }
 
       // Alias shortcircuit: if the descriptor maps to a known person and this
       // ledger entry belongs to that person, elevate confidence to ALIAS_CONFIDENCE.
@@ -475,6 +596,15 @@ export async function runAutoMatch(
         continue;
       }
 
+      // Phase 1 (P0-1) — UNIT-ROSTER (any-name) payor signal. When unit-centric
+      // is on, the payor match is "does ANY name on this unit's payer roster
+      // appear in the descriptor?" (not just the single ledger-entry owner).
+      // When off, rosterMatch is undefined and scoreCandidate uses the
+      // single-owner name path exactly as before.
+      const rosterMatch: "exact" | "partial" | "none" | undefined = unitCentric
+        ? rosterNameMatch(creditDesc, rostersByUnit.get(entry.unitId) ?? { members: [] })
+        : undefined;
+
       const { confidence, signals } = scoreCandidate({
         bankAmountAbsCents: creditAbsCents,
         bankDate: creditDate,
@@ -483,6 +613,7 @@ export async function runAutoMatch(
         ledgerPostedAt: entry.postedAt,
         ownerFirstName: owner?.firstName,
         ownerLastName: owner?.lastName,
+        rosterMatch,
       });
 
       if (confidence <= 0) continue;
@@ -550,6 +681,7 @@ export async function runAutoMatch(
       ledgerEntryId: edge.ledgerEntryId,
       confidence: edge.confidence,
       aliasMatch: edge.aliasMatch,
+      referenceMatch: edge.referenceMatch,
       signals: edge.signals,
     });
   }
@@ -987,6 +1119,70 @@ export async function findOwnerSuggestionsForUnmatchedCredits(
   }
 
   return suggestions;
+}
+
+export interface AssociationOwner {
+  personId: string;
+  personName: string;
+  unitId: string;
+  unitNumber: string | null;
+}
+
+/**
+ * Full owner roster for an association (every person with an ownership → unit),
+ * used by the reconciliation review queue's "choose a different owner" dropdown.
+ * This is the complete directory — NOT the name-scored candidate subset — so a
+ * treasurer can attribute a deposit to ANY owner, including no-name bank noise.
+ * Read-only; creates nothing.
+ */
+export async function listAssociationOwners(
+  associationId: string,
+): Promise<AssociationOwner[]> {
+  const personRows = await db
+    .select({
+      id: persons.id,
+      firstName: persons.firstName,
+      lastName: persons.lastName,
+    })
+    .from(persons)
+    .innerJoin(ownerships, eq(ownerships.personId, persons.id))
+    .where(eq(persons.associationId, associationId));
+  const ownershipRows = await db
+    .select({ personId: ownerships.personId, unitId: ownerships.unitId })
+    .from(ownerships);
+  const unitRows = await db
+    .select({ id: units.id, unitNumber: units.unitNumber })
+    .from(units)
+    .where(eq(units.associationId, associationId));
+
+  const unitById = new Map<string, { unitNumber: string | null }>();
+  for (const u of unitRows) unitById.set(u.id, { unitNumber: u.unitNumber });
+  const ownershipByPerson = new Map<string, { unitId: string; unitNumber: string | null }>();
+  for (const o of ownershipRows) {
+    const unit = unitById.get(o.unitId);
+    if (!unit) continue; // stale ownership referencing a unit outside this association
+    ownershipByPerson.set(o.personId, { unitId: o.unitId, unitNumber: unit.unitNumber });
+  }
+
+  const owners: AssociationOwner[] = [];
+  for (const p of personRows) {
+    const own = ownershipByPerson.get(p.id);
+    if (!own) continue;
+    owners.push({
+      personId: p.id,
+      personName: `${p.firstName} ${p.lastName}`.trim(),
+      unitId: own.unitId,
+      unitNumber: own.unitNumber,
+    });
+  }
+  // Stable, human-friendly order: by unit number then name.
+  owners.sort((a, b) => {
+    const ua = a.unitNumber ?? "";
+    const ub = b.unitNumber ?? "";
+    if (ua !== ub) return ua.localeCompare(ub, undefined, { numeric: true });
+    return a.personName.localeCompare(b.personName);
+  });
+  return owners;
 }
 
 /**

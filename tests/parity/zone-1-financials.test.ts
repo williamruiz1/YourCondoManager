@@ -73,18 +73,21 @@ const ALL_FINANCIALS_ROUTES = [
   SETTINGS_BILLING,
 ] as const;
 
-// Personas that should be allowed on /app/financial/* per 0.2 matrix.
-// Platform Admin is `❌` on customer-tenant Financials per Persona 6
-// definition (admin manages YCM-internal tooling, not association
-// day-to-day). Owner is `❌` on every /app/* route by 0.2 matrix.
+// Personas that should be allowed on /app/financial/* per 0.2 matrix, AS
+// AMENDED by PR #239 (commit 381f261, ratified by William 2026-06-02): Platform
+// Admin is now GRANTED financials access (the pilot owner is also the board
+// member, and the backend already permitted platform-admin on every financial
+// API route — this resolved the front/back drift). Owner is `❌` on every
+// /app/* route by 0.2 matrix.
 const FINANCIALS_ALLOWED_PERSONAS: ReadonlyArray<AdminRole> = [
+  "platform-admin",
   "manager",
   "board-officer",
   "assisted-board",
   "pm-assistant",
   "viewer",
 ];
-const FINANCIALS_DENIED_PERSONAS: ReadonlyArray<AdminRole> = ["platform-admin"];
+const FINANCIALS_DENIED_PERSONAS: ReadonlyArray<AdminRole> = [];
 
 // /app/settings/billing has its own role list; document it so Tier 1
 // assertions match. (See HUMAN TASK in shared/persona-access.ts re:
@@ -177,8 +180,8 @@ describe("Phase 12 Tier 2 — Financials happy-path", () => {
     expect(canAccess("assisted-board", REPRESENTATIVE)).toBe(true);
   });
 
-  it(`Platform Admin denied ${REPRESENTATIVE} (per 0.2 matrix Platform Admin is ❌ on /app/financial/*)`, () => {
-    expect(canAccess("platform-admin", REPRESENTATIVE)).toBe(false);
+  it(`Platform Admin reaches ${REPRESENTATIVE} (granted per PR #239, ratified 2026-06-02)`, () => {
+    expect(canAccess("platform-admin", REPRESENTATIVE)).toBe(true);
   });
 });
 
@@ -206,9 +209,13 @@ describe("Phase 12 Tier 3 — sidebar SUBSET-RENDER for Financials zone", () => 
     });
   }
 
-  it("Financials zone absent from sidebar for platform-admin (0.2 matrix Platform Admin = ❌ on Financials)", () => {
+  // PR #239 (commit 381f261, ratified 2026-06-02) granted platform-admin
+  // financials access, so the Financials sidebar zone now renders for
+  // platform-admin (previously asserted absent under the original 0.2 matrix).
+  it("Financials zone visible in sidebar for platform-admin (per PR #239 grant)", () => {
     const zone = findFinancialsZone("platform-admin");
-    expect(zone).toBeUndefined();
+    expect(zone).toBeDefined();
+    expect(zone!.label).toBe("Financials");
   });
 
   it("Financials zone absent from sidebar when role is null (unauthenticated / pre-resolve)", () => {

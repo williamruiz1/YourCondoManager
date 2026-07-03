@@ -1,0 +1,173 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex"/>
+<title>YourCondoManager — 48-Hour Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--teal:#014D4A;--accent:#2DBDB0;--ink:#0f2725;--mut:#5b716e;--line:#e3ecea;--bg:#f5f9f8;--ok:#0f8a4a;--warn:#b8860b;--blue:#2c5fb3;--card:#fff}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif;margin:0}
+header{background:linear-gradient(135deg,var(--teal),#036a66);color:#fff;padding:32px 0 28px}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+.logo{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.logo .mark{width:34px;height:34px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--teal);font-weight:800;font-family:'Plus Jakarta Sans'}
+header h1{font-size:26px;font-weight:800}
+header p{margin:9px 0 0;color:#cfeee9;max-width:680px;font-size:14.5px}
+.stamp{display:inline-block;margin-top:15px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#eafffb;padding:5px 13px;border-radius:999px;font-size:12.5px;font-weight:600}
+.body{max-width:960px;margin:0 auto;padding:8px 24px 64px}
+.tldr{background:#fff;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:13px;padding:16px 20px;margin:24px 0 10px;font-size:14.5px}
+.tldr b{color:var(--ink)}
+.sec{margin-top:32px}
+.sec h2{font-size:19px;display:flex;align-items:center;gap:10px;color:var(--teal)}
+.sec h2 .dot{width:12px;height:12px;border-radius:3px}
+.sub{color:var(--mut);font-size:13.5px;margin:5px 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px 18px;margin-bottom:12px;font-size:14px}
+.card.good{border-left:4px solid var(--ok)}
+.card.dec{border-left:4px solid var(--warn)}
+.card h3{font-size:15.5px;font-weight:700;margin-bottom:5px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.card p{margin:0;color:var(--ink)}
+.card p.why{color:var(--mut);font-size:13.3px;margin-top:6px}
+.badge{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 9px;border-radius:6px;white-space:nowrap}
+.badge.live{background:#e6f6ee;color:var(--ok)}
+.badge.done{background:#eef4ff;color:var(--blue)}
+.badge.you{background:#fdf3e0;color:var(--warn)}
+.big{font-family:'Plus Jakarta Sans';font-weight:800;color:var(--teal)}
+.money{font-weight:700;color:var(--ink)}
+.callout{background:#fff8e8;border:1px solid #f1e0b6;border-radius:12px;padding:14px 18px;margin:14px 0;font-size:14px;color:#6d5312}
+.callout b{color:#4a3908}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.grid2{grid-template-columns:1fr}}
+.mini{background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px 15px;font-size:13.5px}
+.mini h4{margin:0 0 3px;font-family:'Plus Jakarta Sans';font-size:14px;color:var(--teal)}
+.mini p{margin:0;color:var(--mut);font-size:13px}
+footer{max-width:960px;margin:36px auto 0;padding:0 24px;color:var(--mut);font-size:12.5px;text-align:center}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:16px 0 0;font-size:12.5px;color:var(--mut)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+</style></head>
+<body>
+<header><div class="wrap">
+  <div class="logo"><div class="mark">Y</div><strong style="font-family:'Plus Jakarta Sans';font-size:15px">YourCondoManager</strong></div>
+  <h1>48-Hour Review</h1>
+  <p>Everything we shipped for Cherry Hill Court in the last two days, and the short list of things that need your call. Built to read top-to-bottom in a meeting.</p>
+  <span class="stamp">48-Hour Review · through 2026-07-03</span>
+</div></header>
+
+<div class="body">
+
+  <div class="tldr">
+    <b>The one thing that matters:</b> the new financial ledger we built found that Cherry Hill's books were <b>overstating what owners owe by about <span class="money">$12,500</span></b> — 70 owner payments landed in the Chase bank account but were never credited. We found the root cause, fixed it, and built a one-click screen to apply the payments. That's the headline; the rest is below.
+  </div>
+
+  <div class="legend">
+    <span><span class="badge live">Live</span> deployed &amp; verified</span>
+    <span><span class="badge done">Done</span> built &amp; verified</span>
+    <span><span class="badge you">Waiting on you</span> your call</span>
+  </div>
+
+  <!-- ================= SECTION A ================= -->
+  <div class="sec">
+    <h2><span class="dot" style="background:var(--ok)"></span>What we shipped</h2>
+    <p class="sub">All live, all verified. Ten things landed in 48 hours.</p>
+
+    <div class="card good">
+      <h3><span class="badge live">Live</span>Real financial ledger for Cherry Hill</h3>
+      <p>Cherry Hill now runs on a proper <b>double-entry general ledger</b> with real financial statements — the accounting backbone a managed association needs. It's built to <b>show any out-of-balance amount right in a banner</b>, so a problem is surfaced, never hidden.</p>
+    </div>
+
+    <div class="card good">
+      <h3><span class="badge live">Live</span>The catch that matters — books were overstating owner debt by ~<span class="money">$12,500</span></h3>
+      <p>The moment the new reconciliation ran, it caught it: <b>70 owner payments</b> had landed in the Chase bank account but were <b>never credited to the owners</b>, so the books showed people owing money they'd already paid.</p>
+      <p class="why"><b>Root cause:</b> 17 of Cherry Hill's 19 owners had no "association" link, so the matching engine could only see 2 of them and matched nothing. <b>Fixed</b> — the links are set, the engine now sees all 19.</p>
+    </div>
+
+    <div class="card good">
+      <h3><span class="badge live">Live</span>One-click payment resolution screen</h3>
+      <p>Applying those 70 payments is now a <b>click-through, not a data project</b>. Each Chase deposit shows a <b>suggested owner and a confidence level</b>, so you approve the clear ones fast and only eyeball the uncertain few.</p>
+    </div>
+
+    <div class="card good">
+      <h3><span class="badge live">Live</span>Owner portal fix — balances read honestly</h3>
+      <p>Paid-up units now show <b>"Paid in full on &lt;date&gt;"</b>, and a large balance sitting on a payment plan <b>no longer looks alarming</b>. Owners see an accurate, calm picture of where they stand.</p>
+    </div>
+
+    <div class="card good">
+      <h3><span class="badge live">Live</span>Data-integrity sweep — the same bug found &amp; fixed elsewhere</h3>
+      <p>We swept the whole platform for the same "no association link" bug and <b>found + fixed it in 3 other communities</b> (6 more owners). We also set <b>primary contacts on 15 Cherry Hill units</b> — that went from 1 of 18 to 17 of 18.</p>
+    </div>
+
+    <div class="card good">
+      <h3><span class="badge done">Done</span>Two owner name / title corrections</h3>
+      <p>Applied to two units — both <b>zero-balance</b>, so no money was affected.</p>
+    </div>
+
+    <div class="card good">
+      <h3><span class="badge live">Live</span>Cash Flow report added — reporting is now complete</h3>
+      <p>The financial reporting set is now the full suite: <b>P&amp;L, budget-vs-actual, AR aging, delinquency, cash flow, and a board summary</b>. Nothing missing for a board meeting.</p>
+    </div>
+
+    <div class="card good">
+      <h3><span class="badge done">Done</span>Reusable new-client onboarding template</h3>
+      <p>The entire Cherry Hill setup was turned into a <b>repeatable playbook</b> plus a <b>data-readiness checklist</b> — so onboarding the next client is a known path, not a from-scratch build.</p>
+    </div>
+
+    <div class="card good">
+      <h3><span class="badge live">Live</span>Stripe payments webhook fixed this morning</h3>
+      <p>The live payments webhook was erroring — Stripe would have <b>shut it off on July 9</b>. Root cause: it was being sent <b>billing events it wasn't built to handle</b>. Fixed to acknowledge them correctly. Payments keep flowing.</p>
+    </div>
+
+    <div class="card good">
+      <h3><span class="badge live">Live</span>Admin hub access restored</h3>
+      <p>Reset the login for <b>admin.yourcondomanager.org</b> — you're back in.</p>
+    </div>
+  </div>
+
+  <!-- ================= SECTION B ================= -->
+  <div class="sec">
+    <h2><span class="dot" style="background:var(--warn)"></span>What needs William</h2>
+    <p class="sub">Genuine decisions and quick reviews — your call, not ours. Six items.</p>
+
+    <div class="card dec">
+      <h3><span class="badge you">Waiting on you</span>Apply the matched Chase payments</h3>
+      <p><span class="money">~$24,256</span> is <b>matched and ready</b> to credit back to owners — one-click in the new review screen. Another <span class="money">~$15,250</span> (32 deposits) <b>needs your eyeball</b>.</p>
+      <p class="why"><b>Why:</b> the uncertain 32 are cases where the name sits on two units, or the deposit looks like bank noise — a human should confirm before crediting.</p>
+    </div>
+
+    <div class="card dec">
+      <h3><span class="badge you">Waiting on you</span>Cherry Hill assessment plan-load</h3>
+      <p>Needs a quick walkthrough with you.</p>
+      <p class="why"><b>Why:</b> your May spreadsheet is a <b>running balance sheet</b>, so it doesn't say which unit is on which plan — monthly, quarterly, annual, or paid-in-full. We need that to load the assessment correctly.</p>
+    </div>
+
+    <div class="card dec">
+      <h3><span class="badge you">Waiting on you</span>Unit B primary contact</h3>
+      <p>Pick one of two 50/50 co-owners: <b>Priscilla Ruiz</b> or <b>Luz Miranda</b>.</p>
+      <p class="why"><b>Why:</b> the unit needs a single primary contact for statements and notices; both own half.</p>
+    </div>
+
+    <div class="card dec">
+      <h3><span class="badge you">Waiting on you</span>Duplicate "William Ruiz" ×3 in Cherry Hill</h3>
+      <p>There are three "William Ruiz" records — worth merging into one. <b>Held for you</b>, not touched.</p>
+      <p class="why"><b>Why:</b> it's money-adjacent — a wrong merge could split one owner's ledger, so we don't do it without your OK.</p>
+    </div>
+
+    <div class="card dec">
+      <h3><span class="badge you">Waiting on you</span>Mystery Stripe subscription</h3>
+      <p>There's a <b>live subscription + a paid invoice</b> on the Stripe account that the app doesn't process. Whose is it?</p>
+      <p class="why"><b>Why:</b> it's either a SaaS-billing feature we should build to support, or a leftover to cancel — we can't tell without you.</p>
+    </div>
+
+    <div class="card dec">
+      <h3><span class="badge you">Waiting on you</span>Stripe product accounts — 2-minute pass each</h3>
+      <p>Four accounts — <b>PlinthKeep, Duho, Neostriatum, Marginalia</b> — each needs a quick dashboard pass: business name/colors/logo and the new <b>1207 Delaware Ave</b> address.</p>
+      <p class="why"><b>Why:</b> the managers built their side; this is the ~2-minute owner step only you can do in the dashboard.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>Bottom line for the meeting:</b> the ledger is live and it already earned its keep by catching a <span class="money">$12,500</span> overstatement. The biggest thing you can move today is <b>approving the matched Chase payments</b> so owners see accurate balances — the rest are short reviews.
+  </div>
+
+</div>
+
+<footer>YourCondoManager · 48-Hour Review · Cherry Hill Court (first live customer) · internal, not public.</footer>
+</body></html>

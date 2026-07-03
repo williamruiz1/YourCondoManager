@@ -1,0 +1,137 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex"/>
+<title>Cherry Hill Court — Receivables Reconciliation Breakdown</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>:root{--teal:#014D4A;--accent:#2DBDB0;--ink:#0f2725;--mut:#5b716e;--line:#e3ecea;--bg:#f5f9f8;--ok:#0f8a4a;--warn:#b8860b;--blue:#2c5fb3;--red:#b3261e}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif;margin:0}
+header{background:linear-gradient(135deg,var(--teal),#036a66);color:#fff;padding:30px 32px}
+header h1{font-size:23px;font-weight:800}header p{margin:7px 0 0;color:#cfeee9;font-size:14px}
+.wrap{max-width:960px;margin:0 auto;padding:24px 22px 60px}
+h2{font-size:18px;margin:30px 0 6px;color:var(--teal)}.sub{color:var(--mut);font-size:13.5px;margin:0 0 12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:16px 18px;margin-bottom:12px;font-size:14px}
+.card b{color:var(--ink)}
+.good{border-left:4px solid var(--ok)}.bad{border-left:4px solid var(--red)}.work{border-left:4px solid var(--blue)}.warnc{border-left:4px solid var(--warn)}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;margin-right:6px}
+.pill.have{background:#e6f6ee;color:var(--ok)}.pill.gap{background:#fce8e6;color:var(--red)}.pill.build{background:#eef4ff;color:var(--blue)}.pill.warn{background:#fbf3df;color:var(--warn)}
+.nums{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 4px}
+.numbox{flex:1;min-width:170px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.numbox .lbl{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut);font-weight:600}
+.numbox .val{font-family:'Plus Jakarta Sans',sans-serif;font-size:24px;font-weight:800;color:var(--teal);margin-top:3px}
+.numbox.red .val{color:var(--red)}.numbox.warn .val{color:var(--warn)}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13px;margin:6px 0 14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}th{background:#eef5f4;color:var(--teal);font-weight:700;font-size:11.5px;text-transform:uppercase}
+td.r,th.r{text-align:right}
+tr:last-child td{border-bottom:none}tfoot td{font-weight:700;background:#f2f8f7}
+ol,ul{margin:6px 0 0;padding-left:20px;font-size:14px}li{margin-bottom:5px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:#eef5f4;padding:1px 6px;border-radius:5px;color:var(--teal)}
+.tag{font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px}.tag.ok{background:#e6f6ee;color:var(--ok)}.tag.bad{background:#fce8e6;color:var(--red)}</style></head>
+<body><header><h1>Cherry Hill Court — Receivables Reconciliation Breakdown</h1><p>Why the two "what owners owe" figures disagree — and whether the numbers are trustworthy · read-only DB analysis · 2026-07-01</p></header>
+<div class="wrap">
+
+<h2>The headline (read this first)</h2>
+<div class="card bad"><b>The $6,315 GL gap is small and fully explained — but it is NOT the real problem.</b> The real problem is one level down: <b>~55 owner payments (~$15,280) landed in the Chase account and only $2,806 of them was ever recorded in the owner ledger.</b> That means the receivable totals themselves are inflated — owners are being shown as owing roughly <b>$12,500 they have already paid</b> into Chase. So BOTH "what owners owe" figures (the $39,797 ledger total AND the $33,482 GL figure) are overstated by the same unapplied-payments amount. The $6,315 gap is a real but minor mirroring artifact sitting on top of a much larger unapplied-payments distortion.</div>
+
+<h2>The two totals + the exact gap</h2>
+<div class="nums">
+<div class="numbox"><div class="lbl">Owner-ledger total (original per-owner running ledger)</div><div class="val">$39,796.78</div></div>
+<div class="numbox"><div class="lbl">GL Accounts-Receivable · account 1200</div><div class="val">$33,481.78</div></div>
+<div class="numbox red"><div class="lbl">Gap</div><div class="val">$6,315.00</div></div>
+</div>
+<p class="sub">Both recomputed directly from the live DB. Owner-ledger = <span class="mono">SUM(owner_ledger_entries.amount)</span> for CHC (93 entries). GL-1200 = <span class="mono">SUM(debits − credits)</span> on account <span class="mono">1200 "Accounts Receivable — Assessments"</span> (57 entries). The GL's own double-entry balance sheet is internally balanced; the disagreement is entirely on this receivables line.</p>
+
+<h2>Where the $6,315 comes from — by cause (discriminating test) <span class="pill have">fully explained · $0 remainder</span></h2>
+<div class="card good"><b>The GL is a windowed, forward-only mirror of the owner ledger — it is not a continuous feed.</b> Every GL-1200 entry links back to an owner-ledger entry (<span class="mono">source_type = 'owner_ledger_entry'</span>). Discriminating test: which owner-ledger entries got mirrored into the GL, and which did not?
+<ul>
+<li><b>57 owner-ledger entries were mirrored</b> into GL-1200 — they sum to <b>exactly $33,481.78</b> (= the GL figure, to the cent).</li>
+<li><b>36 owner-ledger entries were never mirrored</b> — they sum to <b>exactly $6,315.00</b> (= the gap, to the cent). Remainder: <b>$0.00</b>.</li>
+<li>The mirror only covered owner-ledger rows created between <b>May 25 – Jun 2, 2026</b> (posted May 1 – Jun 1). Anything outside that window never reached the GL.</li>
+</ul>
+This confirms hypothesis <b>H1 (forward-only / windowed mirroring)</b>, refined. It rules out H2 (no entry-type is systematically excluded — the unmirrored rows are ordinary dues/assessments/payments) and H3 (the ownership reassignments did not cause it — the per-unit gap is a clean uniform $330, not the irregular pattern a reassignment would produce).</div>
+
+<table><thead><tr><th>Component of the $6,315 gap</th><th class="r">Amount</th><th>What it is</th></tr></thead><tbody>
+<tr><td><b>July HOA dues charges</b> (18 units × $330)</td><td class="r">$5,940.00</td><td>Posted/created Jul&nbsp;1 — <i>after</i> the last GL post (Jun&nbsp;1). Never mirrored.</td></tr>
+<tr><td><b>Pre-GL-window residue</b> (unit A·1421)</td><td class="r">$375.00</td><td>Jan–Mar history (3 assessments − 2 payments + $25 late fee). Posted before the GL window; not backfilled.</td></tr>
+</tbody><tfoot><tr><td>Total</td><td class="r">$6,315.00</td><td>= the gap, exactly. No unexplained remainder.</td></tr></tfoot></table>
+<p class="sub">Note: for the other two units with Jan–Mar history (A·1415, A·1417), the assessments and payments net to $0, so they contribute nothing to the pre-GL component. Only unit A·1421 carries a non-zero pre-GL residue.</p>
+
+<h2>The gap broken down by unit</h2>
+<p class="sub">For each CHC unit: owner-ledger balance vs its GL-1200 contribution, and the per-unit difference. The gap is almost perfectly uniform — every unit is short exactly its $330 July charge; one unit (A·1421) is additionally short $375 of pre-GL history.</p>
+<table><thead><tr><th>Unit</th><th class="r">Owner-ledger</th><th class="r">GL-1200</th><th class="r">Gap</th></tr></thead><tbody>
+<tr><td>A (1421)</td><td class="r">$2,656.70</td><td class="r">$1,951.70</td><td class="r"><b>$705.00</b></td></tr>
+<tr><td>A (1415)</td><td class="r">$2,316.19</td><td class="r">$1,986.19</td><td class="r">$330.00</td></tr>
+<tr><td>B (1415)</td><td class="r">$3,269.42</td><td class="r">$2,939.42</td><td class="r">$330.00</td></tr>
+<tr><td>C (1415)</td><td class="r">$2,308.17</td><td class="r">$1,978.17</td><td class="r">$330.00</td></tr>
+<tr><td>A (1417)</td><td class="r">$1,270.00</td><td class="r">$940.00</td><td class="r">$330.00</td></tr>
+<tr><td>B (1417)</td><td class="r">$2,436.24</td><td class="r">$2,106.24</td><td class="r">$330.00</td></tr>
+<tr><td>C (1417)</td><td class="r">$990.00</td><td class="r">$660.00</td><td class="r">$330.00</td></tr>
+<tr><td>D (1417)</td><td class="r">$1,550.00</td><td class="r">$1,220.00</td><td class="r">$330.00</td></tr>
+<tr><td>E (1417)</td><td class="r">$2,842.22</td><td class="r">$2,512.22</td><td class="r">$330.00</td></tr>
+<tr><td>F (1417)</td><td class="r">$2,515.42</td><td class="r">$2,185.42</td><td class="r">$330.00</td></tr>
+<tr><td>G (1417)</td><td class="r">$990.00</td><td class="r">$660.00</td><td class="r">$330.00</td></tr>
+<tr><td>1419</td><td class="r">$3,029.84</td><td class="r">$2,699.84</td><td class="r">$330.00</td></tr>
+<tr><td>B (1421)</td><td class="r">$3,111.77</td><td class="r">$2,781.77</td><td class="r">$330.00</td></tr>
+<tr><td>C (1421)</td><td class="r">$2,955.42</td><td class="r">$2,625.42</td><td class="r">$330.00</td></tr>
+<tr><td>D (1421)</td><td class="r">$2,151.71</td><td class="r">$1,821.71</td><td class="r">$330.00</td></tr>
+<tr><td>E (1421)</td><td class="r">$2,007.48</td><td class="r">$1,677.48</td><td class="r">$330.00</td></tr>
+<tr><td>F (1421)</td><td class="r">$990.00</td><td class="r">$660.00</td><td class="r">$330.00</td></tr>
+<tr><td>G (1421)</td><td class="r">$2,406.20</td><td class="r">$2,076.20</td><td class="r">$330.00</td></tr>
+</tbody><tfoot><tr><td>Total</td><td class="r">$39,796.78</td><td class="r">$33,481.78</td><td class="r">$6,315.00</td></tr></tfoot></table>
+
+<h2>The four correctness concerns William raised</h2>
+
+<h3 style="color:var(--red);margin-top:18px">1 · Are the receivable SOURCES correct? &nbsp;<span class="pill gap">the real distortion</span></h3>
+<div class="card bad">The receivables are built almost entirely from <b>charges with barely any payments applied</b>. Composition of the $39,796.78 owner-ledger total:
+<table style="margin-top:8px"><thead><tr><th>Entry type</th><th class="r">Count</th><th class="r">Amount</th></tr></thead><tbody>
+<tr><td>Assessments (driveway / imported balances)</td><td class="r">22</td><td class="r">+$22,382.10</td></tr>
+<tr><td>Charges (monthly HOA dues + arrears)</td><td class="r">60</td><td class="r">+$20,195.70</td></tr>
+<tr><td>Late fee</td><td class="r">1</td><td class="r">+$25.00</td></tr>
+<tr><td>Payments applied</td><td class="r">10</td><td class="r"><b>−$2,806.00</b></td></tr>
+</tbody><tfoot><tr><td>Net receivable</td><td class="r">93</td><td class="r">$39,796.78</td></tr></tfoot></table>
+<b>No duplicate entries</b> were found (checked for same unit + type + amount + date — zero). The charges themselves look sourced correctly (real dues + a one-time May-8 balance import of driveway assessments and dues arrears). <b>The problem is the credit side, not the debit side:</b> only $2,806 of payments is recorded, which is what inflates the receivable — see concern #3.</div>
+
+<h3 style="color:var(--warn);margin-top:18px">2 · The May spreadsheet vs July timing &nbsp;<span class="pill warn">explains part of the gap, not the totals</span></h3>
+<div class="card warnc">The spreadsheet William provided is a <b>May 27 2026 snapshot</b>; the live ledger is current through <b>July dues</b>. Reconciling the timing:
+<ul>
+<li>The <b>$5,940 July HOA dues</b> (the bulk of the $6,315 GL gap) is exactly <b>new activity posted after the May snapshot</b> — it is <i>expected</i> drift, not a true discrepancy. The GL simply hasn't been re-synced since June 1.</li>
+<li>The May-8 "Imported balance" entries in the ledger ARE the spreadsheet snapshot, loaded once. So the ledger's May baseline and the spreadsheet agree.</li>
+<li><b>Timing verdict:</b> most of the GL gap is stale-snapshot drift (June + July dues posted since the mirror last ran), not a data error. But the timing does NOT explain the receivable totals being high — that is the unapplied Chase payments (#3).</li>
+</ul></div>
+
+<h3 style="color:var(--red);margin-top:18px">3 · The Chase payments — were they APPLIED? &nbsp;<span class="pill gap">NO — this is the big one</span></h3>
+<div class="card bad"><b>Real owner payments landed in Chase but were never credited to owner ledgers.</b>
+<div class="nums" style="margin-top:6px">
+<div class="numbox"><div class="lbl">Chase bank transactions (Plaid feed)</div><div class="val">91</div></div>
+<div class="numbox red"><div class="lbl">Reconciled to a payment</div><div class="val">0</div></div>
+<div class="numbox warn"><div class="lbl">Owner payments into Chase</div><div class="val">~$15,280</div></div>
+<div class="numbox"><div class="lbl">Payments applied in ledger</div><div class="val">$2,806</div></div>
+</div>
+<ul>
+<li><b>0 of 91</b> Chase bank transactions have <span class="mono">reconciled_to_payment_transaction_id</span> set — nothing from the bank feed has been matched to a ledger payment.</li>
+<li>Incoming owner payments (Zelle-from-owner + deposits + ATM check/cash) total <b>~$15,279.66 across 55 deposits</b> — e.g. "Zelle payment from LORRAINE SANTIAGO", "FELIPE PANTOJA", "MEDEA LAMBERTI", etc.</li>
+<li>The owner ledger records only <b>10 payments = $2,806</b>, and <b>none of those 10 are linked to a bank transaction</b> (<span class="mono">bank_transaction_id</span> is NULL and <span class="mono">settled_at</span> is NULL on all 10).</li>
+<li><b>Estimated unapplied owner payments: ~$12,474.</b> Owners are being shown as owing money they have already paid.</li>
+</ul>
+<b>Trust verdict:</b> the receivable figures are <b>materially overstated</b> — by roughly $12,500 — because paid money sitting in Chase was never credited. Both totals (ledger $39,797 and GL $33,482) carry this same overstatement. Applying the Chase payments would REDUCE what owners owe by ~$12.5k; it does <i>not</i> change the $6,315 ledger-vs-GL gap (that gap is about mirroring coverage, a separate issue), but it does mean the underlying receivables both systems agree on are too high.</div>
+<p class="sub">Caveat: ~$15,280 is a conservative classification of individual-name Zelle/deposit inflows; a per-owner match (which deposit belongs to which unit) would refine the exact applicable amount. Internal transfers between the two Chase accounts (~$23,726) and vendor/insurance items were excluded from the owner-payment figure.</p>
+
+<h3 style="color:var(--warn);margin-top:18px">4 · The dues rate change ($280 → $330, effective May 2026) &nbsp;<span class="pill have">applied correctly</span></h3>
+<div class="card good"><b>The rate transition was handled correctly and did not cause the gap.</b>
+<ul>
+<li><b>Recurring monthly dues are all at $330</b> from May onward — May, June, July each show 18 units × $330. Correct post-May rate.</li>
+<li>The <b>pre-May $280 rate is preserved in the imported arrears</b> (3 May-8 "HOA dues arrears" entries at $280) — the ledger carried the old rate for the pre-change periods it imported.</li>
+<li>The <b>April Zelle payments were $280</b> (the correct pre-May rate) — but those April payments are the <i>unapplied</i> Chase inflows from #3, not ledger entries.</li>
+<li><b>No mischarge found</b> from the rate transition. Owner-months: 3 at $280 (imported arrears), 54 at $330 (recurring May/Jun/Jul), plus 9 legacy $350 assessments from Jan–Mar. The $280→$330 change is not part of the $6,315 gap.</li>
+</ul></div>
+
+<h2>What this means / what to do</h2>
+<div class="card work"><b>Is the ~$6,315 gap trustworthy?</b> Yes — it is real, fully explained, and benign (mostly July dues the GL hasn't mirrored yet). <b>Are the receivable TOTALS trustworthy?</b> No — both are overstated by ~$12.5k of owner payments that hit Chase but were never applied.
+<ol style="margin-top:8px">
+<li><b>Apply the Chase payments first (highest priority).</b> Reconcile the 91 Chase transactions against owner ledgers — the ~55 owner deposits (~$15.3k) need to be credited so owners aren't billed for money they've paid. This is the dominant correctness issue; fix it before trusting any receivable number.</li>
+<li><b>Re-sync / backfill the GL.</b> The GL-1200 mirror is stuck at June 1. Re-running the owner-ledger → GL mirror (including the July dues and the pre-May residue) would close the $6,315 GL gap. Make the mirror continuous, not a one-time window, so it doesn't drift again.</li>
+<li><b>Refresh against a current snapshot, not the May spreadsheet.</b> The May spreadsheet is ~5 weeks stale; June + July dues posted since. Any reconciliation to it must account for that expected drift.</li>
+<li><b>Rate change is clean</b> — no action needed on the $280→$330 transition.</li>
+</ol>
+Order of magnitude: the unapplied-payments issue (~$12.5k, owner-facing) dwarfs the GL-mirror gap ($6.3k, internal display). Fix payments application first.</div>
+
+<p class="sub" style="margin-top:20px">All figures computed read-only from the live <span class="mono">yourcondomanager</span> production DB on 2026-07-01. No writes, no ledger changes, no money moved. This is a display/analysis artifact.</p>
+</div></body></html>

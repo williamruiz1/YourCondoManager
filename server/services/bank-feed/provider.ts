@@ -40,6 +40,23 @@ export interface WebhookEvent {
   error: string | null;
 }
 
+/**
+ * Result of a cursor-based incremental transactions sync (/transactions/sync).
+ *
+ * `added` + `modified` carry full transaction snapshots to upsert; `removed`
+ * carries provider transaction ids to delete (Plaid removes a pending txn once
+ * it posts under a new id). `nextCursor` MUST be persisted by the caller and
+ * passed back on the next sync — it is the resumption point. The provider
+ * drains all pages internally, so `hasMore` is always false on return.
+ */
+export interface TransactionSyncResult {
+  added: BankTransactionSnapshot[];
+  modified: BankTransactionSnapshot[];
+  removed: string[]; // providerTransactionId values to delete
+  nextCursor: string;
+  hasMore: boolean;
+}
+
 // ── Provider interface ───────────────────────────────────────────────────────
 
 export interface BankFeedProvider {
@@ -68,8 +85,11 @@ export interface BankFeedProvider {
   getAccounts(accessToken: string): Promise<BankAccountSnapshot[]>;
 
   /**
-   * Returns transactions since the given date for the given access_token.
-   * Uses Plaid's /transactions/sync endpoint internally.
+   * @deprecated Use {@link syncTransactions} (cursor-based /transactions/sync).
+   *
+   * Returns transactions since the given date for the given access_token via
+   * Plaid's DEPRECATED /transactions/get. Retained only for any legacy caller;
+   * the canonical path is the incremental cursor sync below.
    */
   getTransactions(
     accessToken: string,
@@ -77,8 +97,26 @@ export interface BankFeedProvider {
   ): Promise<BankTransactionSnapshot[]>;
 
   /**
-   * Validates an inbound Plaid webhook payload.
-   * Throws if verification fails; returns the parsed event on success.
+   * Incrementally sync transactions via Plaid's /transactions/sync (the
+   * canonical, non-deprecated endpoint). Pass the last persisted cursor
+   * (`null` for a first/initial sync); the provider drains every page and
+   * returns the combined added/modified/removed deltas plus the new cursor to
+   * persist. Idempotent against duplicate webhook deliveries — re-running with
+   * the same cursor returns the same delta.
+   */
+  syncTransactions(
+    accessToken: string,
+    cursor: string | null,
+  ): Promise<TransactionSyncResult>;
+
+  /**
+   * Validates an inbound Plaid webhook payload. In production this performs
+   * full JWT (JWS/ES256) signature + body-hash + replay verification and
+   * THROWS on any failure; the caller MUST reject unverified webhooks.
+   *
+   * @param headers inbound HTTP headers (carry the `Plaid-Verification` JWT)
+   * @param rawBody the EXACT raw request body bytes (NOT re-serialized JSON) —
+   *                the signed body hash is checked against these bytes
    */
   verifyWebhook(
     headers: Record<string, string>,

@@ -145,6 +145,16 @@ export interface SidebarItem {
   activePrefix?: string;
   /** Personas allowed to see this item — derived from 0.2 matrix. */
   roles: ReadonlyArray<AdminRole>;
+  /**
+   * Optional intra-zone grouping label (Financials IA restructure,
+   * 2026-06-24). When set on the FIRST item of a contiguous run, the
+   * sidebar renders a lightweight uppercase sub-header (e.g. "Setup",
+   * "Operations", "Insight") above that item. Items without a
+   * `groupLabel`, or whose `groupLabel` matches the running group, render
+   * with no extra header. Routes + roles are unaffected — this is a
+   * presentation-only grouping over the existing flat item list.
+   */
+  groupLabel?: string;
   /** Sub-items rendered under this item when expanded. */
   children?: ReadonlyArray<SidebarItem>;
 }
@@ -217,7 +227,17 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
     icon: Wallet,
     materialIcon: "payments",
     roles: FINANCIALS_ACCESS,
+    // Financials IA restructure (approved 2026-06-24). Three intra-zone
+    // groups — Setup (configure once), Operations (run every month),
+    // Insight (read the numbers). Grouping + labels only: every route and
+    // every item's `roles` are unchanged so existing links/bookmarks keep
+    // working. The bank-linking item was previously mislabeled "Payment
+    // Methods" (colliding with the real owner-facing Payments surface);
+    // renamed to "Bank Accounts" (the HOA's own banks via Plaid). "Owner
+    // Statement" surfaces the existing /app/financial/statement page in
+    // the sidebar.
     items: [
+      // ── Setup ──────────────────────────────────────────────────────
       {
         title: "Chart of Accounts",
         url: "/app/financial/foundation",
@@ -225,14 +245,16 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         materialIcon: "account_tree",
         activePrefix: "/app/financial/foundation",
         roles: FINANCIALS_ACCESS,
+        groupLabel: "Setup",
       },
       {
-        title: "Billing",
-        url: "/app/financial/billing",
-        icon: Receipt,
-        materialIcon: "receipt_long",
-        activePrefix: "/app/financial/billing",
+        title: "Bank Accounts",
+        url: "/app/financial/bank-connections",
+        icon: Landmark,
+        materialIcon: "account_balance",
+        activePrefix: "/app/financial/bank-connections",
         roles: FINANCIALS_ACCESS,
+        groupLabel: "Setup",
       },
       {
         title: "Assessment Rules",
@@ -241,6 +263,17 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         materialIcon: "rule",
         activePrefix: "/app/financial/rules",
         roles: FINANCIALS_ACCESS,
+        groupLabel: "Setup",
+      },
+      // ── Operations ─────────────────────────────────────────────────
+      {
+        title: "Billing",
+        url: "/app/financial/billing",
+        icon: Receipt,
+        materialIcon: "receipt_long",
+        activePrefix: "/app/financial/billing",
+        roles: FINANCIALS_ACCESS,
+        groupLabel: "Operations",
       },
       {
         title: "Payments",
@@ -249,6 +282,7 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         materialIcon: "credit_card",
         activePrefix: "/app/financial/payments",
         roles: FINANCIALS_ACCESS,
+        groupLabel: "Operations",
       },
       {
         title: "Expenses",
@@ -257,7 +291,9 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         materialIcon: "account_balance",
         activePrefix: "/app/financial/expenses",
         roles: FINANCIALS_ACCESS,
+        groupLabel: "Operations",
       },
+      // ── Insight ────────────────────────────────────────────────────
       {
         title: "Reports",
         url: "/app/financial/reports",
@@ -265,14 +301,16 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         materialIcon: "summarize",
         activePrefix: "/app/financial/reports",
         roles: FINANCIALS_ACCESS,
+        groupLabel: "Insight",
       },
       {
-        title: "Payment Methods",
-        url: "/app/financial/bank-connections",
-        icon: Landmark,
-        materialIcon: "account_balance",
-        activePrefix: "/app/financial/bank-connections",
+        title: "Owner Statement",
+        url: "/app/financial/statement",
+        icon: FileText,
+        materialIcon: "description",
+        activePrefix: "/app/financial/statement",
         roles: FINANCIALS_ACCESS,
+        groupLabel: "Insight",
       },
     ],
   },
