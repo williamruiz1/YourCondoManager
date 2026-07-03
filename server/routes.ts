@@ -14186,10 +14186,23 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const amountDueResolution = resolveAmountDue(planInput, new Date());
       const amountDueThisPeriod = toAmountDueThisPeriod(amountDueResolution);
 
+      // 2026-07-03 (display-only) — the "My Finances" summary tiles are
+      // labeled "Total paid (YTD)" / "Total charges (YTD)" and the client
+      // reads `dashboard.totalCharges` / `dashboard.totalPayments`, but the
+      // endpoint previously only sent `totalCharged` / `totalPaid`, so both
+      // tiles rendered $0.00. Provide the exact fields the client expects,
+      // filtered to the current calendar year (year-to-date). Same entry-type
+      // groupings as the all-time totals above; scoped to `myEntries` (all of
+      // this owner's units). Read-only aggregation — no ledger/money writes.
+      const ytdStart = new Date(new Date().getFullYear(), 0, 1);
+      const myEntriesYtd = myEntries.filter((e) => e.postedAt && new Date(e.postedAt) >= ytdStart);
       res.json({
         balance,
         totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
         totalPaid: Math.abs(myEntries.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
+        // Year-to-date fields consumed by the summary tiles on My Finances.
+        totalCharges: myEntriesYtd.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
+        totalPayments: Math.abs(myEntriesYtd.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
         feeSchedules: activeSchedules.map((s) => ({ id: s.id, name: s.chargeDescription, amount: s.amount, frequency: s.frequency })),
         nextDueDate: nextDue ? nextDue.toISOString() : null,
         // 2026-07-01 (display-only) — drives the "Paid in full on <date>" state.
