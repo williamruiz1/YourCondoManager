@@ -783,7 +783,7 @@ function BuildingsTab({ associationId }: { associationId: string }) {
           <CardTitle>Buildings & Units</CardTitle>
           <CardDescription>
             Auto-populated from your Building &amp; Unit Registry. To add or edit buildings, go to{" "}
-            <a href="/app/buildings" className="underline">Building Management</a>.
+            <a href="/app/units" className="underline">Building Management</a>.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -791,7 +791,7 @@ function BuildingsTab({ associationId }: { associationId: string }) {
             <div className="text-center py-8">
               <Building2 className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
               <p className="text-sm text-muted-foreground mb-3">No buildings or units registered for this association yet.</p>
-              <a href="/app/buildings">
+              <a href="/app/units">
                 <Button variant="outline" size="sm">
                   <Plus className="h-4 w-4 mr-1.5" />
                   Add Buildings

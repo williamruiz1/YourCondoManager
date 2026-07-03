@@ -10,6 +10,7 @@ import { emailEvents, emailLogs, type EmailEvent, type EmailLog } from "@shared/
 // reach it. See server/test-routes.ts for the full gate definition
 // and the /api/__test/last-otp consumer.
 import { captureTestEmail } from "./test-routes";
+import { resolveTenantSender } from "./email/tenant-sender.js";
 
 type EmailAddressLike = string | string[] | null | undefined;
 
@@ -470,7 +471,27 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
   }
 
   const transporter = getTransporter(config);
-  const fromHeader = config.fromName ? `"${config.fromName}" <${config.fromAddress}>` : config.fromAddress!;
+
+  // Per-tenant sending alias (feature: per-HOA / per-PM sending identity).
+  // When this association has a configured alias AND the TENANT_SENDING_ALIAS_ENABLED
+  // flag is on, override the From with `<slug>@yourcondomanager.org` + the tenant
+  // display name, and the Reply-To with the tenant's real inbox. Otherwise the
+  // resolver returns the global default and behavior is unchanged. The alias is
+  // SERVER-DERIVED from associationId — never client-supplied — so one tenant can
+  // never send as another's alias. Fails open to the global default on any error.
+  const tenantSender = await resolveTenantSender(payload.associationId ?? null);
+  const globalFromHeader = config.fromName
+    ? `"${config.fromName}" <${config.fromAddress}>`
+    : config.fromAddress!;
+  const fromHeader =
+    tenantSender.source === "tenant-alias" ? tenantSender.fromHeader : globalFromHeader;
+  // Reply-To precedence: explicit payload override > tenant alias reply-to > config default.
+  const effectiveReplyTo =
+    payload.replyTo ??
+    (tenantSender.source === "tenant-alias" ? tenantSender.replyTo : null) ??
+    config.replyTo ??
+    undefined;
+
   const mailOptions: Mail.Options = {
     from: fromHeader,
     to,
@@ -479,7 +500,7 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
     subject: payload.subject,
     html: html || undefined,
     text: text || undefined,
-    replyTo: payload.replyTo ?? config.replyTo ?? undefined,
+    replyTo: effectiveReplyTo,
     attachments: payload.attachments?.map((attachment) => ({
       filename: attachment.filename,
       content: attachment.content,

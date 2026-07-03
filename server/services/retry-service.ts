@@ -23,6 +23,8 @@ import {
   chargeOffSession,
   updatePaymentTransactionStatus,
 } from "./payment-service";
+import { resolveConnectChargeRouting } from "./stripe-connect-resolver";
+import { computeApplicationFeeCents } from "./stripe-charge-metadata";
 
 // ── Failure Classification ───────────────────────────────────────────────────
 
@@ -213,13 +215,16 @@ export async function runAutopayRetries(): Promise<{
         continue;
       }
 
-      // Load gateway
+      // Load gateway + resolve Connect routing (prefer Connect direct charge on
+      // the HOA's connected account when active; else legacy manual key).
       const gateway = await storage.getActivePaymentGatewayConnection({
         associationId: originalTxn.associationId,
         provider: "stripe",
       });
+      const connectRouting = await resolveConnectChargeRouting(originalTxn.associationId);
 
-      if (!gateway?.secretKey) {
+      const retrySecretKey = connectRouting?.platformSecretKey ?? gateway?.secretKey ?? null;
+      if (!retrySecretKey) {
         skipped++;
         continue;
       }
@@ -252,9 +257,10 @@ export async function runAutopayRetries(): Promise<{
         .set({ retryEligible: 0, updatedAt: new Date() })
         .where(eq(paymentTransactions.id, originalTxn.id));
 
-      // Charge off-session
+      // Charge off-session. Routes through Connect (direct charge + app fee +
+      // "DUES" suffix) when the association's connected account is active.
       const chargeResult = await chargeOffSession({
-        secretKey: gateway.secretKey,
+        secretKey: retrySecretKey,
         stripeCustomerId: method.providerCustomerId,
         stripePaymentMethodId: method.providerPaymentMethodId,
         amountCents: originalTxn.amountCents,
@@ -265,6 +271,9 @@ export async function runAutopayRetries(): Promise<{
         unitId: originalTxn.unitId,
         transactionId: retryTxn.id,
         enrollmentId: originalTxn.autopayEnrollmentId ?? "",
+        stripeAccountHeader: connectRouting?.stripeAccountHeader ?? null,
+        applicationFeeCents: connectRouting ? computeApplicationFeeCents(originalTxn.amountCents) : null,
+        statementDescriptorSuffix: connectRouting ? "DUES" : null,
       });
 
       // Update retry transaction status

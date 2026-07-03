@@ -24,6 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+import { gotoStable } from "./helpers/nav-helper";
 import { loginAsManager, loginAsOwner } from "./helpers/auth-helper";
 import { runAxeAuditSoft } from "./helpers/a11y-check";
 import {
@@ -74,7 +75,7 @@ test.describe("Wave 16a/26 — assessment lifecycle", () => {
       await loginAsManager(page);
       await installSeedRoutes(page, store);
 
-      await page.goto("/app/financial/rules");
+      await gotoStable(page, "/app/financial/rules");
       await expect(page).toHaveURL(/\/app\/financial\/rules/);
 
       const created = await page.evaluate(async () => {
@@ -124,7 +125,7 @@ test.describe("Wave 16a/26 — assessment lifecycle", () => {
       expect(ledger[0].description).toBe("Monthly E2E dues");
       expect(ledger[0].amount).toBe(275);
 
-      await page.goto("/portal/finances/ledger");
+      await gotoStable(page, "/portal/finances/ledger");
       await expect(page).toHaveURL(/\/portal\/finances\/ledger/);
 
       // Wave 25 — axe-core audit on the portal finances ledger surface.
@@ -185,7 +186,7 @@ test.describe("Wave 16a/26 — assessment lifecycle", () => {
       associationId: ASSOCIATION_ID,
     });
 
-    await page.goto("/app/financial/rules");
+    await gotoStable(page, "/app/financial/rules");
 
     // 1. Manager runs the rule via the unified on-demand endpoint.
     const runResult = await page.evaluate(async (ruleId: string) => {
@@ -226,7 +227,7 @@ test.describe("Wave 16a/26 — assessment lifecycle", () => {
       personId: seeded.personId,
       email: "owner@e2e.test",
     });
-    await page.goto("/portal");
+    await gotoStable(page, "/portal");
     const dashboard = await page.evaluate(async (portalAccessId: string) => {
       const res = await fetch("/api/portal/financial-dashboard", {
         headers: { "x-portal-access-id": portalAccessId },
@@ -248,7 +249,7 @@ test.describe("Wave 16a/26 — assessment lifecycle", () => {
     expect(manager.email).toBe("manager@e2e.test");
 
     // 4. Visit /portal/finances/ledger — the route should resolve.
-    await page.goto("/portal/finances/ledger");
+    await gotoStable(page, "/portal/finances/ledger");
     await expect(page).toHaveURL(/\/portal\/finances\/ledger/);
 
     // Wave 25 — axe-core audit on the portal finances ledger surface.

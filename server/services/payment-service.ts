@@ -11,6 +11,7 @@
 import crypto from "crypto";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
+import { checkoutSessionKey, offSessionChargeKey } from "./stripe-idempotency";
 import {
   paymentTransactions,
   ownerLedgerEntries,
@@ -99,6 +100,20 @@ export async function initiateStripeCheckout(params: {
   ownerEmail?: string | null;
   associationName: string;
   unitNumber: string;
+  /**
+   * Stripe Connect routing (spec §1.1). When provided, the Checkout Session is
+   * created on the connected HOA account via the `Stripe-Account` header (a
+   * DIRECT charge), `secretKey` MUST be the PLATFORM key, and an
+   * `application_fee_amount` is attached to the underlying PaymentIntent so the
+   * YCM platform fee routes to the platform balance. When omitted, this is the
+   * legacy manual-key path (charge on whatever account `secretKey` belongs to)
+   * — UNCHANGED.
+   */
+  stripeAccountHeader?: string | null;
+  /** Spec §1.2 application fee in cents (only applied when stripeAccountHeader is set). */
+  applicationFeeCents?: number | null;
+  /** Spec §2.3 statement descriptor suffix (e.g. "DUES"); attached to the PaymentIntent. */
+  statementDescriptorSuffix?: string | null;
 }): Promise<{ checkoutUrl: string; sessionId: string }> {
   const [txn] = await db
     .select()
@@ -147,12 +162,42 @@ export async function initiateStripeCheckout(params: {
   sessionParams.set("metadata[currency]", txn.currency || "USD");
   sessionParams.set("metadata[amount]", (txn.amountCents / 100).toFixed(2));
 
+  // Stripe Connect direct-charge routing (spec §1.1 + §1.2). When routing to a
+  // connected HOA account, attach the application fee + statement descriptor
+  // suffix to the underlying PaymentIntent. Both are only meaningful on a
+  // direct charge (i.e. with the Stripe-Account header set below).
+  if (params.stripeAccountHeader) {
+    if (params.applicationFeeCents && params.applicationFeeCents > 0) {
+      sessionParams.set(
+        "payment_intent_data[application_fee_amount]",
+        String(params.applicationFeeCents),
+      );
+    }
+    if (params.statementDescriptorSuffix) {
+      sessionParams.set(
+        "payment_intent_data[statement_descriptor_suffix]",
+        params.statementDescriptorSuffix,
+      );
+    }
+  }
+
+  const checkoutHeaders: Record<string, string> = {
+    Authorization: `Bearer ${params.secretKey}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  // Direct charge on the connected HOA account (spec §1.1). Required for the
+  // application fee to route to the platform balance and for per-HOA payouts.
+  if (params.stripeAccountHeader) {
+    checkoutHeaders["Stripe-Account"] = params.stripeAccountHeader;
+  }
+
+  // Idempotency: one hosted checkout session per logical transaction. A retry
+  // of this POST (network blip) returns the original session, never a second.
+  checkoutHeaders["Idempotency-Key"] = checkoutSessionKey(txn.id);
+
   const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.secretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: checkoutHeaders,
     body: sessionParams.toString(),
   });
 
@@ -397,6 +442,13 @@ export async function getAdminPaymentTransactions(params: {
 
 export async function ensureStripeCustomer(params: {
   secretKey: string;
+  /**
+   * 2026-06-30 — Stripe Connect. When set, the customer + setup session live on
+   * the connected HOA account (direct), and `secretKey` MUST be the PLATFORM
+   * key. The saved customer/payment-method ids are scoped to that connected
+   * account, so the setup-return MUST also fetch with this same header.
+   */
+  stripeAccountHeader?: string | null;
   associationId: string;
   personId: string;
   email?: string | null;
@@ -424,12 +476,16 @@ export async function ensureStripeCustomer(params: {
   customerParams.set("metadata[associationId]", params.associationId);
   customerParams.set("metadata[personId]", params.personId);
 
+  const customerHeaders: Record<string, string> = {
+    Authorization: `Bearer ${params.secretKey}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (params.stripeAccountHeader) {
+    customerHeaders["Stripe-Account"] = params.stripeAccountHeader;
+  }
   const res = await fetch("https://api.stripe.com/v1/customers", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.secretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: customerHeaders,
     body: customerParams.toString(),
   });
 
@@ -448,6 +504,9 @@ export async function ensureStripeCustomer(params: {
 
 export async function initiateStripeSetupCheckout(params: {
   secretKey: string;
+  /** 2026-06-30 — Connect. When set, the setup session is created on the
+   *  connected HOA account (`secretKey` = PLATFORM key). */
+  stripeAccountHeader?: string | null;
   stripeCustomerId: string;
   appBaseUrl: string;
   associationId: string;
@@ -459,19 +518,25 @@ export async function initiateStripeSetupCheckout(params: {
   const sessionParams = new URLSearchParams();
   sessionParams.set("mode", "setup");
   sessionParams.set("customer", params.stripeCustomerId);
-  sessionParams.set("payment_method_types[0]", "us_bank_account");
+  // Card + ACH: owners can save either a card or a bank account.
+  sessionParams.set("payment_method_types[0]", "card");
+  sessionParams.set("payment_method_types[1]", "us_bank_account");
   sessionParams.set("payment_method_options[us_bank_account][verification_method]", "instant");
   sessionParams.set("success_url", successUrl);
   sessionParams.set("cancel_url", cancelUrl);
   sessionParams.set("metadata[associationId]", params.associationId);
   sessionParams.set("metadata[personId]", params.personId);
 
+  const setupHeaders: Record<string, string> = {
+    Authorization: `Bearer ${params.secretKey}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (params.stripeAccountHeader) {
+    setupHeaders["Stripe-Account"] = params.stripeAccountHeader;
+  }
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.secretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: setupHeaders,
     body: sessionParams.toString(),
   });
 
@@ -583,6 +648,11 @@ export async function chargeOffSession(params: {
     intentHeaders["Stripe-Account"] = params.stripeAccountHeader;
   }
 
+  // Idempotency: one off-session intent per logical transaction. A retry of the
+  // off-session charge POST (network blip) returns the original intent rather
+  // than charging the owner's bank account a second time.
+  intentHeaders["Idempotency-Key"] = offSessionChargeKey(params.transactionId);
+
   const res = await fetch("https://api.stripe.com/v1/payment_intents", {
     method: "POST",
     headers: intentHeaders,
@@ -624,12 +694,22 @@ export async function chargeOffSession(params: {
 
 export async function fetchStripeCheckoutSession(params: {
   secretKey: string;
+  /** 2026-06-30 — Connect. Must match the header the session was created with,
+   *  or Stripe returns "No such checkout session" for a connected-account
+   *  session fetched without it. */
+  stripeAccountHeader?: string | null;
   sessionId: string;
 }): Promise<Record<string, unknown> | null> {
+  const fetchHeaders: Record<string, string> = {
+    Authorization: `Bearer ${params.secretKey}`,
+  };
+  if (params.stripeAccountHeader) {
+    fetchHeaders["Stripe-Account"] = params.stripeAccountHeader;
+  }
   const res = await fetch(
     `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(params.sessionId)}?expand[]=setup_intent.payment_method`,
     {
-      headers: { Authorization: `Bearer ${params.secretKey}` },
+      headers: fetchHeaders,
     },
   );
   if (!res.ok) return null;

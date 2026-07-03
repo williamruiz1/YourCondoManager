@@ -27,6 +27,7 @@
 // Owner Portal launcher removed from Platform group per 3.1 Q11 / 2.4 Q5.
 // Association switcher lives in the top app-bar only per 3.1 Q10.
 
+import { Fragment } from "react";
 import { useLocation, Link } from "wouter";
 import { BrandMark } from "@/components/brand-mark";
 import {
@@ -118,9 +119,30 @@ function ZoneGroup({ zone, location }: ZoneGroupProps) {
             </SidebarMenuButton>
             {zone.items.length > 0 ? (
               <SidebarMenuSub>
-                {zone.items.map((item) => (
-                  <ZoneSubItem key={item.url} item={item} location={location} />
-                ))}
+                {zone.items.map((item, index) => {
+                  // Financials IA restructure (2026-06-24) — render a
+                  // lightweight uppercase group sub-header when an item's
+                  // `groupLabel` opens a new contiguous group. Presentation
+                  // only; zones without `groupLabel` render unchanged.
+                  const prevGroup =
+                    index > 0 ? zone.items[index - 1].groupLabel : undefined;
+                  const showGroupHeader =
+                    item.groupLabel != null && item.groupLabel !== prevGroup;
+                  return (
+                    <Fragment key={item.url}>
+                      {showGroupHeader ? (
+                        <li
+                          className="px-2 pb-0.5 pt-2 first:pt-0 text-[10px] font-label font-semibold uppercase tracking-widest text-muted-foreground/60 select-none group-data-[collapsible=icon]:hidden"
+                          data-testid={`nav-group-${slugify(zone.label)}-${slugify(item.groupLabel as string)}`}
+                          aria-hidden="true"
+                        >
+                          {item.groupLabel}
+                        </li>
+                      ) : null}
+                      <ZoneSubItem item={item} location={location} />
+                    </Fragment>
+                  );
+                })}
               </SidebarMenuSub>
             ) : null}
           </SidebarMenuItem>
@@ -191,10 +213,10 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
           href="/"
           className="px-4 pt-4 pb-3 flex items-center gap-2.5 hover:opacity-80 transition-opacity"
         >
-          <BrandMark className="h-9 w-9 flex-shrink-0" />
+          <BrandMark forceTheme="dark" className="h-9 w-9 flex-shrink-0" />
           <div className="group-data-[collapsible=icon]:hidden">
             <h2
-              className="font-headline italic font-semibold text-lg tracking-tight text-slate-900 dark:text-slate-100"
+              className="font-headline italic font-semibold text-lg tracking-tight text-sidebar-foreground"
               data-testid="text-app-title"
             >
               Your Condo Manager
