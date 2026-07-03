@@ -1,42 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="100 114 824 824" role="img" aria-label="Your Condo Manager">
-<title>Your Condo Manager</title>
-<rect x="100" y="770" width="824" height="40" rx="8" fill="#F0E5D2"/>
-<rect x="100" y="780" width="824" height="22" fill="#D4BE8A"/>
-<rect x="149" y="490" width="230" height="284" rx="6" fill="#F0E5D2" stroke="#5B7DA3" stroke-width="3"/>
-<rect x="171" y="554" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="223" y="554" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="275" y="554" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="171" y="606" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="223" y="606" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="275" y="606" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="171" y="658" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="223" y="658" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="275" y="658" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<polygon points="397,360 627,360 512,250" fill="#2DBDB0"/>
-<rect x="397" y="360" width="230" height="414" rx="6" fill="#F6F9FF" stroke="#5B7DA3" stroke-width="3"/>
-<rect x="439" y="432" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="491" y="432" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="543" y="432" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="439" y="484" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="491" y="484" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="543" y="484" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="439" y="536" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="491" y="536" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="543" y="536" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="439" y="588" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="491" y="588" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="543" y="588" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="439" y="640" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="491" y="640" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="543" y="640" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="645" y="490" width="230" height="284" rx="6" fill="#F0E5D2" stroke="#5B7DA3" stroke-width="3"/>
-<rect x="707" y="542" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="759" y="542" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="811" y="542" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="707" y="594" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="759" y="594" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="811" y="594" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="707" y="646" width="42" height="42" rx="4" fill="#2DBDB0"/>
-<rect x="759" y="646" width="42" height="42" rx="4" fill="#0B1B3B"/>
-<rect x="811" y="646" width="42" height="42" rx="4" fill="#2DBDB0"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Your Condo Manager">
+  <title>Your Condo Manager</title>
+  <polygon points="10,88 34,70 34,112 10,112" fill="#014D4A"/>
+  <polygon points="46,58 70,40 70,112 46,112" fill="#014D4A"/>
+  <polygon points="82,26 106,8 106,112 82,112" fill="#014D4A"/>
 </svg>

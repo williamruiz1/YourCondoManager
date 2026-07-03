@@ -180,6 +180,12 @@ interface StripeApiCallOptions {
   body?: URLSearchParams | null;
   /** Optional connected-account ID for Stripe-Account header (acts on behalf of). */
   stripeAccount?: string;
+  /**
+   * Optional Idempotency-Key. When set on a POST, Stripe returns the original
+   * result on a retry instead of creating a second object (no double charge /
+   * refund). Ignored for non-POST methods. See server/services/stripe-idempotency.ts.
+   */
+  idempotencyKey?: string;
 }
 
 export async function callPlatformStripe<T = Record<string, unknown>>(
@@ -197,6 +203,10 @@ export async function callPlatformStripe<T = Record<string, unknown>>(
   }
   if (opts.stripeAccount) {
     headers["Stripe-Account"] = opts.stripeAccount;
+  }
+  // Idempotency-Key only applies to POST (the money-moving / create verb).
+  if (opts.idempotencyKey && opts.method === "POST") {
+    headers["Idempotency-Key"] = opts.idempotencyKey;
   }
   const resp = await fetch(`https://api.stripe.com/v1${opts.path}`, {
     method: opts.method,

@@ -18,8 +18,9 @@ const TABS: FinanceTab[] = [
   { label: "Payments", href: "/app/financial/payments", prefix: "/app/financial/payments" },
   { label: "Budgets", href: "/app/financial/budgets", prefix: "/app/financial/budgets" },
   { label: "Reports", href: "/app/financial/reports", prefix: "/app/financial/reports" },
+  { label: "AR Aging", href: "/app/financial/ar-aging", prefix: "/app/financial/ar-aging" },
   { label: "Reconciliation", href: "/app/financial/reconciliation", prefix: "/app/financial/reconciliation" },
-  { label: "Payment Methods", href: "/app/financial/bank-connections", prefix: "/app/financial/bank-connections" },
+  { label: "Bank Accounts", href: "/app/financial/bank-connections", prefix: "/app/financial/bank-connections" },
 ];
 
 export function FinanceTabBar() {

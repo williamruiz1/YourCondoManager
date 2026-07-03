@@ -1,11 +1,13 @@
 /**
- * pricing-service.ts — Plan resolution and PM portfolio billing computation.
+ * pricing-service.ts — Plan resolution and portfolio billing computation.
  *
- * Two exported functions:
+ * Exported functions:
  *  - resolveSelfManagedPlan: match a unit count to the correct plan_catalog row
+ *  - computeSelfManagedMonthlyBill: compute monthly bill for ONE self-managed
+ *    community under the declining per-unit model (William-ratified 2026-06-21)
  *  - computePmPortfolioMonthlyBill: compute monthly bill for a PM portfolio
  *
- * Both functions accept a plans array parameter so they can be unit-tested
+ * All pure helpers accept a plans array parameter so they can be unit-tested
  * without a live database. The DB-backed overloads fetch from plan_catalog
  * automatically.
  */
@@ -23,22 +25,126 @@ export type PmComplexInput = {
 
 export type PmLineItem = {
   associationId: string;
+  /** Doors (units) managed in this community. */
   unitCount: number;
+  /** The portfolio-level per-door tier this community rolls up into. */
   planKey: string;
   displayName: string;
-  unitAmountCents: number | null;
+  /** Per-door rate (cents) for the resolved tier. Null for enterprise. */
+  perDoorAmountCents: number | null;
+  /** This community's share of the door-count bill: unitCount × perDoorAmountCents. */
+  computedLineCents: number;
   isEnterprise: boolean;
 };
 
 export type PmPortfolioBillResult = {
   lines: PmLineItem[];
+  /** Total doors managed across the whole PM portfolio. */
+  totalDoors: number;
+  /** The per-door tier the portfolio's TOTAL door count resolves into. */
+  resolvedTierPlanKey: string;
+  resolvedTierDisplayName: string;
+  /** Per-door rate (cents) for the resolved tier. Null for enterprise. */
+  perDoorAmountCents: number | null;
+  /** totalDoors × perDoorAmountCents (0 for enterprise / manual). */
   computedSubtotalCents: number;
+  /** The resolved tier's monthly minimum (cents); 0 if none. */
+  tierMinimumCents: number;
+  /** Top-up applied when the door-count bill falls below the tier minimum. */
   minimumAppliedCents: number;
+  /** max(computedSubtotalCents, tierMinimumCents). */
   finalTotalCents: number;
   manualReviewRequired: boolean;
 };
 
-const PM_MONTHLY_MINIMUM_CENTS = 30000; // $300/mo minimum
+// ── Self-Managed types ───────────────────────────────────────────────────────
+
+export type SmMonthlyBillResult = {
+  /** The resolved plan_catalog row's stable key. */
+  planKey: string;
+  displayName: string;
+  /** Units in this community (the billed quantity for per-unit tiers). */
+  unitCount: number;
+  /** The pricing model of the resolved tier (flat_per_association | per_door | enterprise_manual). */
+  pricingModel: string;
+  /** The flat monthly amount for a flat tier (cents); null for per-unit / manual. */
+  flatAmountCents: number | null;
+  /** The per-unit rate (cents) for a per-unit tier; null for flat / manual. */
+  perUnitAmountCents: number | null;
+  /** units × perUnitAmountCents for per-unit tiers; the flat amount for flat tiers; 0 for manual. */
+  computedSubtotalCents: number;
+  /** The tier's monthly minimum / floor (cents); 0 if none. */
+  tierMinimumCents: number;
+  /** Top-up applied when a per-unit bill falls below the tier minimum. */
+  minimumAppliedCents: number;
+  /** The final monthly bill (cents); 0 for manual/enterprise. */
+  finalTotalCents: number;
+  /** Enterprise Concierge (251+) is billed manually — no auto bill. */
+  manualReviewRequired: boolean;
+};
+
+/**
+ * Canonical Self-Managed rates — DECLINING per-unit by community tier
+ * (William-ratified 2026-06-21). The per-unit rate FALLS as the community
+ * grows; the Small tier is a flat floor.
+ *
+ *   Small Community      (1–40 units)     $129/mo FLAT  → 12900¢ (floor)
+ *   Mid Community        (41–100)         $3.75/unit/mo → 375¢  (units × 375)
+ *   Large Community      (101–250)        $3.50/unit/mo → 350¢  (units × 350)
+ *   Enterprise Concierge (251+)           custom / negotiable — manual
+ *
+ * At each tier's entry the per-unit bill naturally exceeds the $129 floor
+ * (41 × $3.75 = $153.75; 101 × $3.50 = $353.50), so Mid/Large carry NO
+ * separate minimum — the $129 Small floor is the only minimum.
+ *
+ * Documented reference for the pure-function callers that pass their own plan
+ * list; the live values are sourced from plan_catalog rows at runtime.
+ */
+export const SM_FLAT_FLOOR_CENTS = 12900; // Small Community — $129/mo flat (the only minimum)
+export const SM_PER_UNIT_RATE_CENTS = {
+  mid_community: 375, // $3.75/unit/mo
+  large_community: 350, // $3.50/unit/mo
+  // small_community: flat $129 floor — no per-unit rate
+  // enterprise_concierge: custom / manual — no per-unit rate
+} as const;
+
+/**
+ * Canonical PM per-door rates (cents) — DECLINING by tier (volume discount;
+ * William-ratified 2026-06-21). The per-door rate DECREASES as the portfolio
+ * grows: bigger portfolios earn a lower per-door rate.
+ *
+ *   PM Starter   (≤500 doors)     $4.50/door/mo  → 450¢   min $500/mo
+ *   PM Growth    (501–2,000)      $4.25/door/mo  → 425¢   min $2,125/mo
+ *   PM Scale     (2,001–5,000)    $4.00/door/mo  → 400¢   min $8,000/mo
+ *   PM Enterprise (5,000+)        custom (~from $4/door)  from $18,000/mo, manual
+ *
+ * The billing FORMULA is unchanged — bill = max(totalDoors × tierPerDoorRate,
+ * tierMinimum) — but the per-door rate is now PER-TIER, read off the resolved
+ * plan_catalog row at runtime (`tier.monthlyAmountCents`), NOT a single flat $4.
+ *
+ * Each tier's monthly minimum = its per-door rate × the tier's ENTRY door count,
+ * so the floor equals the price at the bottom of the tier and the ladder is
+ * continuous (Growth min ≈ 501×$4.25 ≈ $2,125; Scale min ≈ 2,001×$4.00 ≈ $8,000).
+ * Starter keeps a small-account floor of $500.
+ *
+ * These constants are kept as a documented reference for the pure-function
+ * callers that pass their own plan list; the live values are sourced from
+ * plan_catalog rows at runtime.
+ */
+export const PM_PER_DOOR_RATE_CENTS = {
+  pm_starter: 450, // $4.50/door/mo
+  pm_growth: 425, // $4.25/door/mo
+  pm_scale: 400, // $4.00/door/mo
+  // pm_enterprise: custom / manual — no flat per-door rate
+} as const;
+
+/** Per-tier monthly minimums (cents) — the small-account floor / tier-entry floor. */
+export const PM_TIER_MINIMUM_CENTS = {
+  pm_starter: 50000, // $500/mo (small-account floor)
+  pm_growth: 212500, // $2,125/mo (= 501 × $4.25, rounded)
+  pm_scale: 800000, // $8,000/mo (= 2,001 × $4.00, rounded)
+  pm_enterprise: 1800000, // from $18,000/mo (reference; billed manually)
+} as const;
 
 // ── Helpers (pure, testable) ─────────────────────────────────────────────────
 
@@ -74,70 +180,164 @@ export function resolveSelfManagedPlanFromList(
 }
 
 /**
+ * Pure function: compute a self-managed community's monthly bill from a provided
+ * plan list, under the DECLINING per-unit model (William-ratified 2026-06-21).
+ *
+ *   1. Resolve the tier by the community's unit count
+ *      (1–40 Small / 41–100 Mid / 101–250 Large / 251+ Enterprise).
+ *   2. Bill:
+ *        - flat_per_association (Small)  → flat monthlyAmountCents (the $129 floor)
+ *        - per_door (Mid / Large)        → max(units × tierPerUnitRate, tierMinimum)
+ *                                          (Mid/Large carry no separate minimum, so
+ *                                           the floor is 0 — the per-unit bill stands)
+ *        - enterprise_manual (Enterprise)→ manual; no auto bill (0)
+ *
+ * The per-unit rate is read off the resolved plan row (`tier.monthlyAmountCents`)
+ * — for per_door tiers that column holds the per-UNIT rate (375 / 350 ¢), exactly
+ * mirroring how the PM per-door tiers store the per-DOOR rate there.
+ */
+export function computeSelfManagedMonthlyBillFromList(
+  unitCount: number,
+  plans: PlanCatalog[],
+): SmMonthlyBillResult {
+  const tier = resolveSelfManagedPlanFromList(unitCount, plans);
+
+  const isManual = tier.pricingModel === "enterprise_manual";
+  const isPerUnit = tier.pricingModel === "per_door";
+
+  // Flat tiers (Small) bill the flat monthly amount; per-unit tiers (Mid/Large)
+  // bill units × the per-unit rate; manual (Enterprise) bills nothing here.
+  const flatAmountCents = isPerUnit || isManual ? null : (tier.monthlyAmountCents ?? 0);
+  const perUnitAmountCents = isPerUnit ? (tier.monthlyAmountCents ?? 0) : null;
+
+  const tierMinimumCents = isManual ? 0 : (tier.minimumAmountCents ?? 0);
+
+  let computedSubtotalCents = 0;
+  if (isManual) {
+    computedSubtotalCents = 0;
+  } else if (isPerUnit) {
+    computedSubtotalCents = unitCount * (perUnitAmountCents ?? 0);
+  } else {
+    // flat tier — the "subtotal" is the flat amount itself.
+    computedSubtotalCents = flatAmountCents ?? 0;
+  }
+
+  let minimumAppliedCents = 0;
+  let finalTotalCents = isManual ? 0 : computedSubtotalCents;
+
+  if (!isManual && computedSubtotalCents < tierMinimumCents) {
+    minimumAppliedCents = tierMinimumCents - computedSubtotalCents;
+    finalTotalCents = tierMinimumCents;
+  }
+
+  return {
+    planKey: tier.planKey,
+    displayName: tier.displayName,
+    unitCount,
+    pricingModel: tier.pricingModel,
+    flatAmountCents,
+    perUnitAmountCents,
+    computedSubtotalCents,
+    tierMinimumCents,
+    minimumAppliedCents,
+    finalTotalCents,
+    manualReviewRequired: isManual,
+  };
+}
+
+/**
  * Pure function: compute PM portfolio monthly bill from a provided plan list.
+ *
+ * Per-door model (pricing-model-v3 §2 + declining-tier amendment 2026-06-21):
+ *   1. Sum total doors across every managed community.
+ *   2. Resolve the per-door TIER by the PORTFOLIO's total door count
+ *      (≤500 / 501–2,000 / 2,001–5,000 / 5,000+), NOT per-community.
+ *   3. bill = max(totalDoors × tierPerDoorRate, tierMinimum).
+ *
+ * Tier MEMBERSHIP gates features, sets the minimum, AND now sets a DECLINING
+ * per-door RATE — $4.50 (Starter) / $4.25 (Growth) / $4.00 (Scale): the rate
+ * falls as the portfolio grows (volume discount). The rate is read off the
+ * resolved plan row (`tier.monthlyAmountCents`), so no flat constant is assumed.
+ * Enterprise (5,000+) is manual billing.
  */
 export function computePmPortfolioMonthlyBillFromList(
   complexes: PmComplexInput[],
   plans: PlanCatalog[],
 ): PmPortfolioBillResult {
   if (complexes.length === 0) {
-    throw new Error("At least one complex is required.");
+    throw new Error("At least one community is required.");
   }
 
   const pmPlans = plans.filter(
     (p) => p.accountType === "property_manager" && p.status === "active",
   );
 
-  const lines: PmLineItem[] = complexes.map((complex) => {
-    if (complex.unitCount < 1) {
+  // Validate doors up front + compute the portfolio total.
+  let totalDoors = 0;
+  for (const community of complexes) {
+    if (community.unitCount < 1) {
       throw new Error(
-        `Invalid unit count for association ${complex.associationId}: ${complex.unitCount}`,
+        `Invalid door count for association ${community.associationId}: ${community.unitCount}`,
       );
     }
+    totalDoors += community.unitCount;
+  }
 
-    const matched = pmPlans.find(
-      (p) =>
-        p.unitMin !== null &&
-        complex.unitCount >= p.unitMin &&
-        (p.unitMax === null || complex.unitCount <= p.unitMax),
-    );
-
-    if (!matched) {
-      throw new Error(
-        `No PM plan found for ${complex.unitCount} units (association ${complex.associationId}).`,
-      );
-    }
-
-    const isEnterprise = matched.pricingModel === "enterprise_manual";
-
-    return {
-      associationId: complex.associationId,
-      unitCount: complex.unitCount,
-      planKey: matched.planKey,
-      displayName: matched.displayName,
-      unitAmountCents: matched.monthlyAmountCents,
-      isEnterprise,
-    };
-  });
-
-  const manualReviewRequired = lines.some((l) => l.isEnterprise);
-
-  const computedSubtotalCents = lines.reduce(
-    (sum, l) => sum + (l.isEnterprise ? 0 : (l.unitAmountCents ?? 0)),
-    0,
+  // Resolve the tier by the PORTFOLIO's total door count.
+  const tier = pmPlans.find(
+    (p) =>
+      p.unitMin !== null &&
+      totalDoors >= p.unitMin &&
+      (p.unitMax === null || totalDoors <= p.unitMax),
   );
+
+  if (!tier) {
+    throw new Error(
+      `No PM plan found for a portfolio of ${totalDoors} total doors.`,
+    );
+  }
+
+  const isEnterprise = tier.pricingModel === "enterprise_manual";
+  const perDoorAmountCents = isEnterprise ? null : (tier.monthlyAmountCents ?? 0);
+
+  // Per-community line items reflect each community's share of the door-count
+  // bill at the portfolio's resolved per-door rate. (Enterprise → 0; manual.)
+  const lines: PmLineItem[] = complexes.map((community) => ({
+    associationId: community.associationId,
+    unitCount: community.unitCount,
+    planKey: tier.planKey,
+    displayName: tier.displayName,
+    perDoorAmountCents,
+    computedLineCents: isEnterprise
+      ? 0
+      : community.unitCount * (perDoorAmountCents ?? 0),
+    isEnterprise,
+  }));
+
+  const manualReviewRequired = isEnterprise;
+
+  const computedSubtotalCents = isEnterprise
+    ? 0
+    : totalDoors * (perDoorAmountCents ?? 0);
+
+  const tierMinimumCents = isEnterprise ? 0 : (tier.minimumAmountCents ?? 0);
 
   let minimumAppliedCents = 0;
   let finalTotalCents = computedSubtotalCents;
 
-  if (!manualReviewRequired && computedSubtotalCents < PM_MONTHLY_MINIMUM_CENTS) {
-    minimumAppliedCents = PM_MONTHLY_MINIMUM_CENTS - computedSubtotalCents;
-    finalTotalCents = PM_MONTHLY_MINIMUM_CENTS;
+  if (!manualReviewRequired && computedSubtotalCents < tierMinimumCents) {
+    minimumAppliedCents = tierMinimumCents - computedSubtotalCents;
+    finalTotalCents = tierMinimumCents;
   }
 
   return {
     lines,
+    totalDoors,
+    resolvedTierPlanKey: tier.planKey,
+    resolvedTierDisplayName: tier.displayName,
+    perDoorAmountCents,
     computedSubtotalCents,
+    tierMinimumCents,
     minimumAppliedCents,
     finalTotalCents,
     manualReviewRequired,
@@ -165,6 +365,19 @@ async function fetchActivePlans(accountType: "self_managed" | "property_manager"
 export async function resolveSelfManagedPlan(unitCount: number): Promise<PlanCatalog> {
   const plans = await fetchActivePlans("self_managed");
   return resolveSelfManagedPlanFromList(unitCount, plans);
+}
+
+/**
+ * Compute the monthly bill for a single self-managed community.
+ * Queries plan_catalog for active self_managed plans, then applies the
+ * declining per-unit model (Small flat $129 floor · Mid $3.75/unit ·
+ * Large $3.50/unit · Enterprise manual).
+ */
+export async function computeSelfManagedMonthlyBill(
+  unitCount: number,
+): Promise<SmMonthlyBillResult> {
+  const plans = await fetchActivePlans("self_managed");
+  return computeSelfManagedMonthlyBillFromList(unitCount, plans);
 }
 
 /**

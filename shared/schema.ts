@@ -33,9 +33,28 @@ export const units = pgTable("units", {
   unitNumber: text("unit_number").notNull(),
   building: text("building"),
   squareFootage: real("square_footage"),
+  // ── Phase 1 (P0-3): unique per-unit payment reference ──────────────────────
+  // A short, human-readable, stable per-unit reference (e.g. "CHC-0007") that
+  // owners put on their remittance (Stripe metadata + mailed-check memo). The
+  // reconciliation matcher's Tier-0 pass resolves a deposit to this unit at
+  // confidence 1.0 BEFORE any name-guessing. NULLABLE + backfillable — additive;
+  // units without a ref match exactly as they do today (person/name path).
+  // Uniqueness is scoped per association (see units_assoc_account_ref_uq).
+  unitAccountRef: text("unit_account_ref"),
+  // ── Phase 1 (P0-1): designated primary contact for the payer roster ────────
+  // Which co-owner is the "primary contact" for the unit's balance. NULLABLE —
+  // when null, callers fall back to the earliest-startDate active ownership.
+  // Additive metadata; does NOT change the balance owner (the UNIT is the
+  // balance-bearing entity). Kept as a plain varchar holding a persons.id
+  // (persons is declared after units, so no inline .references() wrapper to
+  // avoid a forward-declaration cycle); the migration adds the FK constraint.
+  primaryContactPersonId: varchar("primary_contact_person_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueAssociationBuildingUnitNumber: uniqueIndex("units_association_building_unit_number_uq").on(table.associationId, table.buildingId, table.unitNumber),
+  // P0-3: a unit_account_ref must be unique WITHIN an association. Postgres
+  // treats NULLs as distinct, so un-backfilled units (NULL ref) don't collide.
+  uniqueAssociationAccountRef: uniqueIndex("units_assoc_account_ref_uq").on(table.associationId, table.unitAccountRef),
 }));
 
 export const buildings = pgTable("buildings", {
@@ -487,9 +506,25 @@ export const financialAccounts = pgTable("financial_accounts", {
   accountCode: text("account_code"),
   accountType: text("account_type").notNull().default("expense"),
   isActive: integer("is_active").notNull().default(1),
+  // Bank → Chart-of-Accounts bridge (migration 0047). `source` distinguishes a
+  // hand-entered COA row ('manual', the default — every pre-existing row) from
+  // one mirrored from a linked Plaid bank account ('plaid'). A 'plaid' row is
+  // owned by its bank connection: read-only in the COA UI and balance-synced.
+  source: text("source").notNull().default("manual"),
+  // FK to the bank account this row mirrors (only set when source='plaid'). The
+  // bridge upserts keyed on this column, so re-linking/re-syncing is idempotent.
+  linkedBankAccountId: varchar("linked_bank_account_id").references(() => bankAccounts.id),
+  // Synced balance for a linked bank row (cents, mirrors bankAccounts.current_balance_cents).
+  // Null for manual rows (manual COA entries don't carry a balance today).
+  currentBalanceCents: integer("current_balance_cents"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // One COA row per linked bank account — the upsert conflict target for the
+  // bridge (idempotent re-link/re-sync). Postgres allows many NULLs, so manual
+  // rows (linked_bank_account_id NULL) never collide.
+  linkedBankAccountUq: uniqueIndex("financial_accounts_linked_bank_account_uq").on(table.linkedBankAccountId),
+}));
 
 export const financialCategories = pgTable("financial_categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -594,6 +629,72 @@ export const utilityPayments = pgTable("utility_payments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// ── Disbursements — dual-approval (maker-checker) money-OUT control ────────────
+//
+// HOA Remediation Phase 2 (hoa-remediation-roadmap.html): segregation of duties
+// on disbursements — the #1 embezzlement control. A disbursement records a
+// money-OUT request (a payment to a vendor / against a vendor invoice) that MUST
+// be approved by a DIFFERENT admin than the one who created it (maker ≠ checker)
+// before it can be marked payable / paid.
+//
+// NET-NEW, ADDITIVE, ZERO live-book exposure: this table + its lifecycle are new.
+// It does NOT post to the owner ledger, the GL, or any existing money path — it
+// is an approval-gate record that PRECEDES any real payment. Marking a
+// disbursement "paid" here records the approved-payment fact; it wires to no
+// existing payout rail in this phase.
+//
+// Lifecycle (status): draft → pending-approval → approved → paid
+//                             (or → rejected from draft / pending-approval)
+// Maker ≠ checker is enforced SERVER-SIDE in the service layer, not just the UI:
+// createdByAdminUserId can never equal approvedByAdminUserId / rejectedByAdminUserId.
+export const disbursementStatusEnum = pgEnum("disbursement_status", [
+  "draft",
+  "pending-approval",
+  "approved",
+  "paid",
+  "rejected",
+]);
+
+export const disbursements = pgTable("disbursements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The payee. vendorId is the linked vendor (optional — an ad-hoc payee is
+  // allowed via vendorName only). Amount is stored in INTEGER CENTS so money
+  // math is exact (mirrors the GL cents convention).
+  vendorId: varchar("vendor_id").references(() => vendors.id),
+  vendorName: text("vendor_name").notNull(),
+  // Optional link to the vendor invoice this disbursement pays.
+  vendorInvoiceId: varchar("vendor_invoice_id").references(() => vendorInvoices.id),
+  amountCents: integer("amount_cents").notNull(),
+  memo: text("memo"),
+  status: disbursementStatusEnum("status").notNull().default("draft"),
+  // MAKER — the admin who created the request. notNull: every disbursement has
+  // an accountable originator. This is the identity checked against the approver.
+  createdByAdminUserId: varchar("created_by_admin_user_id").notNull().references(() => adminUsers.id),
+  createdByEmail: text("created_by_email").notNull(),
+  // CHECKER — the DIFFERENT admin who approved (or rejected) the request.
+  // Null until an approve/reject decision is recorded. Enforced ≠ maker.
+  approvedByAdminUserId: varchar("approved_by_admin_user_id").references(() => adminUsers.id),
+  approvedByEmail: text("approved_by_email"),
+  approvedAt: timestamp("approved_at"),
+  rejectedByAdminUserId: varchar("rejected_by_admin_user_id").references(() => adminUsers.id),
+  rejectedByEmail: text("rejected_by_email"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  // Set when a disbursement is marked paid (records the approved-payment fact;
+  // wires to no live payout rail in this phase).
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  // Unit-of-work read index: list a tenant's disbursements by recency + status.
+  disbursementsAssocStatusIdx: index("disbursements_assoc_status_created_idx").on(
+    table.associationId,
+    table.status,
+    table.createdAt,
+  ),
+}));
 
 export const paymentMethodConfigs = pgTable("payment_method_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -713,7 +814,23 @@ export const ownerLedgerEntryTypeEnum = pgEnum("owner_ledger_entry_type", ["char
 export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The UNIT is the balance-bearing entity (Phase 1 / P0-1). unitId stays
+  // notNull and is the sole balance key. Every existing row already carries a
+  // valid unitId, so the unit balance is fully derivable today.
   unitId: varchar("unit_id").notNull().references(() => units.id),
+  // Phase 1 (P0-1) — SEMANTIC pivot: personId is now "tendered-by" METADATA
+  // (who paid), NOT the balance owner. The UNIT bears the balance; co-owners
+  // are jointly & severally liable. We deliberately keep the Drizzle/TS type
+  // notNull() (so the ~30 existing call sites that read entry.personId stay
+  // type-clean and BACKWARD-COMPATIBLE — no cascade), while relaxing the intent:
+  // for a unit-level payment where no single person tendered, callers set the
+  // unit's primary-contact person as the "tendered-by" value rather than being
+  // blocked. The ACTUAL database NOT NULL relaxation (so a NULL personId can be
+  // stored) is a staged, gated, flag-guarded step deferred to the migration
+  // PLAN (docs/phase1-unit-centric-migration-plan.md §Phase C) — it is NOT run
+  // here and NOT reflected in the column type, precisely to avoid breaking
+  // existing data / existing readers. Balance-of-record reads should group by
+  // unitId, not personId (see buildUnitAccountStatement).
   personId: varchar("person_id").notNull().references(() => persons.id),
   entryType: ownerLedgerEntryTypeEnum("entry_type").notNull(),
   amount: real("amount").notNull(),
@@ -725,7 +842,11 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   bankTransactionId: varchar("bank_transaction_id"),
   settledAt: timestamp("settled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Phase 1 (P0-1): unit-scoped statement + aging reads group by
+  // (associationId, unitId, postedAt). Additive index — no column change.
+  byAssocUnitPosted: index("owner_ledger_entries_assoc_unit_posted_idx").on(table.associationId, table.unitId, table.postedAt),
+}));
 
 export const paymentPlanStatusEnum = pgEnum("payment_plan_status", ["active", "completed", "defaulted", "cancelled"]);
 export const paymentPlans = pgTable("payment_plans", {
@@ -1502,10 +1623,30 @@ export const tenantConfigs = pgTable("tenant_configs", {
   aiIngestionCanaryPercent: integer("ai_ingestion_canary_percent").notNull().default(100),
   aiIngestionRolloutNotes: text("ai_ingestion_rollout_notes"),
   smsFromNumber: text("sms_from_number"),
+  // ── Tenant sending alias (migration 0049) ──────────────────────────────
+  // Per-association sending identity on the verified yourcondomanager.org
+  // domain. Owner-facing email (dues notices, announcements, receipts) is sent
+  // FROM `<email_slug>@yourcondomanager.org` with `email_display_name` as the
+  // friendly "From" name and a Reply-To pointing at the tenant's real inbox.
+  // GATED behind the TENANT_SENDING_ALIAS_ENABLED flag (default OFF) — when the
+  // flag is off, or when these are null, the global EMAIL_FROM default is used,
+  // so existing behavior is unchanged. `email_slug` is GLOBALLY UNIQUE so a
+  // tenant's alias can only ever resolve to its own association (anti-spoofing).
+  emailSlug: text("email_slug"),
+  emailDisplayName: text("email_display_name"),
+  emailReplyToOverride: text("email_reply_to_override"),
+  // Advanced (design only, flag-gated, NOT live in v1): a tenant's own send
+  // domain (requires per-domain Resend verification before it can be used).
+  customSendDomain: text("custom_send_domain"),
+  customSendDomainVerified: integer("custom_send_domain_verified").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueTenantConfigAssociation: uniqueIndex("tenant_configs_association_uq").on(table.associationId),
+  // Global uniqueness of the sending-alias local-part across ALL tenants. A
+  // partial index (WHERE email_slug IS NOT NULL) so unconfigured tenants don't
+  // collide on NULL.
+  uniqueTenantEmailSlug: uniqueIndex("tenant_configs_email_slug_uq").on(table.emailSlug).where(sql`email_slug IS NOT NULL`),
 }));
 
 export const emailThreads = pgTable("email_threads", {
@@ -2152,6 +2293,20 @@ export const insertBudgetVersionSchema = createInsertSchema(budgetVersions).omit
 export const insertBudgetLineSchema = createInsertSchema(budgetLines).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorInvoiceSchema = createInsertSchema(vendorInvoices).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDisbursementSchema = createInsertSchema(disbursements).omit({
+  id: true,
+  status: true,
+  approvedByAdminUserId: true,
+  approvedByEmail: true,
+  approvedAt: true,
+  rejectedByAdminUserId: true,
+  rejectedByEmail: true,
+  rejectedAt: true,
+  rejectionReason: true,
+  paidAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertUtilityPaymentSchema = createInsertSchema(utilityPayments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentMethodConfigSchema = createInsertSchema(paymentMethodConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentGatewayConnectionSchema = createInsertSchema(paymentGatewayConnections).omit({ id: true, createdAt: true, updatedAt: true, lastValidatedAt: true });
@@ -2353,6 +2508,9 @@ export type Vendor = typeof vendors.$inferSelect;
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorInvoice = typeof vendorInvoices.$inferSelect;
 export type InsertVendorInvoice = z.infer<typeof insertVendorInvoiceSchema>;
+export type Disbursement = typeof disbursements.$inferSelect;
+export type InsertDisbursement = z.infer<typeof insertDisbursementSchema>;
+export type DisbursementStatus = (typeof disbursementStatusEnum.enumValues)[number];
 export type UtilityPayment = typeof utilityPayments.$inferSelect;
 export type InsertUtilityPayment = z.infer<typeof insertUtilityPaymentSchema>;
 export type PaymentMethodConfig = typeof paymentMethodConfigs.$inferSelect;
@@ -2972,6 +3130,16 @@ export const platformSubscriptions = pgTable("platform_subscriptions", {
   unitTier: integer("unit_tier"),
   unitCount: integer("unit_count"),
   adminEmail: text("admin_email").notNull(),
+  // Stripe metered-usage reporting ledger (migration 0048). For metered tiers
+  // (per-unit self-managed Mid/Large, per-door PM) the reconcile reports the
+  // current unit/door count to the Stripe Billing Meter once per billing period.
+  // These columns are the local idempotency anchor: a subscription whose
+  // lastUsageReportedPeriodEnd matches the live current_period_end is already
+  // reported for this period → the reconcile skips it (never double-reports to a
+  // SUM meter). NULL on flat tiers (never metered) and on never-yet-reported rows.
+  lastUsageReportedValue: integer("last_usage_reported_value"),
+  lastUsageReportedPeriodEnd: timestamp("last_usage_reported_period_end"),
+  lastUsageReportedAt: timestamp("last_usage_reported_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
@@ -3160,6 +3328,14 @@ export const amenities = pgTable("amenities", {
   maxDurationMinutes: integer("max_duration_minutes").notNull().default(240),
   requiresApproval: integer("requires_approval").notNull().default(0),
   isActive: integer("is_active").notNull().default(1),
+  // ── Amenity money loop (YCM Financial Core — Phase 3, migration 0042) ────────
+  // ADDITIVE / forward-only. These govern what a booking CAN charge. They default
+  // to 0 so every existing amenity stays free — no live behaviour changes. The
+  // money is INTEGER CENTS (never a float) so GL postings stay exact.
+  /** Usage fee charged when this amenity is booked (income). 0 == free. */
+  usageFeeCents: integer("usage_fee_cents").notNull().default(0),
+  /** Refundable deposit held on booking (a liability until refunded/forfeited). */
+  depositCents: integer("deposit_cents").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -3187,6 +3363,20 @@ export const amenityReservations = pgTable("amenity_reservations", {
   // the reservation has a complete audit trail.
   approvedBy: varchar("approved_by"),
   approvedAt: timestamp("approved_at"),
+  // ── Amenity money loop (YCM Financial Core — Phase 3, migration 0042) ────────
+  // ADDITIVE / forward-only. These snapshot the money STATE of this reservation
+  // — the fee charged, the deposit held, and how the deposit was resolved. They
+  // are the source facts the GL posting service reads to DERIVE balanced journal
+  // entries; the GL is parallel + flag-gated and never source-of-truth here.
+  // INTEGER CENTS throughout. Defaults keep every existing reservation a no-op.
+  /** Usage fee billed for this booking, in cents (snapshot of amenity fee). */
+  feeChargedCents: integer("fee_charged_cents").notNull().default(0),
+  /** Refundable deposit held on this booking, in cents (a liability). */
+  depositHeldCents: integer("deposit_held_cents").notNull().default(0),
+  /** Portion of the held deposit refunded on checkout/return, in cents. */
+  depositRefundedCents: integer("deposit_refunded_cents").notNull().default(0),
+  /** Portion of the held deposit forfeited (kept as income), in cents. */
+  depositForfeitedCents: integer("deposit_forfeited_cents").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -3219,7 +3409,7 @@ export const planCatalogStatusEnum = pgEnum("plan_catalog_status", [
 ]);
 
 export const pricingModelEnum = pgEnum("pricing_model", [
-  "flat_per_association", "per_complex", "enterprise_manual",
+  "flat_per_association", "per_complex", "per_door", "enterprise_manual",
 ]);
 
 export const planCatalog = pgTable("plan_catalog", {
@@ -3236,6 +3426,18 @@ export const planCatalog = pgTable("plan_catalog", {
   monthlyAmountCents: integer("monthly_amount_cents"),
   annualEffectiveMonthlyCents: integer("annual_effective_monthly_cents"),
   annualBilledAmountCents: integer("annual_billed_amount_cents"),
+  // Per-tier monthly minimum (cents). For per_door tiers this is the floor the
+  // portfolio is billed when (totalDoors × monthlyAmountCents) falls below it.
+  // NULL for plans with no minimum.
+  minimumAmountCents: integer("minimum_amount_cents"),
+  // LIVE Stripe ids for this tier (migration 0046). The public signup/subscribe
+  // route resolves the Stripe price off the unit/door-resolved plan_catalog row,
+  // so price IDs are never hardcoded in the frontend. stripePriceId is the
+  // recurring price the subscription line item uses (flat OR metered/usage);
+  // stripeProductId is the parent product (reference). NULL on manual/enterprise
+  // tiers (billed by hand).
+  stripePriceId: text("stripe_price_id"),
+  stripeProductId: text("stripe_product_id"),
   recommendedInSignup: integer("recommended_in_signup").notNull().default(0),
   version: integer("version").notNull().default(1),
   effectiveFrom: timestamp("effective_from").notNull(),
@@ -3643,6 +3845,9 @@ export const bankConnections = pgTable("bank_connections", {
   status: bankConnectionStatusEnum("status").notNull().default("active"),
   connectedByUserId: varchar("connected_by_user_id"),
   lastSyncedAt: timestamp("last_synced_at"),
+  // Plaid /transactions/sync resumption cursor. NULL = no sync yet (the initial
+  // sync omits the cursor). Persisted after each successful sync (P-3).
+  transactionsCursor: text("transactions_cursor"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -3859,3 +4064,156 @@ export const bankDescriptorAliases = pgTable("bank_descriptor_aliases", {
 
 export type BankDescriptorAlias = typeof bankDescriptorAliases.$inferSelect;
 export type InsertBankDescriptorAlias = typeof bankDescriptorAliases.$inferInsert;
+
+// ── Fund-aware double-entry General Ledger (YCM Financial Core — Phase 1) ──────
+//
+// Audit anchor: audits/AUDIT-financial-reporting-orchestration.md Gap F1.
+// Build anchor: audits/YCM-financial-build-plan-2026-06-20.md Phase 1.
+//
+// FORWARD-ONLY / PARALLEL (per BLINDSPOT F4): this GL runs ALONGSIDE the existing
+// dues-only `owner_ledger_entries` subledger. The owner ledger STAYS the system
+// of record. These tables are ADDITIVE — no existing row is touched, no live
+// money path writes here automatically. GL postings are DERIVED from the owner
+// ledger by `server/services/gl/posting.ts`, gated behind the `GL_ENABLED`
+// feature flag (default OFF). The GL may NOT become source-of-truth until the
+// reconcile-to-the-cent gate (script/verify-gl-reconcile.ts) passes — that flip
+// is intentionally OUT of this phase's scope.
+//
+// Money is stored in INTEGER CENTS (debit/credit) — never floats — so the
+// double-entry invariant (Σdebits == Σcredits) is exact and cannot float-drift.
+
+/** GL account classification. `normalBalance` is derived from this. */
+export const glAccountTypeEnum = pgEnum("gl_account_type", [
+  "asset",
+  "liability",
+  "equity",
+  "income",
+  "expense",
+]);
+
+/** The fund dimension — operating vs. reserve segregation (CINC/CAMS-style). */
+export const glFundEnum = pgEnum("gl_fund", ["operating", "reserve"]);
+
+/** Side a posting lands on. Debit or credit. */
+export const glSideEnum = pgEnum("gl_side", ["debit", "credit"]);
+
+// gl_accounts — the chart of accounts. One row per account per association.
+// `accountCode` is the human GL number (e.g. "4000" Assessment Income, "1010"
+// Operating Cash, "1015" Interfund Receivable). `normalBalance` records whether
+// the account increases on the debit (asset/expense) or credit (liability/
+// equity/income) side — used to derive a signed balance from raw debit/credit.
+export const glAccounts = pgTable(
+  "gl_accounts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    associationId: varchar("association_id").notNull().references(() => associations.id),
+    accountCode: text("account_code").notNull(),
+    name: text("name").notNull(),
+    accountType: glAccountTypeEnum("account_type").notNull(),
+    /** Fail-safe: a missing fund tag degrades to 'operating', never crashes. */
+    fund: glFundEnum("fund").notNull().default("operating"),
+    /** 'debit' for asset/expense, 'credit' for liability/equity/income. */
+    normalBalance: glSideEnum("normal_balance").notNull(),
+    isActive: integer("is_active").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // One canonical account per (association, code, fund). Lets the same code
+    // exist once per fund (e.g. "1010" Operating Cash vs Reserve Cash).
+    uniqueCodePerAssocFund: uniqueIndex("gl_accounts_assoc_code_fund_uq").on(
+      table.associationId,
+      table.accountCode,
+      table.fund,
+    ),
+    byAssoc: index("gl_accounts_assoc_idx").on(table.associationId),
+  }),
+);
+
+// gl_entries — the journal. One row per debit-or-credit leg. A balanced
+// transaction shares a `journalId` and its legs sum to zero (Σdebit==Σcredit).
+//
+// `sourceType` + `sourceId` link a leg back to its originating fact
+// (owner_ledger_entry / vendor_invoice / bank_transaction / amenity_reservation),
+// making GL posting IDEMPOTENT: re-posting the same source produces no
+// duplicate legs (enforced by the unique index below).
+export const glEntries = pgTable(
+  "gl_entries",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    associationId: varchar("association_id").notNull().references(() => associations.id),
+    /** All legs of one balanced transaction share this id. */
+    journalId: varchar("journal_id").notNull(),
+    glAccountId: varchar("gl_account_id").notNull().references(() => glAccounts.id),
+    fund: glFundEnum("fund").notNull().default("operating"),
+    side: glSideEnum("side").notNull(),
+    /** Positive integer cents. The side (debit/credit) carries direction. */
+    amountCents: integer("amount_cents").notNull(),
+    postedAt: timestamp("posted_at").notNull(),
+    description: text("description"),
+    /** owner_ledger_entry | vendor_invoice | bank_transaction | amenity_reservation | opening_balance */
+    sourceType: text("source_type"),
+    sourceId: text("source_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    byAssoc: index("gl_entries_assoc_idx").on(table.associationId),
+    byJournal: index("gl_entries_journal_idx").on(table.journalId),
+    byAccount: index("gl_entries_account_idx").on(table.glAccountId),
+    // Idempotency: a given (source, account, side) posts at most once. Re-running
+    // the posting service is a safe no-op — it never double-posts a source fact.
+    uniqueSourceLeg: uniqueIndex("gl_entries_source_leg_uq").on(
+      table.sourceType,
+      table.sourceId,
+      table.glAccountId,
+      table.side,
+    ),
+  }),
+);
+
+export const insertGlAccountSchema = createInsertSchema(glAccounts).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertGlEntrySchema = createInsertSchema(glEntries).omit({ id: true, createdAt: true });
+
+export type GlAccount = typeof glAccounts.$inferSelect;
+export type InsertGlAccount = z.infer<typeof insertGlAccountSchema>;
+export type GlEntry = typeof glEntries.$inferSelect;
+export type InsertGlEntry = z.infer<typeof insertGlEntrySchema>;
+
+export type GlAccountType = (typeof glAccountTypeEnum.enumValues)[number];
+export type GlFund = (typeof glFundEnum.enumValues)[number];
+export type GlSide = (typeof glSideEnum.enumValues)[number];
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Financial statements — Phase 2 (DERIVED, forward-only, parallel, flag-gated).
+//
+// budget_line_gl_mappings — an OPTIONAL bridge letting a budget_line (planned
+// spend) carry a tie to a GL account code + fund, so the DERIVED budget-vs-actual
+// statement can join planned amounts to GL-derived actuals by (code, fund). The
+// mapping is optional enrichment: budget-vs-actual falls back to category-name
+// matching when a line is unmapped. ADDITIVE — touches no existing table/row.
+//
+// These statements are DERIVED and NOT source-of-truth. The owner ledger stays
+// the system of record; the GL stays parallel (GL_ENABLED default OFF).
+// ──────────────────────────────────────────────────────────────────────────────
+export const budgetLineGlMappings = pgTable(
+  "budget_line_gl_mappings",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    budgetLineId: varchar("budget_line_id").notNull().references(() => budgetLines.id),
+    /** The GL account code the planned amount tracks against (e.g. "5100"). */
+    glAccountCode: text("gl_account_code").notNull(),
+    /** operating | reserve — reuses the GL fund enum for exact segregation. */
+    fund: glFundEnum("fund").notNull().default("operating"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // One mapping per budget line.
+    uniqueLine: uniqueIndex("budget_line_gl_mappings_line_uq").on(table.budgetLineId),
+    byCodeFund: index("budget_line_gl_mappings_code_fund_idx").on(table.glAccountCode, table.fund),
+  }),
+);
+
+export const insertBudgetLineGlMappingSchema = createInsertSchema(budgetLineGlMappings).omit({ id: true, createdAt: true, updatedAt: true });
+export type BudgetLineGlMapping = typeof budgetLineGlMappings.$inferSelect;
+export type InsertBudgetLineGlMapping = z.infer<typeof insertBudgetLineGlMappingSchema>;

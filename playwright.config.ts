@@ -105,6 +105,9 @@ export default defineConfig({
     timeout: 180_000,
     stdout: "pipe",
     stderr: "pipe",
-    env: { PORT: String(PORT) },
+    // PLAYWRIGHT_E2E=1 → server/vite.ts disables HMR: the @vite/client
+    // reload-on-ws-reconnect races page.goto in WebKit and aborts navigations
+    // ("interrupted by another navigation to <current page>", founder-os#8337).
+    env: { PORT: String(PORT), PLAYWRIGHT_E2E: "1" },
   },
 });

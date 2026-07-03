@@ -20,6 +20,7 @@ import { fanOutCriticalAlerts } from "./alerts/notifications";
 import { runOnboardingReminderSweep } from "./services/onboarding-reminder-sweep";
 import { runBankFeedSweep } from "./services/bank-feed-sync";
 import { runPressingItemsSweep } from "./services/pressing-items/scanner";
+import { runUsageReconcileSweep } from "./services/usage-reconcile";
 import { sendPlatformAdminEmailNotification } from "./admin-notification-service";
 import { recoverInFlightJobs } from "./job-queue";
 import { log } from "./logger";
@@ -29,6 +30,8 @@ import { startDeprovisioningScheduler } from "./de-provisioning";
 import { createRateLimiter, onWriteOnly } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
 import { resolveSessionCookieDomain } from "./session-cookie-domain";
+import { assertPlaidEnvSafe } from "./services/bank-feed/plaid-env-guard";
+import { assertStripeFcEnvSafe } from "./services/bank-feed/stripe-fc-env-guard";
 
 // Wave 33 (5.4 Part B): seed.ts is ~120 KB of static demo-data tables. It
 // only runs once at boot, after the HTTP server has already started
@@ -221,7 +224,7 @@ async function runAutomationSweep() {
   // per-subsystem functions (runDueRecurringCharges,
   // runAutomaticSpecialAssessmentInstallments) were retired alongside the
   // Q8 run-endpoint shims and no longer exist in the bundle.
-  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut, accessReviewReminder, onboardingReminderResult, bankFeedSweepResult, pressingItemsResult] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut, accessReviewReminder, onboardingReminderResult, bankFeedSweepResult, pressingItemsResult, usageReconcileResult] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
     storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
@@ -279,10 +282,20 @@ async function runAutomationSweep() {
       console.error("[pressing-items] sweep failed:", error);
       return { associationsScanned: 0, totalInserted: 0, totalUpdated: 0, totalResolved: 0 };
     }),
+    // usage-reporting (gap closed) — report current per-unit / per-door usage to
+    // the Stripe Billing Meters, once per billing period per active metered
+    // subscription. Idempotent (local ledger + deterministic Stripe identifier), so
+    // it is safe to call every sweep tick: subscriptions already reported for the
+    // current period are skipped. Returns null when Stripe is unconfigured. Wrapped
+    // so a Stripe 5xx can't jam the rest of automation.
+    runUsageReconcileSweep().catch((error: unknown) => {
+      console.error("[usage-reporting] reconcile sweep failed:", error);
+      return null;
+    }),
   ]);
 
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}, access-review-reminder fired=${accessReviewReminder.fired} (${accessReviewReminder.reason}), onboarding-reminders scanned=${onboardingReminderResult.scanned} sent=${onboardingReminderResult.sent} failed=${onboardingReminderResult.failed} skipped=${onboardingReminderResult.skipped}, bank-feed-sync scanned=${bankFeedSweepResult.scanned} synced=${bankFeedSweepResult.synced} skipped=${bankFeedSweepResult.skipped} failed=${bankFeedSweepResult.failed} txns=${bankFeedSweepResult.totalTransactions} matches=${bankFeedSweepResult.totalMatches}, pressing-items assoc=${pressingItemsResult.associationsScanned} inserted=${pressingItemsResult.totalInserted} updated=${pressingItemsResult.totalUpdated} resolved=${pressingItemsResult.totalResolved}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}, access-review-reminder fired=${accessReviewReminder.fired} (${accessReviewReminder.reason}), onboarding-reminders scanned=${onboardingReminderResult.scanned} sent=${onboardingReminderResult.sent} failed=${onboardingReminderResult.failed} skipped=${onboardingReminderResult.skipped}, bank-feed-sync scanned=${bankFeedSweepResult.scanned} synced=${bankFeedSweepResult.synced} skipped=${bankFeedSweepResult.skipped} failed=${bankFeedSweepResult.failed} txns=${bankFeedSweepResult.totalTransactions} matches=${bankFeedSweepResult.totalMatches}, pressing-items assoc=${pressingItemsResult.associationsScanned} inserted=${pressingItemsResult.totalInserted} updated=${pressingItemsResult.totalUpdated} resolved=${pressingItemsResult.totalResolved}, usage-reconcile ${usageReconcileResult ? `scanned=${usageReconcileResult.scanned} reported=${usageReconcileResult.reported} skipped=${usageReconcileResult.skipped} errors=${usageReconcileResult.errors}` : "skipped (stripe unconfigured)"}`,
     "automation",
   );
 
@@ -370,6 +383,26 @@ app.use((req, res, next) => {
   // Init Sentry first inside the async boot so errors during the rest of
   // boot are captured. Safe across hot-reload (idempotent init).
   await initServerObservability();
+
+  // BLINDSPOT F7 — Plaid production env-flip guard. Refuse to boot in
+  // PLAID_ENV=production unless webhook JWT verification is wired + the
+  // production credentials are present. This makes the safe order
+  // (verification BEFORE going live) mechanical, not a checklist a deploy can
+  // skip. Sandbox/development always passes. Throwing here aborts boot — which
+  // on Fly aborts the deploy, exactly as intended.
+  const plaidGuard = assertPlaidEnvSafe();
+  log(`Plaid env guard OK (env=${plaidGuard.env})`, "plaid");
+
+  // Stripe Financial Connections (FC) env guard — same mechanical-safety rail
+  // as Plaid's, scoped to the FC bank-feed alternative. No-op unless
+  // STRIPE_FINANCIAL_CONNECTIONS_ENABLED is ON. When ON in production, it
+  // refuses to boot without STRIPE_FC_WEBHOOK_SECRET wired (so a production
+  // FC webhook handler can never accept forged bank transactions).
+  const fcGuard = assertStripeFcEnvSafe();
+  log(
+    `Stripe FC env guard OK (enabled=${fcGuard.enabled} env=${fcGuard.env})`,
+    "stripe-fc",
+  );
 
   const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
   app.use("/api/public", publicRateLimiter);
@@ -462,18 +495,34 @@ app.use((req, res, next) => {
   // and runs once at boot. Lazy-import keeps it out of the cold-start
   // bundle and out of dist/index.cjs's main chunk.
   //
-  // founder-os#2472: the dynamic import specifier MUST include the `.js`
+  // founder-os#2472: the dynamic import specifier MUST include the file
   // extension. The production runtime is `node dist/index.cjs` (CJS), but
   // `package.json` declares `"type": "module"` and `await import()` invokes
   // Node's ESM resolver. ESM resolution requires explicit file extensions
-  // for relative paths — `await import("./seed")` throws
-  // ERR_MODULE_NOT_FOUND at boot, the error was being logged but silently
-  // swallowed, and the app continued serving empty tables. Cherry Hill data
-  // never landed in production as a direct consequence.
+  // for relative paths — a bare `./seed` throws ERR_MODULE_NOT_FOUND at
+  // boot, the error was being logged but silently swallowed, and the app
+  // continued serving empty tables. Cherry Hill data never landed in
+  // production as a direct consequence.
+  //
+  // Site audit 2026-06-22: the seed sibling is built in `format: "cjs"`
+  // (it uses `module.exports`/`require` internally). Under
+  // `"type": "module"`, Node parses a `.js` file as ESM — so importing the
+  // CJS-format `dist/seed.js` threw `ReferenceError: module is not defined
+  // in ES module scope` on every prod boot ("[boot] Seed failed to run").
+  // The build now emits the sibling as `dist/seed.cjs`, whose `.cjs`
+  // extension forces Node's CJS loader regardless of "type": "module".
+  //
+  // Dev (tsx via `script/dev.ts`) does NOT resolve a `.cjs` specifier back
+  // to `server/seed.ts` (verified), but it DOES resolve `.js`. So the
+  // specifier branches on the runtime: `./seed.cjs` for the prod bundle,
+  // `./seed.js` for the tsx dev runner. Both are in esbuild's `external`
+  // list so neither is inlined into the main bundle.
+  const seedModuleSpecifier =
+    process.env.NODE_ENV === "production" ? "./seed.cjs" : "./seed.js";
   void (async () => {
     try {
-      log("[boot] seed :: starting lazy import of ./seed.js", "startup");
-      const { seedDatabase } = await import("./seed.js");
+      log(`[boot] seed :: starting lazy import of ${seedModuleSpecifier}`, "startup");
+      const { seedDatabase } = await import(/* @vite-ignore */ seedModuleSpecifier);
       await seedDatabase();
       log("[boot] seed :: completed", "startup");
     } catch (err) {

@@ -126,7 +126,14 @@ export function FinancialAssessmentsContent({ readOnly = false }: { readOnly?: b
     : units;
 
   useEffect(() => {
-    form.setValue("associationId", activeAssociationId, { shouldValidate: true });
+    // Sync the active association into the form WITHOUT triggering validation.
+    // The previous `{ shouldValidate: true }` ran the full Zod schema against
+    // the still-empty name/amount/startDate fields on mount, which both flashed
+    // premature "required" errors before the user typed anything AND surfaced
+    // the resolver's ZodError as an unhandled promise rejection (CI-red on
+    // 2026-06-30). All fields — including associationId — are still validated at
+    // submit via `handleSubmit` → the zodResolver, so the gate is unchanged.
+    form.setValue("associationId", activeAssociationId);
   }, [activeAssociationId, form]);
 
   const createMutation = useMutation({

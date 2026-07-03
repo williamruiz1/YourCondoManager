@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cherry Hill Court — Community Page (v2, condensed) · YourCondoManager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal:#014D4A;        /* primary brand — Deep Teal */
+    --teal-2:#036A66;      /* hero gradient end */
+    --accent:#2DBDB0;      /* brand accent */
+    --bg:#F6FAFA;
+    --ink:#1f2d2c;
+    --muted:#64748b;
+    --line:#e2e8f0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg);
+    color:#334155;
+    font-family:Inter,system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+  }
+  .wrap{max-width:768px;margin:0 auto;padding:0 20px}
+  h1,h2,h3{font-family:"Plus Jakarta Sans",Inter,sans-serif}
+
+  /* Header */
+  header.site{background:#fff;border-bottom:1px solid var(--line)}
+  .site .wrap{height:56px;display:flex;align-items:center}
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+  .brand .logo{
+    height:32px;width:32px;border-radius:7px;
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px;
+    background:linear-gradient(135deg,var(--teal),var(--accent));
+    font-family:"Plus Jakarta Sans",sans-serif;
+  }
+  .brand .word{color:var(--teal);font-weight:600;font-size:15px;letter-spacing:-.01em;font-family:"Plus Jakarta Sans",sans-serif}
+
+  /* Hero */
+  .hero{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--teal) 0%,var(--teal-2) 100%)}
+  .hero .glow{position:absolute;top:-96px;right:-64px;height:256px;width:256px;border-radius:50%;background:var(--accent);opacity:.25;filter:blur(60px)}
+  .hero .inner{position:relative;padding:56px 0}
+  .hero h1{margin:0;color:#fff;font-size:38px;font-weight:800;line-height:1.1;letter-spacing:-.02em}
+  .hero .meta{margin:10px 0 0;color:rgba(255,255,255,.85);font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px}
+  .hero .warm{margin:18px 0 0;color:rgba(255,255,255,.92);max-width:36rem;font-size:18px;line-height:1.55}
+  .cta{margin-top:28px}
+  .btn-portal{
+    display:inline-flex;align-items:center;gap:8px;
+    background:#fff;color:var(--teal);font-weight:600;font-size:16px;
+    border:none;border-radius:12px;padding:0 24px;height:48px;cursor:pointer;
+    box-shadow:0 10px 24px rgba(0,0,0,.15);
+    font-family:Inter,sans-serif;
+  }
+  .btn-portal:hover{background:rgba(255,255,255,.92)}
+  .cta .sub{margin:8px 0 0;color:rgba(255,255,255,.72);font-size:12px}
+
+  /* Content */
+  main{padding:40px 0}
+  section{margin-bottom:32px}
+  .eyebrow{color:var(--teal);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+  .about p{color:#475569;margin:0;font-size:16px;line-height:1.6}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card .body{padding:16px 18px}
+  .notice{margin-bottom:12px}
+  .notice.pinned{border-left:3px solid var(--accent)}
+  .notice h3{margin:0;font-size:15px;font-weight:600;color:#1e293b}
+  .notice p{margin:6px 0 0;font-size:14px;color:#475569}
+  .notice .date{margin:8px 0 0;font-size:12px;color:#94a3b8}
+  .contact .body{display:flex;gap:12px;align-items:flex-start}
+  .contact .name{font-weight:600;color:#1e293b;margin:0}
+  .contact .loc{font-size:14px;color:#64748b;margin:2px 0 0}
+  .contact .help{font-size:14px;color:#475569;margin:8px 0 0}
+  .dot{height:18px;width:18px;color:var(--accent);flex:none}
+
+  footer.site{border-top:1px solid var(--line);background:#fff;padding:24px 0}
+  footer .wrap{display:flex;align-items:center;justify-content:center;gap:8px;color:#94a3b8;font-size:14px}
+  .fmark{height:18px;width:18px;border-radius:5px;background:linear-gradient(135deg,var(--teal),var(--accent))}
+
+  .frame-note{max-width:768px;margin:24px auto 0;padding:12px 16px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;font-size:12px;background:#fff}
+  @media (max-width:520px){ .hero h1{font-size:30px} .hero .warm{font-size:16px} }
+</style>
+</head>
+<body>
+
+<!-- Compact branded header -->
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <span class="logo">Y</span>
+      <span class="word">Your Condo Manager</span>
+    </a>
+  </div>
+</header>
+
+<!-- Short hero -->
+<section class="hero">
+  <div class="glow"></div>
+  <div class="wrap inner">
+    <h1>Cherry Hill Court</h1>
+    <p class="meta">
+      <svg class="dot" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="2" style="height:16px;width:16px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+      New Haven, CT&nbsp;&nbsp;·&nbsp;&nbsp;18 residences
+    </p>
+    <p class="warm">A small, well-kept community in New Haven — your notices, documents, and requests, all in one place.</p>
+
+    <div class="cta">
+      <button class="btn-portal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="height:20px;width:20px"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>
+        Owner Portal
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="height:16px;width:16px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+      <p class="sub">Residents sign in to view documents, send requests, and more.</p>
+    </div>
+  </div>
+</section>
+
+<main>
+  <div class="wrap">
+
+    <!-- Brief About -->
+    <section class="about">
+      <h2 class="eyebrow">About the Community</h2>
+      <p>Cherry Hill Court is an 18-residence condominium association in New Haven, Connecticut. The board manages the community day-to-day and keeps owners up to date through this page and the Owner Portal.</p>
+    </section>
+
+    <!-- Short Notices -->
+    <section>
+      <h2 class="eyebrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="height:16px;width:16px"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        Latest Notices
+      </h2>
+      <div class="card notice pinned">
+        <div class="body">
+          <h3>Annual Meeting — Save the Date</h3>
+          <p>The Cherry Hill Court annual owners' meeting is scheduled for early spring. Agenda and join details will be posted here and emailed to owners.</p>
+          <p class="date">Jun 12, 2026</p>
+        </div>
+      </div>
+      <div class="card notice">
+        <div class="body">
+          <h3>Landscaping Schedule Update</h3>
+          <p>Spring grounds maintenance begins this month. Please keep walkways clear on service days.</p>
+          <p class="date">Jun 3, 2026</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compact contact / board footer -->
+    <section class="contact">
+      <h2 class="eyebrow">Contact</h2>
+      <div class="card">
+        <div class="body">
+          <svg class="dot" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/><path d="M9 9h.01M9 13h.01M9 17h.01"/></svg>
+          <div>
+            <p class="name">Cherry Hill Court Condominium Association</p>
+            <p class="loc">New Haven, CT</p>
+            <p class="help">Questions for the board or management? Sign in to the Owner Portal to send a message or open a request.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <span class="fmark"></span>
+    <span>Powered by Your Condo Manager</span>
+  </div>
+</footer>
+
+<p class="frame-note">
+  Static preview of the condensed v2 React page (<code>client/src/pages/community-hub-public.tsx</code>, route <code>/community/cherryhill</code>).
+  In the live app, the logo, hero copy, residence count, About text, and notices come from the real Cherry Hill hub data; the Owner Portal
+  button expands the email one-time-code sign-in inline, then redirects to <code>/portal</code>. NO dues / payment / billing content appears anywhere on this page.
+</p>
+
+</body>
+</html>

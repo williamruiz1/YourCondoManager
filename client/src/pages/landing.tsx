@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { SiteFooter } from "@/components/site-footer";
 import { BrandMark } from "@/components/brand-mark";
+import { HeroCarousel } from "@/components/hero-carousel";
 import DemoRequestModal from "@/components/demo-request-modal";
 import { useStrings } from "@/i18n/use-strings";
 
@@ -351,14 +352,9 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
               )}
             </div>
           </div>
-          {/* Brand v1 hero panel — logo mark on slate-sky gradient (no stock imagery, founder-os#1024) */}
+          {/* Brand hero — 3-creative carousel (replaces the static brand panel) */}
           <div className="relative lg:block hidden">
-            <div className="absolute -inset-4 bg-ycm-sky/10 rounded-2xl blur-3xl" aria-hidden="true"></div>
-            <div className="relative rounded-2xl overflow-hidden shadow-lg border border-ycm-sky/20 bg-gradient-to-br from-ycm-sky to-ycm-navy p-10 h-[400px] flex flex-col items-center justify-center text-center">
-              <BrandMark forceTheme="light" decorative className="h-44 w-44 drop-shadow-md" />
-              <p className="mt-6 text-ycm-cool-white text-xl font-serif font-semibold tracking-tight">{t("marketing.brand")}</p>
-              <p className="mt-1 text-ycm-cream/90 text-sm font-medium">{t("landing.hero.panel.tagline")}</p>
-            </div>
+            <HeroCarousel />
           </div>
         </div>
       </section>
