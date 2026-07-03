@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>YourCondoManager — Customer Onboarding & Due Diligence Policy</title>
+<style>
+  @page { margin: 0.9in 0.85in; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.5; max-width: 7.0in; margin: 0 auto; }
+  h1 { font-size: 19pt; margin: 0 0 2px; color: #0B1B3B; }
+  h2 { font-size: 13pt; margin: 22px 0 6px; color: #0B1B3B; border-bottom: 1px solid #2DBDB0; padding-bottom: 3px; }
+  h3 { font-size: 11.5pt; margin: 14px 0 4px; color: #236343; }
+  .meta { color: #555; font-size: 9.5pt; margin-bottom: 4px; }
+  .rule { color: #2DBDB0; font-weight: 700; }
+  ul { margin: 4px 0 8px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 10pt; margin: 8px 0; }
+  th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #F0E5D2; }
+  .foot { margin-top: 26px; font-size: 9pt; color: #777; border-top: 1px solid #ddd; padding-top: 8px; }
+  strong { color: #0B1B3B; }
+</style>
+</head>
+<body>
+
+<h1>Customer Onboarding &amp; Due Diligence Policy</h1>
+<div class="meta"><strong>YourCondoManager, Inc.</strong> — Delaware corporation · EIN 42-2455253 · 714 Blackshire Rd, Wilmington, DE 19805</div>
+<div class="meta">Version 1.0 · Policy owner: William Ruiz II, Responsible Officer · Effective on adoption</div>
+
+<h2>1. Purpose &amp; Scope</h2>
+<p>This policy governs how YourCondoManager (&ldquo;YCM&rdquo;) identifies, verifies, and onboards the business customers and end users that connect financial accounts through YCM&rsquo;s platform. YCM operates a multi-tenant SaaS platform for residential community association financial management. Plaid is used on a <strong>read-only basis (Transactions product only)</strong> to import account activity for reconciliation; <strong>no funds are moved through Plaid.</strong></p>
+<p>YCM serves two categories of business customer, each of which is provisioned as an isolated sub-account and is subject to the due diligence below:</p>
+<ul>
+  <li><strong>Property management companies</strong> — firms that administer one or more associations on the YCM platform.</li>
+  <li><strong>Community associations</strong> — condominium and homeowner associations (HOAs), whether self-managed or managed by a property management company.</li>
+</ul>
+
+<h2>2. Customer Due Diligence — Property Management Companies</h2>
+<p>Before a property management company is activated on the platform, YCM performs and records:</p>
+<ul>
+  <li><strong>Business-entity verification:</strong> legal business name, entity type, formation/registration jurisdiction, and principal business address.</li>
+  <li><strong>Authorizing person (control person) verification:</strong> identity, title, and authority of the principal or officer who signs up and binds the company.</li>
+  <li><strong>Beneficial-ownership review:</strong> identification of beneficial owners where the entity type warrants it.</li>
+  <li><strong>Sanctions / watchlist screening:</strong> screening of the company and its authorizing person against U.S. sanctions and watchlists (OFAC).</li>
+  <li><strong>Prohibited-use / risk classification:</strong> confirmation that the company operates exclusively in low-risk residential community management and in none of the prohibited verticals in Section 5.</li>
+</ul>
+
+<h2>3. Customer Due Diligence — Community Associations (HOAs)</h2>
+<p>Before an association is activated and any association bank account is connected, YCM performs and records:</p>
+<ul>
+  <li><strong>Association verification:</strong> confirmation that the association is a bona fide community association — legal/association name, evidence of existence (governing documents or state registration), property address, and unit count.</li>
+  <li><strong>Authorizing officer verification:</strong> identity, board role (e.g., treasurer/president) or property-manager authority, and authority to act for the association in connecting its account.</li>
+  <li><strong>Sanctions / watchlist screening:</strong> screening of the association and its authorizing officer against U.S. sanctions and watchlists (OFAC).</li>
+  <li><strong>Prohibited-use / risk classification:</strong> confirmation the association engages only in residential community management.</li>
+</ul>
+<p><em>Note:</em> community associations are typically non-stock, non-profit corporations governed by an elected board and without conventional beneficial owners; diligence therefore focuses on verifying the association&rsquo;s legitimacy and the authority of the connecting board officer or manager.</p>
+
+<h2>4. Authorization &amp; Consent (account connection)</h2>
+<ul>
+  <li>Before any Plaid connection, the user receives the required disclosures and consents to data access; consent is recorded (user, policy version, timestamp, IP).</li>
+  <li>The user authenticates <strong>directly with the financial institution through Plaid Link</strong>; <strong>YCM never sees or stores bank login credentials.</strong></li>
+  <li>YCM stores only an encrypted Plaid access token, the Plaid item identifier, institution/account names, the account-number mask (last four only), type/subtype, balances, and transaction records.</li>
+  <li>On disconnection or offboarding, YCM calls Plaid <code>/item/remove</code>, marks the connection revoked, and deletes the encrypted token.</li>
+</ul>
+
+<h2>5. Risk Classification &amp; Prohibited Uses</h2>
+<p>YCM&rsquo;s entire customer base is classified as <strong>low-risk residential community management.</strong> The following are prohibited and screened against at onboarding: online gaming, gambling, cannabis, adult services, money transmission / MSB activity, consumer lending, cryptocurrency, and any other high-risk vertical.</p>
+
+<h2>6. Additional Payment-Side Verification</h2>
+<p>For associations that enable payment acceptance, merchant identity verification (KYC) is additionally performed by <strong>Stripe Connect&rsquo;s standard onboarding</strong> (business verification and control-person checks), layered on top of YCM&rsquo;s own diligence above.</p>
+
+<h2>7. Data Security &amp; Handling</h2>
+<table>
+<tr><th>Control</th><th>Implementation</th></tr>
+<tr><td>Tenant isolation</td><td>Each customer/association is strictly scoped; access checks fail closed on missing scope.</td></tr>
+<tr><td>Access control</td><td>Role-based access control across administrative roles; least-privilege gating.</td></tr>
+<tr><td>Encryption</td><td>Plaid tokens encrypted with AES-256-GCM at the application layer; data encrypted in transit (TLS) and at rest (AES-256 via managed database).</td></tr>
+<tr><td>Audit logging</td><td>Actor/action/entity audit logs, authentication-event logs, permission-change logs.</td></tr>
+<tr><td>Monitoring</td><td>Uptime health-check monitoring; error monitoring; bot protection.</td></tr>
+<tr><td>Offboarding</td><td>Plaid <code>/item/remove</code> + token deletion; deletion requests honored with required financial-record retention.</td></tr>
+</table>
+
+<h2>8. Recordkeeping &amp; Retention</h2>
+<ul>
+  <li>Due-diligence evidence, authorization records, consent records, and audit logs are retained.</li>
+  <li>Financial records are retained for seven (7) years; personal data is anonymized on approved deletion requests consistent with that obligation.</li>
+</ul>
+
+<h2>9. Ongoing Monitoring, Roles &amp; Review</h2>
+<ul>
+  <li><strong>Policy owner:</strong> Responsible Officer (William Ruiz II).</li>
+  <li><strong>Periodic re-verification</strong> of active business customers; deactivation on offboarding.</li>
+  <li>This policy is reviewed at least annually and upon any material change to the Plaid integration or customer base.</li>
+</ul>
+
+<div class="foot">YourCondoManager, Inc. — Customer Onboarding &amp; Due Diligence Policy v1.0. Prepared 2026-06-12.</div>
+
+</body>
+</html>

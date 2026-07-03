@@ -68,6 +68,18 @@ function listUrl(surface: "portal" | "admin", associationId?: string): string {
     : `/api/admin/pressing-items${associationId ? `?associationId=${encodeURIComponent(associationId)}` : ""}`;
 }
 
+/**
+ * The owner portal authenticates via the `x-portal-access-id` header (stored in
+ * localStorage by the portal shell), NOT cookies — so a portal-surface fetch
+ * MUST attach it or `requirePortal` 403s ("Portal access required"). This was the
+ * cause of the owner-portal-home "Failed to load pressing items (403)" bug.
+ */
+function portalAuthHeaders(surface: "portal" | "admin"): Record<string, string> {
+  if (surface !== "portal" || typeof window === "undefined") return {};
+  const id = window.localStorage.getItem("portalAccessId");
+  return id ? { "x-portal-access-id": id } : {};
+}
+
 export function PressingItemsWidget({ surface, associationId, onItemClick }: Props) {
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -75,7 +87,10 @@ export function PressingItemsWidget({ surface, associationId, onItemClick }: Pro
   const { data, isLoading, error } = useQuery<{ items: PressingItem[] }>({
     queryKey: ["pressing-items", surface, associationId ?? null],
     queryFn: async () => {
-      const res = await fetch(listUrl(surface, associationId), { credentials: "include" });
+      const res = await fetch(listUrl(surface, associationId), {
+        credentials: "include",
+        headers: portalAuthHeaders(surface),
+      });
       if (!res.ok) throw new Error(`Failed to load pressing items (${res.status})`);
       return res.json();
     },
@@ -85,7 +100,7 @@ export function PressingItemsWidget({ surface, associationId, onItemClick }: Pro
     mutationFn: async (args: { id: string; until: string }) => {
       const res = await fetch(snoozeUrl(surface, args.id), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...portalAuthHeaders(surface) },
         credentials: "include",
         body: JSON.stringify({ until: args.until }),
       });

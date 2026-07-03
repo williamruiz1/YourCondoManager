@@ -7,6 +7,8 @@ export const financeSubPages: SubPage[] = [
   { label: "Payments", href: "/app/financial/payments" },
   { label: "Expenses", href: "/app/financial/expenses" },
   { label: "Reports", href: "/app/financial/reports" },
+  { label: "AR Aging", href: "/app/financial/ar-aging" },
+  { label: "Statements", href: "/app/financial/statements" },
   { label: "Statement", href: "/app/financial/statement" },
 ];
 

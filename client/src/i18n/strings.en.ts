@@ -356,17 +356,18 @@ export const strings = {
   "portal.finances.recentLedger.empty": "No ledger entries yet.",
   "portal.finances.col.date": "Date",
   "portal.finances.col.type": "Type",
+  "portal.finances.col.unit": "Unit",
   "portal.finances.col.description": "Description",
   "portal.finances.col.amount": "Amount",
 
   "portal.finances.paymentMethods.title": "Payment methods",
   "portal.finances.paymentMethods.subtitle":
-    "Bank accounts linked to your portal and autopay enrollments.",
+    "Cards and bank accounts saved via Stripe for faster checkout and autopay.",
   "portal.finances.paymentMethods.add": "Add method",
   "portal.finances.paymentMethods.opening": "Opening…",
   "portal.finances.paymentMethods.savedTitle": "Saved methods",
   "portal.finances.paymentMethods.savedEmpty":
-    "No saved payment methods yet. Add a bank account to enable faster checkout and autopay.",
+    "No saved payment methods yet. Add a card or bank account to enable faster checkout and autopay.",
   "portal.finances.paymentMethods.default": "Default",
   "portal.finances.paymentMethods.setDefault": "Set default",
   "portal.finances.paymentMethods.remove": "Remove",
@@ -1130,7 +1131,7 @@ export const strings = {
   "pricing.hero.headlineLead": "Run your association",
   "pricing.hero.headlineEmphasis": "without a property manager.",
   "pricing.hero.subhead":
-    "Flat monthly pricing per association. No per-unit fees, no contracts, no surprises. Built for self-managed boards who want a real system — not another spreadsheet.",
+    "Flat monthly pricing per association. No per-unit fees, no contracts, no surprises. Built for self-managed communities who want a real system — not another spreadsheet.",
 
   "pricing.cards.popular": "Most Popular",
   "pricing.cards.perMonth": "/month",
@@ -1140,7 +1141,7 @@ export const strings = {
 
   "pricing.cards.selfManaged.name": "Self-Managed",
   "pricing.cards.selfManaged.tagline":
-    "For self-managed Boards & Condo Associations.",
+    "For self-managed Communities & Condo Associations.",
   "pricing.cards.selfManaged.tierLowLabel": "Under 30 units:",
   "pricing.cards.selfManaged.tierHighLabel": "30 units or more:",
   "pricing.cards.selfManaged.feeNote": "Per association. No per-unit fees.",
@@ -1209,7 +1210,7 @@ export const strings = {
 
   "pricing.finalCta.title": "Ready to stop managing on spreadsheets?",
   "pricing.finalCta.body":
-    "Your Condo Manager gives self-managed boards a real system of record — dues collection, owner portal, maintenance tracking, and governance tools in one place. No property manager required.",
+    "Your Condo Manager gives self-managed communities a real system of record — dues collection, owner portal, maintenance tracking, and governance tools in one place. No property manager required.",
   "pricing.finalCta.startTrial": "Start 14-Day Free Trial",
   "pricing.finalCta.scheduleDemo": "Schedule a Demo",
 
