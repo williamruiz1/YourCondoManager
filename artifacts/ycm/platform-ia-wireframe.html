@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YCM Platform IA — Before / After (2026-06-30)</title>
+<style>
+  :root{
+    --teal:#014D4A; --teal-bright:#2DBDB0; --teal-tint:#E6F4F3;
+    --ink:#0e1b1a; --muted:#5b6b6a; --line:#d7e3e2; --bg:#f4f8f7; --card:#ffffff;
+    --bad:#b4452f; --good:#0e7c5a; --warn:#9a6a00;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,-apple-system,system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5}
+  h1,h2,h3{font-family:"Plus Jakarta Sans",Inter,sans-serif;font-weight:700;margin:0}
+  header{background:var(--teal);color:#fff;padding:28px 32px}
+  header h1{font-size:24px}
+  header p{margin:6px 0 0;color:#bfe4e0;font-size:14px}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 32px}
+  .lead{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:26px}
+  .lead h2{font-size:15px;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+  .lead ul{margin:0;padding-left:18px} .lead li{margin:6px 0;font-size:14px}
+  .lead b{color:var(--teal)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:840px){.cols{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .panel header{padding:14px 18px;background:transparent}
+  .ph{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .ph.before{background:#fbecea} .ph.after{background:var(--teal-tint)}
+  .ph h2{font-size:16px} .ph .tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .tag.before{background:var(--bad);color:#fff} .tag.after{background:var(--teal-bright);color:#063b38}
+  .nav{padding:12px 10px}
+  .zone{margin:0 6px 4px;border-radius:10px}
+  .zlabel{display:flex;align-items:center;gap:9px;padding:9px 12px;font-weight:700;font-size:14px;color:var(--teal);border-radius:9px}
+  .zlabel.hub{background:#fbecea;color:var(--bad)}
+  .grp{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:8px 14px 2px}
+  .item{display:flex;align-items:center;gap:9px;padding:7px 14px 7px 30px;font-size:13.5px;color:var(--ink)}
+  .item.dup{color:var(--bad)} .item.new{color:var(--good);font-weight:600}
+  .item .badge{margin-left:auto;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px}
+  .badge.dup{background:#fbecea;color:var(--bad)} .badge.new{background:#e3f3ec;color:var(--good)}
+  .badge.deep{background:#fdf2dd;color:var(--warn)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--teal-bright);flex:0 0 auto}
+  .note{font-size:12px;color:var(--muted);padding:10px 16px;border-top:1px dashed var(--line)}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin:18px 2px 0;font-size:12px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .chip{width:11px;height:11px;border-radius:3px;display:inline-block}
+  table{width:100%;border-collapse:collapse;margin-top:26px;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:13.5px}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+  th{background:var(--teal-tint);color:var(--teal);font-family:"Plus Jakarta Sans",sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  td:last-child,th:last-child{text-align:center}
+  .b{color:var(--bad);font-weight:700} .a{color:var(--good);font-weight:700}
+  footer{color:var(--muted);font-size:12px;padding:24px 32px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>YourCondoManager — Platform Information Architecture</h1>
+  <p>Before / After nav simplification · 2026-06-30 · audit doc: docs/platform-ia-simplification-audit-2026-06-30.md</p>
+</header>
+
+<div class="wrap">
+  <div class="lead">
+    <h2>The core problem</h2>
+    <ul>
+      <li><b>Triple-stacked layers:</b> zone label → redundant <b>hub card-grid page</b> → the actual page (which is already a sidebar sub-item). Every zone shows its children twice.</li>
+      <li><b>Two-door conflation:</b> Maintenance is a page AND a Work Orders tab; Inspections is a page AND a Vendors tab; recurring dues live under both Chart of Accounts and Assessment Rules; reconciliation under both Reports and an orphan admin route.</li>
+      <li><b>Buried governance:</b> Meetings / Elections / Compliance are hidden tabs reachable only at <b>4 clicks</b> deep — none is a sidebar item.</li>
+      <li><b>Biggest win:</b> delete the hub layer → every zone goes from 3 clicks to 2, zero feature loss.</li>
+    </ul>
+  </div>
+
+  <div class="cols">
+    <!-- BEFORE -->
+    <div class="panel">
+      <div class="ph before"><span class="tag before">BEFORE</span><h2>Admin sidebar — today</h2></div>
+      <div class="nav">
+        <div class="zone"><div class="zlabel hub">🏠 Home <span style="margin-left:auto;font-size:10px">→ hub page</span></div>
+          <div class="item"><span class="dot"></span>Portfolio Health</div>
+          <div class="item"><span class="dot"></span>Associations</div>
+        </div>
+        <div class="zone"><div class="zlabel hub">💳 Financials <span style="margin-left:auto;font-size:10px">→ hub page</span></div>
+          <div class="grp">Setup</div>
+          <div class="item dup"><span class="dot"></span>Chart of Accounts <span class="badge dup">+ dues dup</span></div>
+          <div class="item"><span class="dot"></span>Bank Accounts</div>
+          <div class="item dup"><span class="dot"></span>Assessment Rules <span class="badge dup">dues+special</span></div>
+          <div class="grp">Operations</div>
+          <div class="item"><span class="dot"></span>Billing</div>
+          <div class="item"><span class="dot"></span>Payments <span class="badge deep">8 tabs</span></div>
+          <div class="item"><span class="dot"></span>Expenses</div>
+          <div class="grp">Insight</div>
+          <div class="item dup"><span class="dot"></span>Reports <span class="badge deep">7 tabs · recon dup</span></div>
+          <div class="item"><span class="dot"></span>Owner Statement</div>
+        </div>
+        <div class="zone"><div class="zlabel hub">🛠 Operations <span style="margin-left:auto;font-size:10px">→ hub page</span></div>
+          <div class="item"><span class="dot"></span>Buildings & Units</div>
+          <div class="item"><span class="dot"></span>People</div>
+          <div class="item dup"><span class="dot"></span>Work Orders <span class="badge dup">embeds Maint.</span></div>
+          <div class="item dup"><span class="dot"></span>Maintenance <span class="badge dup">2nd door</span></div>
+          <div class="item dup"><span class="dot"></span>Inspections <span class="badge dup">2nd door</span></div>
+          <div class="item dup"><span class="dot"></span>Vendors <span class="badge dup">embeds Insp.</span></div>
+          <div class="item"><span class="dot"></span>Insurance</div>
+          <div class="item"><span class="dot"></span>Feedback</div>
+        </div>
+        <div class="zone"><div class="zlabel hub">🏛 Governance <span style="margin-left:auto;font-size:10px">→ hub page</span></div>
+          <div class="item"><span class="dot"></span>Board</div>
+          <div class="item"><span class="dot"></span>Documents</div>
+          <div class="item dup"><span class="dot"></span>Meetings <span class="badge deep">4-deep tab</span></div>
+          <div class="item dup"><span class="dot"></span>Elections <span class="badge deep">4-deep tab</span></div>
+          <div class="item dup"><span class="dot"></span>Compliance <span class="badge deep">4-deep tab</span></div>
+        </div>
+        <div class="zone"><div class="zlabel hub">💬 Communications <span style="margin-left:auto;font-size:10px">→ hub page</span></div>
+          <div class="item"><span class="dot"></span>Inbox</div>
+          <div class="item"><span class="dot"></span>Announcements</div>
+          <div class="item"><span class="dot"></span>Amenity Booking</div>
+          <div class="item"><span class="dot"></span>Community Hub <span class="badge deep">7 tabs</span></div>
+        </div>
+        <div class="zone"><div class="zlabel hub">⚙️ Platform <span style="margin-left:auto;font-size:10px">→ hub page</span></div>
+          <div class="item"><span class="dot"></span>Controls · Roadmap · Users · Executive · AI</div>
+        </div>
+      </div>
+      <div class="note">Plus ~12 orphan pages (URL-only) and 62 legacy redirects. Top tasks: 3–4 clicks.</div>
+    </div>
+
+    <!-- AFTER -->
+    <div class="panel">
+      <div class="ph after"><span class="tag after">AFTER</span><h2>Admin sidebar — proposed (hub layer removed)</h2></div>
+      <div class="nav">
+        <div class="zone"><div class="zlabel">🏠 Home</div>
+          <div class="item"><span class="dot"></span>Portfolio Health</div>
+          <div class="item"><span class="dot"></span>Associations</div>
+        </div>
+        <div class="zone"><div class="zlabel">💳 Financials</div>
+          <div class="grp">Setup</div>
+          <div class="item"><span class="dot"></span>Chart of Accounts <span class="badge new">GL only</span></div>
+          <div class="item"><span class="dot"></span>Bank Accounts</div>
+          <div class="grp">Billing</div>
+          <div class="item new"><span class="dot"></span>Recurring Dues <span class="badge new">one home</span></div>
+          <div class="item new"><span class="dot"></span>Special Assessments</div>
+          <div class="item"><span class="dot"></span>Owner Statements</div>
+          <div class="grp">Money</div>
+          <div class="item"><span class="dot"></span>Payments <span class="badge new">~4 tabs</span></div>
+          <div class="item"><span class="dot"></span>Expenses</div>
+          <div class="grp">Insight</div>
+          <div class="item"><span class="dot"></span>Reports & Reconciliation <span class="badge new">~4 tabs</span></div>
+        </div>
+        <div class="zone"><div class="zlabel">🛠 Operations</div>
+          <div class="item"><span class="dot"></span>Buildings & Units</div>
+          <div class="item"><span class="dot"></span>People</div>
+          <div class="item"><span class="dot"></span>Work Orders + Maintenance <span class="badge new">merged</span></div>
+          <div class="item"><span class="dot"></span>Inspections <span class="badge new">one home</span></div>
+          <div class="item"><span class="dot"></span>Vendors</div>
+          <div class="item"><span class="dot"></span>Insurance</div>
+          <div class="item"><span class="dot"></span>Feedback</div>
+        </div>
+        <div class="zone"><div class="zlabel">🏛 Governance</div>
+          <div class="item"><span class="dot"></span>Board</div>
+          <div class="item new"><span class="dot"></span>Meetings <span class="badge new">1 click</span></div>
+          <div class="item new"><span class="dot"></span>Elections & Voting <span class="badge new">1 click</span></div>
+          <div class="item new"><span class="dot"></span>Compliance</div>
+          <div class="item"><span class="dot"></span>Documents</div>
+        </div>
+        <div class="zone"><div class="zlabel">💬 Communications</div>
+          <div class="item"><span class="dot"></span>Inbox</div>
+          <div class="item"><span class="dot"></span>Announcements</div>
+          <div class="item"><span class="dot"></span>Amenity Booking</div>
+          <div class="item"><span class="dot"></span>Community Hub <span class="badge deep">decide: comms vs setup</span></div>
+        </div>
+        <div class="zone"><div class="zlabel">⚙️ Platform</div>
+          <div class="item"><span class="dot"></span>Controls · Roadmap · Users · Executive · AI · <span style="color:var(--good)">+orphans moved here</span></div>
+        </div>
+      </div>
+      <div class="note">Zone label expands children inline — no hub page. Top tasks: ≤2 clicks. Owner portal (4 zones) already this clean — left unchanged.</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><i class="chip" style="background:#fbecea;border:1px solid #b4452f"></i> conflation / 2nd door</span>
+    <span><i class="chip" style="background:#fdf2dd;border:1px solid #9a6a00"></i> deep-click / tab overload</span>
+    <span><i class="chip" style="background:#e3f3ec;border:1px solid #0e7c5a"></i> simplification win</span>
+  </div>
+
+  <table>
+    <thead><tr><th>Common task</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td>Schedule a board meeting</td><td class="b">4 clicks</td><td class="a">1 click</td></tr>
+      <tr><td>Hold an election / vote</td><td class="b">4 clicks</td><td class="a">1 click</td></tr>
+      <tr><td>Reach any zone's first real page</td><td class="b">3 clicks</td><td class="a">2 clicks</td></tr>
+      <tr><td>Post recurring dues</td><td class="b">3 clicks · 2 doors</td><td class="a">2 clicks · 1 home</td></tr>
+      <tr><td>Log an inspection</td><td class="b">2 doors</td><td class="a">1 home</td></tr>
+      <tr><td>Run bank reconciliation</td><td class="b">2 doors</td><td class="a">1 home</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<footer>YourCondoManager · IA simplification proposal · read-only audit — no routes/nav/components changed · decisions deferred to William (see §4 of the audit doc)</footer>
+</body>
+</html>
