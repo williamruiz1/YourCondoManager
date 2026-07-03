@@ -38,6 +38,18 @@ type AnyComponent = ComponentType<any>;
 
 const RELOAD_FLAG_PREFIX = "ycm:chunk-reload:";
 
+// A full-page navigation ABORTS this document's in-flight dynamic imports,
+// and the rejection is indistinguishable from a stale-chunk error (Safari:
+// "Importing a module script failed."). Reloading in that window interrupts
+// the navigation the user (or a Playwright goto) just started — the WebKit
+// "navigation … interrupted by another navigation to <current page>" flake
+// (founder-os#8337). Track unload so the reload path can stand down.
+let pageIsUnloading = false;
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => { pageIsUnloading = true; });
+  window.addEventListener("beforeunload", () => { pageIsUnloading = true; });
+}
+
 /** Matches the cross-browser dynamic-import / chunk-load failure messages. */
 export function isChunkLoadError(error: unknown): boolean {
   const message =
@@ -86,11 +98,21 @@ export function lazyWithReload<T extends AnyComponent>(
       .catch((error: unknown) => {
         const store = safeSessionStorage();
         const alreadyReloaded = store?.getItem(flagKey) === "1";
-        if (isChunkLoadError(error) && !alreadyReloaded && typeof window !== "undefined") {
+        if (
+          isChunkLoadError(error) &&
+          !alreadyReloaded &&
+          !pageIsUnloading &&
+          typeof window !== "undefined"
+        ) {
           // First stale-chunk failure for this route since the last good
           // load: reload once to pick up the fresh index + chunk names.
+          // Deferred a beat so an import aborted by an in-progress
+          // navigation gets its pagehide/beforeunload signal first —
+          // reloading then would cancel the navigation (see note above).
           store?.setItem(flagKey, "1");
-          window.location.reload();
+          setTimeout(() => {
+            if (!pageIsUnloading) window.location.reload();
+          }, 50);
           // Return a never-resolving promise so the ErrorBoundary doesn't
           // flash before the reload navigates away.
           return new Promise<never>(() => {});

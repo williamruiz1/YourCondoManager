@@ -31,6 +31,7 @@ import { createRateLimiter, onWriteOnly } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
 import { resolveSessionCookieDomain } from "./session-cookie-domain";
 import { assertPlaidEnvSafe } from "./services/bank-feed/plaid-env-guard";
+import { assertStripeFcEnvSafe } from "./services/bank-feed/stripe-fc-env-guard";
 
 // Wave 33 (5.4 Part B): seed.ts is ~120 KB of static demo-data tables. It
 // only runs once at boot, after the HTTP server has already started
@@ -391,6 +392,17 @@ app.use((req, res, next) => {
   // on Fly aborts the deploy, exactly as intended.
   const plaidGuard = assertPlaidEnvSafe();
   log(`Plaid env guard OK (env=${plaidGuard.env})`, "plaid");
+
+  // Stripe Financial Connections (FC) env guard — same mechanical-safety rail
+  // as Plaid's, scoped to the FC bank-feed alternative. No-op unless
+  // STRIPE_FINANCIAL_CONNECTIONS_ENABLED is ON. When ON in production, it
+  // refuses to boot without STRIPE_FC_WEBHOOK_SECRET wired (so a production
+  // FC webhook handler can never accept forged bank transactions).
+  const fcGuard = assertStripeFcEnvSafe();
+  log(
+    `Stripe FC env guard OK (enabled=${fcGuard.enabled} env=${fcGuard.env})`,
+    "stripe-fc",
+  );
 
   const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
   app.use("/api/public", publicRateLimiter);
