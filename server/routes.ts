@@ -6086,6 +6086,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(200).json(result);
       }
 
+      // A real Stripe delivery (carries a `stripe-signature` header) that is a valid
+      // Stripe *event* payload — `normalizeStripeWebhookPayload` only returns non-null
+      // for a genuine Stripe event (id+type+data) — but carries NO `associationId`
+      // metadata (so the per-association processing block above was skipped). This is
+      // a platform-level billing event (checkout.session.*, customer.subscription.*,
+      // invoice.*) that this per-HOA owner-payment handler is not designed to act on.
+      // Per Stripe best practice, ACKNOWLEDGE it with a 2xx so Stripe does not treat
+      // the delivery as failed, retry, and eventually disable the endpoint. This does
+      // NOT credit or write anything (this event class was never credited here — it
+      // was previously 400'd by the generic validator below). The internal-API path
+      // (no `stripe-signature` header) and the HMAC/shared-secret paths are untouched:
+      // an internal caller posts the normalized `{associationId, provider, ...}` shape,
+      // which is NOT a Stripe event payload, so `normalizedStripeEvent` is null and this
+      // branch does not fire.
+      if (stripeSignature && normalizedStripeEvent && !normalizedStripeEvent.associationId) {
+        console.log("[webhook] acknowledged unhandled Stripe event", {
+          type: normalizedStripeEvent.eventType,
+          id: normalizedStripeEvent.providerEventId,
+        });
+        return res.status(200).json({ received: true, handled: false });
+      }
+
       if (stripeSignature || hmacSignature) {
         // HMAC-SHA256 verification — lookup signing secret for this association
         const associationIdForVerify = typeof req.body.associationId === "string" ? req.body.associationId : null;
