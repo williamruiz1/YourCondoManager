@@ -38,6 +38,18 @@ vi.mock("../../db", () => ({
         return Promise.resolve();
       },
     }),
+    // The refund route now looks up the charge's ledger entry to post the
+    // matching ledger reversal (founder-os#8535). Empty result = no ledger
+    // entry recorded for the charge = the fail-soft null path, which keeps
+    // this file's original assertions (Stripe-side only) intact. The
+    // reversal path itself is covered in admin-reverse-route.test.ts.
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve([]),
+        }),
+      }),
+    }),
   },
 }));
 

@@ -38,6 +38,14 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Link } from "wouter";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -1574,9 +1582,63 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
 // ── Payment Activity Tab ──────────────────────────────────────────────────────
 
 type PaymentActivityStats = { totalPayments: number; totalCredits: number; totalAdjustments: number; last30DaysCount: number; last30DaysTotal: number };
-type ActivityEntry = { id: string; entryType: string; amount: number; postedAt: string; description: string | null; unitId: string; personId: string };
+type ActivityEntry = { id: string; entryType: string; amount: number; postedAt: string; description: string | null; unitId: string; personId: string; referenceType: string | null; referenceId: string | null };
+
+// A row is reversible when it is a credit-side receipt (payment/credit with a
+// negative amount). Stripe-backed rows route through the /refund endpoint (the
+// money must actually move); manual rows route through /reverse. Both post the
+// forward-only adjustment via the tested payment-edge-cases module
+// (founder-os#8535 / YCM#286).
+function isReversibleEntry(e: ActivityEntry): boolean {
+  return (e.entryType === "payment" || e.entryType === "credit") && e.amount < 0;
+}
 
 function PaymentActivityTab({ associationId }: { associationId: string | null }) {
+  const { toast } = useToast();
+  const [reversing, setReversing] = useState<ActivityEntry | null>(null);
+  const [reverseAmount, setReverseAmount] = useState("");
+  const [reverseReason, setReverseReason] = useState("");
+
+  const openReverse = (e: ActivityEntry) => {
+    setReversing(e);
+    setReverseAmount(Math.abs(e.amount).toFixed(2));
+    setReverseReason("");
+  };
+
+  const reverseMutation = useMutation({
+    mutationFn: async () => {
+      if (!reversing || !associationId) throw new Error("Nothing selected");
+      const amount = parseFloat(reverseAmount);
+      if (!(amount > 0)) throw new Error("Amount must be a positive number");
+      if (reverseReason.trim().length < 3) throw new Error("A reason is required");
+      const isStripe = reversing.referenceType === "stripe_charge";
+      if (isStripe) {
+        // Stripe-backed receipt: refund through Stripe so the money actually
+        // moves; the server posts the matching ledger reversal automatically.
+        const res = await apiRequest("POST", "/api/admin/payments/refund", {
+          associationId,
+          chargeId: reversing.referenceId,
+          amountCents: Math.round(amount * 100),
+        });
+        return res.json();
+      }
+      const res = await apiRequest("POST", "/api/admin/payments/reverse", {
+        associationId,
+        ledgerEntryId: reversing.id,
+        amount,
+        reason: reverseReason.trim(),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Reversal posted", description: "The ledger shows the money received and returned — history preserved." });
+      setReversing(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/payment-activity", associationId] });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Reversal failed", description: err.message, variant: "destructive" }),
+  });
+
   const { data, isLoading } = useQuery<{ entries: ActivityEntry[]; stats: PaymentActivityStats }>({
     queryKey: ["/api/financial/payment-activity", associationId],
     queryFn: async () => {
@@ -1630,7 +1692,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
             <>
               <div className="hidden md:block overflow-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Type", "Amount", "Unit", "Person", "Description"].map(h => <th key={h} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
+                  <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Type", "Amount", "Unit", "Person", "Description", ""].map((h, i) => <th key={i} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
                   <tbody>
                     {entries.slice().reverse().map((e) => (
                       <tr key={e.id} className="border-b last:border-0">
@@ -1639,7 +1701,20 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                         <td className={`py-1.5 pr-4 font-medium ${e.amount < 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>{e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}</td>
                         <td className="py-1.5 pr-4 font-mono text-xs">{e.unitId.slice(0, 8)}</td>
                         <td className="py-1.5 pr-4 font-mono text-xs">{e.personId.slice(0, 8)}</td>
-                        <td className="py-1.5 text-muted-foreground truncate max-w-xs">{e.description ?? "—"}</td>
+                        <td className="py-1.5 pr-4 text-muted-foreground truncate max-w-xs">{e.description ?? "—"}</td>
+                        <td className="py-1.5">
+                          {isReversibleEntry(e) ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => openReverse(e)}
+                              data-testid={`reverse-entry-${e.id}`}
+                            >
+                              {e.referenceType === "stripe_charge" ? "Refund…" : "Reverse…"}
+                            </Button>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1667,6 +1742,16 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                         {e.description}
                       </div>
                     ) : null}
+                    {isReversibleEntry(e) ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 w-full"
+                        onClick={() => openReverse(e)}
+                      >
+                        {e.referenceType === "stripe_charge" ? "Refund this payment…" : "Reverse this posting…"}
+                      </Button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1674,6 +1759,64 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={reversing !== null} onOpenChange={(open) => { if (!open) setReversing(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {reversing?.referenceType === "stripe_charge" ? "Refund this Stripe payment" : "Reverse this posting"}
+            </DialogTitle>
+            <DialogDescription>
+              {reversing?.referenceType === "stripe_charge"
+                ? "The money goes back to the payer through Stripe, and the ledger records the reversal automatically. The original entry is never deleted."
+                : "Posts an equal-and-opposite adjustment so the books show the money was received and then returned. The original entry is never deleted."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="reverse-amount">Amount to {reversing?.referenceType === "stripe_charge" ? "refund" : "reverse"} ($)</Label>
+              <Input
+                id="reverse-amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={reverseAmount}
+                onChange={(ev) => setReverseAmount(ev.target.value)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Original: ${reversing ? Math.abs(reversing.amount).toFixed(2) : "0.00"} — enter less for a partial {reversing?.referenceType === "stripe_charge" ? "refund" : "reversal"}.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="reverse-reason">Reason (required, goes in the audit log)</Label>
+              <Textarea
+                id="reverse-reason"
+                placeholder="e.g. duplicate payment; owner paid twice on 6/28"
+                value={reverseReason}
+                onChange={(ev) => setReverseReason(ev.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReversing(null)} disabled={reverseMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => reverseMutation.mutate()}
+              disabled={reverseMutation.isPending || reverseReason.trim().length < 3}
+              data-testid="confirm-reverse"
+            >
+              {reverseMutation.isPending
+                ? "Posting…"
+                : reversing?.referenceType === "stripe_charge"
+                  ? "Refund payment"
+                  : "Post reversal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
