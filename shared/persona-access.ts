@@ -132,12 +132,16 @@ export const ROUTE_MANIFEST: RouteManifest = {
   "/app/financial/payments": FINANCIALS_ACCESS,
   "/app/financial/expenses": FINANCIALS_ACCESS,
   "/app/financial/reports": FINANCIALS_ACCESS,
+  "/app/financial/ar-aging": FINANCIALS_ACCESS,
   // 4.3 Q9 consolidated assessment-rules surface.
   "/app/financial/rules": FINANCIALS_ACCESS,
   // Plaid-backed bank-feed admin surface (Issue #333).
   "/app/financial/bank-connections": FINANCIALS_ACCESS,
   // Owner account-statement generator (readiness P0-3 / Issue #206).
   "/app/financial/statement": FINANCIALS_ACCESS,
+  // GL-derived financial statements — balance sheet + income/expense +
+  // budget-vs-actual, reconciled to the cent (YCM Financial Core Phase 3).
+  "/app/financial/statements": FINANCIALS_ACCESS,
 
   // ---- Financials zone legacy singular-prefix redirects (3.2 Q4 archive) ----
   "/app/financial/fees": FINANCIALS_ACCESS,

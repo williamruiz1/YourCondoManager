@@ -9,11 +9,11 @@
  * based layout is the email-client lowest-common-denominator.
  */
 
-const PRIMARY = "#1f3a5f"; // YCM v1 deep navy
-const ACCENT = "#c4b9a0"; // YCM v1 warm cream-gold (matches Duho palette)
-const BG = "#fafaf7"; // off-white page background
-const FG = "#1a1a1a"; // body text
-const MUTED = "rgba(26,26,26,0.60)"; // secondary text
+const PRIMARY = "#014D4A"; // YCM brand v2 Deep Teal (white-on-teal = AAA)
+const ACCENT = "#15A39C"; // YCM brand v2 Teal Accent (links / borders / accents)
+const BG = "#F5F7F9"; // brand v2 Off-White page background
+const FG = "#0F2E2C"; // brand v2 Ink body text
+const MUTED = "#6B7280"; // brand v2 Muted secondary text
 
 export type BrandFooterOptions = {
   /** Override the default reply-to address shown in footer copy. */

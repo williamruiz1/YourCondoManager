@@ -75,12 +75,20 @@ async function buildAll() {
     // data into the main bundle. We compile that sibling as a second
     // esbuild pass below.
     //
-    // founder-os#2472: the runtime specifier MUST be `./seed.js` (with
-    // extension). package.json has `"type": "module"`, so `await import()`
+    // founder-os#2472: the runtime specifier MUST include the file
+    // extension. package.json has `"type": "module"`, so `await import()`
     // invokes Node's ESM resolver, which requires explicit file extensions
-    // for relative paths. The previous bare `./seed` specifier threw
+    // for relative paths. The bare `./seed` specifier threw
     // ERR_MODULE_NOT_FOUND on every production boot — the seed never ran.
-    external: [...externals, ...heavyTransitives, "./seed", "./seed.js"],
+    //
+    // Site audit 2026-06-22: the sibling was then emitted as `dist/seed.js`
+    // in `format: "cjs"`. But under `"type": "module"`, Node parses a `.js`
+    // file as ESM — so loading CJS-format code (with `module.exports` /
+    // `require`) as ESM threw `ReferenceError: module is not defined in ES
+    // module scope` on every boot ("[boot] Seed failed to run"). The fix is
+    // to emit the CJS sibling with a `.cjs` extension (which forces Node's
+    // CJS loader regardless of "type": "module") and import `./seed.cjs`.
+    external: [...externals, ...heavyTransitives, "./seed", "./seed.js", "./seed.cjs"],
     logLevel: "info",
   });
 
@@ -99,12 +107,19 @@ async function buildAll() {
   // dist/index.cjs and is not a separate file at runtime. The dual-pool
   // cost is negligible for a once-per-boot seed step; the dist/index.cjs
   // size win is real (~120 KB out of the cold-start path).
+  //
+  // Site audit 2026-06-22: emit `.cjs`, NOT `.js`. The sibling is built in
+  // `format: "cjs"` (it uses `module.exports`/`require` internally), but
+  // package.json declares `"type": "module"` — so a `.js` extension makes
+  // Node parse it as ESM and throw `ReferenceError: module is not defined in
+  // ES module scope`. A `.cjs` extension forces the CJS loader. The boot
+  // import in server/index.ts targets `./seed.cjs` to match.
   await esbuild({
     entryPoints: ["server/seed.ts"],
     platform: "node",
     bundle: true,
     format: "cjs",
-    outfile: "dist/seed.js",
+    outfile: "dist/seed.cjs",
     define: {
       "process.env.NODE_ENV": '"production"',
     },

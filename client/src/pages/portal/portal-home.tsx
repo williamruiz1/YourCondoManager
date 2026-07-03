@@ -102,6 +102,9 @@ function PortalHomeContent() {
 
   const openRequests = requests.filter((r) => !["resolved", "closed", "rejected"].includes(r.status));
   const balance = financialDashboard?.balance ?? 0;
+  // 2026-07-01 (display-only) — "Paid in full" state for the home balance card.
+  const paidInFull = balance <= 0;
+  const lastPaymentDate = financialDashboard?.lastPaymentDate ?? null;
   const greeting = session.firstName
     ? `Welcome, ${session.firstName}`
     : t("portal.home.greetingFallback");
@@ -174,16 +177,37 @@ function PortalHomeContent() {
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
               {t("portal.home.cards.balance")}
             </p>
-            <p
-              // Wave 25 — `text-secondary` resolves to a near-white tone in
-              // light mode and fails WCAG AA color contrast (axe). Use the
-              // standard on-surface foreground when there is no balance
-              // due; the destructive tone stays for non-zero balance.
-              className={`mt-1 font-headline text-3xl ${balance > 0 ? "text-destructive" : "text-on-surface"}`}
-              data-testid="portal-home-balance"
-            >
-              ${Math.abs(balance).toFixed(2)}
-            </p>
+            {/* 2026-07-01 (display-only) — when the owner owes nothing, show a
+                positive "Paid in full" state (with the date when we have it)
+                instead of a bare "$0.00". A credit balance still reads as
+                paid-in-full and surfaces the credit amount as context. */}
+            {paidInFull ? (
+              <>
+                <p
+                  className="mt-1 font-headline text-2xl text-on-surface"
+                  data-testid="portal-home-balance"
+                >
+                  Paid in full
+                </p>
+                <p className="mt-0.5 text-xs text-on-surface-variant" data-testid="portal-home-balance-paid-context">
+                  {lastPaymentDate
+                    ? `Last payment ${new Date(lastPaymentDate).toLocaleDateString()}`
+                    : balance < 0
+                      ? `$${Math.abs(balance).toFixed(2)} credit on account`
+                      : "No balance due"}
+                </p>
+              </>
+            ) : (
+              <p
+                // Wave 25 — `text-secondary` resolves to a near-white tone in
+                // light mode and fails WCAG AA color contrast (axe). The
+                // destructive tone stays for non-zero balance.
+                className="mt-1 font-headline text-3xl text-destructive"
+                data-testid="portal-home-balance"
+              >
+                ${Math.abs(balance).toFixed(2)}
+              </p>
+            )}
             <Link
               href="/portal/finances"
               className="mt-2 inline-flex rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
