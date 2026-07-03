@@ -17,6 +17,7 @@ import {
   isTenantAliasEnabled,
 } from "./email/tenant-sender";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
+import { buildPerUnitBreakdown } from "@shared/portal-per-unit";
 import { invalidateAlertCache } from "./alerts";
 import { getMigrationHealth } from "./migration-health";
 
@@ -14196,6 +14197,19 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       // this owner's units). Read-only aggregation — no ledger/money writes.
       const ytdStart = new Date(new Date().getFullYear(), 0, 1);
       const myEntriesYtd = myEntries.filter((e) => e.postedAt && new Date(e.postedAt) >= ytdStart);
+
+      // 2026-07-03 — per-unit dues-vs-assessment breakdown (additive, read-only).
+      // Owners with multiple units want each unit's "due now" and "balance"
+      // split into HOA dues vs special assessment (installment). Pure partition
+      // of the figures already computed above (`byUnit` +
+      // `specialAssessmentUpcomingInstallments`) using the SAME dues-vs-
+      // assessment classification the owner-wide "What's due now" split uses, so
+      // the per-unit sums reconcile EXACTLY to the owner-wide totals. The
+      // upcoming installment is scoped to the owner's primary unit (ownerUnitId)
+      // and is attributed there; other units show $0 installment due now. Moves
+      // no money; changes no totals.
+      const perUnit = buildPerUnitBreakdown(byUnit, specialAssessmentUpcomingInstallments, ownerUnitId);
+
       res.json({
         balance,
         totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
@@ -14220,6 +14234,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         specialAssessmentUpcomingInstallments,
         // 2026-05-25 — per-unit hierarchical breakdown (additive).
         byUnit,
+        // 2026-07-03 — per-unit dues-vs-assessment breakdown (additive, read-only).
+        perUnit,
         grandTotal: balance,
         // 2026-05-25 — plan-aware "Amount due this period" (additive).
         // null when no active plan, or when the plan is quarterly and we
