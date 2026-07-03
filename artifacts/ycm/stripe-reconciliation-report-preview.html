@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<!--
+  founder-os#970 / dispatch #3 — visual preview of the YCM Stripe payout
+  reconciliation report (OP #18 — visual deliverable surfaced at ship time).
+
+  This is a STATIC preview with sample Cherry Hill data that mirrors the live
+  React surface at /app/financial/payments → "Payout reconciliation" card
+  (client/src/pages/financial-payments.tsx PayoutReconciliationSection). Live
+  rendering requires the running app + DB + a paid Stripe payout; this preview
+  shows the exact visual contract so William can review the shape without that
+  stack. Data matches spec §4.1 (per HOA → per payout → owner breakdown; net
+  total ties to the bank deposit with zero variance).
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YCM — Payout Reconciliation (preview)</title>
+  <style>
+    :root {
+      --bg: #f1f5f9; --card: #ffffff; --border: #e2e8f0; --muted: #64748b;
+      --fg: #0f172a; --primary: #0f766e; --green: #15803d; --green-bg: #ecfdf5;
+      --red: #b91c1c; --red-bg: #fef2f2; --amber: #b45309; --amber-bg: #fffbeb;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; color: var(--fg); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 28px 16px 60px; }
+    .preview-banner { background: #1e3a5f; color: #fff; border-radius: 12px; padding: 14px 18px; font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
+    .preview-banner strong { color: #bfdbfe; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 30px rgba(15,23,42,0.06); overflow: hidden; margin-bottom: 18px; }
+    .card-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+    .card-title { font-size: 15px; font-weight: 700; margin: 0; }
+    .card-desc { font-size: 13px; color: var(--muted); margin: 6px 0 0; max-width: 560px; line-height: 1.5; }
+    .controls { display: flex; align-items: center; gap: 8px; }
+    select { font-size: 13px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+    .badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; letter-spacing: 0.02em; }
+    .badge-test { background: var(--amber-bg); color: var(--amber); border: 1px solid #fcd34d; }
+    .badge-live { background: var(--primary); color: #fff; }
+    .badge-ok { background: var(--green-bg); color: var(--green); border: 1px solid #86efac; }
+    .badge-bad { background: var(--red-bg); color: var(--red); border: 1px solid #fca5a5; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 11px 20px; font-size: 13px; border-bottom: 1px solid var(--border); }
+    th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.payout { cursor: pointer; }
+    tr.payout:hover { background: #f8fafc; }
+    code { font-size: 12px; background: #f1f5f9; padding: 2px 6px; border-radius: 5px; }
+    .detail td { background: #f8fafc; padding: 0; }
+    .detail .inner { padding: 6px 14px 14px; }
+    .detail table th, .detail table td { padding: 8px 14px; }
+    .chev { color: var(--muted); margin-right: 6px; }
+    .totals { padding: 14px 20px; font-size: 13px; color: var(--muted); display: flex; gap: 26px; flex-wrap: wrap; border-top: 1px solid var(--border); background: #fafdfc; }
+    .totals b { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="preview-banner">
+      <strong>PREVIEW</strong> — Static render of the YCM <strong>Payout Reconciliation</strong> report
+      (founder-os#970, dispatch #3). Live surface: <code>/app/financial/payments</code> → "Payout reconciliation".
+      Sample data: Cherry Hill Court Condominiums, one daily payout, two owners, zero variance.
+    </div>
+
+    <!-- Gap D: connections list with test/live mode badge -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <p class="card-title">Connected HOAs (1)</p>
+          <p class="card-desc">Stripe Connect status across the portfolio. The <b>Mode</b> column (Gap D) tells a sandbox connection from a production one at a glance.</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>HOA</th><th>Stripe account</th><th>Statement descriptor</th><th>Mode</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:600;">Cherry Hill Court Condominiums</td>
+            <td><code>acct_1Nxxxx</code></td>
+            <td><code>YCM-CHRY HILL HOA</code></td>
+            <td><span class="badge badge-test">TEST</span></td>
+            <td><span class="badge badge-ok">active</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Reconciliation report -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <p class="card-title">Payout reconciliation</p>
+          <p class="card-desc">When a Stripe payout lands in the HOA's bank, YCM explodes it back into one ledger entry per owner. The per-owner net totals match the bank deposit exactly.</p>
+        </div>
+        <div class="controls">
+          <span class="badge badge-test">TEST</span>
+          <select>
+            <option>All payouts</option>
+            <option>Reconciled (variance 0)</option>
+            <option>Unreconciled (variance ≠ 0)</option>
+          </select>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Payout</th><th>Arrived</th><th class="num">Owners</th>
+            <th class="num">Bank deposit</th><th class="num">Reconciled net</th><th class="num">Variance</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="payout">
+            <td><span class="chev">▾</span><code>po_1Nxxxxabc</code></td>
+            <td style="color:var(--muted);">May 26, 2026</td>
+            <td class="num">2</td>
+            <td class="num">$717.18</td>
+            <td class="num">$717.18</td>
+            <td class="num"><span class="badge badge-ok">$0.00</span></td>
+          </tr>
+          <tr class="detail">
+            <td colspan="6">
+              <div class="inner">
+                <table>
+                  <thead>
+                    <tr><th>Owner</th><th>Unit</th><th>Type</th><th class="num">Gross</th><th class="num">Fees</th><th class="num">Net</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td style="font-weight:600;">Jane Doe</td><td>1417 #3</td><td>dues</td><td class="num">$350.00</td><td class="num" style="color:var(--muted);">$15.30</td><td class="num">$334.70</td></tr>
+                    <tr><td style="font-weight:600;">John Smith</td><td>1421 #2</td><td>dues</td><td class="num">$400.00</td><td class="num" style="color:var(--muted);">$17.52</td><td class="num">$382.48</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="totals">
+        <span>Payouts: <b>1</b></span>
+        <span>Bank deposits total: <b>$717.18</b></span>
+        <span>Reconciled net total: <b>$717.18</b></span>
+        <span>Variance total: <b style="color:var(--green);">$0.00</b> — books tie out to the bank exactly</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -9,9 +9,17 @@ import { nanoid } from "nanoid";
 const viteLogger = createLogger();
 
 export async function setupVite(server: Server, app: Express) {
+  // E2E (Playwright): disable HMR entirely. The injected @vite/client's
+  // reconnect logic calls location.reload() when its websocket drops — and a
+  // page's ws drops the moment a test starts navigating away. In WebKit that
+  // reload races the in-flight page.goto and aborts it with "navigation …
+  // interrupted by another navigation to <current page>" (founder-os#8337:
+  // signup-onboarding + amenities/assessment webkit flakes). Tests never edit
+  // source files mid-run, so HMR buys nothing in this mode.
+  const disableHmr = process.env.PLAYWRIGHT_E2E === "1";
   const serverOptions = {
     middlewareMode: true,
-    hmr: { server, path: "/vite-hmr" },
+    hmr: disableHmr ? (false as const) : { server, path: "/vite-hmr" },
     allowedHosts: true as const,
   };
 

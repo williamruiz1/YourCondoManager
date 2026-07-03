@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YCM — HOA Financial Remediation Roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--teal:#014D4A;--accent:#2DBDB0;--ink:#0f2725;--mut:#5b716e;--line:#e3ecea;--bg:#f5f9f8;
+  --p0:#c0392b;--p0bg:#fbeae7;--p1:#b6820c;--p1bg:#fdf4dd;--p2:#0f8a5f;--p2bg:#e7f6ef;
+  --r-hi:#c0392b;--r-md:#b6820c;--r-lo:#0f8a5f}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+h1,h2,h3,h4{font-family:'Plus Jakarta Sans',sans-serif;margin:0}
+header{background:linear-gradient(135deg,var(--teal),#036a66);color:#fff;padding:34px 32px}
+header h1{font-size:25px;font-weight:800}
+header p{margin:9px 0 0;color:#cfeee9;font-size:14px;max-width:840px}
+header .meta{margin-top:14px;font-size:12px;color:#a9ddd6}
+.wrap{max-width:1120px;margin:0 auto;padding:26px 22px 70px}
+h2{font-size:20px;margin:38px 0 4px;color:var(--teal)}
+h3{font-size:16px;margin:22px 0 6px}
+h4{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:14px 0 5px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 16px}
+p{font-size:14px}
+code{background:#eef5f4;padding:1px 6px;border-radius:5px;font-size:12px;color:#0a3e3b;font-family:ui-monospace,Menlo,monospace}
+.pill{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;display:inline-block}
+.p0{background:var(--p0bg);color:var(--p0)}.p1{background:var(--p1bg);color:var(--p1)}.p2{background:var(--p2bg);color:var(--p2)}
+.rhi{background:var(--p0bg);color:var(--r-hi)}.rmd{background:var(--p1bg);color:var(--r-md)}.rlo{background:var(--p2bg);color:var(--r-lo)}
+.phase{background:#fff;border:1px solid var(--line);border-radius:14px;padding:2px 0 0;margin:20px 0;overflow:hidden}
+.phase .phead{background:linear-gradient(100deg,#eef5f4,#f8fbfa);padding:16px 20px;border-bottom:1px solid var(--line)}
+.phase .phead h3{margin:0;color:var(--teal);font-size:17px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.phase .phead .tag{font-size:11px;font-weight:700;color:#fff;background:var(--teal);border-radius:6px;padding:2px 8px}
+.phase .phead .goal{font-size:13px;color:var(--mut);margin-top:6px}
+.phase .pbody{padding:6px 20px 18px}
+table{width:100%;border-collapse:collapse;background:#fff;font-size:13px;margin-top:8px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#eef5f4;color:var(--teal);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+td b{color:var(--teal)}
+.gapblock{border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:11px;padding:14px 16px;margin:14px 0;background:#fff}
+.gapblock.g0{border-left-color:var(--p0)}.gapblock.g1{border-left-color:var(--p1)}.gapblock.g2{border-left-color:var(--accent)}
+.gapblock h4{color:var(--ink);font-size:14px;text-transform:none;letter-spacing:0;margin:0 0 8px;display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.gapblock .rk{font-family:'Plus Jakarta Sans';font-weight:800;color:var(--teal)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:8px 0}
+.cell{background:#f8fbfa;border:1px solid var(--line);border-radius:9px;padding:11px 13px;font-size:13px}
+.cell .lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin-bottom:4px}
+.migbox{background:#fff8e8;border:1px solid #f1e0b6;border-radius:10px;padding:12px 15px;font-size:13px;color:#5f4a10;margin:10px 0}
+.migbox b{color:#7a5a12}
+.flagbox{background:var(--p2bg);border:1px solid #bfe6d4;border-radius:10px;padding:12px 15px;font-size:13px;color:#0a5c40;margin:10px 0}
+.flagbox b{color:#0a5c40}
+ul{font-size:13px;margin:6px 0;padding-left:20px}
+li{margin:3px 0}
+.starthere{background:linear-gradient(120deg,#013f3c,#025f5a);color:#fff;border-radius:14px;padding:22px 24px;margin:20px 0}
+.starthere h3{color:#fff;font-size:18px;margin-bottom:8px}
+.starthere p{color:#d6f0ec;font-size:14px}
+.starthere b{color:#8fe6db}
+.diagram{background:#0c211f;color:#cfeee9;border-radius:12px;padding:20px 22px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.7;overflow-x:auto;margin:14px 0;white-space:pre}
+.diagram .p0c{color:#ff9b8f}.diagram .p1c{color:#f5cd6b}.diagram .p2c{color:#7fe3a0}.diagram .arw{color:#5b716e}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:8px 0}
+.note{background:#eef5f4;border:1px solid var(--line);border-radius:10px;padding:13px 16px;font-size:13px;color:var(--teal);margin:14px 0}
+.foot{margin-top:40px;font-size:12px;color:var(--mut);border-top:1px solid var(--line);padding-top:16px}
+.eff{font-family:'Plus Jakarta Sans';font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <h1>YourCondoManager — HOA Financial Remediation Roadmap</h1>
+  <p>Turning the best-practices audit into a sequenced, buildable plan. Every step is grounded in the real YCM codebase, and every data-touching step carries a migration + rollback + verification plan because <b>Cherry Hill Court is a live customer with real books</b>. This is scoping — no code is changed and no git is run here.</p>
+  <div class="meta">Companion to <code>artifacts/ycm/hoa-best-practices-audit.html</code> · First customer: Cherry Hill Court (18-unit condo) · Ratified model (2026-07-01): the balance attaches to the UNIT, not a person · Grounded in <code>shared/schema.ts</code>, <code>server/services/gl/*</code>, <code>server/services/reconciliation/*</code>, <code>server/services/account-statement.ts</code></div>
+</header>
+
+<div class="wrap">
+
+  <div class="starthere">
+    <h3>Start here → Phase 1: Unit-Centric Ledger + Unique Payment Reference (P0-1 + P0-3, shipped together)</h3>
+    <p>This is the architectural pivot the owner already ratified, and it's the one thing everything else compounds off. It fixes the liability model (the receivable belongs to the <b>unit</b>, co-owners jointly &amp; severally liable) AND makes reconciliation deterministic (match on a <b>per-unit reference</b> first, fuzzy-name last). It's also the <b>lowest data-migration risk</b> of the P0s, because the winning move is <b>additive</b>: add a nullable <code>unit_account_ref</code> and a payer roster <i>beside</i> the existing rows, backfill from data that's already there (<code>owner_ledger_entries.unitId</code> is already <code>notNull</code>; Stripe metadata already carries <code>unit_id</code>), and re-scope statements to the unit behind a flag — <b>without deleting or rewriting a single ledger row</b>.</p>
+  </div>
+
+  <h2>1 · The phased sequence at a glance</h2>
+  <div class="legend">
+    <span><span class="pill p0">P0 — correctness / liability</span></span>
+    <span><span class="pill p1">P1 — controls / compliance</span></span>
+    <span><span class="pill p2">P2 — maturity</span></span>
+    <span>Risk: <span class="pill rhi">HIGH</span> <span class="pill rmd">MED</span> <span class="pill rlo">LOW</span></span>
+  </div>
+  <table>
+    <thead><tr><th style="width:8%">Phase</th><th style="width:26%">What ships</th><th style="width:14%">Gaps closed</th><th style="width:32%">Why now / dependency</th><th style="width:10%">Effort</th><th style="width:10%">Risk</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Phase 1</b></td>
+        <td>Unit-centric receivable + per-unit payment reference + payer roster</td>
+        <td><span class="pill p0">P0-1</span> <span class="pill p0">P0-3</span></td>
+        <td>The ratified pivot. Fixes liability model + makes reconciliation deterministic. No dependency — <b>start here</b>. Additive migration = lowest risk of the P0s.</td>
+        <td class="eff">M–L</td>
+        <td><span class="pill rmd">MED</span></td>
+      </tr>
+      <tr>
+        <td><b>Phase 2</b></td>
+        <td>Segregation of duties + dual-approval on disbursements (AP maker-checker)</td>
+        <td><span class="pill p1">P1-2</span></td>
+        <td><b>Independent &amp; high-value</b> — the #1 HOA embezzlement control. Depends on nothing; can run in parallel with Phase 1. Purely additive (new AP tables), <b>zero live-book risk</b>.</td>
+        <td class="eff">M</td>
+        <td><span class="pill rlo">LOW</span></td>
+      </tr>
+      <tr>
+        <td><b>Phase 3</b></td>
+        <td>Build the expense/vendor/bank side of the GL → pass reconcile-to-the-cent → flip <code>GL_ENABLED_ASSOCIATIONS</code> for CHC</td>
+        <td><span class="pill p0">P0-2</span></td>
+        <td>The unlock. GL is already built &amp; correct; the work is the expense side + the flip. Enables Phase 4 &amp; 5. Highest care: this is when the GL becomes the real books.</td>
+        <td class="eff">L</td>
+        <td><span class="pill rhi">HIGH</span></td>
+      </tr>
+      <tr>
+        <td><b>Phase 4</b></td>
+        <td>Three-way reconciliation tie-out (bank = GL cash = subledger) as a period-close gate</td>
+        <td><span class="pill p1">P1-1</span></td>
+        <td>Depends on Phase 3 (needs the GL cash side). Turns matched/unmatched counts into a real balance proof that blocks locking a period on an unexplained variance.</td>
+        <td class="eff">M</td>
+        <td><span class="pill rmd">MED</span></td>
+      </tr>
+      <tr>
+        <td><b>Phase 5</b></td>
+        <td>Fund-separated special assessments + AR aging buckets + lien lifecycle + reserve study + CPA audit export</td>
+        <td><span class="pill p1">P1-3</span> <span class="pill p2">P2-1</span> <span class="pill p2">P2-2</span> <span class="pill p2">P2-3</span></td>
+        <td>Maturity layer. Special-assessment fund tagging &amp; audit export ride on the live GL (Phase 3). Reserve study, aging &amp; liens are additive on the unit-centric ledger (Phase 1). Sequence by board demand.</td>
+        <td class="eff">L</td>
+        <td><span class="pill rlo">LOW</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2 · Sequencing &amp; dependencies</h2>
+  <p class="sub">Phases 1 and 2 have no dependency on anything and can run in parallel. Phase 3 (turn the GL on) is the gate that unlocks Phases 4 and 5's GL-dependent pieces. Nothing after Phase 1 should be built on the person-centric model.</p>
+  <div class="diagram"><span class="p0c">PHASE 1</span> Unit-centric ledger + unique reference  <span class="arw">─────┐</span>  <span class="arw">(no deps · START HERE)</span>
+   <span class="arw">│ makes reconciliation deterministic + fixes liability</span>  <span class="arw">│</span>
+   <span class="arw">└─────────────────────────────────────────────┤</span>
+                                                 <span class="arw">│</span>
+<span class="p1c">PHASE 2</span> Dual-approval disbursements (AP)  <span class="arw">────────────┤</span>  <span class="arw">(no deps · PARALLEL · low risk)</span>
+   <span class="arw">│ #1 embezzlement control · additive · books untouched</span> <span class="arw">│</span>
+                                                 <span class="arw">▼</span>
+<span class="p0c">PHASE 3</span> Build expense side → reconcile-to-cent → <span class="arw">flip</span> <span class="p0c">GL_ENABLED_ASSOCIATIONS</span>=CHC
+   <span class="arw">│ THE UNLOCK. GL built &amp; correct; work = expense/vendor side + the flip</span>
+   <span class="arw">├──────────────┬───────────────────────────────┐</span>
+   <span class="arw">▼</span>              <span class="arw">▼</span>                               <span class="arw">▼</span>
+<span class="p1c">PHASE 4</span>          <span class="p2c">PHASE 5a</span>                        <span class="p2c">PHASE 5c</span>
+Three-way        Fund-separated                  CPA audit
+tie-out          special assessments             export package
+(needs GL cash)  (needs GL fund tag)             (needs live GL)
+
+<span class="p2c">PHASE 5b</span> Reserve study · AR aging buckets · lien lifecycle
+   <span class="arw">└─ additive on Phase 1's unit-centric ledger — no GL dependency</span></div>
+
+  <h2>3 · The plan, gap by gap</h2>
+
+  <!-- ============ PHASE 1 ============ -->
+  <div class="phase">
+    <div class="phead">
+      <h3><span class="tag">PHASE 1</span> Unit-centric receivable + unique payment reference <span class="pill p0">P0-1</span> <span class="pill p0">P0-3</span></h3>
+      <div class="goal">Make the <b>unit</b> the balance-bearing entity; issue each unit a stable payment reference; aggregate all co-owner names into a per-unit payer roster with a designated primary contact. Shipped together because they are the same pivot.</div>
+    </div>
+    <div class="pbody">
+
+      <div class="gapblock g0">
+        <h4><span class="rk">P0-1</span> Ledger is person-centric, not unit-centric</h4>
+        <div class="grid2">
+          <div class="cell"><div class="lbl">Current state (cited)</div><code>owner_ledger_entries</code> (schema L729) requires <b>both</b> <code>unitId</code> AND <code>personId</code> as <code>notNull()</code>. <code>account-statement.ts</code> (L71–154) scopes the canonical statement to <b><code>personId</code></b> ("an owner may hold multiple units under one personId"), with <code>unitId</code> only an optional narrower. <code>ownerships</code> (L86) already models many-persons-per-unit with <code>ownershipPercentage</code> + <code>startDate/endDate</code>.</div>
+          <div class="cell"><div class="lbl">Target state (CIRA / ASC 972)</div>The assessment receivable is an obligation of the <b>unit</b>; co-owners are jointly &amp; severally liable; the lien attaches to the property. <code>personId</code> becomes <b>payment metadata</b> (who tendered), not the balance owner. A per-unit <b>payer roster</b> (all authorized co-owner names + descriptors) sits beside the unit balance; one co-owner is flagged the <b>primary contact</b>.</div>
+        </div>
+        <h4>Concrete build steps</h4>
+        <ul>
+          <li><b>Schema:</b> make <code>owner_ledger_entries.personId</code> <b>nullable</b> (it becomes optional "tendered-by" metadata); <code>unitId</code> stays <code>notNull</code> and becomes the sole balance key. Add index on <code>(associationId, unitId, postedAt)</code> for unit-scoped statement reads.</li>
+          <li><b>Schema — payer roster:</b> add <code>unit_payer_roster</code> (unitId, personId nullable for non-owner third-party payers, displayName, normalizedName, isPrimaryContact, role enum {owner|co-owner|tenant|third-party}, active). This is the deterministic name source the matcher reads, derived from <code>ownerships</code> but explicitly editable.</li>
+          <li><b>Service:</b> add <code>buildUnitAccountStatement({associationId, unitId, from, to})</code> in <code>account-statement.ts</code> that scopes to <code>unitId</code> and aggregates ALL co-owner ledger rows for that unit. Keep <code>buildAccountStatement(personId)</code> as a per-owner <i>view</i> (a filter of the unit statement), not the source of truth.</li>
+          <li><b>Service:</b> the owner-ledger summary / balance readers (<code>server/storage.ts getOwnerLedgerSummary</code>, referenced by <code>gl/reconcile.ts</code>) already sum by <code>Σ amount</code> — re-key their grouping from <code>personId</code> to <code>unitId</code>. This is the balance-of-record change.</li>
+          <li><b>UI:</b> <code>financial-ledger.tsx</code> + <code>financial-statement.tsx</code> group by unit with the payer roster shown as "authorized payers for Unit X"; the owner portal still shows the owner their unit's balance.</li>
+        </ul>
+        <div class="migbox">
+          <b>Data migration plan (CRITICAL — live CHC books):</b>
+          <ul>
+            <li><b>Additive-first, never destructive.</b> No ledger row is deleted or its <code>unitId</code> rewritten — every existing row already carries a valid <code>unitId</code> (it's <code>notNull</code> today), so the unit balance is already fully derivable. The migration only (a) relaxes the <code>personId</code> NOT NULL constraint and (b) creates the roster table + backfills it from <code>ownerships ⋈ persons</code>.</li>
+            <li><b>Staged:</b> (1) ship the roster table + backfill in one migration (reversible: drop table); (2) ship the nullable-personId constraint change in a second migration (reversible: the existing rows all still have personId, so re-adding NOT NULL succeeds as long as no null rows were inserted — gate new null-personId inserts behind the flag until verified); (3) flip statement reads to unit-scoped behind <code>UNIT_CENTRIC_LEDGER</code> flag, CHC-only allowlist mirroring <code>GL_ENABLED_ASSOCIATIONS</code>.</li>
+            <li><b>Verification (must equal, to the cent):</b> a read-only script asserts <code>Σ(owner_ledger by unit) == Σ(owner_ledger by person, mapped to unit)</code> for CHC, and that every unit's new unit-scoped statement closing balance equals the sum of its owners' old per-person statements. Run <b>before</b> the flag flip; block the flip on any variance.</li>
+            <li><b>Rollback:</b> flip <code>UNIT_CENTRIC_LEDGER</code> off → statement reads revert to person-scoped instantly (the person path is never removed, only demoted to a view). The roster table + nullable constraint are harmless when the flag is off.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="gapblock g0">
+        <h4><span class="rk">P0-3</span> No unique payment reference — matching keys on name+amount</h4>
+        <div class="grid2">
+          <div class="cell"><div class="lbl">Current state (cited)</div><code>reconciliation/auto-matcher.ts</code> scores amount-exactness (0.55) + date-proximity + fuzzy payor-name (Levenshtein tokens, 0.25) + the learned <code>bank_descriptor_aliases</code> map (schema L3930). Primary signal is <b>name+amount</b> → collides by design (two owners, same dues, same day → both to manual review). <b>Good news:</b> Stripe metadata (<code>stripe-charge-metadata.ts</code> §3.1) <b>already sets <code>unit_id</code></b> on every charge, and <code>payment_transactions</code> (schema L3429) already has a unique <code>receiptReference</code> column.</div>
+          <div class="cell"><div class="lbl">Target state (lockbox / AAB / Vantaca)</div>Each unit gets a <b>stable, unique reference number</b> that must appear on the remittance. Payments resolve to the unit by that key <b>deterministically (confidence 1.0, no review)</b> before any name matching. Name/alias matching is the last resort only.</div>
+        </div>
+        <h4>Concrete build steps</h4>
+        <ul>
+          <li><b>Schema:</b> add <code>units.unitAccountRef</code> (text, unique per association) — a short, human-readable per-unit reference (e.g. <code>CHC-0007</code>). Generated once per unit; never reused.</li>
+          <li><b>Reference on the remittance (two rails):</b> (Stripe rail) put <code>unit_account_ref</code> into the Stripe metadata object already built in <code>stripe-charge-metadata.ts</code> (it already carries <code>unit_id</code>) and into the statement-descriptor suffix vocabulary; (Lockbox/check rail) print the ref as a coupon line on the owner statement so mailed checks carry it in the memo.</li>
+          <li><b>Matcher:</b> add a <b>Tier-0 exact-reference pass</b> in <code>auto-matcher.ts</code> that runs BEFORE the scored pass — if the bank descriptor / Stripe metadata contains a known <code>unitAccountRef</code>, match to that unit at confidence 1.0, skip review. Fall through to amount+alias, then fuzzy-name as today.</li>
+          <li><b>UI:</b> <code>financial-payments.tsx</code> + owner portal show the unit's reference on the statement/coupon; <code>admin-reconciliation.tsx</code> shows "matched by reference" as a distinct, no-review tier.</li>
+        </ul>
+        <div class="migbox">
+          <b>Data migration plan:</b>
+          <ul>
+            <li><b>Additive, non-destructive:</b> one migration adds the nullable <code>unitAccountRef</code> column + a backfill that assigns a generated ref to every existing unit (deterministic from association slug + unit number, so re-running is idempotent). No financial row is touched.</li>
+            <li><b>No behavior change until wired:</b> the reference is issued and printed first (owners start putting it on payments); the Tier-0 matcher pass ships behind a flag and is proven against historical CHC bank transactions in a dry-run (does it match what the humans already matched?) before it auto-applies.</li>
+            <li><b>Verification:</b> replay the last N months of CHC bank transactions through the Tier-0 pass in report-only mode; assert it never contradicts an existing confirmed match, only adds confidence. <b>Rollback:</b> flag off → matcher reverts to the current scored-only behavior; the column is inert.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="note"><b>Why P0-1 + P0-3 ship together:</b> the unique reference (P0-3) is what makes the unit-centric balance (P0-1) resolvable from a bank feed without name-guessing. Built separately, each is half a fix. The roster (P0-1) also gives the fuzzy fallback a <i>unit-scoped</i> name list instead of an association-wide one, cutting false positives even before the reference lands.</div>
+    </div>
+  </div>
+
+  <!-- ============ PHASE 2 ============ -->
+  <div class="phase">
+    <div class="phead">
+      <h3><span class="tag">PHASE 2</span> Segregation of duties + dual-approval on disbursements <span class="pill p1">P1-2</span></h3>
+      <div class="goal">The #1 HOA embezzlement control. No single person authorizes, disburses, reconciles, and records. Independent of everything else and <b>low risk</b> (purely additive AP tables — touches no existing books), so it can run in parallel with Phase 1.</div>
+    </div>
+    <div class="pbody">
+      <div class="gapblock g1">
+        <h4><span class="rk">P1-2</span> No maker-checker on money-out</h4>
+        <div class="grid2">
+          <div class="cell"><div class="lbl">Current state (cited)</div><code>vendors</code> (schema L559) and <code>vendor_invoices</code> (L578) tables <b>already exist</b> (expense capture), but there is <b>no disbursement / check-run / payment-approval model</b> and <b>no maker-checker gate</b> anywhere in schema. <code>audit_logs</code> (actor/action/before/after) <i>records</i> changes but does not <i>enforce</i> a second approver.</div>
+          <div class="cell"><div class="lbl">Target state (CAI / Hovland / HOAleader)</div>Money-out over a threshold ($1k–$2.5k) requires a <b>second approver</b>; reserve transfers require two approvers. One person cannot author + approve + disburse the same payment. Both approvers captured in the audit log.</div>
+        </div>
+        <h4>Concrete build steps (all additive — new tables only)</h4>
+        <ul>
+          <li><b>Schema:</b> add <code>disbursements</code> (associationId, vendorInvoiceId nullable, fund enum reused from GL, amountCents, status {draft|pending-approval|approved|paid|void}, createdBy, requiresSecondApproval, approvalThresholdCents). Add <code>disbursement_approvals</code> (disbursementId, approverPersonId, decision {approve|reject}, at) — the maker-checker record.</li>
+          <li><b>Schema:</b> add <code>approval_policies</code> (associationId, dualApprovalThresholdCents default $1000, reserveTransferRequiresTwo bool). Board-configurable per association.</li>
+          <li><b>Service:</b> a disbursement state machine that <b>refuses the paid transition</b> unless the approvals satisfy the policy (maker ≠ checker enforced in code, not just UI). Reserve-fund transfers always require two regardless of amount.</li>
+          <li><b>UI:</b> new <code>financial-expenses.tsx</code> disbursement queue → "needs your approval" surface for the second approver → paid. The audit log entry carries both approver identities.</li>
+        </ul>
+        <div class="migbox"><b>Data migration plan:</b> <b>zero risk to live books</b> — this is entirely new tables and a new UI flow; it does not read or write <code>owner_ledger_entries</code> or any existing financial row. Migration = create tables + seed a default <code>approval_policy</code> per association. Rollback = drop the tables (nothing else references them). Ships behind a <code>DUAL_APPROVAL</code> flag; when off, the disbursement flow simply isn't surfaced.</div>
+      </div>
+      <div class="flagbox"><b>Why do this early despite being P1:</b> it's the highest-value control per dollar of effort, it de-risks the moment CHC starts paying vendors through the platform, and it has <b>no data-migration exposure at all</b> — the exact opposite of the GL flip. Building it in parallel with Phase 1 means the money-out controls are live before Phase 3 turns on the expense side.</div>
+    </div>
+  </div>
+
+  <!-- ============ PHASE 3 ============ -->
+  <div class="phase">
+    <div class="phead">
+      <h3><span class="tag">PHASE 3</span> Turn the real GL on for CHC <span class="pill p0">P0-2</span></h3>
+      <div class="goal">Build the expense/vendor/bank side so journals balance both ways, pass the reconcile-to-the-cent gate, then flip <code>GL_ENABLED_ASSOCIATIONS</code> for Cherry Hill. The GL is <b>already built and correct</b> — this is the expense side + the flip, not a rewrite. <b>Highest care</b>: this is when the GL becomes the association's real books.</div>
+    </div>
+    <div class="pbody">
+      <div class="gapblock g0">
+        <h4><span class="rk">P0-2</span> The live books are a single-sided dues subledger; the real GL is OFF</h4>
+        <div class="grid2">
+          <div class="cell"><div class="lbl">Current state (cited)</div>A correct, idempotent, fund-aware GL exists: <code>gl_accounts</code> + <code>gl_entries</code> (schema L3983/L4018, integer cents, Σdebit==Σcredit, unique source-leg index). <code>gl/flag.ts</code> gates it behind <code>GL_ENABLED</code> / <code>GL_ENABLED_ASSOCIATIONS</code> (default OFF), and <code>gl/runtime-sync.ts</code> adds a <b>reconcile-to-the-cent gate</b> on top. BUT: <code>CHART_OF_ACCOUNTS</code> (<code>gl/posting.ts</code> L60) has <b>only income/asset/liability/equity accounts — no expense accounts</b>, and the posting core maps <b>only <code>owner_ledger_entry</code></b>. The <code>vendor_invoice</code> / <code>bank_transaction</code> source types are declared but <b>unwired</b>.</div>
+          <div class="cell"><div class="lbl">Target state (GAAP ASC 972)</div>Accrual-basis, fund-aware, <b>double-entry</b> GL that posts BOTH the dues side (already built) AND the <b>expense side</b> (vendor invoice → AP → cash), producing a real balance sheet + income/expense statement by fund. The owner subledger becomes a <b>view</b> of the GL, not a parallel truth.</div>
+        </div>
+        <h4>Concrete build steps</h4>
+        <ul>
+          <li><b>Chart of accounts:</b> extend <code>CHART_OF_ACCOUNTS</code> in <code>gl/posting.ts</code> with the expense accounts (5xxx: utilities, R&amp;M, management, insurance, legal, admin) + <code>2000 Accounts Payable</code> (liability) per fund. The audit notes "the full 40+ expense accounts arrive when vendor_invoices are wired (later)" — this is that.</li>
+          <li><b>Posting core:</b> add the <code>vendor_invoice</code> mapping (accrue: Dr Expense / Cr AP) and the <code>disbursement</code>/<code>bank_transaction</code> mapping (pay: Dr AP / Cr Cash) to the pure <code>posting.ts</code> mapper — reusing the existing balanced-legs + idempotent-source-leg machinery. Wire it to the <code>vendors</code>/<code>vendor_invoices</code> tables and the Phase-2 <code>disbursements</code>.</li>
+          <li><b>Opening balances:</b> a one-time <code>opening_balance</code> journal (source type already declared) that establishes CHC's starting cash, AR, AP, and fund balances as of the go-live date, so the GL doesn't start at zero.</li>
+          <li><b>Reconcile-to-the-cent:</b> run <code>script/verify-gl-reconcile.ts</code> (via <code>gl/reconcile.ts</code>) — it already proves <code>Σ owner-ledger == GL Accounts Receivable</code> to the cent. Extend it to also assert the expense side ties out (AP + cash balance sanity).</li>
+          <li><b>Flip:</b> set <code>GL_ENABLED_ASSOCIATIONS</code> = CHC's association id. The runtime-sync reconcile gate then refuses to post if the ledger doesn't reconcile — so a bad flip is self-blocking.</li>
+        </ul>
+        <div class="migbox">
+          <b>Data migration plan (the highest-risk step — treat with maximum care):</b>
+          <ul>
+            <li><b>The GL is forward-only &amp; parallel by design</b> — per <code>runtime-sync.ts</code> comments, the owner ledger STAYS the system of record; the GL runs alongside and is derived. So "turning it on" does <b>not</b> mutate a single owner-ledger row. This is what makes the flip reversible.</li>
+            <li><b>Staged flip:</b> (1) build the expense-side posting + extended chart in code, off; (2) run the GL in <b>shadow</b> for CHC (post derived legs, but statements still served from the subledger) and let the reconcile gate run for a full close cycle; (3) only after the reconcile-to-the-cent gate passes across a full month AND the expense side ties out, flip statement rendering to GL-sourced.</li>
+            <li><b>Verification (the gate IS the verification):</b> the reconcile-to-cent gate (<code>gl/reconcile.ts</code>) is already the acceptance test — <code>differenceCents</code> MUST be 0 and <code>invariantViolations</code> MUST be empty, or postings are refused. Add the expense-side tie-out (bank cash balance vs GL cash, AP aging vs vendor invoices outstanding) as a second assertion before flipping statement rendering.</li>
+            <li><b>Rollback:</b> remove CHC from <code>GL_ENABLED_ASSOCIATIONS</code> → GL sync stops, statements revert to the subledger instantly. Because GL legs are additive with a unique source-leg index, re-enabling later re-derives cleanly with no duplicates. The GL tables can be truncated for CHC without touching the books.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PHASE 4 ============ -->
+  <div class="phase">
+    <div class="phead">
+      <h3><span class="tag">PHASE 4</span> Three-way reconciliation tie-out <span class="pill p1">P1-1</span></h3>
+      <div class="goal">Prove <b>bank balance = GL cash = sum of owner subledger balances</b> at period close, itemize reconciling items (deposits-in-transit, outstanding checks), and <b>block locking a period on an unexplained variance</b>. Depends on Phase 3 for the GL cash side.</div>
+    </div>
+    <div class="pbody">
+      <div class="gapblock g1">
+        <h4><span class="rk">P1-1</span> Reconciliation is one-way counts, not a balance proof</h4>
+        <div class="grid2">
+          <div class="cell"><div class="lbl">Current state (cited)</div><code>reconciliation/report.ts</code> produces <code>bankDepositsCents</code>, <code>ledgerPaymentsCents</code>, matched/unmatched <b>counts</b>, and a <code>gapCents</code> = ledger − bank. It's a payment-matching inventory. <code>reconciliation_periods</code> (schema L2708) already has <code>open → closed → locked</code> with <code>closedBy/lockedBy</code>. There is <b>no assertion that the books equal the bank</b>, and no deposits-in-transit / outstanding-items model.</div>
+          <div class="cell"><div class="lbl">Target state (CAI / AICPA)</div>A monthly three-way tie-out: bank statement balance ± in-transit/outstanding items = GL cash = Σ subledger. Any difference is itemized and investigated; a period can't lock with an unexplained variance.</div>
+        </div>
+        <h4>Concrete build steps</h4>
+        <ul>
+          <li><b>Schema:</b> add <code>reconciling_items</code> (periodId, type {deposit-in-transit|outstanding-check|bank-error|book-error}, amountCents, note, clearedAt) hung off <code>reconciliation_periods</code>.</li>
+          <li><b>Service:</b> extend <code>report.ts</code> into a <code>threeWayTieOut(periodId)</code> that computes bankBalance ± Σ(open reconciling items) vs GL cash (from <code>gl_entries</code> cash accounts, Phase 3) vs Σ subledger, and returns the variance + the itemized bridge.</li>
+          <li><b>Gate:</b> add a period-lock precondition in the <code>reconciliation_periods</code> close/lock path that refuses <code>locked</code> when the tie-out variance ≠ 0 and no reconciling item explains it.</li>
+          <li><b>UI:</b> <code>admin-reconciliation.tsx</code> / <code>financial-reconciliation.tsx</code> render the tie-out bridge (three columns that must agree) and the "can't lock — $X unexplained" block.</li>
+        </ul>
+        <div class="migbox"><b>Data migration plan:</b> additive — new <code>reconciling_items</code> table + read-only computation over existing GL + subledger + bank rows. No existing financial row is modified. The lock-gate is behavior-gated behind a <code>THREE_WAY_TIEOUT</code> flag so existing periods can still close during rollout. <b>Verification:</b> run the tie-out over the last few closed CHC periods in report-only mode; confirm they tie (or the variance is a real, explainable item) before making the gate blocking. <b>Rollback:</b> flag off → period locking reverts to today's behavior; the table is inert.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PHASE 5 ============ -->
+  <div class="phase">
+    <div class="phead">
+      <h3><span class="tag">PHASE 5</span> Maturity layer <span class="pill p1">P1-3</span> <span class="pill p2">P2-1</span> <span class="pill p2">P2-2</span> <span class="pill p2">P2-3</span></h3>
+      <div class="goal">Fund-separated special assessments, AR aging buckets + lien lifecycle, reserve study + funding plan, and the annual CPA audit export. Sequence by board demand. The GL-dependent items (5a, 5c) ride on Phase 3; the ledger items (5b) ride on Phase 1.</div>
+    </div>
+    <div class="pbody">
+      <div class="gapblock g2">
+        <h4><span class="rk">P2-1</span> Fund-separate the special assessment <span class="pill p2">rides on Phase 3</span></h4>
+        <div class="grid2">
+          <div class="cell"><div class="lbl">Current state (cited)</div><code>special_assessments</code> (schema L427) is a solid model (allocation methods, installments, loan-style terms, auto-post) and posts to the ledger — but with GL off there is <b>no fund tag</b>, so Cherry Hill's driveway money isn't accounted as restricted activity separate from operating cash.</div>
+          <div class="cell"><div class="lbl">Target / build</div>Post special-assessment charges/receipts to a <b>dedicated fund/GL account</b> (a reserve or project fund) so the driveway project has its own visible balance and can't be spent on operations. Small once Phase 3's GL + fund dimension is live — it's a mapping in the posting core + a fund tag on the assessment.</div>
+        </div>
+        <div class="migbox"><b>Migration:</b> add an optional <code>special_assessments.fund</code> tag (defaults to operating for backward compat); the GL posting maps flagged assessments to the reserve/project fund. Additive, reversible (fund tag defaults to today's behavior). Verify the driveway assessment's fund balance in the GL equals its outstanding receivable.</div>
+      </div>
+
+      <div class="gapblock g2">
+        <h4><span class="rk">P2-2</span> AR aging buckets + lien lifecycle <span class="pill p2">rides on Phase 1</span></h4>
+        <div class="grid2">
+          <div class="cell"><div class="lbl">Current state (cited)</div>Strong staged notices exist: <code>delinquency_settings</code>, <code>delinquency_notices</code> (30/60/90), <code>delinquency_escalations</code>, <code>late_fee_rules/events</code>, <code>collections_handoffs</code>. Missing: an <b>aging-bucket report</b> (current/30/60/90+) and a <b>lien object</b> (notice-of-intent → filed → released).</div>
+          <div class="cell"><div class="lbl">Target / build</div>A <b>unit-centric</b> aging report (current/30/60/90+) computed off Phase-1's unit ledger, showing delinquency % against the CAI benchmark (≤3% excellent). A new <code>liens</code> table modeling the statutory pre-lien → lien-filed → foreclosure ladder, linked to the unit.</div>
+        </div>
+        <div class="migbox"><b>Migration:</b> the aging report is read-only over the unit ledger (no migration). The <code>liens</code> table is additive (unitId, status enum, filedAt, releasedAt, amountCents, docRefs). Reversible = drop the table. <b>Depends on Phase 1</b> so aging ages the unit, not the person.</div>
+      </div>
+
+      <div class="gapblock g1">
+        <h4><span class="rk">P1-3</span> Reserve study &amp; funding plan <span class="pill p2">rides on Phase 1/GL</span></h4>
+        <div class="grid2">
+          <div class="cell"><div class="lbl">Current state (cited)</div>The GL can hold a reserve fund, but there is <b>no reserve-study data model</b> — no component inventory, no % funded, no contribution driver. A CT reserve-<i>disclosure</i> checklist exists (migration <code>0049_ct_reserve_disclosure.sql</code>) but no funding math.</div>
+          <div class="cell"><div class="lbl">Target / build</div>A <code>reserve_studies</code> + <code>reserve_components</code> model (component, useful life, remaining life, replacement cost, current reserves) that computes the recommended monthly reserve contribution and % funded (target 70–100%), surfaced on the dashboard and feeding the budget's reserve line.</div>
+        </div>
+        <div class="migbox"><b>Migration:</b> purely additive new tables; no existing financial row touched. Reversible = drop tables. Independent of the GL flip for the <i>study</i> itself (it's planning data); the <i>% funded</i> figure reads the reserve-fund balance, which is best sourced from the live GL (Phase 3) but can fall back to the reserve bank account balance.</div>
+      </div>
+
+      <div class="gapblock g2">
+        <h4><span class="rk">P2-3</span> Annual CPA audit/review export <span class="pill p2">rides on Phase 3</span></h4>
+        <div class="grid2">
+          <div class="cell"><div class="lbl">Current state (cited)</div>No audit workflow or CPA export package anywhere. <code>server/services/gl/statements.ts</code> already derives financial statements (read-only, GL-gated).</div>
+          <div class="cell"><div class="lbl">Target / build</div>A year-end export package — trial balance, financials by fund, reserve disclosure, GL detail — generated from the live GL (Phase 3) for the outside CPA, per the AICPA CIRA guide. Lowest priority: get the books right first.</div>
+        </div>
+        <div class="migbox"><b>Migration:</b> none — pure read-only export over the live GL. No schema change. Depends on Phase 3 (needs the GL to be source-of-truth) and benefits from Phase 4 (the tie-out proof is part of a clean package).</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>4 · The biggest data-migration risk, and how the plan de-risks it</h2>
+  <div class="note">
+    <p style="margin-top:0"><b>The single biggest risk is Phase 3 — flipping the GL to source-of-truth on a live customer's books.</b> A wrong GL that becomes authoritative would silently misstate what the association owns, owes, and holds by fund. The audit even warns the GL "may NOT become source-of-truth until the reconcile-to-the-cent gate passes."</p>
+    <p><b>The plan de-risks it structurally, not by hoping:</b></p>
+    <ul>
+      <li><b>The GL is forward-only &amp; parallel by construction.</b> Per <code>runtime-sync.ts</code>, the owner ledger STAYS the system of record and the GL is <i>derived</i> alongside it. Turning the GL on mutates <b>zero</b> owner-ledger rows — so the flip is inherently reversible (remove CHC from the allowlist and statements revert instantly).</li>
+      <li><b>The reconcile-to-the-cent gate is a hard, code-enforced precondition</b> (<code>gl/reconcile.ts</code> → <code>runtime-sync.ts</code>): even an allowlisted association gets <b>no GL postings</b> unless <code>differenceCents === 0</code> and there are zero invariant violations. A ledger that can't reconcile is refused a GL — "surfacing nothing beats surfacing a wrong statement."</li>
+      <li><b>Shadow-then-flip.</b> Run the GL in shadow for a full close cycle (post derived legs, keep serving statements from the subledger), let the gate run, and only flip statement rendering after a full month reconciles AND the expense side ties out.</li>
+      <li><b>Idempotent, additive legs.</b> The unique source-leg index means re-running the sync never double-posts; the GL tables can be truncated for CHC and re-derived cleanly. Nothing is destructive.</li>
+    </ul>
+    <p style="margin-bottom:0"><b>Phase 1 (the pivot) is de-risked the same way:</b> it's additive — add <code>unitAccountRef</code> + the payer roster <i>beside</i> the existing rows, backfill from data already present (<code>owner_ledger_entries.unitId</code> is already <code>notNull</code>; Stripe already carries <code>unit_id</code>), and re-scope statements behind a <code>UNIT_CENTRIC_LEDGER</code> flag with a before-flip verification that every unit's new balance equals the sum of its owners' old balances, to the cent. No ledger row is deleted or rewritten; rollback is a flag flip.</p>
+  </div>
+
+  <h2>5 · Recommended starting point</h2>
+  <p><b>Start with Phase 1 (P0-1 + P0-3), and run Phase 2 (dual-approval) in parallel.</b></p>
+  <ul>
+    <li><b>Phase 1 first</b> because it's the ratified architectural pivot, it fixes the liability model AND makes reconciliation deterministic, and <b>nothing else should be built on the person-centric model</b> — every later phase (aging, tie-out, statements) reads cleaner off the unit ledger. It's also the lowest-risk P0 (fully additive migration).</li>
+    <li><b>Phase 2 in parallel</b> because it depends on nothing, is the highest-value control per unit of effort (the #1 embezzlement vector), and has <b>zero live-book exposure</b> (new AP tables only) — so it can proceed while Phase 1 is verified.</li>
+    <li><b>Do NOT start with Phase 3 (the GL flip)</b> despite it being tempting — it's the highest-risk step and it's more valuable <i>after</i> Phase 1, because a unit-centric, reference-matched ledger is exactly the clean input the reconcile-to-the-cent gate wants.</li>
+  </ul>
+
+  <div class="foot">
+    Method: read-only inspection of <code>shared/schema.ts</code> (units L29, ownerships L86, owner_ledger_entries L729, special_assessments L427, vendors/vendor_invoices L559/578, bank_transactions L3757, bank_descriptor_aliases L3930, gl_accounts L3983, gl_entries L4018, payment_transactions L3429, reconciliation_periods L2708), <code>server/services/gl/{flag,posting,reconcile,runtime-sync}.ts</code>, <code>server/services/reconciliation/{auto-matcher,report}.ts</code>, <code>server/services/account-statement.ts</code>, <code>server/services/stripe-charge-metadata.ts</code>, and the <code>client/src/pages/financial-*.tsx</code> surfaces. No code was modified; no git operations were run. This is a scoping plan; every effort/risk tier is an estimate to be refined at build time. Companion audit: <code>artifacts/ycm/hoa-best-practices-audit.html</code>.
+  </div>
+
+</div>
+</body>
+</html>

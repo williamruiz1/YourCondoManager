@@ -7,6 +7,7 @@ import { promisify } from "util";
 import { inflateRawSync } from "zlib";
 import { db } from "./db";
 import { sendPlatformEmail } from "./email-provider";
+import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
 import {
   adminAssociationScopes,
   adminUserPreferences,
@@ -50,6 +51,8 @@ import {
   executiveEvidence,
   executiveUpdates,
   documents,
+  recordsRequests,
+  recordsRequestItems,
   expenseAttachments,
   financialAccounts,
   financialCategories,
@@ -130,6 +133,10 @@ import {
   type DocumentTag,
   type DocumentVersion,
   type Document,
+  type RecordsRequest,
+  type InsertRecordsRequest,
+  type RecordsRequestItem,
+  type InsertRecordsRequestItem,
   type EmailThread,
   type InsertAdminAssociationScope,
   type InsertAssociationMembership,
@@ -3792,6 +3799,13 @@ export interface IStorage {
   createVendorDocument(vendorId: string, data: InsertDocument, actorEmail?: string): Promise<Document>;
   updateDocument(id: string, data: Partial<InsertDocument>, actorEmail?: string): Promise<Document | undefined>;
   deleteDocument(id: string, actorEmail?: string): Promise<boolean>;
+  // CT CGS §47-260 — owner records-request workflow (founder-os#8017).
+  getRecordsRequests(associationId?: string): Promise<RecordsRequest[]>;
+  getRecordsRequest(id: string): Promise<RecordsRequest | undefined>;
+  createRecordsRequest(data: InsertRecordsRequest, actorEmail?: string): Promise<RecordsRequest>;
+  updateRecordsRequest(id: string, data: Partial<InsertRecordsRequest>, actorEmail?: string): Promise<RecordsRequest | undefined>;
+  getRecordsRequestItems(requestId: string): Promise<RecordsRequestItem[]>;
+  createRecordsRequestItem(data: InsertRecordsRequestItem): Promise<RecordsRequestItem>;
   getHoaFeeSchedules(associationId?: string): Promise<HoaFeeSchedule[]>;
   createHoaFeeSchedule(data: InsertHoaFeeSchedule): Promise<HoaFeeSchedule>;
   updateHoaFeeSchedule(id: string, data: Partial<InsertHoaFeeSchedule>): Promise<HoaFeeSchedule | undefined>;
@@ -7245,6 +7259,78 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  // ── CT CGS §47-260 — owner records-request workflow (founder-os#8017) ──────
+  // Thin glue over the records_requests / records_request_items tables. All
+  // statutory LOGIC (response-due timing, retention periods, copy fee,
+  // withholding) lives in server/services/records-retention-service.ts and is
+  // unit-tested there; these methods persist the results.
+  async getRecordsRequests(associationId?: string): Promise<RecordsRequest[]> {
+    if (!associationId) {
+      return db.select().from(recordsRequests).orderBy(desc(recordsRequests.createdAt));
+    }
+    return db
+      .select()
+      .from(recordsRequests)
+      .where(eq(recordsRequests.associationId, associationId))
+      .orderBy(desc(recordsRequests.createdAt));
+  }
+
+  async getRecordsRequest(id: string): Promise<RecordsRequest | undefined> {
+    const [result] = await db.select().from(recordsRequests).where(eq(recordsRequests.id, id));
+    return result;
+  }
+
+  async createRecordsRequest(data: InsertRecordsRequest, actorEmail?: string): Promise<RecordsRequest> {
+    const [result] = await db.insert(recordsRequests).values(data).returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "records_request",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async updateRecordsRequest(
+    id: string,
+    data: Partial<InsertRecordsRequest>,
+    actorEmail?: string,
+  ): Promise<RecordsRequest | undefined> {
+    const [before] = await db.select().from(recordsRequests).where(eq(recordsRequests.id, id));
+    if (!before) return undefined;
+    const [result] = await db
+      .update(recordsRequests)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(recordsRequests.id, id))
+      .returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "update",
+      entityType: "records_request",
+      entityId: id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async getRecordsRequestItems(requestId: string): Promise<RecordsRequestItem[]> {
+    return db
+      .select()
+      .from(recordsRequestItems)
+      .where(eq(recordsRequestItems.requestId, requestId))
+      .orderBy(desc(recordsRequestItems.createdAt));
+  }
+
+  async createRecordsRequestItem(data: InsertRecordsRequestItem): Promise<RecordsRequestItem> {
+    const [result] = await db.insert(recordsRequestItems).values(data).returning();
+    return result;
+  }
+
   async createVendorDocument(vendorId: string, data: InsertDocument, actorEmail?: string): Promise<Document> {
     const [vendor] = await db.select().from(vendors).where(eq(vendors.id, vendorId));
     if (!vendor) {
@@ -8337,6 +8423,13 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(ownerPaymentLinks.id, link.id));
     }
+
+    // YCM Financial Core — dues-to-GL wiring. The confirmed payment is now in the
+    // owner ledger (the system of record). Post it into the PARALLEL fund-aware GL
+    // so it reaches the financial statements. BEST-EFFORT + NON-FATAL: a GL sync
+    // failure must never break this webhook handler — the money is already
+    // recorded. Per-association + reconcile-to-cent gated, idempotent on retries.
+    await maybeSyncAssociationGl(payload.associationId, "payment-webhook");
 
     const [processedEvent] = await db
       .update(paymentWebhookEvents)

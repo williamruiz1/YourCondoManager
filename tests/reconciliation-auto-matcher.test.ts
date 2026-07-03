@@ -10,7 +10,7 @@
  * directly. `runAutoMatch` is exercised via a mocked drizzle layer (same
  * style as the existing plaid-reconciliation tests).
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   scoreCandidate,
   payorNameMatch,
@@ -397,6 +397,22 @@ beforeEach(() => {
 });
 
 describe("runAutoMatch — integration", () => {
+  // These cases use fixed May-2026 transaction dates. `runAutoMatch` bounds the
+  // candidate search to the last CREDIT_SEARCH_WINDOW_DAYS (30) of `Date.now()`,
+  // so once the wall clock advances >30 days past the fixtures they fall out of
+  // the window and every match silently returns empty (a "clock-bomb" flake
+  // that turned CI red on 2026-06-30). Freeze the clock inside this block so the
+  // window always contains the fixtures, keeping the cases deterministic
+  // regardless of the real date. Scoped to this describe so the sibling
+  // suggestions block keeps its own relative-date (`recentDate`) behavior.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-15T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("auto-applies a high-confidence match (exact amount + same day + exact payor)", async () => {
     state.credits = [
       {

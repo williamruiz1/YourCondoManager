@@ -253,11 +253,24 @@ export function registerPaymentPortalRoutes(
         return res.status(403).json({ message: "Not authorized" });
       }
 
+      // 2026-06-30 — Connect-awareness fix. The "Add method" button was dead for
+      // CHC (and any Connect-onboarded association) because this endpoint only
+      // looked at the legacy manual `gateway.secretKey`. CHC pays via Stripe
+      // Connect (no manual key), so `gateway.secretKey` was null → 400 →
+      // the client redirect never fired → the button "did nothing".
+      //
+      // Mirror /api/portal/pay: prefer the Connect platform key + Stripe-Account
+      // header when the association has an ACTIVE connected account; otherwise
+      // fall back to the manual HOA secret key (legacy path, unchanged).
+      const connectRouting = await resolveConnectChargeRouting(req.portalAssociationId);
       const gateway = await storage.getActivePaymentGatewayConnection({
         associationId: req.portalAssociationId,
         provider: "stripe",
       });
-      if (!gateway?.secretKey) {
+
+      const setupSecretKey = connectRouting?.platformSecretKey ?? gateway?.secretKey ?? null;
+      const stripeAccountHeader = connectRouting?.stripeAccountHeader ?? null;
+      if (!setupSecretKey) {
         return res.status(400).json({ message: "Online payments are not configured for this association" });
       }
 
@@ -268,7 +281,8 @@ export function registerPaymentPortalRoutes(
         .limit(1);
 
       const stripeCustomerId = await ensureStripeCustomer({
-        secretKey: gateway.secretKey,
+        secretKey: setupSecretKey,
+        stripeAccountHeader,
         associationId: req.portalAssociationId,
         personId: req.portalPersonId,
         email: person?.email ?? req.portalEmail,
@@ -277,7 +291,8 @@ export function registerPaymentPortalRoutes(
 
       const appBaseUrl = `${req.protocol}://${req.get("host")}`;
       const result = await initiateStripeSetupCheckout({
-        secretKey: gateway.secretKey,
+        secretKey: setupSecretKey,
+        stripeAccountHeader,
         stripeCustomerId,
         appBaseUrl,
         associationId: req.portalAssociationId,
@@ -303,16 +318,23 @@ export function registerPaymentPortalRoutes(
         return res.redirect(302, "/portal?setup=error");
       }
 
+      // 2026-06-30 — fetch with the SAME routing the setup session was created
+      // with (Connect platform key + header, or manual key). A connected-account
+      // session fetched without the Stripe-Account header 404s at Stripe.
+      const connectRouting = await resolveConnectChargeRouting(req.portalAssociationId);
       const gateway = await storage.getActivePaymentGatewayConnection({
         associationId: req.portalAssociationId,
         provider: "stripe",
       });
-      if (!gateway?.secretKey) {
+      const returnSecretKey = connectRouting?.platformSecretKey ?? gateway?.secretKey ?? null;
+      const returnAccountHeader = connectRouting?.stripeAccountHeader ?? null;
+      if (!returnSecretKey) {
         return res.redirect(302, "/portal?setup=error");
       }
 
       const session = await fetchStripeCheckoutSession({
-        secretKey: gateway.secretKey,
+        secretKey: returnSecretKey,
+        stripeAccountHeader: returnAccountHeader,
         sessionId,
       });
 

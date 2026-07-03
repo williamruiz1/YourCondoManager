@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>YCM — Self-Managed Pricing (declining per-unit) · R1</title>
+<style>
+  :root{
+    --teal:#014D4A; --teal-2:#0a5f5b; --accent:#15A39C; --light:#BFE8E4;
+    --bg:#F5F7F9; --ink:#0f2624; --muted:#5b7572; --card:#ffffff; --line:#e3ebe9;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Inter Tight",Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  header.top{background:var(--teal);color:#fff;padding:14px 0}
+  header.top .wrap{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+  .brand .mark{display:inline-flex;gap:3px;align-items:flex-end;height:22px}
+  .brand .mark i{display:block;width:5px;background:#fff;border-radius:1px}
+  .brand .mark i:nth-child(1){height:11px}.brand .mark i:nth-child(2){height:16px}.brand .mark i:nth-child(3){height:22px}
+  .toggle{display:flex;background:rgba(255,255,255,.12);border-radius:999px;padding:4px;font-size:13px}
+  .toggle span{padding:6px 14px;border-radius:999px;color:#cfeee9}
+  .toggle span.on{background:#fff;color:var(--teal);font-weight:600}
+  .hero{padding:56px 0 28px;text-align:center}
+  .hero h1{font-size:40px;letter-spacing:-.02em;line-height:1.1;margin-bottom:14px}
+  .hero h1 b{color:var(--teal)}
+  .hero p{color:var(--muted);font-size:18px;max-width:680px;margin:0 auto}
+  .pill{display:inline-block;margin-top:16px;background:var(--light);color:var(--teal);font-weight:600;font-size:13px;padding:6px 14px;border-radius:999px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;padding:30px 0 12px}
+  @media(max-width:960px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px 20px;display:flex;flex-direction:column;position:relative}
+  .card.hl{border:2px solid var(--accent);box-shadow:0 12px 40px -12px rgba(1,77,74,.35);transform:scale(1.03)}
+  @media(max-width:960px){.card.hl{transform:none}}
+  .badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 12px;border-radius:999px;white-space:nowrap}
+  .tier{font-size:20px;font-weight:600;letter-spacing:-.01em}
+  .range{color:var(--muted);font-size:13px;margin-top:2px;margin-bottom:16px}
+  .price{display:flex;align-items:baseline;gap:4px;margin-bottom:2px}
+  .price .amt{font-size:36px;font-weight:700;letter-spacing:-.02em;color:var(--teal)}
+  .price .per{color:var(--muted);font-size:14px;font-weight:500}
+  .sub{color:var(--muted);font-size:13px;min-height:18px;margin-bottom:16px}
+  ul{list-style:none;display:flex;flex-direction:column;gap:9px;margin:6px 0 20px;flex:1}
+  li{font-size:14px;display:flex;gap:8px;align-items:flex-start;color:#234}
+  li svg{flex:none;margin-top:3px}
+  .cta{display:block;text-align:center;padding:11px;border-radius:10px;font-weight:600;font-size:14px;text-decoration:none;border:1px solid var(--teal);color:var(--teal)}
+  .cta.fill{background:var(--teal);color:#fff;border-color:var(--teal)}
+  .note{color:var(--muted);font-size:13px;text-align:center;padding:18px 0 8px}
+  .foot{padding:26px 0 60px;color:var(--muted);font-size:13px;text-align:center}
+  .savings{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin:22px 0 8px;display:flex;gap:26px;flex-wrap:wrap;justify-content:center;font-size:14px}
+  .savings b{color:var(--teal)}
+  .draft{position:fixed;bottom:12px;right:12px;background:var(--teal);color:#fff;font-size:11px;padding:5px 11px;border-radius:999px;opacity:.85}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <div class="brand"><span class="mark"><i></i><i></i><i></i></span> Your Condo Manager</div>
+  <div class="toggle"><span>Property Managers</span><span class="on">Self-Managed Boards</span></div>
+</div></header>
+
+<section class="hero"><div class="wrap">
+  <h1>Self-management, <b>made simple.</b></h1>
+  <p>Every owner gets a profile. No property manager required. You only pay for the units you actually have — and the bigger your community, the lower the per-unit rate.</p>
+  <span class="pill">Declining per-unit pricing · billed monthly · cancel anytime</span>
+</div></section>
+
+<div class="wrap">
+  <div class="grid">
+
+    <!-- Small -->
+    <div class="card">
+      <div class="tier">Small Community</div>
+      <div class="range">1–40 units</div>
+      <div class="price"><span class="amt">$129</span><span class="per">/mo</span></div>
+      <div class="sub">Flat floor — about $3.25/unit at 40 units</div>
+      <ul>
+        <li>✓ Owner self-service portal</li>
+        <li>✓ Dues + assessments tracking</li>
+        <li>✓ Maintenance requests</li>
+        <li>✓ Document vault + AI compliance basics</li>
+      </ul>
+      <a class="cta" href="#">Start free trial</a>
+    </div>
+
+    <!-- Mid -->
+    <div class="card">
+      <div class="tier">Mid Community</div>
+      <div class="range">41–100 units</div>
+      <div class="price"><span class="amt">$3.75</span><span class="per">/unit/mo</span></div>
+      <div class="sub">e.g. 75 units → $281/mo</div>
+      <ul>
+        <li>✓ Everything in Small</li>
+        <li>✓ Governance + voting tools</li>
+        <li>✓ Vendor approval workflows</li>
+        <li>✓ Full AI assistant (document Q&amp;A)</li>
+      </ul>
+      <a class="cta" href="#">Start free trial</a>
+    </div>
+
+    <!-- Large (highlighted) -->
+    <div class="card hl">
+      <div class="badge">Most chosen</div>
+      <div class="tier">Large Community</div>
+      <div class="range">101–250 units</div>
+      <div class="price"><span class="amt">$3.50</span><span class="per">/unit/mo</span></div>
+      <div class="sub">e.g. 150 units → $525/mo</div>
+      <ul>
+        <li>✓ Everything in Mid</li>
+        <li>✓ Reserve study integration</li>
+        <li>✓ Compliance + audit logs</li>
+        <li>✓ Predictive AI analytics</li>
+        <li>✓ Priority support</li>
+      </ul>
+      <a class="cta fill" href="#">Start free trial</a>
+    </div>
+
+    <!-- Enterprise -->
+    <div class="card">
+      <div class="tier">Enterprise Concierge</div>
+      <div class="range">250+ units</div>
+      <div class="price"><span class="amt">Custom</span></div>
+      <div class="sub">Negotiable per-unit + concierge</div>
+      <ul>
+        <li>✓ Everything in Large</li>
+        <li>✓ Dedicated success manager</li>
+        <li>✓ White-glove migration</li>
+        <li>✓ Custom integrations + SLA</li>
+      </ul>
+      <a class="cta" href="#">Contact sales</a>
+    </div>
+
+  </div>
+
+  <div class="savings">
+    <span>18 units (Cherry Hill) → <b>$129/mo</b></span>
+    <span>75 units → <b>$281/mo</b></span>
+    <span>150 units → <b>$525/mo</b></span>
+    <span>250 units → <b>$875/mo</b></span>
+  </div>
+
+  <div class="note">The per-unit rate <b>drops as your community grows</b> — $3.75 → $3.50 → negotiable. Roughly <b>6× cheaper</b> than hiring a property-management company.</div>
+  <div class="foot">Your Condo Manager · Self-Managed Boards · pricing rendering R1 · declining per-unit model</div>
+</div>
+
+<div class="draft">DRAFT — pending review</div>
+</body>
+</html>
