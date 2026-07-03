@@ -4337,6 +4337,106 @@ export type BudgetLineGlMapping = typeof budgetLineGlMappings.$inferSelect;
 export type InsertBudgetLineGlMapping = z.infer<typeof insertBudgetLineGlMappingSchema>;
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Connecticut resale / "6(d)" certificate — CGS §47-270 (founder-os#8013)
+// ──────────────────────────────────────────────────────────────────────────────
+// A CT condo/HOA association MUST furnish a resale certificate within 10
+// business days of a unit-owner's request, for a statutory fee of $185 (CPI-
+// adjusted per §47-213; +$10 expedite for ≤3-business-day turnaround). A unit
+// legally cannot close without it, and §47-270(c) caps the purchaser's liability
+// at the amounts stated — so accuracy is financially binding on the association.
+//
+// `resaleCertificateRequests` = the intake/workflow row (who requested, when,
+// the 10-business-day SLA clock, the fee, expedite flag, fulfillment status).
+// `resaleCertificates` = the generated, immutable snapshot of the §47-270(a)
+// disclosures plus the (b)/(c) statutory metadata, stored as JSON `payload`.
+//
+// State is parameterized (`state` defaults to "CT") so the template can later
+// carry DE §81-409 etc. without a schema change — but ONLY CT is implemented.
+export const resaleCertificateRequestStatusEnum = pgEnum("resale_certificate_request_status", [
+  "requested",
+  "in-progress",
+  "fulfilled",
+  "cancelled",
+]);
+
+export const resaleCertificateRequests = pgTable(
+  "resale_certificate_requests",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    associationId: varchar("association_id").notNull().references(() => associations.id),
+    unitId: varchar("unit_id").notNull().references(() => units.id),
+    // The selling unit owner who made the request (§47-270(b)(1) — request in a
+    // record "from a unit owner").
+    personId: varchar("person_id").notNull().references(() => persons.id),
+    state: text("state").notNull().default("CT"),
+    requestedAt: timestamp("requested_at").notNull(),
+    // §47-270(b)(1): furnish not later than 10 business days after receipt (3 if
+    // expedited). Computed at request time + stored so the SLA clock is auditable.
+    expedited: integer("expedited").notNull().default(0),
+    dueAt: timestamp("due_at").notNull(),
+    // Statutory fee in whole dollars at request time ($185, or $195 expedited).
+    feeUsd: integer("fee_usd").notNull(),
+    purchaserName: text("purchaser_name"),
+    status: resaleCertificateRequestStatusEnum("status").notNull().default("requested"),
+    fulfilledAt: timestamp("fulfilled_at"),
+    certificateId: varchar("certificate_id"),
+    notes: text("notes"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    byAssocStatus: index("resale_cert_requests_assoc_status_idx").on(table.associationId, table.status),
+    byUnit: index("resale_cert_requests_unit_idx").on(table.unitId),
+  }),
+);
+
+export const resaleCertificates = pgTable(
+  "resale_certificates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    associationId: varchar("association_id").notNull().references(() => associations.id),
+    unitId: varchar("unit_id").notNull().references(() => units.id),
+    requestId: varchar("request_id").references(() => resaleCertificateRequests.id),
+    state: text("state").notNull().default("CT"),
+    statuteCitation: text("statute_citation").notNull().default("CGS §47-270"),
+    generatedAt: timestamp("generated_at").notNull(),
+    // §47-270 validity window — the certificate speaks as of generatedAt; many
+    // associations treat it as valid for a bounded period. Stored for the
+    // attestation block.
+    validUntil: timestamp("valid_until"),
+    feeUsd: integer("fee_usd").notNull(),
+    // Full structured §47-270(a)(1)-(15) + (b)/(c) snapshot. Immutable once written.
+    payload: jsonb("payload").notNull(),
+    // Board attestation (§47-270 the certificate is signed/attested by the board).
+    attestedByName: text("attested_by_name"),
+    attestedAt: timestamp("attested_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    byAssocUnit: index("resale_certs_assoc_unit_idx").on(table.associationId, table.unitId),
+  }),
+);
+
+export const insertResaleCertificateRequestSchema = createInsertSchema(resaleCertificateRequests).omit({
+  id: true,
+  dueAt: true,
+  feeUsd: true,
+  status: true,
+  fulfilledAt: true,
+  certificateId: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type ResaleCertificateRequest = typeof resaleCertificateRequests.$inferSelect;
+export type InsertResaleCertificateRequest = z.infer<typeof insertResaleCertificateRequestSchema>;
+
+export const insertResaleCertificateSchema = createInsertSchema(resaleCertificates).omit({
+  id: true,
+  createdAt: true,
+});
+export type ResaleCertificate = typeof resaleCertificates.$inferSelect;
+export type InsertResaleCertificate = z.infer<typeof insertResaleCertificateSchema>;
 // Statutory assessment lien (CT CGS §47-258 / DE §81-316) — BUILD #8014
 // ──────────────────────────────────────────────────────────────────────────────
 //

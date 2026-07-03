@@ -72,6 +72,7 @@ const FinancialRulesPage = lazyWithReload(() => import("@/pages/financial-rules"
 const FinancialPaymentsPage = lazyWithReload(() => import("@/pages/financial-payments"), "@/pages/financial-payments");
 const FinancialReportsPage = lazyWithReload(() => import("@/pages/financial-reports"), "@/pages/financial-reports");
 const FinancialStatementPage = lazyWithReload(() => import("@/pages/financial-statement"), "@/pages/financial-statement");
+const ResaleCertificatePage = lazyWithReload(() => import("@/pages/resale-certificate"), "@/pages/resale-certificate");
 const FinancialGlStatementsPage = lazyWithReload(() => import("@/pages/financial-gl-statements"), "@/pages/financial-gl-statements");
 const FinancialArAgingPage = lazyWithReload(() => import("@/pages/financial-ar-aging"), "@/pages/financial-ar-aging");
 const FinancialBillingPage = lazyWithReload(() => import("@/pages/financial-billing"), "@/pages/financial-billing");
