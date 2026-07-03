@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>YCM Payments → Gateway — de-jargoned (founder-os#8152)</title>
+<style>
+  :root { --border:#e4e4e7; --muted:#71717a; --fg:#18181b; --dest:#dc2626; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background:#fafafa; color:var(--fg); margin:0; padding:24px; }
+  .wrap { max-width: 860px; margin: 0 auto; display:flex; flex-direction:column; gap:16px; }
+  h1 { font-size:15px; margin:0 0 4px; }
+  .note { font-size:12px; color:var(--muted); margin-bottom:8px; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .card h2 { font-size:13px; margin:0 0 2px; }
+  .card .desc { font-size:12.5px; color:var(--muted); margin:0 0 12px; line-height:1.5; }
+  .status { border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .lbl { font-size:13px; font-weight:600; }
+  .badge { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:2px 10px; white-space:nowrap; }
+  .b-default { background:#18181b; color:#fff; }
+  .b-secondary { background:#f4f4f5; color:#3f3f46; border:1px solid var(--border); }
+  .b-destructive { background:var(--dest); color:#fff; }
+  .meaning { font-size:12px; color:var(--muted); margin:8px 0 4px; line-height:1.5; }
+  .next { font-size:12px; margin:0; line-height:1.5; }
+  .next b { font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; font-size:12px; color:var(--muted); font-weight:500; padding:8px; border-bottom:1px solid var(--border); }
+  td { padding:8px; border-bottom:1px solid var(--border); }
+  .r { text-align:right; }
+  .tiny { font-size:10px; color:var(--muted); }
+  code { background:#f4f4f5; border-radius:4px; padding:1px 5px; font-size:11px; }
+  .btn { display:inline-block; background:#18181b; color:#fff; font-size:13px; border-radius:8px; padding:8px 14px; margin-top:4px; }
+  .conn { display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+  .check { color:#16a34a; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Payments → Gateway — board-member-readable (founder-os#8152 / PR #343)</h1>
+  <p class="note">Every status is plain English: what it means + the next action. No raw Stripe account IDs, <code>requirements.past_due</code>, "sub-merchant", or raw status enums on the board surface.</p>
+
+  <div class="card">
+    <h2>Set up online payments for this HOA</h2>
+    <p class="desc">The recommended way to let owners pay online. The HOA connects its own bank account — owners see the HOA's name on their statement, the money goes straight to the HOA's bank account, and the HOA gets its own year-end tax form (1099-K). Setup takes a few minutes.</p>
+
+    <div class="status">
+      <div class="row"><span class="lbl">Payment status</span><span><span class="badge b-default">Live</span> <span class="badge b-default">Ready to accept payments</span></span></div>
+      <p class="meaning">Owners can pay online and the money goes straight to the HOA's bank account.</p>
+      <p class="next"><b>Next:</b> Nothing needed — you're all set.</p>
+    </div>
+
+    <div class="status">
+      <div class="row"><span class="lbl">Payment status</span><span><span class="badge b-secondary">Test mode</span> <span class="badge b-destructive">A few more details needed</span></span></div>
+      <p class="meaning">Stripe needs a little more information before online payments can fully turn on.</p>
+      <p class="next"><b>Next:</b> Click "Finish setup" and complete the requested details.</p>
+    </div>
+
+    <div class="status">
+      <div class="row"><span class="lbl">Payment status</span><span><span class="badge b-secondary">Test mode</span> <span class="badge b-destructive">Setup not finished</span></span></div>
+      <p class="meaning">The HOA's bank connection hasn't been completed yet.</p>
+      <p class="next"><b>Next:</b> Click "Continue setup" to finish connecting the bank account.</p>
+    </div>
+
+    <span class="btn">Finish setup</span>
+  </div>
+
+  <div class="card">
+    <h2>Connected HOAs (2)</h2>
+    <p class="desc">Online-payment status for each HOA.</p>
+    <table>
+      <tr><th>HOA</th><th>Shows on owner's statement as</th><th>Mode</th><th>Payment status</th></tr>
+      <tr><td><strong>Cherry Hill Court Condos</strong></td><td>CHERRY HILL CT HOA</td><td><span class="badge b-default">Live</span></td><td><span class="badge b-default">Ready to accept payments</span></td></tr>
+      <tr><td><strong>Wawaset HOA</strong></td><td>—</td><td><span class="badge b-secondary">Test mode</span></td><td><span class="badge b-destructive">Setup not finished</span></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Bank-deposit check</h2>
+    <p class="desc">Each time Stripe sends a deposit to the HOA's bank account, YCM matches it back to the individual owner payments in the books. The totals should match the deposit exactly — any difference is flagged for review.</p>
+    <table>
+      <tr><th>Deposit</th><th class="r">Owner payments</th><th class="r">Bank deposit</th><th class="r">Matched in the books</th><th class="r">Difference</th></tr>
+      <tr><td><strong>6/12/2026</strong><br><span class="tiny"><code>po_1PxYAbCdEf</code></span></td><td class="r">14</td><td class="r">$4,180.00</td><td class="r">$4,180.00</td><td class="r"><span class="badge b-default">Matches</span></td></tr>
+      <tr><td><strong>6/28/2026</strong><br><span class="tiny"><code>po_1QzWXyZaBc</code></span></td><td class="r">9</td><td class="r">$2,655.00</td><td class="r">$2,610.00</td><td class="r"><span class="badge b-destructive">$45.00 off</span></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Active connections (1)</h2>
+    <div class="conn"><span class="check">✓</span><div><div style="font-size:13px;font-weight:600">Stripe</div><div style="font-size:12px;color:var(--muted)">Connected and ready to take payments</div></div><span class="badge b-default" style="margin-left:auto">Active</span></div>
+  </div>
+</div>
+</body>
+</html>

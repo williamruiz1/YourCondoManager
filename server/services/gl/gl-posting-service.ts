@@ -24,17 +24,22 @@ import {
   glAccounts,
   glEntries,
   ownerLedgerEntries,
+  vendorInvoices,
+  financialCategories,
   type GlAccount,
   type InsertGlEntry,
 } from "@shared/schema";
 import {
   CHART_OF_ACCOUNTS,
   postOwnerLedgerEntries,
+  postVendorInvoices,
+  expenseAccountCodeForCategory,
   validateInvariants,
   type JournalEntry,
   type OwnerLedgerEntryLike,
+  type VendorInvoiceLike,
 } from "./posting";
-import { isGlEnabled } from "./flag";
+import { isGlEnabledForAssociation } from "./flag";
 
 export interface GlPostingResult {
   skipped: boolean;
@@ -105,6 +110,43 @@ async function loadOwnerLedger(associationId: string): Promise<OwnerLedgerEntryL
   }));
 }
 
+/**
+ * Load vendor invoices for an association as the pure-core input shape, resolving
+ * each invoice's expense account from its financial_category name (falling back to
+ * the vendor name, then to 5000 General Operating Expense). Read-only — never
+ * mutates vendor_invoices. The pure mapper drops draft/void/zero invoices, so the
+ * GL only carries committed costs (received/approved → A/P, paid → cash).
+ */
+async function loadVendorInvoices(associationId: string): Promise<VendorInvoiceLike[]> {
+  const rows = await db
+    .select({
+      id: vendorInvoices.id,
+      amount: vendorInvoices.amount,
+      status: vendorInvoices.status,
+      invoiceDate: vendorInvoices.invoiceDate,
+      vendorName: vendorInvoices.vendorName,
+      invoiceNumber: vendorInvoices.invoiceNumber,
+      categoryName: financialCategories.name,
+    })
+    .from(vendorInvoices)
+    .leftJoin(financialCategories, eq(vendorInvoices.categoryId, financialCategories.id))
+    .where(eq(vendorInvoices.associationId, associationId));
+
+  return rows.map((r) => ({
+    id: r.id,
+    amount: r.amount,
+    status: r.status,
+    // Vendor invoices carry no separate "posted" timestamp; the invoice date is
+    // the economic event date for the expense leg.
+    postedAt: r.invoiceDate,
+    description: r.invoiceNumber
+      ? `${r.vendorName} — invoice ${r.invoiceNumber}`
+      : r.vendorName,
+    // Category drives the 5xxx expense account; fall back to vendor name keywords.
+    expenseAccountCode: expenseAccountCodeForCategory(r.categoryName ?? r.vendorName),
+  }));
+}
+
 /** Turn validated journal entries into gl_entries insert rows. */
 function toInsertRows(
   associationId: string,
@@ -143,17 +185,22 @@ function toInsertRows(
  * Returns a result describing what happened. If GL_ENABLED is off, returns
  * `{ skipped: true }` without touching the database.
  *
- * @param opts.force  ignore the GL_ENABLED flag (used by the reconcile script /
- *                    tests, which must build the GL to compare it).
+ * @param opts.force  ignore the GL enablement flags (used by the reconcile
+ *                    script / tests, which must build the GL to compare it).
+ *
+ * Enablement honors BOTH the global GL_ENABLED flag AND the per-association
+ * allowlist (GL_ENABLED_ASSOCIATIONS) — see flag.ts. The reconcile-to-cent gate
+ * is applied one layer up (runtime-sync.ts maybeSyncAssociationGl), which is the
+ * path the live money triggers call.
  */
 export async function syncAssociationGl(
   associationId: string,
   opts: { force?: boolean } = {},
 ): Promise<GlPostingResult> {
-  if (!opts.force && !isGlEnabled()) {
+  if (!opts.force && !isGlEnabledForAssociation(associationId)) {
     return {
       skipped: true,
-      reason: "GL_ENABLED is off (forward-only/parallel: GL not source-of-truth)",
+      reason: "GL not enabled for this association (forward-only/parallel: GL not source-of-truth)",
       accountsSeeded: 0,
       journalsConsidered: 0,
       legsInserted: 0,
@@ -163,8 +210,16 @@ export async function syncAssociationGl(
   const accountByKey = await ensureChartOfAccounts(associationId);
   const accountsSeeded = accountByKey.size;
 
+  // The owner-ledger (dues/A-R, INCOME) side + the vendor-invoice (A-P/cash,
+  // EXPENSE) side both derive into the same balanced-journal corpus. Posting them
+  // together gives the GL a real income statement (income AND costs) and an A/P
+  // balance. Each side is independently balanced, so the corpus balances.
   const ledger = await loadOwnerLedger(associationId);
-  const journals = postOwnerLedgerEntries(ledger);
+  const invoices = await loadVendorInvoices(associationId);
+  const journals = [
+    ...postOwnerLedgerEntries(ledger),
+    ...postVendorInvoices(invoices),
+  ];
 
   // HARD GATE: validate double-entry + interfund invariants BEFORE writing.
   const violations = validateInvariants(journals);

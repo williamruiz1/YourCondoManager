@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
+import { registerCommunityOgRoute } from "./community-og";
 
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
@@ -9,6 +10,10 @@ export function serveStatic(app: Express) {
       `Could not find the build directory: ${distPath}, make sure to build the client first`,
     );
   }
+
+  // Per-community OpenGraph link previews — must run BEFORE the static +
+  // catch-all so /community/:slug HTML gets the community's own preview card.
+  registerCommunityOgRoute(app, distPath);
 
   app.use(express.static(distPath));
 

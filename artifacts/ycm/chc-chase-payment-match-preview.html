@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHC — Chase Deposit → Owner Payment Match (PREVIEW)</title>
+<style>
+:root{--teal:#014D4A;--teal2:#036b66;--bg:#f4f6f7;--card:#fff;--border:#e2e8f0;--muted:#64748b;--fg:#0f172a;
+--auto:#15803d;--auto-bg:#ecfdf5;--rev:#b45309;--rev-bg:#fffbeb;--amb:#7c3aed;--amb-bg:#f5f3ff;--none:#b91c1c;--none-bg:#fef2f2;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--fg);}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 20px 60px;}
+h1{font-size:22px;margin:0 0 4px;color:var(--teal);}
+.sub{color:var(--muted);font-size:13px;margin:0 0 20px;}
+.banner{background:var(--teal);color:#fff;border-radius:12px;padding:16px 20px;font-size:13.5px;line-height:1.55;margin-bottom:22px;}
+.banner b{color:#a7f3d0;}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:22px;}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:0 6px 22px rgba(1,77,74,.05);}
+.stat .n{font-size:24px;font-weight:700;color:var(--teal);}
+.stat .l{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.35;}
+.stat .m{font-size:13px;color:var(--fg);margin-top:2px;font-weight:600;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 30px rgba(1,77,74,.06);overflow:hidden;margin-bottom:22px;}
+.card-head{padding:16px 20px;border-bottom:1px solid var(--border);}
+.card-head h2{margin:0;font-size:15px;color:var(--teal);}
+.card-head p{margin:5px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5;}
+table{width:100%;border-collapse:collapse;}
+th,td{text-align:left;padding:10px 16px;font-size:12.5px;border-bottom:1px solid var(--border);vertical-align:top;}
+th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;background:#fafdfc;position:sticky;top:0;}
+td.amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;}
+td.desc{color:#334155;max-width:320px;}
+.muted{color:var(--muted);}
+.conf{font-weight:700;color:var(--teal);}
+.pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;}
+.t-auto .pill,.pill.t-auto{background:var(--auto-bg);color:var(--auto);}
+.t-review .pill,.pill.t-review{background:var(--rev-bg);color:var(--rev);}
+.t-amb .pill,.pill.t-amb{background:var(--amb-bg);color:var(--amb);}
+.t-none .pill,.pill.t-none{background:var(--none-bg);color:var(--none);}
+tr.row:hover{background:#f8fafc;}
+.note{background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:14px 18px;font-size:13px;color:#78350f;line-height:1.55;margin-bottom:22px;}
+.note b{color:#92400e;}
+.foot{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5;}
+.legend{display:flex;gap:16px;flex-wrap:wrap;padding:12px 20px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);background:#fafdfc;}
+</style></head>
+<body><div class="wrap">
+<h1>Cherry Hill Court — Chase Deposit → Owner Payment Match</h1>
+<p class="sub">PREVIEW · generated 2026-07-01 · association <code>f301d073…</code> · read-only, nothing applied</p>
+
+<div class="banner">
+<b>THIS IS A PREVIEW — nothing has been applied. No money moved, no ledger changed, no payment recorded.</b><br>
+It shows what YourCondoManager's auto-reconciliation engine <em>would</em> do if run against the 70 owner deposits that landed in the Chase operating account but were never credited to owner ledgers. Awaiting William's go-ahead before anything is applied.
+</div>
+
+<div class="cards">
+<div class="stat"><div class="n">70</div><div class="l">owner deposits found unapplied<br>(of 91 total bank rows; 21 are debits)</div></div>
+<div class="stat"><div class="n">$39,506.16</div><div class="l">total owner money sitting unapplied</div></div>
+<div class="stat"><div class="n">38</div><div class="l">deposits with a name match</div><div class="m">$24,256.33 would credit</div></div>
+<div class="stat"><div class="n">32</div><div class="l">need your review</div><div class="m">$15,249.83</div></div>
+</div>
+
+<div class="note">
+<b>Root cause of the 0-matched state:</b> the live matcher's owner directory query filters on <code>persons.association_id</code>, but <b>17 of the 19 Cherry Hill owners have that field set to NULL</b> — so the engine only "saw" 2 owners and matched nothing. This preview scores against the <b>corrected owner roster</b> (derived from unit ownerships), which sees all 19. Fixing the directory wiring is what makes the engine work; this preview shows the payoff.
+</div>
+
+<div class="card">
+<div class="card-head"><h2>Disposition of all 70 deposits</h2>
+<p>Confidence uses the engine's payor-name signal (both names in descriptor = high; one name = confirm). A deposit whose payer name appears on more than one unit is marked <b>ambiguous</b> for a human to pick; a deposit with no name in the bank descriptor (e.g. "Online Transfer", "DEPOSIT ID NUMBER", "INTEREST PAYMENT") is <b>no-match</b> and needs a human.</p></div>
+<table>
+<thead><tr><th>Date</th><th>Bank descriptor</th><th style="text-align:right">Amount</th><th>Suggested owner · unit</th><th>Conf.</th><th>Disposition</th></tr></thead>
+<tbody>
+<tr class="row t-auto"><td>2026-04-01</td><td class="desc">Zelle payment from LESTER J TILLMAN KEY0MBR1QLEK</td><td class="amt">$280.00</td><td>Lester Tillman · Unit 1419</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-02</td><td class="desc">Zelle payment from Luz Miranda 2H1022SCJVC2</td><td class="amt">$280.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-02</td><td class="desc">Zelle payment from Luz Miranda 2H1022SC3GOD</td><td class="amt">$45.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-02</td><td class="desc">Zelle payment from Luz Miranda 2H1022SC3BW4</td><td class="amt">$5.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-02</td><td class="desc">Zelle payment from Luz Miranda 2H1022SC3VNR</td><td class="amt">$280.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-03</td><td class="desc">ORIG CO NAME:ASCEND XTRANSFER ORIG ID:XXXXXX7390 DESC DATE: CO ENTRY DESCR:ASCEND XFRSEC:WEB TRACE#:XXXXXXXXXXX6096 EED:260403 IND ID:LUZ MIRANDA IND NAME:Luz Miranda TRANSFER TRN: XXXXXX6096TC</td><td class="amt">$3,000.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-07</td><td class="desc">ORIG CO NAME:ASCEND XTRANSFER ORIG ID:XXXXXX7390 DESC DATE: CO ENTRY DESCR:ASCEND XFRSEC:WEB TRACE#:XXXXXXXXXXX2913 EED:260407 IND ID:LUZ MIRANDA IND NAME:Luz Miranda TRANSFER TRN: XXXXXX2913TC</td><td class="amt">$3,000.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-09</td><td class="desc">ORIG CO NAME:ASCEND XTRANSFER ORIG ID:1060377390 DESC DATE: CO ENTRY DESCR:ASCEND XFRSEC:WEB TRACE#:211170202986768 EED:260409 IND ID:LUZ MIRANDA IND NAME:Luz Miranda TRANSFER TRN: 0992986768TC</td><td class="amt">$3,000.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-10</td><td class="desc">Zelle payment from MAGEN LLC 28775430473</td><td class="amt">$327.14</td><td>Magen LLC · Unit G</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-14</td><td class="desc">ORIG CO NAME:ASCEND XTRANSFER ORIG ID:1060377390 DESC DATE: CO ENTRY DESCR:ASCEND XFRSEC:WEB TRACE#:211170208669397 EED:260414 IND ID:LUZ MIRANDA IND NAME:Luz Miranda TRANSFER TRN: 1048669397TC</td><td class="amt">$3,000.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-04-22</td><td class="desc">ORIG CO NAME:ASCEND XTRANSFER ORIG ID:1060377390 DESC DATE: CO ENTRY DESCR:ASCEND XFRSEC:WEB TRACE#:211170201609717 EED:260422 IND ID:LUZ MIRANDA IND NAME:Luz Miranda TRANSFER TRN: 1121609717TC</td><td class="amt">$3,000.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-05-01</td><td class="desc">Zelle payment from CATHERINE FANNING KEY02BX1JXMI</td><td class="amt">$1.00</td><td>Catherine Fanning · Unit D</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-05-01</td><td class="desc">Zelle payment from Luz Miranda 2H10K5LHAB9P</td><td class="amt">$330.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-05-01</td><td class="desc">ORIG CO NAME:ASCEND XTRANSFER ORIG ID:1060377390 DESC DATE: CO ENTRY DESCR:ASCEND XFRSEC:WEB TRACE#:211170203828384 EED:260501 IND ID:LUZ MIRANDA IND NAME:Luz Miranda TRANSFER TRN: 1213828384TC</td><td class="amt">$1,000.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-05-01</td><td class="desc">Zelle payment from Luz Miranda 2H10K5LHAAZC</td><td class="amt">$50.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-05-03</td><td class="desc">Zelle payment from MAGEN LLC 29074422536</td><td class="amt">$327.14</td><td>Magen LLC · Unit G</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-05-04</td><td class="desc">Zelle payment from Luz Miranda 2H10K5OL2Z4J</td><td class="amt">$330.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-05-07</td><td class="desc">Zelle payment from CATHERINE FANNING KEY0UBJ16X2X</td><td class="amt">$610.00</td><td>Catherine Fanning · Unit D</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-05-19</td><td class="desc">ORIG CO NAME:ASCEND XTRANSFER ORIG ID:1060377390 DESC DATE: CO ENTRY DESCR:ASCEND XFRSEC:WEB TRACE#:211170202748729 EED:260519 IND ID:LUZ MIRANDA IND NAME:Luz Miranda TRANSFER TRN: 1392748729TC</td><td class="amt">$626.35</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-05-27</td><td class="desc">Zelle payment from MAGEN LLC 29373796271</td><td class="amt">$100.00</td><td>Magen LLC · Unit G</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-06-01</td><td class="desc">Zelle payment from MAGEN LLC 29373858024</td><td class="amt">$380.00</td><td>Magen LLC · Unit G</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-06-01</td><td class="desc">Zelle payment from Luz Miranda 2H10K6GDBQVU</td><td class="amt">$50.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-06-01</td><td class="desc">Zelle payment from Luz Miranda 2H10K6GDBQHK</td><td class="amt">$380.00</td><td>Luz Miranda · Unit B</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-auto"><td>2026-06-02</td><td class="desc">Zelle payment from Catherine Fanning 24H0K6GDBF8M</td><td class="amt">$330.00</td><td>Catherine Fanning · Unit D</td><td><span class="conf">90%</span></td><td><span class="pill t-auto">Auto-match</span></td></tr>
+<tr class="row t-review"><td>2026-04-01</td><td class="desc">Zelle payment from LORRAINE SANTIAGO KEY0OB318LOZ</td><td class="amt">$280.00</td><td>Santiago · Unit F</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-04-05</td><td class="desc">Zelle payment from GLORIA ACHIGASIM BACwfaw7gxwl</td><td class="amt">$327.17</td><td>Achigasim · Unit B</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-04-09</td><td class="desc">Zelle payment from ALLISON K TOROK MNTeKtIOlHvY</td><td class="amt">$280.00</td><td>Stephen Torok · Unit G</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-04-16</td><td class="desc">Zelle payment from GLORIA ACHIGASIM BACx2tw1mdsp</td><td class="amt">$133.22</td><td>Achigasim · Unit B</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-05-02</td><td class="desc">Zelle payment from LORRAINE SANTIAGO KEY0PBH1JX2J</td><td class="amt">$320.00</td><td>Santiago · Unit F</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-05-03</td><td class="desc">Zelle payment from LORRAINE SANTIAGO KEY0OBR17X8J</td><td class="amt">$10.00</td><td>Santiago · Unit F</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-05-04</td><td class="desc">Zelle payment from ALLISON K TOROK MNT7nC3Tm4XX</td><td class="amt">$330.00</td><td>Stephen Torok · Unit G</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-05-07</td><td class="desc">Zelle payment from GLORIA ACHIGASIM BACwco2uha26</td><td class="amt">$330.00</td><td>Achigasim · Unit B</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-05-07</td><td class="desc">Zelle payment from GLORIA ACHIGASIM BACzyxnwd2re</td><td class="amt">$47.17</td><td>Achigasim · Unit B</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-05-18</td><td class="desc">Zelle payment from MUNACHIM NSOFOR PNCAA0aJf66n</td><td class="amt">$50.00</td><td>Nsofor Robinson · Unit A</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-05-29</td><td class="desc">Zelle payment from MUNACHIM NSOFOR PNCAA0aXo57M</td><td class="amt">$377.14</td><td>Nsofor Robinson · Unit A</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-06-02</td><td class="desc">Zelle payment from LORRAINE SANTIAGO KEY0ZBU1QMA7</td><td class="amt">$330.00</td><td>Santiago · Unit F</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-06-09</td><td class="desc">Zelle payment from ALLISON K TOROK MNTxqn0ecMUl</td><td class="amt">$330.00</td><td>Stephen Torok · Unit G</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-review"><td>2026-06-09</td><td class="desc">Zelle payment from GLORIA ACHIGASIM BACzb15l841w</td><td class="amt">$380.00</td><td>Achigasim · Unit B</td><td><span class="conf">55%</span></td><td><span class="pill t-review">Suggested · review</span></td></tr>
+<tr class="row t-amb"><td>2026-04-06</td><td class="desc">Zelle payment from FELIPE PANTOJA NAV022WFZ2EZ</td><td class="amt">$280.00</td><td>Felipe Pantoja · Unit C</td><td><span class="conf">90%</span></td><td><span class="pill t-amb">Ambiguous · needs you</span></td></tr>
+<tr class="row t-amb"><td>2026-04-06</td><td class="desc">Zelle payment from FELIPE PANTOJA NAV022WFZB00</td><td class="amt">$50.00</td><td>Felipe Pantoja · Unit C</td><td><span class="conf">90%</span></td><td><span class="pill t-amb">Ambiguous · needs you</span></td></tr>
+<tr class="row t-amb"><td>2026-05-04</td><td class="desc">Zelle payment from FELIPE PANTOJA NAV0K5OKZNOE</td><td class="amt">$330.00</td><td>Felipe Pantoja · Unit C</td><td><span class="conf">90%</span></td><td><span class="pill t-amb">Ambiguous · needs you</span></td></tr>
+<tr class="row t-amb"><td>2026-05-04</td><td class="desc">Zelle payment from FELIPE PANTOJA NAV0K5OKZNHU</td><td class="amt">$50.00</td><td>Felipe Pantoja · Unit C</td><td><span class="conf">90%</span></td><td><span class="pill t-amb">Ambiguous · needs you</span></td></tr>
+<tr class="row t-amb"><td>2026-05-11</td><td class="desc">Zelle payment from THALIA PANTOJA TDP0K5SP1N08</td><td class="amt">$380.00</td><td>Thalia Pantoja · Unit E</td><td><span class="conf">90%</span></td><td><span class="pill t-amb">Ambiguous · needs you</span></td></tr>
+<tr class="row t-amb"><td>2026-06-03</td><td class="desc">Zelle payment from FELIPE PANTOJA NAV0K6IFORGB</td><td class="amt">$50.00</td><td>Felipe Pantoja · Unit C</td><td><span class="conf">90%</span></td><td><span class="pill t-amb">Ambiguous · needs you</span></td></tr>
+<tr class="row t-amb"><td>2026-06-03</td><td class="desc">Zelle payment from FELIPE PANTOJA NAV0K6IFORJX</td><td class="amt">$330.00</td><td>Felipe Pantoja · Unit C</td><td><span class="conf">90%</span></td><td><span class="pill t-amb">Ambiguous · needs you</span></td></tr>
+<tr class="row t-amb"><td>2026-06-03</td><td class="desc">Zelle payment from FELIPE PANTOJA NAV0K6IFPO5J</td><td class="amt">$330.00</td><td>Felipe Pantoja · Unit C</td><td><span class="conf">90%</span></td><td><span class="pill t-amb">Ambiguous · needs you</span></td></tr>
+<tr class="row t-amb"><td>2026-06-09</td><td class="desc">Zelle payment from THALIA PANTOJA TDP0K6N22ZTF</td><td class="amt">$380.00</td><td>Thalia Pantoja · Unit E</td><td><span class="conf">90%</span></td><td><span class="pill t-amb">Ambiguous · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-04-01</td><td class="desc">Online Transfer from CHK ...1358 transaction#: XXXXXXX5534</td><td class="amt">$6,000.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-04-01</td><td class="desc">Online Transfer from CHK ...1358 transaction#: XXXXXXX1198</td><td class="amt">$100.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-04-09</td><td class="desc">Zelle payment from MEDEA LAMBERTI WFCT0ZZXQCK9</td><td class="amt">$330.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-04-11</td><td class="desc">DEPOSIT ID NUMBER 571818</td><td class="amt">$327.14</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-04-16</td><td class="desc">DEPOSIT ID NUMBER 95016</td><td class="amt">$280.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-04-16</td><td class="desc">DEPOSIT ID NUMBER 95015</td><td class="amt">$50.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-04-16</td><td class="desc">DEPOSIT ID NUMBER 95018</td><td class="amt">$290.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-04-16</td><td class="desc">DEPOSIT ID NUMBER 95017</td><td class="amt">$424.26</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-04-30</td><td class="desc">INTEREST PAYMENT</td><td class="amt">$0.07</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-05-01</td><td class="desc">Online Transfer from CHK ...1358 transaction#: XXXXXXX1097</td><td class="amt">$800.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-05-01</td><td class="desc">Online Transfer from CHK ...1358 transaction#: XXXXXXX6316</td><td class="amt">$100.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-05-05</td><td class="desc">DEPOSIT ID NUMBER 571610</td><td class="amt">$330.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-05-07</td><td class="desc">Zelle payment from MEDEA LAMBERTI WFCT1258CXBK</td><td class="amt">$380.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-05-09</td><td class="desc">DEPOSIT ID NUMBER 411582</td><td class="amt">$610.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-05-11</td><td class="desc">DEPOSIT ID NUMBER 572000</td><td class="amt">$377.14</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-05-21</td><td class="desc">DEPOSIT ID NUMBER 411771</td><td class="amt">$280.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-05-26</td><td class="desc">Business Banking Tiered</td><td class="amt">$500.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-05-29</td><td class="desc">INTEREST PAYMENT</td><td class="amt">$0.08</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-06-01</td><td class="desc">Online Transfer from CHK ...1358 transaction#: XXXXXXX5523</td><td class="amt">$100.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-06-05</td><td class="desc">Zelle payment from MEDEA LAMBERTI WFCT128JLSWN</td><td class="amt">$380.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-06-07</td><td class="desc">ATM CHECK DEPOSIT 06/07 234 CHURCH ST NEW HAVEN CT</td><td class="amt">$377.14</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-06-07</td><td class="desc">ATM CASH DEPOSIT 06/07 1151 W MAIN ST BRANFORD CT</td><td class="amt">$44.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+<tr class="row t-none"><td>2026-06-13</td><td class="desc">DEPOSIT ID NUMBER 477154</td><td class="amt">$990.00</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="pill t-none">No match · needs you</span></td></tr>
+</tbody></table>
+<div class="legend">
+<span><span class="pill t-auto">Auto-match</span> 24 · $20,731.63</span>
+<span><span class="pill t-review">Suggested · review</span> 14 · $3,524.70</span>
+<span><span class="pill t-amb">Ambiguous · needs you</span> 9 · $2,180.00</span>
+<span><span class="pill t-none">No match · needs you</span> 23 · $13,069.83</span>
+</div>
+</div>
+
+<div class="card">
+<div class="card-head"><h2>What applying these would do</h2>
+<p>If the 38 name-matched deposits are credited, owner ledgers are corrected by <b>$24,256.33</b> — money owners already paid that currently shows as still owed. The remaining 32 deposits ($15,249.83) surface in the platform's review queue for a one-click human confirm.</p></div>
+<table>
+<thead><tr><th>Metric</th><th style="text-align:right">Value</th></tr></thead>
+<tbody>
+<tr><td>Total owner deposits unapplied</td><td class="amt">$39,506.16</td></tr>
+<tr><td>Would auto-credit (both names, single unit)</td><td class="amt">$20,731.63</td></tr>
+<tr><td>Would credit after a quick confirm (one name)</td><td class="amt">$3,524.70</td></tr>
+<tr><td><b>Total that would be credited to owners</b></td><td class="amt">$24,256.33</td></tr>
+<tr><td>Needs human review (ambiguous + no-name)</td><td class="amt">$15,249.83</td></tr>
+</tbody></table>
+<p class="foot" style="padding:0 20px 16px;">Corrected owner balances = each owner's current (overstated) balance minus the payments credited to their unit above. Exact per-owner corrected balances are computed at apply time from the matched entries; this preview establishes the totals and the per-deposit attribution the treasurer confirms.</p>
+</div>
+
+<p class="foot">Method: this preview replicates the scoring logic in <code>server/services/reconciliation/auto-matcher.ts</code> (<code>payorNameMatch</code> + <code>scoreSuggestion</code>) READ-ONLY against a live DB snapshot — no apply/persist path (<code>applyAutoMatch</code>, <code>createPaymentFromSuggestion</code>, <code>runAutoMatch</code>) was ever invoked. Nothing was written. Awaiting William's approval before any payment is applied.</p>
+</div></body></html>

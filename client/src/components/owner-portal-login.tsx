@@ -306,7 +306,10 @@ export function OwnerPortalLogin({
             <div className="mt-12 pt-8 border-t border-surface-container-high text-center">
               <p className="text-sm text-on-surface-variant">
                 Don't have access yet?{" "}
-                <a className="text-primary font-bold hover:underline" href="#">
+                <a
+                  className="text-primary font-bold hover:underline"
+                  href="mailto:support@yourcondomanager.org?subject=Owner%20portal%20access%20request"
+                >
                   Contact your Manager
                 </a>
               </p>
@@ -315,13 +318,16 @@ export function OwnerPortalLogin({
 
           {/* Footer Policy Links */}
           <footer className="mt-auto pt-8 flex gap-6 text-[11px] font-label uppercase tracking-widest text-outline">
-            <a className="hover:text-on-surface transition-colors" href="#">
+            <a className="hover:text-on-surface transition-colors" href="/privacy">
               Privacy
             </a>
-            <a className="hover:text-on-surface transition-colors" href="#">
+            <a className="hover:text-on-surface transition-colors" href="/terms">
               Terms
             </a>
-            <a className="hover:text-on-surface transition-colors" href="#">
+            <a
+              className="hover:text-on-surface transition-colors"
+              href="mailto:support@yourcondomanager.org?subject=Owner%20portal%20support"
+            >
               Support
             </a>
           </footer>

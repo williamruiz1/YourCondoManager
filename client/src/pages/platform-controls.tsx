@@ -1,6 +1,6 @@
 // zone: Platform
 // persona: Platform Admin
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -461,7 +461,9 @@ export default function PlatformControlsPage() {
   const { toast } = useToast();
   const [envelopeForm, setEnvelopeForm] = useState({ associationId: "", name: "", audience: "owner-self-service", permissionsJson: "{\n  \"documents\": true,\n  \"notices\": true,\n  \"contactUpdate\": true\n}" });
   const [scopeForm, setScopeForm] = useState({ adminUserId: "", associationId: "", scope: "read-write" });
-  const [tenantForm, setTenantForm] = useState({ associationId: "", portalName: "Owner Portal", supportEmail: "", allowContactUpdates: 1, ownerDocumentVisibility: "owner-safe", gmailIntegrationStatus: "not-configured", defaultNoticeFooter: "", smsFromNumber: "" });
+  const [tenantForm, setTenantForm] = useState({ associationId: "", portalName: "Owner Portal", supportEmail: "", allowContactUpdates: 1, ownerDocumentVisibility: "owner-safe", gmailIntegrationStatus: "not-configured", defaultNoticeFooter: "", smsFromNumber: "", emailSlug: "", emailDisplayName: "", emailReplyToOverride: "" });
+  // Sending-alias slug availability feedback (per-association). Null = unchecked.
+  const [aliasCheck, setAliasCheck] = useState<{ valid: boolean; available: boolean; reason: string | null; address: string | null } | null>(null);
   const [emailTestForm, setEmailTestForm] = useState({ associationId: "", to: "", subject: "Platform Email Integration Test", body: "This is a test email from the platform." });
   const [portalAccessForm, setPortalAccessForm] = useState({ associationId: "", personId: "", unitId: "", email: "", role: "owner", status: "active" });
   const [membershipForm, setMembershipForm] = useState({ associationId: "", personId: "", unitId: "", membershipType: "owner", status: "active", isPrimary: 1 });
@@ -506,6 +508,23 @@ export default function PlatformControlsPage() {
       return res.json();
     },
   });
+  // When the loaded tenant config changes (e.g. admin switches association),
+  // hydrate the sending-alias fields into the form so existing values show.
+  useEffect(() => {
+    if (tenantConfig) {
+      setTenantForm((p) => ({
+        ...p,
+        emailSlug: (tenantConfig as TenantConfig).emailSlug ?? "",
+        emailDisplayName: (tenantConfig as TenantConfig).emailDisplayName ?? "",
+        emailReplyToOverride: (tenantConfig as TenantConfig).emailReplyToOverride ?? "",
+        supportEmail: p.supportEmail || (tenantConfig.supportEmail ?? ""),
+        portalName: p.portalName || (tenantConfig.portalName ?? "Owner Portal"),
+      }));
+      setAliasCheck(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantConfig?.id]);
+
   const { data: portalAccesses } = useQuery<PortalAccess[]>({ queryKey: ["/api/portal/access"] });
   const { data: memberships } = useQuery<AssociationMembership[]>({ queryKey: ["/api/portal/memberships"] });
   const { data: contactUpdateRequests } = useQuery<ContactUpdateRequest[]>({ queryKey: ["/api/portal/contact-updates/admin"] });
@@ -594,6 +613,38 @@ export default function PlatformControlsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/platform/tenant-config"] });
       toast({ title: "Tenant config saved" });
     },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const checkAliasSlug = useMutation({
+    mutationFn: async () => {
+      if (!tenantForm.associationId) throw new Error("Association is required");
+      const slug = encodeURIComponent(tenantForm.emailSlug.trim());
+      const res = await apiRequest(
+        "GET",
+        `/api/platform/tenant-alias/check?associationId=${tenantForm.associationId}&slug=${slug}`,
+      );
+      return res.json() as Promise<{ valid: boolean; available: boolean; reason: string | null; address: string | null }>;
+    },
+    onSuccess: (data) => setAliasCheck(data),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const sendAliasTest = useMutation({
+    mutationFn: async () => {
+      if (!tenantForm.associationId) throw new Error("Association is required");
+      if (!emailTestForm.to) throw new Error("A 'to' address is required (set it in the Send Test Email card above)");
+      const res = await apiRequest("POST", "/api/platform/tenant-alias/test", {
+        associationId: tenantForm.associationId,
+        to: emailTestForm.to,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) =>
+      toast({
+        title: `Alias test: ${data.status}`,
+        description: `From ${data.from} (${data.source})${data.flagEnabled ? "" : " — flag OFF, global default used"}`,
+      }),
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
@@ -923,6 +974,41 @@ export default function PlatformControlsPage() {
           </div>
           <Textarea value={tenantForm.defaultNoticeFooter} onChange={(e) => setTenantForm((p) => ({ ...p, defaultNoticeFooter: e.target.value }))} placeholder="Default notice footer" />
           <Input value={tenantForm.smsFromNumber} onChange={(e) => setTenantForm((p) => ({ ...p, smsFromNumber: e.target.value }))} placeholder="SMS sending number (E.164, e.g. +15005550006)" />
+
+          {/* ── Sending alias (owner-facing email From identity) ── */}
+          <div className="rounded-md border p-3 space-y-3">
+            <div className="text-sm font-medium">Owner-facing email sending alias</div>
+            <p className="text-xs text-muted-foreground">
+              Owner emails (dues notices, announcements, receipts) will be sent FROM this
+              association's alias on <code>@yourcondomanager.org</code> with the display name below,
+              and replies go to the Reply-To address. Reserved/system addresses (support, privacy,
+              legal, noreply…) cannot be used.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Input
+                  value={tenantForm.emailSlug}
+                  onChange={(e) => { setTenantForm((p) => ({ ...p, emailSlug: e.target.value })); setAliasCheck(null); }}
+                  placeholder="alias (e.g. cherryhill)"
+                />
+                <div className="text-xs text-muted-foreground">
+                  {tenantForm.emailSlug.trim() ? `${tenantForm.emailSlug.trim().toLowerCase()}@yourcondomanager.org` : "preview will appear here"}
+                </div>
+              </div>
+              <Input value={tenantForm.emailDisplayName} onChange={(e) => setTenantForm((p) => ({ ...p, emailDisplayName: e.target.value }))} placeholder="Display name (e.g. Cherry Hill Court)" />
+              <Input value={tenantForm.emailReplyToOverride} onChange={(e) => setTenantForm((p) => ({ ...p, emailReplyToOverride: e.target.value }))} placeholder="Reply-to (defaults to support email)" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => checkAliasSlug.mutate()} disabled={checkAliasSlug.isPending || !tenantForm.emailSlug.trim()}>Check availability</Button>
+              <Button variant="outline" size="sm" onClick={() => sendAliasTest.mutate()} disabled={sendAliasTest.isPending}>Send test from alias</Button>
+              {aliasCheck ? (
+                <Badge variant={aliasCheck.valid && aliasCheck.available ? "secondary" : "destructive"}>
+                  {aliasCheck.valid && aliasCheck.available ? `✓ ${aliasCheck.address} available` : (aliasCheck.reason ?? "unavailable")}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+
           <div className="flex gap-2">
             <Button onClick={() => saveTenantConfig.mutate()} disabled={saveTenantConfig.isPending}>Save Tenant Config</Button>
             {tenantConfig ? <Badge variant="secondary">{tenantConfig.portalName}</Badge> : null}

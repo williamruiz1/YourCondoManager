@@ -24,12 +24,16 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
+import { resolveSignupPlan, type SignupTrack } from "@shared/signup-plan-keys";
+
 // ── Plan data ─────────────────────────────────────────────────────────────────
 
-type PlanKey = "self-managed" | "property-manager" | "enterprise";
-
+// The three signup TRACKS. The left-panel price is the track's starting/headline
+// price; the live displayed price is refined from the selected PM tier (slug) or
+// the entered SM unit count. NOTE the "$30" stale per-complex value is GONE — the
+// self-managed track now starts at the real Small Community floor ($129/mo).
 const PLANS: Record<
-  PlanKey,
+  SignupTrack,
   {
     name: string;
     price: string;
@@ -40,8 +44,10 @@ const PLANS: Record<
 > = {
   "self-managed": {
     name: "Self-Managed",
-    price: "From $30/mo", // PRICING STALE — see docs/strategy/pricing-and-positioning.md
-    tagline: "For self-managed Boards & Condo Associations",
+    // Self-managed declining per-unit (William-ratified 2026-06-21): Small $129
+    // flat (1–40) · Mid $3.75/unit (41–100) · Large $3.50/unit (101–250).
+    price: "From $129/mo",
+    tagline: "For self-managed Communities & Condo Associations",
     features: [
       "Single Association Portal",
       "Maintenance Request Tool",
@@ -53,38 +59,40 @@ const PLANS: Record<
   },
   "property-manager": {
     name: "Property Manager",
-    price: "$450/mo", // PRICING STALE — see docs/strategy/pricing-and-positioning.md
+    // PM declining per-door: Starter $4.50/door ($500 min) · Growth $4.25 · Scale $4.00.
+    price: "From $4.50/door",
     tagline: "For growing management firms",
     features: [
-      "Manage 5–10 Associations",
       "Multi-Portfolio Dashboard",
-      "Vendor Marketplace",
-      "Advanced Asset Management",
-      "Bulk Reporting",
+      "Portfolio rollup reporting",
+      "White-label / co-brand",
+      "AI compliance assistant",
+      "Priority support",
     ],
     trial: "21-day free trial",
   },
-  // PRICING STALE — "Enterprise" tier name superseded. See docs/strategy/pricing-and-positioning.md
   enterprise: {
     name: "Enterprise",
     price: "Custom",
     tagline: "Bespoke solutions for large portfolios",
     features: [
-      "10+ Associations",
       "Dedicated Success Manager",
       "White-label Resident App",
       "API & Custom Integrations",
+      "On-site training & migration",
     ],
     trial: "Contact us for a custom trial",
   },
 };
 
-// PRICING STALE — these are PM per-complex rates, not self-managed rates.
-// Canonical self-managed tiers: Small Community ($89), Mid ($139), Large ($199).
-// See docs/strategy/pricing-and-positioning.md
+// Canonical self-managed tiers (declining per-unit; William-ratified 2026-06-21).
+// These match the live pricing page + plan_catalog seed exactly. The "$30/$50"
+// per-complex values that leaked into signup are gone.
 const SELF_MANAGED_TIERS = [
-  { label: "Under 30 units", min: 1, max: 29, price: "$30/mo" },
-  { label: "30 units or more", min: 30, max: Infinity, price: "$50/mo" },
+  { label: "Small Community (1–40 units)", min: 1, max: 40, price: "$129/mo flat" },
+  { label: "Mid Community (41–100 units)", min: 41, max: 100, price: "$3.75/unit/mo" },
+  { label: "Large Community (101–250 units)", min: 101, max: 250, price: "$3.50/unit/mo" },
+  { label: "Enterprise Concierge (250+ units)", min: 251, max: Infinity, price: "Custom — contact sales" },
 ];
 
 function getSelfManagedTier(unitCount: number) {
@@ -92,6 +100,15 @@ function getSelfManagedTier(unitCount: number) {
     (t) => unitCount >= t.min && unitCount <= t.max,
   );
 }
+
+// Property-manager tier headline price, keyed by the resolved plan_catalog key
+// the signup slug pins to (declining per-door). Drives the left-panel price for
+// the PM track so the slug-specific tier shows its real rate (never "$30").
+const PM_TIER_PRICE: Record<string, string> = {
+  pm_starter: "$4.50/door · $500/mo min",
+  pm_growth: "$4.25/door · $2,125/mo min",
+  pm_scale: "$4.00/door · $8,000/mo min",
+};
 
 const ASSOCIATION_TYPES = [
   "HOA",
@@ -119,8 +136,8 @@ type FormValues = z.infer<typeof formSchema>;
 
 // ── Left panel ────────────────────────────────────────────────────────────────
 
-function PlanPanel({ planKey, resolvedPrice }: { planKey: PlanKey; resolvedPrice?: string }) {
-  const plan = PLANS[planKey];
+function PlanPanel({ track, resolvedPrice }: { track: SignupTrack; resolvedPrice?: string }) {
+  const plan = PLANS[track];
 
   return (
     <div className="bg-ycm-sky text-white flex flex-col justify-between px-10 py-12 min-h-full">
@@ -177,14 +194,17 @@ function PlanPanel({ planKey, resolvedPrice }: { planKey: PlanKey; resolvedPrice
 export default function PlanSignupPage() {
   const [, navigate] = useLocation();
   const params = new URLSearchParams(window.location.search);
-  const rawPlan = params.get("plan") ?? "property-manager";
-  const planKey: PlanKey =
-    rawPlan === "self-managed" || rawPlan === "property-manager" || rawPlan === "enterprise"
-      ? (rawPlan as PlanKey)
-      : "property-manager";
+  const rawPlan = params.get("plan");
+  // Canonical resolver (shared with the server). An unrecognized slug routes to
+  // self-managed, NEVER the stale PM $30 fallback. `planKey` pins the PM tier
+  // (Starter / Growth / Scale) for the slug-specific price.
+  const { track, planKey: resolvedPlanKey } = resolveSignupPlan(rawPlan);
 
-  const isEnterprise = planKey === "enterprise";
-  const isSelfManaged = planKey === "self-managed";
+  const isEnterprise = track === "enterprise";
+  const isSelfManaged = track === "self-managed";
+  // The plan value submitted to the server — preserve the original tier-specific
+  // slug so the server resolves the same PM tier the user clicked.
+  const submittedPlan = rawPlan ?? "self-managed";
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -244,7 +264,7 @@ export default function PlanSignupPage() {
   }, []);
 
   function startGoogleSignUp() {
-    const returnTo = `/signup?plan=${planKey}`;
+    const returnTo = `/signup?plan=${submittedPlan}`;
     const url = `/api/auth/google?popup=1&returnTo=${encodeURIComponent(returnTo)}&forceSelect=1`;
     const popup = window.open(url, "google-oauth-signup", "width=520,height=680");
 
@@ -277,6 +297,13 @@ export default function PlanSignupPage() {
       ? getSelfManagedTier(watchedUnitCount)
       : null;
 
+  // The left-panel headline price. For self-managed, refine to the entered
+  // unit count's tier; for PM, show the slug-pinned tier's per-door rate; else
+  // the track's starting price. Guarantees the panel never shows a stale "$30".
+  const resolvedPanelPrice = isSelfManaged
+    ? tier?.price
+    : (resolvedPlanKey ? PM_TIER_PRICE[resolvedPlanKey] : undefined);
+
   async function handleSubmit(values: FormValues) {
     if (isEnterprise) {
       window.location.href = "mailto:sales@yourcondomanager.org";
@@ -292,7 +319,7 @@ export default function PlanSignupPage() {
         email: values.email,
         organizationName: values.organizationName,
         associationType: values.associationType,
-        plan: planKey,
+        plan: submittedPlan,
         ...(isSelfManaged && values.unitCount ? { unitCount: values.unitCount } : {}),
       };
 
@@ -339,7 +366,7 @@ export default function PlanSignupPage() {
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
       {/* Left — plan summary */}
       <div className="hidden lg:block">
-        <PlanPanel planKey={planKey} resolvedPrice={tier?.price} />
+        <PlanPanel track={track} resolvedPrice={resolvedPanelPrice} />
       </div>
 
       {/* Right — form */}
