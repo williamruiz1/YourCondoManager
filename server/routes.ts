@@ -6086,6 +6086,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(200).json(result);
       }
 
+      // A real Stripe delivery (carries a `stripe-signature` header) that is a valid
+      // Stripe *event* payload — `normalizeStripeWebhookPayload` only returns non-null
+      // for a genuine Stripe event (id+type+data) — but carries NO `associationId`
+      // metadata (so the per-association processing block above was skipped). This is
+      // a platform-level billing event (checkout.session.*, customer.subscription.*,
+      // invoice.*) that this per-HOA owner-payment handler is not designed to act on.
+      // Per Stripe best practice, ACKNOWLEDGE it with a 2xx so Stripe does not treat
+      // the delivery as failed, retry, and eventually disable the endpoint. This does
+      // NOT credit or write anything (this event class was never credited here — it
+      // was previously 400'd by the generic validator below). The internal-API path
+      // (no `stripe-signature` header) and the HMAC/shared-secret paths are untouched:
+      // an internal caller posts the normalized `{associationId, provider, ...}` shape,
+      // which is NOT a Stripe event payload, so `normalizedStripeEvent` is null and this
+      // branch does not fire.
+      if (stripeSignature && normalizedStripeEvent && !normalizedStripeEvent.associationId) {
+        console.log("[webhook] acknowledged unhandled Stripe event", {
+          type: normalizedStripeEvent.eventType,
+          id: normalizedStripeEvent.providerEventId,
+        });
+        return res.status(200).json({ received: true, handled: false });
+      }
+
       if (stripeSignature || hmacSignature) {
         // HMAC-SHA256 verification — lookup signing secret for this association
         const associationIdForVerify = typeof req.body.associationId === "string" ? req.body.associationId : null;
@@ -7031,6 +7053,116 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         totalOutstanding,
         delinquentUnits,
         budgetUtilization,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/financial/reports/cash-flow?startDate&endDate&associationId
+  //
+  // READ-ONLY cash-activity report for a self-managed HOA (cash-basis approximation).
+  // Cash IN  = owner-ledger payments received (by postedAt).
+  // Cash OUT = vendor invoices (by invoiceDate, excluding draft/void) + utility
+  //            payments (by paidDate ?? dueDate ?? createdAt), grouped by expense
+  //            category. Mirrors how the Budgets "actual" figure is computed, so
+  //            the numbers reconcile with the Budget-vs-Actual report. Never writes
+  //            any table; moves no money.
+  app.get("/api/financial/reports/cash-flow", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+
+      const startDateParam = typeof req.query.startDate === "string" ? req.query.startDate : null;
+      const endDateParam = typeof req.query.endDate === "string" ? req.query.endDate : null;
+      const startDate = startDateParam ? new Date(startDateParam) : new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+      const endDate = endDateParam ? new Date(endDateParam) : new Date();
+
+      const inRange = (d: Date | null | undefined) => {
+        if (!d) return false;
+        const t = new Date(d).getTime();
+        return t >= startDate.getTime() && t <= endDate.getTime();
+      };
+      const monthKey = (d: Date | null | undefined) => {
+        const dt = d ? new Date(d) : new Date();
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+      };
+
+      // ── Cash IN: owner-ledger payments received in the period ──
+      const paymentRows = await db.select().from(ownerLedgerEntries).where(and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        eq(ownerLedgerEntries.entryType, "payment"),
+        gte(ownerLedgerEntries.postedAt, startDate),
+        lte(ownerLedgerEntries.postedAt, endDate),
+      ));
+
+      // ── Cash OUT: vendor invoices + utility payments ──
+      const [invoices, utilities, categories] = await Promise.all([
+        storage.getVendorInvoices(associationId),
+        storage.getUtilityPayments(associationId),
+        storage.getFinancialCategories(associationId),
+      ]);
+      const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+      const nameForCategory = (categoryId: string | null | undefined) =>
+        (categoryId && categoryNameById.get(categoryId)) || "Uncategorized";
+
+      // Aggregate into monthly buckets + per-category outflow
+      const monthMap = new Map<string, { cashIn: number; cashOut: number }>();
+      const bump = (key: string, field: "cashIn" | "cashOut", amount: number) => {
+        const cur = monthMap.get(key) ?? { cashIn: 0, cashOut: 0 };
+        cur[field] += amount;
+        monthMap.set(key, cur);
+      };
+
+      let totalCashIn = 0;
+      for (const p of paymentRows) {
+        const amt = Math.abs(p.amount);
+        totalCashIn += amt;
+        bump(monthKey(p.postedAt), "cashIn", amt);
+      }
+
+      const outByCategory = new Map<string, number>();
+      let totalCashOut = 0;
+
+      for (const inv of invoices) {
+        if (inv.status === "draft" || inv.status === "void") continue;
+        if (!inRange(inv.invoiceDate)) continue;
+        const amt = Math.abs(inv.amount);
+        totalCashOut += amt;
+        bump(monthKey(inv.invoiceDate), "cashOut", amt);
+        const cat = nameForCategory(inv.categoryId);
+        outByCategory.set(cat, (outByCategory.get(cat) ?? 0) + amt);
+      }
+
+      for (const u of utilities) {
+        const when = u.paidDate ?? u.dueDate ?? u.createdAt;
+        if (!inRange(when)) continue;
+        const amt = Math.abs(u.amount);
+        totalCashOut += amt;
+        bump(monthKey(when), "cashOut", amt);
+        const cat = nameForCategory(u.categoryId) === "Uncategorized"
+          ? `Utilities${u.utilityType ? ` — ${u.utilityType}` : ""}`
+          : nameForCategory(u.categoryId);
+        outByCategory.set(cat, (outByCategory.get(cat) ?? 0) + amt);
+      }
+
+      const series = Array.from(monthMap.entries())
+        .map(([month, v]) => ({ month, cashIn: v.cashIn, cashOut: v.cashOut, net: v.cashIn - v.cashOut }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      const byCategory = Array.from(outByCategory.entries())
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount);
+
+      res.json({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        cashIn: { total: totalCashIn },
+        cashOut: { total: totalCashOut, byCategory },
+        netCashFlow: totalCashIn - totalCashOut,
+        series,
+        basis: "Cash-basis approximation. Cash in = owner payments received (by post date). Cash out = vendor invoices (by invoice date, excluding drafts/voids) and utility payments (by paid/due date).",
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -14054,10 +14186,23 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const amountDueResolution = resolveAmountDue(planInput, new Date());
       const amountDueThisPeriod = toAmountDueThisPeriod(amountDueResolution);
 
+      // 2026-07-03 (display-only) — the "My Finances" summary tiles are
+      // labeled "Total paid (YTD)" / "Total charges (YTD)" and the client
+      // reads `dashboard.totalCharges` / `dashboard.totalPayments`, but the
+      // endpoint previously only sent `totalCharged` / `totalPaid`, so both
+      // tiles rendered $0.00. Provide the exact fields the client expects,
+      // filtered to the current calendar year (year-to-date). Same entry-type
+      // groupings as the all-time totals above; scoped to `myEntries` (all of
+      // this owner's units). Read-only aggregation — no ledger/money writes.
+      const ytdStart = new Date(new Date().getFullYear(), 0, 1);
+      const myEntriesYtd = myEntries.filter((e) => e.postedAt && new Date(e.postedAt) >= ytdStart);
       res.json({
         balance,
         totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
         totalPaid: Math.abs(myEntries.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
+        // Year-to-date fields consumed by the summary tiles on My Finances.
+        totalCharges: myEntriesYtd.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
+        totalPayments: Math.abs(myEntriesYtd.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
         feeSchedules: activeSchedules.map((s) => ({ id: s.id, name: s.chargeDescription, amount: s.amount, frequency: s.frequency })),
         nextDueDate: nextDue ? nextDue.toISOString() : null,
         // 2026-07-01 (display-only) — drives the "Paid in full on <date>" state.
