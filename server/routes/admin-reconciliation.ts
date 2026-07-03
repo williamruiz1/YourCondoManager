@@ -36,6 +36,12 @@ import {
   manualMatchBankTransaction,
   listPendingReconciliation,
 } from "../services/plaid-reconciliation";
+import {
+  getMonthCloseState,
+  closeMonth,
+  reopenMonth,
+  PeriodCloseError,
+} from "../services/reconciliation/period-close";
 
 // ── Reusable request shape (mirrored from routes.ts) ─────────────────────────
 
@@ -631,6 +637,163 @@ export function registerAdminReconciliationRoutes(
         res
           .status(500)
           .json({ error: error.message, code: "RECONCILIATION_AUDIT_LOG_ERROR" });
+      }
+    },
+  );
+
+  // ── Month-close: the treasurer period-close workflow (YCM#220) ─────────────
+  //
+  // "Close month" answers the question reconciliation-by-transaction never
+  // could: "is June fully reconciled?" A treasurer views the month's
+  // matched/unmatched counts, then attests a close (who + when). Closing with
+  // stragglers requires an explicit acknowledgement (soft guard, not a block).
+  // A closed period surfaces a badge; re-opening is an explicit, audit-logged
+  // action. This is an ATTESTATION — it does not lock ledger writes.
+  //
+  // Endpoints
+  //   GET  /api/admin/reconciliation/month-close?associationId=&month=YYYY-MM
+  //   POST /api/admin/reconciliation/month-close   { associationId, month, acknowledgeUnmatched?, notes? }
+  //   POST /api/admin/reconciliation/month-reopen  { associationId, month }
+
+  // Map PeriodCloseError codes → HTTP status.
+  function periodCloseStatus(code: string): number {
+    switch (code) {
+      case "INVALID_PERIOD":
+        return 400;
+      case "UNMATCHED_ACK_REQUIRED":
+        return 409;
+      case "ALREADY_CLOSED":
+        return 409;
+      case "NOT_CLOSED":
+        return 409;
+      default:
+        return 500;
+    }
+  }
+
+  function getMonthQuery(req: Request): string | undefined {
+    const m = (req.query.month ?? (req.body && req.body.month)) as unknown;
+    return typeof m === "string" ? m : undefined;
+  }
+
+  app.get(
+    "/api/admin/reconciliation/month-close",
+    requireAdmin,
+    requireAdminRole(RECON_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const month = getMonthQuery(req);
+        if (!month) {
+          return res
+            .status(400)
+            .json({ error: "month (YYYY-MM) is required", code: "MISSING_MONTH" });
+        }
+
+        const state = await getMonthCloseState({ associationId, periodMonth: month });
+        res.json(state);
+      } catch (error: any) {
+        if (error instanceof PeriodCloseError) {
+          return res
+            .status(periodCloseStatus(error.code))
+            .json({ error: error.message, code: error.code, detail: error.detail });
+        }
+        res
+          .status(500)
+          .json({ error: error.message, code: "MONTH_CLOSE_STATE_ERROR" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/reconciliation/month-close",
+    requireAdmin,
+    requireAdminRole(RECON_WRITE_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId =
+          typeof req.body?.associationId === "string"
+            ? req.body.associationId
+            : getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const month = getMonthQuery(req);
+        if (!month) {
+          return res
+            .status(400)
+            .json({ error: "month (YYYY-MM) is required", code: "MISSING_MONTH" });
+        }
+
+        const record = await closeMonth({
+          associationId,
+          periodMonth: month,
+          actorUserId: req.adminUserId ?? "unknown",
+          actorEmail: req.adminUserEmail ?? "unknown",
+          acknowledgeUnmatched: req.body?.acknowledgeUnmatched === true,
+          notes: typeof req.body?.notes === "string" ? req.body.notes : null,
+        });
+        res.json({ ok: true, close: record });
+      } catch (error: any) {
+        if (error instanceof PeriodCloseError) {
+          return res
+            .status(periodCloseStatus(error.code))
+            .json({ error: error.message, code: error.code, detail: error.detail });
+        }
+        res.status(500).json({ error: error.message, code: "MONTH_CLOSE_ERROR" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/reconciliation/month-reopen",
+    requireAdmin,
+    requireAdminRole(RECON_WRITE_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId =
+          typeof req.body?.associationId === "string"
+            ? req.body.associationId
+            : getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const month = getMonthQuery(req);
+        if (!month) {
+          return res
+            .status(400)
+            .json({ error: "month (YYYY-MM) is required", code: "MISSING_MONTH" });
+        }
+
+        const record = await reopenMonth({
+          associationId,
+          periodMonth: month,
+          actorUserId: req.adminUserId ?? "unknown",
+          actorEmail: req.adminUserEmail ?? "unknown",
+        });
+        res.json({ ok: true, close: record });
+      } catch (error: any) {
+        if (error instanceof PeriodCloseError) {
+          return res
+            .status(periodCloseStatus(error.code))
+            .json({ error: error.message, code: error.code, detail: error.detail });
+        }
+        res.status(500).json({ error: error.message, code: "MONTH_REOPEN_ERROR" });
       }
     },
   );
