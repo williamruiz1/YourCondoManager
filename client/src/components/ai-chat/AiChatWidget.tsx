@@ -38,7 +38,7 @@ export function AiChatWidget({ associationId }: AiChatWidgetProps) {
     return (
       <Button
         size="lg"
-        className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full shadow-lg"
+        className="fixed bottom-20 right-6 z-40 h-14 w-14 rounded-full shadow-lg md:bottom-6"
         onClick={() => setOpen(true)}
         aria-label="Open assistant"
         data-testid="ai-chat-launcher"
@@ -51,7 +51,7 @@ export function AiChatWidget({ associationId }: AiChatWidgetProps) {
   return (
     <div
       className={cn(
-        "fixed bottom-6 right-6 z-40 flex flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl",
+        "fixed bottom-20 right-6 z-40 flex flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl md:bottom-6",
         "h-[28rem] w-[22rem] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)]",
       )}
       data-testid="ai-chat-widget"

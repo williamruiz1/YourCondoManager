@@ -41,9 +41,15 @@ test.describe.configure({ mode: "serial" });
 async function forceWorkspaceDarkMode(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("user-settings-admin-id", "playwright-dark");
+      // MUST be the auth-helper's real mock admin id ("admin-mgr-1"): once the
+      // app boots, App.tsx overwrites user-settings-admin-id from the auth
+      // session, so a settings record seeded under any OTHER id is orphaned
+      // and the default theme (now hard "light" per the brand-v2 interim) wins
+      // — which is exactly how this spec broke while the Playwright gate was
+      // dead on the port-5000 collision (founder-os#8337).
+      window.localStorage.setItem("user-settings-admin-id", "admin-mgr-1");
       window.localStorage.setItem(
-        "user-settings-playwright-dark",
+        "user-settings-admin-mgr-1",
         JSON.stringify({ theme: "dark" }),
       );
     } catch {
@@ -71,7 +77,14 @@ async function assertBodyIsDark(page: import("@playwright/test").Page, surface: 
   expect(isDark, `body background should be dark on ${surface}`).toBe(true);
 }
 
-test.describe("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
+// PARKED (YCM#352, via founder-os#8337): dark mode is deliberately mid-migration
+// — the brand-v2 token layer leaves dark surfaces rendering LIGHT (body bg
+// rgb(248,249,250) with .dark applied), and use-user-settings.ts intentionally
+// defaults to light "until dark mode is verified across all surfaces". This
+// suite asserts that parked feature, so it fails on every run now that the
+// Playwright gate is alive again. fixme (NOT deleted): flip back to
+// test.describe when YCM#352's re-enable checklist completes.
+test.describe.fixme("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
   test("Home (/app) — axe in dark", async ({ page }) => {
     const store = createSeedStore();
     await forceWorkspaceDarkMode(page);

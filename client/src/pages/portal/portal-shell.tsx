@@ -264,6 +264,65 @@ function ShellSidebar({ items, pathname, associationId }: ShellSidebarProps) {
   );
 }
 
+type ShellMobileNavProps = {
+  items: PortalNavItem[];
+  pathname: string;
+};
+
+/**
+ * #285 — Mobile bottom tab bar. Below the `md` breakpoint the desktop
+ * sidebar is `hidden`, leaving phone owners with no way to move between
+ * zones. A fixed bottom tab bar is the canonical phone pattern for a
+ * payments / finance surface: the four primary zones sit within thumb
+ * reach and a single tap switches zones.
+ *
+ * Visible only below `md` (`md:hidden`); the desktop sidebar (`md:flex`)
+ * is the >=md nav and is unchanged. Renders the SAME nav items the
+ * sidebar consumes (same routes / icons / active-match / badges) so the
+ * two surfaces can never drift apart. Each tab is a full-height target
+ * (h-16 = 64px, well over the 44px minimum) with the label always shown.
+ */
+function ShellMobileNav({ items, pathname }: ShellMobileNavProps) {
+  return (
+    <nav
+      className="fixed inset-x-0 bottom-0 z-30 flex border-t border-outline-variant/15 bg-surface-bright/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      aria-label="Portal navigation"
+      data-testid="portal-mobile-nav"
+    >
+      {items.map((item) => {
+        const active = item.matches(pathname);
+        return (
+          <Link
+            key={item.to}
+            href={item.to}
+            aria-label={item.label}
+            aria-current={active ? "page" : undefined}
+            className={`relative flex h-16 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors ${
+              active ? "text-primary" : "text-on-surface-variant hover:text-primary"
+            }`}
+            data-testid={`portal-mobile-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+          >
+            <span className="relative">
+              <span aria-hidden="true" className="material-symbols-outlined text-xl">
+                {item.icon}
+              </span>
+              {item.badge ? (
+                <span
+                  className="absolute -right-2 -top-1 min-w-4 rounded-full bg-primary px-1 text-[9px] font-bold leading-4 text-on-primary"
+                  data-testid={`portal-mobile-nav-badge-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                >
+                  {item.badge}
+                </span>
+              ) : null}
+            </span>
+            <span className="truncate px-0.5">{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 type ShellBreadcrumbProps = {
   trail: Array<{ label: string; href?: string }>;
 };
@@ -532,6 +591,9 @@ export function PortalShell({ children }: PortalShellProps) {
         {/* Resident-chat widget — renders nothing unless AI_ASSISTANT_ENABLED
             is ON for this community (founder-os#1318, Phase 0). */}
         <AiChatWidget associationId={associationId} />
+        {/* #285 — Mobile bottom tab bar. Visible only below `md`; the
+            desktop sidebar is the >=md nav (unchanged). */}
+        <ShellMobileNav items={navItems} pathname={location} />
       </div>
     </PortalContext.Provider>
   );
