@@ -107,6 +107,7 @@ import {
   budgets,
   budgetVersions,
   budgetLines,
+  budgetRatifications,
   insertFinancialAccountSchema,
   insertFinancialCategorySchema,
   insertGovernanceComplianceTemplateSchema,
@@ -5411,6 +5412,176 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         getParam(req.params.budgetVersionId),
       );
       res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // CT CGS §47-261e — budget negative-option (owner-veto) ratification (#8015)
+  // ───────────────────────────────────────────────────────────────────────
+
+  // List ratifications for an association.
+  app.get("/api/financial/budget-ratifications", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req as AdminRequest, associationId);
+      const { listBudgetRatifications } = await import("./services/budget-ratification-service");
+      res.json(await listBudgetRatifications(associationId));
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(a) — open an annual-budget ratification (adopted → summary-pending).
+  app.post("/api/financial/budget-ratifications", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const associationId = String(req.body.associationId || "");
+      assertAssociationScope(req as AdminRequest, associationId);
+      const { openBudgetRatification } = await import("./services/budget-ratification-service");
+      const row = await openBudgetRatification({
+        associationId,
+        budgetId: req.body.budgetId ?? null,
+        budgetVersionId: req.body.budgetVersionId ?? null,
+        adoptedAt: req.body.adoptedAt ? new Date(req.body.adoptedAt) : new Date(),
+        reserveStatement: req.body.reserveStatement ?? null,
+        declarationOverrideCount: req.body.declarationOverrideCount ?? null,
+        createdBy: (req as AdminRequest).adminUserEmail ?? null,
+      });
+      res.status(201).json(row);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(a) — distribute the 30-day owner summary + set the 10–60-day window.
+  app.post("/api/financial/budget-ratifications/:id/distribute-summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const id = getParam(req.params.id);
+      const [row] = await db.select().from(budgetRatifications).where(eq(budgetRatifications.id, id)).limit(1);
+      if (!row) return res.status(404).json({ message: "Budget ratification not found" });
+      assertAssociationScope(req as AdminRequest, row.associationId);
+      const { distributeBudgetSummary } = await import("./services/budget-ratification-service");
+      const result = await distributeBudgetSummary({
+        ratificationId: id,
+        summarySentAt: req.body.summarySentAt ? new Date(req.body.summarySentAt) : new Date(),
+        meetingDate: new Date(req.body.meetingDate),
+        associationName: String(req.body.associationName || "Your Association"),
+        fiscalYear: req.body.fiscalYear ?? new Date().getUTCFullYear(),
+        budgetTotal: Number(req.body.budgetTotal ?? 0),
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(a) — close the window and tally the negative-option vote.
+  app.post("/api/financial/budget-ratifications/:id/tally", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const id = getParam(req.params.id);
+      const [row] = await db.select().from(budgetRatifications).where(eq(budgetRatifications.id, id)).limit(1);
+      if (!row) return res.status(404).json({ message: "Budget ratification not found" });
+      assertAssociationScope(req as AdminRequest, row.associationId);
+      const { tallyAndResolveRatification } = await import("./services/budget-ratification-service");
+      const updated = await tallyAndResolveRatification({
+        ratificationId: id,
+        rejectVoteCount: Number(req.body.rejectVoteCount ?? 0),
+      });
+      safeInvalidateAlertCache();
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(b) — preview the special-assessment threshold gate (pure; no persist).
+  app.post("/api/financial/budget-ratifications/special-assessment/evaluate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const { evaluateSpecialAssessmentGate } = await import("./services/budget-ratification-service");
+      res.json(
+        evaluateSpecialAssessmentGate({
+          assessmentAmount: Number(req.body.assessmentAmount ?? 0),
+          baselineAnnualBudget: Number(req.body.baselineAnnualBudget ?? 0),
+          thresholdPct: req.body.thresholdPct != null ? Number(req.body.thresholdPct) : undefined,
+        }),
+      );
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(b) — create a special assessment (below threshold → imposed; at/above → opens vote).
+  app.post("/api/financial/budget-ratifications/special-assessment", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const associationId = String(req.body.associationId || "");
+      assertAssociationScope(req as AdminRequest, associationId);
+      const { createSpecialAssessment } = await import("./services/budget-ratification-service");
+      const result = await createSpecialAssessment({
+        associationId,
+        assessmentAmount: Number(req.body.assessmentAmount ?? 0),
+        baselineAnnualBudget: Number(req.body.baselineAnnualBudget ?? 0),
+        adoptedAt: req.body.adoptedAt ? new Date(req.body.adoptedAt) : new Date(),
+        thresholdPct: req.body.thresholdPct != null ? Number(req.body.thresholdPct) : undefined,
+        reserveStatement: req.body.reserveStatement ?? null,
+        declarationOverrideCount: req.body.declarationOverrideCount ?? null,
+        createdBy: (req as AdminRequest).adminUserEmail ?? null,
+      });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(c) — impose an emergency assessment (two-thirds board + attestation).
+  app.post("/api/financial/budget-ratifications/emergency", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const associationId = String(req.body.associationId || "");
+      assertAssociationScope(req as AdminRequest, associationId);
+      const { imposeEmergencyAssessment } = await import("./services/budget-ratification-service");
+      const result = await imposeEmergencyAssessment({
+        associationId,
+        assessmentAmount: Number(req.body.assessmentAmount ?? 0),
+        boardSeatCount: Number(req.body.boardSeatCount ?? 0),
+        boardVotesInFavor: Number(req.body.boardVotesInFavor ?? 0),
+        attestation: String(req.body.attestation || ""),
+        attestedBy: req.body.attestedBy ?? (req as AdminRequest).adminUserEmail ?? null,
+        adoptedAt: req.body.adoptedAt ? new Date(req.body.adoptedAt) : new Date(),
+        createdBy: (req as AdminRequest).adminUserEmail ?? null,
+      });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Owner-portal budget surface — pending/active ratifications the owner can see
+  // and their negative-option (owner-veto) right (§47-261e(a)).
+  app.get("/api/portal/budget-ratifications", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const { listBudgetRatifications } = await import("./services/budget-ratification-service");
+      const all = await listBudgetRatifications(req.portalAssociationId!);
+      const ownerFacing = all.filter((r) =>
+        ["summary-distributed", "voting-open", "ratified", "rejected", "imposed-no-vote", "emergency-imposed"].includes(r.status),
+      );
+      res.json(
+        ownerFacing.map((r) => ({
+          id: r.id,
+          ratificationType: r.ratificationType,
+          statuteCitation: r.statuteCitation,
+          status: r.status,
+          outcome: r.outcome,
+          meetingDate: r.meetingDate,
+          votingWindowMinDate: r.votingWindowMinDate,
+          votingWindowMaxDate: r.votingWindowMaxDate,
+          reserveStatement: r.reserveStatement,
+          assessmentAmount: r.assessmentAmount,
+          totalOwnerCount: r.totalOwnerCount,
+          rejectThresholdCount: r.rejectThresholdCount,
+          rejectVoteCount: r.rejectVoteCount,
+        })),
+      );
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
