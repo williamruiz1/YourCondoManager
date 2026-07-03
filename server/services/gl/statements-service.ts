@@ -28,21 +28,25 @@ import {
   budgetLines,
   budgetLineGlMappings,
   vendorInvoices,
+  ownerLedgerEntries,
   type GlFund,
 } from "@shared/schema";
 import { loadGlJournals } from "./gl-posting-service";
 import {
   buildBalanceSheet,
   buildBudgetVsActual,
+  buildIncomeStatement,
   glTotalIncomeCents,
   glTotalExpenseCents,
   accountBalances,
   type BalanceSheet,
   type BudgetVsActualReport,
+  type IncomeStatement,
   type BudgetLineLike,
   type ActualExpenseLike,
 } from "./statements";
-import { CHART_OF_ACCOUNTS, centsToDollars } from "./posting";
+import { CHART_OF_ACCOUNTS, centsToDollars, type OwnerLedgerEntryLike } from "./posting";
+import { reconcileFromOwnerLedger, type ReconcileReport } from "./reconcile";
 
 /** Derive a budget's fund from its name (a "...Reserve..." budget is reserve). */
 function fundFromBudgetName(name: string): GlFund {
@@ -135,18 +139,97 @@ export async function loadActualExpenses(associationId: string): Promise<ActualE
     }));
 }
 
+/**
+ * The reconcile-to-the-cent TRUST INDICATOR surfaced on the statements page.
+ * This is the single "can I trust these numbers?" signal an owner reads. It
+ * proves — to the cent — that (a) the GL's Accounts-Receivable balance equals
+ * the live owner ledger the product already reports (owner-ledger == GL AR),
+ * (b) the double-entry invariants hold (every journal balances, the corpus
+ * balances, interfund nets to zero), and (c) the balance sheet balances
+ * (assets == liabilities + equity). When ALL THREE hold, `trustworthy` is true
+ * and the page shows a green "Ties out to the cent" badge; any miss surfaces
+ * the exact difference so it's never silently wrong.
+ */
+export interface StatementsReconciliation {
+  /** Owner-ledger balance the live product reports today (Σ amount, cents). */
+  ownerLedgerBalanceCents: number;
+  /** Accounts Receivable balance derived from the parallel GL, in cents. */
+  glAccountsReceivableCents: number;
+  /** owner-ledger − GL AR. MUST be 0 to tie out. */
+  arDifferenceCents: number;
+  /** True iff the GL AR equals the live owner ledger to the cent. */
+  ownerLedgerTiesOut: boolean;
+  /** Double-entry / interfund invariant violations (empty when clean). */
+  invariantViolations: string[];
+  /** True iff the balance sheet balances (assets == liabilities + equity). */
+  balanceSheetBalanced: boolean;
+  /** assets − (liabilities + equity). MUST be 0. */
+  balanceSheetDifferenceCents: number;
+  /**
+   * The single verdict: TRUE iff owner-ledger ties out AND invariants are clean
+   * AND the balance sheet balances. This is the "trust these numbers" gate.
+   */
+  trustworthy: boolean;
+}
+
 export interface FinancialStatements {
   associationId: string;
   generatedAt: string;
   /** DERIVED — NOT source-of-truth. The owner ledger is the system of record. */
   derived: true;
   balanceSheet: BalanceSheet;
+  /** Income & Expense statement (income by account, expense by account, net). */
+  incomeStatement: IncomeStatement;
   budgetVsActual: BudgetVsActualReport;
   tieOut: {
     glTotalIncomeCents: number;
     glTotalExpenseCents: number;
     balanceSheetBalanced: boolean;
     balanceSheetDifferenceCents: number;
+  };
+  /** The reconcile-to-the-cent trust indicator (the "can I trust this?" signal). */
+  reconciliation: StatementsReconciliation;
+}
+
+/** Load owner-ledger rows for an association as the pure-core reconcile input. */
+async function loadOwnerLedgerForReconcile(
+  associationId: string,
+): Promise<OwnerLedgerEntryLike[]> {
+  const rows = await db
+    .select()
+    .from(ownerLedgerEntries)
+    .where(eq(ownerLedgerEntries.associationId, associationId));
+  return rows.map((r) => ({
+    id: r.id,
+    entryType: r.entryType,
+    amount: r.amount,
+    postedAt: r.postedAt,
+    description: r.description,
+  }));
+}
+
+/**
+ * Assemble the statements reconciliation trust indicator from the live owner
+ * ledger + the balance sheet. Pure composition of `reconcileFromOwnerLedger`
+ * (owner-ledger vs GL AR + invariants) and the balance-sheet balance flag.
+ */
+function buildReconciliation(
+  report: ReconcileReport,
+  balanceSheet: BalanceSheet,
+): StatementsReconciliation {
+  const ownerLedgerTiesOut = report.differenceCents === 0;
+  return {
+    ownerLedgerBalanceCents: report.ownerLedgerBalanceCents,
+    glAccountsReceivableCents: report.glAccountsReceivableCents,
+    arDifferenceCents: report.differenceCents,
+    ownerLedgerTiesOut,
+    invariantViolations: report.invariantViolations,
+    balanceSheetBalanced: balanceSheet.balanced,
+    balanceSheetDifferenceCents: balanceSheet.differenceCents,
+    trustworthy:
+      ownerLedgerTiesOut &&
+      report.invariantViolations.length === 0 &&
+      balanceSheet.balanced,
   };
 }
 
@@ -158,15 +241,19 @@ export async function buildFinancialStatements(associationId: string): Promise<F
   const journals = await loadGlJournals(associationId);
   const budgetLinesData = await loadBudgetLines(associationId);
   const actuals = await loadActualExpenses(associationId);
+  const ownerLedger = await loadOwnerLedgerForReconcile(associationId);
 
   const balanceSheet = buildBalanceSheet(journals);
+  const incomeStatement = buildIncomeStatement(journals);
   const budgetVsActual = buildBudgetVsActual(budgetLinesData, actuals);
+  const reconcileReport = reconcileFromOwnerLedger(ownerLedger);
 
   return {
     associationId,
     generatedAt: new Date().toISOString(),
     derived: true,
     balanceSheet,
+    incomeStatement,
     budgetVsActual,
     tieOut: {
       glTotalIncomeCents: glTotalIncomeCents(journals),
@@ -174,6 +261,7 @@ export async function buildFinancialStatements(associationId: string): Promise<F
       balanceSheetBalanced: balanceSheet.balanced,
       balanceSheetDifferenceCents: balanceSheet.differenceCents,
     },
+    reconciliation: buildReconciliation(reconcileReport, balanceSheet),
   };
 }
 
