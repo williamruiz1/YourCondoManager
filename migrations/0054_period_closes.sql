@@ -1,4 +1,4 @@
--- Migration 0053 — period_closes: treasurer month-close attestation table
+-- Migration 0054 — period_closes: treasurer month-close attestation table
 -- (YCM#220 / production-readiness P2-5).
 --
 -- A treasurer closes the books monthly: confirm bank transactions are matched,
@@ -20,7 +20,7 @@
 --
 -- Naming: YCM uses association_id VARCHAR referencing associations(id).
 -- Migration number: 0051 (disbursement_dual_approval) is the last journal
--- entry; 0053 is the next free slot (0052 = ct_reserve_disclosure, merged concurrently).
+-- entry; 0054 is the next free slot.
 
 CREATE TABLE IF NOT EXISTS "period_closes" (
   "id"                          varchar PRIMARY KEY DEFAULT gen_random_uuid(),

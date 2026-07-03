@@ -277,3 +277,144 @@ describe("onWriteOnly", () => {
     expect(next).not.toHaveBeenCalled();
   });
 });
+
+// ── Tests: createPgRateLimiter (multi-machine-correct, Postgres-backed) ───────
+
+import { createPgRateLimiter, type RateLimitQuery } from "../rate-limit";
+
+/**
+ * A stub `query` that simulates the atomic fixed-window upsert against a shared
+ * counter — one counter per `key` per window, exactly like the real SQL. This
+ * lets us assert the limiter's decision logic without a live Postgres.
+ */
+function makeStubQuery(): { query: RateLimitQuery; calls: unknown[][] } {
+  const counters = new Map<string, { windowStart: number; count: number }>();
+  const calls: unknown[][] = [];
+  const query: RateLimitQuery = async (_sql, params) => {
+    calls.push(params);
+    const key = String(params[0]);
+    const windowStart = (params[1] as Date).getTime();
+    const existing = counters.get(key);
+    if (!existing || existing.windowStart !== windowStart) {
+      counters.set(key, { windowStart, count: 1 });
+    } else {
+      existing.count += 1;
+    }
+    return { rows: [{ count: counters.get(key)!.count }] };
+  };
+  return { query, calls };
+}
+
+describe("createPgRateLimiter", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-03T00:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("allows a normal-usage burst up to the max within a window", async () => {
+    const { query } = makeStubQuery();
+    const limiter = createPgRateLimiter({ query, keyPrefix: "money-write", windowMs: 60_000, max: 5 });
+    const req = makeReq();
+
+    for (let i = 0; i < 5; i++) {
+      const next = vi.fn();
+      await limiter(req, makeRes().res, next);
+      expect(next).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("returns 429 once a limited route is hit past its threshold", async () => {
+    const { query } = makeStubQuery();
+    const limiter = createPgRateLimiter({
+      query,
+      keyPrefix: "auth-verify",
+      windowMs: 60_000,
+      max: 3,
+      message: "Slow down!",
+    });
+    const req = makeReq();
+
+    // Exhaust the quota (3 allowed).
+    for (let i = 0; i < 3; i++) {
+      const next = vi.fn();
+      await limiter(req, makeRes().res, next);
+      expect(next).toHaveBeenCalledOnce();
+    }
+
+    // 4th request is blocked.
+    const next = vi.fn();
+    const ctx = makeRes();
+    await limiter(req, ctx.res, next);
+
+    expect(ctx.statusCode).toBe(429);
+    expect((ctx.body as { message?: string })?.message).toBe("Slow down!");
+    expect(ctx.headers["Retry-After"]).toBeDefined();
+    expect(Number(ctx.headers["Retry-After"])).toBeGreaterThan(0);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("resets after the fixed window advances", async () => {
+    const { query } = makeStubQuery();
+    const limiter = createPgRateLimiter({ query, keyPrefix: "auth-request", windowMs: 60_000, max: 1 });
+    const req = makeReq();
+
+    await limiter(req, makeRes().res, vi.fn()); // consume quota
+    const blocked = makeRes();
+    await limiter(req, blocked.res, vi.fn());
+    expect(blocked.statusCode).toBe(429);
+
+    // Next window — counter resets.
+    vi.advanceTimersByTime(60_001);
+    const next = vi.fn();
+    await limiter(req, makeRes().res, next);
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it("tracks different tiers (keyPrefix) independently on the same IP", async () => {
+    const { query, calls } = makeStubQuery();
+    const money = createPgRateLimiter({ query, keyPrefix: "money-write", windowMs: 60_000, max: 1 });
+    const auth = createPgRateLimiter({ query, keyPrefix: "auth-verify", windowMs: 60_000, max: 1 });
+    const req = makeReq({ ip: "10.0.0.9" });
+
+    await money(req, makeRes().res, vi.fn()); // consume money quota
+    const next = vi.fn();
+    await auth(req, makeRes().res, next); // auth is a different bucket → allowed
+    expect(next).toHaveBeenCalledOnce();
+
+    // Keys are namespaced by tier + ip.
+    expect(calls[0][0]).toBe("money-write:10.0.0.9");
+    expect(calls[1][0]).toBe("auth-verify:10.0.0.9");
+  });
+
+  it("FAILS OPEN to the in-memory limiter when Postgres errors", async () => {
+    const failing: RateLimitQuery = async () => {
+      throw new Error("connection terminated");
+    };
+    const onFallback = vi.fn();
+    const limiter = createPgRateLimiter({
+      query: failing,
+      keyPrefix: "money-write",
+      windowMs: 60_000,
+      max: 2,
+      onFallback,
+    });
+    const req = makeReq();
+
+    // Despite the DB being down, the first requests pass (fail-open) and the
+    // in-memory fallback still enforces the same limit per-machine.
+    const first = vi.fn();
+    await limiter(req, makeRes().res, first);
+    expect(first).toHaveBeenCalledOnce();
+    expect(onFallback).toHaveBeenCalled();
+
+    await limiter(req, makeRes().res, vi.fn()); // 2nd allowed
+    const blockedCtx = makeRes();
+    const blockedNext = vi.fn();
+    await limiter(req, blockedCtx.res, blockedNext); // 3rd blocked by the fallback
+    expect(blockedCtx.statusCode).toBe(429);
+    expect(blockedNext).not.toHaveBeenCalled();
+  });
+});
