@@ -61,14 +61,10 @@ interface AdminGuards {
 }
 
 // Money-OUT WRITE roles — segregation of duties operates WITHIN this set: any
-// two DIFFERENT members can be maker + checker. board-officer is the
-// treasurer-equivalent. `viewer`, `assisted-board`, `pm-assistant` are excluded
-// from writing money out (they can still read the queue).
-const DISBURSEMENT_WRITE_ROLES: AdminRole[] = [
-  "platform-admin",
-  "board-officer",
-  "manager",
-];
+// two DIFFERENT members can be maker + checker. `viewer`, `assisted-board`,
+// `pm-assistant` are excluded from writing money out (they can still read the
+// queue). Canonical, drift-guard-locked (Issue #214 / dispatch #8537).
+import { DISBURSEMENT_WRITE_ROLES } from "./financial-role-constants";
 // Read wider than write so PMs / viewers can audit the approval queue.
 const DISBURSEMENT_READ_ROLES: AdminRole[] = [
   "platform-admin",

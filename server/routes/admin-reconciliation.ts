@@ -63,13 +63,9 @@ const RECON_ROLES: AdminRole[] = [
   "manager",
   "viewer",
 ];
-const RECON_WRITE_ROLES: AdminRole[] = [
-  "platform-admin",
-  "board-officer",
-  "assisted-board",
-  "pm-assistant",
-  "manager",
-];
+// Reconciliation match writes — canonical, drift-guard-locked
+// (Issue #214 / dispatch #8537).
+import { RECON_WRITE_ROLES } from "./financial-role-constants";
 
 export function registerAdminReconciliationRoutes(
   app: Express,

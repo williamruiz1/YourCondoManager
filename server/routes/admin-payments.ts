@@ -59,13 +59,9 @@ interface AdminGuards {
   assertAssociationScope: (req: AdminRequest, associationId: string) => void;
 }
 
-// Spec: platform-admin + board-treasurer only. board-treasurer doesn't exist
-// in this codebase's AdminRole enum (see shared/schema.ts L169); board-officer
-// is the treasurer-equivalent. Keep the gate tight to those two roles per
-// the dispatch's permission-boundary acceptance criterion.
-const RECORD_ROLES: AdminRole[] = ["platform-admin", "board-officer"];
-// Refunds move money OUT — gate to platform-admin / board-officer / manager.
-const REFUND_ROLES: AdminRole[] = ["platform-admin", "board-officer", "manager"];
+// Money-mutation role gates live in the canonical, side-effect-free
+// source-of-truth (locked by the drift-guard test, Issue #214 / dispatch #8537).
+import { RECORD_ROLES, REFUND_ROLES } from "./financial-role-constants";
 // Read role list intentionally wider than write so PMs / managers can audit
 // the recent-payments table without the ability to write.
 const READ_ROLES: AdminRole[] = [
