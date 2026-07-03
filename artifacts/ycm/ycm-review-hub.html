@@ -38,6 +38,7 @@
   .tag.review{background:#eef4ff;color:#2c5fb3}
   .tag.dec{background:#fdf3e0;color:var(--warn)}
   .tag.next{background:#eef1f1;color:var(--mut)}
+  .tag.brief{background:#014D4A;color:#eafffb}
   ul.dec{list-style:none;margin:0;padding:0}
   ul.dec li{background:#fff;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:9px;padding:11px 14px;margin-bottom:9px;font-size:13.8px}
   ul.dec li b{color:var(--ink)}
@@ -50,7 +51,7 @@
   <div class="logo"><div class="mark">Y</div><strong style="font-family:'Plus Jakarta Sans';font-size:15px">YourCondoManager</strong></div>
   <h1>Review Hub — everything in one place</h1>
   <p>What's live and working, what's ready for your eyes, and the decisions waiting on you. Built so you're not chasing separate pull requests.</p>
-  <span class="stamp">Snapshot · 2026-06-30, 2:38 PM ET · Cherry Hill Court (first live customer)</span>
+  <span class="stamp">Snapshot · 2026-07-03 · Cherry Hill Court (first live customer)</span>
 </div></header>
 
 <div class="wrap">
@@ -70,6 +71,7 @@
     <h2><span class="dot" style="background:#2c5fb3"></span>Ready to review</h2>
     <p class="sub">Proposals and plans — open the visuals directly, or the write-ups on GitHub.</p>
     <div class="grid">
+      <div class="card" style="grid-column:1 / -1;border-left:4px solid var(--teal)"><span class="tag brief">48-Hour Review</span><h3>Meeting brief — the last 48 hours, top to bottom</h3><p>Everything shipped for Cherry Hill in the last two days, and the short list of decisions waiting on you — plain-English and screen-shareable. Headline: the new ledger caught the books <b>overstating owner debt by ~$12,500</b> (70 uncredited Chase payments), root-caused and fixed. <b>Start here.</b></p><div class="links"><a class="pill go" href="ycm-48hr-review-2026-07-03.html" target="_blank">Open the brief</a></div></div>
       <div class="card"><span class="tag review">Playbook</span><h3>New-client onboarding template</h3><p>The repeatable, low-effort setup path for every future association — connect the bank, the engine identifies the feed, you confirm only the ambiguous few, and it learns. Cherry Hill as the worked example, plus a <b>data-readiness checklist</b> built from the exact bugs we hit (blank association, duplicate owner, missing primary contact) so a new client starts clean.</p><div class="links"><a class="pill go" href="new-client-onboarding-template.html" target="_blank">Open template</a></div></div>
       <div class="card"><span class="tag review">Audit</span><h3>Data-integrity audit — the blank-association bug swept</h3><p>Same bug as the 17 Cherry Hill owners: found in <b>3 more communities (6 owners)</b> and <b>auto-fixed</b> (reversible, no money touched). Ledger links, ownership %, and cross-community scoping all clean. Flags: duplicate "William Ruiz" record + 16 CHC units missing a primary contact.</p><div class="links"><a class="pill go" href="ycm-data-integrity-audit.html" target="_blank">Open audit</a></div></div>
       <div class="card"><span class="tag review">Preview</span><h3>Chase deposits → owner payments</h3><p><b>$12,474+ of owner payments</b> landed in Chase but were never credited — a preview of what the auto-reconciler <em>would</em> apply: 38 of 70 deposits name-match, 24 auto-match cleanly. <b>Nothing applied</b> — awaiting your go.</p><div class="links"><a class="pill go" href="chc-chase-payment-match-preview.html" target="_blank">Open preview</a></div></div>
