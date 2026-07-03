@@ -24,6 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+import { gotoStable } from "./helpers/nav-helper";
 import { loginAsManager, loginAsOwner } from "./helpers/auth-helper";
 import { runAxeAudit } from "./helpers/a11y-check";
 import {
@@ -75,7 +76,7 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
       await loginAsManager(page);
       await installSeedRoutes(page, store);
 
-      await page.goto("/app");
+      await gotoStable(page, "/app");
 
       const disable = await page.evaluate(async () => {
         const res = await fetch("/api/associations/assoc-e2e-1/settings/amenities", {
@@ -91,7 +92,7 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
 
       await loginAsOwner(page);
 
-      await page.goto("/portal");
+      await gotoStable(page, "/portal");
       const ownerSettings = await page.evaluate(async () => {
         const res = await fetch("/api/portal/amenities/settings");
         return { ok: res.ok, body: await res.json() };
@@ -105,11 +106,11 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
       });
       expect(ownerListing).toBe(404);
 
-      await page.goto("/portal/amenities");
+      await gotoStable(page, "/portal/amenities");
       await expect(page).toHaveURL(/\/portal\/amenities/);
 
       await loginAsManager(page);
-      await page.goto("/app");
+      await gotoStable(page, "/app");
       const enable = await page.evaluate(async () => {
         const res = await fetch("/api/associations/assoc-e2e-1/settings/amenities", {
           method: "PATCH",
@@ -122,7 +123,7 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
       expect(store.associations.get("assoc-e2e-1")?.amenitiesEnabled).toBe(true);
 
       await loginAsOwner(page);
-      await page.goto("/portal");
+      await gotoStable(page, "/portal");
       const ownerSettingsAfter = await page.evaluate(async () => {
         const res = await fetch("/api/portal/amenities/settings");
         return res.json();
@@ -135,7 +136,7 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
       });
       expect(ownerListingAfter).toBe(200);
 
-      await page.goto("/portal/amenities");
+      await gotoStable(page, "/portal/amenities");
       await expect(page).toHaveURL(/\/portal\/amenities/);
 
       // Wave 25 — axe-core audit on the portal amenities surface.
@@ -187,7 +188,7 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
 
     // Trigger any non-API request first so cookies + localStorage are
     // both attached before we hit the REST endpoints.
-    await page.goto("/app");
+    await gotoStable(page, "/app");
 
     // 1. Manager disables amenities via the real PATCH handler.
     const disable = await page.evaluate(async (associationId: string) => {
@@ -203,7 +204,7 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
     expect((disable.body as { amenitiesEnabled: boolean }).amenitiesEnabled).toBe(false);
 
     // 2. Owner-side settings query reflects the flip.
-    await page.goto("/portal");
+    await gotoStable(page, "/portal");
     const ownerSettings = await page.evaluate(async (portalAccessId: string) => {
       const res = await fetch("/api/portal/amenities/settings", {
         headers: { "x-portal-access-id": portalAccessId },
@@ -224,7 +225,7 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
     expect(ownerListing).toBe(404);
 
     // 4. Visit /portal/amenities and assert the route is reachable.
-    await page.goto("/portal/amenities");
+    await gotoStable(page, "/portal/amenities");
     await expect(page).toHaveURL(/\/portal\/amenities/);
 
     // 5. Manager flips the toggle back on.
@@ -235,13 +236,13 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
         credentials: "include",
         body: JSON.stringify({ amenitiesEnabled: true }),
       });
-      return { ok: res.ok, body: await res.json() };
+      return { ok: res.ok, status: res.status, body: await res.json() };
     }, ASSOCIATION_ID);
-    expect(enable.ok).toBe(true);
+    expect(enable.status, `enable PATCH status`).toBe(200);
     expect((enable.body as { amenitiesEnabled: boolean }).amenitiesEnabled).toBe(true);
 
     // 6. Owner reads recover.
-    await page.goto("/portal");
+    await gotoStable(page, "/portal");
     const ownerSettingsAfter = await page.evaluate(async (portalAccessId: string) => {
       const res = await fetch("/api/portal/amenities/settings", {
         headers: { "x-portal-access-id": portalAccessId },
@@ -258,7 +259,7 @@ test.describe("Wave 16a/26 — amenities toggle round-trip", () => {
     }, owner.portalAccessId);
     expect(ownerListingAfter).toBe(200);
 
-    await page.goto("/portal/amenities");
+    await gotoStable(page, "/portal/amenities");
     await expect(page).toHaveURL(/\/portal\/amenities/);
 
     // Wave 25 — axe-core audit on the portal amenities surface.

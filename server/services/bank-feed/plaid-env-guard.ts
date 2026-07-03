@@ -37,6 +37,26 @@ export function isPlaidProduction(): boolean {
   return plaidEnv() === "production";
 }
 
+/**
+ * Is the OWNER-PORTAL Plaid "pay from bank" path enabled? DEFAULT OFF.
+ *
+ * WHY DEFAULT OFF (settlement-risk gate): `POST /api/portal/plaid/pay` records a
+ * `payment` (negative) owner-ledger entry IMMEDIATELY — lowering the owner's
+ * on-ledger balance — but there is NO ACH execution and NO settlement
+ * reconciliation behind it (the route's own comment defers execution to a
+ * "follow-up job" that does not exist). That means an owner could reduce their
+ * recorded balance without money ever moving. Until the path posts the ledger
+ * entry only on CONFIRMED settlement (mirroring the Stripe webhook-"succeeded"
+ * pattern), it stays disabled and Cherry Hill uses the SAFE Stripe ACH path.
+ *
+ * Enable explicitly with PORTAL_PLAID_PAY_ENABLED=1 (or true/yes/on) ONLY after
+ * settlement reconciliation exists. Anything else (incl. unset) → OFF.
+ */
+export function isPortalPlaidPayEnabled(): boolean {
+  const raw = (process.env.PORTAL_PLAID_PAY_ENABLED ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
 export interface PlaidEnvCheckResult {
   ok: boolean;
   env: string;

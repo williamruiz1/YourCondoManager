@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { lazyWithReload } from "@/lib/lazy-with-reload";
 import { ChevronDown, LogOut } from "lucide-react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -35,93 +36,97 @@ import { RouteGuard } from "@/components/RouteGuard";
 import { ConsentModal } from "@/components/ConsentModal";
 import type { AdminRole } from "@shared/schema";
 
-const LandingPage = lazy(() => import("@/pages/landing"));
-const SolutionsPage = lazy(() => import("@/pages/solutions"));
+const LandingPage = lazyWithReload(() => import("@/pages/landing"), "@/pages/landing");
+const SolutionsPage = lazyWithReload(() => import("@/pages/solutions"), "@/pages/solutions");
 // founder-os#1025 — printable sales one-pager (PDF + web), CT/DE board outreach.
-const SalesOnepagerPage = lazy(() => import("@/pages/sales-onepager"));
-const WorkspacePreviewPage = lazy(() => import("@/pages/workspace-preview"));
-const DashboardPage = lazy(() => import("@/pages/dashboard"));
-const OperationsDashboardPage = lazy(() => import("@/pages/operations-dashboard"));
-const AssociationsPage = lazy(() => import("@/pages/associations"));
-const AssociationContextPage = lazy(() => import("@/pages/association-context"));
-const NewAssociationPage = lazy(() => import("@/pages/new-association"));
+const SalesOnepagerPage = lazyWithReload(() => import("@/pages/sales-onepager"), "@/pages/sales-onepager");
+const WorkspacePreviewPage = lazyWithReload(() => import("@/pages/workspace-preview"), "@/pages/workspace-preview");
+const DashboardPage = lazyWithReload(() => import("@/pages/dashboard"), "@/pages/dashboard");
+const OperationsDashboardPage = lazyWithReload(() => import("@/pages/operations-dashboard"), "@/pages/operations-dashboard");
+const AssociationsPage = lazyWithReload(() => import("@/pages/associations"), "@/pages/associations");
+const AssociationContextPage = lazyWithReload(() => import("@/pages/association-context"), "@/pages/association-context");
+const NewAssociationPage = lazyWithReload(() => import("@/pages/new-association"), "@/pages/new-association");
 // #1327 — self-managed Day-0-14 onboarding wizard (post-signup landing).
-const OnboardingPage = lazy(() => import("@/pages/onboarding"));
-const UnitsPage = lazy(() => import("@/pages/units"));
-const PersonsPage = lazy(() => import("@/pages/persons"));
-const BoardPage = lazy(() => import("@/pages/board"));
-const DocumentsPage = lazy(() => import("@/pages/documents"));
-const RoadmapPage = lazy(() => import("@/pages/roadmap"));
-const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
-const AdminAccessReviewPage = lazy(() => import("@/pages/admin-access-review"));
+const OnboardingPage = lazyWithReload(() => import("@/pages/onboarding"), "@/pages/onboarding");
+const UnitsPage = lazyWithReload(() => import("@/pages/units"), "@/pages/units");
+const PersonsPage = lazyWithReload(() => import("@/pages/persons"), "@/pages/persons");
+const BoardPage = lazyWithReload(() => import("@/pages/board"), "@/pages/board");
+const DocumentsPage = lazyWithReload(() => import("@/pages/documents"), "@/pages/documents");
+const RoadmapPage = lazyWithReload(() => import("@/pages/roadmap"), "@/pages/roadmap");
+const AdminUsersPage = lazyWithReload(() => import("@/pages/admin-users"), "@/pages/admin-users");
+const AdminAccessReviewPage = lazyWithReload(() => import("@/pages/admin-access-review"), "@/pages/admin-access-review");
 // #342 (WS3) — consent audit trail admin view.
-const AdminConsentAuditPage = lazy(() => import("@/pages/admin-consent-audit"));
+const AdminConsentAuditPage = lazyWithReload(() => import("@/pages/admin-consent-audit"), "@/pages/admin-consent-audit");
 // #1340 — Cherry Hill go-live readiness dashboard (and future-HOA n=1 reference for #1307).
-const GoLiveReadinessPage = lazy(() => import("@/pages/go-live-readiness"));
+const GoLiveReadinessPage = lazyWithReload(() => import("@/pages/go-live-readiness"), "@/pages/go-live-readiness");
 // founder-os#970 Gap C — reconciliation admin: auto-match + manual-match + report.
-const AdminReconciliationPage = lazy(() => import("@/pages/admin-reconciliation"));
+const AdminReconciliationPage = lazyWithReload(() => import("@/pages/admin-reconciliation"), "@/pages/admin-reconciliation");
 // founder-os#2479 — admin manual payment recording surface.
-const AdminPaymentsRecordPage = lazy(() => import("@/pages/admin-payments-record"));
-const ExecutivePage = lazy(() => import("@/pages/executive"));
-const FinancialFoundationPage = lazy(() => import("@/pages/financial-foundation"));
-const FinancialRulesPage = lazy(() => import("@/pages/financial-rules"));
-const FinancialPaymentsPage = lazy(() => import("@/pages/financial-payments"));
-const FinancialReportsPage = lazy(() => import("@/pages/financial-reports"));
-const FinancialStatementPage = lazy(() => import("@/pages/financial-statement"));
-const FinancialBillingPage = lazy(() => import("@/pages/financial-billing"));
-const FinancialExpensesPage = lazy(() => import("@/pages/financial-expenses"));
-const FinancialBankConnectionsPage = lazy(() => import("@/pages/financial-bank-connections"));
-const GovernancePage = lazy(() => import("@/pages/governance"));
-const VendorsPage = lazy(() => import("@/pages/vendors"));
-const WorkOrdersPage = lazy(() => import("@/pages/work-orders"));
-const MaintenanceSchedulesPage = lazy(() => import("@/pages/maintenance-schedules"));
-const ResidentFeedbackPage = lazy(() => import("@/pages/resident-feedback"));
-const InspectionsPage = lazy(() => import("@/pages/inspections"));
-const MeetingsPage = lazy(() => import("@/pages/meetings"));
-const GovernanceCompliancePage = lazy(() => import("@/pages/governance-compliance"));
-const ElectionsPage = lazy(() => import("@/pages/elections"));
-const ElectionDetailPage = lazy(() => import("@/pages/election-detail"));
-const ElectionBallotPage = lazy(() => import("@/pages/election-ballot"));
-const AiIngestionPage = lazy(() => import("@/pages/ai-ingestion"));
-const CommunicationsPage = lazy(() => import("@/pages/communications"));
-const CommunicationsInboxPage = lazy(() => import("@/pages/communications-inbox"));
-const PlatformControlsPage = lazy(() => import("@/pages/platform-controls"));
+const AdminPaymentsRecordPage = lazyWithReload(() => import("@/pages/admin-payments-record"), "@/pages/admin-payments-record");
+// HOA Remediation Phase 2 — disbursement dual-approval (maker-checker) queue.
+const AdminDisbursementsPage = lazyWithReload(() => import("@/pages/admin-disbursements"), "@/pages/admin-disbursements");
+const ExecutivePage = lazyWithReload(() => import("@/pages/executive"), "@/pages/executive");
+const FinancialFoundationPage = lazyWithReload(() => import("@/pages/financial-foundation"), "@/pages/financial-foundation");
+const FinancialRulesPage = lazyWithReload(() => import("@/pages/financial-rules"), "@/pages/financial-rules");
+const FinancialPaymentsPage = lazyWithReload(() => import("@/pages/financial-payments"), "@/pages/financial-payments");
+const FinancialReportsPage = lazyWithReload(() => import("@/pages/financial-reports"), "@/pages/financial-reports");
+const FinancialStatementPage = lazyWithReload(() => import("@/pages/financial-statement"), "@/pages/financial-statement");
+const FinancialGlStatementsPage = lazyWithReload(() => import("@/pages/financial-gl-statements"), "@/pages/financial-gl-statements");
+const FinancialArAgingPage = lazyWithReload(() => import("@/pages/financial-ar-aging"), "@/pages/financial-ar-aging");
+const FinancialBillingPage = lazyWithReload(() => import("@/pages/financial-billing"), "@/pages/financial-billing");
+const FinancialExpensesPage = lazyWithReload(() => import("@/pages/financial-expenses"), "@/pages/financial-expenses");
+const FinancialBankConnectionsPage = lazyWithReload(() => import("@/pages/financial-bank-connections"), "@/pages/financial-bank-connections");
+const GovernancePage = lazyWithReload(() => import("@/pages/governance"), "@/pages/governance");
+const VendorsPage = lazyWithReload(() => import("@/pages/vendors"), "@/pages/vendors");
+const WorkOrdersPage = lazyWithReload(() => import("@/pages/work-orders"), "@/pages/work-orders");
+const MaintenanceSchedulesPage = lazyWithReload(() => import("@/pages/maintenance-schedules"), "@/pages/maintenance-schedules");
+const ResidentFeedbackPage = lazyWithReload(() => import("@/pages/resident-feedback"), "@/pages/resident-feedback");
+const InspectionsPage = lazyWithReload(() => import("@/pages/inspections"), "@/pages/inspections");
+const MeetingsPage = lazyWithReload(() => import("@/pages/meetings"), "@/pages/meetings");
+const GovernanceCompliancePage = lazyWithReload(() => import("@/pages/governance-compliance"), "@/pages/governance-compliance");
+const ElectionsPage = lazyWithReload(() => import("@/pages/elections"), "@/pages/elections");
+const ElectionDetailPage = lazyWithReload(() => import("@/pages/election-detail"), "@/pages/election-detail");
+const ElectionBallotPage = lazyWithReload(() => import("@/pages/election-ballot"), "@/pages/election-ballot");
+const AiIngestionPage = lazyWithReload(() => import("@/pages/ai-ingestion"), "@/pages/ai-ingestion");
+const CommunicationsPage = lazyWithReload(() => import("@/pages/communications"), "@/pages/communications");
+const CommunicationsInboxPage = lazyWithReload(() => import("@/pages/communications-inbox"), "@/pages/communications-inbox");
+const PlatformControlsPage = lazyWithReload(() => import("@/pages/platform-controls"), "@/pages/platform-controls");
 // 3.5 Owner Portal Restructure — shell + zone files per /portal/*.
 // owner-portal.tsx mega-file and standalone amenities.tsx were deleted in
 // the cutover; their functionality is split across these zone files.
-const PortalHomePage = lazy(() => import("@/pages/portal/portal-home"));
-const PortalFinancesPage = lazy(() => import("@/pages/portal/portal-finances"));
-const PortalRequestsPage = lazy(() => import("@/pages/portal/portal-requests"));
-const PortalCommunityPage = lazy(() => import("@/pages/portal/portal-community"));
-const PortalAmenitiesPage = lazy(() => import("@/pages/portal/portal-amenities"));
-const PortalDocumentsPage = lazy(() => import("@/pages/portal/portal-documents"));
-const PortalNoticesPage = lazy(() => import("@/pages/portal/portal-notices"));
+const PortalHomePage = lazyWithReload(() => import("@/pages/portal/portal-home"), "@/pages/portal/portal-home");
+const PortalFinancesPage = lazyWithReload(() => import("@/pages/portal/portal-finances"), "@/pages/portal/portal-finances");
+const PortalRequestsPage = lazyWithReload(() => import("@/pages/portal/portal-requests"), "@/pages/portal/portal-requests");
+const PortalCommunityPage = lazyWithReload(() => import("@/pages/portal/portal-community"), "@/pages/portal/portal-community");
+const PortalAmenitiesPage = lazyWithReload(() => import("@/pages/portal/portal-amenities"), "@/pages/portal/portal-amenities");
+const PortalDocumentsPage = lazyWithReload(() => import("@/pages/portal/portal-documents"), "@/pages/portal/portal-documents");
+const PortalNoticesPage = lazyWithReload(() => import("@/pages/portal/portal-notices"), "@/pages/portal/portal-notices");
 // #342 (WS3) — portal-side "My Consents" transparency view.
-const PortalMyConsentsPage = lazy(() => import("@/pages/portal/portal-my-consents"));
-const VendorPortalPage = lazy(() => import("@/pages/vendor-portal"));
-const OnboardingInvitePage = lazy(() => import("@/pages/onboarding-invite"));
-const InsurancePage = lazy(() => import("@/pages/insurance"));
-const PortfolioPage = lazy(() => import("@/pages/portfolio"));
-const AnnouncementsPage = lazy(() => import("@/pages/announcements"));
-const PricingPage = lazy(() => import("@/pages/pricing"));
-const PlanSignupPage = lazy(() => import("@/pages/plan-signup"));
-const PlanSignupSuccessPage = lazy(() => import("@/pages/plan-signup-success"));
-const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
-const TermsOfServicePage = lazy(() => import("@/pages/terms-of-service"));
-const UserSettingsPage = lazy(() => import("@/pages/user-settings"));
-const SettingsBillingPage = lazy(() => import("@/pages/settings-billing"));
+const PortalMyConsentsPage = lazyWithReload(() => import("@/pages/portal/portal-my-consents"), "@/pages/portal/portal-my-consents");
+const VendorPortalPage = lazyWithReload(() => import("@/pages/vendor-portal"), "@/pages/vendor-portal");
+const OnboardingInvitePage = lazyWithReload(() => import("@/pages/onboarding-invite"), "@/pages/onboarding-invite");
+const InsurancePage = lazyWithReload(() => import("@/pages/insurance"), "@/pages/insurance");
+const PortfolioPage = lazyWithReload(() => import("@/pages/portfolio"), "@/pages/portfolio");
+const AnnouncementsPage = lazyWithReload(() => import("@/pages/announcements"), "@/pages/announcements");
+const PricingPage = lazyWithReload(() => import("@/pages/pricing"), "@/pages/pricing");
+const PlanSignupPage = lazyWithReload(() => import("@/pages/plan-signup"), "@/pages/plan-signup");
+const PlanSignupSuccessPage = lazyWithReload(() => import("@/pages/plan-signup-success"), "@/pages/plan-signup-success");
+const PrivacyPolicyPage = lazyWithReload(() => import("@/pages/privacy-policy"), "@/pages/privacy-policy");
+const TermsOfServicePage = lazyWithReload(() => import("@/pages/terms-of-service"), "@/pages/terms-of-service");
+const UserSettingsPage = lazyWithReload(() => import("@/pages/user-settings"), "@/pages/user-settings");
+const SettingsBillingPage = lazyWithReload(() => import("@/pages/settings-billing"), "@/pages/settings-billing");
 // founder-os#1147 — founder portfolio subscription view (platform-admin only).
-const AdminPlatformSubscriptionsPage = lazy(() => import("@/pages/admin-platform-subscriptions"));
-const HelpCenterPage = lazy(() => import("@/pages/help-center"));
-const CommunityHubPage = lazy(() => import("@/pages/community-hub"));
-const CommunityHubPublicPage = lazy(() => import("@/pages/community-hub-public"));
-const AmenitiesAdminPage = lazy(() => import("@/pages/amenities-admin"));
-const FinancialsHubPage = lazy(() => import("@/pages/hubs/financials-hub"));
-const OperationsHubPage = lazy(() => import("@/pages/hubs/operations-hub"));
-const GovernanceHubPage = lazy(() => import("@/pages/hubs/governance-hub"));
-const CommunicationsHubPage = lazy(() => import("@/pages/hubs/communications-hub"));
-const NotFound = lazy(() => import("@/pages/not-found"));
-const AdminContextualFeedbackWidget = lazy(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })));
+const AdminPlatformSubscriptionsPage = lazyWithReload(() => import("@/pages/admin-platform-subscriptions"), "@/pages/admin-platform-subscriptions");
+const HelpCenterPage = lazyWithReload(() => import("@/pages/help-center"), "@/pages/help-center");
+const CommunityHubPage = lazyWithReload(() => import("@/pages/community-hub"), "@/pages/community-hub");
+const CommunityHubPublicPage = lazyWithReload(() => import("@/pages/community-hub-public"), "@/pages/community-hub-public");
+const AmenitiesAdminPage = lazyWithReload(() => import("@/pages/amenities-admin"), "@/pages/amenities-admin");
+const FinancialsHubPage = lazyWithReload(() => import("@/pages/hubs/financials-hub"), "@/pages/hubs/financials-hub");
+const OperationsHubPage = lazyWithReload(() => import("@/pages/hubs/operations-hub"), "@/pages/hubs/operations-hub");
+const GovernanceHubPage = lazyWithReload(() => import("@/pages/hubs/governance-hub"), "@/pages/hubs/governance-hub");
+const CommunicationsHubPage = lazyWithReload(() => import("@/pages/hubs/communications-hub"), "@/pages/hubs/communications-hub");
+const NotFound = lazyWithReload(() => import("@/pages/not-found"), "@/pages/not-found");
+const AdminContextualFeedbackWidget = lazyWithReload(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })), "@/components/admin-contextual-feedback-widget");
 
 type AuthSession = {
   authenticated: boolean;
@@ -172,7 +177,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
   },
   {
     id: "finance",
-    matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/rules", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports", "/app/financial/statement", "/app/financial/bank-connections"],
+    matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/rules", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports", "/app/financial/ar-aging", "/app/financial/statements", "/app/financial/statement", "/app/financial/bank-connections"],
     testId: "tabs-finance-inpage",
     tabs: [
       { label: "Chart of Accounts", href: "/app/financial/foundation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
@@ -182,6 +187,8 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Bank Accounts", href: "/app/financial/bank-connections", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Expenses", href: "/app/financial/expenses", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Reports", href: "/app/financial/reports", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "AR Aging", href: "/app/financial/ar-aging", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Statements", href: "/app/financial/statements", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { label: "Owner Statement", href: "/app/financial/statement", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
     ],
   },
@@ -218,6 +225,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Access Review", href: "/app/admin/access-review", roles: ["platform-admin"] },
       { label: "Reconciliation", href: "/app/admin/reconciliation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Record Payment", href: "/app/admin/payments/record", roles: ["platform-admin", "board-officer"] },
+      { label: "Disbursement Approvals", href: "/app/admin/disbursements", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
     ],
   },
@@ -435,6 +443,8 @@ function WorkspaceRouter({
         <Route path="/app/admin/reconciliation" component={AdminReconciliationPage} />
         {/* founder-os#2479 — admin manual payment recording. */}
         <Route path="/app/admin/payments/record" component={AdminPaymentsRecordPage} />
+        {/* HOA Remediation Phase 2 — disbursement dual-approval (maker-checker). */}
+        <Route path="/app/admin/disbursements" component={AdminDisbursementsPage} />
         {/* Legacy alias from the dispatch spec (/admin/payments/record). */}
         <Route path="/admin/payments/record">
           <RouteRedirect to="/app/admin/payments/record" />
@@ -448,6 +458,8 @@ function WorkspaceRouter({
         <Route path="/app/financial/payments"><RouteGuard route="/app/financial/payments"><ZoneBoundary zone="Financials"><FinancialPaymentsPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/expenses"><RouteGuard route="/app/financial/expenses"><ZoneBoundary zone="Financials"><FinancialExpensesPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/reports"><RouteGuard route="/app/financial/reports"><ZoneBoundary zone="Financials"><FinancialReportsPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/statements"><RouteGuard route="/app/financial/statements"><ZoneBoundary zone="Financials"><FinancialGlStatementsPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/ar-aging"><RouteGuard route="/app/financial/ar-aging"><ZoneBoundary zone="Financials"><FinancialArAgingPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/statement"><RouteGuard route="/app/financial/statement"><ZoneBoundary zone="Financials"><FinancialStatementPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/bank-connections"><RouteGuard route="/app/financial/bank-connections"><ZoneBoundary zone="Financials"><FinancialBankConnectionsPage /></ZoneBoundary></RouteGuard></Route>
         {/* Finance — legacy redirects (3.2 Q4 archive — preserved verbatim;

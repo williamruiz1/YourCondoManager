@@ -170,28 +170,30 @@ jobs:
             full_title="[compliance] ${title} — ${TODAY}"
             echo "Filing Issue: ${full_title}"
 
-            body=$(cat <<EOF
-## Recurring compliance review
-
-**Activity:** ${title}
-**Policy reference:** \`${policy_ref}\`
-**Filed:** ${TODAY}
-
-This Issue was auto-filed by \`.github/workflows/security-compliance-calendar.yml\` per founder-os#1783. Complete the review per the linked policy doc and close the Issue when done. Record completion notes in this Issue for the next quarterly/annual audit trail.
-
-### Checklist
-
-- [ ] Read the policy section relevant to this activity (link above)
-- [ ] Execute the review/runbook steps
-- [ ] Record findings + remediation as comments on this Issue
-- [ ] Update the policy doc if procedural details changed
-- [ ] Close this Issue with a one-line completion summary
-
-### Audit trail
-
-Each completion comment on this Issue is the evidence-of-execution for the next cycle's review. Partner questionnaires (Stripe, Plaid, etc.) may request these trails — keep notes specific enough that an external auditor can verify the activity actually happened.
-EOF
-)
+            # Body built with printf (not a col-0 heredoc): every line stays
+            # indented inside this YAML `run: |` block scalar. A dedented
+            # heredoc body previously broke YAML parsing on every push (#355).
+            body=$(printf '%s\n' \
+              "## Recurring compliance review" \
+              "" \
+              "**Activity:** ${title}" \
+              "**Policy reference:** \`${policy_ref}\`" \
+              "**Filed:** ${TODAY}" \
+              "" \
+              "This Issue was auto-filed by \`.github/workflows/security-compliance-calendar.yml\` per founder-os#1783. Complete the review per the linked policy doc and close the Issue when done. Record completion notes in this Issue for the next quarterly/annual audit trail." \
+              "" \
+              "### Checklist" \
+              "" \
+              "- [ ] Read the policy section relevant to this activity (link above)" \
+              "- [ ] Execute the review/runbook steps" \
+              "- [ ] Record findings + remediation as comments on this Issue" \
+              "- [ ] Update the policy doc if procedural details changed" \
+              "- [ ] Close this Issue with a one-line completion summary" \
+              "" \
+              "### Audit trail" \
+              "" \
+              "Each completion comment on this Issue is the evidence-of-execution for the next cycle's review. Partner questionnaires (Stripe, Plaid, etc.) may request these trails — keep notes specific enough that an external auditor can verify the activity actually happened." \
+            )
 
             gh issue create \
               --repo "${GH_REPO}" \

@@ -1,0 +1,73 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YCM hero — underlay options</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Fraunces:ital,wght@1,600&display=swap" rel="stylesheet">
+<style>
+  :root{--teal:#014D4A;--accent:#15A39C;--off:#F5F7F9;--ink:#0f2e2c}
+  *{box-sizing:border-box}body{margin:0;font-family:'Inter Tight',system-ui,sans-serif;background:var(--off);color:var(--ink)}
+  .lbl{max-width:1200px;margin:28px auto 6px;padding:0 32px;font-weight:800;color:var(--teal);font-size:15px;letter-spacing:.02em}
+  .lbl span{font-weight:500;color:#6b8got}.note{max-width:1200px;margin:0 auto 10px;padding:0 32px;color:#5a7got;font-size:13px}
+  .stage{max-width:1280px;margin:0 auto 10px;background:#fff;border:1px solid #e3eae9;border-radius:16px;overflow:hidden;position:relative;min-height:480px}
+  .row{display:grid;grid-template-columns:1fr 1fr;align-items:center;min-height:480px}
+  .copy{padding:56px 8px 56px 56px;position:relative;z-index:2}
+  .eyebrow{display:inline-block;background:rgba(21,163,156,.14);color:var(--teal);font-weight:700;font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:5px 12px;border-radius:999px;margin-bottom:14px}
+  h1{font-size:48px;line-height:1.02;margin:0 0 16px;font-weight:800;letter-spacing:-.02em}
+  h1 em{font-family:'Fraunces',serif;font-style:italic;color:var(--teal);font-weight:600}
+  .sub{font-size:16px;color:#42605d;max-width:380px;margin:0 0 22px}
+  .cta{display:inline-block;background:var(--teal);color:#fff;font-weight:600;padding:13px 22px;border-radius:10px;text-decoration:none}
+  .dots{position:absolute;bottom:14px;z-index:5;display:flex;gap:8px}
+  .dots i{height:7px;width:7px;border-radius:99px;background:rgba(255,255,255,.55);display:block}.dots i.on{width:22px;background:#fff}
+
+  /* ---- Option A: huge bleed-right panel ---- */
+  .a .panel{position:relative;height:560px;margin:-40px -120px -40px 0;border-radius:22px 0 0 22px;overflow:hidden;background:var(--teal);box-shadow:0 30px 80px -20px rgba(1,77,74,.45)}
+  .a .panel img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
+  .a .dots{left:40px}
+
+  /* ---- Option B: full right-half underlay (bleeds all edges, sits behind) ---- */
+  .b .row{grid-template-columns:1.05fr .95fr}
+  .b .under{position:absolute;top:0;right:0;bottom:0;width:62%;z-index:1;overflow:hidden;background:var(--teal)}
+  .b .under img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .b .under::before{content:"";position:absolute;inset:0;z-index:2;background:linear-gradient(90deg,var(--off) 0%,rgba(245,247,249,.85) 14%,rgba(245,247,249,0) 42%)}
+  .b .copy{z-index:3}
+  .b .dots{right:36px}
+  @media(max-width:880px){.row{grid-template-columns:1fr}.a .panel{margin:0;height:300px;border-radius:14px}.b .under{display:none}}
+</style>
+
+<div class="lbl">Option A — <span>huge bleed-right panel (big, rounded, runs off the right edge)</span></div>
+<div class="stage a">
+  <div class="row">
+    <div class="copy">
+      <span class="eyebrow">Architecture of Trust</span>
+      <h1>Everything your association needs. <em>Nothing it doesn't.</em></h1>
+      <p class="sub">The definitive platform for modern property governance.</p>
+      <a class="cta">Open Workspace →</a>
+    </div>
+    <div class="panel">
+      <img class="A-slide" src="YCM C 1.png" alt="">
+      <div class="dots"><i class="on A-d0"></i><i class="A-d1"></i><i class="A-d2"></i></div>
+    </div>
+  </div>
+</div>
+
+<div class="lbl">Option B — <span>full right-half underlay (bleeds to the edges, fades under the headline)</span></div>
+<div class="stage b">
+  <div class="under"><img class="B-slide" src="YCM C 1.png" alt=""></div>
+  <div class="row">
+    <div class="copy">
+      <span class="eyebrow">Architecture of Trust</span>
+      <h1>Everything your association needs. <em>Nothing it doesn't.</em></h1>
+      <p class="sub">The definitive platform for modern property governance.</p>
+      <a class="cta">Open Workspace →</a>
+    </div>
+    <div></div>
+  </div>
+  <div class="dots"><i class="on B-d0"></i><i class="B-d1"></i><i class="B-d2"></i></div>
+</div>
+
+<script>
+  const imgs=["YCM C 1.png","YCM C 2.png","YCM C 3.png"];
+  function cyc(prefix){let i=0;setInterval(()=>{i=(i+1)%3;
+    document.querySelector("."+prefix+"-slide").src=imgs[i];
+    for(let d=0;d<3;d++)document.querySelector("."+prefix+"-d"+d).classList.toggle("on",d===i);
+  },3500);}
+  cyc("A");cyc("B");
+</script>

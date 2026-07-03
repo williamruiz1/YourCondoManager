@@ -23,6 +23,20 @@ export const associations = pgTable("associations", {
   // Maps onboarding (Phase 1): coordinates stored after admin confirms satellite view
   latitudeDeg: decimal("latitude_deg", { precision: 10, scale: 7 }),
   longitudeDeg: decimal("longitude_deg", { precision: 10, scale: 7 }),
+  // CT CIOA reserve disclosure (#8016, from the #1035 audit §Area 1). Connecticut
+  // does NOT mandate a reserve study or a minimum funding level — that is Delaware
+  // (DUCIOA §81-315). CT requires DISCLOSURE only: the annual budget summary must
+  // STATE the reserve amount + the basis on which reserves are calculated/funded
+  // (CGS §47-261e(a)), and the resale certificate must state the reserve amount
+  // (CGS §47-270(a)(5)). These two fields are the board-declared persisted store
+  // for that disclosure — NOT a live bank balance and NOT a funding-mandate gate.
+  // reserveBalanceCents: the stated reserve amount, in cents (matches the cents
+  // convention used by financialAccounts.currentBalanceCents). Null = not yet stated.
+  reserveBalanceCents: integer("reserve_balance_cents"),
+  // reserveBasis: the §47-261e(a) narrative — "the basis on which reserves are
+  // calculated and funded" (e.g. "per the 2026 reserve study, funded at 10% of the
+  // annual operating budget"). Null = not yet stated.
+  reserveBasis: text("reserve_basis"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -33,9 +47,28 @@ export const units = pgTable("units", {
   unitNumber: text("unit_number").notNull(),
   building: text("building"),
   squareFootage: real("square_footage"),
+  // ── Phase 1 (P0-3): unique per-unit payment reference ──────────────────────
+  // A short, human-readable, stable per-unit reference (e.g. "CHC-0007") that
+  // owners put on their remittance (Stripe metadata + mailed-check memo). The
+  // reconciliation matcher's Tier-0 pass resolves a deposit to this unit at
+  // confidence 1.0 BEFORE any name-guessing. NULLABLE + backfillable — additive;
+  // units without a ref match exactly as they do today (person/name path).
+  // Uniqueness is scoped per association (see units_assoc_account_ref_uq).
+  unitAccountRef: text("unit_account_ref"),
+  // ── Phase 1 (P0-1): designated primary contact for the payer roster ────────
+  // Which co-owner is the "primary contact" for the unit's balance. NULLABLE —
+  // when null, callers fall back to the earliest-startDate active ownership.
+  // Additive metadata; does NOT change the balance owner (the UNIT is the
+  // balance-bearing entity). Kept as a plain varchar holding a persons.id
+  // (persons is declared after units, so no inline .references() wrapper to
+  // avoid a forward-declaration cycle); the migration adds the FK constraint.
+  primaryContactPersonId: varchar("primary_contact_person_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueAssociationBuildingUnitNumber: uniqueIndex("units_association_building_unit_number_uq").on(table.associationId, table.buildingId, table.unitNumber),
+  // P0-3: a unit_account_ref must be unique WITHIN an association. Postgres
+  // treats NULLs as distinct, so un-backfilled units (NULL ref) don't collide.
+  uniqueAssociationAccountRef: uniqueIndex("units_assoc_account_ref_uq").on(table.associationId, table.unitAccountRef),
 }));
 
 export const buildings = pgTable("buildings", {
@@ -611,6 +644,72 @@ export const utilityPayments = pgTable("utility_payments", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ── Disbursements — dual-approval (maker-checker) money-OUT control ────────────
+//
+// HOA Remediation Phase 2 (hoa-remediation-roadmap.html): segregation of duties
+// on disbursements — the #1 embezzlement control. A disbursement records a
+// money-OUT request (a payment to a vendor / against a vendor invoice) that MUST
+// be approved by a DIFFERENT admin than the one who created it (maker ≠ checker)
+// before it can be marked payable / paid.
+//
+// NET-NEW, ADDITIVE, ZERO live-book exposure: this table + its lifecycle are new.
+// It does NOT post to the owner ledger, the GL, or any existing money path — it
+// is an approval-gate record that PRECEDES any real payment. Marking a
+// disbursement "paid" here records the approved-payment fact; it wires to no
+// existing payout rail in this phase.
+//
+// Lifecycle (status): draft → pending-approval → approved → paid
+//                             (or → rejected from draft / pending-approval)
+// Maker ≠ checker is enforced SERVER-SIDE in the service layer, not just the UI:
+// createdByAdminUserId can never equal approvedByAdminUserId / rejectedByAdminUserId.
+export const disbursementStatusEnum = pgEnum("disbursement_status", [
+  "draft",
+  "pending-approval",
+  "approved",
+  "paid",
+  "rejected",
+]);
+
+export const disbursements = pgTable("disbursements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The payee. vendorId is the linked vendor (optional — an ad-hoc payee is
+  // allowed via vendorName only). Amount is stored in INTEGER CENTS so money
+  // math is exact (mirrors the GL cents convention).
+  vendorId: varchar("vendor_id").references(() => vendors.id),
+  vendorName: text("vendor_name").notNull(),
+  // Optional link to the vendor invoice this disbursement pays.
+  vendorInvoiceId: varchar("vendor_invoice_id").references(() => vendorInvoices.id),
+  amountCents: integer("amount_cents").notNull(),
+  memo: text("memo"),
+  status: disbursementStatusEnum("status").notNull().default("draft"),
+  // MAKER — the admin who created the request. notNull: every disbursement has
+  // an accountable originator. This is the identity checked against the approver.
+  createdByAdminUserId: varchar("created_by_admin_user_id").notNull().references(() => adminUsers.id),
+  createdByEmail: text("created_by_email").notNull(),
+  // CHECKER — the DIFFERENT admin who approved (or rejected) the request.
+  // Null until an approve/reject decision is recorded. Enforced ≠ maker.
+  approvedByAdminUserId: varchar("approved_by_admin_user_id").references(() => adminUsers.id),
+  approvedByEmail: text("approved_by_email"),
+  approvedAt: timestamp("approved_at"),
+  rejectedByAdminUserId: varchar("rejected_by_admin_user_id").references(() => adminUsers.id),
+  rejectedByEmail: text("rejected_by_email"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  // Set when a disbursement is marked paid (records the approved-payment fact;
+  // wires to no live payout rail in this phase).
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  // Unit-of-work read index: list a tenant's disbursements by recency + status.
+  disbursementsAssocStatusIdx: index("disbursements_assoc_status_created_idx").on(
+    table.associationId,
+    table.status,
+    table.createdAt,
+  ),
+}));
+
 export const paymentMethodConfigs = pgTable("payment_method_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -729,7 +828,23 @@ export const ownerLedgerEntryTypeEnum = pgEnum("owner_ledger_entry_type", ["char
 export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The UNIT is the balance-bearing entity (Phase 1 / P0-1). unitId stays
+  // notNull and is the sole balance key. Every existing row already carries a
+  // valid unitId, so the unit balance is fully derivable today.
   unitId: varchar("unit_id").notNull().references(() => units.id),
+  // Phase 1 (P0-1) — SEMANTIC pivot: personId is now "tendered-by" METADATA
+  // (who paid), NOT the balance owner. The UNIT bears the balance; co-owners
+  // are jointly & severally liable. We deliberately keep the Drizzle/TS type
+  // notNull() (so the ~30 existing call sites that read entry.personId stay
+  // type-clean and BACKWARD-COMPATIBLE — no cascade), while relaxing the intent:
+  // for a unit-level payment where no single person tendered, callers set the
+  // unit's primary-contact person as the "tendered-by" value rather than being
+  // blocked. The ACTUAL database NOT NULL relaxation (so a NULL personId can be
+  // stored) is a staged, gated, flag-guarded step deferred to the migration
+  // PLAN (docs/phase1-unit-centric-migration-plan.md §Phase C) — it is NOT run
+  // here and NOT reflected in the column type, precisely to avoid breaking
+  // existing data / existing readers. Balance-of-record reads should group by
+  // unitId, not personId (see buildUnitAccountStatement).
   personId: varchar("person_id").notNull().references(() => persons.id),
   entryType: ownerLedgerEntryTypeEnum("entry_type").notNull(),
   amount: real("amount").notNull(),
@@ -741,7 +856,11 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   bankTransactionId: varchar("bank_transaction_id"),
   settledAt: timestamp("settled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Phase 1 (P0-1): unit-scoped statement + aging reads group by
+  // (associationId, unitId, postedAt). Additive index — no column change.
+  byAssocUnitPosted: index("owner_ledger_entries_assoc_unit_posted_idx").on(table.associationId, table.unitId, table.postedAt),
+}));
 
 export const paymentPlanStatusEnum = pgEnum("payment_plan_status", ["active", "completed", "defaulted", "cancelled"]);
 export const paymentPlans = pgTable("payment_plans", {
@@ -1518,10 +1637,30 @@ export const tenantConfigs = pgTable("tenant_configs", {
   aiIngestionCanaryPercent: integer("ai_ingestion_canary_percent").notNull().default(100),
   aiIngestionRolloutNotes: text("ai_ingestion_rollout_notes"),
   smsFromNumber: text("sms_from_number"),
+  // ── Tenant sending alias (migration 0049) ──────────────────────────────
+  // Per-association sending identity on the verified yourcondomanager.org
+  // domain. Owner-facing email (dues notices, announcements, receipts) is sent
+  // FROM `<email_slug>@yourcondomanager.org` with `email_display_name` as the
+  // friendly "From" name and a Reply-To pointing at the tenant's real inbox.
+  // GATED behind the TENANT_SENDING_ALIAS_ENABLED flag (default OFF) — when the
+  // flag is off, or when these are null, the global EMAIL_FROM default is used,
+  // so existing behavior is unchanged. `email_slug` is GLOBALLY UNIQUE so a
+  // tenant's alias can only ever resolve to its own association (anti-spoofing).
+  emailSlug: text("email_slug"),
+  emailDisplayName: text("email_display_name"),
+  emailReplyToOverride: text("email_reply_to_override"),
+  // Advanced (design only, flag-gated, NOT live in v1): a tenant's own send
+  // domain (requires per-domain Resend verification before it can be used).
+  customSendDomain: text("custom_send_domain"),
+  customSendDomainVerified: integer("custom_send_domain_verified").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueTenantConfigAssociation: uniqueIndex("tenant_configs_association_uq").on(table.associationId),
+  // Global uniqueness of the sending-alias local-part across ALL tenants. A
+  // partial index (WHERE email_slug IS NOT NULL) so unconfigured tenants don't
+  // collide on NULL.
+  uniqueTenantEmailSlug: uniqueIndex("tenant_configs_email_slug_uq").on(table.emailSlug).where(sql`email_slug IS NOT NULL`),
 }));
 
 export const emailThreads = pgTable("email_threads", {
@@ -2168,6 +2307,20 @@ export const insertBudgetVersionSchema = createInsertSchema(budgetVersions).omit
 export const insertBudgetLineSchema = createInsertSchema(budgetLines).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorInvoiceSchema = createInsertSchema(vendorInvoices).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDisbursementSchema = createInsertSchema(disbursements).omit({
+  id: true,
+  status: true,
+  approvedByAdminUserId: true,
+  approvedByEmail: true,
+  approvedAt: true,
+  rejectedByAdminUserId: true,
+  rejectedByEmail: true,
+  rejectedAt: true,
+  rejectionReason: true,
+  paidAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertUtilityPaymentSchema = createInsertSchema(utilityPayments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentMethodConfigSchema = createInsertSchema(paymentMethodConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentGatewayConnectionSchema = createInsertSchema(paymentGatewayConnections).omit({ id: true, createdAt: true, updatedAt: true, lastValidatedAt: true });
@@ -2369,6 +2522,9 @@ export type Vendor = typeof vendors.$inferSelect;
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorInvoice = typeof vendorInvoices.$inferSelect;
 export type InsertVendorInvoice = z.infer<typeof insertVendorInvoiceSchema>;
+export type Disbursement = typeof disbursements.$inferSelect;
+export type InsertDisbursement = z.infer<typeof insertDisbursementSchema>;
+export type DisbursementStatus = (typeof disbursementStatusEnum.enumValues)[number];
 export type UtilityPayment = typeof utilityPayments.$inferSelect;
 export type InsertUtilityPayment = z.infer<typeof insertUtilityPaymentSchema>;
 export type PaymentMethodConfig = typeof paymentMethodConfigs.$inferSelect;
@@ -4179,3 +4335,99 @@ export const budgetLineGlMappings = pgTable(
 export const insertBudgetLineGlMappingSchema = createInsertSchema(budgetLineGlMappings).omit({ id: true, createdAt: true, updatedAt: true });
 export type BudgetLineGlMapping = typeof budgetLineGlMappings.$inferSelect;
 export type InsertBudgetLineGlMapping = z.infer<typeof insertBudgetLineGlMappingSchema>;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Statutory assessment lien (CT CGS §47-258 / DE §81-316) — BUILD #8014
+// ──────────────────────────────────────────────────────────────────────────────
+//
+// Connecticut General Statutes §47-258 gives a common-interest community an
+// AUTOMATIC lien on a unit for unpaid common-expense assessments, with a 9-month
+// SUPER-PRIORITY over a first mortgage. Delaware §81-316 carries the same 9-month
+// super-priority — the super-priority calc is state-portable (see
+// server/services/assessment-lien-service.ts → computeSuperPriority).
+//
+// This is a GREENFIELD lien primitive: it sits OVER the existing delinquency /
+// escalation / notice engine (delinquencyEscalations, delinquencyNotices,
+// noticeSends) and does NOT replace it. The lien is the statutory lifecycle
+// object; the escalation/notice rows remain the operational collections feed.
+//
+// §47-258(a) — lien arises automatically on the unpaid assessment (arose-date).
+// §47-258(b) — 9-month super-priority over first mortgage.
+// §47-258(d) — no separate recording is required for the lien to be enforceable.
+// §47-258(e) — a 3-year statute of limitations runs from the arose-date.
+// §47-258(m) — a 2-month + board-vote/standard-policy + written-demand-with-
+//              mortgagee-copy GATE precedes foreclosure, then a 60-day notice.
+//
+// ALL queries are association-scoped (associationId). ADDITIVE — touches no
+// existing table/row. Actual foreclosure filing / legal action is OUT OF SCOPE.
+
+export const assessmentLienStatusEnum = pgEnum("assessment_lien_status", [
+  "active", "released", "expired",
+]);
+
+export const assessmentLiens = pgTable("assessment_liens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  /** Optional tie back to the escalation that drove this lien (operational feed). */
+  escalationId: varchar("escalation_id").references(() => delinquencyEscalations.id),
+  /** Free-form reference (e.g. originating special-assessment id / ledger key). */
+  sourceReference: text("source_reference"),
+  /** §47-258(a): the date the lien arose = the date the assessment became due. */
+  aroseDate: timestamp("arose_date").notNull(),
+  /** Principal unpaid common-expense assessment the lien secures. */
+  principalAmount: real("principal_amount").notNull(),
+  /** Per-month common-expense charge — input to the §47-258(b) super-priority calc. */
+  monthlyCommonExpense: real("monthly_common_expense").notNull().default(0),
+  /** Statute the lien is asserted under — portable: "47-258" (CT) | "81-316" (DE). */
+  statuteSection: text("statute_section").notNull().default("47-258"),
+  status: assessmentLienStatusEnum("status").notNull().default("active"),
+  /** §47-258(e): arose-date + 3 years. After this the lien is unenforceable. */
+  expiresAt: timestamp("expires_at").notNull(),
+  releasedAt: timestamp("released_at"),
+  releaseReason: text("release_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  byAssociation: index("assessment_liens_association_idx").on(table.associationId),
+  byUnit: index("assessment_liens_unit_idx").on(table.associationId, table.unitId),
+}));
+export const insertAssessmentLienSchema = createInsertSchema(assessmentLiens).omit({ id: true, createdAt: true, updatedAt: true });
+export type AssessmentLien = typeof assessmentLiens.$inferSelect;
+export type InsertAssessmentLien = z.infer<typeof insertAssessmentLienSchema>;
+
+// §47-258(m) pre-foreclosure gate evaluation + 60-day notice record.
+export const assessmentLienPreforeclosureResultEnum = pgEnum("assessment_lien_preforeclosure_result", [
+  "allowed", "blocked",
+]);
+
+export const assessmentLienPreforeclosures = pgTable("assessment_lien_preforeclosures", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  lienId: varchar("lien_id").notNull().references(() => assessmentLiens.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  /** §47-258(m)(1) gate inputs. */
+  monthsOwed: integer("months_owed").notNull(),
+  boardVoteOrPolicyAttested: integer("board_vote_or_policy_attested").notNull().default(0),
+  writtenDemandSent: integer("written_demand_sent").notNull().default(0),
+  mortgageeCopySent: integer("mortgagee_copy_sent").notNull().default(0),
+  /** §47-258(m)(1) gate verdict + machine-readable block reasons. */
+  gateResult: assessmentLienPreforeclosureResultEnum("gate_result").notNull(),
+  gateBlockReasonsJson: jsonb("gate_block_reasons_json").notNull().default(sql`'[]'::jsonb`),
+  /** §47-258(m)(2) 60-day notice. */
+  noticeSendId: varchar("notice_send_id").references(() => noticeSends.id),
+  mortgageeNoticeSendId: varchar("mortgagee_notice_send_id").references(() => noticeSends.id),
+  noticeIssuedAt: timestamp("notice_issued_at"),
+  noticeDeadlineAt: timestamp("notice_deadline_at"),
+  noticeDays: integer("notice_days").notNull().default(60),
+  totalDue: real("total_due"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  byLien: index("assessment_lien_preforeclosures_lien_idx").on(table.lienId),
+  byAssociation: index("assessment_lien_preforeclosures_association_idx").on(table.associationId),
+}));
+export const insertAssessmentLienPreforeclosureSchema = createInsertSchema(assessmentLienPreforeclosures).omit({ id: true, createdAt: true });
+export type AssessmentLienPreforeclosure = typeof assessmentLienPreforeclosures.$inferSelect;
+export type InsertAssessmentLienPreforeclosure = z.infer<typeof insertAssessmentLienPreforeclosureSchema>;

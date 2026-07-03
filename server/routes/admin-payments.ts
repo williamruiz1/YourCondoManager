@@ -39,6 +39,7 @@ import {
   type AdminRole,
 } from "@shared/schema";
 import { runAutoMatch, type AutoMatchResult } from "../services/reconciliation/auto-matcher";
+import { refundConnectCharge, isRefundsEnabled } from "../services/refund-service";
 
 // ── Reusable request shape (mirrored from routes.ts) ─────────────────────────
 
@@ -63,6 +64,8 @@ interface AdminGuards {
 // is the treasurer-equivalent. Keep the gate tight to those two roles per
 // the dispatch's permission-boundary acceptance criterion.
 const RECORD_ROLES: AdminRole[] = ["platform-admin", "board-officer"];
+// Refunds move money OUT — gate to platform-admin / board-officer / manager.
+const REFUND_ROLES: AdminRole[] = ["platform-admin", "board-officer", "manager"];
 // Read role list intentionally wider than write so PMs / managers can audit
 // the recent-payments table without the ability to write.
 const READ_ROLES: AdminRole[] = [
@@ -107,6 +110,17 @@ const bulkRecordSchema = z.object({
   associationId: z.string().min(1),
   rows: z.array(recordPaymentSchema).min(1).max(100),
   attemptBankMatch: z.boolean().optional().default(true),
+});
+
+// Refund a Connect direct charge. `amountCents` omitted = full refund.
+const refundChargeSchema = z.object({
+  associationId: z.string().min(1),
+  chargeId: z.string().trim().min(1),
+  amountCents: z.coerce.number().int().positive().optional(),
+  reason: z.enum(["duplicate", "fraudulent", "requested_by_customer"]).optional(),
+  // refund_application_fee defaults true server-side so the HOA never loses
+  // YCM's platform fee on a refund; allow an explicit override for the rare case.
+  refundApplicationFee: z.boolean().optional(),
 });
 
 // ── Description builder ─────────────────────────────────────────────────────
@@ -458,6 +472,65 @@ export function registerAdminPaymentsRoutes(
         return res
           .status(400)
           .json({ error: error.message, code: "RECORD_PAYMENT_BULK_ERROR" });
+      }
+    },
+  );
+
+  // POST /api/admin/payments/refund — refund a Connect direct charge.
+  //
+  // CRITICAL (issue #286): refunds proportionally refund the application fee by
+  // DEFAULT so the HOA never eats YCM's 1% platform fee on a refund. Gated by
+  // the REFUNDS_ENABLED flag (default OFF) so the live money-out path stays
+  // reversible. Admin-only + association-scoped + audited.
+  app.post(
+    "/api/admin/payments/refund",
+    requireAdmin,
+    requireAdminRole(REFUND_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        if (!isRefundsEnabled()) {
+          return res
+            .status(503)
+            .json({ error: "Refunds are disabled (REFUNDS_ENABLED is off)", code: "REFUNDS_DISABLED" });
+        }
+        const parsed = refundChargeSchema.parse(req.body);
+        assertAssociationScope(req, parsed.associationId);
+
+        const result = await refundConnectCharge({
+          associationId: parsed.associationId,
+          chargeId: parsed.chargeId,
+          amountCents: parsed.amountCents,
+          reason: parsed.reason,
+          refundApplicationFee: parsed.refundApplicationFee,
+        });
+
+        // Audit every refund (who, charge, amount, whether app fee refunded).
+        await db.insert(auditLogs).values({
+          actorEmail: req.adminUserEmail ?? "unknown",
+          action: "payment.refund",
+          entityType: "stripe_refund",
+          entityId: result.refundId,
+          associationId: parsed.associationId,
+          afterJson: {
+            chargeId: parsed.chargeId,
+            amountCents: result.amountCents,
+            status: result.status,
+            applicationFeeRefunded: result.applicationFeeRefunded,
+            connectedAccountId: result.connectedAccountId,
+            reason: parsed.reason ?? null,
+          },
+        });
+
+        return res.status(201).json({ refund: result });
+      } catch (error: any) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            error: "Invalid input",
+            code: "INVALID_INPUT",
+            issues: error.issues,
+          });
+        }
+        return res.status(400).json({ error: error.message, code: "REFUND_ERROR" });
       }
     },
   );
