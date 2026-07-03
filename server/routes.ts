@@ -284,11 +284,13 @@ import {
 } from "@shared/payment-period";
 import { registerAiAssistantRoutes } from "./routes/ai-assistant";
 import { registerPressingItemsRoutes } from "./routes/pressing-items";
+import { buildArAgingReport } from "./services/ar-aging";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
+import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import {
   getEffectivePortalRole,
@@ -310,7 +312,8 @@ import { getStripeApplicationFeeRate } from "./platform-settings-store";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
 import { bankFeedProvider } from "./services/bank-feed";
-import { syncBankFeedForItemId } from "./services/bank-feed-sync";
+import { isStripeFinancialConnectionsEnabled } from "./services/bank-feed/stripe-fc-env-guard";
+import { syncBankFeedForItemId, syncBankFeedForConnection } from "./services/bank-feed-sync";
 import { bridgeLinkedBankAccounts, deactivateBridgedFinancialAccounts } from "./services/financial-account-bank-bridge";
 import {
   encryptPlaidToken as encryptPlaidTokenShared,
@@ -327,6 +330,7 @@ import { computeReadinessSnapshot, GATES } from "./services/go-live-checks";
 // These are DERIVED and NOT source-of-truth; the owner ledger stays the system of record.
 import { isGlEnabledForAssociation } from "./services/gl/flag";
 import { isPortalPlaidPayEnabled } from "./services/bank-feed/plaid-env-guard";
+import { renderPolicyHtml, wantsHtml } from "./policy-render";
 import { buildFinancialStatements, buildGlAccountActivity } from "./services/gl/statements-service";
 // #1783 — Security & Compliance Baseline public routes (/privacy, /security, /.well-known/security.txt).
 // Policy files live at docs/policies/ in the repo; the route handlers below
@@ -1448,6 +1452,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     assertAssociationScope,
   });
 
+  // HOA Remediation Phase 2 — dual-approval (maker-checker) on disbursements
+  // (money-OUT). Segregation of duties: a disbursement must be approved by a
+  // DIFFERENT admin than the one who created it before it can be marked paid.
+  // NET-NEW / ADDITIVE — touches no existing owner-ledger / GL / payout path.
+  // Endpoints: /api/admin/disbursements[/:id/{submit,approve,reject,pay}].
+  registerAdminDisbursementRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
   // Owner account statement (readiness P0-3 / Issue #206). Opening balance,
   // in-period line items, closing balance for a date range — the document a
   // treasurer hands an owner. Two surfaces:
@@ -1465,10 +1481,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // registered before the SPA catch-all (which lives in server/static.ts +
   // is invoked from server/index.ts after registerRoutes returns).
   //
-  // /privacy + /security serve their respective policy markdown files
-  // verbatim with Content-Type: text/plain; charset=utf-8. Auditors and
-  // partner questionnaires consume markdown directly. A Phase 1 follow-on
-  // can layer markdown → HTML rendering for human polish.
+  // /privacy + /security serve their respective canonical policy markdown
+  // files from docs/policies/. They CONTENT-NEGOTIATE (see wantsHtml):
+  //   • Browsers (Accept: text/html) get a polished, on-brand HTML page —
+  //     marked renders the markdown to formatted HTML (headings, bold, lists,
+  //     and the GFM role table) so a human never sees raw markdown.
+  //   • Machine clients (auditors, partner-questionnaire tooling, curl,
+  //     Accept: text/plain / */*, or ?format=md / ?raw) keep getting the raw
+  //     markdown verbatim with Content-Type: text/plain; charset=utf-8.
+  // The markdown files remain the single source of truth for the legal content.
+  // This is the "Phase 1 follow-on (markdown → HTML for human polish)" the
+  // original #1783 handlers anticipated. The HTML render fixes the bug where
+  // yourcondomanager.org/privacy dumped raw markdown to visitors.
   //
   // /.well-known/security.txt is also shipped as a static asset at
   // client/public/.well-known/security.txt (picked up by express.static
@@ -1476,17 +1500,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // belt-and-suspenders fallback that guarantees the correct text/plain
   // Content-Type per RFC 9116 §3 if the static-asset path misses for any
   // reason (e.g., a misconfigured deploy or path-collision regression).
-  app.get("/privacy", (_req, res) => {
+  app.get("/privacy", (req, res) => {
     const md = readPolicyFile("privacy-policy-v1.md");
     if (!md) {
       return res.status(404).type("text/plain").send("Privacy policy not found");
     }
+    if (wantsHtml(req)) {
+      return res.type("text/html; charset=utf-8").send(renderPolicyHtml(md, "Privacy Policy"));
+    }
     res.type("text/plain; charset=utf-8").send(md);
   });
-  app.get("/security", (_req, res) => {
+  app.get("/security", (req, res) => {
     const md = readPolicyFile("information-security-policy-v1.md");
     if (!md) {
       return res.status(404).type("text/plain").send("Information security policy not found");
+    }
+    if (wantsHtml(req)) {
+      return res.type("text/html; charset=utf-8").send(renderPolicyHtml(md, "Information Security Policy"));
     }
     res.type("text/plain; charset=utf-8").send(md);
   });
@@ -4221,6 +4251,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/financial/statements/income-statement?associationId=...
+  //   → income & expense statement (income by account, expense by account, net)
+  //     + the reconcile-to-cent trust indicator. Same per-association GL gate.
+  app.get("/api/financial/statements/income-statement", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      if (!isGlEnabledForAssociation(associationId)) return res.status(404).json({ message: "Financial statements are not enabled for this association (GL is off)." });
+      const statements = await buildFinancialStatements(associationId);
+      res.json({ associationId, generatedAt: statements.generatedAt, derived: true, incomeStatement: statements.incomeStatement, reconciliation: statements.reconciliation });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   // GET /api/financial/gl/accounts?associationId=...  → DERIVED per-GL-account
   // balances (the dues-driven Cash 1010 / AR 1200 / Income 4000 roll-up). This
   // is the SEAM for the Chart of Accounts screen (/app/financial/foundation),
@@ -6040,6 +6086,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(200).json(result);
       }
 
+      // A real Stripe delivery (carries a `stripe-signature` header) that is a valid
+      // Stripe *event* payload — `normalizeStripeWebhookPayload` only returns non-null
+      // for a genuine Stripe event (id+type+data) — but carries NO `associationId`
+      // metadata (so the per-association processing block above was skipped). This is
+      // a platform-level billing event (checkout.session.*, customer.subscription.*,
+      // invoice.*) that this per-HOA owner-payment handler is not designed to act on.
+      // Per Stripe best practice, ACKNOWLEDGE it with a 2xx so Stripe does not treat
+      // the delivery as failed, retry, and eventually disable the endpoint. This does
+      // NOT credit or write anything (this event class was never credited here — it
+      // was previously 400'd by the generic validator below). The internal-API path
+      // (no `stripe-signature` header) and the HMAC/shared-secret paths are untouched:
+      // an internal caller posts the normalized `{associationId, provider, ...}` shape,
+      // which is NOT a Stripe event payload, so `normalizedStripeEvent` is null and this
+      // branch does not fire.
+      if (stripeSignature && normalizedStripeEvent && !normalizedStripeEvent.associationId) {
+        console.log("[webhook] acknowledged unhandled Stripe event", {
+          type: normalizedStripeEvent.eventType,
+          id: normalizedStripeEvent.providerEventId,
+        });
+        return res.status(200).json({ received: true, handled: false });
+      }
+
       if (stripeSignature || hmacSignature) {
         // HMAC-SHA256 verification — lookup signing secret for this association
         const associationIdForVerify = typeof req.body.associationId === "string" ? req.body.associationId : null;
@@ -6743,6 +6811,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/financial/ar-aging?associationId — AR AGING / DELINQUENCY (read-only,
+  // owner-ledger-derived, no GL flag / no assessment needed).
+  app.get("/api/financial/ar-aging", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const report = await buildArAgingReport(associationId);
+      res.json(report);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // GET /api/admin/financial/reconciliation-report?associationId
   // Per-owner balance reconciliation: expected (charges − payments via canonical
   // formula) vs actual (sum of ledger entries) per ownership row. Empty state when
@@ -6971,6 +7053,116 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         totalOutstanding,
         delinquentUnits,
         budgetUtilization,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/financial/reports/cash-flow?startDate&endDate&associationId
+  //
+  // READ-ONLY cash-activity report for a self-managed HOA (cash-basis approximation).
+  // Cash IN  = owner-ledger payments received (by postedAt).
+  // Cash OUT = vendor invoices (by invoiceDate, excluding draft/void) + utility
+  //            payments (by paidDate ?? dueDate ?? createdAt), grouped by expense
+  //            category. Mirrors how the Budgets "actual" figure is computed, so
+  //            the numbers reconcile with the Budget-vs-Actual report. Never writes
+  //            any table; moves no money.
+  app.get("/api/financial/reports/cash-flow", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+
+      const startDateParam = typeof req.query.startDate === "string" ? req.query.startDate : null;
+      const endDateParam = typeof req.query.endDate === "string" ? req.query.endDate : null;
+      const startDate = startDateParam ? new Date(startDateParam) : new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+      const endDate = endDateParam ? new Date(endDateParam) : new Date();
+
+      const inRange = (d: Date | null | undefined) => {
+        if (!d) return false;
+        const t = new Date(d).getTime();
+        return t >= startDate.getTime() && t <= endDate.getTime();
+      };
+      const monthKey = (d: Date | null | undefined) => {
+        const dt = d ? new Date(d) : new Date();
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+      };
+
+      // ── Cash IN: owner-ledger payments received in the period ──
+      const paymentRows = await db.select().from(ownerLedgerEntries).where(and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        eq(ownerLedgerEntries.entryType, "payment"),
+        gte(ownerLedgerEntries.postedAt, startDate),
+        lte(ownerLedgerEntries.postedAt, endDate),
+      ));
+
+      // ── Cash OUT: vendor invoices + utility payments ──
+      const [invoices, utilities, categories] = await Promise.all([
+        storage.getVendorInvoices(associationId),
+        storage.getUtilityPayments(associationId),
+        storage.getFinancialCategories(associationId),
+      ]);
+      const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+      const nameForCategory = (categoryId: string | null | undefined) =>
+        (categoryId && categoryNameById.get(categoryId)) || "Uncategorized";
+
+      // Aggregate into monthly buckets + per-category outflow
+      const monthMap = new Map<string, { cashIn: number; cashOut: number }>();
+      const bump = (key: string, field: "cashIn" | "cashOut", amount: number) => {
+        const cur = monthMap.get(key) ?? { cashIn: 0, cashOut: 0 };
+        cur[field] += amount;
+        monthMap.set(key, cur);
+      };
+
+      let totalCashIn = 0;
+      for (const p of paymentRows) {
+        const amt = Math.abs(p.amount);
+        totalCashIn += amt;
+        bump(monthKey(p.postedAt), "cashIn", amt);
+      }
+
+      const outByCategory = new Map<string, number>();
+      let totalCashOut = 0;
+
+      for (const inv of invoices) {
+        if (inv.status === "draft" || inv.status === "void") continue;
+        if (!inRange(inv.invoiceDate)) continue;
+        const amt = Math.abs(inv.amount);
+        totalCashOut += amt;
+        bump(monthKey(inv.invoiceDate), "cashOut", amt);
+        const cat = nameForCategory(inv.categoryId);
+        outByCategory.set(cat, (outByCategory.get(cat) ?? 0) + amt);
+      }
+
+      for (const u of utilities) {
+        const when = u.paidDate ?? u.dueDate ?? u.createdAt;
+        if (!inRange(when)) continue;
+        const amt = Math.abs(u.amount);
+        totalCashOut += amt;
+        bump(monthKey(when), "cashOut", amt);
+        const cat = nameForCategory(u.categoryId) === "Uncategorized"
+          ? `Utilities${u.utilityType ? ` — ${u.utilityType}` : ""}`
+          : nameForCategory(u.categoryId);
+        outByCategory.set(cat, (outByCategory.get(cat) ?? 0) + amt);
+      }
+
+      const series = Array.from(monthMap.entries())
+        .map(([month, v]) => ({ month, cashIn: v.cashIn, cashOut: v.cashOut, net: v.cashIn - v.cashOut }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      const byCategory = Array.from(outByCategory.entries())
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount);
+
+      res.json({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        cashIn: { total: totalCashIn },
+        cashOut: { total: totalCashOut, byCategory },
+        netCashFlow: totalCashIn - totalCashOut,
+        series,
+        basis: "Cash-basis approximation. Cash in = owner payments received (by post date). Cash out = vendor invoices (by invoice date, excluding drafts/voids) and utility payments (by paid/due date).",
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -12952,67 +13144,87 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       await db.delete(portalLoginTokens).where(eq(portalLoginTokens.email, email));
       await db.insert(portalLoginTokens).values({ associationId: null, email, otpHash, expiresAt });
 
+      // Resolve the owner's community (association) name so the email is branded to THEIR HOA,
+      // not to the platform. The OTP flow is email-only (one code covers all of an email's
+      // associations). If the email maps to exactly one association, use that name; if it maps
+      // to multiple (rare) or none resolvable, fall back to a neutral label — never invent a name.
+      let communityName = "Your community portal";
+      {
+        const distinctAssocIds = Array.from(new Set(activeAccesses.map((a) => a.associationId)));
+        if (distinctAssocIds.length === 1) {
+          const [assocRow] = await db
+            .select({ name: associations.name })
+            .from(associations)
+            .where(eq(associations.id, distinctAssocIds[0]));
+          if (assocRow?.name) communityName = assocRow.name;
+        }
+      }
+
       // Send the OTP via email; fall back to simulation mode
       const emailProviderReady = isEmailProviderConfigured();
       if (emailProviderReady) {
         try {
           await sendPlatformEmail({
             to: email,
-            subject: "Your Owner Portal Login Code — Your Condo Management",
+            subject:
+              communityName === "Your community portal"
+                ? "Your login code — Your Condo Manager Owner Portal"
+                : `Your ${communityName} login code`,
             html: `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;padding:40px 16px">
+<body style="margin:0;padding:0;background-color:#f5f9f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f9f8;padding:40px 16px">
     <tr><td align="center">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(1,77,74,0.08)">
 
         <!-- Header -->
-        <tr><td style="background-color:#1e293b;border-radius:12px 12px 0 0;padding:28px 32px">
+        <tr><td style="background-color:#014D4A;background:linear-gradient(135deg,#014D4A,#036a66);padding:30px 32px">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td>
-                <div style="display:inline-block;background-color:#6366f1;color:#ffffff;font-size:13px;font-weight:700;letter-spacing:0.05em;padding:6px 12px;border-radius:6px">YCM</div>
+              <td style="vertical-align:middle;width:42px">
+                <div style="width:38px;height:38px;border-radius:9px;background-color:#ffffff;color:#014D4A;font-size:20px;font-weight:800;text-align:center;line-height:38px;font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif">${(communityName.match(/[A-Za-z]/)?.[0] ?? "C").toUpperCase()}</div>
+              </td>
+              <td style="vertical-align:middle;padding-left:12px">
+                <div style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.01em">${communityName}</div>
+                <div style="font-size:12.5px;color:#bfe8e2;margin-top:1px">Owner Portal</div>
               </td>
             </tr>
-            <tr><td style="padding-top:14px">
-              <div style="font-size:20px;font-weight:600;color:#ffffff">Your Condo Management</div>
-              <div style="font-size:13px;color:#94a3b8;margin-top:2px">Owner Portal</div>
-            </td></tr>
           </table>
         </td></tr>
 
         <!-- Body -->
-        <tr><td style="background-color:#ffffff;padding:32px">
-          <p style="margin:0 0 8px;font-size:22px;font-weight:600;color:#0f172a">Your login code</p>
-          <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.6">
+        <tr><td style="background-color:#ffffff;padding:34px 32px">
+          <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#0f2725">Your login code</p>
+          <p style="margin:0 0 26px;font-size:15px;color:#5b716e;line-height:1.6">
             Use the code below to sign in to your owner portal.<br>
-            This code expires in <strong style="color:#0f172a">15 minutes</strong>.
+            It expires in <strong style="color:#0f2725">15 minutes</strong>.
           </p>
 
           <!-- Code block -->
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px">
-            <tr><td style="background-color:#f1f5f9;border:2px dashed #cbd5e1;border-radius:10px;padding:28px;text-align:center">
-              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#64748b;margin-bottom:10px;font-weight:600">One-time code</div>
-              <div style="font-size:42px;font-weight:700;letter-spacing:0.3em;color:#1e293b;font-family:'Courier New',Courier,monospace">${otp}</div>
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:26px">
+            <tr><td style="background-color:#eafaf8;border:2px dashed #8fd0c8;border-radius:12px;padding:26px;text-align:center">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:#0f8a4a;margin-bottom:10px;font-weight:700">One-time code</div>
+              <div style="font-size:42px;font-weight:700;letter-spacing:0.3em;color:#014D4A;font-family:'Courier New',Courier,monospace">${otp}</div>
             </td></tr>
           </table>
 
-          <p style="margin:0 0 16px;font-size:14px;color:#475569;line-height:1.6">
-            Enter this code on the login screen to access your account. For security, do not share this code with anyone — Your Condo Management will never ask for it.
+          <p style="margin:0 0 16px;font-size:14px;color:#5b716e;line-height:1.6">
+            Enter this code on the login screen to access your account. For your security, never share this code — we will never ask you for it.
           </p>
 
-          <table cellpadding="0" cellspacing="0" style="margin-bottom:8px">
-            <tr><td style="background-color:#fef3c7;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;padding:10px 14px">
-              <span style="font-size:13px;color:#92400e">If you did not request this code, you can safely ignore this email.</span>
+          <table cellpadding="0" cellspacing="0" style="margin-bottom:4px">
+            <tr><td style="background-color:#fff8e8;border-left:3px solid #b8860b;border-radius:0 6px 6px 0;padding:10px 14px">
+              <span style="font-size:13px;color:#7a5a12">If you did not request this code, you can safely ignore this email — no one can access your account without it.</span>
             </td></tr>
           </table>
         </td></tr>
 
         <!-- Footer -->
-        <tr><td style="background-color:#f1f5f9;border-radius:0 0 12px 12px;padding:20px 32px">
-          <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">
-            &copy; ${new Date().getFullYear()} Your Condo Management &nbsp;&middot;&nbsp; Owner Portal &nbsp;&middot;&nbsp; This is an automated message, please do not reply.
+        <tr><td style="background-color:#f5f9f8;border-top:1px solid #e3ecea;padding:20px 32px">
+          <p style="margin:0;font-size:12px;color:#8aa3a0;text-align:center;line-height:1.6">
+            This is an automated message — please do not reply.<br>
+            Powered by Your Condo Manager
           </p>
         </td></tr>
 
@@ -13021,7 +13233,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   </table>
 </body>
 </html>`,
-            text: `Your Condo Management — Owner Portal\n\nYour login code is: ${otp}\n\nThis code expires in 15 minutes. Enter it on the login screen to access your account.\n\nDo not share this code with anyone. If you did not request it, you can safely ignore this email.\n\n© ${new Date().getFullYear()} Your Condo Management`,
+            text: `${communityName} — Owner Portal\n\nYour login code is: ${otp}\n\nThis code expires in 15 minutes. Enter it on the login screen to access your account.\n\nFor your security, never share this code. If you did not request it, you can safely ignore this email.\n\nPowered by Your Condo Manager`,
           });
         } catch (emailErr: any) {
           console.error("[portal-otp][email-send-failed]", { email, error: emailErr.message });
@@ -13875,6 +14087,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const myEntries = allEntries.filter((e) => e.personId === req.portalPersonId);
       const balance = myEntries.reduce((sum, e) => sum + e.amount, 0);
       const activePlan = paymentPlansAll.find((p) => p.status === "active") ?? null;
+      // 2026-07-01 (display-only) — most-recent payment date, derived read-only
+      // from the ledger. Drives the owner-portal "Paid in full on <date>" state
+      // when the owner owes nothing. No money logic, no ledger write — just the
+      // `postedAt` of the newest `payment`/`credit` entry.
+      const lastPayment = myEntries
+        .filter((e) => e.entryType === "payment" || e.entryType === "credit")
+        .map((e) => (e.postedAt ? new Date(e.postedAt) : null))
+        .filter((d): d is Date => d != null && !Number.isNaN(d.getTime()))
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
       // Next due date from the soonest upcoming nextRunDate
       const nextDue = activeSchedules
         .map((s) => s.nextRunDate ? new Date(s.nextRunDate) : null)
@@ -13965,12 +14186,27 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const amountDueResolution = resolveAmountDue(planInput, new Date());
       const amountDueThisPeriod = toAmountDueThisPeriod(amountDueResolution);
 
+      // 2026-07-03 (display-only) — the "My Finances" summary tiles are
+      // labeled "Total paid (YTD)" / "Total charges (YTD)" and the client
+      // reads `dashboard.totalCharges` / `dashboard.totalPayments`, but the
+      // endpoint previously only sent `totalCharged` / `totalPaid`, so both
+      // tiles rendered $0.00. Provide the exact fields the client expects,
+      // filtered to the current calendar year (year-to-date). Same entry-type
+      // groupings as the all-time totals above; scoped to `myEntries` (all of
+      // this owner's units). Read-only aggregation — no ledger/money writes.
+      const ytdStart = new Date(new Date().getFullYear(), 0, 1);
+      const myEntriesYtd = myEntries.filter((e) => e.postedAt && new Date(e.postedAt) >= ytdStart);
       res.json({
         balance,
         totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
         totalPaid: Math.abs(myEntries.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
+        // Year-to-date fields consumed by the summary tiles on My Finances.
+        totalCharges: myEntriesYtd.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
+        totalPayments: Math.abs(myEntriesYtd.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
         feeSchedules: activeSchedules.map((s) => ({ id: s.id, name: s.chargeDescription, amount: s.amount, frequency: s.frequency })),
         nextDueDate: nextDue ? nextDue.toISOString() : null,
+        // 2026-07-01 (display-only) — drives the "Paid in full on <date>" state.
+        lastPaymentDate: lastPayment ? lastPayment.toISOString() : null,
         paymentPlan: activePlan ? {
           id: activePlan.id,
           totalAmount: activePlan.totalAmount,
@@ -19011,6 +19247,31 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
   });
 
+  // GET /api/bank-feed/provider
+  // Tells the client which bank-feed provider is active so the bank-connect UI
+  // can pick the right collection flow. Behind the STRIPE_FINANCIAL_CONNECTIONS_
+  // ENABLED flag: returns provider "stripe_fc" + the platform publishable key
+  // (needed by Stripe.js collectFinancialConnectionsAccounts) when ON, else
+  // provider "plaid" with no FC config. Read-only metadata — admin-scoped.
+  app.get("/api/bank-feed/provider", requireAdmin, async (_req: AdminRequest, res) => {
+    try {
+      if (isStripeFinancialConnectionsEnabled()) {
+        const publishableKey = await getSecret(
+          "PLATFORM_STRIPE_PUBLISHABLE_KEY",
+          "platform_stripe_publishable_key",
+        );
+        return res.json({
+          provider: "stripe_fc",
+          fc: { publishableKey: publishableKey ?? null },
+        });
+      }
+      return res.json({ provider: "plaid", fc: null });
+    } catch (error: any) {
+      debug("[bank-feed][provider] error", error);
+      res.status(500).json({ error: error.message, code: "BANK_FEED_PROVIDER_ERROR" });
+    }
+  });
+
   // GET /api/plaid/oauth-return
   // OAuth landing route. This path IS the `redirect_uri` registered with Plaid
   // (PLAID_REDIRECT_URI = https://app.yourcondomanager.org/api/plaid/oauth-return).
@@ -19065,7 +19326,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         .insert(bankConnections)
         .values({
           associationId,
-          provider: "plaid",
+          // Tag the row with the active provider so the source of each
+          // connection is auditable after a vendor pivot. The bank-feed engine
+          // is provider-agnostic (it goes through bankFeedProvider), so the
+          // value is metadata, not a dispatch key.
+          provider: isStripeFinancialConnectionsEnabled() ? "stripe_fc" : "plaid",
           providerItemId: itemId,
           accessTokenEncrypted,
           institutionName: institutionName ?? null,
@@ -19434,6 +19699,86 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       debug("[plaid][webhook] error", error);
       // Return 200 so Plaid does not retry on our internal (post-verification)
       // errors. The webhook was authentic; the sweep backstop recovers it.
+      res.status(200).json({ received: false, error: error.message });
+    }
+  });
+
+  // POST /api/webhooks/stripe-fc
+  // Receives Stripe Financial Connections webhook events (only meaningful when
+  // STRIPE_FINANCIAL_CONNECTIONS_ENABLED is ON — otherwise bankFeedProvider is
+  // Plaid and this returns 200 no-op). No auth: the body is verified via the
+  // Stripe-Signature HMAC inside bankFeedProvider.verifyWebhook (production
+  // enforces; test may skip when no secret is set). Unverified = 401.
+  //
+  // FC events reference the FC ACCOUNT id (not the session id stored in
+  // provider_item_id), so we resolve account → bank_accounts → bankConnectionId
+  // and sync that connection. If the account isn't found, the 5-min sweep is the
+  // backstop (parity with Plaid's dropped-event recovery).
+  app.post("/api/webhooks/stripe-fc", async (req, res) => {
+    if (!isStripeFinancialConnectionsEnabled()) {
+      // FC not the active provider — accept + ignore so a stray delivery never
+      // 500s or gets retry-stormed.
+      return res.status(200).json({ received: true, ignored: "fc-disabled" });
+    }
+
+    // STEP 1 — verify the Stripe signature (401 on failure).
+    let event;
+    try {
+      const rawBody = Buffer.isBuffer((req as any).rawBody)
+        ? (req as any).rawBody.toString("utf8")
+        : JSON.stringify(req.body);
+      event = await bankFeedProvider.verifyWebhook(
+        req.headers as Record<string, string>,
+        rawBody,
+      );
+    } catch (verifyError: any) {
+      debug("[stripe-fc][webhook] verification failed", verifyError);
+      return res
+        .status(401)
+        .json({ received: false, error: "webhook verification failed" });
+    }
+
+    // STEP 2 — process. Errors here → 200 (sweep is the backstop), matching the
+    // Plaid handler so Stripe doesn't retry-storm us on an internal hiccup.
+    try {
+      debug("[stripe-fc][webhook] received", {
+        webhookType: event.webhookType,
+        webhookCode: event.webhookCode,
+        accountId: event.itemId,
+      });
+
+      // event.itemId carries the FC ACCOUNT id (see StripeFcProvider.verifyWebhook).
+      const fcAccountId = event.itemId;
+      if (fcAccountId) {
+        const [acct] = await db
+          .select({ bankConnectionId: bankAccounts.bankConnectionId })
+          .from(bankAccounts)
+          .where(eq(bankAccounts.providerAccountId, fcAccountId))
+          .limit(1);
+
+        if (event.webhookType === "ITEM" && event.webhookCode === "USER_PERMISSION_REVOKED") {
+          if (acct?.bankConnectionId) {
+            await db
+              .update(bankConnections)
+              .set({ status: "revoked", updatedAt: new Date() })
+              .where(eq(bankConnections.id, acct.bankConnectionId));
+          }
+        } else if (
+          event.webhookType === "TRANSACTIONS" &&
+          event.webhookCode === "SYNC_UPDATES_AVAILABLE" &&
+          acct?.bankConnectionId
+        ) {
+          // Fire-and-forget per-connection sync (debounce/lock live inside the
+          // sync engine). No item_id path for FC — sync by connection id.
+          syncBankFeedForConnection(acct.bankConnectionId, "manual").catch((err: unknown) => {
+            debug("[stripe-fc][webhook] async sync failed", err);
+          });
+        }
+      }
+
+      res.json({ received: true });
+    } catch (error: any) {
+      debug("[stripe-fc][webhook] error", error);
       res.status(200).json({ received: false, error: error.message });
     }
   });

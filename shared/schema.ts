@@ -33,9 +33,28 @@ export const units = pgTable("units", {
   unitNumber: text("unit_number").notNull(),
   building: text("building"),
   squareFootage: real("square_footage"),
+  // ── Phase 1 (P0-3): unique per-unit payment reference ──────────────────────
+  // A short, human-readable, stable per-unit reference (e.g. "CHC-0007") that
+  // owners put on their remittance (Stripe metadata + mailed-check memo). The
+  // reconciliation matcher's Tier-0 pass resolves a deposit to this unit at
+  // confidence 1.0 BEFORE any name-guessing. NULLABLE + backfillable — additive;
+  // units without a ref match exactly as they do today (person/name path).
+  // Uniqueness is scoped per association (see units_assoc_account_ref_uq).
+  unitAccountRef: text("unit_account_ref"),
+  // ── Phase 1 (P0-1): designated primary contact for the payer roster ────────
+  // Which co-owner is the "primary contact" for the unit's balance. NULLABLE —
+  // when null, callers fall back to the earliest-startDate active ownership.
+  // Additive metadata; does NOT change the balance owner (the UNIT is the
+  // balance-bearing entity). Kept as a plain varchar holding a persons.id
+  // (persons is declared after units, so no inline .references() wrapper to
+  // avoid a forward-declaration cycle); the migration adds the FK constraint.
+  primaryContactPersonId: varchar("primary_contact_person_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueAssociationBuildingUnitNumber: uniqueIndex("units_association_building_unit_number_uq").on(table.associationId, table.buildingId, table.unitNumber),
+  // P0-3: a unit_account_ref must be unique WITHIN an association. Postgres
+  // treats NULLs as distinct, so un-backfilled units (NULL ref) don't collide.
+  uniqueAssociationAccountRef: uniqueIndex("units_assoc_account_ref_uq").on(table.associationId, table.unitAccountRef),
 }));
 
 export const buildings = pgTable("buildings", {
@@ -611,6 +630,72 @@ export const utilityPayments = pgTable("utility_payments", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ── Disbursements — dual-approval (maker-checker) money-OUT control ────────────
+//
+// HOA Remediation Phase 2 (hoa-remediation-roadmap.html): segregation of duties
+// on disbursements — the #1 embezzlement control. A disbursement records a
+// money-OUT request (a payment to a vendor / against a vendor invoice) that MUST
+// be approved by a DIFFERENT admin than the one who created it (maker ≠ checker)
+// before it can be marked payable / paid.
+//
+// NET-NEW, ADDITIVE, ZERO live-book exposure: this table + its lifecycle are new.
+// It does NOT post to the owner ledger, the GL, or any existing money path — it
+// is an approval-gate record that PRECEDES any real payment. Marking a
+// disbursement "paid" here records the approved-payment fact; it wires to no
+// existing payout rail in this phase.
+//
+// Lifecycle (status): draft → pending-approval → approved → paid
+//                             (or → rejected from draft / pending-approval)
+// Maker ≠ checker is enforced SERVER-SIDE in the service layer, not just the UI:
+// createdByAdminUserId can never equal approvedByAdminUserId / rejectedByAdminUserId.
+export const disbursementStatusEnum = pgEnum("disbursement_status", [
+  "draft",
+  "pending-approval",
+  "approved",
+  "paid",
+  "rejected",
+]);
+
+export const disbursements = pgTable("disbursements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The payee. vendorId is the linked vendor (optional — an ad-hoc payee is
+  // allowed via vendorName only). Amount is stored in INTEGER CENTS so money
+  // math is exact (mirrors the GL cents convention).
+  vendorId: varchar("vendor_id").references(() => vendors.id),
+  vendorName: text("vendor_name").notNull(),
+  // Optional link to the vendor invoice this disbursement pays.
+  vendorInvoiceId: varchar("vendor_invoice_id").references(() => vendorInvoices.id),
+  amountCents: integer("amount_cents").notNull(),
+  memo: text("memo"),
+  status: disbursementStatusEnum("status").notNull().default("draft"),
+  // MAKER — the admin who created the request. notNull: every disbursement has
+  // an accountable originator. This is the identity checked against the approver.
+  createdByAdminUserId: varchar("created_by_admin_user_id").notNull().references(() => adminUsers.id),
+  createdByEmail: text("created_by_email").notNull(),
+  // CHECKER — the DIFFERENT admin who approved (or rejected) the request.
+  // Null until an approve/reject decision is recorded. Enforced ≠ maker.
+  approvedByAdminUserId: varchar("approved_by_admin_user_id").references(() => adminUsers.id),
+  approvedByEmail: text("approved_by_email"),
+  approvedAt: timestamp("approved_at"),
+  rejectedByAdminUserId: varchar("rejected_by_admin_user_id").references(() => adminUsers.id),
+  rejectedByEmail: text("rejected_by_email"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  // Set when a disbursement is marked paid (records the approved-payment fact;
+  // wires to no live payout rail in this phase).
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  // Unit-of-work read index: list a tenant's disbursements by recency + status.
+  disbursementsAssocStatusIdx: index("disbursements_assoc_status_created_idx").on(
+    table.associationId,
+    table.status,
+    table.createdAt,
+  ),
+}));
+
 export const paymentMethodConfigs = pgTable("payment_method_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -729,7 +814,23 @@ export const ownerLedgerEntryTypeEnum = pgEnum("owner_ledger_entry_type", ["char
 export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The UNIT is the balance-bearing entity (Phase 1 / P0-1). unitId stays
+  // notNull and is the sole balance key. Every existing row already carries a
+  // valid unitId, so the unit balance is fully derivable today.
   unitId: varchar("unit_id").notNull().references(() => units.id),
+  // Phase 1 (P0-1) — SEMANTIC pivot: personId is now "tendered-by" METADATA
+  // (who paid), NOT the balance owner. The UNIT bears the balance; co-owners
+  // are jointly & severally liable. We deliberately keep the Drizzle/TS type
+  // notNull() (so the ~30 existing call sites that read entry.personId stay
+  // type-clean and BACKWARD-COMPATIBLE — no cascade), while relaxing the intent:
+  // for a unit-level payment where no single person tendered, callers set the
+  // unit's primary-contact person as the "tendered-by" value rather than being
+  // blocked. The ACTUAL database NOT NULL relaxation (so a NULL personId can be
+  // stored) is a staged, gated, flag-guarded step deferred to the migration
+  // PLAN (docs/phase1-unit-centric-migration-plan.md §Phase C) — it is NOT run
+  // here and NOT reflected in the column type, precisely to avoid breaking
+  // existing data / existing readers. Balance-of-record reads should group by
+  // unitId, not personId (see buildUnitAccountStatement).
   personId: varchar("person_id").notNull().references(() => persons.id),
   entryType: ownerLedgerEntryTypeEnum("entry_type").notNull(),
   amount: real("amount").notNull(),
@@ -741,7 +842,11 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   bankTransactionId: varchar("bank_transaction_id"),
   settledAt: timestamp("settled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Phase 1 (P0-1): unit-scoped statement + aging reads group by
+  // (associationId, unitId, postedAt). Additive index — no column change.
+  byAssocUnitPosted: index("owner_ledger_entries_assoc_unit_posted_idx").on(table.associationId, table.unitId, table.postedAt),
+}));
 
 export const paymentPlanStatusEnum = pgEnum("payment_plan_status", ["active", "completed", "defaulted", "cancelled"]);
 export const paymentPlans = pgTable("payment_plans", {
@@ -2188,6 +2293,20 @@ export const insertBudgetVersionSchema = createInsertSchema(budgetVersions).omit
 export const insertBudgetLineSchema = createInsertSchema(budgetLines).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorInvoiceSchema = createInsertSchema(vendorInvoices).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDisbursementSchema = createInsertSchema(disbursements).omit({
+  id: true,
+  status: true,
+  approvedByAdminUserId: true,
+  approvedByEmail: true,
+  approvedAt: true,
+  rejectedByAdminUserId: true,
+  rejectedByEmail: true,
+  rejectedAt: true,
+  rejectionReason: true,
+  paidAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertUtilityPaymentSchema = createInsertSchema(utilityPayments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentMethodConfigSchema = createInsertSchema(paymentMethodConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentGatewayConnectionSchema = createInsertSchema(paymentGatewayConnections).omit({ id: true, createdAt: true, updatedAt: true, lastValidatedAt: true });
@@ -2389,6 +2508,9 @@ export type Vendor = typeof vendors.$inferSelect;
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorInvoice = typeof vendorInvoices.$inferSelect;
 export type InsertVendorInvoice = z.infer<typeof insertVendorInvoiceSchema>;
+export type Disbursement = typeof disbursements.$inferSelect;
+export type InsertDisbursement = z.infer<typeof insertDisbursementSchema>;
+export type DisbursementStatus = (typeof disbursementStatusEnum.enumValues)[number];
 export type UtilityPayment = typeof utilityPayments.$inferSelect;
 export type InsertUtilityPayment = z.infer<typeof insertUtilityPaymentSchema>;
 export type PaymentMethodConfig = typeof paymentMethodConfigs.$inferSelect;

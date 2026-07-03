@@ -37,6 +37,71 @@ function statusBadge(status: string) {
   return <Badge variant={m.variant}>{m.label}</Badge>;
 }
 
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+
+// William finding #5 — the run-history "Unit" column must show the FULL
+// identifying location, not a bare unit number, because duplicate unit numbers
+// across buildings make a bare number ambiguous. Renders
+// "<building> · Unit <n>" when a building is present, else "Unit <n>".
+export function formatUnitLabel(
+  unitId: string | null | undefined,
+  units: ReadonlyArray<{ id: string; unitNumber: string; building?: string | null }>,
+): string {
+  if (!unitId) return "All units";
+  const u = units.find((x) => x.id === unitId);
+  if (!u) return `Unit ${unitId.slice(0, 8)}…`;
+  const building = u.building?.trim();
+  return building ? `${building} · Unit ${u.unitNumber}` : `Unit ${u.unitNumber}`;
+}
+
+// William finding #4 — the run-history status must be self-explanatory about
+// WHAT happened, not a bare "Success". A run posts (or fails to post) a single
+// owner-ledger charge for one unit, so a successful run means the charge was
+// posted to the ledger. Say exactly that, with the posted amount + a tooltip.
+export function runStatusMeta(
+  status: string,
+  amount: number,
+): { label: string; variant: BadgeVariant; title: string } {
+  const money = `$${amount.toFixed(2)}`;
+  const map: Record<string, { label: string; variant: BadgeVariant; title: string }> = {
+    success: {
+      label: `Charge posted · ${money}`,
+      variant: "default",
+      title: `A ${money} charge was posted to the owner's ledger for this unit.`,
+    },
+    failed: {
+      label: "Posting failed",
+      variant: "destructive",
+      title: "The charge could not be posted to the ledger. See the error and retry.",
+    },
+    pending: {
+      label: "Queued to post",
+      variant: "secondary",
+      title: "This charge is queued and has not been posted to the ledger yet.",
+    },
+    retrying: {
+      label: "Retrying",
+      variant: "secondary",
+      title: "A previous attempt failed; the system is retrying the posting.",
+    },
+    skipped: {
+      label: "Skipped (no charge)",
+      variant: "outline",
+      title: "No charge was posted for this unit (e.g. excluded by scope or already charged).",
+    },
+  };
+  return map[status] ?? { label: status, variant: "outline", title: status };
+}
+
+function runStatusBadge(status: string, amount: number) {
+  const m = runStatusMeta(status, amount);
+  return (
+    <Badge variant={m.variant} title={m.title}>
+      {m.label}
+    </Badge>
+  );
+}
+
 export function FinancialRecurringChargesContent({ readOnly = false }: { readOnly?: boolean } = {}) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -83,18 +148,24 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
     enabled: Boolean(activeAssociationId),
   });
 
-  const { data: units = [] } = useQuery<Array<{ id: string; unitNumber: string }>>({
-    queryKey: ["/api/units"],
+  const { data: units = [] } = useQuery<
+    Array<{ id: string; unitNumber: string; building?: string | null }>
+  >({
+    queryKey: ["/api/units", activeAssociationId],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/units");
+      const res = await apiRequest(
+        "GET",
+        activeAssociationId ? `/api/units?associationId=${activeAssociationId}` : "/api/units",
+      );
       return res.json();
     },
   });
-  const unitNumberMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const u of units) map.set(u.id, u.unitNumber);
-    return map;
-  }, [units]);
+  // Run-history "Unit" column needs the FULL identifying location, not a bare
+  // unit number: duplicate unit numbers across buildings make a bare number
+  // ambiguous (e.g. two "Unit 1"s in Building A vs Building B). See
+  // formatUnitLabel (pure + unit-tested).
+  const unitLabel = (unitId: string | null | undefined): string =>
+    formatUnitLabel(unitId, units);
 
   const createSchedule = useMutation({
     mutationFn: async () => {
@@ -209,13 +280,13 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-medium leading-5">
-            {r.unitId ? (unitNumberMap.get(r.unitId) || `${r.unitId.slice(0, 8)}…`) : "All units"}
+            {unitLabel(r.unitId)}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {r.ranAt ? new Date(r.ranAt).toLocaleString() : new Date(r.createdAt).toLocaleString()}
           </div>
         </div>
-        {statusBadge(r.status)}
+        {runStatusBadge(r.status, r.amount)}
       </div>
       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
         <span className="rounded-full border bg-background px-2 py-1">${r.amount.toFixed(2)}</span>
@@ -423,9 +494,9 @@ export function FinancialRecurringChargesContent({ readOnly = false }: { readOnl
                     <TableCell className="text-sm text-muted-foreground">
                       {r.ranAt ? new Date(r.ranAt).toLocaleString() : new Date(r.createdAt).toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{r.unitId ? (unitNumberMap.get(r.unitId) || r.unitId.slice(0, 8) + "…") : "all"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{unitLabel(r.unitId)}</TableCell>
                     <TableCell className="font-medium">${r.amount.toFixed(2)}</TableCell>
-                    <TableCell>{statusBadge(r.status)}</TableCell>
+                    <TableCell>{runStatusBadge(r.status, r.amount)}</TableCell>
                     <TableCell className="text-sm">{r.retryCount}</TableCell>
                     <TableCell className="text-xs text-red-600 dark:text-red-400 max-w-xs truncate">{r.errorMessage ?? "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">

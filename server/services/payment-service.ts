@@ -442,6 +442,13 @@ export async function getAdminPaymentTransactions(params: {
 
 export async function ensureStripeCustomer(params: {
   secretKey: string;
+  /**
+   * 2026-06-30 — Stripe Connect. When set, the customer + setup session live on
+   * the connected HOA account (direct), and `secretKey` MUST be the PLATFORM
+   * key. The saved customer/payment-method ids are scoped to that connected
+   * account, so the setup-return MUST also fetch with this same header.
+   */
+  stripeAccountHeader?: string | null;
   associationId: string;
   personId: string;
   email?: string | null;
@@ -469,12 +476,16 @@ export async function ensureStripeCustomer(params: {
   customerParams.set("metadata[associationId]", params.associationId);
   customerParams.set("metadata[personId]", params.personId);
 
+  const customerHeaders: Record<string, string> = {
+    Authorization: `Bearer ${params.secretKey}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (params.stripeAccountHeader) {
+    customerHeaders["Stripe-Account"] = params.stripeAccountHeader;
+  }
   const res = await fetch("https://api.stripe.com/v1/customers", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.secretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: customerHeaders,
     body: customerParams.toString(),
   });
 
@@ -493,6 +504,9 @@ export async function ensureStripeCustomer(params: {
 
 export async function initiateStripeSetupCheckout(params: {
   secretKey: string;
+  /** 2026-06-30 — Connect. When set, the setup session is created on the
+   *  connected HOA account (`secretKey` = PLATFORM key). */
+  stripeAccountHeader?: string | null;
   stripeCustomerId: string;
   appBaseUrl: string;
   associationId: string;
@@ -504,19 +518,25 @@ export async function initiateStripeSetupCheckout(params: {
   const sessionParams = new URLSearchParams();
   sessionParams.set("mode", "setup");
   sessionParams.set("customer", params.stripeCustomerId);
-  sessionParams.set("payment_method_types[0]", "us_bank_account");
+  // Card + ACH: owners can save either a card or a bank account.
+  sessionParams.set("payment_method_types[0]", "card");
+  sessionParams.set("payment_method_types[1]", "us_bank_account");
   sessionParams.set("payment_method_options[us_bank_account][verification_method]", "instant");
   sessionParams.set("success_url", successUrl);
   sessionParams.set("cancel_url", cancelUrl);
   sessionParams.set("metadata[associationId]", params.associationId);
   sessionParams.set("metadata[personId]", params.personId);
 
+  const setupHeaders: Record<string, string> = {
+    Authorization: `Bearer ${params.secretKey}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (params.stripeAccountHeader) {
+    setupHeaders["Stripe-Account"] = params.stripeAccountHeader;
+  }
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.secretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: setupHeaders,
     body: sessionParams.toString(),
   });
 
@@ -674,12 +694,22 @@ export async function chargeOffSession(params: {
 
 export async function fetchStripeCheckoutSession(params: {
   secretKey: string;
+  /** 2026-06-30 — Connect. Must match the header the session was created with,
+   *  or Stripe returns "No such checkout session" for a connected-account
+   *  session fetched without it. */
+  stripeAccountHeader?: string | null;
   sessionId: string;
 }): Promise<Record<string, unknown> | null> {
+  const fetchHeaders: Record<string, string> = {
+    Authorization: `Bearer ${params.secretKey}`,
+  };
+  if (params.stripeAccountHeader) {
+    fetchHeaders["Stripe-Account"] = params.stripeAccountHeader;
+  }
   const res = await fetch(
     `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(params.sessionId)}?expand[]=setup_intent.payment_method`,
     {
-      headers: { Authorization: `Bearer ${params.secretKey}` },
+      headers: fetchHeaders,
     },
   );
   if (!res.ok) return null;

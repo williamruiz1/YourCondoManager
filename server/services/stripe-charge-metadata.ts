@@ -128,6 +128,14 @@ export type ChargeMetadataContext = {
   autopayEnrollmentId?: string | null;
   /** YYYY-MM-DD */
   originalDueDate?: string | null;
+  /**
+   * Phase 1 (P0-3) — the unit's unique payment reference (units.unitAccountRef,
+   * e.g. "CHC-0007"). When present, it is emitted as `unit_account_ref` so the
+   * reconciliation Tier-0 pass can resolve the deposit to the unit at
+   * confidence 1.0 straight off the Stripe metadata rail. Optional — un-backfilled
+   * units simply omit it (the existing unit_id + name path still applies).
+   */
+  unitAccountRef?: string | null;
 };
 
 /** Schema version per §3.1 `ycm_charge_version`. Bump on shape changes. */
@@ -160,6 +168,8 @@ export function buildSpecMetadata(ctx: ChargeMetadataContext): Record<string, st
   if (ctx.paymentLinkToken) out.payment_link_token = ctx.paymentLinkToken;
   if (ctx.autopayEnrollmentId) out.autopay_enrollment_id = ctx.autopayEnrollmentId;
   if (ctx.originalDueDate) out.original_due_date = ctx.originalDueDate;
+  // Phase 1 (P0-3): unique per-unit payment reference on the Stripe rail.
+  if (ctx.unitAccountRef) out.unit_account_ref = ctx.unitAccountRef;
   return out;
 }
 
