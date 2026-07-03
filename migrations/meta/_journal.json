@@ -379,6 +379,13 @@
 			"when": 1780400001004,
 			"tag": "0053_rate_limit_counters",
 			"breakpoints": true
+		},
+		{
+			"idx": 54,
+			"version": "7",
+			"when": 1780400001005,
+			"tag": "0054_period_closes",
+			"breakpoints": true
 		}
 	]
 }
