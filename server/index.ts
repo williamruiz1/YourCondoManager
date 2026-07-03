@@ -27,7 +27,7 @@ import { log } from "./logger";
 import { runMigrationHealthCheck } from "./migration-health";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
-import { createRateLimiter, onWriteOnly } from "./rate-limit";
+import { createRateLimiter, createPgRateLimiter, onWriteOnly, type RateLimitQuery } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
 import { resolveSessionCookieDomain } from "./session-cookie-domain";
 import { assertPlaidEnvSafe } from "./services/bank-feed/plaid-env-guard";
@@ -404,57 +404,94 @@ app.use((req, res, next) => {
     "stripe-fc",
   );
 
-  const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
-  app.use("/api/public", publicRateLimiter);
+  // ── Rate limiting (P1-4 / YCM#211) ───────────────────────────────────────
+  //
+  // Money-mutation + auth-adjacent routes use the MULTI-MACHINE-CORRECT
+  // Postgres-backed limiter (createPgRateLimiter): one shared fixed-window
+  // counter across all Fly machines via the existing `rate_limit_counters`
+  // table. fly.toml provisions 2 machines (one auto-stopped), so a per-machine
+  // in-memory counter would let a load-balanced attacker get up to 2x the
+  // intended quota on exactly these surfaces. No Redis, no new infra service.
+  // On a Postgres blip the limiter FAILS OPEN to a per-machine in-memory
+  // limiter (abuse protection, not a security gate — a DB blip must never DoS
+  // legitimate traffic). Full strategy + route inventory: docs/rate-limiting.md.
+  //
+  // Limits are generous — an 18-unit HOA never hits them in normal use (this is
+  // abuse protection, not customer throttling). `onWriteOnly` leaves GET reads
+  // (dashboards, reports) unthrottled on the money/admin prefixes.
+  const rlQuery: RateLimitQuery = (text, params) => pool.query(text, params);
+  const rlFallbackLog = (tier: string) => (err: unknown) =>
+    log(
+      `rate-limit ${tier}: Postgres unavailable, degrading to per-machine in-memory limiter :: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      "rate-limit",
+    );
 
-  // Portal login is the real brute-force surface. Apply a conservative
-  // limit to request-login (email enumeration / OTP spam) and a tighter
-  // limit to verify-login (OTP code brute-force).
-  const portalRequestLoginLimiter = createRateLimiter({
+  // TIER 1 — AUTH VERIFY (OTP / token verification: the tightest brute-force
+  // surface — an attacker guessing a 6-digit OTP or a ballot/verify token).
+  const authVerifyLimiter = createPgRateLimiter({
+    query: rlQuery,
+    keyPrefix: "auth-verify",
+    windowMs: 10 * 60_000,
+    max: 10,
+    message: "Too many verification attempts, please try again in a few minutes.",
+    onFallback: rlFallbackLog("auth-verify"),
+  });
+  app.use("/api/portal/verify-login", authVerifyLimiter);
+  app.use("/api/vendor-portal/verify-login", authVerifyLimiter);
+  app.use("/api/platform/email/verify", authVerifyLimiter);
+  app.use("/api/elections/ballot", authVerifyLimiter); // token-cast ballot surface
+
+  // TIER 2 — AUTH REQUEST (login request / magic-link send: email-enumeration +
+  // OTP-spam surface).
+  const authRequestLimiter = createPgRateLimiter({
+    query: rlQuery,
+    keyPrefix: "auth-request",
     windowMs: 60_000,
     max: 10,
     message: "Too many login attempts, please try again later.",
+    onFallback: rlFallbackLog("auth-request"),
   });
-  app.use("/api/portal/request-login", portalRequestLoginLimiter);
+  app.use("/api/portal/request-login", authRequestLimiter);
+  app.use("/api/vendor-portal/request-login", authRequestLimiter);
 
-  const portalVerifyLoginLimiter = createRateLimiter({
-    windowMs: 10 * 60_000,
-    max: 5,
-    message: "Too many verification attempts, please try again later.",
-  });
-  app.use("/api/portal/verify-login", portalVerifyLoginLimiter);
-
-  // P1-4 — financial-mutation + admin write rate limiting.
-  //
-  // The existing limiters above cover public surfaces and auth brute-force.
-  // Financial write routes (/api/financial/* POST/PATCH/DELETE) and general
-  // admin write routes (/api/admin/* POST/PATCH/DELETE) were previously
-  // unthrottled. Both require a valid admin session (requireAdmin middleware)
-  // so the attack surface is narrower than public, but an authenticated
-  // attacker or a runaway automated process could still generate large write
-  // volumes. These limits protect against that without impeding normal use
-  // (a treasurer recording dozens of payments in a session won't hit 60/min).
-  //
-  // Limits chosen per OWASP API Security Top 10 guidance for authenticated
-  // write surfaces: 60 requests/minute is permissive for human operators yet
-  // blocks automated write floods. The `onWriteOnly` wrapper leaves GET
-  // requests (financial dashboards, reports) unaffected.
-  //
-  // Multi-instance note: see rate-limit.ts — swap to Redis when YCM scales
-  // beyond a single Fly machine.
-  const financialWriteLimiter = createRateLimiter({
+  // TIER 3 — MONEY / ADMIN WRITE (payments, ledger, reconcile, autopay, Plaid,
+  // Stripe Connect, billing, admin writes). 60/min per IP is permissive for a
+  // treasurer recording a batch of payments yet blocks an automated write flood.
+  const moneyWriteLimiter = createPgRateLimiter({
+    query: rlQuery,
+    keyPrefix: "money-write",
     windowMs: 60_000,
     max: 60,
-    message: "Too many financial write requests, please slow down.",
+    message: "Too many financial requests, please slow down.",
+    onFallback: rlFallbackLog("money-write"),
   });
-  app.use("/api/financial", onWriteOnly(financialWriteLimiter));
+  app.use("/api/financial", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/admin", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/portal/pay", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/portal/payment-methods", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/portal/autopay", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/plaid", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/portal/plaid", onWriteOnly(moneyWriteLimiter));
 
-  const adminWriteLimiter = createRateLimiter({
+  // TIER 4 — INVITE / TOKEN GENERATION (send onboarding invites — email-send
+  // abuse surface). Admin-authed but still worth a generous cap.
+  const inviteLimiter = createPgRateLimiter({
+    query: rlQuery,
+    keyPrefix: "invite-gen",
     windowMs: 60_000,
-    max: 60,
-    message: "Too many admin write requests, please slow down.",
+    max: 20,
+    message: "Too many invitations sent, please slow down.",
+    onFallback: rlFallbackLog("invite-gen"),
   });
-  app.use("/api/admin", onWriteOnly(adminWriteLimiter));
+  app.use("/api/onboarding/invites", onWriteOnly(inviteLimiter));
+
+  // General public surface — a coarse per-machine in-memory guard is acceptable
+  // here (non-money, non-auth; the exact quota need not be shared across
+  // machines). Kept in-memory deliberately.
+  const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
+  app.use("/api/public", publicRateLimiter);
 
   await registerRoutes(httpServer, app);
 

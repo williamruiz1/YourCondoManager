@@ -4337,6 +4337,40 @@ export type BudgetLineGlMapping = typeof budgetLineGlMappings.$inferSelect;
 export type InsertBudgetLineGlMapping = z.infer<typeof insertBudgetLineGlMappingSchema>;
 
 // ──────────────────────────────────────────────────────────────────────────────
+// rate_limit_counters — the shared, multi-machine-correct backing store for the
+// Postgres-backed rate limiter (see server/rate-limit.ts + docs/rate-limiting.md).
+//
+// WHY THIS TABLE: the in-memory limiter keeps an independent counter per Fly
+// machine, so with `min_machines_running = 1` + auto-start (fly.toml already
+// provisions 2 machines), an attacker load-balanced across machines gets Nx the
+// intended quota on money-mutation + auth-brute-force surfaces. This table makes
+// the counter shared across all machines using the EXISTING Postgres — no Redis,
+// no new infra service.
+//
+// One row per (limiter key = tier:client-ip). A fixed-window counter: `count`
+// increments within a window; when `windowStart` advances to a new window the
+// row atomically resets to 1 (see the ON CONFLICT upsert in server/rate-limit.ts).
+// ADDITIVE — touches no existing table/row. Fail-open: if this table is
+// unavailable the limiter degrades to the per-machine in-memory limiter.
+// ──────────────────────────────────────────────────────────────────────────────
+export const rateLimitCounters = pgTable(
+  "rate_limit_counters",
+  {
+    /** `${tier}:${clientIp}` — one bucket per tier per client. */
+    key: text("key").primaryKey(),
+    /** Start of the current fixed window (ms since epoch, floored to windowMs). */
+    windowStart: timestamp("window_start").notNull(),
+    /** Requests seen in the current window. */
+    count: integer("count").notNull().default(0),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // Sweep stale windows cheaply (DELETE WHERE window_start < cutoff).
+    byWindow: index("rate_limit_counters_window_idx").on(table.windowStart),
+  }),
+);
+
+export type RateLimitCounter = typeof rateLimitCounters.$inferSelect;
 // Connecticut resale / "6(d)" certificate — CGS §47-270 (founder-os#8013)
 // ──────────────────────────────────────────────────────────────────────────────
 // A CT condo/HOA association MUST furnish a resale certificate within 10
