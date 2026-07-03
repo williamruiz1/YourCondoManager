@@ -4431,3 +4431,121 @@ export const assessmentLienPreforeclosures = pgTable("assessment_lien_preforeclo
 export const insertAssessmentLienPreforeclosureSchema = createInsertSchema(assessmentLienPreforeclosures).omit({ id: true, createdAt: true });
 export type AssessmentLienPreforeclosure = typeof assessmentLienPreforeclosures.$inferSelect;
 export type InsertAssessmentLienPreforeclosure = z.infer<typeof insertAssessmentLienPreforeclosureSchema>;
+
+// CT CGS §47-260 — Association records: statutory retention + owner
+// records-request workflow + mandatory/permissive withholding.
+// (founder-os#8017)
+//
+// Builds over the existing records substrate (documents / documentVersions /
+// meetingNotes / voteRecords / ownerships) — these tables add the statutory
+// retention metadata, the records-request lifecycle, and the per-record
+// withholding classification §47-260(c)/(d) requires. The statutory LOGIC
+// lives in pure functions in server/services/records-retention-service.ts.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Canonical record-type keys used by the §47-260 retention engine and the
+ * records-request workflow. Mirrors the §47-260(a) enumerated categories.
+ * The retention period for each is computed by `retentionPeriodYears()` in
+ * the service (§47-260(a)(5) = 3yr financials/tax; §47-260(a)(11) = 1yr
+ * ballots/proxies/voting; everything else = permanent / no statutory expiry).
+ */
+export const recordTypeEnum = pgEnum("records_record_type", [
+  "financial_statement", // §47-260(a)(5) — 3yr
+  "tax_return",          // §47-260(a)(5) — 3yr
+  "ballot",              // §47-260(a)(11) — 1yr
+  "proxy",               // §47-260(a)(11) — 1yr
+  "voting_record",       // §47-260(a)(11) — 1yr
+  "receipts_expenditures", // §47-260(a)(1)
+  "meeting_minutes",     // §47-260(a)(2)
+  "owner_roster",        // §47-260(a)(3)
+  "organizational_docs", // §47-260(a)(4)
+  "contract",            // §47-260(a) general
+  "other",
+]);
+export type RecordType = (typeof recordTypeEnum.enumValues)[number];
+
+/** §47-260(c)/(d) — how a record is classified for owner disclosure. */
+export const recordsWithholdingClassEnum = pgEnum("records_withholding_class", [
+  "none",       // disclosable
+  "mandatory",  // §47-260(c) — MUST be withheld (personnel/salary/medical, unredacted ballots/proxies)
+  "permissive", // §47-260(d) — MAY be withheld (active negotiation, litigation/mediation, attorney-client, exec session)
+]);
+export type RecordsWithholdingClass = (typeof recordsWithholdingClassEnum.enumValues)[number];
+
+/** §47-260(b) records-request lifecycle. */
+export const recordsRequestStatusEnum = pgEnum("records_request_status", [
+  "received",      // 30-day notice received from owner
+  "dates_offered", // two exam dates offered within 5 business days (§47-260(b))
+  "examined",      // owner inspected
+  "fulfilled",     // copies provided / request closed satisfied
+  "withheld",      // request fully withheld (§47-260(c)/(d))
+  "closed",        // closed (withdrawn / superseded)
+]);
+export type RecordsRequestStatus = (typeof recordsRequestStatusEnum.enumValues)[number];
+
+/**
+ * §47-260(b) — an owner's records-inspection request and its lifecycle.
+ * Multi-tenant: every row scoped by associationId.
+ */
+export const recordsRequests = pgTable("records_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The requesting unit owner. Nullable FK to ownerships so the request can be
+  // attributed to an authorized agent who is not in the roster.
+  ownershipId: varchar("ownership_id").references(() => ownerships.id),
+  requesterName: text("requester_name").notNull(),
+  requesterEmail: text("requester_email"),
+  // §47-260(b) — "a record reasonably identifying the specific records requested".
+  recordsRequested: text("records_requested").notNull(),
+  // When the association received the 30-day notice. Drives the response-due clock.
+  receivedAt: timestamp("received_at").notNull(),
+  // §47-260(b) — association must offer two exam dates "not later than five
+  // business days following the date of receiving such notice". Computed by
+  // computeResponseDueDate(receivedAt) at create time.
+  responseDueAt: timestamp("response_due_at").notNull(),
+  examDate1: timestamp("exam_date_1"),
+  examDate2: timestamp("exam_date_2"),
+  status: recordsRequestStatusEnum("status").notNull().default("received"),
+  // §47-260(e) — computed reasonable copy fee in cents (per-page + supervision).
+  copyFeeCents: integer("copy_fee_cents"),
+  pageCount: integer("page_count"),
+  fulfilledAt: timestamp("fulfilled_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  byAssociation: index("records_requests_association_idx").on(table.associationId),
+  byStatus: index("records_requests_status_idx").on(table.associationId, table.status),
+}));
+
+/**
+ * A candidate record attached to a records-request, carrying its §47-260(c)/(d)
+ * withholding classification. `included` is computed at response time by
+ * filterDisclosableRecords(): mandatory → always excluded; permissive →
+ * excluded only when withheld; none → included.
+ */
+export const recordsRequestItems = pgTable("records_request_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: varchar("request_id").notNull().references(() => recordsRequests.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  recordType: recordTypeEnum("record_type").notNull(),
+  // Optional link to the underlying document (existing records substrate).
+  documentId: varchar("document_id").references(() => documents.id),
+  label: text("label").notNull(),
+  // §47-260(c)/(d) classification for THIS record in THIS request.
+  withholdingClass: recordsWithholdingClassEnum("withholding_class").notNull().default("none"),
+  withholdingReason: text("withholding_reason"),
+  // 1 = disclosed to owner in the response; 0 = withheld. Computed at response time.
+  included: integer("included").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  byRequest: index("records_request_items_request_idx").on(table.requestId),
+}));
+
+export const insertRecordsRequestSchema = createInsertSchema(recordsRequests).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertRecordsRequestItemSchema = createInsertSchema(recordsRequestItems).omit({ id: true, createdAt: true });
+export type RecordsRequest = typeof recordsRequests.$inferSelect;
+export type InsertRecordsRequest = z.infer<typeof insertRecordsRequestSchema>;
+export type RecordsRequestItem = typeof recordsRequestItems.$inferSelect;
+export type InsertRecordsRequestItem = z.infer<typeof insertRecordsRequestItemSchema>;

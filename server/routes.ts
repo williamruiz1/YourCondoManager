@@ -1386,6 +1386,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const { registerAmenityRoutes } = await import("./routes/amenities");
   registerAmenityRoutes(app, requireAdmin, requireAdminRole, requirePortal);
 
+  // CT CGS §47-260 — owner records-request workflow + statutory retention
+  // (founder-os#8017).
+  const { registerRecordsRequestRoutes } = await import("./routes/records-requests");
+  registerRecordsRequestRoutes(app, requireAdmin, requireAdminRole);
+
   // Autopay enrollment & recurring collection routes
   registerAutopayRoutes(app, {
     requireAdmin,
