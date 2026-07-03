@@ -13,7 +13,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Receipt } from "lucide-react";
+import { CheckCircle2, Receipt } from "lucide-react";
 import type { OwnerLedgerEntry } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
@@ -533,6 +533,14 @@ function FinancesHubContent() {
   const amountDueThisPeriod = dashboard?.amountDueThisPeriod ?? null;
   const hasAmountDue =
     amountDueThisPeriod != null && (amountDueThisPeriod.amount ?? 0) > 0;
+  // 2026-07-01 (display-only) — "Paid in full" state. When the owner owes
+  // nothing right now — no lifetime balance, no installment due this period,
+  // and no dues/assessment due-now — present a clear positive "Paid in full"
+  // card (with the last payment date when we have it) instead of a bare
+  // "$0.00 balance". This is purely presentational: derived from the existing
+  // balance + lastPaymentDate; no money logic, no ledger write.
+  const paidInFull = balance <= 0 && !hasAmountDue && totalDueNow <= 0;
+  const lastPaymentDate = dashboard?.lastPaymentDate ?? null;
   // Default-expand the first unit (or all units if there are <= 3) so the
   // owner sees the breakdown without having to click. Per the wireframe.
   const defaultOpenUnits = useMemo(
@@ -551,12 +559,47 @@ function FinancesHubContent() {
         </p>
       </div>
 
+      {/* 2026-07-01 (display-only) — "Paid in full" state. When the owner owes
+          nothing right now, show a clear positive confirmation (with the last
+          payment date when available) instead of a $0.00 balance framing. */}
+      {paidInFull ? (
+        <section data-testid="portal-finances-paid-in-full">
+          <Card className="border-primary/30 bg-primary/[0.06]">
+            <CardContent className="flex items-start gap-3 py-5">
+              <CheckCircle2
+                className="mt-0.5 h-6 w-6 shrink-0 text-primary"
+                aria-hidden="true"
+              />
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">
+                  Account status
+                </p>
+                <p
+                  className="mt-1 font-headline text-2xl md:text-3xl text-on-surface"
+                  data-testid="portal-finances-paid-in-full-headline"
+                >
+                  {lastPaymentDate
+                    ? `Paid in full on ${new Date(lastPaymentDate).toLocaleDateString()}`
+                    : "Paid in full"}
+                </p>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  {balance < 0
+                    ? `You have a credit of $${formatCurrency(balance)} on your account. Nothing is due right now.`
+                    : "You have no outstanding balance. Nothing is due right now."}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
       {/* 2026-06-30 — "What's due now" breakdown (William finding #3). Separate
           HOA dues from special-assessment installments, and show the installment
           due — NOT the full assessment lump. Total = dues + installment. The
           lifetime balance is shown alongside as a reference, never as "what's
-          due". */}
-      {hasDueNowBreakdown ? (
+          due". Suppressed when nothing is actually due (paid-in-full) so the
+          owner never sees a "$0.00 What's due now" alarm. */}
+      {hasDueNowBreakdown && !paidInFull ? (
         <section data-testid="portal-finances-due-now">
           <Card className="border-destructive/30 bg-destructive/[0.04]">
             <CardContent className="py-5">
@@ -610,7 +653,11 @@ function FinancesHubContent() {
           NOT what's due right now if the owner is on a payment plan. The
           primary CTA below is "Pay $X due this period"; the total balance
           is shown alongside as a reference. When no plan is active, only
-          the total balance is rendered (legacy behavior preserved). */}
+          the total balance is rendered (legacy behavior preserved). When the
+          owner is paid in full, this balance-vs-amount-due block is suppressed
+          — the "Paid in full" card above already conveys the $0 state without
+          a redundant "$0.00 balance". */}
+      {!paidInFull ? (
       <section className="grid gap-4 md:grid-cols-2">
         {/* Card 1 — Amount Due This Period (PRIMARY when a plan exists) */}
         {hasAmountDue ? (
@@ -700,6 +747,7 @@ function FinancesHubContent() {
           </CardContent>
         </Card>
       </section>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-3">
         <Card>

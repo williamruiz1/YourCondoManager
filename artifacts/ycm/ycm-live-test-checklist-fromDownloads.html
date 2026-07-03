@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YCM Live Test Checklist — Cherry Hill</title>
+<style>
+  :root{--bg:#0e1116;--card:#171c24;--line:#2a323d;--ink:#e8edf3;--dim:#9aa6b2;--faint:#6b7682;--ok:#3ddc84;--you:#ffd84d;--blk:#ff5d5d;--info:#5db0ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:32px 28px 80px;max-width:920px;margin:0 auto}
+  h1{font-size:25px;margin:0 0 4px}.sub{color:var(--dim);margin:0 0 24px}
+  .gate{background:linear-gradient(135deg,#2a1010,#1d0c0c);border:1px solid #5c1818;border-radius:12px;padding:16px 20px;margin:0 0 28px}
+  .gate h2{margin:0 0 8px;font-size:16px;color:var(--blk)}.gate p{margin:6px 0;color:var(--ink)}.gate .path{color:var(--you);font-weight:700}
+  ol.steps{list-style:none;counter-reset:s;padding:0;margin:0}
+  ol.steps li{counter-increment:s;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px 14px 54px;margin:0 0 10px;position:relative}
+  ol.steps li::before{content:counter(s);position:absolute;left:14px;top:14px;width:26px;height:26px;border-radius:50%;background:var(--info);color:#06121f;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px}
+  ol.steps li b{color:var(--ink)}.expect{color:var(--ok);font-size:13.5px;margin-top:4px;display:block}.expect::before{content:"✓ expect: ";color:var(--ok);font-weight:700}
+  .tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px;margin-left:6px}
+  .tag.now{background:rgba(61,220,132,.15);color:var(--ok)}.tag.blk{background:rgba(255,93,93,.15);color:var(--blk)}
+  table{border-collapse:collapse;width:100%;margin:24px 0 0;font-size:13.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}th{color:var(--dim);font-weight:600}
+  .note{color:var(--faint);font-size:12.5px;margin:22px 0 0;font-style:italic}
+  code{background:#0c1f33;color:#cfe6ff;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+  <h1>Cherry Hill — Live Test Checklist</h1>
+  <p class="sub">Prove the loop yourself: see your balance → pay it → watch it reconcile. Updated 2026-06-02.</p>
+
+  <div class="gate">
+    <h2>⛔ One prerequisite first — turns the pay button on</h2>
+    <p>Until this is done, Step 4 (pay) returns "online payment not configured."</p>
+    <p class="path">Admin Dashboard → Cherry Hill Court → Payment Setup → complete Stripe Express onboarding.</p>
+    <p style="color:var(--dim);font-size:13px">This creates Cherry Hill's connected payment account. Needs your banking + identity into Stripe's hosted flow — only you can do it. (This is the real unblock — not Plaid.)</p>
+  </div>
+
+  <ol class="steps">
+    <li><b>Confirm dues posted</b> <span class="tag now">works now</span><br>Cherry Hill's $330/mo recurring dues is live; the May catch-up is posting to all 18 units. <span class="expect">your unit 1421-B shows the imported balance ($2,121.77) plus the new May $330 dues.</span></li>
+    <li><b>Log in to the owner portal</b> <span class="tag now">works now</span><br>As your unit — <code>1421-B</code>, <code>williamruiz11@gmail.com</code>. <span class="expect">portal loads; you land on your finances hub.</span></li>
+    <li><b>Check your balance + statement</b> <span class="tag now">works now</span><br>Open the balance summary and the new account statement. <span class="expect">balance matches the ledger; statement shows opening balance, charges, ending balance; printable.</span></li>
+    <li><b>Pay your balance</b> <span class="tag blk">needs Stripe Connect (prereq)</span><br>Use the portal pay flow (ACH via Stripe, test mode). <span class="expect">payment submits and succeeds; no "not configured" error.</span></li>
+    <li><b>Confirm the receipt</b> <span class="tag blk">after Step 4</span><br>Check email + portal receipts. <span class="expect">a branded receipt email arrives; a printable receipt appears in the portal.</span></li>
+    <li><b>Watch it reconcile</b> <span class="tag blk">after Step 4</span><br>The payment auto-matches against the bank credit. <span class="expect">balance drops by what you paid; the payment shows reconciled.</span></li>
+  </ol>
+
+  <table>
+    <tr><th>What works right now (sandbox)</th><th>What Stripe Connect unblocks</th><th>What Plaid production adds (later)</th></tr>
+    <tr>
+      <td>Dues billing, balance view, statements, reconciliation engine, receipts — all live.</td>
+      <td>The actual <b>pay</b> step (Steps 4–6). This is the one gate.</td>
+      <td>Real Chase transaction import + owner bank verification. Not needed to see or pay your balance.</td>
+    </tr>
+  </table>
+
+  <p class="note">Once Stripe Express onboarding is done, this whole checklist runs green end-to-end. Tell me when it's done and I'll re-verify the loop with you.</p>
+</body>
+</html>
