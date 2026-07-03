@@ -1,7 +1,7 @@
 # Rate limiting
 
 **Status:** live · **Anchors:** YCM#211 (production-readiness P1-4), founder-os#8536
-**Code:** `server/rate-limit.ts` (limiters) · `server/index.ts` (route mounts) · `shared/schema.ts` (`rate_limit_counters`) · `migrations/0052_rate_limit_counters.sql`
+**Code:** `server/rate-limit.ts` (limiters) · `server/index.ts` (route mounts) · `shared/schema.ts` (`rate_limit_counters`) · `migrations/0053_rate_limit_counters.sql`
 
 ## Purpose
 

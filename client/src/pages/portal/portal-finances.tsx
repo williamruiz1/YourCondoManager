@@ -15,6 +15,7 @@ import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Receipt } from "lucide-react";
 import type { OwnerLedgerEntry } from "@shared/schema";
+import type { PerUnitBreakdown } from "@shared/portal-per-unit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -197,6 +198,9 @@ type FinancialDashboard = {
   }>;
   // 2026-05-25 — additive, server-side per-unit grouping.
   byUnit?: FinanceUnitBreakdown[];
+  // 2026-07-03 — additive, per-unit dues-vs-assessment breakdown. Sums
+  // reconcile exactly to the owner-wide "due now" + balance totals.
+  perUnit?: PerUnitBreakdown[];
   grandTotal?: number;
   // 2026-05-25 (live session) — plan-aware "Amount due this period".
   // null when no active payment plan, or when on a quarterly plan and
@@ -244,6 +248,105 @@ function getTitleForPath(path: string): string {
 // (Connect-routed in server/services/payment-service.ts). Plaid remains the
 // ADMIN bank-feed / reconciliation integration only — it is not an owner
 // payment path (William finding #1, 2026-06-30).
+
+// Owner-facing budget surface — CT CGS §47-261e negative-option (owner-veto)
+// budget ratification (#8015). Shows the owner the proposed budget / special
+// assessments awaiting (or resolved by) the statutory ratification vote, and
+// explains their negative-option veto right.
+interface PortalBudgetRatification {
+  id: string;
+  ratificationType: "annual-budget" | "special-assessment" | "emergency-assessment";
+  statuteCitation: string;
+  status: string;
+  outcome: string | null;
+  meetingDate: string | null;
+  votingWindowMinDate: string | null;
+  votingWindowMaxDate: string | null;
+  reserveStatement: string | null;
+  assessmentAmount: number | null;
+  totalOwnerCount: number;
+  rejectThresholdCount: number | null;
+  rejectVoteCount: number;
+}
+
+const RATIFICATION_TYPE_LABEL: Record<string, string> = {
+  "annual-budget": "Annual budget",
+  "special-assessment": "Special assessment",
+  "emergency-assessment": "Emergency assessment",
+};
+const RATIFICATION_STATUS_LABEL: Record<string, string> = {
+  "summary-distributed": "Awaiting ratification vote",
+  "voting-open": "Ratification vote open",
+  ratified: "Ratified",
+  rejected: "Rejected — prior budget continues",
+  "imposed-no-vote": "Imposed (below 15% — no owner vote)",
+  "emergency-imposed": "Emergency — imposed immediately",
+};
+
+function fmtRatDate(s: string | null): string {
+  if (!s) return "—";
+  return new Date(s).toISOString().slice(0, 10);
+}
+
+function PortalBudgetRatificationCard() {
+  const { portalFetch } = usePortalContext();
+  const { data, isLoading } = useQuery<PortalBudgetRatification[]>({
+    queryKey: ["portal/budget-ratifications"],
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/budget-ratifications");
+      if (!res.ok) return [];
+      return (await res.json()) as PortalBudgetRatification[];
+    },
+  });
+
+  if (isLoading) return null;
+  if (!data || data.length === 0) return null;
+
+  return (
+    <Card data-testid="portal-budget-ratification">
+      <CardContent className="space-y-4 py-5">
+        <div>
+          <h2 className="font-headline text-lg">Budget ratification</h2>
+          <p className="text-sm text-muted-foreground">
+            Under Connecticut law (CGS §47-261e), an adopted budget is ratified <strong>unless a majority of all
+            unit owners rejects it</strong> at the ratification meeting. If you do nothing, the budget takes effect.
+          </p>
+        </div>
+        <ul className="space-y-3">
+          {data.map((r) => (
+            <li key={r.id} className="rounded-lg border p-3" data-testid={`portal-ratification-${r.id}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium">{RATIFICATION_TYPE_LABEL[r.ratificationType] ?? r.ratificationType}</span>
+                <Badge variant="outline">{RATIFICATION_STATUS_LABEL[r.status] ?? r.status}</Badge>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">{r.statuteCitation}</div>
+              {r.assessmentAmount != null && (
+                <div className="mt-1 text-sm">Assessment: ${r.assessmentAmount.toLocaleString("en-US")}</div>
+              )}
+              {(r.status === "summary-distributed" || r.status === "voting-open") && (
+                <div className="mt-2 space-y-1 text-sm">
+                  <div>Ratification meeting: <strong>{fmtRatDate(r.meetingDate)}</strong></div>
+                  <div className="text-muted-foreground">
+                    Window: {fmtRatDate(r.votingWindowMinDate)} – {fmtRatDate(r.votingWindowMaxDate)} (10–60 days after the summary)
+                  </div>
+                  {r.rejectThresholdCount != null && (
+                    <div className="text-muted-foreground">
+                      It takes <strong>{r.rejectThresholdCount}</strong> of {r.totalOwnerCount} owners to reject; {r.rejectVoteCount} have rejected so far.
+                    </div>
+                  )}
+                </div>
+              )}
+              {r.reserveStatement && (
+                <div className="mt-2 text-xs text-muted-foreground">{r.reserveStatement}</div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
 
 // ---------- Per-unit hierarchical breakdown (2026-05-25) ----------
 
@@ -311,7 +414,19 @@ function CategoryStackedBar({
  * even those at $0 — per William's "where is HOA dues" question, make
  * absence visible) plus the ledger entries scoped to this unit.
  */
-function PerUnitFinanceCard({ unit }: { unit: FinanceUnitBreakdown }) {
+function PerUnitFinanceCard({
+  unit,
+  dueBreakdown,
+  hasUpcomingInstallments,
+}: {
+  unit: FinanceUnitBreakdown;
+  // 2026-07-03 — per-unit dues-vs-assessment split (from the endpoint's
+  // additive `perUnit` array). When present, the expanded body leads with a
+  // clean "Due now" + "Total balance" summary that separates HOA dues from
+  // special assessments, per William's multi-unit ask.
+  dueBreakdown?: PerUnitBreakdown;
+  hasUpcomingInstallments?: boolean;
+}) {
   const headerTotal = unit.total;
   return (
     <AccordionItem
@@ -348,6 +463,84 @@ function PerUnitFinanceCard({ unit }: { unit: FinanceUnitBreakdown }) {
         </div>
       </AccordionTrigger>
       <AccordionContent className="px-5">
+        {/* 2026-07-03 — per-unit "Due now" + "Total balance" split into HOA
+            dues vs special assessment (William multi-unit ask). Reconciles to
+            the owner-wide totals. Only rendered when the endpoint supplied the
+            additive `perUnit` breakdown. */}
+        {dueBreakdown ? (
+          <div
+            className="grid grid-cols-1 gap-4 border-t border-outline-variant/10 pt-4 sm:grid-cols-2"
+            data-testid={`portal-finances-unit-${unit.unitId}-split`}
+          >
+            {/* Due now */}
+            <div className="rounded-xl border border-outline-variant/15 bg-surface-container/40 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+                Due now
+              </p>
+              <ul className="mt-2 space-y-1.5 text-sm">
+                <li className="flex items-center justify-between gap-3">
+                  <span className="text-on-surface">HOA Dues</span>
+                  <span className="font-medium tabular-nums text-on-surface" data-testid={`portal-finances-unit-${unit.unitId}-duenow-dues`}>
+                    ${formatCurrency(dueBreakdown.dueNowDues)}
+                  </span>
+                </li>
+                <li className="flex items-center justify-between gap-3">
+                  <span className="text-on-surface">
+                    Special Assessment{hasUpcomingInstallments ? " installment" : ""}
+                  </span>
+                  <span className="font-medium tabular-nums text-primary" data-testid={`portal-finances-unit-${unit.unitId}-duenow-assessment`}>
+                    ${formatCurrency(dueBreakdown.dueNowAssessment)}
+                  </span>
+                </li>
+                <li className="flex items-center justify-between gap-3 border-t border-outline-variant/10 pt-1.5">
+                  <span className="font-semibold text-on-surface">Total due now</span>
+                  <span
+                    className={`font-headline tabular-nums ${dueBreakdown.dueNowTotal > 0 ? "text-destructive" : "text-on-surface"}`}
+                    data-testid={`portal-finances-unit-${unit.unitId}-duenow-total`}
+                  >
+                    ${formatCurrency(dueBreakdown.dueNowTotal)}
+                  </span>
+                </li>
+              </ul>
+            </div>
+            {/* Total balance */}
+            <div className="rounded-xl border border-outline-variant/15 bg-surface-container/40 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+                Total balance
+              </p>
+              <ul className="mt-2 space-y-1.5 text-sm">
+                <li className="flex items-center justify-between gap-3">
+                  <span className="text-on-surface">HOA dues &amp; other</span>
+                  <span className="font-medium tabular-nums text-on-surface" data-testid={`portal-finances-unit-${unit.unitId}-balance-dues`}>
+                    ${formatCurrency(dueBreakdown.balanceDues)}
+                  </span>
+                </li>
+                <li className="flex items-center justify-between gap-3">
+                  <span className="text-on-surface">Special Assessment</span>
+                  <span className="font-medium tabular-nums text-primary" data-testid={`portal-finances-unit-${unit.unitId}-balance-assessment`}>
+                    ${formatCurrency(dueBreakdown.balanceAssessment)}
+                  </span>
+                </li>
+                <li className="flex items-center justify-between gap-3 border-t border-outline-variant/10 pt-1.5">
+                  <span className="font-semibold text-on-surface">Total balance</span>
+                  <span
+                    className={`font-headline tabular-nums ${dueBreakdown.balanceTotal > 0 ? "text-destructive" : "text-on-surface"}`}
+                    data-testid={`portal-finances-unit-${unit.unitId}-balance-total`}
+                  >
+                    ${formatCurrency(dueBreakdown.balanceTotal)}
+                  </span>
+                </li>
+              </ul>
+            </div>
+            {dueBreakdown.dueNowAssessment > 0 ? (
+              <p className="text-xs text-on-surface-variant sm:col-span-2" data-testid={`portal-finances-unit-${unit.unitId}-assessment-note`}>
+                Special assessments are billed in installments — only the amount
+                due now is shown here, not the full assessment.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         {/* Category split (stacked bar + legend) */}
         <div className="space-y-3 border-t border-outline-variant/10 pt-4">
           <CategoryStackedBar byCategory={unit.byCategory} total={headerTotal} />
@@ -518,6 +711,14 @@ function FinancesHubContent() {
   const upcoming = dashboard?.specialAssessmentUpcomingInstallments ?? [];
   const byUnit = dashboard?.byUnit ?? [];
   const unitLabelMap = useMemo(() => buildUnitLabelMap(byUnit), [byUnit]);
+  // 2026-07-03 — per-unit dues-vs-assessment split, keyed by unitId. Only the
+  // value-add for MULTI-unit owners; a single-unit owner's split is already
+  // covered by the top "What's due now" + "Total balance" cards.
+  const perUnitMap = useMemo(
+    () => new Map((dashboard?.perUnit ?? []).map((p) => [p.unitId, p])),
+    [dashboard?.perUnit],
+  );
+  const showPerUnitBreakdown = byUnit.length > 1;
 
   // 2026-06-30 — "What's due now" breakdown (William finding #3): separate HOA
   // dues from special-assessment installments, and show the installment(s)
@@ -781,6 +982,7 @@ function FinancesHubContent() {
           owners pay through Stripe Checkout (card + ACH on the HOA's connected
           Stripe account) via POST /api/portal/pay. Plaid stays the admin
           bank-FEED/reconciliation tool only; it is not an owner payment path. */}
+      <PortalBudgetRatificationCard />
       <section className="grid gap-4 md:grid-cols-2">
         <Card data-testid="portal-finances-pay-card">
           <CardContent className="space-y-3 py-5">
@@ -894,7 +1096,11 @@ function FinancesHubContent() {
         </Card>
       </section>
 
-      {byUnit.length > 0 ? (
+      {/* 2026-07-03 — the per-unit breakdown is the value-add for MULTI-unit
+          owners. A single-unit owner's dues-vs-assessment split is already
+          covered by the top "What's due now" + "Total balance" cards, so the
+          section is hidden for them (don't clutter the single-unit case). */}
+      {showPerUnitBreakdown ? (
         <section
           data-testid="portal-finances-by-unit"
           aria-labelledby="portal-finances-by-unit-heading"
@@ -905,9 +1111,7 @@ function FinancesHubContent() {
                 By unit
               </h2>
               <p className="text-xs text-on-surface-variant">
-                {byUnit.length === 1
-                  ? "Breakdown for your unit."
-                  : `Breakdown across your ${byUnit.length} units.`}
+                {`What each of your ${byUnit.length} units owes — HOA dues and special assessments shown separately.`}
               </p>
             </div>
             <p
@@ -924,7 +1128,12 @@ function FinancesHubContent() {
             data-testid="portal-finances-by-unit-accordion"
           >
             {byUnit.map((unit) => (
-              <PerUnitFinanceCard key={unit.unitId} unit={unit} />
+              <PerUnitFinanceCard
+                key={unit.unitId}
+                unit={unit}
+                dueBreakdown={perUnitMap.get(unit.unitId)}
+                hasUpcomingInstallments={upcoming.length > 0}
+              />
             ))}
           </Accordion>
         </section>

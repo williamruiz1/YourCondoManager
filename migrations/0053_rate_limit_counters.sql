@@ -1,4 +1,4 @@
--- Migration 0052 — rate_limit_counters (multi-machine-correct rate limiter store)
+-- Migration 0053 — rate_limit_counters (multi-machine-correct rate limiter store)
 --
 -- Backing store for the Postgres-backed rate limiter (server/rate-limit.ts
 -- createPgRateLimiter + docs/rate-limiting.md). The in-memory limiter keeps an

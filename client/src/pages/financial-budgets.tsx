@@ -678,7 +678,236 @@ export function FinancialBudgetsContent() {
           </div>
         </CardContent>
       </Card>
+
+      <BudgetRatificationPanel
+        assocId={assocId}
+        budgetId={budgetId}
+        versionId={versionId}
+        associationName={activeAssociationName}
+        fiscalYear={selectedBudget?.fiscalYear}
+        budgetTotal={budgetTotals.planned}
+      />
     </div>
+  );
+}
+
+// CT CGS §47-261e — board-facing budget negative-option ratification panel (#8015).
+// Drives the statutory flow: open ratification → distribute the 30-day owner
+// summary (10–60-day meeting window) → tally the owner-veto vote. Plus the §(b)
+// special-assessment 15% gate and the §(c) two-thirds emergency path.
+interface BudgetRatificationRow {
+  id: string;
+  ratificationType: string;
+  statuteCitation: string;
+  status: string;
+  outcome: string | null;
+  adoptedAt: string;
+  summaryDueBy: string;
+  summarySentAt: string | null;
+  meetingDate: string | null;
+  votingWindowMinDate: string | null;
+  votingWindowMaxDate: string | null;
+  totalOwnerCount: number;
+  rejectThresholdCount: number | null;
+  rejectVoteCount: number;
+  assessmentAmount: number | null;
+}
+
+function BudgetRatificationPanel({
+  assocId,
+  budgetId,
+  versionId,
+  associationName,
+  fiscalYear,
+  budgetTotal,
+}: {
+  assocId: string;
+  budgetId: string;
+  versionId: string;
+  associationName: string;
+  fiscalYear?: number;
+  budgetTotal: number;
+}) {
+  const { toast } = useToast();
+  const [meetingDate, setMeetingDate] = useState("");
+  const [rejectVotes, setRejectVotes] = useState("0");
+  const [saAmount, setSaAmount] = useState("");
+  const [saBaseline, setSaBaseline] = useState("");
+  const [saEval, setSaEval] = useState<{ requiresOwnerRatification: boolean; reason: string } | null>(null);
+
+  const ratificationsQuery = useQuery<BudgetRatificationRow[]>({
+    queryKey: ["/api/financial/budget-ratifications", assocId || "none"],
+    queryFn: async () => {
+      if (!assocId) return [];
+      const res = await apiRequest("GET", `/api/financial/budget-ratifications?associationId=${assocId}`);
+      return res.json();
+    },
+    enabled: !!assocId,
+  });
+
+  const refresh = () =>
+    queryClient.invalidateQueries({ queryKey: ["/api/financial/budget-ratifications", assocId || "none"] });
+
+  const openRatification = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/financial/budget-ratifications", {
+        associationId: assocId,
+        budgetId,
+        budgetVersionId: versionId,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      refresh();
+      toast({ title: "Ratification opened", description: "Budget version moved to 'proposed'. §47-261e(a)." });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const distributeSummary = useMutation({
+    mutationFn: async (ratificationId: string) => {
+      const res = await apiRequest("POST", `/api/financial/budget-ratifications/${ratificationId}/distribute-summary`, {
+        meetingDate,
+        associationName,
+        fiscalYear,
+        budgetTotal,
+      });
+      return res.json();
+    },
+    onSuccess: (data: { sends?: number }) => {
+      refresh();
+      toast({ title: "Summary distributed", description: `Owner summaries logged: ${data?.sends ?? 0}. §47-261e(a).` });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const tally = useMutation({
+    mutationFn: async (ratificationId: string) => {
+      const res = await apiRequest("POST", `/api/financial/budget-ratifications/${ratificationId}/tally`, {
+        rejectVoteCount: Number(rejectVotes),
+      });
+      return res.json();
+    },
+    onSuccess: (data: { outcome?: string }) => {
+      refresh();
+      toast({ title: `Vote tallied: ${data?.outcome ?? "resolved"}`, description: "§47-261e(a) negative-option result." });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const evalSpecial = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/financial/budget-ratifications/special-assessment/evaluate", {
+        assessmentAmount: Number(saAmount),
+        baselineAnnualBudget: Number(saBaseline),
+      });
+      return res.json();
+    },
+    onSuccess: (data: { requiresOwnerRatification: boolean; reason: string }) => setSaEval(data),
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card data-testid="budget-ratification-panel">
+      <CardHeader>
+        <CardTitle className="text-base">Budget ratification — CT CGS §47-261e (owner-veto)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <p className="text-sm text-muted-foreground">
+          A budget is ratified <strong>unless a majority of all unit owners rejects it</strong> at a meeting held 10–60
+          days after a 30-day owner summary (§47-261e(a)). This binds the version status to a real owner vote — not an
+          admin flip.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!assocId || !budgetId || !versionId || openRatification.isPending}
+            onClick={() => openRatification.mutate()}
+          >
+            Open ratification for selected version
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Ratifications</h3>
+          {(ratificationsQuery.data ?? []).length === 0 ? (
+            <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+              No ratifications yet for this association.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(ratificationsQuery.data ?? []).map((r) => (
+                <div key={r.id} className="rounded-md border p-3 text-sm" data-testid={`ratification-row-${r.id}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium capitalize">{r.ratificationType.replace(/-/g, " ")}</span>
+                    <Badge variant="outline">{r.status}{r.outcome ? ` · ${r.outcome}` : ""}</Badge>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {r.statuteCitation} · summary due {r.summaryDueBy?.slice(0, 10)} · owners {r.totalOwnerCount}
+                    {r.rejectThresholdCount != null ? ` · reject-threshold ${r.rejectThresholdCount}` : ""}
+                  </div>
+                  {r.status === "summary-pending" && (
+                    <div className="mt-2 flex flex-wrap items-end gap-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Ratification meeting date (10–60 days out)</label>
+                        <Input type="date" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} className="h-8 w-44" />
+                      </div>
+                      <Button size="sm" disabled={!meetingDate || distributeSummary.isPending} onClick={() => distributeSummary.mutate(r.id)}>
+                        Distribute 30-day summary
+                      </Button>
+                    </div>
+                  )}
+                  {(r.status === "summary-distributed" || r.status === "voting-open") && (
+                    <div className="mt-2 space-y-2">
+                      <div className="text-xs text-muted-foreground">
+                        Meeting {r.meetingDate?.slice(0, 10)} · window {r.votingWindowMinDate?.slice(0, 10)} – {r.votingWindowMaxDate?.slice(0, 10)}
+                      </div>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Owners who rejected</label>
+                          <Input type="number" min={0} value={rejectVotes} onChange={(e) => setRejectVotes(e.target.value)} className="h-8 w-28" />
+                        </div>
+                        <Button size="sm" disabled={tally.isPending} onClick={() => tally.mutate(r.id)}>
+                          Tally negative-option vote
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2 border-t pt-4">
+          <h3 className="text-sm font-semibold">Special assessment — 15% gate (§47-261e(b))</h3>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Assessment amount</label>
+              <Input type="number" value={saAmount} onChange={(e) => setSaAmount(e.target.value)} className="h-8 w-32" placeholder="20000" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Annual budget</label>
+              <Input type="number" value={saBaseline} onChange={(e) => setSaBaseline(e.target.value)} className="h-8 w-32" placeholder="120000" />
+            </div>
+            <Button size="sm" variant="outline" disabled={!saAmount || !saBaseline || evalSpecial.isPending} onClick={() => evalSpecial.mutate()}>
+              Check threshold
+            </Button>
+          </div>
+          {saEval && (
+            <div className={`rounded-md border p-2 text-xs ${saEval.requiresOwnerRatification ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-300 bg-emerald-50 text-emerald-900"}`}>
+              {saEval.reason}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            ≥15% of the annual budget requires the owner-veto vote; below 15% the board may impose it. An emergency
+            assessment (§47-261e(c)) may be imposed immediately on a two-thirds board vote with a written attestation.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
