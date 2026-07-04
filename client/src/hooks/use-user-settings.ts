@@ -36,10 +36,11 @@ const DEFAULT_SETTINGS: UserSettings = {
   quietHoursStart: DEFAULT_ADMIN_NOTIFICATION_PREFERENCES.quietHoursStart,
   quietHoursEnd: DEFAULT_ADMIN_NOTIFICATION_PREFERENCES.quietHoursEnd,
   notificationCategoryPreferences: DEFAULT_ADMIN_NOTIFICATION_CATEGORY_PREFERENCES,
-  // Default to light until dark mode is verified across all surfaces (dark inputs render
-  // bright-white against the dark header). Existing users keep their saved preference
-  // unchanged. Revert to "system" after PR 2 dark-mode fixes land and pass visual tests.
-  theme: "light",
+  // Follows the OS preference. The brand-v2 dark-mode breakage (a duplicate hardcoded
+  // `background: #f8f9fa` in tailwind.config.ts shadowing the token-driven `--background`)
+  // is fixed (YCM#352 / founder-os#8539), so we no longer force light. Existing users keep
+  // their saved preference unchanged.
+  theme: "system",
 };
 
 const STORAGE_KEY_PREFIX = "user-settings-";

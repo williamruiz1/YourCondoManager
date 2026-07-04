@@ -77,14 +77,13 @@ async function assertBodyIsDark(page: import("@playwright/test").Page, surface: 
   expect(isDark, `body background should be dark on ${surface}`).toBe(true);
 }
 
-// PARKED (YCM#352, via founder-os#8337): dark mode is deliberately mid-migration
-// — the brand-v2 token layer leaves dark surfaces rendering LIGHT (body bg
-// rgb(248,249,250) with .dark applied), and use-user-settings.ts intentionally
-// defaults to light "until dark mode is verified across all surfaces". This
-// suite asserts that parked feature, so it fails on every run now that the
-// Playwright gate is alive again. fixme (NOT deleted): flip back to
-// test.describe when YCM#352's re-enable checklist completes.
-test.describe.fixme("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
+// RE-ENABLED (YCM#352 / founder-os#8539): the brand-v2 token layer left a duplicate
+// hardcoded `background: #f8f9fa` in tailwind.config.ts that shadowed the token-driven
+// `--background`, so `.dark` <body> computed near-white (rgb(248,249,250)). That duplicate
+// key was removed, so `bg-background` now resolves to `hsl(var(--background))` (dark
+// `220 13% 9%` under `.dark`). use-user-settings.ts default is back to "system". This
+// suite asserts the fixed behavior and is live again.
+test.describe("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
   test("Home (/app) — axe in dark", async ({ page }) => {
     const store = createSeedStore();
     await forceWorkspaceDarkMode(page);
