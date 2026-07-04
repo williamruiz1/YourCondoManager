@@ -9,6 +9,7 @@ import { storage } from "./storage";
 import { authorizeUploadAccess, validateUploadFilename } from "./uploads-access";
 import { db } from "./db";
 import { debug } from "./logger";
+import { captureServerError } from "./observability";
 import { reserveDisclosureDollars, reserveDisclosureBasis } from "./ct-reserve-disclosure";
 import { sendEmail } from "./email/send";
 import {
@@ -17057,7 +17058,35 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         const subId = (eventObj.subscription as string) ?? null;
         if (subId) {
           const sub = await storage.getPlatformSubscriptionByStripeId(subId);
-          if (sub) await storage.updatePlatformSubscription(sub.id, { status: "active" });
+          if (sub) {
+            const wasActive = sub.status === "active";
+            await storage.updatePlatformSubscription(sub.id, { status: "active" });
+            // founder-os#1147 — payment-succeeded receipt email (acceptance
+            // criterion: transactional emails include payment-succeeded).
+            // Best-effort + non-crashing, mirroring the dunning email below.
+            // Idempotency: Stripe re-delivers on `invoice.payment_succeeded`
+            // AND `invoice.paid` for the same invoice, so key the receipt off
+            // the invoice number and skip a duplicate for a row already active
+            // (the initial trial-conversion charge flips trialing/past_due →
+            // active; steady-state renewals are the ones we email a receipt for).
+            const assocAdminEmail = sub.adminEmail;
+            const amountPaid = typeof eventObj.amount_paid === "number" ? eventObj.amount_paid : null;
+            const invoiceNumber = (eventObj.number as string) ?? (eventObj.id as string) ?? "";
+            const hostedInvoiceUrl = (eventObj.hosted_invoice_url as string) ?? null;
+            if (assocAdminEmail && amountPaid && amountPaid > 0) {
+              const amountStr = `$${(amountPaid / 100).toFixed(2)}`;
+              const invoiceLine = hostedInvoiceUrl
+                ? `<p><a href="${hostedInvoiceUrl}">View your invoice →</a></p>`
+                : "";
+              const receiptLabel = wasActive ? "renewal payment" : "payment";
+              await sendPlatformEmail({
+                to: assocAdminEmail,
+                subject: `Payment received — your Your Condo Manager subscription (${amountStr})`,
+                html: `<p>Hi,</p><p>We received your ${receiptLabel} of <strong>${amountStr}</strong> for your <strong>${sub.plan}</strong> Your Condo Manager subscription${invoiceNumber ? ` (invoice ${invoiceNumber})` : ""}.</p><p>Your subscription is active — thank you.</p>${invoiceLine}`,
+                text: `We received your ${receiptLabel} of ${amountStr} for your ${sub.plan} Your Condo Manager subscription${invoiceNumber ? ` (invoice ${invoiceNumber})` : ""}. Your subscription is active — thank you.${hostedInvoiceUrl ? `\n\nView your invoice: ${hostedInvoiceUrl}` : ""}`,
+              }).catch(() => {});
+            }
+          }
         }
         processed = true;
       } else if (eventType === "invoice.payment_failed") {
@@ -17087,7 +17116,23 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
       res.json({ received: true });
     } catch (e: any) {
-      console.error("Platform webhook error:", e.message);
+      // founder-os#1147 — Sentry error capture on every Stripe Billing webhook
+      // failure (acceptance criterion, per #1030 observability). captureServerError
+      // logs + forwards to Sentry when SENTRY_DSN is set, and never throws.
+      const eventId = (req.body as Record<string, unknown> | undefined)?.id as string | undefined;
+      const eventType = (req.body as Record<string, unknown> | undefined)?.type as string | undefined;
+      captureServerError(e, { scope: "platform-stripe-webhook", eventId, eventType });
+      // Record the failure on the webhook-event row so it's auditable (the row
+      // was upserted as `received` above; flip it to `failed` with the message).
+      if (eventId) {
+        try {
+          await db.update(platformWebhookEvents)
+            .set({ status: "failed", errorMessage: e?.message ?? "unknown", processedAt: new Date() })
+            .where(eq(platformWebhookEvents.providerEventId, eventId));
+        } catch {
+          // best-effort audit write; never mask the original webhook error
+        }
+      }
       res.status(500).json({ message: e.message });
     }
   });
