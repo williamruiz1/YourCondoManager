@@ -156,7 +156,13 @@ export default {
         "secondary-fixed": "#dae2ff",
         "on-primary-fixed": "#001848",
         "surface-variant": "#e1e3e4",
-        "background": "#f8f9fa",
+        // NOTE (YCM#352): the MD3 import formerly re-declared `background: "#f8f9fa"`
+        // here. In a JS object literal the later key wins, so it SHADOWED the
+        // theme-aware `background: "hsl(var(--background) / <alpha-value>)"` above —
+        // making `bg-background` (and therefore <body>) a fixed light literal that
+        // ignored the `.dark` CSS-var override. That is why dark mode rendered
+        // light (body computed rgb(248,249,250)). Removed so `bg-background` tracks
+        // `--background` again. Do NOT re-add a literal `background` here.
         "on-error-container": "#93000a",
         "surface-tint": "#0c56d0",
         "tertiary-container": "#a33500",
