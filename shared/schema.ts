@@ -318,6 +318,42 @@ export const goLiveGateAttestations = pgTable("go_live_gate_attestations", {
   ),
 }));
 
+// YCM#220 / readiness P2-5 — treasurer month-close attestation. ONE row per
+// (association, calendar month) recording that a treasurer/admin closed the
+// books for that period: who + when + a snapshot of the matched/unmatched
+// reconciliation counts at close time. `status` toggles closed → reopened
+// (re-opening is an explicit, audit-logged action). "Is June reconciled?" is
+// answered by a single row lookup: a `closed`-status row for (assoc, '2026-06')
+// means yes. This is an ATTESTATION record only — it does NOT lock ledger
+// writes retroactively (full period-locking of postings is out of scope). The
+// forensic close/reopen history lives in audit_logs. See
+// migrations/0054_period_closes.sql.
+export const periodCloses = pgTable("period_closes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  periodMonth: text("period_month").notNull(), // 'YYYY-MM' (e.g. '2026-06')
+  status: text("status").notNull().default("closed"), // 'closed' | 'reopened'
+  matchedCount: integer("matched_count").notNull().default(0),
+  unmatchedBankTxCount: integer("unmatched_bank_tx_count").notNull().default(0),
+  unmatchedLedgerEntryCount: integer("unmatched_ledger_entry_count").notNull().default(0),
+  closedByUserId: text("closed_by_user_id").notNull(),
+  closedByEmail: text("closed_by_email").notNull(),
+  closedAt: timestamp("closed_at").defaultNow().notNull(),
+  reopenedByUserId: text("reopened_by_user_id"),
+  reopenedByEmail: text("reopened_by_email"),
+  reopenedAt: timestamp("reopened_at"),
+  notes: text("notes"),
+}, (table) => ({
+  assocMonthUniq: uniqueIndex("period_closes_assoc_month_uniq").on(
+    table.associationId,
+    table.periodMonth,
+  ),
+  assocLookupIdx: index("period_closes_assoc_idx").on(
+    table.associationId,
+    table.periodMonth,
+  ),
+}));
+
 // #1327 — self-managed onboarding wizard state machine. One row per admin user
 // who lands on the Day-0-14 wizard. Step state persists across logout/login;
 // reminder cadence sweeps incomplete wizards at Day 7/10/12/13/14. See
@@ -2242,6 +2278,17 @@ export const insertGoLiveGateAttestationSchema = createInsertSchema(goLiveGateAt
 });
 export type GoLiveGateAttestation = typeof goLiveGateAttestations.$inferSelect;
 export type InsertGoLiveGateAttestation = z.infer<typeof insertGoLiveGateAttestationSchema>;
+
+// Period-close attestation (YCM#220). Server manages id + timestamps + the
+// reopen fields; only association, month, snapshot counts, and closer identity
+// come from the service on close.
+export const insertPeriodCloseSchema = createInsertSchema(periodCloses).omit({
+  id: true,
+  closedAt: true,
+  reopenedAt: true,
+});
+export type PeriodClose = typeof periodCloses.$inferSelect;
+export type InsertPeriodClose = z.infer<typeof insertPeriodCloseSchema>;
 
 export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress, {
   stepsCompleted: z.array(z.number().int().min(1).max(7)).default([]),
@@ -4337,6 +4384,40 @@ export type BudgetLineGlMapping = typeof budgetLineGlMappings.$inferSelect;
 export type InsertBudgetLineGlMapping = z.infer<typeof insertBudgetLineGlMappingSchema>;
 
 // ──────────────────────────────────────────────────────────────────────────────
+// rate_limit_counters — the shared, multi-machine-correct backing store for the
+// Postgres-backed rate limiter (see server/rate-limit.ts + docs/rate-limiting.md).
+//
+// WHY THIS TABLE: the in-memory limiter keeps an independent counter per Fly
+// machine, so with `min_machines_running = 1` + auto-start (fly.toml already
+// provisions 2 machines), an attacker load-balanced across machines gets Nx the
+// intended quota on money-mutation + auth-brute-force surfaces. This table makes
+// the counter shared across all machines using the EXISTING Postgres — no Redis,
+// no new infra service.
+//
+// One row per (limiter key = tier:client-ip). A fixed-window counter: `count`
+// increments within a window; when `windowStart` advances to a new window the
+// row atomically resets to 1 (see the ON CONFLICT upsert in server/rate-limit.ts).
+// ADDITIVE — touches no existing table/row. Fail-open: if this table is
+// unavailable the limiter degrades to the per-machine in-memory limiter.
+// ──────────────────────────────────────────────────────────────────────────────
+export const rateLimitCounters = pgTable(
+  "rate_limit_counters",
+  {
+    /** `${tier}:${clientIp}` — one bucket per tier per client. */
+    key: text("key").primaryKey(),
+    /** Start of the current fixed window (ms since epoch, floored to windowMs). */
+    windowStart: timestamp("window_start").notNull(),
+    /** Requests seen in the current window. */
+    count: integer("count").notNull().default(0),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // Sweep stale windows cheaply (DELETE WHERE window_start < cutoff).
+    byWindow: index("rate_limit_counters_window_idx").on(table.windowStart),
+  }),
+);
+
+export type RateLimitCounter = typeof rateLimitCounters.$inferSelect;
 // Connecticut resale / "6(d)" certificate — CGS §47-270 (founder-os#8013)
 // ──────────────────────────────────────────────────────────────────────────────
 // A CT condo/HOA association MUST furnish a resale certificate within 10

@@ -156,7 +156,12 @@ export default {
         "secondary-fixed": "#dae2ff",
         "on-primary-fixed": "#001848",
         "surface-variant": "#e1e3e4",
-        "background": "#f8f9fa",
+        // NOTE: no hardcoded "background" key here. The brand-v2 migration left a
+        // duplicate `"background": "#f8f9fa"` in this MD3 palette block that shadowed
+        // the semantic token-driven `background: hsl(var(--background))` above (line ~50),
+        // so `bg-background` compiled to a fixed light value and `.dark` could never
+        // darken <body> (YCM#352 / founder-os#8539). Removed so the CSS-variable token
+        // (light `0 0% 100%` / dark `220 13% 9%`) is the sole source of truth.
         "on-error-container": "#93000a",
         "surface-tint": "#0c56d0",
         "tertiary-container": "#a33500",

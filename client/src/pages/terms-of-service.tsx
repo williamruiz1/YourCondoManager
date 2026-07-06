@@ -394,7 +394,7 @@ export default function TermsOfServicePage({
                   <strong>Support:</strong> <a href="mailto:support@yourcondomanager.org" className="text-primary hover:underline">support@yourcondomanager.org</a>
                 </p>
                 <p className="text-slate-700 dark:text-slate-300">
-                  <strong>Address:</strong> Your Condo Manager Inc., Property Management Software, United States
+                  <strong>Address:</strong> Your Condo Manager, Inc., 1207 Delaware Ave, # 2199, Wilmington, DE 19806
                 </p>
               </div>
               <p className="text-slate-700 dark:text-slate-300">
